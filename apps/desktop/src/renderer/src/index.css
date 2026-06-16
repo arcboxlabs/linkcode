@@ -1,21 +1,29 @@
-:root {
-  color-scheme: dark;
-}
+@import "tailwindcss";
+@import "@linkcode/ui/theme.css";
 
-* {
-  box-sizing: border-box;
-}
+/* CoSSUI components live in a workspace package outside the renderer dir; scan them explicitly. */
+@source '../../../../../packages/ui/src';
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
 
-body {
-  background: #0e0f12;
-  color: #e6e8ec;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  overflow: hidden;
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
 }

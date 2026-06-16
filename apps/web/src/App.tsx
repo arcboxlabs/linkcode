@@ -7,11 +7,14 @@ import {
 import { Host } from '@linkcode/host';
 import { type AgentKind, AgentKindSchema, type SessionId } from '@linkcode/schema';
 import { createLocalTransportPair } from '@linkcode/transport';
-import { Button, MessageView, Panel, tokens } from '@linkcode/ui';
+import { Button, MessageView, Panel } from '@linkcode/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 const queryClient = new QueryClient();
+
+const FIELD =
+  'rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text outline-none focus:border-accent';
 
 /**
  * Self-contained demo: runs a Host inside the browser (direct local connection)
@@ -37,9 +40,9 @@ export function App(): ReactNode {
   return (
     <QueryClientProvider client={queryClient}>
       <LinkCodeProvider client={client}>
-        <main style={{ maxWidth: 720, margin: '0 auto', padding: tokens.space(6) }}>
-          <h1 style={{ fontSize: 18, fontWeight: 600 }}>Link Code · Web</h1>
-          {ready ? <Workspace /> : <p style={{ color: tokens.color.textMuted }}>连接中…</p>}
+        <main className="mx-auto max-w-[720px] p-6">
+          <h1 className="text-lg font-semibold">Link Code · Web</h1>
+          {ready ? <Workspace /> : <p className="text-muted">连接中…</p>}
         </main>
       </LinkCodeProvider>
     </QueryClientProvider>
@@ -65,21 +68,14 @@ function Workspace(): ReactNode {
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: tokens.space(4),
-        marginTop: tokens.space(4),
-      }}
-    >
+    <div className="mt-4 flex flex-col gap-4">
       <Panel title="会话">
-        <div style={{ display: 'flex', gap: tokens.space(2), alignItems: 'center' }}>
+        <div className="flex items-center gap-2">
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as AgentKind)}
             disabled={sessionId !== null}
-            style={selectStyle}
+            className={FIELD}
           >
             {AgentKindSchema.options.map((k) => (
               <option key={k} value={k}>
@@ -97,7 +93,7 @@ function Workspace(): ReactNode {
         <MessageView events={events} />
       </Panel>
 
-      <div style={{ display: 'flex', gap: tokens.space(2) }}>
+      <div className="flex gap-2">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -106,7 +102,7 @@ function Workspace(): ReactNode {
           }}
           placeholder={sessionId ? '输入消息…' : '请先启动会话'}
           disabled={!sessionId}
-          style={{ ...selectStyle, flex: 1 }}
+          className={`${FIELD} flex-1`}
         />
         <Button onClick={send} disabled={!sessionId}>
           发送
@@ -115,13 +111,3 @@ function Workspace(): ReactNode {
     </div>
   );
 }
-
-const selectStyle: CSSProperties = {
-  background: tokens.color.surface,
-  color: tokens.color.text,
-  border: `1px solid ${tokens.color.border}`,
-  borderRadius: tokens.radius.sm,
-  padding: `${tokens.space(2)}px ${tokens.space(3)}px`,
-  fontFamily: tokens.font.sans,
-  fontSize: 13,
-};
