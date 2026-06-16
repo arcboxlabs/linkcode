@@ -2,6 +2,13 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# pnpm 11 从 pnpm-workspace.yaml（而非 .npmrc）读取这些设置。
+# hoisted 布局让三方依赖平铺，React Native / Expo 的 Metro 才能解析传递依赖
+# （如 nativewind → react-native-css-interop）。
+nodeLinker: hoisted
+autoInstallPeers: true
+strictPeerDependencies: false
+
 # pnpm 默认拦截依赖的安装脚本，这里显式放行需要编译/下载的原生包。
 allowBuilds:
   "@biomejs/biome": true
