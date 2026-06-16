@@ -1,0 +1,25 @@
+{
+  "name": "link-code",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Link Code — 面向通用 coding agent 的统一 GUI（PC / Web / Mobile + Server）",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "turbo": "^2.3.3",
+    "typescript": "catalog:"
+  }
+}
