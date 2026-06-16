@@ -17,7 +17,7 @@ allowBuilds:
 catalog:
   # 语言 / 类型
   typescript: ^5.7.2
-  "@types/node": ^22.10.2
+  "@types/node": ^24.0.0
 
   # 数据契约
   zod: ^3.24.1

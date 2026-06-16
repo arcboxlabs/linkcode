@@ -14,9 +14,10 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 const queryClient = new QueryClient();
 
 /**
- * 自包含 demo：浏览器内同时跑一个 Host（本地直连），打通
- * schema → transport → host(adapter 桩) → client-core → ui 的整条数据面。
- * 真实部署时 Host 为本机独立进程，Web 经 LocalTransport / WsTransport 连接。
+ * Self-contained demo: runs a Host inside the browser (direct local connection)
+ * to exercise the entire data path: schema → transport → host (adapter stub) → client-core → ui.
+ * In a real deployment the Host is a separate process on the local machine, and the Web
+ * client connects to it via LocalTransport / WsTransport.
  */
 function createConnectedClient(): LinkCodeClient {
   const [clientSide, hostSide] = createLocalTransportPair();

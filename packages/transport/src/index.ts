@@ -1,6 +1,6 @@
 /**
- * @linkcode/transport —— 通信协议层（PLAN §4.4）。
- * 本地（LocalTransport）与远程（WsTransport）共用同一套 Transport 抽象与 WireMessage 格式。
+ * @linkcode/transport — the communication protocol layer (PLAN §4.4).
+ * Local (LocalTransport) and remote (WsTransport) share the same Transport abstraction and WireMessage format.
  */
 export * from './transport';
 export * from './local';

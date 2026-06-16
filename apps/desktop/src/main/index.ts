@@ -17,7 +17,7 @@ function createWindow(): BrowserWindow {
 
   win.on('ready-to-show', () => win.show());
 
-  // electron-vite 开发模式注入渲染层 URL；生产加载打包后的 html。
+  // In electron-vite dev mode the renderer URL is injected; in production we load the bundled html.
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) {
     void win.loadURL(devUrl);
@@ -27,7 +27,7 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-/** 把 TypeSafe IPC 的能力契约绑定到真实 Electron 实现（仅系统 / UI，PLAN §2.3）。 */
+/** Binds the TypeSafe IPC capability contract to the real Electron implementation (system / UI only, PLAN §2.3). */
 function systemContextFor(win: BrowserWindow): SystemContext {
   return {
     window: {
@@ -62,7 +62,7 @@ app
     const win = createWindow();
     const ctx = systemContextFor(win);
 
-    // 数据面绝不走这里；这里只处理 systemRouter 定义的系统 / UI 调用（PLAN §2.3）。
+    // The data plane never goes through here; this only handles the system / UI calls defined by systemRouter (PLAN §2.3).
     ipcMain.handle('linkcode:ipc', (_event, call: IpcCallEnvelope) =>
       dispatchSystemCall(ctx, call),
     );

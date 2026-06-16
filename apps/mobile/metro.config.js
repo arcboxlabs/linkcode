@@ -1,5 +1,5 @@
-// Expo monorepo Metro 配置：让 mobile 能解析 workspace 包（@linkcode/schema 等，
-// 以 TS 源码导出）与 hoisted 到根的三方依赖。
+// Expo monorepo Metro config: lets mobile resolve workspace packages (@linkcode/schema and others,
+// exported as TS source) along with third-party dependencies hoisted to the root.
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('node:path');
 
@@ -8,10 +8,10 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// 1) 监听整个 workspace，以便引用其它包的源码。
+// 1) Watch the entire workspace so source from other packages can be referenced.
 config.watchFolders = [workspaceRoot];
 
-// 2) 同时从本地与根 node_modules 解析依赖（.npmrc 使用 node-linker=hoisted）。
+// 2) Resolve dependencies from both the local and the root node_modules (.npmrc uses node-linker=hoisted).
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),

@@ -8,8 +8,8 @@ declare global {
 }
 
 /**
- * 系统桥客户端：TypeSafe IPC 的 tRPC 默认实现在渲染层的入口（PLAN §4.5）。
- * 端到端类型来自 SystemRouter；承载为 preload 暴露的 invoke 通道。
+ * System bridge client: the renderer's entry point to the default tRPC implementation of TypeSafe IPC (PLAN §4.5).
+ * End-to-end types come from SystemRouter; transported over the invoke channel exposed by the preload.
  */
 export const systemBridge = createTRPCClient<SystemRouter>({
   links: [ipcLink((call) => window.linkcodeIpc.invoke(call))],

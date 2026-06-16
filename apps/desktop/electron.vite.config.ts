@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 
-// workspace 包以 TS 源码导出，需打包进 main/preload（不能作为运行时 external）。
+// Workspace packages are exported as TS source, so they must be bundled into main/preload (they can't be runtime externals).
 const bundleWorkspace = {
   exclude: [
     '@linkcode/ipc',

@@ -1,6 +1,6 @@
 /**
- * @linkcode/client-core —— 三端共享的数据层（PLAN §4.6）。
- * 数据请求 / 缓存可在各端搭配 TanStack Query / SWR；事件流走这里的订阅 hooks。
+ * @linkcode/client-core — the data layer shared across all three platforms (PLAN §4.6).
+ * Data fetching / caching can be paired with TanStack Query / SWR on each platform; the event stream flows through the subscription hooks here.
  */
 export * from './client';
 export * from './react';

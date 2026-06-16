@@ -9,11 +9,12 @@ interface Session {
 }
 
 /**
- * Host：本地核心引擎（PLAN §4.1）。
- * 管理多个 agent 会话，把 adapter 归一化事件经 transport 下发给客户端，
- * 并把客户端上行的 input 路由到对应 adapter。
+ * Host: the local core engine (PLAN §4.1).
+ * Manages multiple agent sessions, pushing the adapter's normalized events down to the client over the
+ * transport, and routing the input sent up from the client to the corresponding adapter.
  *
- * transport 与承载解耦：本地直连或经 Server 隧道都用同一个 Host（PLAN §2.6）。
+ * The transport is decoupled from the carrier: a direct local connection or a tunnel through the Server
+ * both use the same Host (PLAN §2.6).
  */
 export class Host {
   private readonly sessions = new Map<SessionId, Session>();
@@ -28,7 +29,7 @@ export class Host {
     await this.transport.connect();
     this.transport.onMessage((msg) => {
       this.handle(msg).catch(() => {
-        // TODO: 错误上报（待 Server realtime / perm 模型确认，PLAN §10.7）。
+        // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
       });
     });
   }
@@ -64,7 +65,7 @@ export class Host {
         this.transport.send(createWireMessage({ kind: 'pong' }));
         break;
       }
-      // 下行类型（session.started / agent.event / pong）host 端不处理。
+      // Downstream types (session.started / agent.event / pong) are not handled on the host side.
       default:
         break;
     }

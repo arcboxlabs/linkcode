@@ -1,6 +1,6 @@
 /**
- * CoSSUI 设计 token。UI 设计参考 CodeX（PLAN §4.6）。
- * 🔧 CoSSUI 底层组件库未定，当前以内联样式 + token 作为占位实现。
+ * CoSSUI design tokens. The UI design draws on CodeX (PLAN §4.6).
+ * 🔧 The underlying CoSSUI component library is not yet decided; for now this uses inline styles + tokens as a placeholder implementation.
  */
 export const tokens = {
   color: {

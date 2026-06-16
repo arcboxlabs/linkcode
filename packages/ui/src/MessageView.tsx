@@ -6,7 +6,7 @@ export interface MessageViewProps {
   events: AgentEvent[];
 }
 
-/** 渲染一段归一化 agent 事件流。覆盖 schema 的 AgentEvent 全部分支。 */
+/** Render a normalized agent event stream. Covers all branches of the schema's AgentEvent. */
 export function MessageView({ events }: MessageViewProps): ReactNode {
   if (events.length === 0) {
     return (
@@ -16,7 +16,7 @@ export function MessageView({ events }: MessageViewProps): ReactNode {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space(2) }}>
       {events.map((event, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: 事件流为只追加列表，脚手架阶段用 index 作 key
+        // biome-ignore lint/suspicious/noArrayIndexKey: the event stream is an append-only list, so we use index as the key during the scaffolding phase
         <EventRow key={i} event={event} />
       ))}
     </div>

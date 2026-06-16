@@ -1,5 +1,5 @@
 /**
- * @linkcode/host —— 本地核心：agent 适配层 + 抽象层（PLAN §4.1）。
+ * @linkcode/host — the local core: agent adapter layer + abstraction layer (PLAN §4.1).
  */
 export * from './agent/adapter';
 export * from './agent/registry';

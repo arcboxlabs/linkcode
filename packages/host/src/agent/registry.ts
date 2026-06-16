@@ -6,8 +6,9 @@ import { OpenCodeAdapter } from './opencode';
 import { PiAdapter } from './pi';
 
 /**
- * adapter 工厂：按 kind 实例化对应 adapter。
- * 新增 agent = 在此登记一个实现 AgentAdapter 的子类，上层无需改动（PLAN §2.5 / §9）。
+ * Adapter factory: instantiate the corresponding adapter by kind.
+ * Adding a new agent = registering a subclass implementing AgentAdapter here, with no changes needed in
+ * the upper layers (PLAN §2.5 / §9).
  */
 export function createAdapter(kind: AgentKind): AgentAdapter {
   switch (kind) {

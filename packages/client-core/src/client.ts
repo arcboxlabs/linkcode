@@ -10,9 +10,9 @@ import { type Transport, type Unsubscribe, createWireMessage } from '@linkcode/t
 type EventCb = (event: AgentEvent) => void;
 
 /**
- * LinkCodeClient：三端共享的数据面客户端（PLAN §4.6）。
- * 在 transport 之上提供会话语义（启动 / 发送 / 订阅事件 / 停止），
- * 不感知底层是 LocalTransport 还是 WsTransport（PLAN §2.6）。
+ * LinkCodeClient: the data-plane client shared across all three platforms (PLAN §4.6).
+ * It layers session semantics (start / send / subscribe to events / stop) on top of the transport,
+ * staying agnostic to whether the underlying transport is LocalTransport or WsTransport (PLAN §2.6).
  */
 export class LinkCodeClient {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
@@ -29,7 +29,7 @@ export class LinkCodeClient {
   private route(msg: WireMessage): void {
     const p = msg.payload;
     if (p.kind === 'session.started') {
-      // FIFO 配对：解析最早一个等待中的 startSession。
+      // FIFO pairing: resolve the earliest pending startSession.
       this.pendingStarts.shift()?.(p.sessionId);
     } else if (p.kind === 'agent.event') {
       const subs = this.subscribers.get(p.sessionId);

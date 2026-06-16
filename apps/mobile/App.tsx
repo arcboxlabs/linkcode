@@ -3,11 +3,11 @@ import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 /**
- * Mobile 最小应用：直接复用 @linkcode/schema 的唯一数据契约，
- * 证明同一套 zod 类型在 Expo / Metro 下可跨端共享（PLAN §2.1 / §4.6）。
+ * Minimal mobile app: directly reuses the single source-of-truth data contract from @linkcode/schema,
+ * proving the same set of zod types can be shared across platforms under Expo / Metro (PLAN §2.1 / §4.6).
  *
- * UI 组件库为 HeroUI（PLAN ✅）。其 nativewind / tailwind / reanimated 接入需在
- * 模拟器或真机上验证，步骤见 HEROUI_SETUP.md，作为下一步落地。
+ * The UI component library is HeroUI (PLAN ✅). Its nativewind / tailwind / reanimated integration
+ * needs to be verified on a simulator or real device; see HEROUI_SETUP.md for the steps, to be tackled next.
  */
 export default function App() {
   return (

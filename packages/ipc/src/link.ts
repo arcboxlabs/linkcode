@@ -4,9 +4,9 @@ import type { IpcInvoke } from './context';
 import type { SystemRouter } from './router';
 
 /**
- * ipcLink：渲染层 tRPC 客户端的终结 link，把 operation 经注入的 `invoke`
- * 送到主进程。承载（Electron ipcRenderer.invoke 等）由调用方注入，
- * 因此本包与 electron 解耦。
+ * ipcLink: the terminating link for the renderer's tRPC client, sending operations to the main process
+ * via the injected `invoke`. The carrier (Electron ipcRenderer.invoke, etc.) is injected by the caller,
+ * so this package is decoupled from electron.
  */
 export function ipcLink(invoke: IpcInvoke): TRPCLink<SystemRouter> {
   const link: TRPCLink<SystemRouter> = () => {
