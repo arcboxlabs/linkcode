@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 /**
- * TypeSafe IPC 仅承载系统 / UI 能力，**绝不承载业务数据**（PLAN §2.3 / §4.5）。
- * SystemContext 是这些能力的实现注入点：由 Electron 主进程提供真实实现，
- * 抽象层（tRPC router）与之解耦，因此本包不依赖 electron。
+ * TypeSafe IPC carries only system / UI capabilities and **never carries business data** (PLAN §2.3 / §4.5).
+ * SystemContext is the injection point for the implementation of these capabilities: the Electron main
+ * process provides the real implementation, and the abstraction layer (the tRPC router) is decoupled from
+ * it, so this package does not depend on electron.
  */
 export interface SystemContext {
   window: {
@@ -23,17 +24,17 @@ export interface SystemContext {
 
 export const PickFileOptionsSchema = z.object({
   title: z.string().optional(),
-  /** 是否选择目录而非文件。 */
+  /** Whether to select a directory rather than a file. */
   directory: z.boolean().optional(),
 });
 export type PickFileOptions = z.infer<typeof PickFileOptionsSchema>;
 
-/** 渲染层 → 主进程 的一次调用信封（IPC 传输边界格式）。 */
+/** Envelope for a single renderer → main-process call (the IPC transport boundary format). */
 export interface IpcCallEnvelope {
   path: string;
   type: 'query' | 'mutation' | 'subscription';
   input: unknown;
 }
 
-/** 渲染层注入的传输函数：把一次调用送到主进程并拿回结果。 */
+/** Transport function injected by the renderer: sends a single call to the main process and returns the result. */
 export type IpcInvoke = (call: IpcCallEnvelope) => Promise<unknown>;

@@ -40,7 +40,7 @@ export function App(): ReactNode {
   );
 }
 
-/** 标题栏：演示数据面 / 系统面分离——窗口控制走 TypeSafe IPC（tRPC），不碰业务数据。 */
+/** Title bar: demonstrates the data plane / system plane separation—window controls go through TypeSafe IPC (tRPC) and never touch business data. */
 function TitleBar(): ReactNode {
   const bar: DragCSS = {
     display: 'flex',

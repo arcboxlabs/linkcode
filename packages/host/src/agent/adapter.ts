@@ -2,31 +2,34 @@ import type { AgentEvent, AgentInput, AgentKind, MessageId, StartOptions } from 
 import { Listeners, type Unsubscribe } from '@linkcode/transport';
 
 /**
- * AgentAdapter：接入各家 coding agent SDK 的统一适配接口（PLAN §4.2 / §6）。
- * 每家一个 adapter，向上屏蔽差异；不在上层散落各家 SDK 判断（PLAN §2.5）。
+ * AgentAdapter: the unified adapter interface for integrating each coding agent SDK (PLAN §4.2 / §6).
+ * One adapter per agent, hiding their differences from the upper layers; no per-SDK branching scattered
+ * across the upper layers (PLAN §2.5).
  */
 export interface AgentAdapter {
   readonly kind: AgentKind;
   start(opts: StartOptions): Promise<void>;
   send(input: AgentInput): Promise<void>;
-  /** 订阅抽象层归一化后的事件。 */
+  /** Subscribe to events normalized by the abstraction layer. */
   onEvent(cb: (e: AgentEvent) => void): Unsubscribe;
   stop(): Promise<void>;
 }
 
 let __msgSeq = 0;
-/** 生成一个归一化消息 ID。 */
+/** Generate a normalized message ID. */
 export function nextMessageId(): MessageId {
   __msgSeq += 1;
   return `msg-${Date.now().toString(36)}-${__msgSeq.toString(36)}` as MessageId;
 }
 
 /**
- * 适配器基类：收敛事件订阅 / 生命周期样板，子类只需实现 `send`。
+ * Adapter base class: consolidates the event-subscription and lifecycle boilerplate, so subclasses
+ * only need to implement `send`.
  *
- * ⚠️ 当前所有内置 adapter 都是**桩实现**：只回显输入、不调用真实 SDK。
- *    Claude Code / CodeX / OpenCode / Pi 各自的接入形态（进程 / HTTP / 库）
- *    尚待确认（PLAN §4.2 / §10.3），确认后再在对应子类落地真实 SDK 调用。
+ * ⚠️ All built-in adapters are currently **stub implementations**: they only echo the input and do not
+ *    call the real SDKs. The integration form (process / HTTP / library) for each of Claude Code / CodeX /
+ *    OpenCode / Pi is still to be confirmed (PLAN §4.2 / §10.3); once confirmed, the real SDK calls will be
+ *    implemented in the corresponding subclasses.
  */
 export abstract class BaseAgentAdapter implements AgentAdapter {
   abstract readonly kind: AgentKind;
@@ -56,7 +59,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.events.emit(event);
   }
 
-  /** 桩通用回显：把一条用户消息回显为一条助手消息。 */
+  /** Generic stub echo: echo a user message back as an assistant message. */
   protected echo(text: string): void {
     this.emit({ type: 'status', status: 'running' });
     this.emit({

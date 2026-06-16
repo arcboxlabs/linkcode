@@ -2,18 +2,19 @@ import { parseWireMessage } from '@linkcode/schema';
 import { type WebSocket, WebSocketServer } from 'ws';
 
 /**
- * Link Code Server —— 中转 / 隧道（PLAN §4.7）。
- * 本身不跑 agent，只负责让外网设备（Mobile）连到本地 Host。
- * Host ↔ Server、Mobile ↔ Server 都走 websocket，承载 schema 定义的 WireMessage。
+ * Link Code Server — relay / tunnel (PLAN §4.7).
+ * It does not run an agent itself; it only lets external devices (Mobile) connect to the local Host.
+ * Both Host ↔ Server and Mobile ↔ Server use websockets carrying the WireMessage defined by schema.
  *
- * ❓ 以下能力的数据模型 / 协议细节均待确认（PLAN §10.7），当前仅为最小骨架：
- *   - token   鉴权：连接时校验 token，识别用户 / 设备。
- *   - perm    权限：工具调用授权策略。
- *   - store   存储：会话历史持久化。
- *   - realtime 实时：在线状态 / 多端同步。
+ * ❓ The data models / protocol details for the following capabilities are still to be confirmed (PLAN §10.7);
+ *   this is only a minimal skeleton for now:
+ *   - token    authentication: validate the token on connection to identify the user / device.
+ *   - perm     permissions: authorization policy for tool calls.
+ *   - store    storage: persistence of session history.
+ *   - realtime real-time: presence / multi-device synchronization.
  *
- * 当前隧道为「同一房间内 host ↔ client 广播」的占位实现，
- * 尚未按 tunnel id / session 精确路由。
+ * The current tunnel is a placeholder implementation that broadcasts between host ↔ client within the same room;
+ * it does not yet route precisely by tunnel id / session.
  */
 
 type Role = 'host' | 'client';
@@ -26,7 +27,7 @@ const clients = new Set<WebSocket>();
 const wss = new WebSocketServer({ port: PORT });
 
 wss.on('connection', (socket, req) => {
-  // TODO(token): 从 req.headers / url query 解析并校验鉴权 token。
+  // TODO(token): parse and validate the authentication token from req.headers / url query.
   const url = new URL(req.url ?? '/', 'ws://localhost');
   const role: Role = url.searchParams.get('role') === 'host' ? 'host' : 'client';
 
@@ -39,9 +40,9 @@ wss.on('connection', (socket, req) => {
     try {
       raw = JSON.parse(data.toString());
     } catch {
-      return; // 非 JSON，丢弃
+      return; // not JSON, discard
     }
-    // 信任边界：转发前用 zod 校验（PLAN §2.1）。
+    // Trust boundary: validate with zod before forwarding (PLAN §2.1).
     const parsed = parseWireMessage(raw);
     if (!parsed.success) return;
 

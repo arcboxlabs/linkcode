@@ -48,7 +48,7 @@ link-code/
 ## 开发
 
 ```bash
-# 安装（需要 Node >= 20、pnpm 11；推荐 corepack enable）
+# 安装（需要 Node >= 24、pnpm 11；推荐 corepack enable）
 pnpm install
 
 # 全量类型检查 / lint / 构建

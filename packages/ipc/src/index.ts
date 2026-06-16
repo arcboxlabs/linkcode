@@ -1,6 +1,6 @@
 /**
- * @linkcode/ipc —— TypeSafe IPC 抽象 + tRPC 默认实现（PLAN §4.5）。仅 desktop 使用。
- * 不依赖 electron：承载由调用方注入；不承载任何业务数据。
+ * @linkcode/ipc — the TypeSafe IPC abstraction + default tRPC implementation (PLAN §4.5). Used by desktop only.
+ * Does not depend on electron: the carrier is injected by the caller; carries no business data.
  */
 export * from './context';
 export * from './bridge';

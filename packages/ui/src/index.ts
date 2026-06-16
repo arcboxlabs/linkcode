@@ -1,5 +1,5 @@
 /**
- * @linkcode/ui —— CoSSUI 组件库（PC / Web 共享，PLAN §4.6）。
+ * @linkcode/ui — the CoSSUI component library (shared between PC / Web, PLAN §4.6).
  */
 export * from './tokens';
 export * from './Button';

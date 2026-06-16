@@ -4,16 +4,16 @@ import { Listeners, type Transport, type Unsubscribe } from './transport';
 
 export interface WsTransportOptions {
   url: string;
-  /** 注入 WebSocket 实现（Node 旧版 / 测试用）；默认用全局 WebSocket。 */
+  /** Inject a WebSocket implementation (for older Node / testing); defaults to the global WebSocket. */
   WebSocketImpl?: typeof WebSocket;
 }
 
 /**
- * WsTransport：经 Server 隧道的远程实现（PLAN §4.4）。
- * 复用全局 WebSocket（浏览器 / RN / Node ≥ 22 均可用）。
+ * WsTransport: remote implementation via a Server tunnel (PLAN §4.4).
+ * Reuses the global WebSocket (available in browsers / RN / Node ≥ 22).
  *
- * ❓ 序列化细节、重连、心跳、鉴权是否在此分层尚待确认（PLAN §10.6）——
- *    当前仅提供最小可用实现，保活只透传 ping/pong，不做自动重连。
+ * ❓ Whether serialization details, reconnection, heartbeats, and authentication belong in this layer is still TBD (PLAN §10.6) —
+ *    for now this provides only a minimal usable implementation; keep-alive merely passes ping/pong through, with no automatic reconnection.
  */
 export class WsTransport implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
@@ -33,11 +33,11 @@ export class WsTransport implements Transport {
       try {
         raw = JSON.parse(typeof ev.data === 'string' ? ev.data : String(ev.data));
       } catch {
-        return; // 非 JSON，丢弃
+        return; // Not JSON, discard
       }
       const parsed = parseWireMessage(raw);
       if (parsed.success) this.inbound.emit(parsed.data);
-      // 校验失败按契约直接丢弃，不向上层泄漏未校验数据。
+      // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
     });
 
     return new Promise<void>((resolve, reject) => {

@@ -17,7 +17,7 @@ export function useLinkCodeClient(): LinkCodeClient {
   return client;
 }
 
-/** 订阅某会话的归一化事件流，累积为列表（push 模型）。 */
+/** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
 export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   const client = useLinkCodeClient();
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -33,7 +33,7 @@ export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   return events;
 }
 
-/** 返回一个向当前会话发送输入的函数。 */
+/** Return a function that sends input to the current session. */
 export function useSendInput(sessionId: SessionId | null): (input: AgentInput) => void {
   const client = useLinkCodeClient();
   return (input: AgentInput) => {

@@ -1,11 +1,12 @@
 import type { PickFileOptions } from './context';
 
 /**
- * SystemBridge：TypeSafe IPC 的能力契约（PLAN §6）——仅系统 / UI 能力。
- * 业务数据一律走 transport，**禁止经此通道**（PLAN §2.3）。
+ * SystemBridge: the capability contract of TypeSafe IPC (PLAN §6) — system / UI capabilities only.
+ * Business data always goes through the transport and is **forbidden from this channel** (PLAN §2.3).
  *
- * 默认实现为 tRPC：渲染层通过 `createTRPCClient<SystemRouter>({ links: [ipcLink(...)] })`
- * 获得与本接口等价的、端到端类型安全的调用代理。本接口作为能力清单与替代实现的参照。
+ * The default implementation is tRPC: the renderer obtains an end-to-end type-safe call proxy equivalent
+ * to this interface via `createTRPCClient<SystemRouter>({ links: [ipcLink(...)] })`. This interface serves
+ * as the capability inventory and a reference for alternative implementations.
  */
 export interface SystemBridge {
   window: {
