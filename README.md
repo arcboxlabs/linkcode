@@ -15,7 +15,7 @@
 | PC | Electron（electron-vite）+ TypeSafe IPC（tRPC 默认实现） |
 | Web | React + Vite |
 | Mobile | Expo + HeroUI |
-| 样式 | Tailwind CSS v4（web/desktop；CoSSUI 组件基于 Tailwind，主题见 `@linkcode/ui/theme.css`） |
+| 样式 | web/desktop：Tailwind CSS v4（CoSSUI 主题见 `@linkcode/ui/theme.css`）；mobile：NativeWind（Tailwind v3 for RN） |
 | 客户端数据 | TanStack Query / SWR |
 
 ## 目录结构

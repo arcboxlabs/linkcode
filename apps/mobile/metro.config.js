@@ -1,6 +1,6 @@
-// Expo monorepo Metro config: lets mobile resolve workspace packages (@linkcode/schema and others,
-// exported as TS source) along with third-party dependencies hoisted to the root.
+// Expo monorepo Metro config + NativeWind.
 const { getDefaultConfig } = require('expo/metro-config');
+const { withNativeWind } = require('nativewind/metro');
 const path = require('node:path');
 
 const projectRoot = __dirname;
@@ -8,13 +8,14 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// 1) Watch the entire workspace so source from other packages can be referenced.
+// 1) Watch the whole workspace so source from other packages (@linkcode/schema, exported as TS) is visible.
 config.watchFolders = [workspaceRoot];
 
-// 2) Resolve dependencies from both the local and the root node_modules (.npmrc uses node-linker=hoisted).
+// 2) Resolve deps from both the local and root node_modules (.npmrc uses node-linker=hoisted).
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-module.exports = config;
+// 3) Apply NativeWind, compiling ./global.css into the bundle.
+module.exports = withNativeWind(config, { input: './global.css' });
