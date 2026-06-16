@@ -1,33 +1,18 @@
-import type { CSSProperties, ReactNode } from 'react';
-import { tokens } from './tokens';
+import type { ReactNode } from 'react';
 
 export interface PanelProps {
   children: ReactNode;
   title?: string;
-  style?: CSSProperties;
+  className?: string;
 }
 
-export function Panel({ children, title, style }: PanelProps): ReactNode {
-  const base: CSSProperties = {
-    background: tokens.color.surface,
-    border: `1px solid ${tokens.color.border}`,
-    borderRadius: tokens.radius.md,
-    color: tokens.color.text,
-    padding: tokens.space(4),
-    ...style,
-  };
+export function Panel({ children, title, className }: PanelProps): ReactNode {
   return (
-    <section style={base}>
+    <section
+      className={`rounded-lg border border-border bg-surface p-4 text-text ${className ?? ''}`}
+    >
       {title ? (
-        <header
-          style={{
-            color: tokens.color.textMuted,
-            font: `600 11px ${tokens.font.sans}`,
-            letterSpacing: 0.6,
-            textTransform: 'uppercase',
-            marginBottom: tokens.space(3),
-          }}
-        >
+        <header className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
           {title}
         </header>
       ) : null}

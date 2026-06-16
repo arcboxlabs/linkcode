@@ -7,11 +7,12 @@ import {
 import { Host } from '@linkcode/host';
 import { type AgentKind, AgentKindSchema, type SessionId } from '@linkcode/schema';
 import { createLocalTransportPair } from '@linkcode/transport';
-import { Button, MessageView, Panel, tokens } from '@linkcode/ui';
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { Button, MessageView, Panel } from '@linkcode/ui';
+import { type ReactNode, useEffect, useState } from 'react';
 import { systemBridge } from './ipc';
 
-type DragCSS = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
+const FIELD =
+  'rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text outline-none focus:border-accent';
 
 function createConnectedClient(): LinkCodeClient {
   const [clientSide, hostSide] = createLocalTransportPair();
@@ -30,37 +31,22 @@ export function App(): ReactNode {
 
   return (
     <LinkCodeProvider client={client}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="flex h-full flex-col">
         <TitleBar />
-        <main style={{ flex: 1, overflow: 'auto', padding: tokens.space(6) }}>
-          {ready ? <Workspace /> : <p style={{ color: tokens.color.textMuted }}>连接中…</p>}
+        <main className="flex-1 overflow-auto p-6">
+          {ready ? <Workspace /> : <p className="text-muted">连接中…</p>}
         </main>
       </div>
     </LinkCodeProvider>
   );
 }
 
-/** Title bar: demonstrates the data plane / system plane separation—window controls go through TypeSafe IPC (tRPC) and never touch business data. */
+/** Title bar: demonstrates data-plane / system-plane separation — window controls go through TypeSafe IPC (tRPC) and never touch business data. */
 function TitleBar(): ReactNode {
-  const bar: DragCSS = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: tokens.space(2),
-    height: 40,
-    padding: `0 ${tokens.space(3)}px`,
-    borderBottom: `1px solid ${tokens.color.border}`,
-    background: tokens.color.surface,
-    WebkitAppRegion: 'drag',
-  };
-  const noDrag: DragCSS = { WebkitAppRegion: 'no-drag' };
-
   return (
-    <header style={bar}>
-      <strong style={{ marginRight: 'auto', fontSize: 12, color: tokens.color.textMuted }}>
-        Link Code · Desktop
-      </strong>
-      <div style={{ display: 'flex', gap: tokens.space(2), ...noDrag }}>
+    <header className="flex h-10 items-center justify-end gap-2 border-b border-border bg-surface px-3 [-webkit-app-region:drag]">
+      <strong className="mr-auto text-xs text-muted">Link Code · Desktop</strong>
+      <div className="flex gap-2 [-webkit-app-region:no-drag]">
         <Button variant="ghost" onClick={() => void systemBridge.window.minimize.mutate()}>
           —
         </Button>
@@ -93,22 +79,14 @@ function Workspace(): ReactNode {
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: tokens.space(4),
-        maxWidth: 760,
-        margin: '0 auto',
-      }}
-    >
+    <div className="mx-auto flex max-w-[760px] flex-col gap-4">
       <Panel title="会话">
-        <div style={{ display: 'flex', gap: tokens.space(2), alignItems: 'center' }}>
+        <div className="flex items-center gap-2">
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as AgentKind)}
             disabled={sessionId !== null}
-            style={fieldStyle}
+            className={FIELD}
           >
             {AgentKindSchema.options.map((k) => (
               <option key={k} value={k}>
@@ -126,7 +104,7 @@ function Workspace(): ReactNode {
         <MessageView events={events} />
       </Panel>
 
-      <div style={{ display: 'flex', gap: tokens.space(2) }}>
+      <div className="flex gap-2">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -135,7 +113,7 @@ function Workspace(): ReactNode {
           }}
           placeholder={sessionId ? '输入消息…' : '请先启动会话'}
           disabled={!sessionId}
-          style={{ ...fieldStyle, flex: 1 }}
+          className={`${FIELD} flex-1`}
         />
         <Button onClick={send} disabled={!sessionId}>
           发送
@@ -144,13 +122,3 @@ function Workspace(): ReactNode {
     </div>
   );
 }
-
-const fieldStyle: CSSProperties = {
-  background: tokens.color.surface,
-  color: tokens.color.text,
-  border: `1px solid ${tokens.color.border}`,
-  borderRadius: tokens.radius.sm,
-  padding: `${tokens.space(2)}px ${tokens.space(3)}px`,
-  fontFamily: tokens.font.sans,
-  fontSize: 13,
-};

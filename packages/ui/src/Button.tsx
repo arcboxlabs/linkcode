@@ -1,5 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
-import { tokens } from './tokens';
+import type { ReactNode } from 'react';
 
 export interface ButtonProps {
   children: ReactNode;
@@ -8,25 +7,24 @@ export interface ButtonProps {
   disabled?: boolean;
 }
 
+const VARIANTS = {
+  primary: 'border-accent bg-accent text-bg hover:opacity-90',
+  ghost: 'border-border bg-transparent text-text hover:bg-white/5',
+} as const;
+
 export function Button({
   children,
   onClick,
   variant = 'primary',
   disabled,
 }: ButtonProps): ReactNode {
-  const style: CSSProperties = {
-    appearance: 'none',
-    border: `1px solid ${variant === 'primary' ? tokens.color.accent : tokens.color.border}`,
-    background: variant === 'primary' ? tokens.color.accent : 'transparent',
-    color: variant === 'primary' ? tokens.color.bg : tokens.color.text,
-    borderRadius: tokens.radius.sm,
-    padding: `${tokens.space(2)}px ${tokens.space(3)}px`,
-    font: `500 13px ${tokens.font.sans}`,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.5 : 1,
-  };
   return (
-    <button type="button" style={style} onClick={onClick} disabled={disabled}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]}`}
+    >
       {children}
     </button>
   );

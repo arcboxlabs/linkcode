@@ -22,12 +22,14 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "electron": "catalog:",
     "electron-vite": "catalog:",
+    "tailwindcss": "catalog:",
     "typescript": "catalog:"
   }
 }
