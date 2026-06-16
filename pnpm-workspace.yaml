@@ -1,0 +1,55 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 默认拦截依赖的安装脚本，这里显式放行需要编译/下载的原生包。
+allowBuilds:
+  "@biomejs/biome": true
+  electron: true
+  esbuild: true
+  "@parcel/watcher": true
+  core-js: true
+  sharp: true
+
+# 共享依赖版本集中在 catalog，业务包用 "catalog:" 引用，保证全仓一致。
+# 注意：apps/mobile（Expo）的 react / react-native 版本由 Expo SDK 锁定，
+# 不走 catalog，以免与 Expo 的版本约束冲突。
+catalog:
+  # 语言 / 类型
+  typescript: ^5.7.2
+  "@types/node": ^22.10.2
+
+  # 数据契约
+  zod: ^3.24.1
+
+  # React（web / desktop 渲染层）
+  react: ^19.0.0
+  react-dom: ^19.0.0
+  "@types/react": ^19.0.2
+  "@types/react-dom": ^19.0.2
+
+  # 客户端数据层
+  "@tanstack/react-query": ^5.62.7
+  swr: ^2.3.0
+
+  # TypeSafe IPC 默认实现
+  "@trpc/server": ^11.0.0
+  "@trpc/client": ^11.0.0
+
+  # web 构建
+  vite: ^6.0.5
+  "@vitejs/plugin-react": ^4.3.4
+
+  # desktop（Electron）
+  electron: ^33.2.1
+  electron-vite: ^2.3.0
+  electron-builder: ^25.1.8
+
+  # server / 通信
+  ws: ^8.18.0
+  "@types/ws": ^8.5.13
+
+  # 构建 / 运行工具
+  tsx: ^4.19.2
+  tsup: ^8.3.5
+

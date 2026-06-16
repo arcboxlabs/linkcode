@@ -1,0 +1,33 @@
+{
+  "name": "@linkcode/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@linkcode/client-core": "workspace:*",
+    "@linkcode/host": "workspace:*",
+    "@linkcode/ipc": "workspace:*",
+    "@linkcode/schema": "workspace:*",
+    "@linkcode/transport": "workspace:*",
+    "@linkcode/ui": "workspace:*",
+    "@trpc/client": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "electron": "catalog:",
+    "electron-vite": "catalog:",
+    "typescript": "catalog:"
+  }
+}
