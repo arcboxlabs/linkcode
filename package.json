@@ -15,11 +15,13 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
+    "test": "vitest run",
     "clean": "turbo run clean"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "turbo": "^2.3.3",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

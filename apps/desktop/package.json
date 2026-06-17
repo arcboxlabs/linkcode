@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@linkcode/client-core": "workspace:*",
-    "@linkcode/host": "workspace:*",
     "@linkcode/ipc": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",

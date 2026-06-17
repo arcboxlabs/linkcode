@@ -8,6 +8,10 @@ packages:
 nodeLinker: hoisted
 autoInstallPeers: true
 strictPeerDependencies: false
+# Turbo runs each package's script via `pnpm run`, which otherwise triggers a per-package deps check.
+# With hoisted layout, dependency-less packages (schema/ipc) have no local node_modules, so that check
+# falsely reports "node_modules missing". Turbo already orders/builds deps, so disable the per-run check.
+verifyDepsBeforeRun: false
 
 # pnpm 默认拦截依赖的安装脚本，这里显式放行需要编译/下载的原生包。
 allowBuilds:
@@ -67,6 +71,9 @@ catalog:
   # 构建 / 运行工具
   tsx: ^4.19.2
   tsup: ^8.3.5
+
+  # 测试
+  vitest: ^3.2.4
 
 minimumReleaseAgeExclude:
   - '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.179'
