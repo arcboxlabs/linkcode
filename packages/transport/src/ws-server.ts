@@ -1,7 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
-import { Listeners, type Transport, type Unsubscribe } from './transport';
+import { Listeners, type Transport, type TransportServer, type Unsubscribe } from './transport';
 
 /**
  * Node-side WebSocket **server** for the host daemon. This module imports the Node-only `ws` package and is
@@ -15,22 +15,14 @@ export interface WsServerOptions {
   host?: string;
 }
 
-/** A single accepted client socket, presented to the daemon as a `Transport` (already open). */
-export interface ServerConnection extends Transport {
-  /** Fires when the underlying socket closes; use it to drop the connection from the Hub. */
-  onClose(cb: () => void): Unsubscribe;
-}
-
-export interface WsServer {
+export interface WsServer extends TransportServer {
   readonly port: number;
-  /** Subscribe to newly accepted client connections. Register before clients connect. */
-  onConnection(cb: (conn: ServerConnection) => void): Unsubscribe;
-  close(): Promise<void>;
 }
 
-class WsServerConnection implements ServerConnection {
+class WsServerConnection implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
+  private isClosed = false;
 
   constructor(private readonly ws: WebSocket) {
     ws.on('message', (data: RawData) => {
@@ -45,8 +37,7 @@ class WsServerConnection implements ServerConnection {
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
     });
     ws.on('close', () => {
-      this.closed.emit();
-      this.inbound.clear();
+      this.emitClosed();
     });
   }
 
@@ -70,13 +61,21 @@ class WsServerConnection implements ServerConnection {
 
   close(): void {
     this.ws.close();
+    this.emitClosed();
+  }
+
+  private emitClosed(): void {
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.inbound.clear();
+    this.closed.emit();
   }
 }
 
 /** Start a WebSocket server; each accepted socket is surfaced as a `ServerConnection`. */
 export function createWsServer(opts: WsServerOptions): WsServer {
   const wss = new WebSocketServer({ port: opts.port, host: opts.host });
-  const connections = new Listeners<ServerConnection>();
+  const connections = new Listeners<Transport>();
 
   wss.on('connection', (ws) => {
     connections.emit(new WsServerConnection(ws));

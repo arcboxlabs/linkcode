@@ -14,16 +14,16 @@ import {
   type ContentBlock,
   type SessionId,
 } from '@linkcode/schema';
-import { WsTransport } from '@linkcode/transport';
+import { SocketIoTransport } from '@linkcode/transport';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 
-/** The web client connects to the local daemon (apps/daemon) over a WebSocket. */
-const DAEMON_URL = 'ws://127.0.0.1:4317';
+/** The web client connects to the local daemon (apps/daemon) over Socket.IO. */
+const DAEMON_URL = 'http://127.0.0.1:4317';
 const queryClient = new QueryClient();
 
 function createClient(): LinkCodeClient {
-  return new LinkCodeClient(new WsTransport({ url: DAEMON_URL }));
+  return new LinkCodeClient(new SocketIoTransport({ url: DAEMON_URL }));
 }
 
 export function App(): ReactNode {

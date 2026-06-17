@@ -5,18 +5,18 @@ import {
   useLinkCodeClient,
 } from '@linkcode/client-core';
 import { type AgentEvent, type AgentKind, AgentKindSchema, type SessionId } from '@linkcode/schema';
-import { WsTransport } from '@linkcode/transport';
+import { SocketIoTransport } from '@linkcode/transport';
 import { Button, MessageView, Panel } from '@linkcode/ui';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { systemBridge } from './ipc';
 
 /** The desktop renderer connects to the local daemon (apps/daemon) like every other client. */
-const DAEMON_URL = 'ws://127.0.0.1:4317';
+const DAEMON_URL = 'http://127.0.0.1:4317';
 const FIELD =
   'rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text outline-none focus:border-accent';
 
 function createClient(): LinkCodeClient {
-  return new LinkCodeClient(new WsTransport({ url: DAEMON_URL }));
+  return new LinkCodeClient(new SocketIoTransport({ url: DAEMON_URL }));
 }
 
 export function App(): ReactNode {

@@ -67,6 +67,8 @@ catalog:
   # server / 通信
   ws: ^8.18.0
   "@types/ws": ^8.5.13
+  socket.io: ^4.8.1
+  socket.io-client: ^4.8.1
 
   # 构建 / 运行工具
   tsx: ^4.19.2

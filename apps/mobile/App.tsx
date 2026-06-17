@@ -31,7 +31,7 @@ export default function App() {
           ))}
 
           <Text className="mt-6 text-[12px] leading-5 text-accent">
-            数据面将经 Server tunnel（websocket）远程接入本地 Host。{'\n'}
+            数据面将经 Server tunnel（Socket.IO）远程接入本地 Host。{'\n'}
             UI 库 HeroUI 的接入步骤见 HEROUI_SETUP.md（NativeWind 已接入）。
           </Text>
         </View>

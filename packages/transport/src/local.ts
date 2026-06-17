@@ -9,6 +9,7 @@ import { Listeners, type Transport, type Unsubscribe } from './transport';
  */
 export class LocalTransport implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
+  private readonly closed = new Listeners<void>();
   private peer: LocalTransport | null = null;
   private connected = false;
 
@@ -38,10 +39,16 @@ export class LocalTransport implements Transport {
     return this.inbound.add(cb);
   }
 
+  onClose(cb: () => void): Unsubscribe {
+    return this.closed.add(cb);
+  }
+
   close(): void {
+    const wasConnected = this.connected;
     this.connected = false;
     this.inbound.clear();
     this.peer = null;
+    if (wasConnected) this.closed.emit();
   }
 }
 
