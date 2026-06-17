@@ -9,16 +9,16 @@ interface Session {
 }
 
 /**
- * Host: the local core engine (PLAN §4.1).
+ * Engine: the local core engine — the "host" that runs the agents (PLAN §4.1).
  * Manages multiple agent sessions, pushing each adapter's normalized events down to clients over the
  * transport and routing input back up to the matching adapter.
  *
  * The transport is decoupled from the carrier: a direct local connection, a fan-out Hub serving many
- * clients, or a tunnel through the Server all use the same Host (PLAN §2.6). Because the daemon broadcasts
+ * clients, or a tunnel through the Server all use the same Engine (PLAN §2.6). Because the daemon broadcasts
  * events to every attached client, request/response control messages are correlated by id: `session.start`
  * carries a `clientReqId` that the matching `session.started` echoes back as `replyTo`.
  */
-export class Host {
+export class Engine {
   private readonly sessions = new Map<SessionId, Session>();
   private seq = 0;
 

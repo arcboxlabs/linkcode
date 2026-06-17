@@ -3,7 +3,7 @@
  *
  * Native adapters drive each agent's real SDK (claude-code / codex / opencode / pi) and normalize their
  * events into the zod `AgentEvent` contract (ACP-aligned). A generic ACP adapter is the seam for the long
- * tail. Hosted by `@linkcode/host` but standalone so the adapter set can evolve and be tested independently.
+ * tail. Driven by `@linkcode/engine` but standalone so the adapter set can evolve and be tested independently.
  */
 export * from './adapter';
 export * from './base';
