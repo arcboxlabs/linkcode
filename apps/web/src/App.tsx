@@ -7,6 +7,7 @@ import {
   useAgentEvents,
   useLinkCodeClient,
 } from '@linkcode/client-core';
+import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import {
   type AgentEvent,
   type AgentKind,
@@ -17,6 +18,7 @@ import {
 import { SocketIoTransport } from '@linkcode/transport';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { IntlProvider, useTranslations } from 'use-intl';
 
 /** The web client connects to the local daemon (apps/daemon) over Socket.IO. */
 const DAEMON_URL = 'http://127.0.0.1:4317';
@@ -27,8 +29,21 @@ function createClient(): LinkCodeClient {
 }
 
 export function App(): ReactNode {
+  const [locale] = useState(getRuntimeLocale);
+  const messages = useMemo(() => getMessages(locale), [locale]);
+
+  return (
+    <IntlProvider locale={locale} messages={messages}>
+      <AppContent />
+    </IntlProvider>
+  );
+}
+
+function AppContent(): ReactNode {
   const [client] = useState(createClient);
   const [status, setStatus] = useState<'connecting' | 'ready' | 'error'>('connecting');
+  const t = useTranslations('web');
+  const common = useTranslations('common');
 
   useEffect(() => {
     client
@@ -42,16 +57,18 @@ export function App(): ReactNode {
     <QueryClientProvider client={queryClient}>
       <LinkCodeProvider client={client}>
         <main className="mx-auto max-w-[760px] p-6">
-          <h1 className="font-heading font-semibold text-lg">Link Code · Web</h1>
+          <h1 className="font-heading font-semibold text-lg">{t('title')}</h1>
           {status === 'ready' ? (
             <Workspace />
           ) : status === 'error' ? (
             <p className="mt-4 text-destructive text-sm">
-              无法连接到 daemon（{DAEMON_URL}）。请先运行{' '}
-              <code className="font-mono">pnpm --filter @linkcode/daemon dev</code>。
+              {t('connectionError', {
+                command: common('daemonCommand'),
+                url: DAEMON_URL,
+              })}
             </p>
           ) : (
-            <p className="mt-4 text-muted-foreground">连接中…</p>
+            <p className="mt-4 text-muted-foreground">{t('connecting')}</p>
           )}
         </main>
       </LinkCodeProvider>
@@ -67,6 +84,8 @@ function Workspace(): ReactNode {
   const [answered, setAnswered] = useState<Set<string>>(new Set());
   const events = useAgentEvents(sessionId);
   const pending = usePendingPermissions(events, answered);
+  const t = useTranslations('web');
+  const common = useTranslations('common');
 
   async function start() {
     setSessionId(await client.startSession({ kind, cwd: '/demo' }));
@@ -85,7 +104,7 @@ function Workspace(): ReactNode {
 
   return (
     <div className="mt-4 flex flex-col gap-4">
-      <Panel title="会话">
+      <Panel title={t('panels.session')}>
         <div className="flex items-center gap-2">
           <select
             value={kind}
@@ -100,13 +119,13 @@ function Workspace(): ReactNode {
             ))}
           </select>
           <Button onClick={start} disabled={sessionId !== null}>
-            {sessionId ? `已连接 · ${sessionId}` : '启动会话'}
+            {sessionId ? t('session.connected', { sessionId }) : t('session.start')}
           </Button>
         </div>
       </Panel>
 
       {pending.length > 0 && (
-        <Panel title="待确认权限">
+        <Panel title={t('panels.permissions')}>
           <div className="flex flex-col gap-2">
             {pending.map((p) => (
               <div key={p.requestId} className="flex items-center gap-2 text-sm">
@@ -129,9 +148,9 @@ function Workspace(): ReactNode {
         </Panel>
       )}
 
-      <Panel title="消息">
+      <Panel title={t('panels.messages')}>
         {events.length === 0 ? (
-          <p className="text-muted-foreground">暂无消息。</p>
+          <p className="text-muted-foreground">{common('unavailable')}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {events.map((event, i) => (
@@ -149,12 +168,14 @@ function Workspace(): ReactNode {
           onKeyDown={(e) => {
             if (e.key === 'Enter') send();
           }}
-          placeholder={sessionId ? '输入消息…' : '请先启动会话'}
+          placeholder={
+            sessionId ? t('composer.placeholderReady') : t('composer.placeholderDisconnected')
+          }
           disabled={!sessionId}
           className="flex-1"
         />
         <Button variant="secondary" onClick={send} disabled={!sessionId}>
-          发送
+          {t('composer.send')}
         </Button>
       </div>
     </div>
@@ -174,29 +195,32 @@ function Panel({ title, children }: { title: string; children: ReactNode }): Rea
 
 const ROW = 'whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed';
 
-function contentText(c: ContentBlock): string {
+function contentText(c: ContentBlock, t: ReturnType<typeof useTranslations>): string {
   switch (c.type) {
     case 'text':
       return c.text;
     case 'image':
-      return '[image]';
+      return t('image');
     case 'audio':
-      return '[audio]';
+      return t('audio');
     case 'resource_link':
-      return `[resource: ${c.name}]`;
+      return t('resourceLink', { name: c.name });
     case 'resource':
-      return '[resource]';
+      return t('resource');
   }
 }
 
 function EventRow({ event }: { event: AgentEvent }): ReactNode {
+  const t = useTranslations('web.events');
   switch (event.type) {
     case 'agent-message-chunk':
     case 'user-message-chunk':
-      return <div className={cn(ROW, 'text-foreground')}>{contentText(event.content)}</div>;
+      return <div className={cn(ROW, 'text-foreground')}>{contentText(event.content, t)}</div>;
     case 'agent-thought-chunk':
       return (
-        <div className={cn(ROW, 'text-muted-foreground italic')}>{contentText(event.content)}</div>
+        <div className={cn(ROW, 'text-muted-foreground italic')}>
+          {contentText(event.content, t)}
+        </div>
       );
     case 'tool-call':
       return (
@@ -224,9 +248,13 @@ function EventRow({ event }: { event: AgentEvent }): ReactNode {
         </div>
       );
     case 'current-mode-update':
-      return <div className={cn(ROW, 'text-muted-foreground')}>mode · {event.currentModeId}</div>;
+      return (
+        <div className={cn(ROW, 'text-muted-foreground')}>
+          {t('mode', { modeId: event.currentModeId })}
+        </div>
+      );
     case 'config-option-update':
-      return <div className={cn(ROW, 'text-muted-foreground')}>config updated</div>;
+      return <div className={cn(ROW, 'text-muted-foreground')}>{t('configUpdated')}</div>;
     case 'status':
       return <div className={cn(ROW, 'text-muted-foreground')}>● {event.status}</div>;
     case 'token-usage':
@@ -242,7 +270,10 @@ function EventRow({ event }: { event: AgentEvent }): ReactNode {
     case 'permission-request':
       return (
         <div className={cn(ROW, 'text-primary')}>
-          ⏵ 权限请求 · {event.toolCall.title ?? event.toolCall.toolCallId}
+          ⏵{' '}
+          {t('permissionRequest', {
+            title: event.toolCall.title ?? event.toolCall.toolCallId,
+          })}
         </div>
       );
     case 'client-request':
@@ -261,4 +292,9 @@ function usePendingPermissions(events: AgentEvent[], answered: Set<string>): Per
       ),
     [events, answered],
   );
+}
+
+function getRuntimeLocale() {
+  if (typeof navigator === 'undefined') return defaultLocale;
+  return resolveLocale(navigator.languages);
 }

@@ -17,5 +17,5 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// 3) Apply NativeWind, compiling ./global.css into the bundle.
-module.exports = withNativeWind(config, { input: './global.css' });
+// 3) Apply NativeWind, compiling ./src/global.css into the bundle.
+module.exports = withNativeWind(config, { input: './src/global.css' });

@@ -46,6 +46,7 @@ catalog:
   # 客户端数据层
   "@tanstack/react-query": ^5.62.7
   swr: ^2.3.0
+  use-intl: ^4.13.0
 
   # TypeSafe IPC 默认实现
   "@trpc/server": ^11.0.0

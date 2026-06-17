@@ -1,6 +1,9 @@
+import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { StatusBar } from 'expo-status-bar';
+import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { IntlProvider, useTranslations } from 'use-intl';
 import './global.css';
 
 /**
@@ -11,18 +14,31 @@ import './global.css';
  * The HeroUI component library (PLAN ✅) builds on NativeWind; its remaining setup is in HEROUI_SETUP.md.
  */
 export default function App() {
+  const [locale] = useState(getRuntimeLocale);
+  const messages = useMemo(() => getMessages(locale), [locale]);
+
+  return (
+    <IntlProvider locale={locale} messages={messages}>
+      <MobileContent />
+    </IntlProvider>
+  );
+}
+
+function MobileContent() {
+  const t = useTranslations('mobile');
+
   return (
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
       <ScrollView className="flex-1">
         <View className="gap-2 p-6 pt-16">
-          <Text className="text-xl font-semibold text-text">Link Code · Mobile</Text>
+          <Text className="text-xl font-semibold text-text">{t('title')}</Text>
           <Text className="mb-4 text-[13px] text-muted">
-            共享数据契约 · wire v{WIRE_PROTOCOL_VERSION} · 来自 @linkcode/schema
+            {t('contract', { version: WIRE_PROTOCOL_VERSION })}
           </Text>
 
           <Text className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-            已登记的 agent 适配
+            {t('registeredAgents')}
           </Text>
           {AgentKindSchema.options.map((kind) => (
             <Text key={kind} className="text-[15px] text-text">
@@ -30,12 +46,14 @@ export default function App() {
             </Text>
           ))}
 
-          <Text className="mt-6 text-[12px] leading-5 text-accent">
-            数据面将经 Server tunnel（Socket.IO）远程接入本地 Host。{'\n'}
-            UI 库 HeroUI 的接入步骤见 HEROUI_SETUP.md（NativeWind 已接入）。
-          </Text>
+          <Text className="mt-6 text-[12px] leading-5 text-accent">{t('tunnel')}</Text>
         </View>
       </ScrollView>
     </View>
   );
+}
+
+function getRuntimeLocale() {
+  if (typeof Intl === 'undefined') return defaultLocale;
+  return resolveLocale(Intl.DateTimeFormat().resolvedOptions().locale);
 }
