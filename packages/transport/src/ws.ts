@@ -17,7 +17,9 @@ export interface WsTransportOptions {
  */
 export class WsTransport implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
+  private readonly closed = new Listeners<void>();
   private ws: WebSocket | null = null;
+  private isClosed = true;
 
   constructor(private readonly opts: WsTransportOptions) {}
 
@@ -27,6 +29,7 @@ export class WsTransport implements Transport {
 
     const ws = new Impl(this.opts.url);
     this.ws = ws;
+    this.isClosed = false;
 
     ws.addEventListener('message', (ev: MessageEvent) => {
       let raw: unknown;
@@ -39,6 +42,7 @@ export class WsTransport implements Transport {
       if (parsed.success) this.inbound.emit(parsed.data);
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
     });
+    ws.addEventListener('close', () => this.emitClosed(), { once: true });
 
     return new Promise<void>((resolve, reject) => {
       ws.addEventListener('open', () => resolve(), { once: true });
@@ -62,9 +66,20 @@ export class WsTransport implements Transport {
     return this.inbound.add(cb);
   }
 
+  onClose(cb: () => void): Unsubscribe {
+    return this.closed.add(cb);
+  }
+
   close(): void {
     this.ws?.close();
     this.ws = null;
+    this.emitClosed();
+  }
+
+  private emitClosed(): void {
+    if (this.isClosed) return;
+    this.isClosed = true;
     this.inbound.clear();
+    this.closed.emit();
   }
 }

@@ -12,10 +12,19 @@ export type Unsubscribe = () => void;
 export interface Transport {
   connect(): Promise<void>;
   /** Send a wire message (implementations should run zod validation before sending). */
-  send(msg: WireMessage): void;
+  send(msg: WireMessage): void | Promise<void>;
   /** Subscribe to inbound messages (implementations should run zod validation before delivery). */
   onMessage(cb: (msg: WireMessage) => void): Unsubscribe;
-  close(): void;
+  /** Subscribe to connection close. */
+  onClose(cb: () => void): Unsubscribe;
+  close(): void | Promise<void>;
+}
+
+/** A listener that accepts client connections and presents each one as a Transport. */
+export interface TransportServer {
+  /** Subscribe to newly accepted client connections. Register before clients connect. */
+  onConnection(cb: (conn: Transport) => void): Unsubscribe;
+  close(): Promise<void>;
 }
 
 let __seq = 0;

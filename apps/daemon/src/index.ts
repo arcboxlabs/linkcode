@@ -1,12 +1,12 @@
 import { Engine } from '@linkcode/engine';
-import { Hub, createWsServer } from '@linkcode/transport/server';
-import { loadConfig } from './config';
+import { Hub, type TransportServer, createTransportServer } from '@linkcode/transport/server';
+import { type DaemonListenerConfig, loadConfig } from './config';
 
 /**
  * Link Code daemon — the standalone local host process.
  *
- * Runs one shared `Engine` (which owns all agent sessions + adapters) behind a fan-out `Hub`, and exposes a
- * WebSocket the clients (web / desktop / mobile-via-relay / cli) connect to. This is where real agents live:
+ * Runs one shared `Engine` (which owns all agent sessions + adapters) behind a fan-out `Hub`, and exposes
+ * configured listeners for clients (web / desktop / mobile-via-relay / cli). This is where real agents live:
  * they spawn CLI subprocesses and hold credentials, so they cannot run inside a browser tab.
  */
 async function main(): Promise<void> {
@@ -15,19 +15,26 @@ async function main(): Promise<void> {
   const engine = new Engine(hub);
   await engine.start();
 
-  const server = createWsServer({ port: config.port, host: config.hostname });
-  server.onConnection((conn) => {
-    hub.addConnection(conn);
-    conn.onClose(() => hub.removeConnection(conn));
-  });
+  const servers: TransportServer[] = [];
+  for (const listener of config.listeners) {
+    const server = createTransportServer(listener);
+    server.onConnection((conn) => {
+      hub.addConnection(conn);
+      conn.onClose(() => hub.removeConnection(conn));
+    });
+    servers.push(server);
+    console.log(`[linkcode/daemon] listening on ${formatListener(listener)}`);
+  }
 
-  console.log(`[linkcode/daemon] listening on ws://${config.hostname}:${config.port}`);
-
+  let shuttingDown = false;
   const shutdown = (): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     void (async () => {
       try {
+        await Promise.all(servers.map((server) => server.close()));
+        hub.close();
         await engine.stop();
-        await server.close();
       } finally {
         process.exit(0);
       }
@@ -41,3 +48,12 @@ main().catch((err) => {
   console.error('[linkcode/daemon] fatal:', err);
   process.exit(1);
 });
+
+function formatListener(listener: DaemonListenerConfig): string {
+  switch (listener.type) {
+    case 'socket.io':
+      return `socket.io on http://${listener.host ?? '0.0.0.0'}:${listener.port}`;
+    case 'ws':
+      return `ws://${listener.host ?? '0.0.0.0'}:${listener.port}`;
+  }
+}

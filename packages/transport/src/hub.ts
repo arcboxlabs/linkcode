@@ -13,6 +13,7 @@ export class Hub implements Transport {
   private readonly conns = new Set<Transport>();
   private readonly unsubs = new Map<Transport, Unsubscribe>();
   private readonly inbound = new Listeners<WireMessage>();
+  private readonly closed = new Listeners<void>();
 
   /** Register a client connection; its inbound messages are forwarded to the Host. */
   addConnection(conn: Transport): void {
@@ -44,7 +45,9 @@ export class Hub implements Transport {
   send(msg: WireMessage): void {
     for (const conn of this.conns) {
       try {
-        conn.send(msg);
+        void Promise.resolve(conn.send(msg)).catch(() => {
+          // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
+        });
       } catch {
         // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
       }
@@ -55,11 +58,20 @@ export class Hub implements Transport {
     return this.inbound.add(cb);
   }
 
+  onClose(cb: () => void): Unsubscribe {
+    return this.closed.add(cb);
+  }
+
   close(): void {
-    for (const conn of this.conns) conn.close();
+    for (const conn of this.conns) {
+      void Promise.resolve(conn.close()).catch(() => {
+        // Closing is best-effort during daemon shutdown.
+      });
+    }
     for (const unsub of this.unsubs.values()) unsub();
     this.conns.clear();
     this.unsubs.clear();
     this.inbound.clear();
+    this.closed.emit();
   }
 }
