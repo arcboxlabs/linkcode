@@ -8,5 +8,7 @@ export default defineConfig({
   resolve: { alias: { '@': resolve(import.meta.dirname, 'src') } },
   server: { port: 5173 },
   // Workspace packages are exported as TS source and transpiled on the fly by Vite/esbuild, so no prebundling is needed.
-  optimizeDeps: { exclude: ['@linkcode/agent-adapter', '@linkcode/host', '@linkcode/client-core'] },
+  optimizeDeps: {
+    exclude: ['@linkcode/client-core', '@linkcode/transport', '@linkcode/schema'],
+  },
 });
