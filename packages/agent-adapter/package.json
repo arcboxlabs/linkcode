@@ -8,15 +8,24 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "biome check ."
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.17.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.179",
+    "@earendil-works/pi-coding-agent": "^0.79.6",
     "@linkcode/schema": "workspace:*",
-    "@linkcode/transport": "workspace:*"
+    "@linkcode/transport": "workspace:*",
+    "@openai/codex-sdk": "^0.140.0",
+    "@opencode-ai/sdk": "^1.17.7"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:"
   }
 }
