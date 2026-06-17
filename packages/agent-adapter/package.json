@@ -1,5 +1,5 @@
 {
-  "name": "@linkcode/host",
+  "name": "@linkcode/agent-adapter",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,6 @@
     "lint": "biome check ."
   },
   "dependencies": {
-    "@linkcode/agent-adapter": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*"
   },
