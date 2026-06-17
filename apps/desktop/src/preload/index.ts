@@ -1,14 +1,12 @@
-import type { IpcCallEnvelope } from '@linkcode/ipc';
+import { createElectronSystemBridge } from '@linkcode/ipc/electron-renderer';
 import { contextBridge, ipcRenderer } from 'electron';
 
 /**
- * Preload: exposes a minimal, **system / UI only** invoke channel via contextBridge.
- * On top of it the renderer uses a tRPC client (ipcLink) for end-to-end type safety (PLAN §4.5).
+ * Preload: exposes a minimal, system / UI only bridge via contextBridge.
+ * Eventa stays behind this boundary and never carries business data.
  */
-const api = {
-  invoke: (call: IpcCallEnvelope): Promise<unknown> => ipcRenderer.invoke('linkcode:ipc', call),
-};
+const systemBridge = createElectronSystemBridge(ipcRenderer);
 
-contextBridge.exposeInMainWorld('linkcodeIpc', api);
+contextBridge.exposeInMainWorld('linkcodeSystem', systemBridge);
 
-export type LinkcodeIpcApi = typeof api;
+export type LinkcodeSystemApi = typeof systemBridge;

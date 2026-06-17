@@ -9,4 +9,5 @@ export * from './PlanCard';
 export * from './TerminalBlock';
 export * from './ThoughtBlock';
 export * from './ToolCallItem';
+export * from './types';
 export * from './UserMessage';

@@ -11,10 +11,15 @@
     "lint": "biome check ."
   },
   "dependencies": {
+    "@linkcode/client-core": "workspace:*",
+    "@linkcode/i18n": "workspace:*",
+    "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-router": "catalog:",
+    "use-intl": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",

@@ -1,56 +1,53 @@
-import { useConversation, useLinkCodeClient, useSessions } from '@linkcode/client-core';
-import type { AgentKind, SessionId } from '@linkcode/schema';
-import { type ReactElement, useEffect, useState } from 'react';
+import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import type { ReactElement } from 'react';
 import { useTranslations } from 'use-intl';
-import { ConversationView } from '../chat';
+import { ConversationView, type ConversationViewModel } from '../chat';
 import { Composer } from './Composer';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import type { WorkbenchSystemBridge } from './types';
 
 export interface AppShellProps {
+  sessions: SessionInfo[];
+  activeId: SessionId | null;
+  conversation: ConversationViewModel;
+  answeredPermissions: Set<string>;
   systemBridge?: WorkbenchSystemBridge;
+  onSelectSession: (id: SessionId) => void;
+  onStopSession: (id: SessionId) => void;
+  onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
+  onSendPrompt: (text: string) => void;
+  onStopTurn: () => void;
+  onRespondPermission: (requestId: string, optionId: string) => void;
 }
 
-/** The full workbench layout: session inbox + conversation stream + composer, wired to the data layer. */
-export function AppShell({ systemBridge }: AppShellProps): ReactElement {
-  const client = useLinkCodeClient();
+/** The full workbench layout: session inbox + conversation stream + composer. */
+export function AppShell({
+  sessions,
+  activeId,
+  conversation,
+  answeredPermissions,
+  systemBridge,
+  onSelectSession,
+  onStopSession,
+  onCreateSession,
+  onSendPrompt,
+  onStopTurn,
+  onRespondPermission,
+}: AppShellProps): ReactElement {
   const tk = useTranslations('workbench.agentKind');
-  const sessions = useSessions();
-  const conversation = useConversation(sessions.activeId);
-  const [answered, setAnswered] = useState<Set<string>>(new Set());
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: clear answered permissions on session switch
-  useEffect(() => {
-    setAnswered(new Set());
-  }, [sessions.activeId]);
-
-  const active = sessions.sessions.find((s) => s.sessionId === sessions.activeId) ?? null;
+  const active = sessions.find((s) => s.sessionId === activeId) ?? null;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
-
-  function handleSend(text: string): void {
-    if (sessions.activeId) client.promptText(sessions.activeId, text);
-  }
-  function handleStop(): void {
-    if (sessions.activeId) client.cancel(sessions.activeId);
-  }
-  function handleRespond(requestId: string, optionId: string): void {
-    if (!sessions.activeId) return;
-    client.respondPermission(sessions.activeId, requestId, { outcome: 'selected', optionId });
-    setAnswered((prev) => new Set(prev).add(requestId));
-  }
-  function handleCreate(opts: { kind: AgentKind; cwd: string }): void {
-    void sessions.create(opts);
-  }
 
   return (
     <div className="flex h-full">
       <Sidebar
-        sessions={sessions.sessions}
-        activeId={sessions.activeId}
-        onSelect={(id: SessionId) => sessions.select(id)}
-        onStop={(id: SessionId) => sessions.stop(id)}
-        onCreate={handleCreate}
+        sessions={sessions}
+        activeId={activeId}
+        onSelect={onSelectSession}
+        onStop={onStopSession}
+        onCreate={onCreateSession}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar
@@ -64,18 +61,18 @@ export function AppShell({ systemBridge }: AppShellProps): ReactElement {
             conversation={conversation}
             agentKind={active?.kind}
             cwd={active?.cwd}
-            answeredPermissions={answered}
+            answeredPermissions={answeredPermissions}
             pendingPermissions={new Set(conversation.pendingPermissionIds)}
-            onRespondPermission={handleRespond}
+            onRespondPermission={onRespondPermission}
           />
         </div>
         <Composer
-          disabled={!sessions.activeId}
+          disabled={!activeId}
           isRunning={isRunning}
           availableCommands={conversation.availableCommands}
           currentModeId={conversation.currentModeId}
-          onSend={handleSend}
-          onStop={handleStop}
+          onSend={onSendPrompt}
+          onStop={onStopTurn}
         />
       </main>
     </div>

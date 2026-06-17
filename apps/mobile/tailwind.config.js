@@ -1,9 +1,8 @@
-// NativeWind uses Tailwind v3 with its preset. Palette mirrors CoSSUI (see packages/ui/src/theme.css)
-// so utility names (bg-bg / text-muted / border-border / text-accent) match the web/desktop side.
+// NativeWind v5 uses Tailwind v4 CSS-first configuration in src/global.css.
+// Keep this file as a lightweight editor/tooling fallback.
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ['./src/**/*.{ts,tsx}'],
-  presets: [require('nativewind/preset')],
   theme: {
     extend: {
       colors: {

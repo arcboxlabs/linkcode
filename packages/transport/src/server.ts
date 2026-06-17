@@ -2,14 +2,14 @@
  * @linkcode/transport/server — Node-only server entry for the host daemon.
  * Kept separate from the main entry so the Node `ws` dependency never reaches browser / RN bundles.
  */
-import { type SocketIoServerOptions, createSocketIoServer } from './socket-io-server';
+import { createSocketIoServer, type SocketIoServerOptions } from './socket-io-server';
 import type { TransportServer } from './transport';
-import { type WsServerOptions, createWsServer } from './ws-server';
+import { createWsServer, type WsServerOptions } from './ws-server';
 
-export * from './socket-io-server';
-export * from './ws-server';
 export * from './hub';
+export * from './socket-io-server';
 export type { TransportServer } from './transport';
+export * from './ws-server';
 
 export type TransportServerOptions =
   | ({ type: 'socket.io' } & SocketIoServerOptions)

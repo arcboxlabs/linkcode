@@ -24,6 +24,9 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react(), tailwindcss()],
+    resolve: {
+      dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    },
     // Workspace packages are exported as TS source and transpiled on the fly, so skip prebundling them.
     optimizeDeps: {
       exclude: [

@@ -1,4 +1,3 @@
-import type { Conversation } from '@linkcode/client-core';
 import type { AgentKind } from '@linkcode/schema';
 import { type ReactElement, useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
@@ -9,10 +8,11 @@ import { PermissionCard } from './PermissionCard';
 import { PlanCard } from './PlanCard';
 import { ThoughtBlock } from './ThoughtBlock';
 import { ToolCallItem } from './ToolCallItem';
+import type { ConversationViewModel } from './types';
 import { UserMessage } from './UserMessage';
 
 export interface ConversationViewProps {
-  conversation: Conversation;
+  conversation: ConversationViewModel;
   agentKind?: AgentKind;
   cwd?: string;
   /** requestIds the user already answered in this client. */
@@ -116,6 +116,8 @@ export function ConversationView({
                   recoverable={item.recoverable}
                 />
               );
+            default:
+              return null;
           }
         })}
         {isThinking && (

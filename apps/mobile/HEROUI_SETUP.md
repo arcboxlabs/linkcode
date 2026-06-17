@@ -4,11 +4,12 @@
 
 mobile 用 **NativeWind**（React Native 版 Tailwind）。已配置并通过 `expo export` 验证打包链路（babel → metro → tailwind）：
 
-- `package.json`：`nativewind` + `tailwindcss@3`；`react-native-reanimated` + `react-native-worklets`（NativeWind 引擎 `react-native-css-interop` 的 peer）。
+- `package.json`：`nativewind@5 preview` + `tailwindcss@4`；`react-native-css`；`react-native-reanimated` + `react-native-worklets`。
 - `babel.config.js`：`babel-preset-expo`（`jsxImportSource: 'nativewind'`）+ `nativewind/babel`，并以 `react-native-worklets/plugin` 收尾（reanimated 4）。
 - `metro.config.js`：monorepo 配置外套 `withNativeWind(config, { input: './src/global.css' })`。
-- `tailwind.config.js`：`nativewind/preset` + CoSSUI 调色板（与 web/desktop 同名：`bg-bg` / `text-muted` / `text-accent` …）。
-- `src/global.css`：`@tailwind base/components/utilities`；`src/nativewind-env.d.ts`：类型引用 + `*.css` 声明。
+- `src/global.css`：Tailwind 4 `theme + utilities`（`source(none)` 只扫描 mobile 源码）+ `nativewind/theme` + CoSSUI 调色板（与 web/desktop 同名：`bg-bg` / `text-muted` / `text-accent` …）。
+- `postcss.config.js`：使用 `@tailwindcss/postcss`，让 Expo/Metro 先展开 Tailwind 4 CSS，再交给 `react-native-css`。
+- `tailwind.config.js`：保留为轻量 editor/tooling fallback；`src/nativewind-env.d.ts`：类型引用 + `*.css` 声明。
 - 源码统一放在 `src/`（与 web/desktop 一致）：`src/App.tsx` 为根组件，根目录 `index.ts` 仅 `registerRootComponent(App)`。
 
 > 注意：本仓 pnpm 设置 `nodeLinker: hoisted`（在 `pnpm-workspace.yaml`），Metro 才能解析 NativeWind 的传递依赖。

@@ -1,11 +1,11 @@
-import { contentPreview } from '@linkcode/client-core';
 import type { ContentBlock } from '@linkcode/schema';
 import { ChevronRightIcon, CircleDashedIcon } from 'lucide-react';
-import { useState } from 'react';
 import type { ReactElement } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './ContentBlockView';
+import { contentPreview } from './content-preview';
 
 export function ThoughtBlock({ blocks }: { blocks: ContentBlock[] }): ReactElement {
   const t = useTranslations('workbench.conversation');

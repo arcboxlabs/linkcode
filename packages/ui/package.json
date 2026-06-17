@@ -7,6 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./native": "./src/native/index.ts",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
@@ -15,21 +16,27 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
-    "@linkcode/client-core": "workspace:*",
-    "@linkcode/i18n": "workspace:*",
     "@linkcode/schema": "workspace:*",
-    "@linkcode/transport": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.18.0",
-    "react-markdown": "^9.0.1",
+    "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^3.6.0",
     "use-intl": "catalog:"
   },
   "peerDependencies": {
     "react": ">=18",
-    "react-dom": ">=18"
+    "react-dom": ">=18",
+    "react-native": ">=0.80"
+  },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/react": "catalog:",
