@@ -1,0 +1,25 @@
+{
+  "name": "@linkcode/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@linkcode/agent-adapter": "workspace:*",
+    "@linkcode/host": "workspace:*",
+    "@linkcode/schema": "workspace:*",
+    "@linkcode/transport": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}
