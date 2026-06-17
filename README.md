@@ -13,9 +13,9 @@
 | Monorepo | pnpm workspaces + Turborepo |
 | Lint / Format | Biome |
 | PC | Electron（electron-vite）+ TypeSafe IPC（tRPC 默认实现） |
-| Web | React + Vite |
+| Web | React + Vite + **Coss UI**（coss.com/ui，shadcn registry + Base UI） |
 | Mobile | Expo + HeroUI |
-| 样式 | web/desktop：Tailwind CSS v4（CoSSUI 主题见 `@linkcode/ui/theme.css`）；mobile：NativeWind（Tailwind v3 for RN） |
+| 样式 | web：Tailwind v4 + Coss UI（令牌 `src/coss.css`，组件 `src/components/ui`）；desktop：Tailwind v4 + `@linkcode/ui`；mobile：NativeWind |
 | 客户端数据 | TanStack Query / SWR |
 
 ## 目录结构
