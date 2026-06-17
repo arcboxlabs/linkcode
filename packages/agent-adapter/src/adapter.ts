@@ -1,4 +1,16 @@
-import type { AgentEvent, AgentInput, AgentKind, MessageId, StartOptions } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  AgentHistoryCapabilities,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
+  AgentHistoryResumeOptions,
+  AgentInput,
+  AgentKind,
+  MessageId,
+  StartOptions,
+} from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 
 /**
@@ -9,7 +21,15 @@ import type { Unsubscribe } from '@linkcode/transport';
  */
 export interface AgentAdapter {
   readonly kind: AgentKind;
+  /** History support advertised by this adapter. Unsupported operations must reject clearly. */
+  readonly historyCapabilities: AgentHistoryCapabilities;
   start(opts: StartOptions): Promise<void>;
+  /** List provider-local historical sessions, if supported. */
+  listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult>;
+  /** Read a provider-local historical session as normalized events, if supported. */
+  readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult>;
+  /** Start/resume a live adapter session from a provider-local history id, if supported. */
+  resumeHistory(opts: AgentHistoryResumeOptions, startOpts: StartOptions): Promise<void>;
   send(input: AgentInput): Promise<void>;
   /** Subscribe to events normalized by the abstraction layer. */
   onEvent(cb: (e: AgentEvent) => void): Unsubscribe;

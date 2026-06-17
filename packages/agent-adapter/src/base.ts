@@ -1,5 +1,11 @@
 import type {
   AgentEvent,
+  AgentHistoryCapabilities,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
+  AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
   ClientRequest,
@@ -31,6 +37,12 @@ type PendingResolver = (value: unknown) => void;
 export abstract class BaseAgentAdapter implements AgentAdapter {
   abstract readonly kind: AgentKind;
 
+  readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: false,
+    resume: false,
+  };
+
   protected readonly events = new Listeners<AgentEvent>();
   protected opts: StartOptions | null = null;
   private readonly pending = new Map<string, PendingResolver>();
@@ -40,6 +52,18 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.emitStatus('starting');
     await this.onStart(opts);
     this.emitStatus('idle');
+  }
+
+  listHistory(_opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
+    return Promise.resolve({ sessions: [] });
+  }
+
+  readHistory(_opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    return Promise.reject(new Error(`${this.kind}: history read is not supported`));
+  }
+
+  resumeHistory(_opts: AgentHistoryResumeOptions, _startOpts: StartOptions): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: history resume is not supported`));
   }
 
   async send(input: AgentInput): Promise<void> {

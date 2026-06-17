@@ -13,6 +13,7 @@ export * from './plan';
 export * from './usage';
 export * from './permission';
 export * from './session';
+export * from './history';
 export * from './client-rpc';
 export * from './agent';
 export * from './wire';
