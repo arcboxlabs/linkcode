@@ -1,22 +1,42 @@
 import { z } from 'zod';
 import { AgentEventSchema, AgentInputSchema, StartOptionsSchema } from './agent';
 import { MessageIdSchema, SessionIdSchema, TimestampSchema } from './common';
+import { SessionInfoSchema } from './session';
 
 /**
  * Wire protocol: the envelope actually transmitted by the transport layer (PLAN §6).
  * Local direct connection (LocalTransport) and remote tunnel (WsTransport) share the same format (PLAN §2.6).
  * Validate with zod at the trust boundary both before sending and after receiving (PLAN §2.1).
- * 🔧 Proposed starting point.
+ *
+ * v2: the daemon serves multiple clients, so `agent.event` is broadcast to all attached clients of a
+ * session. Request/response control messages carry a correlation id (`clientReqId` → `replyTo`) so the
+ * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 1 as const;
+export const WIRE_PROTOCOL_VERSION = 2 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
   // ── Session control ──
-  z.object({ kind: z.literal('session.start'), opts: StartOptionsSchema }),
-  z.object({ kind: z.literal('session.started'), sessionId: SessionIdSchema }),
+  z.object({
+    kind: z.literal('session.start'),
+    clientReqId: z.string().min(1),
+    opts: StartOptionsSchema,
+  }),
+  z.object({
+    kind: z.literal('session.started'),
+    replyTo: z.string().min(1),
+    sessionId: SessionIdSchema,
+  }),
   z.object({ kind: z.literal('session.stop'), sessionId: SessionIdSchema }),
+  z.object({ kind: z.literal('session.list'), clientReqId: z.string().min(1) }),
+  z.object({
+    kind: z.literal('session.listed'),
+    replyTo: z.string().min(1),
+    sessions: z.array(SessionInfoSchema),
+  }),
+  z.object({ kind: z.literal('session.attach'), sessionId: SessionIdSchema }),
+  z.object({ kind: z.literal('session.detach'), sessionId: SessionIdSchema }),
 
   // ── Data plane ──
   z.object({ kind: z.literal('agent.input'), sessionId: SessionIdSchema, input: AgentInputSchema }),
