@@ -11,19 +11,10 @@
     "lint": "biome check ."
   },
   "dependencies": {
-    "@base-ui/react": "^1.5.0",
-    "@linkcode/client-core": "workspace:*",
-    "@linkcode/i18n": "workspace:*",
-    "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
-    "@tanstack/react-query": "catalog:",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "lucide-react": "^1.18.0",
+    "@linkcode/ui": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "tailwind-merge": "^3.6.0",
-    "use-intl": "catalog:"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",

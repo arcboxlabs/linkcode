@@ -1,6 +1,13 @@
 import { type AdapterFactory, type AgentAdapter, createAdapter } from '@linkcode/agent-adapter';
-import type { SessionId, SessionInfo, WireMessage } from '@linkcode/schema';
+import type {
+  AgentKind,
+  SessionId,
+  SessionInfo,
+  StartOptions,
+  WireMessage,
+} from '@linkcode/schema';
 import { type Transport, type Unsubscribe, createWireMessage } from '@linkcode/transport';
+import { HistoryService } from './history-service';
 
 interface Session {
   adapter: AgentAdapter;
@@ -20,12 +27,15 @@ interface Session {
  */
 export class Engine {
   private readonly sessions = new Map<SessionId, Session>();
+  private readonly history: HistoryService;
   private seq = 0;
 
   constructor(
     private readonly transport: Transport,
     private readonly factory: AdapterFactory = createAdapter,
-  ) {}
+  ) {
+    this.history = new HistoryService(factory);
+  }
 
   async start(): Promise<void> {
     await this.transport.connect();
@@ -40,23 +50,10 @@ export class Engine {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start': {
-        const sessionId = this.nextSessionId();
-        const adapter = this.factory(p.opts.kind);
-        const info: SessionInfo = {
-          sessionId,
-          kind: p.opts.kind,
-          cwd: p.opts.cwd,
-          status: 'starting',
-          createdAt: Date.now(),
-        };
-        const unsub = adapter.onEvent((event) => {
-          if (event.type === 'status') info.status = event.status;
-          this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-        });
-        this.sessions.set(sessionId, { adapter, unsub, info });
-        await adapter.start(p.opts);
-        this.transport.send(
-          createWireMessage({ kind: 'session.started', replyTo: p.clientReqId, sessionId }),
+        await this.tryReply(p.clientReqId, () =>
+          this.startLiveSession(p.clientReqId, p.opts.kind, p.opts, (adapter) =>
+            adapter.start(p.opts),
+          ),
         );
         break;
       }
@@ -80,6 +77,33 @@ export class Engine {
         );
         break;
       }
+      case 'history.list': {
+        await this.tryReply(p.clientReqId, async () => {
+          const result = await this.history.list(p.agentKind, p.opts);
+          this.transport.send(
+            createWireMessage({ kind: 'history.listed', replyTo: p.clientReqId, result }),
+          );
+        });
+        break;
+      }
+      case 'history.read': {
+        await this.tryReply(p.clientReqId, async () => {
+          const result = await this.history.read(p.agentKind, p.opts);
+          this.transport.send(
+            createWireMessage({ kind: 'history.read.result', replyTo: p.clientReqId, result }),
+          );
+        });
+        break;
+      }
+      case 'history.resume': {
+        const startOpts: StartOptions = { ...p.startOpts, kind: p.agentKind };
+        await this.tryReply(p.clientReqId, () =>
+          this.startLiveSession(p.clientReqId, p.agentKind, startOpts, (adapter) =>
+            this.history.resume(adapter, p.historyId, startOpts),
+          ),
+        );
+        break;
+      }
       case 'session.attach':
       case 'session.detach': {
         // Multi-device attach is implicit: events are broadcast to all clients. These are accepted as
@@ -90,7 +114,7 @@ export class Engine {
         this.transport.send(createWireMessage({ kind: 'pong' }));
         break;
       }
-      // Downstream-only payloads (session.started / session.listed / agent.event / pong) are ignored here.
+      // Downstream-only payloads are ignored here.
       default:
         break;
     }
@@ -108,5 +132,49 @@ export class Engine {
   private nextSessionId(): SessionId {
     this.seq += 1;
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
+  }
+
+  private async startLiveSession(
+    replyTo: string,
+    kind: AgentKind,
+    opts: StartOptions,
+    startAdapter: (adapter: AgentAdapter) => Promise<void>,
+  ): Promise<void> {
+    const sessionId = this.nextSessionId();
+    const adapter = this.factory(kind);
+    const info: SessionInfo = {
+      sessionId,
+      kind,
+      cwd: opts.cwd,
+      status: 'starting',
+      createdAt: Date.now(),
+    };
+    const unsub = adapter.onEvent((event) => {
+      if (event.type === 'status') info.status = event.status;
+      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+    });
+    this.sessions.set(sessionId, { adapter, unsub, info });
+    try {
+      await startAdapter(adapter);
+    } catch (err) {
+      unsub();
+      this.sessions.delete(sessionId);
+      await adapter.stop().catch(() => undefined);
+      throw err;
+    }
+    this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      this.sendFailure(replyTo, err);
+    }
+  }
+
+  private sendFailure(replyTo: string, err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
   }
 }

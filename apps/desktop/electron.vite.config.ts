@@ -24,6 +24,16 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react(), tailwindcss()],
+    // Workspace packages are exported as TS source and transpiled on the fly, so skip prebundling them.
+    optimizeDeps: {
+      exclude: [
+        '@linkcode/ui',
+        '@linkcode/client-core',
+        '@linkcode/i18n',
+        '@linkcode/transport',
+        '@linkcode/schema',
+      ],
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/renderer/index.html') },

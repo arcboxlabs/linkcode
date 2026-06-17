@@ -7,21 +7,35 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./theme.css": "./src/theme.css"
+    "./styles.css": "./src/styles.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "biome check ."
   },
   "dependencies": {
-    "@linkcode/schema": "workspace:*"
+    "@base-ui/react": "^1.5.0",
+    "@linkcode/client-core": "workspace:*",
+    "@linkcode/i18n": "workspace:*",
+    "@linkcode/schema": "workspace:*",
+    "@linkcode/transport": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.18.0",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
+    "tailwind-merge": "^3.6.0",
+    "use-intl": "catalog:"
   },
   "peerDependencies": {
-    "react": ">=18"
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "devDependencies": {
     "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "react": "catalog:",
+    "react-dom": "catalog:",
     "typescript": "catalog:"
   }
 }
