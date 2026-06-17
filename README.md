@@ -35,6 +35,7 @@ link-code/
 │  └─ server/     # 中转 / 隧道：tunnel · token · perm · store · realtime
 ├─ packages/
 │  ├─ schema/        # ✅ zod 数据契约：对齐 ACP 词汇（content / tool-call / plan / permission …）
+│  ├─ i18n/          # web / mobile 共享 locale 解析与翻译 messages（use-intl provider 在各端接入）
 │  ├─ transport/     # 通信层：Local / WebSocket / Socket.IO transport + Hub / listener factory（`/server`）
 │  ├─ agent-adapter/ # agent 适配层：原生 SDK（claude-code/codex/opencode/pi）+ 通用 ACP seam
 │  ├─ engine/        # 本地核心：会话编排引擎 `Engine`（即「host」，驱动 agent-adapter，over transport）

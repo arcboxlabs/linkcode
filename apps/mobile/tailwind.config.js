@@ -2,7 +2,7 @@
 // so utility names (bg-bg / text-muted / border-border / text-accent) match the web/desktop side.
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ['./App.tsx', './app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  content: ['./src/**/*.{ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {
     extend: {

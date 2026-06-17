@@ -6,9 +6,10 @@ mobile 用 **NativeWind**（React Native 版 Tailwind）。已配置并通过 `e
 
 - `package.json`：`nativewind` + `tailwindcss@3`；`react-native-reanimated` + `react-native-worklets`（NativeWind 引擎 `react-native-css-interop` 的 peer）。
 - `babel.config.js`：`babel-preset-expo`（`jsxImportSource: 'nativewind'`）+ `nativewind/babel`，并以 `react-native-worklets/plugin` 收尾（reanimated 4）。
-- `metro.config.js`：monorepo 配置外套 `withNativeWind(config, { input: './global.css' })`。
+- `metro.config.js`：monorepo 配置外套 `withNativeWind(config, { input: './src/global.css' })`。
 - `tailwind.config.js`：`nativewind/preset` + CoSSUI 调色板（与 web/desktop 同名：`bg-bg` / `text-muted` / `text-accent` …）。
-- `global.css`：`@tailwind base/components/utilities`；`nativewind-env.d.ts`：类型引用 + `*.css` 声明。
+- `src/global.css`：`@tailwind base/components/utilities`；`src/nativewind-env.d.ts`：类型引用 + `*.css` 声明。
+- 源码统一放在 `src/`（与 web/desktop 一致）：`src/App.tsx` 为根组件，根目录 `index.ts` 仅 `registerRootComponent(App)`。
 
 > 注意：本仓 pnpm 设置 `nodeLinker: hoisted`（在 `pnpm-workspace.yaml`），Metro 才能解析 NativeWind 的传递依赖。
 
@@ -25,8 +26,8 @@ PLAN ✅ 指定 Mobile UI 为 HeroUI（`heroui-native`）。它构建在 NativeW
      react-native-safe-area-context react-native-screens react-native-svg \
      tailwind-merge tailwind-variants
    ```
-2. `global.css` 末尾追加：`@import 'heroui-native/styles';`，并在 `tailwind.config.js` 的 `content` 加入 `./node_modules/heroui-native/**/*.{js,jsx,ts,tsx}`。
-3. `App.tsx` 外层包裹（顺序：手势 → 安全区 → HeroUI）：
+2. `src/global.css` 末尾追加：`@import 'heroui-native/styles';`，并在 `tailwind.config.js` 的 `content` 加入 `./node_modules/heroui-native/**/*.{js,jsx,ts,tsx}`。
+3. `src/App.tsx` 外层包裹（顺序：手势 → 安全区 → HeroUI）：
    ```tsx
    import 'react-native-gesture-handler';
    import { GestureHandlerRootView } from 'react-native-gesture-handler';

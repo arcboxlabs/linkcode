@@ -12,6 +12,7 @@
     "lint": "biome check ."
   },
   "dependencies": {
+    "@linkcode/i18n": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "expo": "~56.0.12",
     "expo-status-bar": "~56.0.4",
@@ -19,7 +20,8 @@
     "react": "19.2.3",
     "react-native": "0.85.3",
     "react-native-reanimated": "4.3.1",
-    "react-native-worklets": "0.8.3"
+    "react-native-worklets": "0.8.3",
+    "use-intl": "catalog:"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
