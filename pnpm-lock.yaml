@@ -92,9 +92,9 @@ importers:
       '@linkcode/agent-adapter':
         specifier: workspace:*
         version: link:../../packages/agent-adapter
-      '@linkcode/host':
+      '@linkcode/engine':
         specifier: workspace:*
-        version: link:../../packages/host
+        version: link:../../packages/engine
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -343,7 +343,7 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
-  packages/host:
+  packages/engine:
     dependencies:
       '@linkcode/agent-adapter':
         specifier: workspace:*

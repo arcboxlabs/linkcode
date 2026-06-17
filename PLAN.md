@@ -119,7 +119,7 @@ link-code/
 │  ├─ schema/       # ✅ zod schemas：唯一数据契约（所有消息类型来源）
 │  ├─ transport/    # 通信协议层：LocalTransport / WsTransport
 │  ├─ agent-adapter/# agent 适配层 + 抽象层：claude-code / codex / opencode / pi
-│  ├─ host/         # 本地核心：会话编排引擎（驱动 agent-adapter）
+│  ├─ engine/       # 本地核心：会话编排引擎 Engine（即「host」，驱动 agent-adapter）
 │  ├─ ipc/          # 🔧 TypeSafe IPC 抽象 + tRPC 实现（仅 desktop 使用）
 │  ├─ client-core/  # 🔧 三端共享：数据 hooks(SWR/React Query)、对接 transport
 │  └─ ui/           # 🔧 CoSSUI 组件封装（PC/Web 共享；是否含 mobile 待定）
@@ -134,7 +134,7 @@ link-code/
 > 以下为帮助你起步的接口骨架,**非最终 API**。可据此搭脚手架,但具体签名请在实现时与我对齐。所有出现的 `*Input` / `*Event` / `Wire*` 类型都应来自 `packages/schema` 的 zod 定义。
 
 ```ts
-// packages/host/src/agent/adapter.ts
+// packages/agent-adapter/src/adapter.ts
 export interface AgentAdapter {
   readonly kind: 'claude-code' | 'codex' | 'opencode' | 'pi';
   start(opts: StartOptions): Promise<void>;

@@ -37,7 +37,7 @@ link-code/
 │  ├─ schema/        # ✅ zod 数据契约：对齐 ACP 词汇（content / tool-call / plan / permission …）
 │  ├─ transport/     # 通信层：LocalTransport / WsTransport（客户端）+ Hub / createWsServer（`/server`）
 │  ├─ agent-adapter/ # agent 适配层：原生 SDK（claude-code/codex/opencode/pi）+ 通用 ACP seam
-│  ├─ host/          # 本地核心：会话编排引擎（驱动 agent-adapter，over transport）
+│  ├─ engine/        # 本地核心：会话编排引擎 `Engine`（即「host」，驱动 agent-adapter，over transport）
 │  ├─ ipc/           # TypeSafe IPC 抽象 + tRPC 实现（仅 desktop）
 │  ├─ client-core/   # 三端共享：数据 hooks（TanStack Query）+ 对接 transport
 │  └─ ui/            # CoSSUI 组件库（PC / Web 共享）

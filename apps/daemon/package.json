@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@linkcode/agent-adapter": "workspace:*",
-    "@linkcode/host": "workspace:*",
+    "@linkcode/engine": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*"
   },

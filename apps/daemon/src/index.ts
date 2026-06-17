@@ -1,19 +1,19 @@
-import { Host } from '@linkcode/host';
+import { Engine } from '@linkcode/engine';
 import { Hub, createWsServer } from '@linkcode/transport/server';
 import { loadConfig } from './config';
 
 /**
  * Link Code daemon — the standalone local host process.
  *
- * Runs one shared `Host` (which owns all agent sessions + adapters) behind a fan-out `Hub`, and exposes a
+ * Runs one shared `Engine` (which owns all agent sessions + adapters) behind a fan-out `Hub`, and exposes a
  * WebSocket the clients (web / desktop / mobile-via-relay / cli) connect to. This is where real agents live:
  * they spawn CLI subprocesses and hold credentials, so they cannot run inside a browser tab.
  */
 async function main(): Promise<void> {
   const config = loadConfig();
   const hub = new Hub();
-  const host = new Host(hub);
-  await host.start();
+  const engine = new Engine(hub);
+  await engine.start();
 
   const server = createWsServer({ port: config.port, host: config.hostname });
   server.onConnection((conn) => {
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const shutdown = (): void => {
     void (async () => {
       try {
-        await host.stop();
+        await engine.stop();
         await server.close();
       } finally {
         process.exit(0);
