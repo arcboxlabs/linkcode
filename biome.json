@@ -16,6 +16,7 @@
       "**/.expo",
       "**/node_modules",
       "**/expo-export",
+      "**/components/ui/**",
       "pnpm-lock.yaml"
     ]
   },

@@ -1,8 +1,6 @@
 @import "tailwindcss";
-@import "@linkcode/ui/theme.css";
-
-/* CoSSUI components live in a workspace package outside the app dir; scan them explicitly. */
-@source '../../../packages/ui/src';
+@import "tw-animate-css";
+@import "./coss.css";
 
 @layer base {
   :root {
@@ -21,8 +19,6 @@
   }
 
   body {
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
   }
 }
