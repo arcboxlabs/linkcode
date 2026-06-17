@@ -6,18 +6,20 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./electron-main": "./src/electron-main.ts",
+    "./electron-renderer": "./src/electron-renderer.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "biome check ."
   },
   "dependencies": {
-    "@trpc/client": "catalog:",
-    "@trpc/server": "catalog:",
+    "@moeru/eventa": "1.0.0-beta.10",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "electron": "catalog:",
     "typescript": "catalog:"
   }
 }

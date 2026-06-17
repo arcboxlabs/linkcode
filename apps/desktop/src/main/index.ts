@@ -1,6 +1,7 @@
 import { join } from 'node:path';
-import { type IpcCallEnvelope, type SystemContext, dispatchSystemCall } from '@linkcode/ipc';
-import { BrowserWindow, app, dialog, ipcMain } from 'electron';
+import type { SystemContext } from '@linkcode/ipc';
+import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -27,7 +28,7 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-/** Binds the TypeSafe IPC capability contract to the real Electron implementation (system / UI only, PLAN §2.3). */
+/** Binds the system IPC capability contract to the real Electron implementation (system / UI only, PLAN §2.3). */
 function systemContextFor(win: BrowserWindow): SystemContext {
   return {
     window: {
@@ -62,10 +63,8 @@ app
     const win = createWindow();
     const ctx = systemContextFor(win);
 
-    // The data plane never goes through here; this only handles the system / UI calls defined by systemRouter (PLAN §2.3).
-    ipcMain.handle('linkcode:ipc', (_event, call: IpcCallEnvelope) =>
-      dispatchSystemCall(ctx, call),
-    );
+    // The data plane never goes through here; Eventa is used only for desktop system / UI calls.
+    bindElectronSystemIpc({ ipcMain, window: win, ctx });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

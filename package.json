@@ -19,8 +19,8 @@
     "clean": "turbo run clean"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "turbo": "^2.3.3",
+    "@biomejs/biome": "^2.5.0",
+    "turbo": "^2.9.18",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

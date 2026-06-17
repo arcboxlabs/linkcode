@@ -6,8 +6,8 @@ import type {
   StartOptions,
 } from '@linkcode/schema';
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -15,7 +15,7 @@ import {
   useState,
 } from 'react';
 import type { LinkCodeClient } from './client';
-import { type Conversation, buildConversation } from './conversation';
+import { buildConversation, type Conversation } from './conversation';
 
 const ClientContext = createContext<LinkCodeClient | null>(null);
 

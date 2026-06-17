@@ -112,6 +112,6 @@ export const WireMessageSchema = z.object({
 export type WireMessage = z.infer<typeof WireMessageSchema>;
 
 /** Parse + validate an inbound message; on failure returns the zod SafeParse result. */
-export function parseWireMessage(input: unknown): z.SafeParseReturnType<unknown, WireMessage> {
+export function parseWireMessage(input: unknown): ReturnType<typeof WireMessageSchema.safeParse> {
   return WireMessageSchema.safeParse(input);
 }

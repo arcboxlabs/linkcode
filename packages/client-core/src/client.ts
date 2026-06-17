@@ -14,7 +14,7 @@ import type {
   StartOptions,
   WireMessage,
 } from '@linkcode/schema';
-import { type Transport, type Unsubscribe, createWireMessage } from '@linkcode/transport';
+import { createWireMessage, type Transport, type Unsubscribe } from '@linkcode/transport';
 
 type EventCb = (event: AgentEvent) => void;
 type Pending<T> = {

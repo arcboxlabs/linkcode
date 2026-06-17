@@ -1,4 +1,4 @@
-import { type Server as HttpServer, createServer } from 'node:http';
+import { createServer, type Server as HttpServer } from 'node:http';
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import { type Socket, Server as SocketIoServerImpl } from 'socket.io';
