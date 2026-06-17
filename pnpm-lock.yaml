@@ -344,10 +344,19 @@ importers:
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
+      ws:
+        specifier: 'catalog:'
+        version: 8.21.0
       zod:
         specifier: 'catalog:'
         version: 3.25.76
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.2
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.1
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
