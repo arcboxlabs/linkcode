@@ -4,7 +4,15 @@ import type {
   Query,
   SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { ContentBlock, MessageId, PermissionOption, StopReason } from '@linkcode/schema';
+import type {
+  AgentHistoryCapabilities,
+  AgentHistoryResumeOptions,
+  ContentBlock,
+  MessageId,
+  PermissionOption,
+  StartOptions,
+  StopReason,
+} from '@linkcode/schema';
 import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { contentToText, toolKindFromName } from '../util';
@@ -40,6 +48,11 @@ export function mapClaudeStop(reason: string | null): StopReason {
  */
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: false,
+    resume: true,
+  };
 
   private q: Query | null = null;
   private abort: AbortController | null = null;
@@ -51,6 +64,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+  }
+
+  override async resumeHistory(
+    opts: AgentHistoryResumeOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    this.sessionId = opts.historyId;
+    await this.start(startOpts);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
