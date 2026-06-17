@@ -3,10 +3,19 @@ import type {
   PermissionResult,
   Query,
   SDKMessage,
+  SDKSessionInfo,
+  SessionMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
   AgentHistoryCapabilities,
+  AgentHistoryEvent,
+  AgentHistoryId,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  AgentHistorySession,
   ContentBlock,
   MessageId,
   PermissionOption,
@@ -15,6 +24,16 @@ import type {
 } from '@linkcode/schema';
 import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
+import {
+  asHistoryId,
+  boundedLimit,
+  compactRecord,
+  cursorFromFetched,
+  cursorOffset,
+  firstText,
+  textHistoryEvent,
+  timestampMs,
+} from '../history-util';
 import { contentToText, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
@@ -49,8 +68,8 @@ export function mapClaudeStop(reason: string | null): StopReason {
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
-    list: false,
-    read: false,
+    list: true,
+    read: true,
     resume: true,
   };
 
@@ -72,6 +91,51 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   ): Promise<void> {
     this.sessionId = opts.historyId;
     await this.start(startOpts);
+  }
+
+  override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
+    const mod = await this.loadSdk(
+      '@anthropic-ai/claude-agent-sdk',
+      () => import('@anthropic-ai/claude-agent-sdk'),
+    );
+    const offset = cursorOffset(opts?.cursor);
+    const limit = boundedLimit(opts?.limit, 50, 200);
+    const sessions = await mod.listSessions({
+      dir: opts?.cwd,
+      limit: limit + 1,
+      offset,
+    });
+    return {
+      sessions: sessions.slice(0, limit).map(mapClaudeHistorySession),
+      cursor: cursorFromFetched(offset, sessions.length, limit),
+    };
+  }
+
+  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    const mod = await this.loadSdk(
+      '@anthropic-ai/claude-agent-sdk',
+      () => import('@anthropic-ai/claude-agent-sdk'),
+    );
+    const offset = cursorOffset(opts.cursor);
+    const limit = boundedLimit(opts.limit, 1000, 1000);
+    const [info, messages] = await Promise.all([
+      mod.getSessionInfo(opts.historyId),
+      mod.getSessionMessages(opts.historyId, {
+        limit: limit + 1,
+        offset,
+      }),
+    ]);
+    const historyId = opts.historyId;
+    return {
+      session: info
+        ? mapClaudeHistorySession(info)
+        : { historyId, kind: this.kind, title: historyId },
+      events: messages
+        .slice(0, limit)
+        .map((message) => mapClaudeHistoryEvent(historyId, message))
+        .filter((event): event is AgentHistoryEvent => event !== undefined),
+      cursor: cursorFromFetched(offset, messages.length, limit),
+    };
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -190,4 +254,28 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.emitError('Claude returned an error', undefined, true);
     }
   }
+}
+
+function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
+  return {
+    historyId: asHistoryId(session.sessionId),
+    kind: 'claude-code',
+    title: firstText(session.customTitle, session.summary, session.firstPrompt),
+    cwd: session.cwd,
+    createdAt: timestampMs(session.createdAt),
+    updatedAt: timestampMs(session.lastModified),
+    metadata: compactRecord({
+      fileSize: session.fileSize,
+      gitBranch: session.gitBranch,
+      tag: session.tag,
+    }),
+  };
+}
+
+function mapClaudeHistoryEvent(
+  historyId: AgentHistoryId,
+  message: SessionMessage,
+): AgentHistoryEvent | undefined {
+  if (message.type !== 'user' && message.type !== 'assistant') return undefined;
+  return textHistoryEvent(historyId, message.type, message.uuid, message.message);
 }

@@ -1,4 +1,17 @@
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
+import { env } from 'node:process';
 import type {
+  AgentHistoryCapabilities,
+  AgentHistoryEvent,
+  AgentHistoryId,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
+  AgentHistoryResumeOptions,
+  AgentHistorySession,
   ContentBlock,
   MessageId,
   StartOptions,
@@ -7,8 +20,22 @@ import type {
   ToolCallContent,
   ToolCallStatus,
 } from '@linkcode/schema';
-import type { ThreadEvent, ThreadItem, Usage } from '@openai/codex-sdk';
+import type { ThreadEvent, ThreadItem, ThreadOptions, Usage } from '@openai/codex-sdk';
 import { BaseAgentAdapter } from '../base';
+import {
+  asHistoryId,
+  boundedLimit,
+  compactRecord,
+  cursorFromTotal,
+  cursorOffset,
+  firstText,
+  isRecord,
+  recordField,
+  stringField,
+  textFromUnknown,
+  textHistoryEvent,
+  timestampMs,
+} from '../history-util';
 import { contentToText } from '../util';
 
 type CodexModule = typeof import('@openai/codex-sdk');
@@ -36,25 +63,71 @@ export function mapCodexUsage(usage: Usage): TokenUsage {
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: true,
+    read: true,
+    resume: true,
+  };
 
   private codex: CodexInstance | null = null;
   private thread: CodexThread | null = null;
   private abort: AbortController | null = null;
+  private resumeThreadId: string | undefined;
   /** Per-item cursor for turning Codex's cumulative text into deltas. */
   private readonly textLen = new Map<string, number>();
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    const mod = await this.loadSdk('@openai/codex-sdk', () => import('@openai/codex-sdk'));
-    const apiKey = this.configString('apiKey');
-    this.codex = new mod.Codex(apiKey ? { apiKey } : undefined);
-    this.thread = this.codex.startThread({
-      workingDirectory: opts.cwd,
-      model: opts.model,
-      additionalDirectories: opts.additionalDirectories,
-      sandboxMode: 'workspace-write',
-      approvalPolicy: 'never',
-      skipGitRepoCheck: true,
-    });
+    const codex = await this.createCodex();
+    const threadOptions = this.threadOptions(opts);
+    this.thread = this.resumeThreadId
+      ? codex.resumeThread(this.resumeThreadId, threadOptions)
+      : codex.startThread(threadOptions);
+  }
+
+  override async resumeHistory(
+    opts: AgentHistoryResumeOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    this.resumeThreadId = opts.historyId;
+    try {
+      await this.start(startOpts);
+    } finally {
+      this.resumeThreadId = undefined;
+    }
+  }
+
+  override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
+    const offset = cursorOffset(opts?.cursor);
+    const limit = boundedLimit(opts?.limit, 50, 200);
+    const index = await readCodexIndex();
+    const summaries = await readCodexTranscriptSummaries(index);
+    const knownIds = new Set(summaries.map((summary) => summary.id));
+    const indexOnly = [...index.values()].filter((entry) => !knownIds.has(entry.id));
+    const sessions = [
+      ...summaries.map(codexSummaryToSession),
+      ...indexOnly.map(codexIndexEntryToSession),
+    ]
+      .filter((session) => !opts?.cwd || session.cwd === opts.cwd)
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+
+    return {
+      sessions: sessions.slice(offset, offset + limit),
+      cursor: cursorFromTotal(offset, sessions.length, limit),
+    };
+  }
+
+  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    const offset = cursorOffset(opts.cursor);
+    const limit = boundedLimit(opts.limit, 1000, 1000);
+    const summary = await findCodexTranscript(opts.historyId);
+    if (!summary?.path) throw new Error(`codex: history '${opts.historyId}' was not found`);
+    const rows = await readJsonlFile(summary.path);
+    const events = mapCodexHistoryEvents(opts.historyId, rows);
+    return {
+      session: codexSummaryToSession(summary),
+      events: events.slice(offset, offset + limit),
+      cursor: cursorFromTotal(offset, events.length, limit),
+    };
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -83,6 +156,24 @@ export class CodexAdapter extends BaseAgentAdapter {
   private configString(key: string): string | undefined {
     const value = this.opts?.config?.[key];
     return typeof value === 'string' ? value : undefined;
+  }
+
+  private async createCodex(): Promise<CodexInstance> {
+    const mod = await this.loadSdk('@openai/codex-sdk', () => import('@openai/codex-sdk'));
+    const apiKey = this.configString('apiKey');
+    this.codex = new mod.Codex(apiKey ? { apiKey } : undefined);
+    return this.codex;
+  }
+
+  private threadOptions(opts: StartOptions): ThreadOptions {
+    return {
+      workingDirectory: opts.cwd,
+      model: opts.model,
+      additionalDirectories: opts.additionalDirectories,
+      sandboxMode: 'workspace-write',
+      approvalPolicy: 'never',
+      skipGitRepoCheck: true,
+    };
   }
 
   private handleEvent(ev: ThreadEvent): void {
@@ -210,4 +301,246 @@ export class CodexAdapter extends BaseAgentAdapter {
 function textContent(text: string): ToolCallContent[] {
   if (text.length === 0) return [];
   return [{ type: 'content', content: { type: 'text', text } }];
+}
+
+type JsonRecord = Record<string, unknown>;
+
+type CodexIndexEntry = {
+  id: string;
+  title?: string;
+  updatedAt?: number;
+};
+
+type CodexTranscriptSummary = {
+  id: string;
+  path?: string;
+  title?: string;
+  cwd?: string;
+  model?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  messageCount?: number;
+  metadata?: Record<string, unknown>;
+};
+
+type DirectoryEntry = {
+  name: string;
+  isDirectory(): boolean;
+  isFile(): boolean;
+};
+
+function codexHome(): string {
+  return env.CODEX_HOME ?? join(homedir(), '.codex');
+}
+
+async function readCodexIndex(): Promise<Map<string, CodexIndexEntry>> {
+  const rows = await readJsonlFile(join(codexHome(), 'session_index.jsonl'));
+  const index = new Map<string, CodexIndexEntry>();
+  for (const row of rows) {
+    const id = stringField(row, 'id');
+    if (!id) continue;
+    index.set(id, {
+      id,
+      title: firstText(stringField(row, 'thread_name'), stringField(row, 'title')),
+      updatedAt: timestampMs(row.updated_at) ?? timestampMs(row.updatedAt),
+    });
+  }
+  return index;
+}
+
+async function readCodexTranscriptSummaries(
+  index: Map<string, CodexIndexEntry>,
+): Promise<CodexTranscriptSummary[]> {
+  const roots = [join(codexHome(), 'sessions'), join(codexHome(), 'archived_sessions')];
+  const fileSets = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
+  const files = fileSets.flat();
+  const summaries = await Promise.all(files.map((file) => readCodexTranscriptSummary(file, index)));
+  return summaries.filter((summary): summary is CodexTranscriptSummary => summary !== undefined);
+}
+
+async function findCodexTranscript(
+  historyId: AgentHistoryId,
+): Promise<CodexTranscriptSummary | undefined> {
+  const index = await readCodexIndex();
+  const summaries = await readCodexTranscriptSummaries(index);
+  const id = String(historyId);
+  return summaries.find((summary) => summary.id === id || summary.path === id);
+}
+
+async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
+  if (depth < 0) return [];
+  let entries: DirectoryEntry[];
+  try {
+    entries = await readdir(root, { withFileTypes: true, encoding: 'utf8' });
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) files.push(...(await collectJsonlFiles(path, depth - 1)));
+    else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path);
+  }
+  return files;
+}
+
+async function readJsonlFile(path: string): Promise<JsonRecord[]> {
+  let raw: string;
+  try {
+    raw = await readFile(path, 'utf8');
+  } catch {
+    return [];
+  }
+  const rows: JsonRecord[] = [];
+  for (const line of raw.split('\n')) {
+    if (line.trim().length === 0) continue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (isRecord(parsed)) rows.push(parsed);
+    } catch {
+      // Ignore corrupt partial lines; Codex may be writing the active transcript.
+    }
+  }
+  return rows;
+}
+
+async function readCodexTranscriptSummary(
+  path: string,
+  index: Map<string, CodexIndexEntry>,
+): Promise<CodexTranscriptSummary | undefined> {
+  const [rows, fileStat] = await Promise.all([
+    readJsonlFile(path),
+    stat(path).catch(() => undefined),
+  ]);
+  if (rows.length === 0) return undefined;
+
+  let id: string | undefined;
+  let title: string | undefined;
+  let cwd: string | undefined;
+  let model: string | undefined;
+  let createdAt: number | undefined;
+  let updatedAt: number | undefined;
+  let firstUserText: string | undefined;
+  let firstAssistantText: string | undefined;
+  let messageCount = 0;
+  let cliVersion: string | undefined;
+  let originator: string | undefined;
+  let threadSource: string | undefined;
+  let modelProvider: string | undefined;
+  let gitBranch: string | undefined;
+
+  for (const row of rows) {
+    const rowType = stringField(row, 'type');
+    const rowTs = timestampMs(row.timestamp);
+    if (rowTs !== undefined) {
+      createdAt ??= rowTs;
+      updatedAt = Math.max(updatedAt ?? 0, rowTs);
+    }
+
+    const payload = recordField(row, 'payload');
+    if (!payload) continue;
+
+    if (rowType === 'session_meta') {
+      id = stringField(payload, 'id') ?? id;
+      cwd = stringField(payload, 'cwd') ?? cwd;
+      model = stringField(payload, 'model') ?? model;
+      originator = stringField(payload, 'originator') ?? originator;
+      threadSource = stringField(payload, 'thread_source') ?? threadSource;
+      cliVersion = stringField(payload, 'cli_version') ?? cliVersion;
+      modelProvider = stringField(payload, 'model_provider') ?? modelProvider;
+      const git = recordField(payload, 'git');
+      if (git) gitBranch = stringField(git, 'branch') ?? gitBranch;
+      createdAt = timestampMs(payload.timestamp) ?? createdAt;
+    } else if (rowType === 'turn_context') {
+      cwd = stringField(payload, 'cwd') ?? cwd;
+      model = stringField(payload, 'model') ?? model;
+      title = stringField(payload, 'summary') ?? title;
+    } else if (rowType === 'response_item') {
+      const role = stringField(payload, 'role');
+      if (role !== 'user' && role !== 'assistant') continue;
+      const text = textFromUnknown(payload);
+      if (text.trim().length === 0) continue;
+      messageCount += 1;
+      if (role === 'user') firstUserText ??= previewText(text);
+      else firstAssistantText ??= previewText(text);
+    }
+  }
+
+  id ??= idFromFilename(path);
+  const indexEntry = index.get(id);
+  return {
+    id,
+    path,
+    title: firstText(indexEntry?.title, title, firstUserText, firstAssistantText),
+    cwd,
+    model,
+    createdAt,
+    updatedAt:
+      indexEntry?.updatedAt ?? updatedAt ?? (fileStat ? Math.trunc(fileStat.mtimeMs) : undefined),
+    messageCount,
+    metadata: compactRecord({
+      source: 'codex-local-jsonl',
+      transcriptPath: path,
+      fileSize: fileStat?.size,
+      cliVersion,
+      originator,
+      threadSource,
+      modelProvider,
+      gitBranch,
+    }),
+  };
+}
+
+function codexSummaryToSession(summary: CodexTranscriptSummary): AgentHistorySession {
+  return {
+    historyId: asHistoryId(summary.id),
+    kind: 'codex',
+    title: summary.title,
+    cwd: summary.cwd,
+    model: summary.model,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+    messageCount: summary.messageCount,
+    metadata: summary.metadata,
+  };
+}
+
+function codexIndexEntryToSession(entry: CodexIndexEntry): AgentHistorySession {
+  return {
+    historyId: asHistoryId(entry.id),
+    kind: 'codex',
+    title: entry.title,
+    updatedAt: entry.updatedAt,
+    metadata: {
+      source: 'codex-session-index',
+      missingTranscript: true,
+    },
+  };
+}
+
+function mapCodexHistoryEvents(historyId: AgentHistoryId, rows: JsonRecord[]): AgentHistoryEvent[] {
+  const events: AgentHistoryEvent[] = [];
+  rows.forEach((row, index) => {
+    if (stringField(row, 'type') !== 'response_item') return;
+    const payload = recordField(row, 'payload');
+    if (!payload) return;
+    const role = stringField(payload, 'role');
+    if (role !== 'user' && role !== 'assistant') return;
+    const itemId =
+      stringField(payload, 'id') ?? stringField(row, 'id') ?? `${role}-${index.toString(36)}`;
+    const event = textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));
+    if (event) events.push(event);
+  });
+  return events;
+}
+
+function idFromFilename(path: string): string {
+  const name = basename(path, '.jsonl');
+  return name.length > 0 ? name : path;
+}
+
+function previewText(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (flat.length <= 120) return flat;
+  return `${flat.slice(0, 117)}...`;
 }
