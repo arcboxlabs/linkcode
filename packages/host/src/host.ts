@@ -1,7 +1,6 @@
+import { type AdapterFactory, type AgentAdapter, createAdapter } from '@linkcode/agent-adapter';
 import type { SessionId, WireMessage } from '@linkcode/schema';
 import { type Transport, type Unsubscribe, createWireMessage } from '@linkcode/transport';
-import type { AgentAdapter } from './agent/adapter';
-import { type AdapterFactory, createAdapter } from './agent/registry';
 
 interface Session {
   adapter: AgentAdapter;

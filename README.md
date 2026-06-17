@@ -28,12 +28,13 @@ link-code/
 │  ├─ mobile/     # Expo + HeroUI（经 Server tunnel 远程接入）
 │  └─ server/     # 中转 / 隧道：tunnel · token · perm · store · realtime
 ├─ packages/
-│  ├─ schema/      # ✅ zod 数据契约：所有跨进程 / 跨端消息类型来源
-│  ├─ transport/   # 通信协议层：LocalTransport / WsTransport
-│  ├─ host/        # 本地核心：agent 适配层 + 抽象层（src/agent/*）
-│  ├─ ipc/         # TypeSafe IPC 抽象 + tRPC 实现（仅 desktop）
-│  ├─ client-core/ # 三端共享：数据 hooks（TanStack Query）+ 对接 transport
-│  └─ ui/          # CoSSUI 组件库（PC / Web 共享）
+│  ├─ schema/        # ✅ zod 数据契约：所有跨进程 / 跨端消息类型来源
+│  ├─ transport/     # 通信协议层：LocalTransport / WsTransport
+│  ├─ agent-adapter/ # agent 适配层 + 抽象层：claude-code / codex / opencode / pi
+│  ├─ host/          # 本地核心：会话编排引擎（驱动 agent-adapter，over transport）
+│  ├─ ipc/           # TypeSafe IPC 抽象 + tRPC 实现（仅 desktop）
+│  ├─ client-core/   # 三端共享：数据 hooks（TanStack Query）+ 对接 transport
+│  └─ ui/            # CoSSUI 组件库（PC / Web 共享）
 ├─ pnpm-workspace.yaml
 ├─ turbo.json
 ├─ tsconfig.base.json

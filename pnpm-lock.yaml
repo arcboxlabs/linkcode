@@ -265,6 +265,19 @@ importers:
         specifier: 'catalog:'
         version: 6.4.3(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
 
+  packages/agent-adapter:
+    dependencies:
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@linkcode/transport':
+        specifier: workspace:*
+        version: link:../transport
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   packages/client-core:
     dependencies:
       '@linkcode/schema':
@@ -286,6 +299,9 @@ importers:
 
   packages/host:
     dependencies:
+      '@linkcode/agent-adapter':
+        specifier: workspace:*
+        version: link:../agent-adapter
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema

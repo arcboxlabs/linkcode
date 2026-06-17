@@ -9,6 +9,7 @@ const bundleWorkspace = {
     '@linkcode/ipc',
     '@linkcode/schema',
     '@linkcode/transport',
+    '@linkcode/agent-adapter',
     '@linkcode/host',
     '@linkcode/client-core',
     '@linkcode/ui',

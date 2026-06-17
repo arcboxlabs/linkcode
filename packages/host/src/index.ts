@@ -1,10 +1,9 @@
 /**
- * @linkcode/host — the local core: agent adapter layer + abstraction layer (PLAN §4.1).
+ * @linkcode/host — the local core engine (PLAN §4.1).
+ *
+ * Manages agent sessions and routes normalized events between the agent adapters (`@linkcode/agent-adapter`) and
+ * the client over a transport. The adapter layer lives in its own package; re-exported here for
+ * convenience so callers can reach both from a single import surface.
  */
-export * from './agent/adapter';
-export * from './agent/registry';
-export { ClaudeCodeAdapter } from './agent/claude-code';
-export { CodexAdapter } from './agent/codex';
-export { OpenCodeAdapter } from './agent/opencode';
-export { PiAdapter } from './agent/pi';
+export * from '@linkcode/agent-adapter';
 export * from './host';

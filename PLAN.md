@@ -117,8 +117,8 @@ link-code/
 ├─ packages/
 │  ├─ schema/       # ✅ zod schemas：唯一数据契约（所有消息类型来源）
 │  ├─ transport/    # 通信协议层：LocalTransport / WsTransport
-│  ├─ host/         # 本地核心：agent 适配 + 抽象层
-│  │  └─ agent/     #   adapters: claude-code / codex / opencode / pi
+│  ├─ agent-adapter/# agent 适配层 + 抽象层：claude-code / codex / opencode / pi
+│  ├─ host/         # 本地核心：会话编排引擎（驱动 agent-adapter）
 │  ├─ ipc/          # 🔧 TypeSafe IPC 抽象 + tRPC 实现（仅 desktop 使用）
 │  ├─ client-core/  # 🔧 三端共享：数据 hooks(SWR/React Query)、对接 transport
 │  └─ ui/           # 🔧 CoSSUI 组件封装（PC/Web 共享；是否含 mobile 待定）
@@ -193,7 +193,7 @@ export interface SystemBridge {
 - 所有共享类型只从 `packages/schema` 导出,其他包不重复定义消息类型。
 - 网络 / IPC / agent 输出等边界处一律 zod 校验后再使用。
 - 业务数据严禁走 TypeSafe IPC;IPC 只做系统 / UI。
-- 新增 agent:在 `packages/host/agent` 加一个实现 `AgentAdapter` 的 adapter,不在上层写分支判断。
+- 新增 agent:在 `packages/agent-adapter` 加一个实现 `AgentAdapter` 的 adapter,不在上层写分支判断。
 - 提交前确保类型检查与 lint 通过(具体脚本待仓库建立后补充)。
 
 ---
