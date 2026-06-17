@@ -110,8 +110,9 @@ flowchart TB
 ```
 link-code/
 ├─ apps/
-│  ├─ desktop/      # Electron 壳 + 渲染层(CoSSUI);集成 TypeSafe IPC
-│  ├─ web/          # 浏览器客户端(CoSSUI)
+│  ├─ daemon/       # 本地 host 守护进程：Hub + WebSocket server + 共享 Host（真实 agent 跑这里）
+│  ├─ desktop/      # Electron 壳 + 渲染层(CoSSUI);集成 TypeSafe IPC;渲染层经 ws 连 daemon
+│  ├─ web/          # 浏览器客户端(CoSSUI);经 ws 连 daemon
 │  ├─ mobile/       # Expo + HeroUI
 │  └─ server/       # tunnel / token / perm / store / realtime
 ├─ packages/

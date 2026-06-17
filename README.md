@@ -1,6 +1,8 @@
 # Link Code
 
-面向通用 coding agent 的**统一 GUI**：本地跑一个 `host` 统一接管各家 coding agent，把风格各异的消息归一化成同一套 **zod 数据契约**；用户从 **PC / Web / Mobile** 三端连接同一个 host，获得一致界面。移动端经中转 `Server` 在外网远程查看与控制本地 host。
+面向通用 coding agent 的**统一 GUI**：本地跑一个 **host 守护进程（`apps/daemon`）** 统一接管各家 coding agent，把风格各异的消息归一化成同一套 **zod 数据契约**；用户从 **PC / Web / Mobile** 三端经 WebSocket 连接同一个 daemon，获得一致界面。移动端经中转 `Server` 在外网远程查看与控制本地 daemon。
+
+> 参考 Zed 的 [Agent Client Protocol](https://agentclientprotocol.com)（事件词汇）。真实 agent 会拉起 CLI 子进程并持有密钥，**无法跑在浏览器标签页里**，故 host 收敛为独立 daemon 进程；数据契约对齐 ACP 的 `session/update` 词汇。
 
 > 完整设计与约束见 [`PLAN.md`](./PLAN.md)。本文件只覆盖工程结构与开发命令。
 
@@ -12,25 +14,29 @@
 | 数据契约 | zod（`packages/schema` 唯一来源） |
 | Monorepo | pnpm workspaces + Turborepo |
 | Lint / Format | Biome |
-| PC | Electron（electron-vite）+ TypeSafe IPC（tRPC 默认实现） |
-| Web | React + Vite + **Coss UI**（coss.com/ui，shadcn registry + Base UI） |
-| Mobile | Expo + HeroUI |
+| Host | 独立 daemon 进程（`apps/daemon`，Node），`Hub` 扇出 + WebSocket 暴露给三端 |
+| Agent 接入 | 各家官方 SDK 原生接入：`@anthropic-ai/claude-agent-sdk` · `@openai/codex-sdk` · `@opencode-ai/sdk` · `@earendil-works/pi-coding-agent`；长尾经通用 ACP 适配（`@agentclientprotocol/sdk`） |
+| PC | Electron（electron-vite）+ TypeSafe IPC（tRPC 默认实现）；渲染层经 WebSocket 连 daemon |
+| Web | React + Vite + **Coss UI**（coss.com/ui，shadcn registry + Base UI）；经 WebSocket 连 daemon |
+| Mobile | Expo + HeroUI（经 Server tunnel 连 daemon） |
 | 样式 | web：Tailwind v4 + Coss UI（令牌 `src/coss.css`，组件 `src/components/ui`）；desktop：Tailwind v4 + `@linkcode/ui`；mobile：NativeWind |
 | 客户端数据 | TanStack Query / SWR |
+| 测试 | Vitest（adapter 归一化纯函数） |
 
 ## 目录结构
 
 ```
 link-code/
 ├─ apps/
-│  ├─ web/        # 浏览器客户端：React + Vite（本地直连 host）
-│  ├─ desktop/    # Electron 壳 + 渲染层；TypeSafe IPC 走系统面
-│  ├─ mobile/     # Expo + HeroUI（经 Server tunnel 远程接入）
+│  ├─ daemon/     # 本地 host 守护进程：Hub + WebSocket server + 共享 Host（真实 agent 跑这里）
+│  ├─ web/        # 浏览器客户端：React + Vite（经 WebSocket 连 daemon）
+│  ├─ desktop/    # Electron 壳 + 渲染层；TypeSafe IPC 走系统面；渲染层经 WebSocket 连 daemon
+│  ├─ mobile/     # Expo + HeroUI（经 Server tunnel 连 daemon）
 │  └─ server/     # 中转 / 隧道：tunnel · token · perm · store · realtime
 ├─ packages/
-│  ├─ schema/        # ✅ zod 数据契约：所有跨进程 / 跨端消息类型来源
-│  ├─ transport/     # 通信协议层：LocalTransport / WsTransport
-│  ├─ agent-adapter/ # agent 适配层 + 抽象层：claude-code / codex / opencode / pi
+│  ├─ schema/        # ✅ zod 数据契约：对齐 ACP 词汇（content / tool-call / plan / permission …）
+│  ├─ transport/     # 通信层：LocalTransport / WsTransport（客户端）+ Hub / createWsServer（`/server`）
+│  ├─ agent-adapter/ # agent 适配层：原生 SDK（claude-code/codex/opencode/pi）+ 通用 ACP seam
 │  ├─ host/          # 本地核心：会话编排引擎（驱动 agent-adapter，over transport）
 │  ├─ ipc/           # TypeSafe IPC 抽象 + tRPC 实现（仅 desktop）
 │  ├─ client-core/   # 三端共享：数据 hooks（TanStack Query）+ 对接 transport
@@ -53,18 +59,24 @@ link-code/
 # 安装（需要 Node >= 24、pnpm 11；推荐 corepack enable）
 pnpm install
 
-# 全量类型检查 / lint / 构建
+# 全量类型检查 / lint / 构建 / 测试
 pnpm typecheck
 pnpm lint
 pnpm build
+pnpm test
 
-# 单独启动某一端（也可 pnpm dev 并行启动）
+# 先起本地 daemon（其他端连它）
+pnpm --filter @linkcode/daemon dev   # ws://127.0.0.1:4317（LINKCODE_PORT / LINKCODE_HOST 可覆盖）
+
+# 再起某一端（也可 pnpm dev 并行启动）
 pnpm --filter @linkcode/web dev
 pnpm --filter @linkcode/desktop dev
 pnpm --filter @linkcode/mobile start
 pnpm --filter @linkcode/server dev
 ```
 
+> **真实运行需各 agent 的 CLI / API key 就位**（如 `ANTHROPIC_API_KEY`、`codex` / `opencode` / `pi` CLI）。某个 SDK 缺失时，对应 adapter 会发一个清晰的 `error` 事件而非拖垮 daemon。归一化逻辑由 Vitest 纯函数测试覆盖（无需密钥）。
+
 ## 状态
 
-脚手架阶段。`PLAN.md` 中标记为 ❓ 的项（四家 agent SDK 的接入形态、Server 各能力的数据模型、CoSSUI 底层等）尚未拍板，相关代码以**接口骨架 + TODO** 形式存在，待确认后再落地实现。
+四家 agent 已按官方 SDK **原生接入**（claude-code / codex / opencode / pi），并保留通用 ACP 适配 seam 接长尾；host 收敛为独立 daemon。全仓 `typecheck` / `build` / `lint` / `test` 通过。`PLAN.md` 中仍标 ❓ 的项（Server 各能力的数据模型、移动端 UI、桌面端是否内嵌 daemon 等）待落地；端到端真实联调需本机具备各 agent 的凭据。
