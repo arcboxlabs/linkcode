@@ -3,4 +3,5 @@
  * Data fetching / caching can be paired with TanStack Query / SWR on each platform; the event stream flows through the subscription hooks here.
  */
 export * from './client';
+export * from './conversation';
 export * from './react';

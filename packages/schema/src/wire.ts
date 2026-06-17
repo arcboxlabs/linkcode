@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { AgentEventSchema, AgentInputSchema, StartOptionsSchema } from './agent';
-import { MessageIdSchema, SessionIdSchema, TimestampSchema } from './common';
+import { AgentKindSchema, MessageIdSchema, SessionIdSchema, TimestampSchema } from './common';
+import {
+  AgentHistoryIdSchema,
+  AgentHistoryListOptionsSchema,
+  AgentHistoryListResultSchema,
+  AgentHistoryReadOptionsSchema,
+  AgentHistoryReadResultSchema,
+} from './history';
 import { SessionInfoSchema } from './session';
 
 /**
@@ -13,7 +20,17 @@ import { SessionInfoSchema } from './session';
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 2 as const;
+export const WIRE_PROTOCOL_VERSION = 3 as const;
+
+export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
+  forceRefresh: z.boolean().optional(),
+});
+export type AgentHistoryListWireOptions = z.infer<typeof AgentHistoryListWireOptionsSchema>;
+
+export const AgentHistoryReadWireOptionsSchema = AgentHistoryReadOptionsSchema.extend({
+  forceRefresh: z.boolean().optional(),
+});
+export type AgentHistoryReadWireOptions = z.infer<typeof AgentHistoryReadWireOptionsSchema>;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
@@ -37,6 +54,43 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('session.attach'), sessionId: SessionIdSchema }),
   z.object({ kind: z.literal('session.detach'), sessionId: SessionIdSchema }),
+
+  // ── Historical sessions ──
+  z.object({
+    kind: z.literal('history.list'),
+    clientReqId: z.string().min(1),
+    agentKind: AgentKindSchema,
+    opts: AgentHistoryListWireOptionsSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal('history.listed'),
+    replyTo: z.string().min(1),
+    result: AgentHistoryListResultSchema,
+  }),
+  z.object({
+    kind: z.literal('history.read'),
+    clientReqId: z.string().min(1),
+    agentKind: AgentKindSchema,
+    opts: AgentHistoryReadWireOptionsSchema,
+  }),
+  z.object({
+    kind: z.literal('history.read.result'),
+    replyTo: z.string().min(1),
+    result: AgentHistoryReadResultSchema,
+  }),
+  z.object({
+    kind: z.literal('history.resume'),
+    clientReqId: z.string().min(1),
+    agentKind: AgentKindSchema,
+    historyId: AgentHistoryIdSchema,
+    startOpts: StartOptionsSchema,
+  }),
+  z.object({
+    kind: z.literal('request.failed'),
+    replyTo: z.string().min(1),
+    message: z.string(),
+    code: z.string().optional(),
+  }),
 
   // ── Data plane ──
   z.object({ kind: z.literal('agent.input'), sessionId: SessionIdSchema, input: AgentInputSchema }),

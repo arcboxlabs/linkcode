@@ -1,29 +1,14 @@
 @import "tailwindcss";
-@import "@linkcode/ui/theme.css";
+@import "@linkcode/ui/styles.css";
 
-/* CoSSUI components live in a workspace package outside the renderer dir; scan them explicitly. */
+/* The shared frontend lives in a workspace package; scan its source for Tailwind classes. */
 @source '../../../../../packages/ui/src';
 
 @layer base {
   :root {
     color-scheme: dark;
   }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  html,
-  body,
-  #root {
-    height: 100%;
-    margin: 0;
-  }
-
   body {
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     overflow: hidden;
   }
 }

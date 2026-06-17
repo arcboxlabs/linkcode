@@ -1,24 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "./coss.css";
+@import "@linkcode/ui/styles.css";
+
+/* The shared frontend lives in a workspace package; scan its source for Tailwind classes. */
+@source "../../../packages/ui/src";
 
 @layer base {
   :root {
     color-scheme: dark;
-  }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  html,
-  body,
-  #root {
-    height: 100%;
-    margin: 0;
-  }
-
-  body {
-    font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
   }
 }

@@ -9,6 +9,12 @@ export default defineConfig({
   server: { port: 5173 },
   // Workspace packages are exported as TS source and transpiled on the fly by Vite/esbuild, so no prebundling is needed.
   optimizeDeps: {
-    exclude: ['@linkcode/client-core', '@linkcode/i18n', '@linkcode/transport', '@linkcode/schema'],
+    exclude: [
+      '@linkcode/ui',
+      '@linkcode/client-core',
+      '@linkcode/i18n',
+      '@linkcode/transport',
+      '@linkcode/schema',
+    ],
   },
 });

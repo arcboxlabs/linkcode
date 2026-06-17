@@ -1,4 +1,4 @@
-/* Coss UI design tokens (from @coss/style registry). */
+/* Coss UI design tokens (from @coss/style registry) — shared by every Link Code frontend. */
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -144,9 +144,17 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
   }
   code,
   kbd,

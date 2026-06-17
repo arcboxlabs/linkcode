@@ -1,6 +1,12 @@
 import type {
   AgentEvent,
+  AgentHistoryId,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
   AgentInput,
+  AgentKind,
   ContentBlock,
   PermissionOutcome,
   SessionId,
@@ -11,6 +17,18 @@ import type {
 import { type Transport, type Unsubscribe, createWireMessage } from '@linkcode/transport';
 
 type EventCb = (event: AgentEvent) => void;
+type Pending<T> = {
+  resolve(value: T): void;
+  reject(err: Error): void;
+};
+
+export type HistoryListClientOptions = AgentHistoryListOptions & {
+  forceRefresh?: boolean;
+};
+
+export type HistoryReadClientOptions = AgentHistoryReadOptions & {
+  forceRefresh?: boolean;
+};
 
 let __reqSeq = 0;
 function nextClientReqId(): string {
@@ -28,31 +46,62 @@ function nextClientReqId(): string {
  */
 export class LinkCodeClient {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
-  private readonly pendingStarts = new Map<string, (id: SessionId) => void>();
-  private readonly pendingLists = new Map<string, (sessions: SessionInfo[]) => void>();
+  /** Per-session event buffer so a re-subscribe (switching the active session back) can replay the timeline. */
+  private readonly events = new Map<SessionId, AgentEvent[]>();
+  private readonly pendingStarts = new Map<string, Pending<SessionId>>();
+  private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
+  private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
+  private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
   private unsub: Unsubscribe | null = null;
+  private offClose: Unsubscribe | null = null;
+  private closed = false;
 
   constructor(private readonly transport: Transport) {}
 
   async connect(): Promise<void> {
+    this.closed = false;
     await this.transport.connect();
+    // The caller's effect may have been torn down mid-await (React StrictMode / remount); bail if so.
+    if (this.closed) return;
+    this.unsub?.();
     this.unsub = this.transport.onMessage((msg) => this.route(msg));
+    this.offClose?.();
+    this.offClose = this.transport.onClose(() =>
+      this.failAllPending(new Error('transport connection closed')),
+    );
   }
 
   private route(msg: WireMessage): void {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.started': {
-        this.pendingStarts.get(p.replyTo)?.(p.sessionId);
+        this.pendingStarts.get(p.replyTo)?.resolve(p.sessionId);
         this.pendingStarts.delete(p.replyTo);
         break;
       }
       case 'session.listed': {
-        this.pendingLists.get(p.replyTo)?.(p.sessions);
+        this.pendingLists.get(p.replyTo)?.resolve(p.sessions);
         this.pendingLists.delete(p.replyTo);
         break;
       }
+      case 'history.listed': {
+        this.pendingHistoryLists.get(p.replyTo)?.resolve(p.result);
+        this.pendingHistoryLists.delete(p.replyTo);
+        break;
+      }
+      case 'history.read.result': {
+        this.pendingHistoryReads.get(p.replyTo)?.resolve(p.result);
+        this.pendingHistoryReads.delete(p.replyTo);
+        break;
+      }
+      case 'request.failed': {
+        this.rejectPending(p.replyTo, p.message, p.code);
+        break;
+      }
       case 'agent.event': {
+        const buf = this.events.get(p.sessionId);
+        if (buf) buf.push(p.event);
+        else this.events.set(p.sessionId, [p.event]);
         const subs = this.subscribers.get(p.sessionId);
         if (subs) for (const cb of subs) cb(p.event);
         break;
@@ -64,17 +113,63 @@ export class LinkCodeClient {
 
   startSession(opts: StartOptions): Promise<SessionId> {
     const clientReqId = nextClientReqId();
-    return new Promise<SessionId>((resolve) => {
-      this.pendingStarts.set(clientReqId, resolve);
+    return new Promise<SessionId>((resolve, reject) => {
+      this.pendingStarts.set(clientReqId, { resolve, reject });
       this.transport.send(createWireMessage({ kind: 'session.start', clientReqId, opts }));
     });
   }
 
   listSessions(): Promise<SessionInfo[]> {
     const clientReqId = nextClientReqId();
-    return new Promise<SessionInfo[]>((resolve) => {
-      this.pendingLists.set(clientReqId, resolve);
+    return new Promise<SessionInfo[]>((resolve, reject) => {
+      this.pendingLists.set(clientReqId, { resolve, reject });
       this.transport.send(createWireMessage({ kind: 'session.list', clientReqId }));
+    });
+  }
+
+  listHistory(
+    agentKind: AgentKind,
+    opts?: HistoryListClientOptions,
+  ): Promise<AgentHistoryListResult> {
+    const clientReqId = nextClientReqId();
+    return new Promise<AgentHistoryListResult>((resolve, reject) => {
+      this.pendingHistoryLists.set(clientReqId, { resolve, reject });
+      this.transport.send(
+        createWireMessage({ kind: 'history.list', clientReqId, agentKind, opts }),
+      );
+    });
+  }
+
+  readHistory(
+    agentKind: AgentKind,
+    opts: HistoryReadClientOptions,
+  ): Promise<AgentHistoryReadResult> {
+    const clientReqId = nextClientReqId();
+    return new Promise<AgentHistoryReadResult>((resolve, reject) => {
+      this.pendingHistoryReads.set(clientReqId, { resolve, reject });
+      this.transport.send(
+        createWireMessage({ kind: 'history.read', clientReqId, agentKind, opts }),
+      );
+    });
+  }
+
+  resumeHistory(
+    agentKind: AgentKind,
+    historyId: AgentHistoryId,
+    startOpts: StartOptions,
+  ): Promise<SessionId> {
+    const clientReqId = nextClientReqId();
+    return new Promise<SessionId>((resolve, reject) => {
+      this.pendingStarts.set(clientReqId, { resolve, reject });
+      this.transport.send(
+        createWireMessage({
+          kind: 'history.resume',
+          clientReqId,
+          agentKind,
+          historyId,
+          startOpts: { ...startOpts, kind: agentKind },
+        }),
+      );
     });
   }
 
@@ -111,6 +206,7 @@ export class LinkCodeClient {
   stopSession(sessionId: SessionId): void {
     this.transport.send(createWireMessage({ kind: 'session.stop', sessionId }));
     this.subscribers.delete(sessionId);
+    this.events.delete(sessionId);
   }
 
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
@@ -120,14 +216,51 @@ export class LinkCodeClient {
       this.subscribers.set(sessionId, set);
     }
     set.add(cb);
+    // Replay any buffered events so a late subscriber sees the full timeline, not a blank pane.
+    const buf = this.events.get(sessionId);
+    if (buf) for (const event of buf) cb(event);
     return () => set?.delete(cb);
   }
 
   dispose(): void {
+    this.closed = true;
     this.unsub?.();
+    this.unsub = null;
+    this.offClose?.();
+    this.offClose = null;
+    this.failAllPending(new Error('client disposed'));
     this.subscribers.clear();
-    this.pendingStarts.clear();
-    this.pendingLists.clear();
+    this.events.clear();
     this.transport.close();
   }
+
+  /** Reject every in-flight request so awaiters get an error instead of hanging forever. */
+  private failAllPending(err: Error): void {
+    for (const map of [
+      this.pendingStarts,
+      this.pendingLists,
+      this.pendingHistoryLists,
+      this.pendingHistoryReads,
+    ]) {
+      for (const pending of map.values()) pending.reject(err);
+      map.clear();
+    }
+  }
+
+  private rejectPending(replyTo: string, message: string, code?: string): void {
+    const err = new Error(message);
+    if (code) Object.assign(err, { code });
+    if (rejectFrom(this.pendingStarts, replyTo, err)) return;
+    if (rejectFrom(this.pendingLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
+    rejectFrom(this.pendingHistoryReads, replyTo, err);
+  }
+}
+
+function rejectFrom<T>(map: Map<string, Pending<T>>, id: string, err: Error): boolean {
+  const pending = map.get(id);
+  if (!pending) return false;
+  map.delete(id);
+  pending.reject(err);
+  return true;
 }

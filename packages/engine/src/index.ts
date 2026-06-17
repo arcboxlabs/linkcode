@@ -7,3 +7,4 @@
  */
 export * from '@linkcode/agent-adapter';
 export * from './engine';
+export * from './history-service';
