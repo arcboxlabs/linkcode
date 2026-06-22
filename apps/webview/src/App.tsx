@@ -1,14 +1,12 @@
 import type { ReactElement } from 'react';
-import { BrowserRouter } from 'react-router';
+import { RouterProvider } from 'react-router';
 import { RootProviders } from '@/providers/RootProviders';
-import { AppRoutes } from '@/routes';
+import { appRouter } from '@/routes';
 
 export function App(): ReactElement {
   return (
     <RootProviders>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <RouterProvider router={appRouter} />
     </RootProviders>
   );
 }
