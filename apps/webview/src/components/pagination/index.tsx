@@ -7,7 +7,13 @@ import {
   PaginationPrevious,
   Pagination as UIPagination,
 } from 'coss-ui/components/pagination';
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from 'coss-ui/components/select';
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from 'coss-ui/components/select';
 import { useMemo } from 'react';
 import type { PaginationRender } from './use-pagination-render';
 
@@ -36,7 +42,11 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
   } = pagination;
 
   const pageRangeItems = useMemo(
-    () => pageRanges.map((pageRange) => ({ label: `${pageRange.start}-${pageRange.end}`, value: pageRange.pageIndex })),
+    () =>
+      pageRanges.map((pageRange) => ({
+        label: `${pageRange.start}-${pageRange.end}`,
+        value: pageRange.pageIndex,
+      })),
     [pageRanges],
   );
 
@@ -46,7 +56,13 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
     <div className="px-5 py-3 min-h-14 border-t border-border flex items-center justify-between text-sm text-muted-foreground shrink-0">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 whitespace-nowrap">
-          <Select items={pageSizeItems} onValueChange={(value) => setPageSize(value!)} value={pageSize}>
+          <Select
+            items={pageSizeItems}
+            onValueChange={(value) => {
+              if (value != null) setPageSize(value);
+            }}
+            value={pageSize}
+          >
             <SelectTrigger aria-label="Select page size" className="w-fit min-w-none" size="sm">
               <SelectValue />
             </SelectTrigger>
@@ -62,7 +78,13 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
         </div>
         <div className="flex items-center gap-2 whitespace-nowrap">
           <p>Viewing</p>
-          <Select items={pageRangeItems} onValueChange={(value) => setPageIndex(value!)} value={pageIndex}>
+          <Select
+            items={pageRangeItems}
+            onValueChange={(value) => {
+              if (value != null) setPageIndex(value);
+            }}
+            value={pageIndex}
+          >
             <SelectTrigger aria-label="Select result range" className="w-fit min-w-none" size="sm">
               <SelectValue />
             </SelectTrigger>
@@ -85,7 +107,12 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
             <PaginationPrevious
               aria-disabled={!canPreviousPage}
               className={canPreviousPage ? '' : 'pointer-events-none opacity-50 cursor-not-allowed'}
-              onClick={previousPage}
+              href="#"
+              onClick={(event) => {
+                event.preventDefault();
+                if (canPreviousPage) previousPage();
+              }}
+              tabIndex={canPreviousPage ? 0 : -1}
             />
           </PaginationItem>
           {range.map((item) =>
@@ -110,7 +137,12 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
             <PaginationNext
               aria-disabled={!canNextPage}
               className={canNextPage ? '' : 'pointer-events-none opacity-50 cursor-not-allowed'}
-              onClick={nextPage}
+              href="#"
+              onClick={(event) => {
+                event.preventDefault();
+                if (canNextPage) nextPage();
+              }}
+              tabIndex={canNextPage ? 0 : -1}
             />
           </PaginationItem>
         </PaginationContent>
