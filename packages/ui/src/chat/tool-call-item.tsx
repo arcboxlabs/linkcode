@@ -12,9 +12,9 @@ import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import { ContentBlockView } from './ContentBlockView';
-import { DiffBlock } from './DiffBlock';
-import { TerminalBlock } from './TerminalBlock';
+import { ContentBlockView } from './content-block-view';
+import { DiffBlock } from './diff-block';
+import { TerminalBlock } from './terminal-block';
 
 export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactElement {
   const t = useTranslations('workbench.tool');

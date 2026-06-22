@@ -1,5 +1,5 @@
 export * from './debug';
 export * from './runtime';
 export * from './tayori';
-export * from './Workbench';
-export * from './WorkbenchProviders';
+export * from './workbench';
+export * from './workbench-providers';

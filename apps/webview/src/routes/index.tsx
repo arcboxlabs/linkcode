@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router';
-import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage';
-import { WorkbenchPage } from '@/features/workbench/WorkbenchPage';
+import { PlaceholderPage } from '@/features/placeholder/placeholder-page';
+import { WorkbenchPage } from '@/features/workbench/workbench-page';
 import { ConnectedLayout } from '@/layouts/connected-layout';
 
 /**

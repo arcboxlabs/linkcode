@@ -2,7 +2,7 @@ import type { ContentBlock } from '@linkcode/schema';
 import { FileTextIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { useTranslations } from 'use-intl';
-import { Markdown } from './Markdown';
+import { Markdown } from './markdown';
 
 export function ContentBlockView({ block }: { block: ContentBlock }): ReactElement {
   const t = useTranslations('workbench.content');

@@ -5,9 +5,9 @@ import { XIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { useTranslations } from 'use-intl';
 import { ConversationView, type ConversationViewModel } from '../chat';
-import { Composer } from './Composer';
-import { Sidebar } from './Sidebar';
-import { TopBar } from './TopBar';
+import { Composer } from './composer';
+import { Sidebar } from './sidebar';
+import { TopBar } from './top-bar';
 import type { WorkbenchSystemBridge } from './types';
 
 const EMPTY_PERMISSION_SET = new Set<string>();

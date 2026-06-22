@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import { ContentBlockView } from './ContentBlockView';
+import { ContentBlockView } from './content-block-view';
 import { contentPreview } from './content-preview';
 
 export function ThoughtBlock({ blocks }: { blocks: ContentBlock[] }): ReactElement {

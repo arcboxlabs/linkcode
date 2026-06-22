@@ -1,6 +1,6 @@
 import { AnchoredToastProvider, ToastProvider } from 'coss-ui/components/toast';
 import type { ReactElement, ReactNode } from 'react';
-import { AppI18nProvider } from '@/providers/AppI18nProvider';
+import { AppI18nProvider } from '@/providers/app-i18n-provider';
 
 /**
  * Global, route-agnostic providers — the SPA analogue of Next's root layout.

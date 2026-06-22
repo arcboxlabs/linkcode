@@ -1,4 +1,10 @@
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from 'coss-ui/components/empty';
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from 'coss-ui/components/empty';
 import { ConstructionIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { BreadcrumbCurrent } from '@/components/breadcrumbs';
@@ -9,7 +15,13 @@ import { usePageTitle } from '@/hooks/use-page-title';
  * full page shape — page title, breadcrumb current, static structure rendering
  * immediately — so adding a real feature is a matter of swapping the body.
  */
-export function PlaceholderPage({ title, description }: { title: string; description: string }): ReactElement {
+export function PlaceholderPage({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}): ReactElement {
   usePageTitle(title);
 
   return (

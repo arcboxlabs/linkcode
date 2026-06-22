@@ -1,7 +1,7 @@
 import type { SessionId, SessionInfo } from '@linkcode/schema';
 import type { ReactElement } from 'react';
 import { useTranslations } from 'use-intl';
-import { SessionItem } from './SessionItem';
+import { SessionItem } from './session-item';
 
 export interface SessionListProps {
   sessions: SessionInfo[];

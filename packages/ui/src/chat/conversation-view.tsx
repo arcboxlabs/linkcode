@@ -2,14 +2,14 @@ import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
 import { type ReactElement, useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
-import { AssistantMessage } from './AssistantMessage';
-import { ErrorMessage } from './ErrorMessage';
-import { PermissionCard } from './PermissionCard';
-import { PlanCard } from './PlanCard';
-import { ThoughtBlock } from './ThoughtBlock';
-import { ToolCallItem } from './ToolCallItem';
+import { AssistantMessage } from './assistant-message';
+import { ErrorMessage } from './error-message';
+import { PermissionCard } from './permission-card';
+import { PlanCard } from './plan-card';
+import { ThoughtBlock } from './thought-block';
+import { ToolCallItem } from './tool-call-item';
 import type { ConversationViewModel } from './types';
-import { UserMessage } from './UserMessage';
+import { UserMessage } from './user-message';
 
 export interface ConversationViewProps {
   conversation: ConversationViewModel;

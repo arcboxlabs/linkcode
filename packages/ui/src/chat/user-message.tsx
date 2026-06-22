@@ -1,6 +1,6 @@
 import type { ContentBlock } from '@linkcode/schema';
 import type { ReactElement } from 'react';
-import { ContentBlockView } from './ContentBlockView';
+import { ContentBlockView } from './content-block-view';
 
 export function UserMessage({ blocks }: { blocks: ContentBlock[] }): ReactElement {
   return (

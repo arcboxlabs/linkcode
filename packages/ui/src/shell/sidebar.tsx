@@ -3,8 +3,8 @@ import { Button } from 'coss-ui/components/button';
 import { PlusIcon } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { NewSessionForm } from './NewSessionForm';
-import { SessionList } from './SessionList';
+import { NewSessionForm } from './new-session-form';
+import { SessionList } from './session-list';
 
 export interface SidebarProps {
   sessions: SessionInfo[];
