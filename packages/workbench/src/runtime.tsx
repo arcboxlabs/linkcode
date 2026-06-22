@@ -1,7 +1,8 @@
 import { createClient, type LinkCodeSdkClient, setDefaultClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
+import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { wait } from 'foxts/wait';
-import { type ReactElement, type ReactNode, useEffect, useState } from 'react';
+import { type ReactElement, type ReactNode, useState } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
 import { useDebug } from './debug';
@@ -21,24 +22,26 @@ export function WorkbenchRuntimeProvider({
   const [client] = useState(() => createClient({ transport }));
   const [status, setStatus] = useState<'connecting' | 'ready' | 'error'>('connecting');
 
-  useEffect(() => {
-    let alive = true;
-    setDefaultClient(client);
-    client
-      .connect()
-      .then(() => {
-        if (alive) setStatus('ready');
-      })
-      .catch(() => {
-        if (alive) setStatus('error');
-      });
+  useAbortableEffect(
+    (signal) => {
+      setDefaultClient(client);
+      setStatus('connecting');
+      client
+        .connect()
+        .then(() => {
+          if (!signal.aborted) setStatus('ready');
+        })
+        .catch(() => {
+          if (!signal.aborted) setStatus('error');
+        });
 
-    return () => {
-      alive = false;
-      setDefaultClient(null);
-      client.dispose();
-    };
-  }, [client]);
+      return () => {
+        setDefaultClient(null);
+        client.dispose();
+      };
+    },
+    [client],
+  );
 
   if (status !== 'ready') return <>{fallback(status)}</>;
 

@@ -1,4 +1,5 @@
 import type { TokenUsage } from '@linkcode/schema';
+import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { Minimize2Icon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -22,48 +23,50 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
   const [isMaximized, setIsMaximized] = useState(false);
   const [windowControlsMode, setWindowControlsMode] = useState<WindowControlsMode>('none');
 
-  useEffect(() => {
-    let alive = true;
-    if (!win) {
-      setWindowControlsMode('none');
-      return () => {
-        alive = false;
-      };
-    }
-    const platform = systemBridge?.app?.platform;
-    if (!platform) {
-      setWindowControlsMode('custom');
-      return () => {
-        alive = false;
-      };
-    }
-    platform()
-      .then((value) => {
-        if (alive) setWindowControlsMode(value === 'darwin' ? 'native-macos' : 'custom');
-      })
-      .catch(() => {
-        if (alive) setWindowControlsMode('custom');
-      });
-    return () => {
-      alive = false;
-    };
-  }, [win, systemBridge?.app]);
+  useAbortableEffect(
+    (signal) => {
+      if (!win) {
+        setWindowControlsMode('none');
+        return;
+      }
+      const platform = systemBridge?.app?.platform;
+      if (!platform) {
+        setWindowControlsMode('custom');
+        return;
+      }
+      platform()
+        .then((value) => {
+          if (!signal.aborted)
+            setWindowControlsMode(value === 'darwin' ? 'native-macos' : 'custom');
+        })
+        .catch(() => {
+          if (!signal.aborted) setWindowControlsMode('custom');
+        });
+    },
+    [win, systemBridge?.app?.platform],
+  );
 
-  useEffect(() => {
-    let alive = true;
-    if (!win || windowControlsMode !== 'custom') {
-      setIsMaximized(false);
-      return () => {
-        alive = false;
-      };
-    }
-    void win?.isMaximized?.().then((value) => {
-      if (alive) setIsMaximized(value);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [win, windowControlsMode]);
+  useAbortableEffect(
+    (signal) => {
+      if (!win || windowControlsMode !== 'custom') {
+        setIsMaximized(false);
+        return;
+      }
+      const readIsMaximized = win.isMaximized;
+      if (!readIsMaximized) {
+        setIsMaximized(false);
+        return;
+      }
+      void readIsMaximized()
+        .then((value) => {
+          if (!signal.aborted) setIsMaximized(value);
+        })
+        .catch(() => {
+          if (!signal.aborted) setIsMaximized(false);
+        });
+    },
+    [win, windowControlsMode],
+  );
 
   useEffect(() => {
     if (!win || windowControlsMode !== 'custom') return;

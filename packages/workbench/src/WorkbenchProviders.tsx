@@ -41,7 +41,9 @@ export function WorkbenchProviders({
     <DebugProvider>
       <WorkbenchRuntimeProvider
         transport={transport}
-        fallback={fallback ?? ((status) => <ConnectionState status={status} daemonUrl={daemonUrl} />)}
+        fallback={
+          fallback ?? ((status) => <ConnectionState status={status} daemonUrl={daemonUrl} />)
+        }
       >
         {(client) => <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>}
       </WorkbenchRuntimeProvider>

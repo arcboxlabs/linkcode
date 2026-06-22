@@ -537,6 +537,9 @@ importers:
       coss-ui:
         specifier: workspace:*
         version: link:../coss-ui
+      foxact:
+        specifier: ^0.3.6
+        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       lucide-react:
         specifier: ^1.18.0
         version: 1.18.0(react@19.2.7)
@@ -592,6 +595,9 @@ importers:
       coss-ui:
         specifier: workspace:*
         version: link:../coss-ui
+      foxact:
+        specifier: ^0.3.6
+        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       foxts:
         specifier: ^5.5.1
         version: 5.5.1
