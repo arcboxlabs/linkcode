@@ -601,6 +601,9 @@ importers:
       use-intl:
         specifier: 'catalog:'
         version: 4.13.0(react@19.2.7)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@types/react':
         specifier: 'catalog:'

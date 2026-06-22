@@ -22,7 +22,8 @@
     "coss-ui": "workspace:*",
     "swr": "catalog:",
     "tayori": "^0.3.6",
-    "use-intl": "catalog:"
+    "use-intl": "catalog:",
+    "zod": "catalog:"
   },
   "peerDependencies": {
     "react": ">=19",
