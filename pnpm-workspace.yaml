@@ -48,10 +48,12 @@ catalog:
   "@tanstack/react-query": ^5.62.7
   swr: ^2.3.0
   use-intl: ^4.13.0
+  lucide-react: ^1.18.0
 
   # web 构建
   vite: ^8.0.16
   "@vitejs/plugin-react": ^6.0.2
+  babel-plugin-react-compiler: ^1.0.0
 
   # 样式（web / desktop 渲染层）
   tailwindcss: ^4.3.1
