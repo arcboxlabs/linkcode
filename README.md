@@ -1,6 +1,6 @@
 # Link Code
 
-面向通用 coding agent 的**统一 GUI**：本地跑一个 **host 守护进程（`apps/daemon`）** 统一接管各家 coding agent，把风格各异的消息归一化成同一套 **zod 数据契约**；用户从 **PC / Web / Mobile** 三端经 Socket.IO 连接同一个 daemon，获得一致界面。移动端经中转 `Server` 在外网远程查看与控制本地 daemon。
+面向通用 coding agent 的**统一 GUI**：本地跑一个 **host 守护进程（`apps/daemon`）** 统一接管各家 coding agent，把风格各异的消息归一化成同一套 **zod 数据契约**；用户从 **PC / Webview / Mobile** 三端经 Socket.IO 连接同一个 daemon，获得一致界面。移动端经中转 `Server` 在外网远程查看与控制本地 daemon。
 
 > 参考 Zed 的 [Agent Client Protocol](https://agentclientprotocol.com)（事件词汇）。真实 agent 会拉起 CLI 子进程并持有密钥，**无法跑在浏览器标签页里**，故 host 收敛为独立 daemon 进程；数据契约对齐 ACP 的 `session/update` 词汇。
 
@@ -17,9 +17,9 @@
 | Host | 独立 daemon 进程（`apps/daemon`，Node），`Hub` 扇出 + Socket.IO 默认 listener 暴露给三端 |
 | Agent 接入 | 各家官方 SDK 原生接入：`@anthropic-ai/claude-agent-sdk` · `@openai/codex-sdk` · `@opencode-ai/sdk` · `@earendil-works/pi-coding-agent`；长尾经通用 ACP 适配（`@agentclientprotocol/sdk`） |
 | PC | Electron（electron-vite）+ TypeSafe IPC（tRPC 默认实现）；渲染层经 Socket.IO 连 daemon |
-| Web | React + Vite + **Coss UI**（coss.com/ui，shadcn registry + Base UI）；经 Socket.IO 连 daemon |
+| Webview | React + Vite + **Coss UI**（coss.com/ui，shadcn registry + Base UI）；经 Socket.IO 连 daemon |
 | Mobile | Expo + HeroUI（经 Server tunnel 连 daemon） |
-| 样式 | web：Tailwind v4 + Coss UI（令牌 `src/coss.css`，组件 `src/components/ui`）；desktop：Tailwind v4 + `@linkcode/ui`；mobile：NativeWind |
+| 样式 | webview：Tailwind v4 + Coss UI（令牌 `src/coss.css`，组件 `src/components/ui`）；desktop：Tailwind v4 + `@linkcode/ui`；mobile：NativeWind |
 | 客户端数据 | TanStack Query / SWR |
 | 测试 | Vitest（adapter 归一化纯函数） |
 
@@ -29,19 +29,19 @@
 link-code/
 ├─ apps/
 │  ├─ daemon/     # 本地 host 守护进程：Hub + Socket.IO listener + 共享 Host（真实 agent 跑这里）
-│  ├─ web/        # 浏览器客户端：React + Vite（经 Socket.IO 连 daemon）
+│  ├─ webview/    # 浏览器客户端：React + Vite（经 Socket.IO 连 daemon）
 │  ├─ desktop/    # Electron 壳 + 渲染层；TypeSafe IPC 走系统面；渲染层经 Socket.IO 连 daemon
 │  ├─ mobile/     # Expo + HeroUI（经 Server tunnel 连 daemon）
 │  └─ server/     # 中转 / 隧道：tunnel · token · perm · store · realtime
 ├─ packages/
 │  ├─ schema/        # ✅ zod 数据契约：对齐 ACP 词汇（content / tool-call / plan / permission …）
-│  ├─ i18n/          # web / mobile 共享 locale 解析与翻译 messages（use-intl provider 在各端接入）
+│  ├─ i18n/          # webview / mobile 共享 locale 解析与翻译 messages（use-intl provider 在各端接入）
 │  ├─ transport/     # 通信层：Local / WebSocket / Socket.IO transport + Hub / listener factory（`/server`）
 │  ├─ agent-adapter/ # agent 适配层：原生 SDK（claude-code/codex/opencode/pi）+ 通用 ACP seam
 │  ├─ engine/        # 本地核心：会话编排引擎 `Engine`（即「host」，驱动 agent-adapter，over transport）
 │  ├─ ipc/           # TypeSafe IPC 抽象 + tRPC 实现（仅 desktop）
 │  ├─ client-core/   # 三端共享：数据 hooks（TanStack Query）+ 对接 transport
-│  └─ ui/            # CoSSUI 组件库（PC / Web 共享）
+│  └─ ui/            # CoSSUI 组件库（PC / Webview 共享）
 ├─ pnpm-workspace.yaml
 ├─ turbo.json
 ├─ tsconfig.base.json
@@ -70,7 +70,7 @@ pnpm test
 pnpm --filter @linkcode/daemon dev   # Socket.IO on http://127.0.0.1:4317（LINKCODE_PORT / LINKCODE_HOST 可覆盖）
 
 # 再起某一端（也可 pnpm dev 并行启动）
-pnpm --filter @linkcode/web dev
+pnpm --filter @linkcode/webview dev
 pnpm --filter @linkcode/desktop dev
 pnpm --filter @linkcode/mobile start
 pnpm --filter @linkcode/server dev

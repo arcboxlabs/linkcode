@@ -14,9 +14,9 @@
 
 ## 1. 项目是什么
 
-✅ Link Code 是一个**面向通用 coding agent 的统一 GUI**:在用户本地跑一个 `host` 统一接管各家 coding agent,并把它们风格各异的消息归一化成同一套数据契约;用户可从 **PC / Web / Mobile** 三端连接同一个 host,获得一致界面。移动端可经中转 `Server` 在外网远程查看与控制本地的 host。
+✅ Link Code 是一个**面向通用 coding agent 的统一 GUI**:在用户本地跑一个 `host` 统一接管各家 coding agent,并把它们风格各异的消息归一化成同一套数据契约;用户可从 **PC / Webview / Mobile** 三端连接同一个 host,获得一致界面。移动端可经中转 `Server` 在外网远程查看与控制本地的 host。
 
-✅ 系统由四部分组成:**Client(PC)**、**Web**、**Mobile**、**Server**;贯穿核心是 **Host(本地引擎)**。
+✅ 系统由四部分组成:**Client(PC)**、**Webview**、**Mobile**、**Server**;贯穿核心是 **Host(本地引擎)**。
 
 ---
 
@@ -28,7 +28,7 @@
    - **数据面**:业务数据只走 `transport`(通信协议层)+ zod 消息。
    - **系统面**:Electron 的系统级操作 / UI 桥接只走 `TypeSafe IPC`。
    - 两者不得混用。**TypeSafe IPC 绝不承载任何业务数据。**
-4. ✅ **本地优先**:host 跑在用户本机。PC / Web 在本地直连 host;Mobile 经 Server 的 tunnel(websocket)接入。
+4. ✅ **本地优先**:host 跑在用户本机。PC / Webview 在本地直连 host;Mobile 经 Server 的 tunnel(websocket)接入。
 5. ✅ **面向接口、实现可替换**:
    - `TypeSafe IPC` 是一个接口,`tRPC` 只是默认实现之一,可替换。
    - 每接入一个新 agent = 实现一个统一的 adapter,不在上层散落各家 SDK 的判断。
@@ -48,7 +48,7 @@ flowchart TB
       IPC["TypeSafe IPC<br/>tRPC 为实现之一<br/>系统操作 · UI"]
       PCUI -.->|"系统面 · 仅本地"| IPC
     end
-    WEB["Web 客户端<br/>CoSSUI"]
+    WEB["Webview 客户端<br/>CoSSUI"]
     subgraph HOSTBOX["Host · 本地核心"]
       direction TB
       AGENT["Agent 层<br/>Claude Code · CodeX · OpenCode · Pi SDK"]
@@ -83,7 +83,7 @@ flowchart TB
 ❓ transport 内部是否需要再分层(序列化、重连、心跳、鉴权)待确认。
 
 ### 4.5 TypeSafe IPC(仅 PC / Electron)
-✅ 类型安全的 Electron IPC 抽象,处理 Electron 主进程↔渲染进程的系统级操作与 UI 桥接;**不碰业务数据**;仅 PC 端存在,Web / Mobile 没有这一层。`tRPC` 为默认实现,可替换。
+✅ 类型安全的 Electron IPC 抽象,处理 Electron 主进程↔渲染进程的系统级操作与 UI 桥接;**不碰业务数据**;仅 PC 端存在,Webview / Mobile 没有这一层。`tRPC` 为默认实现,可替换。
 ❓ 除 tRPC 外的候选实现待补充。
 
 ### 4.6 客户端三端
@@ -91,8 +91,8 @@ flowchart TB
 
 | 端 | 壳 / 运行环境 | UI 组件库 | 本地系统桥 |
 |---|---|---|---|
-| PC | Electron ✅ | CoSSUI(❓ 是否复用 Web) | TypeSafe IPC ✅(tRPC 默认) |
-| Web | 浏览器 ✅ | CoSSUI ✅ | 无 ✅ |
+| PC | Electron ✅ | CoSSUI(❓ 是否复用 Webview) | TypeSafe IPC ✅(tRPC 默认) |
+| Webview | 浏览器 ✅ | CoSSUI ✅ | 无 ✅ |
 | Mobile | Expo ✅ | HeroUI ✅ | 无 ✅ |
 
 ✅ 客户端数据请求 / 缓存用 SWR / React Query。✅ UI 设计参考 CodeX(设计灵感;落地组件库为 CoSSUI / HeroUI)。
@@ -112,7 +112,7 @@ link-code/
 ├─ apps/
 │  ├─ daemon/       # 本地 host 守护进程：Hub + WebSocket server + 共享 Host（真实 agent 跑这里）
 │  ├─ desktop/      # Electron 壳 + 渲染层(CoSSUI);集成 TypeSafe IPC;渲染层经 ws 连 daemon
-│  ├─ web/          # 浏览器客户端(CoSSUI);经 ws 连 daemon
+│  ├─ webview/      # 浏览器客户端(CoSSUI);经 ws 连 daemon
 │  ├─ mobile/       # Expo + HeroUI
 │  └─ server/       # tunnel / token / perm / store / realtime
 ├─ packages/
@@ -122,7 +122,7 @@ link-code/
 │  ├─ engine/       # 本地核心：会话编排引擎 Engine（即「host」，驱动 agent-adapter）
 │  ├─ ipc/          # 🔧 TypeSafe IPC 抽象 + tRPC 实现（仅 desktop 使用）
 │  ├─ client-core/  # 🔧 三端共享：数据 hooks(SWR/React Query)、对接 transport
-│  └─ ui/           # 🔧 CoSSUI 组件封装（PC/Web 共享；是否含 mobile 待定）
+│  └─ ui/           # 🔧 CoSSUI 组件封装（PC/Webview 共享；是否含 mobile 待定）
 ├─ pnpm-workspace.yaml   # 🔧 提议 pnpm workspaces
 └─ turbo.json            # 🔧 提议 turborepo
 ```
@@ -171,7 +171,7 @@ export interface SystemBridge {
 | 通信协议 | 自研 transport 层 + websocket(远程) | ✅ |
 | PC 壳 | Electron | ✅ |
 | PC 系统桥 | TypeSafe IPC(tRPC 默认实现) | ✅(tRPC 为其一) |
-| PC / Web UI | CoSSUI | ✅ Web /❓ PC 是否复用 |
+| PC / Webview UI | CoSSUI | ✅ Webview /❓ PC 是否复用 |
 | Mobile 框架 | Expo | ✅ |
 | Mobile UI | HeroUI | ✅ |
 | 客户端数据 | SWR / React Query | ✅ |
@@ -182,7 +182,7 @@ export interface SystemBridge {
 
 ## 8. 关键数据流
 
-1. **本地直连**:`Client(PC/Web) ↔ Host`,走 transport + zod(本机)。
+1. **本地直连**:`Client(PC/Webview) ↔ Host`,走 transport + zod(本机)。
 2. **本机上行**:`Host ↔ Server`,RPC / websocket,传 zod 规范化消息。
 3. **远程接入**:`Mobile ↔ Server(tunnel) ↔ Host`,经隧道走 websocket。Mobile 可远程渲染 host UI 并控制 host。
 
@@ -206,11 +206,11 @@ export interface SystemBridge {
 1. Monorepo 工具与目录结构是否按第 5 节(pnpm + turborepo)。
 2. 语言 / 构建选型(TS strict、打包器、测试框架)。
 3. `CC` 是否就是 Claude Code;`Pi SDK` 具体所指;四家 agent 各自 SDK 的接入形态。
-4. PC 端 UI 是否复用 Web 的 CoSSUI,还是另起一套。
+4. PC 端 UI 是否复用 Webview 的 CoSSUI,还是另起一套。
 5. `TypeSafe IPC` 除 tRPC 外的候选实现。
 6. `transport` 内部是否分层(序列化 / 重连 / 心跳 / 鉴权)。
 7. Server 各能力(`token` / `perm` / `store` / `realtime`)的数据模型与协议细节。
-8. Web 客户端是"浏览器直连本地 host"还是需经 Server 中转。
+8. Webview 客户端是"浏览器直连本地 host"还是需经 Server 中转。
 9. 多 agent 的产品行为(是否并发 / 切换,如何在 UI 呈现)。
 
 ---
@@ -226,7 +226,7 @@ export interface SystemBridge {
 | zod schema | 数据契约,定义消息结构,全项目唯一来源 |
 | TypeSafe IPC | 类型安全的 Electron IPC 抽象;仅 PC;系统操作 + UI;不传业务数据 |
 | tRPC | TypeSafe IPC 的默认实现,可替换 |
-| CoSSUI | Web(及 PC?)端 UI 组件库 |
+| CoSSUI | Webview(及 PC?)端 UI 组件库 |
 | HeroUI | Mobile 端 UI 组件库 |
 | Expo / Electron | Mobile / PC 的框架与壳 |
 | tunnel / token / perm / store / realtime | Server 的能力:隧道 / 鉴权 / 权限 / 存储 / 实时 |
