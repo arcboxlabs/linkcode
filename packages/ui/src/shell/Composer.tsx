@@ -1,8 +1,10 @@
 import type { AvailableCommand } from '@linkcode/schema';
+import { Badge } from 'coss-ui/components/badge';
+import { Button } from 'coss-ui/components/button';
+import { Textarea } from 'coss-ui/components/textarea';
 import { ArrowUpIcon, AtSignIcon, SlashIcon, SquareIcon } from 'lucide-react';
 import { type KeyboardEvent, type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { Badge, Button, Textarea } from '../components/ui';
 import { cn } from '../lib/cn';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
@@ -202,7 +204,7 @@ export function Composer({
           />
           <div className="flex items-center gap-2 px-3 pb-2.5">
             {currentModeId && (
-              <Badge variant="muted">
+              <Badge variant="secondary">
                 {tw('mode.label')}: {currentModeId}
               </Badge>
             )}

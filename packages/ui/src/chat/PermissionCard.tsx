@@ -1,8 +1,8 @@
 import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
+import { Button } from 'coss-ui/components/button';
 import { ShieldIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { useTranslations } from 'use-intl';
-import { Button } from '../components/ui';
 
 type ButtonVariant = 'default' | 'secondary' | 'outline' | 'destructive-outline';
 
@@ -25,11 +25,13 @@ export function PermissionCard({
   toolCall,
   options,
   answered,
+  responding,
   onRespond,
 }: {
   toolCall: ToolCallUpdate;
   options: PermissionOption[];
   answered: boolean;
+  responding: boolean;
   onRespond: (optionId: string) => void;
 }): ReactElement {
   const t = useTranslations('workbench.permission');
@@ -45,6 +47,8 @@ export function PermissionCard({
       </div>
       {answered ? (
         <div className="text-[13px] text-muted-foreground">{t('answered')}</div>
+      ) : responding ? (
+        <div className="text-[13px] text-muted-foreground">{t('responding')}</div>
       ) : (
         <div className="flex flex-wrap gap-2">
           {options.map((o) => (

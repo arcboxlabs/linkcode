@@ -1,7 +1,8 @@
 import { type AgentKind, AgentKindSchema } from '@linkcode/schema';
+import { Button } from 'coss-ui/components/button';
+import { Input } from 'coss-ui/components/input';
 import { type ReactElement, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { Button, Input } from '../components/ui';
 
 export interface NewSessionFormProps {
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;

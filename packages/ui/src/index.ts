@@ -4,6 +4,5 @@
  */
 
 export * from './chat';
-export * from './components/ui';
 export { cn } from './lib/cn';
 export * from './shell';

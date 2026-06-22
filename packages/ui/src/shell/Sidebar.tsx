@@ -1,8 +1,8 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import { Button } from 'coss-ui/components/button';
 import { PlusIcon } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { Button } from '../components/ui';
 import { NewSessionForm } from './NewSessionForm';
 import { SessionList } from './SessionList';
 

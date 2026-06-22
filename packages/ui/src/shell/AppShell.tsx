@@ -1,4 +1,7 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
+import { Button } from 'coss-ui/components/button';
+import { XIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { useTranslations } from 'use-intl';
 import { ConversationView, type ConversationViewModel } from '../chat';
@@ -7,11 +10,15 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import type { WorkbenchSystemBridge } from './types';
 
+const EMPTY_PERMISSION_SET = new Set<string>();
+
 export interface AppShellProps {
   sessions: SessionInfo[];
   activeId: SessionId | null;
   conversation: ConversationViewModel;
   answeredPermissions: Set<string>;
+  respondingPermissions: Set<string>;
+  errorMessage?: string | null;
   systemBridge?: WorkbenchSystemBridge;
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
@@ -19,6 +26,7 @@ export interface AppShellProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
+  onDismissError?: () => void;
 }
 
 /** The full workbench layout: session inbox + conversation stream + composer. */
@@ -27,6 +35,8 @@ export function AppShell({
   activeId,
   conversation,
   answeredPermissions,
+  respondingPermissions = EMPTY_PERMISSION_SET,
+  errorMessage,
   systemBridge,
   onSelectSession,
   onStopSession,
@@ -34,8 +44,10 @@ export function AppShell({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onDismissError,
 }: AppShellProps): ReactElement {
   const tk = useTranslations('workbench.agentKind');
+  const te = useTranslations('workbench.error');
 
   const active = sessions.find((s) => s.sessionId === activeId) ?? null;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -56,12 +68,33 @@ export function AppShell({
           usage={conversation.usage}
           systemBridge={systemBridge}
         />
+        {errorMessage && (
+          <div className="border-b border-border px-4 py-2">
+            <Alert variant="error" className="rounded-lg py-2">
+              <AlertTitle>{te('title')}</AlertTitle>
+              <AlertDescription>{errorMessage}</AlertDescription>
+              {onDismissError && (
+                <AlertAction>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={te('dismiss')}
+                    onClick={onDismissError}
+                  >
+                    <XIcon />
+                  </Button>
+                </AlertAction>
+              )}
+            </Alert>
+          </div>
+        )}
         <div className="min-h-0 flex-1">
           <ConversationView
             conversation={conversation}
             agentKind={active?.kind}
             cwd={active?.cwd}
             answeredPermissions={answeredPermissions}
+            respondingPermissions={respondingPermissions}
             pendingPermissions={new Set(conversation.pendingPermissionIds)}
             onRespondPermission={onRespondPermission}
           />

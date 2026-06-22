@@ -81,6 +81,11 @@ export const messages = {
       permission: {
         title: '权限请求',
         answered: '已处理',
+        responding: '正在提交…',
+      },
+      error: {
+        title: '操作失败',
+        dismiss: '关闭',
       },
       composer: {
         placeholder: '输入消息…（/ 命令，@ 提及）',
@@ -231,6 +236,11 @@ export const messages = {
       permission: {
         title: 'Permission request',
         answered: 'Handled',
+        responding: 'Submitting…',
+      },
+      error: {
+        title: 'Action failed',
+        dismiss: 'Dismiss',
       },
       composer: {
         placeholder: 'Type a message…  (/ commands, @ mentions)',

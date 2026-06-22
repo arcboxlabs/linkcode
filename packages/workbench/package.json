@@ -1,5 +1,5 @@
 {
-  "name": "@linkcode/ui",
+  "name": "@linkcode/workbench",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,37 +7,26 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./native": "./src/native/index.ts",
-    "./styles.css": "./src/styles.css"
+    "./tayori": "./src/tayori.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "biome check ."
   },
   "dependencies": {
-    "@base-ui/react": "^1.5.0",
+    "@linkcode/client-core": "workspace:*",
     "@linkcode/schema": "workspace:*",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
+    "@linkcode/sdk": "workspace:*",
+    "@linkcode/transport": "workspace:*",
+    "@linkcode/ui": "workspace:*",
     "coss-ui": "workspace:*",
-    "lucide-react": "^1.18.0",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.0",
-    "tailwind-merge": "^3.6.0",
+    "swr": "catalog:",
+    "tayori": "^0.3.6",
     "use-intl": "catalog:"
   },
   "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18",
-    "react-native": ">=0.80"
-  },
-  "peerDependenciesMeta": {
-    "react-dom": {
-      "optional": true
-    },
-    "react-native": {
-      "optional": true
-    }
+    "react": ">=19",
+    "react-dom": ">=19"
   },
   "devDependencies": {
     "@types/react": "catalog:",

@@ -1,7 +1,7 @@
 import type { AgentKind } from '@linkcode/schema';
+import { Spinner } from 'coss-ui/components/spinner';
 import { type ReactElement, useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
-import { Spinner } from '../components/ui';
 import { AssistantMessage } from './AssistantMessage';
 import { ErrorMessage } from './ErrorMessage';
 import { PermissionCard } from './PermissionCard';
@@ -17,6 +17,8 @@ export interface ConversationViewProps {
   cwd?: string;
   /** requestIds the user already answered in this client. */
   answeredPermissions: Set<string>;
+  /** requestIds currently being sent to the daemon. */
+  respondingPermissions: Set<string>;
   /** requestIds still awaiting a decision (from the normalizer); others are treated as resolved. */
   pendingPermissions: Set<string>;
   onRespondPermission: (requestId: string, optionId: string) => void;
@@ -28,6 +30,7 @@ export function ConversationView({
   agentKind,
   cwd,
   answeredPermissions,
+  respondingPermissions,
   pendingPermissions,
   onRespondPermission,
 }: ConversationViewProps): ReactElement {
@@ -98,6 +101,7 @@ export function ConversationView({
                     answeredPermissions.has(item.requestId) ||
                     !pendingPermissions.has(item.requestId)
                   }
+                  responding={respondingPermissions.has(item.requestId)}
                   onRespond={(optionId) => onRespondPermission(item.requestId, optionId)}
                 />
               );

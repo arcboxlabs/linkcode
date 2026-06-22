@@ -1,4 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
+import { Badge } from 'coss-ui/components/badge';
+import { Spinner } from 'coss-ui/components/spinner';
 import {
   ChevronRightIcon,
   CircleCheckIcon,
@@ -9,7 +11,6 @@ import {
 import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { Badge, Spinner } from '../components/ui';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './ContentBlockView';
 import { DiffBlock } from './DiffBlock';
@@ -56,7 +57,7 @@ export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactElement
       >
         {statusIcon}
         <span className="min-w-0 flex-1 truncate text-foreground">{toolCall.title}</span>
-        <Badge variant="muted">{t(kindKey)}</Badge>
+        <Badge variant="secondary">{t(kindKey)}</Badge>
         {hasBody && (
           <ChevronRightIcon
             className={cn(

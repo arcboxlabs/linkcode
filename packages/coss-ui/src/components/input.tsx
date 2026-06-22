@@ -1,8 +1,11 @@
+// biome-ignore-all format: This file is pulled from https://github.com/cosscom/coss/commits/main/packages/ui
+// biome-ignore-all lint: This file is pulled from https://github.com/cosscom/coss/commits/main/packages/ui
+/* eslint-disable -- This file is pulled from https://github.com/cosscom/coss/commits/main/packages/ui */
 "use client";
 
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import type * as React from "react";
-import { cn } from "../../lib/cn";
+import { cn } from "coss-ui/lib/utils";
 
 export type InputProps = Omit<
   InputPrimitive.Props & React.RefAttributes<HTMLInputElement>,
