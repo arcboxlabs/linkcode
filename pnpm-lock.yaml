@@ -592,6 +592,9 @@ importers:
       coss-ui:
         specifier: workspace:*
         version: link:../coss-ui
+      foxts:
+        specifier: ^5.5.1
+        version: 5.5.1
       swr:
         specifier: 'catalog:'
         version: 2.4.1(react@19.2.7)
@@ -3642,6 +3645,9 @@ packages:
         optional: true
       react-dom:
         optional: true
+
+  foxts@5.5.1:
+    resolution: {integrity: sha512-jBm7lzO/D8CK2S/BhVHUbFb4n3NdjkCTRbvHgtqYitFzUYqK2iH6jEQNEI/Erde6WjLnrmZfdxAoIXbkm4pfxA==}
 
   fresh@0.5.2:
     resolution: {integrity: sha512-zJ2mQYM18rEFOudeV4GShTGIQ7RbzA7ozbU9I/XBpm7kqgMywgmylMwXHxZJmkVoYkna9d2pVXVXPdYTP9ej8Q==}
@@ -8728,6 +8734,8 @@ snapshots:
     optionalDependencies:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
+
+  foxts@5.5.1: {}
 
   fresh@0.5.2: {}
 

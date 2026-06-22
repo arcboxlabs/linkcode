@@ -1,12 +1,11 @@
 import { createClient, type LinkCodeSdkClient, setDefaultClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
+import { wait } from 'foxts/wait';
 import { type ReactElement, type ReactNode, useEffect, useState } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
 import { useDebug } from './debug';
 import { TayoriProvider } from './tayori';
-
-const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface WorkbenchRuntimeProviderProps {
   transport: Transport;

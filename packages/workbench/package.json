@@ -20,6 +20,7 @@
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "coss-ui": "workspace:*",
+    "foxts": "^5.5.1",
     "swr": "catalog:",
     "tayori": "^0.3.6",
     "use-intl": "catalog:",
