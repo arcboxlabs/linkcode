@@ -58,16 +58,23 @@ export class Engine {
         break;
       }
       case 'agent.input': {
-        await this.sessions.get(p.sessionId)?.adapter.send(p.input);
+        await this.tryReply(p.clientReqId, async () => {
+          const session = this.sessions.get(p.sessionId);
+          if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
+          await session.adapter.send(p.input);
+          this.sendSuccess(p.clientReqId);
+        });
         break;
       }
       case 'session.stop': {
-        const session = this.sessions.get(p.sessionId);
-        if (session) {
+        await this.tryReply(p.clientReqId, async () => {
+          const session = this.sessions.get(p.sessionId);
+          if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
           session.unsub();
           await session.adapter.stop();
           this.sessions.delete(p.sessionId);
-        }
+          this.sendSuccess(p.clientReqId);
+        });
         break;
       }
       case 'session.list': {
@@ -176,5 +183,9 @@ export class Engine {
   private sendFailure(replyTo: string, err: unknown): void {
     const message = err instanceof Error ? err.message : String(err);
     this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
+  }
+
+  private sendSuccess(replyTo: string): void {
+    this.transport.send(createWireMessage({ kind: 'request.succeeded', replyTo }));
   }
 }

@@ -52,7 +52,7 @@ export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
 export function useSendInput(sessionId: SessionId | null): (input: AgentInput) => void {
   const client = useLinkCodeClient();
   return (input: AgentInput) => {
-    if (sessionId) client.send(sessionId, input);
+    if (sessionId) void client.send(sessionId, input);
   };
 }
 
@@ -125,9 +125,10 @@ export function useSessions(): SessionsApi {
 
   const stop = useCallback(
     (id: SessionId) => {
-      client.stopSession(id);
-      setSessions((prev) => prev.filter((s) => s.sessionId !== id));
-      setActiveId((current) => (current === id ? null : current));
+      void client.stopSession(id).then(() => {
+        setSessions((prev) => prev.filter((s) => s.sessionId !== id));
+        setActiveId((current) => (current === id ? null : current));
+      });
     },
     [client],
   );
