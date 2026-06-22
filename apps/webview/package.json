@@ -11,14 +11,20 @@
     "lint": "biome check ."
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@linkcode/workbench": "workspace:*",
     "coss-ui": "workspace:*",
+    "foxact": "^0.3.6",
+    "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-hook-form": "^7.79.0",
     "react-router": "catalog:",
-    "use-intl": "catalog:"
+    "use-intl": "catalog:",
+    "zod": "catalog:",
+    "zod-validation-error": "^5.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
