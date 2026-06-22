@@ -1,4 +1,4 @@
-import { LinkCodeProvider, useConversation } from '@linkcode/client-core';
+import { useConversation } from '@linkcode/client-core';
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import {
   cancelTurn,
@@ -8,47 +8,23 @@ import {
   startSession,
   stopSession,
 } from '@linkcode/sdk';
-import type { Transport } from '@linkcode/transport';
 import { AppShell, type WorkbenchSystemBridge } from '@linkcode/ui';
-import { Button } from 'coss-ui/components/button';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
-import { DebugProvider } from './debug';
-import { WorkbenchRuntimeProvider } from './runtime';
 import { useData, useMutation } from './tayori';
 
-export interface ConnectedWorkbenchProps {
-  transport: Transport;
-  daemonUrl?: string;
+export interface WorkbenchProps {
   systemBridge?: WorkbenchSystemBridge;
 }
 
-export function ConnectedWorkbench({
-  transport,
-  daemonUrl,
-  systemBridge,
-}: ConnectedWorkbenchProps): ReactElement {
-  return (
-    <DebugProvider>
-      <WorkbenchRuntimeProvider
-        transport={transport}
-        fallback={(status) => <ConnectionState status={status} daemonUrl={daemonUrl} />}
-      >
-        {(client) => (
-          <LinkCodeProvider client={client.raw}>
-            <WorkbenchController systemBridge={systemBridge} />
-          </LinkCodeProvider>
-        )}
-      </WorkbenchRuntimeProvider>
-    </DebugProvider>
-  );
-}
-
-function WorkbenchController({
-  systemBridge,
-}: {
-  systemBridge?: WorkbenchSystemBridge;
-}): ReactElement {
+/**
+ * The workbench feature surface: session inbox + conversation stream + composer.
+ *
+ * It assumes the data plane is already mounted above it (transport client,
+ * `TayoriProvider`, `SWRConfig`, and `LinkCodeProvider`) — see `WorkbenchProviders`.
+ * Wrap it in `WorkbenchProviders` (at a layout, or inline) and mount it as a
+ * routed feature page.
+ */
+export function Workbench({ systemBridge }: WorkbenchProps): ReactElement {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const sessions = useWorkbenchSessions((err) => setErrorMessage(errorToMessage(err)));
   const conversation = useConversation(sessions.activeId);
@@ -213,43 +189,4 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
 
 function errorToMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function ConnectionState({
-  status,
-  daemonUrl,
-}: {
-  status: 'connecting' | 'error';
-  daemonUrl?: string;
-}): ReactElement {
-  const t = useTranslations('workbench.connection');
-  const common = useTranslations('common');
-
-  return (
-    <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-md text-center">
-        {status === 'connecting' ? (
-          <p className="text-muted-foreground text-sm">{t('connecting')}</p>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-destructive-foreground text-sm">
-              {t('error', {
-                url: daemonUrl ?? '127.0.0.1:4317',
-                command: common('daemonCommand'),
-              })}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                window.location.reload();
-              }}
-            >
-              {t('retry')}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }

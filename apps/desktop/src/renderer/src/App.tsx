@@ -1,6 +1,6 @@
 import { SocketIoTransport } from '@linkcode/transport';
 import type { WorkbenchSystemBridge } from '@linkcode/ui';
-import { ConnectedWorkbench } from '@linkcode/workbench';
+import { Workbench, WorkbenchProviders } from '@linkcode/workbench';
 import type { ReactElement } from 'react';
 import { AppI18nProvider } from '@/i18n/AppI18nProvider';
 import { systemBridge } from '@/ipc';
@@ -30,7 +30,9 @@ const bridge: WorkbenchSystemBridge = {
 export function App(): ReactElement {
   return (
     <AppI18nProvider>
-      <ConnectedWorkbench transport={transport} daemonUrl={DAEMON_URL} systemBridge={bridge} />
+      <WorkbenchProviders transport={transport} daemonUrl={DAEMON_URL}>
+        <Workbench systemBridge={bridge} />
+      </WorkbenchProviders>
     </AppI18nProvider>
   );
 }
