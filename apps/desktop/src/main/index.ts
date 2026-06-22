@@ -5,26 +5,57 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1100,
-    height: 720,
+    width: 1180,
+    height: 760,
+    minWidth: 940,
+    minHeight: 600,
+    center: true,
     show: false,
-    titleBarStyle: 'hiddenInset',
+    title: 'Link Code',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     backgroundColor: '#0e0f12',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
     },
   });
 
   win.on('ready-to-show', () => win.show());
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('[link-code/desktop] renderer load failed:', {
+      errorCode,
+      errorDescription,
+      url: validatedURL,
+    });
+  });
 
+  void loadRenderer(win);
+  return win;
+}
+
+async function loadRenderer(win: BrowserWindow): Promise<void> {
   // In electron-vite dev mode the renderer URL is injected; in production we load the bundled html.
   const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) {
-    void win.loadURL(devUrl);
-  } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+  try {
+    if (devUrl) {
+      await win.loadURL(devUrl);
+    } else {
+      await win.loadFile(join(__dirname, '../renderer/index.html'));
+    }
+  } catch (err) {
+    console.error('[link-code/desktop] unable to load renderer:', err);
   }
+}
+
+function createDesktopWindow(): BrowserWindow {
+  const win = createWindow();
+  const ctx = systemContextFor(win);
+
+  // The data plane never goes through here; Eventa is used only for desktop system / UI calls.
+  bindElectronSystemIpc({ ipcMain, window: win, ctx });
   return win;
 }
 
@@ -60,14 +91,10 @@ function systemContextFor(win: BrowserWindow): SystemContext {
 app
   .whenReady()
   .then(() => {
-    const win = createWindow();
-    const ctx = systemContextFor(win);
-
-    // The data plane never goes through here; Eventa is used only for desktop system / UI calls.
-    bindElectronSystemIpc({ ipcMain, window: win, ctx });
+    createDesktopWindow();
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) createDesktopWindow();
     });
   })
   .catch((err) => {

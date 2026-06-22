@@ -10,6 +10,7 @@ export interface SystemBridge {
     toggleMaximize(): Promise<void>;
     close(): Promise<void>;
     isMaximized(): Promise<boolean>;
+    onMaximizedChange?(cb: (value: boolean) => void): () => void;
   };
   fs: {
     pickFile(opts?: PickFileOptions): Promise<string | null>;

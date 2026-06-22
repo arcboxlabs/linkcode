@@ -1,6 +1,8 @@
 import { defineInvokeEventa } from '@moeru/eventa';
 import type { PickFileOptions } from './context';
 
+export const WINDOW_MAXIMIZED_CHANGED_CHANNEL = 'linkcode.system.window.maximizedChanged';
+
 export const systemIpcEvents = {
   windowMinimize: defineInvokeEventa<void>('linkcode.system.window.minimize'),
   windowToggleMaximize: defineInvokeEventa<void>('linkcode.system.window.toggleMaximize'),

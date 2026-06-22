@@ -1,9 +1,9 @@
 import { SocketIoTransport } from '@linkcode/transport';
 import type { WorkbenchSystemBridge } from '@linkcode/ui';
+import { ConnectedWorkbench } from '@linkcode/workbench';
 import type { ReactElement } from 'react';
-import { AppI18nProvider } from './i18n/AppI18nProvider';
-import { systemBridge } from './ipc';
-import { ConnectedWorkbench } from './workbench/ConnectedWorkbench';
+import { AppI18nProvider } from '@/i18n/AppI18nProvider';
+import { systemBridge } from '@/ipc';
 
 /** The desktop renderer connects to the local daemon (apps/daemon) like every other client. */
 const DAEMON_URL = 'http://127.0.0.1:4317';
@@ -15,6 +15,15 @@ const bridge: WorkbenchSystemBridge = {
     minimize: () => void systemBridge.window.minimize(),
     toggleMaximize: () => void systemBridge.window.toggleMaximize(),
     close: () => void systemBridge.window.close(),
+    isMaximized: () => systemBridge.window.isMaximized(),
+    onMaximizedChange: (cb) => systemBridge.window.onMaximizedChange?.(cb) ?? (() => undefined),
+  },
+  fs: {
+    pickFile: (opts) => systemBridge.fs.pickFile(opts),
+  },
+  app: {
+    version: () => systemBridge.app.version(),
+    platform: () => systemBridge.app.platform(),
   },
 };
 

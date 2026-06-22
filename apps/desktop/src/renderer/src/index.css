@@ -1,9 +1,6 @@
 @import "tailwindcss";
 @import "@linkcode/ui/styles.css";
 
-/* The shared frontend lives in a workspace package; scan its source for Tailwind classes. */
-@source "../../../../../packages/ui/src";
-
 @layer base {
   :root {
     color-scheme: dark;

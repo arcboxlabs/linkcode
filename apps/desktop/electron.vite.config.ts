@@ -23,18 +23,29 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react({
+        babel: {
+          plugins: ['babel-plugin-react-compiler'],
+        },
+      }),
+      tailwindcss(),
+    ],
     resolve: {
+      alias: { '@': resolve(__dirname, 'src/renderer/src') },
       dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
     },
     // Workspace packages are exported as TS source and transpiled on the fly, so skip prebundling them.
     optimizeDeps: {
       exclude: [
-        '@linkcode/ui',
         '@linkcode/client-core',
         '@linkcode/i18n',
-        '@linkcode/transport',
+        '@linkcode/sdk',
         '@linkcode/schema',
+        '@linkcode/transport',
+        '@linkcode/ui',
+        '@linkcode/workbench',
+        'coss-ui',
       ],
     },
     build: {

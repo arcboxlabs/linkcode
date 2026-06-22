@@ -1,8 +1,11 @@
 import type { TokenUsage } from '@linkcode/schema';
-import { MinusIcon, SquareIcon, XIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import { Minimize2Icon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
+import { type ReactElement, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { cn } from '../lib/cn';
 import type { WorkbenchSystemBridge } from './types';
+
+type WindowControlsMode = 'none' | 'native-macos' | 'custom';
 
 export interface TopBarProps {
   title: string;
@@ -16,9 +19,71 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
   const t = useTranslations('workbench.usage');
   const win = systemBridge?.window;
   const hasUsage = usage != null && (usage.inputTokens != null || usage.outputTokens != null);
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [windowControlsMode, setWindowControlsMode] = useState<WindowControlsMode>('none');
+
+  useEffect(() => {
+    let alive = true;
+    if (!win) {
+      setWindowControlsMode('none');
+      return () => {
+        alive = false;
+      };
+    }
+    const platform = systemBridge?.app?.platform;
+    if (!platform) {
+      setWindowControlsMode('custom');
+      return () => {
+        alive = false;
+      };
+    }
+    platform()
+      .then((value) => {
+        if (alive) setWindowControlsMode(value === 'darwin' ? 'native-macos' : 'custom');
+      })
+      .catch(() => {
+        if (alive) setWindowControlsMode('custom');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [win, systemBridge?.app]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!win || windowControlsMode !== 'custom') {
+      setIsMaximized(false);
+      return () => {
+        alive = false;
+      };
+    }
+    void win?.isMaximized?.().then((value) => {
+      if (alive) setIsMaximized(value);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [win, windowControlsMode]);
+
+  useEffect(() => {
+    if (!win || windowControlsMode !== 'custom') return;
+    return win.onMaximizedChange?.((value) => setIsMaximized(value));
+  }, [win, windowControlsMode]);
+
+  async function handleToggleMaximize(): Promise<void> {
+    await win?.toggleMaximize();
+    const next = await win?.isMaximized?.();
+    if (next !== undefined) setIsMaximized(next);
+    else setIsMaximized((current) => !current);
+  }
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 [-webkit-app-region:drag]">
+    <header
+      className={cn(
+        'flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 [-webkit-app-region:drag]',
+        windowControlsMode === 'native-macos' && 'pl-20',
+      )}
+    >
       <div className="min-w-0">
         <div className="truncate font-medium text-[13px] text-foreground">{title}</div>
         {subtitle && <div className="truncate text-[11px] text-muted-foreground">{subtitle}</div>}
@@ -29,7 +94,7 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
             {t('tokens', { input: usage.inputTokens ?? 0, output: usage.outputTokens ?? 0 })}
           </span>
         )}
-        {win && (
+        {win && windowControlsMode === 'custom' && (
           <div className="flex items-center gap-0.5">
             <button
               type="button"
@@ -41,11 +106,16 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
             </button>
             <button
               type="button"
-              aria-label="Maximize"
-              onClick={win.toggleMaximize}
+              aria-label={isMaximized ? 'Restore' : 'Maximize'}
+              aria-pressed={isMaximized}
+              onClick={() => void handleToggleMaximize()}
               className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              <SquareIcon className="size-3" />
+              {isMaximized ? (
+                <Minimize2Icon className="size-3.5" />
+              ) : (
+                <SquareIcon className="size-3" />
+              )}
             </button>
             <button
               type="button"

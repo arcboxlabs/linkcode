@@ -11,12 +11,11 @@
     "lint": "biome check ."
   },
   "dependencies": {
-    "@linkcode/client-core": "workspace:*",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/ipc": "workspace:*",
-    "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
+    "@linkcode/workbench": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "use-intl": "catalog:"
@@ -27,6 +26,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "babel-plugin-react-compiler": "catalog:",
     "electron": "catalog:",
     "electron-vite": "catalog:",
     "tailwindcss": "catalog:",
