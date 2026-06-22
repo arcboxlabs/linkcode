@@ -1,78 +1,114 @@
 import { Checkbox } from 'coss-ui/components/checkbox';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarRail,
+  SidebarSeparator,
+} from 'coss-ui/components/sidebar';
 import { cn } from 'coss-ui/lib/utils';
-import type { ReactElement, ReactNode } from 'react';
+import { AppSidebarProvider } from '@/components/app-sidebar-provider';
+
+interface FilterSidebarLayoutProps {
+  children: React.ReactNode;
+  sidebar: React.ReactNode;
+  sidebarHeader: React.ReactNode;
+  sidebarClassName?: string;
+  sidebarHeaderClassName?: string;
+  sidebarContentClassName?: string;
+  mainClassName?: string;
+}
 
 export function FilterSidebarLayout({
   children,
   sidebar,
   sidebarHeader,
-  className,
-}: {
-  children: ReactNode;
-  sidebar: ReactNode;
-  sidebarHeader: ReactNode;
-  className?: string;
-}): ReactElement {
+  sidebarClassName,
+  sidebarHeaderClassName,
+  sidebarContentClassName,
+  mainClassName,
+}: FilterSidebarLayoutProps) {
   return (
-    <div className={cn('flex min-h-0 flex-1 overflow-hidden', className)}>
-      <aside className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-        <div className="border-b border-sidebar-border px-4 py-3">{sidebarHeader}</div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">{sidebar}</div>
-      </aside>
-      <main className="min-w-0 flex-1">{children}</main>
-    </div>
+    <AppSidebarProvider
+      storageKey="filter-sidebar"
+      className="min-h-0 flex-1 overflow-hidden"
+      style={{ '--sidebar': 'var(--background)' } as React.CSSProperties}
+      data-side="left"
+    >
+      <div className="relative">
+        <Sidebar
+          collapsible="none"
+          className={cn(
+            'border-r border-sidebar-border overflow-hidden transition-[width,border] duration-200 ease-linear',
+            'group-data-[state=collapsed]/sidebar-wrapper:w-0 group-data-[state=collapsed]/sidebar-wrapper:border-r-0',
+            sidebarClassName,
+          )}
+        >
+          <SidebarHeader className={cn('px-4 py-3 border-b border-sidebar-border', sidebarHeaderClassName)}>
+            {sidebarHeader}
+          </SidebarHeader>
+          <SidebarContent
+            className={cn('[&>[data-slot=sidebar-separator]:first-child]:hidden', sidebarContentClassName)}
+          >
+            {sidebar}
+          </SidebarContent>
+        </Sidebar>
+        <SidebarRail className="-right-4" />
+      </div>
+      <SidebarInset className={cn('min-w-0', mainClassName)}>{children}</SidebarInset>
+    </AppSidebarProvider>
   );
 }
 
-export function FilterSidebarGroup({
-  label,
-  children,
-}: {
+interface FilterSidebarGroupProps {
   label: string;
-  children: ReactNode;
-}): ReactElement {
+  children: React.ReactNode;
+}
+
+export function FilterSidebarGroup({ label, children }: FilterSidebarGroupProps) {
   return (
-    <section className="space-y-2 border-sidebar-border border-t px-2 py-3 first:border-t-0">
-      <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{label}</h3>
-      {children}
-    </section>
+    <>
+      <SidebarSeparator className="w-auto!" />
+      <SidebarGroup>
+        <SidebarGroupLabel className="uppercase tracking-wider text-muted-foreground">{label}</SidebarGroupLabel>
+        <SidebarGroupContent>{children}</SidebarGroupContent>
+      </SidebarGroup>
+    </>
   );
 }
 
 export interface FilterCheckboxOption<T extends string> {
   value: T;
   label: string;
-  dot?: string;
+  dot: string;
   count?: number;
 }
 
-export function FilterCheckboxGroup<T extends string>({
-  options,
-  selected,
-  onChange,
-}: {
+interface FilterCheckboxGroupProps<T extends string> {
   options: ReadonlyArray<FilterCheckboxOption<T>>;
   selected: T[];
   onChange: (value: T, checked: boolean) => void;
-}): ReactElement {
+}
+
+export function FilterCheckboxGroup<T extends string>({ options, selected, onChange }: FilterCheckboxGroupProps<T>) {
   return (
     <div className="flex flex-col gap-0.5">
-      {options.map((option) => (
+      {options.map((opt) => (
         <label
-          className="flex cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-sidebar-accent"
-          htmlFor={`filter-${option.value}`}
-          key={option.value}
+          key={opt.value}
+          className="flex items-center gap-2 cursor-pointer select-none rounded-lg px-2 py-1 hover:bg-sidebar-accent transition-colors"
         >
           <Checkbox
-            checked={selected.includes(option.value)}
-            id={`filter-${option.value}`}
-            onCheckedChange={(checked) => onChange(option.value, checked === true)}
+            checked={selected.includes(opt.value)}
+            onCheckedChange={(checked) => onChange(opt.value, checked)}
           />
-          {option.dot && <span className={cn('size-2 shrink-0 rounded-full', option.dot)} />}
-          <span className="flex-1 text-sm">{option.label}</span>
-          {option.count != null && (
-            <span className="text-muted-foreground text-xs tabular-nums">{option.count}</span>
-          )}
+          <span className={`size-2 rounded-full shrink-0 ${opt.dot}`} />
+          <span className="text-sm flex-1">{opt.label}</span>
+          {opt.count != null && <span className="text-xs text-muted-foreground tabular-nums">{opt.count}</span>}
         </label>
       ))}
     </div>

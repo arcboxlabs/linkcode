@@ -1,56 +1,49 @@
-import { createContext, type ReactElement, type ReactNode, useContext, useMemo } from 'react';
+import {
+  Breadcrumb,
+  BreadcrumbItem as CossBreadcrumbItem,
+  BreadcrumbLink as CossBreadcrumbLink,
+  BreadcrumbList as CossBreadcrumbList,
+  BreadcrumbPage as CossBreadcrumbPage,
+  BreadcrumbSeparator as CossBreadcrumbSeparator,
+} from 'coss-ui/components/breadcrumb';
+import { createBreadcrumbs } from 'foxact/breadcrumbs';
+import { Fragment } from 'react';
+import { Link } from 'react-router';
 
-export interface BreadcrumbItem {
-  title: string;
-  href?: string;
-}
+const [BreadcrumbProvider, BreadcrumbPortalTarget, BreadcrumbSegment, FoxactBreadcrumbCurrent, useBreadcrumbs] =
+  createBreadcrumbs('linkcode-webview');
 
-const BreadcrumbContext = createContext<BreadcrumbItem[]>([]);
+export { BreadcrumbPortalTarget, BreadcrumbProvider, BreadcrumbSegment };
 
-export function BreadcrumbProvider({
-  children,
-  items = [],
-}: {
-  children: ReactNode;
-  items?: BreadcrumbItem[];
-}): ReactElement {
-  return <BreadcrumbContext.Provider value={items}>{children}</BreadcrumbContext.Provider>;
-}
-
-export function BreadcrumbSegment({
-  children,
-  title,
-  href,
-}: {
-  children: ReactNode;
-  title: string;
-  href?: string;
-}): ReactElement {
-  const parent = useContext(BreadcrumbContext);
-  const items = useMemo(() => [...parent, { title, href }], [href, parent, title]);
-  return <BreadcrumbProvider items={items}>{children}</BreadcrumbProvider>;
-}
-
-export function BreadcrumbCurrent({ title }: { title: string }): ReactElement {
-  const parent = useContext(BreadcrumbContext);
-  const items = [...parent, { title }];
-
+function BreadcrumbUI() {
+  const items = useBreadcrumbs();
   return (
-    <nav aria-label="Breadcrumb" className="text-muted-foreground text-sm">
-      <ol className="flex items-center gap-1.5">
-        {items.map((item, index) => (
-          <li className="flex items-center gap-1.5" key={`${item.title}:${item.href ?? index}`}>
-            {index > 0 && <span aria-hidden="true">/</span>}
-            {item.href ? (
-              <a className="hover:text-foreground" href={item.href}>
-                {item.title}
-              </a>
-            ) : (
-              <span className="text-foreground">{item.title}</span>
-            )}
-          </li>
-        ))}
-      </ol>
-    </nav>
+    <Breadcrumb>
+      <CossBreadcrumbList>
+        {items.map((item, i) => {
+          const isLast = i === items.length - 1;
+          return (
+            <Fragment key={`${item.title}:${item.href ?? ''}`}>
+              {i > 0 && <CossBreadcrumbSeparator className="hidden md:block" />}
+              <CossBreadcrumbItem className={isLast ? undefined : 'hidden md:block'}>
+                {item.href ? (
+                  <CossBreadcrumbLink render={<Link to={item.href} />}>{item.title}</CossBreadcrumbLink>
+                ) : (
+                  <CossBreadcrumbPage>{item.title}</CossBreadcrumbPage>
+                )}
+              </CossBreadcrumbItem>
+            </Fragment>
+          );
+        })}
+      </CossBreadcrumbList>
+    </Breadcrumb>
+  );
+}
+
+export function BreadcrumbCurrent({ title, meta }: { title: string; meta?: unknown }) {
+  return (
+    <FoxactBreadcrumbCurrent title={title} meta={meta}>
+      <BreadcrumbUI />
+    </FoxactBreadcrumbCurrent>
   );
 }
