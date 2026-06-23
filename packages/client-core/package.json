@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@linkcode/schema": "workspace:*",
-    "@linkcode/transport": "workspace:*"
+    "@linkcode/transport": "workspace:*",
+    "foxact": "^0.3.6"
   },
   "peerDependencies": {
     "react": ">=18"

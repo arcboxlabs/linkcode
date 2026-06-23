@@ -5,31 +5,31 @@ import type {
   SessionInfo,
   StartOptions,
 } from '@linkcode/schema';
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { nullthrow } from 'foxact/nullthrow';
+import type * as React from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { LinkCodeClient } from './client';
 import { buildConversation, type Conversation } from './conversation';
 
 const ClientContext = createContext<LinkCodeClient | null>(null);
 
-export function LinkCodeProvider(props: {
-  client: LinkCodeClient;
-  children: ReactNode;
-}): ReactNode {
+function reportClientActionError(action: string, error: unknown): void {
+  console.error(`[LinkCode] ${action} failed`, error);
+}
+
+export function LinkCodeProvider(
+  props: React.PropsWithChildren<{
+    client: LinkCodeClient;
+  }>,
+): React.ReactNode {
   return <ClientContext.Provider value={props.client}>{props.children}</ClientContext.Provider>;
 }
 
 export function useLinkCodeClient(): LinkCodeClient {
-  const client = useContext(ClientContext);
-  if (!client) throw new Error('useLinkCodeClient 必须在 <LinkCodeProvider> 内使用');
-  return client;
+  return nullthrow(
+    useContext(ClientContext),
+    'useLinkCodeClient must be used within LinkCodeProvider',
+  );
 }
 
 /** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
@@ -52,7 +52,11 @@ export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
 export function useSendInput(sessionId: SessionId | null): (input: AgentInput) => void {
   const client = useLinkCodeClient();
   return (input: AgentInput) => {
-    if (sessionId) void client.send(sessionId, input);
+    if (sessionId) {
+      void client
+        .send(sessionId, input)
+        .catch((error: unknown) => reportClientActionError('send', error));
+    }
   };
 }
 
@@ -125,10 +129,13 @@ export function useSessions(): SessionsApi {
 
   const stop = useCallback(
     (id: SessionId) => {
-      void client.stopSession(id).then(() => {
-        setSessions((prev) => prev.filter((s) => s.sessionId !== id));
-        setActiveId((current) => (current === id ? null : current));
-      });
+      void client
+        .stopSession(id)
+        .then(() => {
+          setSessions((prev) => prev.filter((s) => s.sessionId !== id));
+          setActiveId((current) => (current === id ? null : current));
+        })
+        .catch((error: unknown) => reportClientActionError('stopSession', error));
     },
     [client],
   );

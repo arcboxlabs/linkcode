@@ -383,6 +383,9 @@ importers:
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../transport
+      foxact:
+        specifier: ^0.3.6
+        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
