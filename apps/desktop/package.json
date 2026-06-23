@@ -30,6 +30,7 @@
     "electron": "catalog:",
     "electron-vite": "catalog:",
     "tailwindcss": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "catalog:"
   }
 }

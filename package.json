@@ -22,6 +22,7 @@
     "eslint-formatter-sukka": "^8.12.2",
     "turbo": "^2.9.18",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "packageManager": "pnpm@11.7.0",
