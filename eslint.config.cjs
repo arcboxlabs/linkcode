@@ -58,7 +58,21 @@ module.exports = require('eslint-config-sukka').sukka(
   {
     files: ['packages/**/*.{ts,tsx}', 'apps/webview/src/components/data-table/index.tsx'],
     rules: {
+      '@eslint-react/no-context-provider': 'off',
+      '@eslint-react/no-use-context': 'off',
       'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    files: [
+      'apps/daemon/src/index.ts',
+      'apps/desktop/src/main/index.ts',
+      'apps/server/src/index.ts',
+      'packages/client-core/src/react.tsx',
+      'packages/workbench/src/runtime.tsx',
+    ],
+    rules: {
+      'no-console': 'off',
     },
   },
   {

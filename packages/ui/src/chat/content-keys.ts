@@ -17,14 +17,34 @@ export function keyedItems<T>(
 }
 
 export function stableContentKey(value: unknown): string {
-  const json = JSON.stringify(value);
-  return hashString(json === undefined ? typeof value : json);
+  if (value === undefined) return hashString('undefined');
+  if (typeof value === 'function') return hashString(`function:${value.name}`);
+  if (typeof value === 'symbol') return hashString(`symbol:${String(value)}`);
+  try {
+    return hashString(JSON.stringify(value));
+  } catch {
+    return hashString(fallbackContentKey(value));
+  }
+}
+
+function fallbackContentKey(value: unknown): string {
+  switch (typeof value) {
+    case 'bigint':
+    case 'boolean':
+    case 'number':
+    case 'string':
+      return `${typeof value}:${value.toString()}`;
+    case 'object':
+      return Object.prototype.toString.call(value);
+    default:
+      return typeof value;
+  }
 }
 
 function hashString(value: string): string {
   let hash = 2_166_136_261;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.codePointAt(i) ?? 0;
+  for (const char of value) {
+    hash ^= char.codePointAt(0)!;
     hash = Math.imul(hash, 16_777_619);
   }
   return (hash >>> 0).toString(36);

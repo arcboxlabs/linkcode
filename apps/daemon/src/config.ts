@@ -81,7 +81,7 @@ function applyEnvOverrides(listeners: DaemonListenerConfig[]): DaemonListenerCon
 
 function parsePort(value: unknown, fallback: number): number {
   const port = Number(value);
-  return Number.isInteger(port) && port > 0 && port < 65536 ? port : fallback;
+  return Number.isSafeInteger(port) && port > 0 && port < 65536 ? port : fallback;
 }
 
 function parseString(value: unknown, fallback: string): string {

@@ -21,6 +21,7 @@ import type { RawData, WebSocket } from 'ws';
 type Role = 'host' | 'client';
 
 const PORT = Number(process.env.PORT ?? 8787);
+const textDecoder = new TextDecoder();
 
 const hosts = new Set<WebSocket>();
 const clients = new Set<WebSocket>();
@@ -61,8 +62,5 @@ wss.on('connection', (socket, req) => {
 console.log(`[link-code/server] tunnel listening on ws://localhost:${PORT}`);
 
 function rawDataToString(data: RawData): string {
-  if (typeof data === 'string') return data;
-  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
-  if (Buffer.isBuffer(data)) return data.toString('utf8');
-  return Buffer.from(data).toString('utf8');
+  return textDecoder.decode(Array.isArray(data) ? Buffer.concat(data) : data);
 }

@@ -21,6 +21,8 @@ export interface WsServer extends TransportServer {
   readonly port: number;
 }
 
+const textDecoder = new TextDecoder();
+
 class WsServerConnection implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
@@ -75,10 +77,7 @@ class WsServerConnection implements Transport {
 }
 
 function rawDataToString(data: RawData): string {
-  if (typeof data === 'string') return data;
-  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
-  if (Buffer.isBuffer(data)) return data.toString('utf8');
-  return Buffer.from(data).toString('utf8');
+  return textDecoder.decode(Array.isArray(data) ? Buffer.concat(data) : data);
 }
 
 /** Start a WebSocket server; each accepted socket is surfaced as a `ServerConnection`. */

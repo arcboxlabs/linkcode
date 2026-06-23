@@ -21,10 +21,13 @@ import type {
   StartOptions,
   StopReason,
   ToolCall,
-  ToolCallStatus,
-  ToolKind,
 } from '@linkcode/schema';
-import { ContentBlockSchema, ToolCallUpdateSchema } from '@linkcode/schema';
+import {
+  ContentBlockSchema,
+  ToolCallStatusSchema,
+  ToolKindSchema,
+  ToolCallUpdateSchema,
+} from '@linkcode/schema';
 import { BaseAgentAdapter } from '../base';
 
 /** Describes how to launch an ACP-speaking agent as a subprocess. */
@@ -180,12 +183,15 @@ function contentChunk(
 
 function toToolCall(u: Record<string, unknown>): ToolCall {
   const toolCallId = stringFromUnknown(u.toolCallId);
+  const kind = ToolKindSchema.safeParse(u.kind);
+  const status = ToolCallStatusSchema.safeParse(u.status);
+  const update = ToolCallUpdateSchema.safeParse({ toolCallId, content: u.content });
   return {
     toolCallId,
     title: typeof u.title === 'string' ? u.title : toolCallId,
-    kind: (u.kind as ToolKind) ?? 'other',
-    status: (u.status as ToolCallStatus) ?? 'pending',
-    content: (u.content as ToolCall['content']) ?? [],
+    kind: kind.success ? kind.data : 'other',
+    status: status.success ? status.data : 'pending',
+    content: update.success ? (update.data.content ?? []) : [],
     rawInput: u.rawInput,
     rawOutput: u.rawOutput,
   };

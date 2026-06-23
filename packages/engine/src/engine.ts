@@ -131,10 +131,12 @@ export class Engine {
   }
 
   async stop(): Promise<void> {
-    for (const session of this.sessions.values()) {
-      session.unsub();
-      await session.adapter.stop();
-    }
+    await Promise.all(
+      Array.from(this.sessions.values(), async (session) => {
+        session.unsub();
+        await session.adapter.stop();
+      }),
+    );
     this.sessions.clear();
     this.transport.close();
   }

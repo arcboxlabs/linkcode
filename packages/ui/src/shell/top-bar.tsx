@@ -9,6 +9,8 @@ import { cn } from '../lib/cn';
 import type { WorkbenchSystemBridge } from './types';
 
 type WindowControlsMode = 'none' | 'native-macos' | 'custom';
+type WindowBridge = NonNullable<WorkbenchSystemBridge['window']>;
+type PlatformReader = NonNullable<WorkbenchSystemBridge['app']>['platform'];
 
 export interface TopBarProps {
   title: string;
@@ -21,58 +23,66 @@ export interface TopBarProps {
 export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): ReactNode {
   const t = useTranslations('workbench.usage');
   const win = systemBridge?.window;
+  const platform = systemBridge?.app?.platform;
   const hasUsage = usage != null && (usage.inputTokens != null || usage.outputTokens != null);
-  const [isMaximized, setIsMaximized] = useState(false);
-  const [windowControlsMode, setWindowControlsMode] = useState<WindowControlsMode>('none');
+  const [platformMode, setPlatformMode] = useState<{
+    platform: PlatformReader;
+    mode: WindowControlsMode;
+  } | null>(null);
+  const [maximizedSnapshot, setMaximizedSnapshot] = useState<{
+    window: WindowBridge;
+    value: boolean;
+  } | null>(null);
+  const windowControlsMode: WindowControlsMode = win
+    ? platform
+      ? platformMode?.platform === platform
+        ? platformMode.mode
+        : 'custom'
+      : 'custom'
+    : 'none';
+  const isMaximized =
+    win && windowControlsMode === 'custom' && maximizedSnapshot?.window === win
+      ? maximizedSnapshot.value
+      : false;
 
   useEffect(
     (signal) => {
-      if (!win) {
-        setWindowControlsMode('none');
-        return;
-      }
-      const platform = systemBridge?.app?.platform;
-      if (!platform) {
-        setWindowControlsMode('custom');
-        return;
-      }
+      if (!win || !platform) return;
       platform()
         .then((value) => {
           if (!signal.aborted) {
-            setWindowControlsMode(value === 'darwin' ? 'native-macos' : 'custom');
+            setPlatformMode({ platform, mode: value === 'darwin' ? 'native-macos' : 'custom' });
           }
         })
         .catch(() => {
-          if (!signal.aborted) setWindowControlsMode('custom');
+          if (!signal.aborted) setPlatformMode({ platform, mode: 'custom' });
         });
     },
-    [win, systemBridge?.app?.platform],
+    [win, platform],
   );
 
   useEffect(
     (signal) => {
-      if (!win || windowControlsMode !== 'custom') {
-        setIsMaximized(false);
-        return;
-      }
+      if (!win || windowControlsMode !== 'custom') return;
 
       let receivedMaximizedEvent = false;
       const unsubscribe = win.onMaximizedChange?.((value) => {
         receivedMaximizedEvent = true;
-        setIsMaximized(value);
+        setMaximizedSnapshot({ window: win, value });
       });
 
       const readIsMaximized = win.isMaximized;
-      if (!readIsMaximized) {
-        setIsMaximized(false);
-        return unsubscribe;
-      }
+      if (!readIsMaximized) return unsubscribe;
       void readIsMaximized()
         .then((value) => {
-          if (!signal.aborted && !receivedMaximizedEvent) setIsMaximized(value);
+          if (!signal.aborted && !receivedMaximizedEvent) {
+            setMaximizedSnapshot({ window: win, value });
+          }
         })
         .catch(() => {
-          if (!signal.aborted && !receivedMaximizedEvent) setIsMaximized(false);
+          if (!signal.aborted && !receivedMaximizedEvent) {
+            setMaximizedSnapshot({ window: win, value: false });
+          }
         });
 
       return unsubscribe;
@@ -83,11 +93,8 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
   async function handleToggleMaximize(): Promise<void> {
     await win?.toggleMaximize();
     const next = await win?.isMaximized?.();
-    if (next === undefined) {
-      setIsMaximized((current) => !current);
-    } else {
-      setIsMaximized(next);
-    }
+    if (!win) return;
+    setMaximizedSnapshot({ window: win, value: next === undefined ? !isMaximized : next });
   }
 
   return (

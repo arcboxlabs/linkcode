@@ -70,7 +70,7 @@ type MessageItemKind = (typeof MESSAGE_KINDS)[keyof typeof MESSAGE_KINDS];
 
 /** Append a content block to a message item, concatenating consecutive text blocks for smooth streaming. */
 function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
-  const last = blocks[blocks.length - 1];
+  const last = blocks.at(-1);
   if (last?.type === 'text' && block.type === 'text') {
     blocks[blocks.length - 1] = {
       ...last,
@@ -112,7 +112,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   let stopReason: StopReason | null = null;
 
   const openMessage = (target: MessageItemKind, block: ContentBlock): void => {
-    const last = items[items.length - 1];
+    const last = items.at(-1);
     if (last?.kind === target) {
       appendBlock(last.blocks, block);
       return;

@@ -100,7 +100,7 @@ describe('buildConversation', () => {
     ]);
     const plans = c.items.filter((i) => i.kind === 'plan');
     expect(plans).toHaveLength(1);
-    if (plans[0].kind === 'plan') expect(plans[0].plan.entries).toHaveLength(2);
+    expect(plans[0].plan.entries).toHaveLength(2);
   });
 
   it('tracks a permission as pending until its tool call settles', () => {

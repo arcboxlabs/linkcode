@@ -25,7 +25,7 @@ export class WsTransport implements Transport {
   constructor(private readonly opts: WsTransportOptions) {}
 
   connect(): Promise<void> {
-    const Impl = this.opts.WebSocketImpl ?? WebSocket;
+    const Impl = this.opts.WebSocketImpl ?? getGlobalWebSocket();
     if (!Impl) throw new Error('WsTransport: no WebSocket implementation available');
 
     const ws = new Impl(this.opts.url);
@@ -84,4 +84,8 @@ export class WsTransport implements Transport {
     this.inbound.clear();
     this.closed.emit();
   }
+}
+
+function getGlobalWebSocket(): typeof WebSocket | undefined {
+  return Reflect.get(globalThis, 'WebSocket');
 }

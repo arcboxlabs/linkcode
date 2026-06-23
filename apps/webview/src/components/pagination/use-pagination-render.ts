@@ -15,22 +15,24 @@ function buildPaginationRange(
   const current = pageIndex + 1;
   const total = pageCount;
 
-  // The layout has at most one ellipsis on each side of the current-page window,
-  // so leading/trailing make semantic, stable keys (no array index needed).
   const item = (page: number): PaginationRangeItem => ({
     type: 'item',
     key: `${id}-${page}`,
     pageIndex: page - 1,
   });
+
+  if (total <= 7) {
+    return createFixedArray(total).map((_, i) => item(i + 1));
+  }
+
+  // The layout has at most one ellipsis on each side of the current-page window,
+  // so leading/trailing make semantic, stable keys (no array index needed).
   const leadingEllipsis: PaginationRangeItem = { type: 'ellipsis', key: `${id}-ellipsis-leading` };
   const trailingEllipsis: PaginationRangeItem = {
     type: 'ellipsis',
     key: `${id}-ellipsis-trailing`,
   };
 
-  if (total <= 7) {
-    return createFixedArray(total).map((_, i) => item(i + 1));
-  }
   if (current <= 4) {
     return [item(1), item(2), item(3), item(4), item(5), trailingEllipsis, item(total)];
   }

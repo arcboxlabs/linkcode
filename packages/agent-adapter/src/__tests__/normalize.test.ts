@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
+import type { SessionUpdate } from '@agentclientprotocol/sdk';
 import { describe, expect, it } from 'vitest';
 import { acpUpdateToEvent, mapAcpStop } from '../acp/acp-adapter';
 import { mapClaudeStop } from '../native/claude-code';
@@ -113,7 +114,6 @@ describe('CodexAdapter history', () => {
         messageCount: 2,
       });
 
-      if (!session) throw new Error('expected fixture session');
       const read = await adapter.readHistory({ historyId: session.historyId, limit: 10 });
       expect(read.events.map((event) => event.event.type)).toEqual([
         'user-message-chunk',
@@ -152,26 +152,31 @@ describe('stop reason mappers', () => {
 describe('acpUpdateToEvent', () => {
   it('maps an agent message chunk', () => {
     expect(
-      acpUpdateToEvent({
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text: 'hi' },
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture shaped like an ACP SessionUpdate
-      } as any),
+      acpUpdateToEvent(
+        sessionUpdateFixture({
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'hi' },
+        }),
+      ),
     ).toEqual({ type: 'agent-message-chunk', content: { type: 'text', text: 'hi' } });
   });
   it('maps a tool call with fallbacks', () => {
-    const event = acpUpdateToEvent({
-      sessionUpdate: 'tool_call',
-      toolCallId: 't1',
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture shaped like an ACP SessionUpdate
-    } as any);
+    const event = acpUpdateToEvent(
+      sessionUpdateFixture({
+        sessionUpdate: 'tool_call',
+        toolCallId: 't1',
+      }),
+    );
     expect(event).toEqual({
       type: 'tool-call',
       toolCall: { toolCallId: 't1', title: 't1', kind: 'other', status: 'pending', content: [] },
     });
   });
   it('returns null for unknown updates', () => {
-    // biome-ignore lint/suspicious/noExplicitAny: test fixture shaped like an ACP SessionUpdate
-    expect(acpUpdateToEvent({ sessionUpdate: 'something_new' } as any)).toBeNull();
+    expect(acpUpdateToEvent(sessionUpdateFixture({ sessionUpdate: 'something_new' }))).toBeNull();
   });
 });
+
+function sessionUpdateFixture(value: object): SessionUpdate {
+  return value as SessionUpdate;
+}

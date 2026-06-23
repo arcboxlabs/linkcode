@@ -152,7 +152,7 @@ export function Composer({
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     // Don't treat IME-composition Enter (CJK candidate confirm) as submit/select.
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.nativeEvent.isComposing || e.key === 'Process') return;
     // An open menu (even with no matches) owns Enter/Tab/Escape/arrows.
     if (menu) {
       if (e.key === 'ArrowDown' && entries.length > 0) {
@@ -167,8 +167,7 @@ export function Composer({
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        const entry = entries[Math.min(activeIndex, entries.length - 1)];
-        if (entry) selectEntry(entry);
+        if (entries.length > 0) selectEntry(entries[Math.min(activeIndex, entries.length - 1)]);
         return;
       }
       if (e.key === 'Escape') {
@@ -189,7 +188,6 @@ export function Composer({
         <div className="relative rounded-2xl border border-input bg-card shadow-xs focus-within:border-ring">
           {menu && (
             <AutocompleteMenu
-              mode={menu.mode}
               entries={entries}
               activeIndex={activeIndex}
               emptyLabel={menu.mode === 'slash' ? t('noCommands') : t('noMentions')}
@@ -206,10 +204,10 @@ export function Composer({
             onChange={(e) => {
               const nextValue = e.target.value;
               setValue(nextValue);
-              updateCaret(e.target.selectionStart ?? nextValue.length, nextValue);
+              updateCaret(e.target.selectionStart, nextValue);
             }}
-            onClick={(e) => updateCaret(e.currentTarget.selectionStart ?? 0, e.currentTarget.value)}
-            onKeyUp={(e) => updateCaret(e.currentTarget.selectionStart ?? 0, e.currentTarget.value)}
+            onClick={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
+            onKeyUp={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
             onKeyDown={onKeyDown}
             className="max-h-48 px-3.5 pt-3 pb-1.5"
           />
@@ -247,7 +245,6 @@ export function Composer({
 }
 
 interface AutocompleteMenuProps {
-  mode: 'slash' | 'mention';
   entries: MenuEntry[];
   activeIndex: number;
   emptyLabel: string;

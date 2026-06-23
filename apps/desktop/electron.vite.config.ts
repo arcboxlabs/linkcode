@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
+import { defineConfig } from 'electron-vite';
 
 // Workspace packages are exported as TS source, so they must be bundled into main/preload (they can't be runtime externals).
 const bundleWorkspace = {
@@ -16,10 +16,14 @@ const bundleWorkspace = {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(bundleWorkspace)],
+    build: {
+      externalizeDeps: bundleWorkspace,
+    },
   },
   preload: {
-    plugins: [externalizeDepsPlugin(bundleWorkspace)],
+    build: {
+      externalizeDeps: bundleWorkspace,
+    },
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),

@@ -19,12 +19,13 @@ function reportClientActionError(action: string, error: unknown): void {
   console.error(`[LinkCode] ${action} failed`, error);
 }
 
-export function LinkCodeProvider(
-  props: React.PropsWithChildren<{
-    client: LinkCodeClient;
-  }>,
-): React.ReactNode {
-  return <ClientContext.Provider value={props.client}>{props.children}</ClientContext.Provider>;
+export function LinkCodeProvider({
+  client,
+  children,
+}: React.PropsWithChildren<{
+  client: LinkCodeClient;
+}>): React.ReactNode {
+  return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
 }
 
 export function useLinkCodeClient(): LinkCodeClient {

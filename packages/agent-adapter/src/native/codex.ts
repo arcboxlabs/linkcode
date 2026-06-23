@@ -377,11 +377,13 @@ async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
     return [];
   }
   const files: string[] = [];
+  const pendingDirs: Array<Promise<string[]>> = [];
   for (const entry of entries) {
     const path = join(root, entry.name);
-    if (entry.isDirectory()) files.push(...(await collectJsonlFiles(path, depth - 1)));
+    if (entry.isDirectory()) pendingDirs.push(collectJsonlFiles(path, depth - 1));
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path);
   }
+  for (const nestedFiles of await Promise.all(pendingDirs)) files.push(...nestedFiles);
   return files;
 }
 

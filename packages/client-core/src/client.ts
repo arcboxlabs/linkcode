@@ -68,7 +68,7 @@ export class LinkCodeClient {
     this.closed = false;
     await this.transport.connect();
     // The caller's effect may have been torn down mid-await (React StrictMode / remount); bail if so.
-    if (this.closed) return;
+    if (this.isClosed()) return;
     this.unsub?.();
     this.unsub = this.transport.onMessage((msg) => this.route(msg));
     this.offClose?.();
@@ -236,7 +236,7 @@ export class LinkCodeClient {
     // Replay any buffered events so a late subscriber sees the full timeline, not a blank pane.
     const buf = this.events.get(sessionId);
     if (buf) for (const event of buf) cb(event);
-    return () => set?.delete(cb);
+    return () => set.delete(cb);
   }
 
   dispose(): void {
@@ -291,6 +291,10 @@ export class LinkCodeClient {
         rejectFrom(pendingMap, clientReqId, toError(err));
       }
     });
+  }
+
+  private isClosed(): boolean {
+    return this.closed;
   }
 }
 
