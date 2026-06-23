@@ -1,6 +1,6 @@
 import { Separator } from 'coss-ui/components/separator';
 import { SidebarInset, SidebarTrigger } from 'coss-ui/components/sidebar';
-import type { ReactNode } from 'react';
+import type * as React from 'react';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSidebarProvider } from '@/components/app-sidebar-provider';
 import { BreadcrumbPortalTarget, BreadcrumbProvider } from '@/components/breadcrumbs';
@@ -11,7 +11,7 @@ import { BreadcrumbPortalTarget, BreadcrumbProvider } from '@/components/breadcr
  * never rebuild this chrome; they portal their current breadcrumb in via
  * `<BreadcrumbCurrent />`.
  */
-export function DashboardLayout({ children }: { children: ReactNode }) {
+export function DashboardLayout({ children }: React.PropsWithChildren) {
   return (
     <AppSidebarProvider storageKey="app-sidebar">
       <BreadcrumbProvider>
@@ -20,7 +20,10 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           <header className="flex h-12 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear">
             <div className="flex items-center gap-2 px-4">
               <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-auto" />
+              <Separator
+                orientation="vertical"
+                className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+              />
               <BreadcrumbPortalTarget />
             </div>
           </header>

@@ -1,5 +1,6 @@
 import { defaultLocale, getMessages, type Locale, resolveLocale } from '@linkcode/i18n';
-import { type ReactElement, type ReactNode, useMemo } from 'react';
+import type * as React from 'react';
+import { type ReactElement, useMemo } from 'react';
 import { IntlProvider } from 'use-intl';
 
 function runtimeLocale(): Locale {
@@ -10,10 +11,9 @@ function runtimeLocale(): Locale {
 export function AppI18nProvider({
   children,
   locale,
-}: {
-  children: ReactNode;
+}: React.PropsWithChildren<{
   locale?: Locale;
-}): ReactElement {
+}>): ReactElement {
   const resolved = locale ?? runtimeLocale();
   const messages = useMemo(() => getMessages(resolved), [resolved]);
 

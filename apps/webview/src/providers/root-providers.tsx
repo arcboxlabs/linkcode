@@ -1,5 +1,6 @@
 import { AnchoredToastProvider, ToastProvider } from 'coss-ui/components/toast';
-import type { ReactElement, ReactNode } from 'react';
+import type * as React from 'react';
+import type { ReactElement } from 'react';
 import { AppI18nProvider } from '@/providers/app-i18n-provider';
 
 /**
@@ -9,7 +10,7 @@ import { AppI18nProvider } from '@/providers/app-i18n-provider';
  * if light mode is ever introduced. Data fetching, connection, and the dashboard
  * shell live in the connected route group, not here.
  */
-export function RootProviders({ children }: { children: ReactNode }): ReactElement {
+export function RootProviders({ children }: React.PropsWithChildren): ReactElement {
   return (
     <ToastProvider>
       <AnchoredToastProvider>
