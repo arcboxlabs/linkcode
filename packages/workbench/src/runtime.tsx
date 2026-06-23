@@ -1,8 +1,9 @@
 import { createClient, type LinkCodeSdkClient, setDefaultClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { wait } from 'foxts/wait';
-import { type ReactElement, type ReactNode, useState } from 'react';
+import { createContext, type ReactElement, type ReactNode, useContext, useState } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
 import { useDebug } from './debug';
@@ -10,8 +11,17 @@ import { TayoriProvider } from './tayori';
 
 export interface WorkbenchRuntimeProviderProps {
   transport: Transport;
-  children: (client: LinkCodeSdkClient) => ReactNode;
+  children: ReactNode;
   fallback: (status: 'connecting' | 'error') => ReactNode;
+}
+
+const WorkbenchSdkClientContext = createContext<LinkCodeSdkClient | null>(null);
+
+export function useWorkbenchSdkClient(): LinkCodeSdkClient {
+  const client = useContext(WorkbenchSdkClientContext);
+  if (!client)
+    throw new Error('useWorkbenchSdkClient must be used within WorkbenchRuntimeProvider');
+  return client;
 }
 
 export function WorkbenchRuntimeProvider({
@@ -46,9 +56,11 @@ export function WorkbenchRuntimeProvider({
   if (status !== 'ready') return <>{fallback(status)}</>;
 
   return (
-    <TayoriProvider initClient={() => client}>
-      <WorkbenchSWRConfig>{children(client)}</WorkbenchSWRConfig>
-    </TayoriProvider>
+    <WorkbenchSdkClientContext.Provider value={client}>
+      <TayoriProvider initClient={() => client}>
+        <WorkbenchSWRConfig>{children}</WorkbenchSWRConfig>
+      </TayoriProvider>
+    </WorkbenchSdkClientContext.Provider>
   );
 }
 
@@ -90,9 +102,5 @@ function WorkbenchSWRConfig({ children }: { children: ReactNode }): ReactElement
 }
 
 function handleFetchError(error: unknown): void {
-  if (error instanceof Error) {
-    console.error('[LinkCode data error]', error.message, error);
-    return;
-  }
-  console.error('[LinkCode data error]', error);
+  console.error('[LinkCode data error]', extractErrorMessage(error) ?? error);
 }

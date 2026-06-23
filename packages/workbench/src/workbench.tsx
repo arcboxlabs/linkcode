@@ -9,7 +9,7 @@ import {
   stopSession,
 } from '@linkcode/sdk';
 import { AppShell, type WorkbenchSystemBridge } from '@linkcode/ui';
-import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 import { useData, useMutation } from './tayori';
 
 export interface WorkbenchProps {
@@ -26,39 +26,64 @@ export interface WorkbenchProps {
  */
 export function Workbench({ systemBridge }: WorkbenchProps): ReactElement {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const sessions = useWorkbenchSessions((err) => setErrorMessage(errorToMessage(err)));
+  function handleError(err: unknown): void {
+    setErrorMessage(errorToMessage(err));
+  }
+
+  const sessions = useWorkbenchSessions(handleError);
   const conversation = useConversation(sessions.activeId);
+
+  return (
+    <WorkbenchSessionSurface
+      key={sessions.activeId ?? 'no-active-session'}
+      sessions={sessions}
+      conversation={conversation}
+      errorMessage={errorMessage}
+      systemBridge={systemBridge}
+      onClearError={() => setErrorMessage(null)}
+      onError={handleError}
+    />
+  );
+}
+
+interface WorkbenchSessionSurfaceProps {
+  sessions: WorkbenchSessions;
+  conversation: ReturnType<typeof useConversation>;
+  errorMessage: string | null;
+  systemBridge?: WorkbenchSystemBridge;
+  onClearError: () => void;
+  onError: (err: unknown) => void;
+}
+
+function WorkbenchSessionSurface({
+  sessions,
+  conversation,
+  errorMessage,
+  systemBridge,
+  onClearError,
+  onError,
+}: WorkbenchSessionSurfaceProps): ReactElement {
   const promptMutation = useMutation(promptText);
   const cancelMutation = useMutation(cancelTurn);
   const permissionMutation = useMutation(respondPermission);
   const [answered, setAnswered] = useState<Set<string>>(new Set());
   const [responding, setResponding] = useState<Set<string>>(new Set());
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: answered permission state is scoped to the active session.
-  useEffect(() => {
-    setAnswered(new Set());
-    setResponding(new Set());
-  }, [sessions.activeId]);
-
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
-    setErrorMessage(null);
-    void promptMutation
-      .trigger({ sessionId: sessions.activeId, text })
-      .catch((err) => setErrorMessage(errorToMessage(err)));
+    onClearError();
+    void promptMutation.trigger({ sessionId: sessions.activeId, text }).catch(onError);
   }
 
   function handleStopTurn(): void {
     if (!sessions.activeId) return;
-    setErrorMessage(null);
-    void cancelMutation
-      .trigger({ sessionId: sessions.activeId })
-      .catch((err) => setErrorMessage(errorToMessage(err)));
+    onClearError();
+    void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(onError);
   }
 
   function handleRespond(requestId: string, optionId: string): void {
     if (!sessions.activeId) return;
-    setErrorMessage(null);
+    onClearError();
     setResponding((prev) => new Set(prev).add(requestId));
     void permissionMutation
       .trigger({
@@ -69,7 +94,7 @@ export function Workbench({ systemBridge }: WorkbenchProps): ReactElement {
       .then(() => {
         setAnswered((prev) => new Set(prev).add(requestId));
       })
-      .catch((err) => setErrorMessage(errorToMessage(err)))
+      .catch(onError)
       .finally(() => {
         setResponding((prev) => {
           const next = new Set(prev);
@@ -94,7 +119,7 @@ export function Workbench({ systemBridge }: WorkbenchProps): ReactElement {
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
-      onDismissError={() => setErrorMessage(null)}
+      onDismissError={onClearError}
     />
   );
 }
@@ -113,8 +138,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
   const stopMutation = useMutation(stopSession);
   const [localSessions, setLocalSessions] = useState<SessionInfo[]>([]);
   const [stoppedIds, setStoppedIds] = useState<Set<SessionId>>(new Set());
-  const [activeId, setActiveId] = useState<SessionId | null>(null);
-  const didAutoSelect = useRef(false);
+  const [selectedId, setSelectedId] = useState<SessionId | null>(null);
 
   const sessions = useMemo(() => {
     const byId = new Map<SessionId, SessionInfo>();
@@ -127,15 +151,17 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
     return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
   }, [localSessions, remoteSessions, stoppedIds]);
 
-  useEffect(() => {
-    if (didAutoSelect.current || activeId || sessions.length === 0) return;
-    didAutoSelect.current = true;
+  const activeId = useMemo(() => {
+    if (selectedId && sessions.some((session) => session.sessionId === selectedId)) {
+      return selectedId;
+    }
+
     const preferred =
       sessions.find(
         (session) => session.status === 'running' || session.status === 'awaiting-input',
       ) ?? sessions.at(-1);
-    if (preferred) setActiveId(preferred.sessionId);
-  }, [activeId, sessions]);
+    return preferred?.sessionId ?? null;
+  }, [selectedId, sessions]);
 
   function create(opts: { kind: AgentKind; cwd: string }): void {
     void createMutation
@@ -156,7 +182,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
         setLocalSessions((prev) =>
           prev.some((session) => session.sessionId === sessionId) ? prev : [...prev, optimistic],
         );
-        setActiveId(sessionId);
+        setSelectedId(sessionId);
         void mutate();
       })
       .catch((err) => {
@@ -170,7 +196,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
       .then(() => {
         setStoppedIds((prev) => new Set(prev).add(id));
         setLocalSessions((prev) => prev.filter((session) => session.sessionId !== id));
-        setActiveId((current) => (current === id ? null : current));
+        setSelectedId((current) => (current === id ? null : current));
         void mutate();
       })
       .catch((err) => {
@@ -181,7 +207,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
   return {
     sessions,
     activeId,
-    select: setActiveId,
+    select: setSelectedId,
     create,
     stop,
   };

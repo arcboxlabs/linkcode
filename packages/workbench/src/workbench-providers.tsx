@@ -4,7 +4,7 @@ import { Button } from 'coss-ui/components/button';
 import type { ReactElement, ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { DebugProvider } from './debug';
-import { WorkbenchRuntimeProvider } from './runtime';
+import { useWorkbenchSdkClient, WorkbenchRuntimeProvider } from './runtime';
 
 export type WorkbenchConnectionStatus = 'connecting' | 'error';
 
@@ -45,10 +45,15 @@ export function WorkbenchProviders({
           fallback ?? ((status) => <ConnectionState status={status} daemonUrl={daemonUrl} />)
         }
       >
-        {(client) => <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>}
+        <WorkbenchLinkCodeProvider>{children}</WorkbenchLinkCodeProvider>
       </WorkbenchRuntimeProvider>
     </DebugProvider>
   );
+}
+
+function WorkbenchLinkCodeProvider({ children }: { children: ReactNode }): ReactElement {
+  const client = useWorkbenchSdkClient();
+  return <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>;
 }
 
 export function ConnectionState({

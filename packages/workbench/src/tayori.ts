@@ -3,7 +3,7 @@ import { tayori } from 'tayori';
 import type { ZodError } from 'zod';
 import { prettifyError } from 'zod';
 
-export const { useData, useMutation, TayoriProvider } = tayori<Options, RequestResult<unknown>>();
+export const { useData, useMutation, TayoriProvider } = tayori<Options, RequestResult>();
 
 export function extractErrorMessageFromZodError(error: ZodError): string[] {
   return prettifyError(error).split('\n');

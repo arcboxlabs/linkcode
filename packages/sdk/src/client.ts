@@ -16,7 +16,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 
-export type RequestResult<T> = Promise<{
+export type RequestResult<T = unknown> = Promise<{
   data: T;
   request?: Request;
   response?: Response;
