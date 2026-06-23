@@ -28,8 +28,7 @@ allowBuilds:
   unrs-resolver: false
 
 # 共享依赖版本集中在 catalog，业务包用 "catalog:" 引用，保证全仓一致。
-# 注意：apps/mobile（Expo）的 react / react-native 版本由 Expo SDK 锁定，
-# 不走 catalog，以免与 Expo 的版本约束冲突。
+# apps/mobile 的 React 版本同样走 catalog；react-native 仍由 Expo SDK 锁定。
 catalog:
   # 语言 / 类型
   typescript: ^6.0.3

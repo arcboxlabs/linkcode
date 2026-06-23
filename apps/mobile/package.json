@@ -18,8 +18,8 @@
     "expo": "~56.0.12",
     "expo-status-bar": "~56.0.4",
     "nativewind": "5.0.0-preview.4",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "react-native": "0.86.0",
     "react-native-css": "^3.0.7",
     "react-native-reanimated": "4.4.1",
@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "catalog:",
-    "@types/react": "~19.2.2",
+    "@types/react": "catalog:",
     "tailwindcss": "^4.3.1",
     "typescript": "~6.0.3"
   }
