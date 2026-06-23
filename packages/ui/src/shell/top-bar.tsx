@@ -1,7 +1,7 @@
 import type { TokenUsage } from '@linkcode/schema';
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { Minimize2Icon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
-import { type ReactElement, useEffect, useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { WorkbenchSystemBridge } from './types';
@@ -23,7 +23,7 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
   const [isMaximized, setIsMaximized] = useState(false);
   const [windowControlsMode, setWindowControlsMode] = useState<WindowControlsMode>('none');
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!win) {
         setWindowControlsMode('none');
@@ -46,32 +46,36 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
     [win, systemBridge?.app?.platform],
   );
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!win || windowControlsMode !== 'custom') {
         setIsMaximized(false);
         return;
       }
+
+      let receivedMaximizedEvent = false;
+      const unsubscribe = win.onMaximizedChange?.((value) => {
+        receivedMaximizedEvent = true;
+        setIsMaximized(value);
+      });
+
       const readIsMaximized = win.isMaximized;
       if (!readIsMaximized) {
         setIsMaximized(false);
-        return;
+        return unsubscribe;
       }
       void readIsMaximized()
         .then((value) => {
-          if (!signal.aborted) setIsMaximized(value);
+          if (!signal.aborted && !receivedMaximizedEvent) setIsMaximized(value);
         })
         .catch(() => {
-          if (!signal.aborted) setIsMaximized(false);
+          if (!signal.aborted && !receivedMaximizedEvent) setIsMaximized(false);
         });
+
+      return unsubscribe;
     },
     [win, windowControlsMode],
   );
-
-  useEffect(() => {
-    if (!win || windowControlsMode !== 'custom') return;
-    return win.onMaximizedChange?.((value) => setIsMaximized(value));
-  }, [win, windowControlsMode]);
 
   async function handleToggleMaximize(): Promise<void> {
     await win?.toggleMaximize();
