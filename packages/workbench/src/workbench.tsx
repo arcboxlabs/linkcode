@@ -9,6 +9,8 @@ import {
   stopSession,
 } from '@linkcode/sdk';
 import { AppShell, type WorkbenchSystemBridge } from '@linkcode/ui';
+import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { type ReactElement, useMemo, useState } from 'react';
 import { useData, useMutation } from './tayori';
 
@@ -27,7 +29,7 @@ export interface WorkbenchProps {
 export function Workbench({ systemBridge }: WorkbenchProps): ReactElement {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
-    setErrorMessage(errorToMessage(err));
+    setErrorMessage(extractErrorMessage(err) ?? String(err));
   }
 
   const sessions = useWorkbenchSessions(handleError);
@@ -63,22 +65,22 @@ function WorkbenchSessionSurface({
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): ReactElement {
-  const promptMutation = useMutation(promptText);
-  const cancelMutation = useMutation(cancelTurn);
-  const permissionMutation = useMutation(respondPermission);
+  const promptMutation = useMutation(promptText, { onError });
+  const cancelMutation = useMutation(cancelTurn, { onError });
+  const permissionMutation = useMutation(respondPermission, { onError });
   const [answered, setAnswered] = useState<Set<string>>(new Set());
   const [responding, setResponding] = useState<Set<string>>(new Set());
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
     onClearError();
-    void promptMutation.trigger({ sessionId: sessions.activeId, text }).catch(onError);
+    void promptMutation.trigger({ sessionId: sessions.activeId, text }).catch(noop);
   }
 
   function handleStopTurn(): void {
     if (!sessions.activeId) return;
     onClearError();
-    void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(onError);
+    void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
   }
 
   function handleRespond(requestId: string, optionId: string): void {
@@ -94,7 +96,7 @@ function WorkbenchSessionSurface({
       .then(() => {
         setAnswered((prev) => new Set(prev).add(requestId));
       })
-      .catch(onError)
+      .catch(noop)
       .finally(() => {
         setResponding((prev) => {
           const next = new Set(prev);
@@ -134,8 +136,8 @@ interface WorkbenchSessions {
 
 function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSessions {
   const { data: remoteSessions, mutate } = useData(listSessions, {});
-  const createMutation = useMutation(startSession);
-  const stopMutation = useMutation(stopSession);
+  const createMutation = useMutation(startSession, { onError });
+  const stopMutation = useMutation(stopSession, { onError });
   const [localSessions, setLocalSessions] = useState<SessionInfo[]>([]);
   const [stoppedIds, setStoppedIds] = useState<Set<SessionId>>(new Set());
   const [selectedId, setSelectedId] = useState<SessionId | null>(null);
@@ -185,9 +187,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
         setSelectedId(sessionId);
         void mutate();
       })
-      .catch((err) => {
-        onError(err);
-      });
+      .catch(noop);
   }
 
   function stop(id: SessionId): void {
@@ -199,9 +199,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
         setSelectedId((current) => (current === id ? null : current));
         void mutate();
       })
-      .catch((err) => {
-        onError(err);
-      });
+      .catch(noop);
   }
 
   return {
@@ -211,8 +209,4 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
     create,
     stop,
   };
-}
-
-function errorToMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

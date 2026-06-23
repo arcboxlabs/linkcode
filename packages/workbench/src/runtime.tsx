@@ -1,38 +1,86 @@
 import { createClient, type LinkCodeSdkClient, setDefaultClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { createContextState } from 'foxact/context-state';
+import { nullthrow } from 'foxact/nullthrow';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { wait } from 'foxts/wait';
-import { createContext, type ReactElement, type ReactNode, useContext, useState } from 'react';
+import type * as React from 'react';
+import {
+  createContext,
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
 import { useDebug } from './debug';
 import { TayoriProvider } from './tayori';
 
-export interface WorkbenchRuntimeProviderProps {
+export interface WorkbenchRuntimeProviderProps extends React.PropsWithChildren {
   transport: Transport;
-  children: ReactNode;
-  fallback: (status: 'connecting' | 'error') => ReactNode;
+  fallback: ReactNode;
 }
 
+export type WorkbenchRuntimeStatus = 'connecting' | 'ready' | 'error';
+
+interface WorkbenchRuntimeControls {
+  retry: () => void;
+}
+
+const [
+  WorkbenchRuntimeStatusProvider,
+  useWorkbenchRuntimeStatusValue,
+  useSetWorkbenchRuntimeStatus,
+] = createContextState<WorkbenchRuntimeStatus>('connecting');
+
+const WorkbenchRuntimeControlsContext = createContext<WorkbenchRuntimeControls | null>(null);
 const WorkbenchSdkClientContext = createContext<LinkCodeSdkClient | null>(null);
 
-export function useWorkbenchSdkClient(): LinkCodeSdkClient {
-  const client = useContext(WorkbenchSdkClientContext);
-  if (!client)
-    throw new Error('useWorkbenchSdkClient must be used within WorkbenchRuntimeProvider');
-  return client;
+export function useWorkbenchRuntimeStatus(): WorkbenchRuntimeStatus {
+  return useWorkbenchRuntimeStatusValue();
 }
 
-export function WorkbenchRuntimeProvider({
+export function useWorkbenchRuntimeRetry(): () => void {
+  return nullthrow(
+    useContext(WorkbenchRuntimeControlsContext),
+    'useWorkbenchRuntimeRetry must be used within WorkbenchRuntimeProvider',
+  ).retry;
+}
+
+export function useWorkbenchSdkClient(): LinkCodeSdkClient {
+  return nullthrow(
+    useContext(WorkbenchSdkClientContext),
+    'useWorkbenchSdkClient must be used within WorkbenchRuntimeProvider',
+  );
+}
+
+export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): ReactElement {
+  return (
+    <WorkbenchRuntimeStatusProvider>
+      <WorkbenchRuntimeConnection {...props} />
+    </WorkbenchRuntimeStatusProvider>
+  );
+}
+
+function WorkbenchRuntimeConnection({
   transport,
   children,
   fallback,
 }: WorkbenchRuntimeProviderProps): ReactElement {
-  const [client] = useState(() => createClient({ transport }));
-  const [status, setStatus] = useState<'connecting' | 'ready' | 'error'>('connecting');
+  const [client, setClient] = useState(() => createClient({ transport }));
+  const status = useWorkbenchRuntimeStatus();
+  const setStatus = useSetWorkbenchRuntimeStatus();
+  const retry = useCallback(() => {
+    setStatus('connecting');
+    setClient(createClient({ transport }));
+  }, [setStatus, transport]);
+  const controls = useMemo<WorkbenchRuntimeControls>(() => ({ retry }), [retry]);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       setDefaultClient(client);
       setStatus('connecting');
@@ -50,21 +98,29 @@ export function WorkbenchRuntimeProvider({
         client.dispose();
       };
     },
-    [client],
+    [client, setStatus],
   );
 
-  if (status !== 'ready') return <>{fallback(status)}</>;
+  if (status !== 'ready') {
+    return (
+      <WorkbenchRuntimeControlsContext.Provider value={controls}>
+        {fallback}
+      </WorkbenchRuntimeControlsContext.Provider>
+    );
+  }
 
   return (
-    <WorkbenchSdkClientContext.Provider value={client}>
-      <TayoriProvider initClient={() => client}>
-        <WorkbenchSWRConfig>{children}</WorkbenchSWRConfig>
-      </TayoriProvider>
-    </WorkbenchSdkClientContext.Provider>
+    <WorkbenchRuntimeControlsContext.Provider value={controls}>
+      <WorkbenchSdkClientContext.Provider value={client}>
+        <TayoriProvider initClient={() => client}>
+          <WorkbenchSWRConfig>{children}</WorkbenchSWRConfig>
+        </TayoriProvider>
+      </WorkbenchSdkClientContext.Provider>
+    </WorkbenchRuntimeControlsContext.Provider>
   );
 }
 
-function WorkbenchSWRConfig({ children }: { children: ReactNode }): ReactElement {
+function WorkbenchSWRConfig({ children }: React.PropsWithChildren): ReactElement {
   const debug = useDebug();
   const debugMiddleware: SWRMiddleware = (useSWRNext) => (key, fetcher, config) => {
     const wrappedFetcher =

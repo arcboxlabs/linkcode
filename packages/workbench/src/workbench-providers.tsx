@@ -1,25 +1,29 @@
 import { LinkCodeProvider } from '@linkcode/client-core';
 import type { Transport } from '@linkcode/transport';
 import { Button } from 'coss-ui/components/button';
+import type * as React from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { DebugProvider } from './debug';
-import { useWorkbenchSdkClient, WorkbenchRuntimeProvider } from './runtime';
+import {
+  useWorkbenchRuntimeRetry,
+  useWorkbenchRuntimeStatus,
+  useWorkbenchSdkClient,
+  WorkbenchRuntimeProvider,
+} from './runtime';
 
 export type WorkbenchConnectionStatus = 'connecting' | 'error';
 
-export interface WorkbenchProvidersProps {
+export interface WorkbenchProvidersProps extends React.PropsWithChildren {
   transport: Transport;
   /** Used by the default connection-state fallback to tell the user where the host should be. */
   daemonUrl?: string;
-  /** Rendered once the data plane is connected — mount the workbench (or a whole shell + routes) here. */
-  children: ReactNode;
   /**
    * Renders while the transport is connecting or after it errored, replacing
    * `children` entirely (this is the connection gate). Defaults to the built-in
    * `ConnectionState` screen.
    */
-  fallback?: (status: WorkbenchConnectionStatus) => ReactNode;
+  fallback?: ReactNode;
 }
 
 /**
@@ -41,9 +45,7 @@ export function WorkbenchProviders({
     <DebugProvider>
       <WorkbenchRuntimeProvider
         transport={transport}
-        fallback={
-          fallback ?? ((status) => <ConnectionState status={status} daemonUrl={daemonUrl} />)
-        }
+        fallback={fallback ?? <ConnectionState daemonUrl={daemonUrl} />}
       >
         <WorkbenchLinkCodeProvider>{children}</WorkbenchLinkCodeProvider>
       </WorkbenchRuntimeProvider>
@@ -51,18 +53,14 @@ export function WorkbenchProviders({
   );
 }
 
-function WorkbenchLinkCodeProvider({ children }: { children: ReactNode }): ReactElement {
+function WorkbenchLinkCodeProvider({ children }: React.PropsWithChildren): ReactElement {
   const client = useWorkbenchSdkClient();
   return <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>;
 }
 
-export function ConnectionState({
-  status,
-  daemonUrl,
-}: {
-  status: WorkbenchConnectionStatus;
-  daemonUrl?: string;
-}): ReactElement {
+export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): ReactElement {
+  const status = useWorkbenchRuntimeStatus();
+  const retry = useWorkbenchRuntimeRetry();
   const t = useTranslations('workbench.connection');
   const common = useTranslations('common');
 
@@ -79,13 +77,7 @@ export function ConnectionState({
                 command: common('daemonCommand'),
               })}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                window.location.reload();
-              }}
-            >
+            <Button variant="outline" size="sm" onClick={retry}>
               {t('retry')}
             </Button>
           </div>

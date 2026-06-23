@@ -1,11 +1,6 @@
-import {
-  createContext,
-  type ReactElement,
-  type ReactNode,
-  useContext,
-  useMemo,
-  useState,
-} from 'react';
+import { nullthrow } from 'foxact/nullthrow';
+import type * as React from 'react';
+import { createContext, type ReactElement, useContext, useMemo, useState } from 'react';
 
 export interface DebugState {
   enableArtificialDelay: boolean;
@@ -16,7 +11,7 @@ export interface DebugState {
 
 const DebugContext = createContext<DebugState | null>(null);
 
-export function DebugProvider({ children }: { children: ReactNode }): ReactElement {
+export function DebugProvider({ children }: React.PropsWithChildren): ReactElement {
   const [enableArtificialDelay, setEnableArtificialDelay] = useState(false);
   const [isLoadingOverride, setIsLoadingOverride] = useState(false);
 
@@ -34,7 +29,5 @@ export function DebugProvider({ children }: { children: ReactNode }): ReactEleme
 }
 
 export function useDebug(): DebugState {
-  const value = useContext(DebugContext);
-  if (!value) throw new Error('useDebug must be used inside <DebugProvider>');
-  return value;
+  return nullthrow(useContext(DebugContext), 'useDebug must be used within DebugProvider');
 }
