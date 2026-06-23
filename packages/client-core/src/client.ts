@@ -15,14 +15,17 @@ import type {
   WireMessage,
   WirePayload,
 } from '@linkcode/schema';
-import { createWireMessage, type Transport, type Unsubscribe } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import type { Transport, Unsubscribe } from '@linkcode/transport';
 
 type EventCb = (event: AgentEvent) => void;
-type Pending<T> = {
+interface Pending<T> {
   resolve(value: T): void;
   reject(err: Error): void;
-};
-type RequestAck = { ok: true };
+}
+interface RequestAck {
+  ok: true;
+}
 
 export type HistoryListClientOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;

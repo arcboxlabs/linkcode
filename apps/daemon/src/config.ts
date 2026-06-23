@@ -72,13 +72,11 @@ function applyEnvOverrides(listeners: DaemonListenerConfig[]): DaemonListenerCon
   const envPort = process.env.LINKCODE_PORT;
   const envHost = process.env.LINKCODE_HOST;
   if (!envPort && !envHost) return listeners;
-  return listeners.map((listener) => {
-    return {
-      ...listener,
-      port: parsePort(envPort, listener.port),
-      host: parseString(envHost, listener.host ?? DEFAULT_HOST),
-    };
-  });
+  return listeners.map((listener) => ({
+    ...listener,
+    port: parsePort(envPort, listener.port),
+    host: parseString(envHost, listener.host ?? DEFAULT_HOST),
+  }));
 }
 
 function parsePort(value: unknown, fallback: number): number {

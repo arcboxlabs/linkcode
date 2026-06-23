@@ -3,9 +3,15 @@ import { useCallback, useId, useMemo } from 'react';
 import type { TablePaginationState } from '@/components/data-table/core/use-table-pagination-state';
 
 /** `key` is unique and stable — use it directly as the React key when mapping. */
-export type PaginationRangeItem = { type: 'ellipsis'; key: string } | { type: 'item'; key: string; pageIndex: number };
+export type PaginationRangeItem =
+  | { type: 'ellipsis'; key: string }
+  | { type: 'item'; key: string; pageIndex: number };
 
-function buildPaginationRange(id: string, pageIndex: number, pageCount: number): PaginationRangeItem[] {
+function buildPaginationRange(
+  id: string,
+  pageIndex: number,
+  pageCount: number,
+): PaginationRangeItem[] {
   const current = pageIndex + 1;
   const total = pageCount;
 
@@ -17,7 +23,10 @@ function buildPaginationRange(id: string, pageIndex: number, pageCount: number):
     pageIndex: page - 1,
   });
   const leadingEllipsis: PaginationRangeItem = { type: 'ellipsis', key: `${id}-ellipsis-leading` };
-  const trailingEllipsis: PaginationRangeItem = { type: 'ellipsis', key: `${id}-ellipsis-trailing` };
+  const trailingEllipsis: PaginationRangeItem = {
+    type: 'ellipsis',
+    key: `${id}-ellipsis-trailing`,
+  };
 
   if (total <= 7) {
     return createFixedArray(total).map((_, i) => item(i + 1));
@@ -26,9 +35,25 @@ function buildPaginationRange(id: string, pageIndex: number, pageCount: number):
     return [item(1), item(2), item(3), item(4), item(5), trailingEllipsis, item(total)];
   }
   if (current >= total - 3) {
-    return [item(1), leadingEllipsis, item(total - 4), item(total - 3), item(total - 2), item(total - 1), item(total)];
+    return [
+      item(1),
+      leadingEllipsis,
+      item(total - 4),
+      item(total - 3),
+      item(total - 2),
+      item(total - 1),
+      item(total),
+    ];
   }
-  return [item(1), leadingEllipsis, item(current - 1), item(current), item(current + 1), trailingEllipsis, item(total)];
+  return [
+    item(1),
+    leadingEllipsis,
+    item(current - 1),
+    item(current),
+    item(current + 1),
+    trailingEllipsis,
+    item(total),
+  ];
 }
 
 /**
@@ -89,7 +114,11 @@ interface UsePaginationRenderOptions {
   rowCount: number;
 }
 
-export function usePaginationRender({ pagination, pageCount, rowCount }: UsePaginationRenderOptions): PaginationRender {
+export function usePaginationRender({
+  pagination,
+  pageCount,
+  rowCount,
+}: UsePaginationRenderOptions): PaginationRender {
   // namespaces the range item keys so multiple tables on one page never collide
   const id = useId();
 

@@ -1,7 +1,8 @@
 import { defineInvokeHandlers } from '@moeru/eventa';
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main';
 import type { BrowserWindow, IpcMain } from 'electron';
-import { PickFileOptionsSchema, type SystemContext } from './context';
+import { PickFileOptionsSchema } from './context';
+import type { SystemContext } from './context';
 import { systemIpcEvents, WINDOW_MAXIMIZED_CHANGED_CHANNEL } from './events';
 
 export interface ElectronSystemIpcOptions {
@@ -20,13 +21,13 @@ export function bindElectronSystemIpc({
   });
 
   const removeHandlers = defineInvokeHandlers(context, systemIpcEvents, {
-    windowMinimize: () => {
+    windowMinimize() {
       ctx.window.minimize();
     },
-    windowToggleMaximize: () => {
+    windowToggleMaximize() {
       ctx.window.toggleMaximize();
     },
-    windowClose: () => {
+    windowClose() {
       ctx.window.close();
     },
     windowIsMaximized: () => ctx.window.isMaximized(),

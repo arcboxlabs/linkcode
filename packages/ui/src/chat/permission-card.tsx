@@ -1,7 +1,7 @@
 import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { ShieldIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 
 type ButtonVariant = 'default' | 'secondary' | 'outline' | 'destructive-outline';
@@ -33,7 +33,7 @@ export function PermissionCard({
   answered: boolean;
   responding: boolean;
   onRespond: (optionId: string) => void;
-}): ReactElement {
+}): ReactNode {
   const t = useTranslations('workbench.permission');
 
   return (

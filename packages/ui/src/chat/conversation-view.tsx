@@ -1,6 +1,7 @@
 import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
-import { type ReactElement, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { AssistantMessage } from './assistant-message';
 import { ErrorMessage } from './error-message';
@@ -33,7 +34,7 @@ export function ConversationView({
   respondingPermissions,
   pendingPermissions,
   onRespondPermission,
-}: ConversationViewProps): ReactElement {
+}: ConversationViewProps): ReactNode {
   const t = useTranslations('workbench.conversation');
   const tk = useTranslations('workbench.agentKind');
   const scrollRef = useRef<HTMLDivElement>(null);

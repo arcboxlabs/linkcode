@@ -48,11 +48,16 @@ export function FilterSidebarLayout({
             sidebarClassName,
           )}
         >
-          <SidebarHeader className={cn('px-4 py-3 border-b border-sidebar-border', sidebarHeaderClassName)}>
+          <SidebarHeader
+            className={cn('px-4 py-3 border-b border-sidebar-border', sidebarHeaderClassName)}
+          >
             {sidebarHeader}
           </SidebarHeader>
           <SidebarContent
-            className={cn('[&>[data-slot=sidebar-separator]:first-child]:hidden', sidebarContentClassName)}
+            className={cn(
+              '[&>[data-slot=sidebar-separator]:first-child]:hidden',
+              sidebarContentClassName,
+            )}
           >
             {sidebar}
           </SidebarContent>
@@ -74,7 +79,9 @@ export function FilterSidebarGroup({ label, children }: FilterSidebarGroupProps)
     <>
       <SidebarSeparator className="w-auto!" />
       <SidebarGroup>
-        <SidebarGroupLabel className="uppercase tracking-wider text-muted-foreground">{label}</SidebarGroupLabel>
+        <SidebarGroupLabel className="uppercase tracking-wider text-muted-foreground">
+          {label}
+        </SidebarGroupLabel>
         <SidebarGroupContent>{children}</SidebarGroupContent>
       </SidebarGroup>
     </>
@@ -94,7 +101,11 @@ interface FilterCheckboxGroupProps<T extends string> {
   onChange: (value: T, checked: boolean) => void;
 }
 
-export function FilterCheckboxGroup<T extends string>({ options, selected, onChange }: FilterCheckboxGroupProps<T>) {
+export function FilterCheckboxGroup<T extends string>({
+  options,
+  selected,
+  onChange,
+}: FilterCheckboxGroupProps<T>) {
   return (
     <div className="flex flex-col gap-0.5">
       {options.map((opt) => (
@@ -108,7 +119,9 @@ export function FilterCheckboxGroup<T extends string>({ options, selected, onCha
           />
           <span className={`size-2 rounded-full shrink-0 ${opt.dot}`} />
           <span className="text-sm flex-1">{opt.label}</span>
-          {opt.count != null && <span className="text-xs text-muted-foreground tabular-nums">{opt.count}</span>}
+          {opt.count != null && (
+            <span className="text-xs text-muted-foreground tabular-nums">{opt.count}</span>
+          )}
         </label>
       ))}
     </div>

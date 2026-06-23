@@ -1,7 +1,9 @@
 import type { TokenUsage } from '@linkcode/schema';
+import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { Minimize2Icon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
-import { type ReactElement, useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { WorkbenchSystemBridge } from './types';
@@ -16,7 +18,7 @@ export interface TopBarProps {
 }
 
 /** Slim header: active-session identity, token usage, and (on desktop) window controls. */
-export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): ReactElement {
+export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): ReactNode {
   const t = useTranslations('workbench.usage');
   const win = systemBridge?.window;
   const hasUsage = usage != null && (usage.inputTokens != null || usage.outputTokens != null);
@@ -36,8 +38,9 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
       }
       platform()
         .then((value) => {
-          if (!signal.aborted)
+          if (!signal.aborted) {
             setWindowControlsMode(value === 'darwin' ? 'native-macos' : 'custom');
+          }
         })
         .catch(() => {
           if (!signal.aborted) setWindowControlsMode('custom');
@@ -80,8 +83,11 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
   async function handleToggleMaximize(): Promise<void> {
     await win?.toggleMaximize();
     const next = await win?.isMaximized?.();
-    if (next !== undefined) setIsMaximized(next);
-    else setIsMaximized((current) => !current);
+    if (next === undefined) {
+      setIsMaximized((current) => !current);
+    } else {
+      setIsMaximized(next);
+    }
   }
 
   return (
@@ -115,7 +121,9 @@ export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): R
               type="button"
               aria-label={isMaximized ? 'Restore' : 'Maximize'}
               aria-pressed={isMaximized}
-              onClick={() => void handleToggleMaximize()}
+              onClick={() => {
+                handleToggleMaximize().catch(noop);
+              }}
               className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               {isMaximized ? (

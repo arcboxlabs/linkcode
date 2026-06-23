@@ -9,5 +9,5 @@ export * from './plan-card';
 export * from './terminal-block';
 export * from './thought-block';
 export * from './tool-call-item';
-export * from './types';
+export type * from './types';
 export * from './user-message';

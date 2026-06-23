@@ -64,7 +64,7 @@ function systemContextFor(win: BrowserWindow): SystemContext {
   return {
     window: {
       minimize: () => win.minimize(),
-      toggleMaximize: () => {
+      toggleMaximize() {
         if (win.isMaximized()) win.unmaximize();
         else win.maximize();
       },
@@ -72,7 +72,7 @@ function systemContextFor(win: BrowserWindow): SystemContext {
       isMaximized: () => win.isMaximized(),
     },
     dialog: {
-      pickFile: async (opts) => {
+      async pickFile(opts) {
         const result = await dialog.showOpenDialog(win, {
           title: opts?.title,
           properties: [opts?.directory ? 'openDirectory' : 'openFile'],

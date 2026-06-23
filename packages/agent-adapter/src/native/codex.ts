@@ -1,4 +1,5 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { env } from 'node:process';
@@ -305,13 +306,13 @@ function textContent(text: string): ToolCallContent[] {
 
 type JsonRecord = Record<string, unknown>;
 
-type CodexIndexEntry = {
+interface CodexIndexEntry {
   id: string;
   title?: string;
   updatedAt?: number;
-};
+}
 
-type CodexTranscriptSummary = {
+interface CodexTranscriptSummary {
   id: string;
   path?: string;
   title?: string;
@@ -321,13 +322,13 @@ type CodexTranscriptSummary = {
   updatedAt?: number;
   messageCount?: number;
   metadata?: Record<string, unknown>;
-};
+}
 
-type DirectoryEntry = {
+interface DirectoryEntry {
   name: string;
   isDirectory(): boolean;
   isFile(): boolean;
-};
+}
 
 function codexHome(): string {
   return env.CODEX_HOME ?? join(homedir(), '.codex');
@@ -363,7 +364,7 @@ async function findCodexTranscript(
 ): Promise<CodexTranscriptSummary | undefined> {
   const index = await readCodexIndex();
   const summaries = await readCodexTranscriptSummaries(index);
-  const id = String(historyId);
+  const id = historyId;
   return summaries.find((summary) => summary.id === id || summary.path === id);
 }
 
@@ -408,10 +409,7 @@ async function readCodexTranscriptSummary(
   path: string,
   index: Map<string, CodexIndexEntry>,
 ): Promise<CodexTranscriptSummary | undefined> {
-  const [rows, fileStat] = await Promise.all([
-    readJsonlFile(path),
-    stat(path).catch(() => undefined),
-  ]);
+  const [rows, fileStat] = await Promise.all([readJsonlFile(path), statOrUndefined(path)]);
   if (rows.length === 0) return undefined;
 
   let id: string | undefined;
@@ -440,29 +438,41 @@ async function readCodexTranscriptSummary(
     const payload = recordField(row, 'payload');
     if (!payload) continue;
 
-    if (rowType === 'session_meta') {
-      id = stringField(payload, 'id') ?? id;
-      cwd = stringField(payload, 'cwd') ?? cwd;
-      model = stringField(payload, 'model') ?? model;
-      originator = stringField(payload, 'originator') ?? originator;
-      threadSource = stringField(payload, 'thread_source') ?? threadSource;
-      cliVersion = stringField(payload, 'cli_version') ?? cliVersion;
-      modelProvider = stringField(payload, 'model_provider') ?? modelProvider;
-      const git = recordField(payload, 'git');
-      if (git) gitBranch = stringField(git, 'branch') ?? gitBranch;
-      createdAt = timestampMs(payload.timestamp) ?? createdAt;
-    } else if (rowType === 'turn_context') {
-      cwd = stringField(payload, 'cwd') ?? cwd;
-      model = stringField(payload, 'model') ?? model;
-      title = stringField(payload, 'summary') ?? title;
-    } else if (rowType === 'response_item') {
-      const role = stringField(payload, 'role');
-      if (role !== 'user' && role !== 'assistant') continue;
-      const text = textFromUnknown(payload);
-      if (text.trim().length === 0) continue;
-      messageCount += 1;
-      if (role === 'user') firstUserText ??= previewText(text);
-      else firstAssistantText ??= previewText(text);
+    switch (rowType) {
+      case 'session_meta': {
+        id = stringField(payload, 'id') ?? id;
+        cwd = stringField(payload, 'cwd') ?? cwd;
+        model = stringField(payload, 'model') ?? model;
+        originator = stringField(payload, 'originator') ?? originator;
+        threadSource = stringField(payload, 'thread_source') ?? threadSource;
+        cliVersion = stringField(payload, 'cli_version') ?? cliVersion;
+        modelProvider = stringField(payload, 'model_provider') ?? modelProvider;
+        const git = recordField(payload, 'git');
+        if (git) gitBranch = stringField(git, 'branch') ?? gitBranch;
+        createdAt = timestampMs(payload.timestamp) ?? createdAt;
+
+        break;
+      }
+      case 'turn_context': {
+        cwd = stringField(payload, 'cwd') ?? cwd;
+        model = stringField(payload, 'model') ?? model;
+        title = stringField(payload, 'summary') ?? title;
+
+        break;
+      }
+      case 'response_item': {
+        const role = stringField(payload, 'role');
+        if (role !== 'user' && role !== 'assistant') continue;
+        const text = textFromUnknown(payload);
+        if (text.trim().length === 0) continue;
+        messageCount += 1;
+        if (role === 'user') firstUserText ??= previewText(text);
+        else firstAssistantText ??= previewText(text);
+
+        break;
+      }
+      default:
+        break;
     }
   }
 
@@ -489,6 +499,14 @@ async function readCodexTranscriptSummary(
       gitBranch,
     }),
   };
+}
+
+async function statOrUndefined(path: string): Promise<Stats | undefined> {
+  try {
+    return await stat(path);
+  } catch {
+    // Transcript files can disappear while Codex is rotating or archiving sessions.
+  }
 }
 
 function codexSummaryToSession(summary: CodexTranscriptSummary): AgentHistorySession {
@@ -540,7 +558,7 @@ function idFromFilename(path: string): string {
 }
 
 function previewText(text: string): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
+  const flat = text.replaceAll(/\s+/g, ' ').trim();
   if (flat.length <= 120) return flat;
   return `${flat.slice(0, 117)}...`;
 }

@@ -5,4 +5,4 @@ export * from './session-item';
 export * from './session-list';
 export * from './sidebar';
 export * from './top-bar';
-export * from './types';
+export type * from './types';

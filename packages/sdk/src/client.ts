@@ -1,8 +1,5 @@
-import {
-  type HistoryListClientOptions,
-  type HistoryReadClientOptions,
-  LinkCodeClient,
-} from '@linkcode/client-core';
+import { LinkCodeClient } from '@linkcode/client-core';
+import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
 import type {
   AgentHistoryId,
   AgentHistoryListResult,

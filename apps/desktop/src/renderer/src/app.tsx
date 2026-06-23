@@ -1,7 +1,8 @@
 import { SocketIoTransport } from '@linkcode/transport';
 import type { WorkbenchSystemBridge } from '@linkcode/ui';
 import { Workbench, WorkbenchProviders } from '@linkcode/workbench';
-import type { ReactElement } from 'react';
+import { noop } from 'foxact/noop';
+import type { ReactNode } from 'react';
 import { AppI18nProvider } from '@/i18n/app-i18n-provider';
 import { systemBridge } from '@/ipc';
 
@@ -12,11 +13,11 @@ const transport = new SocketIoTransport({ url: DAEMON_URL });
 /** Window controls go through system IPC — the system plane, never business data (PLAN §4.5). */
 const bridge: WorkbenchSystemBridge = {
   window: {
-    minimize: () => void systemBridge.window.minimize(),
-    toggleMaximize: () => void systemBridge.window.toggleMaximize(),
-    close: () => void systemBridge.window.close(),
+    minimize: () => systemBridge.window.minimize(),
+    toggleMaximize: () => systemBridge.window.toggleMaximize(),
+    close: () => systemBridge.window.close(),
     isMaximized: () => systemBridge.window.isMaximized(),
-    onMaximizedChange: (cb) => systemBridge.window.onMaximizedChange?.(cb) ?? (() => undefined),
+    onMaximizedChange: (cb) => systemBridge.window.onMaximizedChange?.(cb) ?? noop,
   },
   fs: {
     pickFile: (opts) => systemBridge.fs.pickFile(opts),
@@ -27,7 +28,7 @@ const bridge: WorkbenchSystemBridge = {
   },
 };
 
-export function App(): ReactElement {
+export function App(): ReactNode {
   return (
     <AppI18nProvider>
       <WorkbenchProviders transport={transport} daemonUrl={DAEMON_URL}>

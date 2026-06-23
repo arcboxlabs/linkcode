@@ -66,7 +66,9 @@ export function useTableColumnSizing<TData>({
   // back to the declared width); useStateWithDeps attaches tracking to keys it
   // has never seen before, so starting empty is fine.
   const [widths, setWidths] = useStateWithDeps<Record<string, number | undefined>>({});
-  const [resizing, setResizing] = useStateWithDeps<{ resizingId: string | null }>({ resizingId: null });
+  const [resizing, setResizing] = useStateWithDeps<{ resizingId: string | null }>({
+    resizingId: null,
+  });
   // The in-flight drag. The document listeners below are attached once per mount
   // and consult this ref — null means "no drag, bail immediately".
   const dragRef = useRef<ActiveDrag | null>(null);

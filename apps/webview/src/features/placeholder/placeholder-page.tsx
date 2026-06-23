@@ -6,7 +6,7 @@ import {
   EmptyTitle,
 } from 'coss-ui/components/empty';
 import { ConstructionIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { BreadcrumbCurrent } from '@/components/breadcrumbs';
 import { usePageTitle } from '@/hooks/use-page-title';
 
@@ -21,7 +21,7 @@ export function PlaceholderPage({
 }: {
   title: string;
   description: string;
-}): ReactElement {
+}): ReactNode {
   usePageTitle(title);
 
   return (

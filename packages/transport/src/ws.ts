@@ -1,6 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { Listeners, type Transport, type Unsubscribe } from './transport';
+import { Listeners } from './transport';
+import type { Transport, Unsubscribe } from './transport';
 
 export interface WsTransportOptions {
   url: string;
@@ -24,7 +25,7 @@ export class WsTransport implements Transport {
   constructor(private readonly opts: WsTransportOptions) {}
 
   connect(): Promise<void> {
-    const Impl = this.opts.WebSocketImpl ?? globalThis.WebSocket;
+    const Impl = this.opts.WebSocketImpl ?? WebSocket;
     if (!Impl) throw new Error('WsTransport: no WebSocket implementation available');
 
     const ws = new Impl(this.opts.url);
@@ -57,8 +58,9 @@ export class WsTransport implements Transport {
       throw new Error('WsTransport: socket not open');
     }
     const parsed = parseWireMessage(msg);
-    if (!parsed.success)
+    if (!parsed.success) {
       throw new Error(`WsTransport: invalid WireMessage: ${parsed.error.message}`);
+    }
     this.ws.send(JSON.stringify(parsed.data));
   }
 

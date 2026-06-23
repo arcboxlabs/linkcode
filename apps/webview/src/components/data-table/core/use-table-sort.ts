@@ -7,7 +7,9 @@ import type { SortDirection } from './types';
 import type { TablePaginationState } from './use-table-pagination-state';
 
 /** Pre-bound per-column handler — attach to BOTH onClick and onKeyDown. */
-export type ToggleSortingHandler = (event: ReactKeyboardEvent<HTMLElement> | ReactMouseEvent<HTMLElement>) => void;
+export type ToggleSortingHandler = (
+  event: ReactKeyboardEvent<HTMLElement> | ReactMouseEvent<HTMLElement>,
+) => void;
 
 /** Per-column sort directions keyed by column id — `undefined` = not sorted. */
 export type TableSortsState = Record<string, SortDirection | undefined>;
@@ -98,7 +100,9 @@ export function useTableSort<TData = unknown>({
 }: UseTableSortOptions<TData> = {}): TableSort {
   // copied because foxact mutates its internal state object in place
   const [sorts, setSortsState] = useStateWithDeps<TableSortsState>({ ...defaultSorts });
-  const [orderState, setOrderState] = useStateWithDeps<{ order: string[] }>({ order: Object.keys(defaultSorts) });
+  const [orderState, setOrderState] = useStateWithDeps<{ order: string[] }>({
+    order: Object.keys(defaultSorts),
+  });
 
   const onAfterSortChange = useCallback(() => {
     pagination?.firstPage();
@@ -139,7 +143,10 @@ export function useTableSort<TData = unknown>({
   // method call.
   const computeNextSort = useCallback(
     (columnId: string): SortDirection | undefined => {
-      const cycle = table?.columnsById.get(columnId)?.sortingCycle ?? table?.sortingCycle ?? DEFAULT_SORTING_CYCLE;
+      const cycle =
+        table?.columnsById.get(columnId)?.sortingCycle ??
+        table?.sortingCycle ??
+        DEFAULT_SORTING_CYCLE;
       // the tracked getter returns the latest value wherever it is read
       const current = sorts[columnId] ?? null;
       const index = cycle.indexOf(current);
@@ -181,7 +188,16 @@ export function useTableSort<TData = unknown>({
 
       setSort(columnId, next);
     },
-    [sorts, orderState, computeNextSort, setSort, setSortsState, setOrderState, defaultSorts, onAfterSortChange],
+    [
+      sorts,
+      orderState,
+      computeNextSort,
+      setSort,
+      setSortsState,
+      setOrderState,
+      defaultSorts,
+      onAfterSortChange,
+    ],
   );
 
   const toggleSortingHandler = useCallback(

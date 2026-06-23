@@ -8,15 +8,16 @@ import {
   CircleXIcon,
   PencilIcon,
 } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
+import { keyedItems, stableContentKey } from './content-keys';
 import { DiffBlock } from './diff-block';
 import { TerminalBlock } from './terminal-block';
 
-export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactElement {
+export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactNode {
   const t = useTranslations('workbench.tool');
   const [open, setOpen] = useState(false);
 
@@ -24,7 +25,7 @@ export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactElement
   const hasBody = Boolean(
     toolCall.content.length || toolCall.rawInput !== undefined || toolCall.rawOutput !== undefined,
   );
-  let statusIcon: ReactElement;
+  let statusIcon: ReactNode;
   switch (toolCall.status) {
     case 'pending':
       statusIcon = <CircleIcon className="size-4 text-muted-foreground/60" />;
@@ -81,17 +82,14 @@ export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactElement
             </div>
           )}
 
-          {toolCall.content.map((c, i) => {
+          {keyedItems(toolCall.content, stableContentKey).map(({ key, item: c }) => {
             if (c.type === 'content') {
-              // biome-ignore lint/suspicious/noArrayIndexKey: tool call content has no stable id
-              return <ContentBlockView key={i} block={c.content} />;
+              return <ContentBlockView key={key} block={c.content} />;
             }
             if (c.type === 'diff') {
-              // biome-ignore lint/suspicious/noArrayIndexKey: tool call content has no stable id
-              return <DiffBlock key={i} path={c.path} oldText={c.oldText} newText={c.newText} />;
+              return <DiffBlock key={key} path={c.path} oldText={c.oldText} newText={c.newText} />;
             }
-            // biome-ignore lint/suspicious/noArrayIndexKey: tool call content has no stable id
-            return <TerminalBlock key={i} terminalId={c.terminalId} />;
+            return <TerminalBlock key={key} terminalId={c.terminalId} />;
           })}
 
           {toolCall.content.length === 0 && toolCall.rawOutput !== undefined && (
@@ -101,7 +99,7 @@ export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactElement
               </div>
               <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[12px]">
                 {typeof toolCall.rawOutput === 'string'
-                  ? String(toolCall.rawOutput)
+                  ? toolCall.rawOutput
                   : JSON.stringify(toolCall.rawOutput, null, 2)}
               </pre>
             </div>

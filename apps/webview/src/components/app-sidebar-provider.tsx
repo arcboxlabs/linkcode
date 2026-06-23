@@ -51,7 +51,10 @@ export function AppSidebarProvider({
   return (
     <SidebarContext value={ctx}>
       <div
-        className={cn('group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar', className)}
+        className={cn(
+          'group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar',
+          className,
+        )}
         data-slot="sidebar-wrapper"
         data-state={ctx.state}
         style={

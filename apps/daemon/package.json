@@ -8,7 +8,7 @@
     "build": "tsup",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "eslint --format=sukka ."
   },
   "dependencies": {
     "@linkcode/agent-adapter": "workspace:*",

@@ -25,6 +25,7 @@ allowBuilds:
   # our default runtime path, so skip them explicitly to keep installs deterministic.
   "@google/genai": false
   protobufjs: false
+  unrs-resolver: false
 
 # 共享依赖版本集中在 catalog，业务包用 "catalog:" 引用，保证全仓一致。
 # 注意：apps/mobile（Expo）的 react / react-native 版本由 Expo SDK 锁定，

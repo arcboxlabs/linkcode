@@ -1,8 +1,11 @@
-import { createServer, type Server as HttpServer } from 'node:http';
+import { createServer } from 'node:http';
+import type { Server as HttpServer } from 'node:http';
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { type Socket, Server as SocketIoServerImpl } from 'socket.io';
-import { Listeners, type Transport, type TransportServer, type Unsubscribe } from './transport';
+import { Server as SocketIoServerImpl } from 'socket.io';
+import type { Socket } from 'socket.io';
+import { Listeners } from './transport';
+import type { Transport, TransportServer, Unsubscribe } from './transport';
 
 const FRAME_EVENT = 'frame';
 
@@ -35,8 +38,9 @@ class SocketIoServerConnection implements Transport {
 
   send(msg: WireMessage): void {
     const parsed = parseWireMessage(msg);
-    if (!parsed.success)
+    if (!parsed.success) {
       throw new Error(`SocketIoServer: invalid WireMessage: ${parsed.error.message}`);
+    }
     if (this.socket.connected) this.socket.emit(FRAME_EVENT, parsed.data);
   }
 

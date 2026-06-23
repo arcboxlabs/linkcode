@@ -1,7 +1,8 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { PlusIcon } from 'lucide-react';
-import { type ReactElement, useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { NewSessionForm } from './new-session-form';
 import { SessionList } from './session-list';
@@ -21,7 +22,7 @@ export function Sidebar({
   onSelect,
   onStop,
   onCreate,
-}: SidebarProps): ReactElement {
+}: SidebarProps): ReactNode {
   const t = useTranslations('workbench.sidebar');
   const [creating, setCreating] = useState(false);
 

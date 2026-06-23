@@ -1,6 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { Listeners, type Transport, type Unsubscribe } from './transport';
+import { Listeners } from './transport';
+import type { Transport, Unsubscribe } from './transport';
 
 /**
  * LocalTransport: local direct-connection (in-process / over IPC) implementation (PLAN §4.4).
@@ -28,8 +29,9 @@ export class LocalTransport implements Transport {
     if (!this.peer) throw new Error('LocalTransport: not linked to a peer');
     // Trust-boundary validation: validate against the contract even for local direct connections, to catch schema drift in the implementation layer.
     const parsed = parseWireMessage(msg);
-    if (!parsed.success)
+    if (!parsed.success) {
       throw new Error(`LocalTransport: invalid WireMessage: ${parsed.error.message}`);
+    }
     const { data } = parsed;
     // Deliver asynchronously to simulate the transport boundary and avoid synchronous reentrancy.
     queueMicrotask(() => this.peer?.inbound.emit(data));

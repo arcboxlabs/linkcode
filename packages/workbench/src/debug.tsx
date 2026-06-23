@@ -1,6 +1,7 @@
 import { nullthrow } from 'foxact/nullthrow';
 import type * as React from 'react';
-import { createContext, type ReactElement, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 
 export interface DebugState {
   enableArtificialDelay: boolean;
@@ -11,7 +12,7 @@ export interface DebugState {
 
 const DebugContext = createContext<DebugState | null>(null);
 
-export function DebugProvider({ children }: React.PropsWithChildren): ReactElement {
+export function DebugProvider({ children }: React.PropsWithChildren): ReactNode {
   const [enableArtificialDelay, setEnableArtificialDelay] = useState(false);
   const [isLoadingOverride, setIsLoadingOverride] = useState(false);
 

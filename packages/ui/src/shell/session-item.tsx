@@ -1,6 +1,6 @@
 import type { SessionInfo } from '@linkcode/schema';
 import { XIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 
@@ -22,10 +22,10 @@ export function SessionItem({
   active: boolean;
   onSelect: () => void;
   onStop: () => void;
-}): ReactElement {
+}): ReactNode {
   const t = useTranslations('workbench');
   const title = t(`agentKind.${session.kind}`);
-  const subtitle = session.cwd.split('/').filter(Boolean).pop() ?? session.cwd;
+  const subtitle = session.cwd.split('/').findLast(Boolean) ?? session.cwd;
   const statusColor = STATUS_COLORS[session.status];
 
   return (

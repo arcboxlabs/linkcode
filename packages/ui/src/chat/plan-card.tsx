@@ -1,10 +1,11 @@
 import type { Plan } from '@linkcode/schema';
 import { CircleCheckIcon, CircleDashedIcon, CircleIcon, ListTodoIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
+import { keyedItems, stableContentKey } from './content-keys';
 
-export function PlanCard({ plan }: { plan: Plan }): ReactElement {
+export function PlanCard({ plan }: { plan: Plan }): ReactNode {
   const t = useTranslations('workbench.plan');
 
   return (
@@ -13,9 +14,8 @@ export function PlanCard({ plan }: { plan: Plan }): ReactElement {
         <ListTodoIcon className="size-4 text-muted-foreground" />
         {t('title')}
       </div>
-      {plan.entries.map((entry, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: plan entries have no stable id
-        <div key={i} className="flex items-start gap-2 py-0.5 text-[13px]">
+      {keyedItems(plan.entries, stableContentKey).map(({ key, item: entry }) => (
+        <div key={key} className="flex items-start gap-2 py-0.5 text-[13px]">
           {entry.status === 'pending' && (
             <CircleIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />
           )}

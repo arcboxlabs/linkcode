@@ -11,7 +11,12 @@ import { BugIcon } from 'lucide-react';
  * `WorkbenchProviders` SWR middleware reads.
  */
 export function DebugPopover() {
-  const { enableArtificialDelay, isLoadingOverride, setEnableArtificialDelay, setIsLoadingOverride } = useDebug();
+  const {
+    enableArtificialDelay,
+    isLoadingOverride,
+    setEnableArtificialDelay,
+    setIsLoadingOverride,
+  } = useDebug();
 
   if (import.meta.env.PROD) {
     return null;
@@ -33,11 +38,19 @@ export function DebugPopover() {
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-4">
                 <Label htmlFor="delay-switch">Enable artificial delay</Label>
-                <Switch checked={enableArtificialDelay} id="delay-switch" onCheckedChange={setEnableArtificialDelay} />
+                <Switch
+                  checked={enableArtificialDelay}
+                  id="delay-switch"
+                  onCheckedChange={setEnableArtificialDelay}
+                />
               </div>
               <div className="flex items-center justify-between gap-4">
                 <Label htmlFor="loading-switch">Force loading state</Label>
-                <Switch checked={isLoadingOverride} id="loading-switch" onCheckedChange={setIsLoadingOverride} />
+                <Switch
+                  checked={isLoadingOverride}
+                  id="loading-switch"
+                  onCheckedChange={setIsLoadingOverride}
+                />
               </div>
             </div>
           </PopoverPopup>

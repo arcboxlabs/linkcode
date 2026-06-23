@@ -1,5 +1,5 @@
 import type { SessionId, SessionInfo } from '@linkcode/schema';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { SessionItem } from './session-item';
 
@@ -10,12 +10,7 @@ export interface SessionListProps {
   onStop: (id: SessionId) => void;
 }
 
-export function SessionList({
-  sessions,
-  activeId,
-  onSelect,
-  onStop,
-}: SessionListProps): ReactElement {
+export function SessionList({ sessions, activeId, onSelect, onStop }: SessionListProps): ReactNode {
   const t = useTranslations('workbench.sidebar');
 
   if (sessions.length === 0) {

@@ -8,10 +8,12 @@ import {
   startSession,
   stopSession,
 } from '@linkcode/sdk';
-import { AppShell, type WorkbenchSystemBridge } from '@linkcode/ui';
+import { AppShell } from '@linkcode/ui';
+import type { WorkbenchSystemBridge } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { type ReactElement, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useData, useMutation } from './tayori';
 
 export interface WorkbenchProps {
@@ -26,7 +28,7 @@ export interface WorkbenchProps {
  * Wrap it in `WorkbenchProviders` (at a layout, or inline) and mount it as a
  * routed feature page.
  */
-export function Workbench({ systemBridge }: WorkbenchProps): ReactElement {
+export function Workbench({ systemBridge }: WorkbenchProps): ReactNode {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err) ?? String(err));
@@ -64,12 +66,12 @@ function WorkbenchSessionSurface({
   systemBridge,
   onClearError,
   onError,
-}: WorkbenchSessionSurfaceProps): ReactElement {
+}: WorkbenchSessionSurfaceProps): ReactNode {
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
-  const [answered, setAnswered] = useState<Set<string>>(new Set());
-  const [responding, setResponding] = useState<Set<string>>(new Set());
+  const [answered, setAnswered] = useState<Set<string>>(() => new Set());
+  const [responding, setResponding] = useState<Set<string>>(() => new Set());
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
@@ -139,7 +141,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
   const createMutation = useMutation(startSession, { onError });
   const stopMutation = useMutation(stopSession, { onError });
   const [localSessions, setLocalSessions] = useState<SessionInfo[]>([]);
-  const [stoppedIds, setStoppedIds] = useState<Set<SessionId>>(new Set());
+  const [stoppedIds, setStoppedIds] = useState<Set<SessionId>>(() => new Set());
   const [selectedId, setSelectedId] = useState<SessionId | null>(null);
 
   const sessions = useMemo(() => {

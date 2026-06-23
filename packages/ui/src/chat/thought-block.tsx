@@ -1,13 +1,14 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { ChevronRightIcon, CircleDashedIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
+import { keyedItems, stableContentKey } from './content-keys';
 import { contentPreview } from './content-preview';
 
-export function ThoughtBlock({ blocks }: { blocks: ContentBlock[] }): ReactElement {
+export function ThoughtBlock({ blocks }: { blocks: ContentBlock[] }): ReactNode {
   const t = useTranslations('workbench.conversation');
   const [open, setOpen] = useState(false);
   const preview = contentPreview(blocks);
@@ -30,9 +31,8 @@ export function ThoughtBlock({ blocks }: { blocks: ContentBlock[] }): ReactEleme
       </button>
       {open && (
         <div className="mt-1 border-l-2 border-border pl-3 text-[13px] italic opacity-90">
-          {blocks.map((block, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: content blocks have no stable id
-            <ContentBlockView key={i} block={block} />
+          {keyedItems(blocks, stableContentKey).map(({ key, item }) => (
+            <ContentBlockView key={key} block={item} />
           ))}
         </div>
       )}

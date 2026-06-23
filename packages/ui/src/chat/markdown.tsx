@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -69,10 +69,10 @@ const components: Components = {
       {children}
     </pre>
   ),
-  code: ({ className, children, node: _node, ...rest }) => {
+  code({ className, children, node: _node, ...rest }) {
     // Fenced blocks may carry no language class; treat multi-line content as a block too.
     const hasLanguage = typeof className === 'string' && className.includes('language-');
-    const isBlock = hasLanguage || String(children).includes('\n');
+    const isBlock = hasLanguage || reactNodeText(children).includes('\n');
     if (isBlock) {
       return (
         <code className={cn('font-mono', className)} {...rest}>
@@ -119,13 +119,22 @@ const components: Components = {
   ),
 };
 
+function reactNodeText(value: ReactNode): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.map(reactNodeText).join('');
+  return '';
+}
+
 export function Markdown({
   children,
   className,
 }: {
   children: string;
   className?: string;
-}): ReactElement {
+}): ReactNode {
   return (
     <div className={cn('break-words text-[14px] leading-relaxed', className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>

@@ -10,8 +10,13 @@ import { createBreadcrumbs } from 'foxact/breadcrumbs';
 import { Fragment } from 'react';
 import { Link } from 'react-router';
 
-const [BreadcrumbProvider, BreadcrumbPortalTarget, BreadcrumbSegment, FoxactBreadcrumbCurrent, useBreadcrumbs] =
-  createBreadcrumbs('linkcode-webview');
+const [
+  BreadcrumbProvider,
+  BreadcrumbPortalTarget,
+  BreadcrumbSegment,
+  FoxactBreadcrumbCurrent,
+  useBreadcrumbs,
+] = createBreadcrumbs('linkcode-webview');
 
 export { BreadcrumbPortalTarget, BreadcrumbProvider, BreadcrumbSegment };
 
@@ -27,7 +32,9 @@ function BreadcrumbUI() {
               {i > 0 && <CossBreadcrumbSeparator className="hidden md:block" />}
               <CossBreadcrumbItem className={isLast ? undefined : 'hidden md:block'}>
                 {item.href ? (
-                  <CossBreadcrumbLink render={<Link to={item.href} />}>{item.title}</CossBreadcrumbLink>
+                  <CossBreadcrumbLink render={<Link to={item.href} />}>
+                    {item.title}
+                  </CossBreadcrumbLink>
                 ) : (
                   <CossBreadcrumbPage>{item.title}</CossBreadcrumbPage>
                 )}

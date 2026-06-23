@@ -10,19 +10,19 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "eslint --format=sukka ."
   },
   "dependencies": {
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "foxact": "^0.3.6"
   },
-  "peerDependencies": {
-    "react": ">=18"
-  },
   "devDependencies": {
     "@types/react": "catalog:",
     "react": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "react": ">=18"
   }
 }

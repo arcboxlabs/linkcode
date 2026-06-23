@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "eslint --format=sukka ."
   },
   "dependencies": {
     "@linkcode/i18n": "workspace:*",
@@ -21,8 +21,8 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-native": "0.86.0",
-    "react-native-reanimated": "4.4.1",
     "react-native-css": "^3.0.7",
+    "react-native-reanimated": "4.4.1",
     "react-native-worklets": "0.9.2",
     "use-intl": "catalog:"
   },

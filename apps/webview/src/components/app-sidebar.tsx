@@ -14,10 +14,13 @@ import { TerminalIcon } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import { DebugPopover } from '@/components/debug-popover';
 import { HostStatus } from '@/components/host-status';
-import { type NavItem, sidebarNav } from '@/constants/navigation-data';
+import { sidebarNav } from '@/constants/navigation-data';
+import type { NavItem } from '@/constants/navigation-data';
 
 function isItemActive(item: NavItem, pathname: string): boolean {
-  if (item.matchPath) return pathname === item.matchPath || pathname.startsWith(`${item.matchPath}/`);
+  if (item.matchPath) {
+    return pathname === item.matchPath || pathname.startsWith(`${item.matchPath}/`);
+  }
   return pathname === item.url;
 }
 

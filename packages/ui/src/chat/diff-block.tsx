@@ -1,8 +1,13 @@
+import { createFixedArray } from 'foxact/create-fixed-array';
 import { FileTextIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
-type DiffRow = { id: string; type: 'add' | 'del' | 'ctx'; text: string };
+interface DiffRow {
+  id: string;
+  type: 'add' | 'del' | 'ctx';
+  text: string;
+}
 
 function diffLines(oldStr: string, newStr: string): DiffRow[] {
   // An empty side means zero lines (created / deleted file); ''.split('\n') would yield [''] — a phantom row.
@@ -11,7 +16,7 @@ function diffLines(oldStr: string, newStr: string): DiffRow[] {
   const m = oldLines.length;
   const n = newLines.length;
 
-  const lcs: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  const lcs: number[][] = createFixedArray(m + 1).map(() => createFixedArray(n + 1).map(() => 0));
   for (let i = m - 1; i >= 0; i--) {
     for (let j = n - 1; j >= 0; j--) {
       if (oldLines[i] === newLines[j]) {
@@ -24,7 +29,7 @@ function diffLines(oldStr: string, newStr: string): DiffRow[] {
 
   const rows: DiffRow[] = [];
   const push = (type: DiffRow['type'], text: string): void => {
-    rows.push({ id: `${rows.length}`, type, text });
+    rows.push({ id: String(rows.length), type, text });
   };
   let i = 0;
   let j = 0;
@@ -61,7 +66,7 @@ export function DiffBlock({
   path: string;
   oldText?: string;
   newText: string;
-}): ReactElement {
+}): ReactNode {
   const rows = diffLines(oldText ?? '', newText);
   const additions = rows.filter((row) => row.type === 'add').length;
   const deletions = rows.filter((row) => row.type === 'del').length;
@@ -90,7 +95,7 @@ export function DiffBlock({
             <span className="select-none opacity-50">
               {row.type === 'add' ? '+' : row.type === 'del' ? '-' : ' '}
             </span>
-            {` ${row.text}`}
+            {row.text}
           </div>
         ))}
       </div>

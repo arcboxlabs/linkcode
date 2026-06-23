@@ -26,19 +26,19 @@ export interface HistoryServiceOptions {
   now?: () => number;
 }
 
-type ListCacheEntry = {
+interface ListCacheEntry {
   expiresAt: number;
   result: AgentHistoryListResult;
-};
+}
 
-type EventCacheEntry = {
+interface EventCacheEntry {
   expiresAt: number;
   version: number;
   session: AgentHistorySession;
   events: AgentHistoryEvent[];
   fingerprint: string;
   partialCursor?: string;
-};
+}
 
 export class HistoryService {
   private readonly listCache = new Map<string, ListCacheEntry>();
@@ -50,7 +50,7 @@ export class HistoryService {
     private readonly factory: AdapterFactory,
     opts: HistoryServiceOptions = {},
   ) {
-    this.ttlMs = opts.ttlMs ?? 30_000;
+    this.ttlMs = opts.ttlMs ?? 30000;
     this.now = opts.now ?? Date.now;
   }
 
@@ -58,12 +58,14 @@ export class HistoryService {
     const key = listCacheKey(kind, opts);
     const cached = this.listCache.get(key);
     const now = this.now();
-    if (!opts.forceRefresh && cached && cached.expiresAt > now)
+    if (!opts.forceRefresh && cached && cached.expiresAt > now) {
       return cloneListResult(cached.result);
+    }
 
     const adapter = this.factory(kind);
-    if (!adapter.historyCapabilities.list)
+    if (!adapter.historyCapabilities.list) {
       throw new Error(`${kind}: history list is not supported`);
+    }
 
     const result = await adapter.listHistory(stripForceRefresh(opts));
     this.invalidateEventCacheFromList(kind, result.sessions);
@@ -85,16 +87,16 @@ export class HistoryService {
       !opts.forceRefresh &&
       cached &&
       cached.expiresAt > now &&
-      cached.version === HISTORY_CONVERSION_CACHE_VERSION
+      cached.version === HISTORY_CONVERSION_CACHE_VERSION &&
+      (!cached.partialCursor || offset < cached.events.length)
     ) {
-      if (!cached.partialCursor || offset < cached.events.length) {
-        return sliceEventCache(cached, offset, limit);
-      }
+      return sliceEventCache(cached, offset, limit);
     }
 
     const adapter = this.factory(kind);
-    if (!adapter.historyCapabilities.read)
+    if (!adapter.historyCapabilities.read) {
       throw new Error(`${kind}: history read is not supported`);
+    }
 
     const fullResult = await adapter.readHistory({
       historyId: opts.historyId,
@@ -110,8 +112,9 @@ export class HistoryService {
     };
     this.eventCache.set(key, entry);
 
-    if (!entry.partialCursor || offset < entry.events.length)
+    if (!entry.partialCursor || offset < entry.events.length) {
       return sliceEventCache(entry, offset, limit);
+    }
 
     return adapter.readHistory(stripForceRefresh(opts));
   }
@@ -121,8 +124,9 @@ export class HistoryService {
     historyId: AgentHistoryId,
     startOpts: StartOptions,
   ): Promise<void> {
-    if (!adapter.historyCapabilities.resume)
+    if (!adapter.historyCapabilities.resume) {
       throw new Error(`${adapter.kind}: history resume is not supported`);
+    }
     await adapter.resumeHistory({ historyId }, startOpts);
   }
 

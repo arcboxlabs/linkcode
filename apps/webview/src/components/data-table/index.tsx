@@ -1,4 +1,11 @@
-import { TableBody, TableCell, TableHead, TableHeader, TableRow, Table as UITable } from 'coss-ui/components/table';
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Table as UITable,
+} from 'coss-ui/components/table';
 import { cn } from 'coss-ui/lib/utils';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
@@ -11,10 +18,20 @@ import type { SortDirection } from './core/types';
 import type { TablePaginationState } from './core/use-table-pagination-state';
 import type { TableSort } from './core/use-table-sort';
 
-export type { DataTableColumn, ResolvedDataTableColumn, SortingCycle, TableDefinition } from './core/create-table';
+export type {
+  DataTableColumn,
+  ResolvedDataTableColumn,
+  SortingCycle,
+  TableDefinition,
+} from './core/create-table';
 export { createTable } from './core/create-table';
 export { createTableRender } from './core/table-render';
-export type { TableRender, TableRenderCell, TableRenderColumn, TableRenderRow } from './core/table-render';
+export type {
+  TableRender,
+  TableRenderCell,
+  TableRenderColumn,
+  TableRenderRow,
+} from './core/table-render';
 export type { SortDirection, SortState } from './core/types';
 export { paginateTableData } from './core/table-manual-pagination';
 export type { TableManualPagination } from './core/table-manual-pagination';
@@ -74,7 +91,11 @@ export function DataTable<TData>({
 }: DataTableProps<TData>) {
   // derived pagination view: only the state hook lives at the call site (the
   // fetch key reads it); the render derivation is DataTable's own concern
-  const paginationRender = usePaginationRender({ pagination: tablePagination, pageCount, rowCount });
+  const paginationRender = usePaginationRender({
+    pagination: tablePagination,
+    pageCount,
+    rowCount,
+  });
   const { columns, rows } = createTableRender(table, data, { sort: tableSort });
 
   /* first fetch, no data at all — show full skeletons and hide footer */
@@ -93,7 +114,10 @@ export function DataTable<TData>({
           isEmpty && 'flex flex-col',
         )}
       >
-        <UITable className="table-fixed" render={fill && !isEmpty ? <div className="h-full" /> : undefined}>
+        <UITable
+          className="table-fixed"
+          render={fill && !isEmpty ? <div className="h-full" /> : undefined}
+        >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {columns.map(({ key, column, width, sort }) => {
@@ -143,7 +167,9 @@ export function DataTable<TData>({
           </TableBody>
         </UITable>
         {isEmpty && (
-          <div className="flex flex-1 items-center justify-center py-12 text-sm text-muted-foreground">{empty}</div>
+          <div className="flex flex-1 items-center justify-center py-12 text-sm text-muted-foreground">
+            {empty}
+          </div>
         )}
       </div>
 

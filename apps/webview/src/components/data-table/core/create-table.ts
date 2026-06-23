@@ -62,7 +62,12 @@ export interface TableDefinition<TData> {
   /** Table-level default cycle — columns without their own `sortingCycle` inherit this. */
   sortingCycle: SortingCycle;
   getRowId: (row: TData, index: number) => Key;
-  getCellId: (row: TData, column: ResolvedDataTableColumn<TData>, rowIndex: number, columnIndex: number) => Key;
+  getCellId: (
+    row: TData,
+    column: ResolvedDataTableColumn<TData>,
+    rowIndex: number,
+    columnIndex: number,
+  ) => Key;
 }
 
 interface CreateTableOptions<TData> {
@@ -85,7 +90,12 @@ interface CreateTableOptions<TData> {
    * directly by UI code. Defaults to joining the row id (via `getRowId`) with
    * the resolved column `id`, so a custom `getRowId` upgrades cell ids too.
    */
-  getCellId?: (row: TData, column: ResolvedDataTableColumn<TData>, rowIndex: number, columnIndex: number) => Key;
+  getCellId?: (
+    row: TData,
+    column: ResolvedDataTableColumn<TData>,
+    rowIndex: number,
+    columnIndex: number,
+  ) => Key;
 }
 
 const defaultGetRowId = (_row: unknown, index: number): Key => index;
@@ -103,7 +113,10 @@ export function createTable<TData>({
   getCellId = (row, column, rowIndex) => `${String(getRowId(row, rowIndex))}-${column.id}`,
 }: CreateTableOptions<TData>): TableDefinition<TData> {
   // resolve optional column ids up front so everything downstream can rely on them
-  const resolvedColumns = columns.map((column, index) => ({ ...column, id: column.id ?? String(index) }));
+  const resolvedColumns = columns.map((column, index) => ({
+    ...column,
+    id: column.id ?? String(index),
+  }));
   return {
     columns: resolvedColumns,
     columnsById: new Map(resolvedColumns.map((column) => [column.id, column])),

@@ -41,5 +41,5 @@ function MobileContent() {
 
 function getRuntimeLocale() {
   if (typeof Intl === 'undefined') return defaultLocale;
-  return resolveLocale(Intl.DateTimeFormat().resolvedOptions().locale);
+  return resolveLocale(new Intl.DateTimeFormat().resolvedOptions().locale);
 }

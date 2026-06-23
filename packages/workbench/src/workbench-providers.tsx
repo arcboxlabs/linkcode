@@ -2,7 +2,7 @@ import { LinkCodeProvider } from '@linkcode/client-core';
 import type { Transport } from '@linkcode/transport';
 import { Button } from 'coss-ui/components/button';
 import type * as React from 'react';
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { DebugProvider } from './debug';
 import {
@@ -40,7 +40,7 @@ export function WorkbenchProviders({
   daemonUrl,
   children,
   fallback,
-}: WorkbenchProvidersProps): ReactElement {
+}: WorkbenchProvidersProps): ReactNode {
   return (
     <DebugProvider>
       <WorkbenchRuntimeProvider
@@ -53,12 +53,12 @@ export function WorkbenchProviders({
   );
 }
 
-function WorkbenchLinkCodeProvider({ children }: React.PropsWithChildren): ReactElement {
+function WorkbenchLinkCodeProvider({ children }: React.PropsWithChildren): ReactNode {
   const client = useWorkbenchSdkClient();
   return <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>;
 }
 
-export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): ReactElement {
+export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): ReactNode {
   const status = useWorkbenchRuntimeStatus();
   const retry = useWorkbenchRuntimeRetry();
   const t = useTranslations('workbench.connection');

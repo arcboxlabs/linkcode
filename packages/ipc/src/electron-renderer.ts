@@ -8,7 +8,7 @@ type EventaRendererIpc = Parameters<typeof createRendererContext>[0];
 type IpcRendererListener = Parameters<IpcRenderer['on']>[1];
 
 export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBridge {
-  const { context } = createRendererContext(ipcRenderer as unknown as EventaRendererIpc);
+  const { context } = createRendererContext(toEventaRendererIpc(ipcRenderer));
   const invoke = defineInvokes(context, systemIpcEvents);
 
   return {
@@ -17,7 +17,7 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
       toggleMaximize: () => invoke.windowToggleMaximize(),
       close: () => invoke.windowClose(),
       isMaximized: () => invoke.windowIsMaximized(),
-      onMaximizedChange: (cb) => {
+      onMaximizedChange(cb) {
         const handler: IpcRendererListener = (_event, value: unknown) => {
           if (typeof value === 'boolean') cb(value);
         };
@@ -33,4 +33,8 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
       platform: () => invoke.appPlatform(),
     },
   };
+}
+
+function toEventaRendererIpc(ipcRenderer: unknown): EventaRendererIpc {
+  return ipcRenderer as EventaRendererIpc;
 }

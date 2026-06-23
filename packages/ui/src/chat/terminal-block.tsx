@@ -1,8 +1,8 @@
 import { TerminalIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 
-export function TerminalBlock({ terminalId }: { terminalId: string }): ReactElement {
+export function TerminalBlock({ terminalId }: { terminalId: string }): ReactNode {
   const t = useTranslations('workbench.tool');
 
   return (

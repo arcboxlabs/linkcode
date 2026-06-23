@@ -4,24 +4,28 @@
   "private": true,
   "description": "Link Code — 面向通用 coding agent 的统一 GUI（PC / Web / Mobile + Server）",
   "type": "module",
-  "packageManager": "pnpm@11.7.0",
-  "engines": {
-    "node": ">=24.0.0"
-  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "eslint --format=sukka .",
+    "lint:fix": "eslint --format=sukka --fix .",
     "format": "biome format --write .",
     "test": "vitest run",
     "clean": "turbo run clean"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
+    "@eslint-sukka/react": "^8.12.2",
+    "eslint": "^10.5.0",
+    "eslint-config-sukka": "^8.12.2",
+    "eslint-formatter-sukka": "^8.12.2",
     "turbo": "^2.9.18",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

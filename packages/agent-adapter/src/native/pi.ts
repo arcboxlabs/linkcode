@@ -46,9 +46,9 @@ export class PiAdapter extends BaseAgentAdapter {
     if (!this.session) throw new Error('pi: session not started');
     const text = contentToText(content);
     this.emitStatus('running');
-    if (this.session.isStreaming)
+    if (this.session.isStreaming) {
       await this.session.prompt(text, { streamingBehavior: 'followUp' });
-    else await this.session.prompt(text);
+    } else await this.session.prompt(text);
   }
 
   protected override async onCancel(): Promise<void> {

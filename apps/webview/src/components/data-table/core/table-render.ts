@@ -22,7 +22,9 @@ type TableRenderColumnSizingFields = Pick<
 // ── Conditional feature overlay types ──
 
 type SortOverlay<TSort> = TSort extends TableSort ? TableRenderColumnSortFields : object;
-type SizingOverlay<TSizing> = TSizing extends TableColumnSizing ? TableRenderColumnSizingFields : object;
+type SizingOverlay<TSizing> = TSizing extends TableColumnSizing
+  ? TableRenderColumnSizingFields
+  : object;
 
 // ── Core types ──
 

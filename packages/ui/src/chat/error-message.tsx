@@ -1,5 +1,5 @@
 import { TriangleAlertIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 export function ErrorMessage({
@@ -10,7 +10,7 @@ export function ErrorMessage({
   message: string;
   code?: string;
   recoverable: boolean;
-}): ReactElement {
+}): ReactNode {
   return (
     <div
       className={cn(

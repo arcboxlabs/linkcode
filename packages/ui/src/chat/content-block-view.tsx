@@ -1,10 +1,10 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { FileTextIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { Markdown } from './markdown';
 
-export function ContentBlockView({ block }: { block: ContentBlock }): ReactElement {
+export function ContentBlockView({ block }: { block: ContentBlock }): ReactNode {
   const t = useTranslations('workbench.content');
 
   switch (block.type) {
@@ -45,5 +45,7 @@ export function ContentBlockView({ block }: { block: ContentBlock }): ReactEleme
       ) : (
         <span className="text-[13px] text-muted-foreground">{t('resource')}</span>
       );
+    default:
+      return null;
   }
 }

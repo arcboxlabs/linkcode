@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 export interface MobileHomeProps {
@@ -17,7 +17,7 @@ export function MobileHome({
   agentKinds,
   tunnel,
   statusBar,
-}: MobileHomeProps): ReactElement {
+}: MobileHomeProps): ReactNode {
   return (
     <View className="flex-1 bg-bg">
       {statusBar}

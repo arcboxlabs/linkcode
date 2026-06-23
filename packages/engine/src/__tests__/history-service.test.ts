@@ -1,4 +1,5 @@
-import { type AdapterFactory, BaseAgentAdapter } from '@linkcode/agent-adapter';
+import { BaseAgentAdapter } from '@linkcode/agent-adapter';
+import type { AdapterFactory } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryCapabilities,
   AgentHistoryEvent,
@@ -20,11 +21,11 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from '../engine';
 import { HistoryService } from '../history-service';
 
-type FakeState = {
+interface FakeState {
   listCalls: number;
   readCalls: number;
   resumeCalls: number;
-};
+}
 
 const historyId = 'hist-1' as AgentHistoryId;
 
@@ -117,7 +118,7 @@ function fakeFactory(state: FakeState): AdapterFactory {
 describe('HistoryService', () => {
   it('caches list results until forceRefresh', async () => {
     const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
-    const service = new HistoryService(fakeFactory(state), { ttlMs: 60_000 });
+    const service = new HistoryService(fakeFactory(state), { ttlMs: 60000 });
 
     await service.list('codex', { cwd: '/repo', limit: 10 });
     await service.list('codex', { cwd: '/repo', limit: 10 });
@@ -129,7 +130,7 @@ describe('HistoryService', () => {
 
   it('caches converted events and paginates from memory', async () => {
     const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
-    const service = new HistoryService(fakeFactory(state), { ttlMs: 60_000 });
+    const service = new HistoryService(fakeFactory(state), { ttlMs: 60000 });
 
     const first = await service.read('codex', { historyId, limit: 1 });
     const second = await service.read('codex', { historyId, cursor: first.cursor, limit: 1 });

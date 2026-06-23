@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "eslint --format=sukka ."
   },
   "dependencies": {
     "@linkcode/client-core": "workspace:*",
@@ -27,15 +27,15 @@
     "use-intl": "catalog:",
     "zod": "catalog:"
   },
-  "peerDependencies": {
-    "react": ">=19",
-    "react-dom": ">=19"
-  },
   "devDependencies": {
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
   }
 }

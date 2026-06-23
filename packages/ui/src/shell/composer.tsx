@@ -3,7 +3,8 @@ import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Textarea } from 'coss-ui/components/textarea';
 import { ArrowUpIcon, AtSignIcon, SlashIcon, SquareIcon } from 'lucide-react';
-import { type KeyboardEvent, type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 
@@ -43,6 +44,8 @@ interface MenuEntry {
   hint?: string;
 }
 
+const EMPTY_MENTION_ITEMS: MentionItem[] = [];
+
 /** Find a `/` or `@` autocomplete trigger at the caret (the maximal non-whitespace run ending there). */
 function computeMenu(value: string, caret: number): MenuState | null {
   let start = caret;
@@ -57,58 +60,65 @@ export function Composer({
   disabled,
   isRunning,
   availableCommands,
-  mentionItems = [],
+  mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
   onSend,
   onStop,
-}: ComposerProps): ReactElement {
+}: ComposerProps): ReactNode {
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndexState, setActiveIndexState] = useState({ menuKey: '', index: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingCaretRef = useRef<number | null>(null);
 
   const raw = computeMenu(value, caret);
   const menu = raw && raw.start !== dismissedStart ? raw : null;
-  const rawStart = raw ? raw.start : null;
 
   const entries = useMemo<MenuEntry[]>(() => {
     if (!menu) return [];
     const q = menu.query.toLowerCase();
     if (menu.mode === 'slash') {
-      return availableCommands
-        .filter((c) => c.name.toLowerCase().includes(q))
-        .map((c) => ({
-          id: c.name,
-          insert: `/${c.name}`,
-          label: `/${c.name}`,
-          hint: c.description,
-        }));
+      return availableCommands.reduce<MenuEntry[]>((items, c) => {
+        if (c.name.toLowerCase().includes(q)) {
+          items.push({
+            id: c.name,
+            insert: `/${c.name}`,
+            label: `/${c.name}`,
+            hint: c.description,
+          });
+        }
+        return items;
+      }, []);
     }
-    return mentionItems
-      .filter((m) => m.label.toLowerCase().includes(q) || m.value.toLowerCase().includes(q))
-      .map((m) => ({ id: m.id, insert: `@${m.value}`, label: m.label, hint: m.hint }));
+    return mentionItems.reduce<MenuEntry[]>((items, m) => {
+      if (m.label.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)) {
+        items.push({ id: m.id, insert: `@${m.value}`, label: m.label, hint: m.hint });
+      }
+      return items;
+    }, []);
   }, [menu, availableCommands, mentionItems]);
 
   const menuKey = menu ? `${menu.mode}:${menu.query}` : '';
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset highlight whenever the menu query changes
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [menuKey]);
+  const maxActiveIndex = Math.max(0, entries.length - 1);
+  const activeIndex =
+    activeIndexState.menuKey === menuKey ? Math.min(activeIndexState.index, maxActiveIndex) : 0;
 
-  // Keep the highlight in range when the entry list shrinks (e.g. availableCommands updates from the wire).
-  useEffect(() => {
-    setActiveIndex((i) => Math.min(i, Math.max(0, entries.length - 1)));
-  }, [entries.length]);
+  function updateActiveIndex(next: number | ((current: number) => number)): void {
+    setActiveIndexState((prev) => {
+      const current = prev.menuKey === menuKey ? prev.index : 0;
+      const index = typeof next === 'function' ? next(current) : next;
+      return { menuKey, index: Math.min(Math.max(0, index), maxActiveIndex) };
+    });
+  }
 
-  // Clear an Escape-dismissal once the caret leaves the trigger token, so the next trigger opens normally.
-  useEffect(() => {
-    if (rawStart === null) setDismissedStart(null);
-  }, [rawStart]);
+  function updateCaret(nextCaret: number, nextValue = value): void {
+    setCaret(nextCaret);
+    if (!computeMenu(nextValue, nextCaret)) setDismissedStart(null);
+  }
 
   useEffect(() => {
     if (pendingCaretRef.current !== null && textareaRef.current) {
@@ -147,12 +157,12 @@ export function Composer({
     if (menu) {
       if (e.key === 'ArrowDown' && entries.length > 0) {
         e.preventDefault();
-        setActiveIndex((i) => (i + 1) % entries.length);
+        updateActiveIndex((i) => (i + 1) % entries.length);
         return;
       }
       if (e.key === 'ArrowUp' && entries.length > 0) {
         e.preventDefault();
-        setActiveIndex((i) => (i - 1 + entries.length) % entries.length);
+        updateActiveIndex((i) => (i - 1 + entries.length) % entries.length);
         return;
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
@@ -184,7 +194,7 @@ export function Composer({
               activeIndex={activeIndex}
               emptyLabel={menu.mode === 'slash' ? t('noCommands') : t('noMentions')}
               onSelect={selectEntry}
-              onHover={setActiveIndex}
+              onHover={updateActiveIndex}
             />
           )}
           <Textarea
@@ -194,11 +204,12 @@ export function Composer({
             rows={1}
             placeholder={disabled ? t('placeholderDisconnected') : t('placeholder')}
             onChange={(e) => {
-              setValue(e.target.value);
-              setCaret(e.target.selectionStart ?? e.target.value.length);
+              const nextValue = e.target.value;
+              setValue(nextValue);
+              updateCaret(e.target.selectionStart ?? nextValue.length, nextValue);
             }}
-            onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-            onKeyUp={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+            onClick={(e) => updateCaret(e.currentTarget.selectionStart ?? 0, e.currentTarget.value)}
+            onKeyUp={(e) => updateCaret(e.currentTarget.selectionStart ?? 0, e.currentTarget.value)}
             onKeyDown={onKeyDown}
             className="max-h-48 px-3.5 pt-3 pb-1.5"
           />
@@ -251,7 +262,7 @@ function AutocompleteMenu({
   emptyLabel,
   onSelect,
   onHover,
-}: AutocompleteMenuProps): ReactElement {
+}: AutocompleteMenuProps): ReactNode {
   return (
     <div className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-md">
       {entries.length === 0 ? (

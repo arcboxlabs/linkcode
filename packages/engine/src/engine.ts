@@ -1,4 +1,6 @@
-import { type AdapterFactory, type AgentAdapter, createAdapter } from '@linkcode/agent-adapter';
+import { createAdapter } from '@linkcode/agent-adapter';
+import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
+import { noop } from 'foxact/noop';
 import type {
   AgentKind,
   SessionId,
@@ -6,7 +8,8 @@ import type {
   StartOptions,
   WireMessage,
 } from '@linkcode/schema';
-import { createWireMessage, type Transport, type Unsubscribe } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { HistoryService } from './history-service';
 
 interface Session {
@@ -166,7 +169,7 @@ export class Engine {
     } catch (err) {
       unsub();
       this.sessions.delete(sessionId);
-      await adapter.stop().catch(() => undefined);
+      await adapter.stop().catch(noop);
       throw err;
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));

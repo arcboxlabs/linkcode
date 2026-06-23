@@ -1,4 +1,5 @@
-import { createClient, type LinkCodeSdkClient, setDefaultClient } from '@linkcode/sdk';
+import { createClient, setDefaultClient } from '@linkcode/sdk';
+import type { LinkCodeSdkClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
 import { createContextState } from 'foxact/context-state';
 import { nullthrow } from 'foxact/nullthrow';
@@ -6,15 +7,8 @@ import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { wait } from 'foxts/wait';
 import type * as React from 'react';
-import {
-  createContext,
-  type ReactElement,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
 import { useDebug } from './debug';
@@ -58,7 +52,7 @@ export function useWorkbenchSdkClient(): LinkCodeSdkClient {
   );
 }
 
-export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): ReactElement {
+export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): ReactNode {
   return (
     <WorkbenchRuntimeStatusProvider>
       <WorkbenchRuntimeConnection {...props} />
@@ -70,7 +64,7 @@ function WorkbenchRuntimeConnection({
   transport,
   children,
   fallback,
-}: WorkbenchRuntimeProviderProps): ReactElement {
+}: WorkbenchRuntimeProviderProps): ReactNode {
   const [client, setClient] = useState(() => createClient({ transport }));
   const status = useWorkbenchRuntimeStatus();
   const setStatus = useSetWorkbenchRuntimeStatus();
@@ -120,7 +114,7 @@ function WorkbenchRuntimeConnection({
   );
 }
 
-function WorkbenchSWRConfig({ children }: React.PropsWithChildren): ReactElement {
+function WorkbenchSWRConfig({ children }: React.PropsWithChildren): ReactNode {
   const debug = useDebug();
   const debugMiddleware: SWRMiddleware = (useSWRNext) => (key, fetcher, config) => {
     const wrappedFetcher =
@@ -130,7 +124,7 @@ function WorkbenchSWRConfig({ children }: React.PropsWithChildren): ReactElement
             return fetcher(...args);
           }
         : fetcher;
-    // biome-ignore lint/correctness/useHookAtTopLevel: SWR middleware receives the next hook here by contract.
+    // eslint-disable-next-line @eslint-react/rules-of-hooks, react-hooks/rules-of-hooks -- SWR middleware receives the next hook here by contract.
     const swr = useSWRNext(key, wrappedFetcher, config);
 
     if (!debug.isLoadingOverride) return swr;

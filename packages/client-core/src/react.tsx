@@ -6,10 +6,12 @@ import type {
   StartOptions,
 } from '@linkcode/schema';
 import { nullthrow } from 'foxact/nullthrow';
+import { noop } from 'foxact/noop';
 import type * as React from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { LinkCodeClient } from './client';
-import { buildConversation, type Conversation } from './conversation';
+import { buildConversation } from './conversation';
+import type { Conversation } from './conversation';
 
 const ClientContext = createContext<LinkCodeClient | null>(null);
 
@@ -35,17 +37,23 @@ export function useLinkCodeClient(): LinkCodeClient {
 /** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
 export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   const client = useLinkCodeClient();
-  const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [state, setState] = useState<{ sessionId: SessionId | null; events: AgentEvent[] }>({
+    sessionId: null,
+    events: [],
+  });
 
   useEffect(() => {
     if (!sessionId) return;
-    setEvents([]);
     return client.subscribe(sessionId, (event) => {
-      setEvents((prev) => [...prev, event]);
+      setState((prev) =>
+        prev.sessionId === sessionId
+          ? { sessionId, events: [...prev.events, event] }
+          : { sessionId, events: [event] },
+      );
     });
   }, [client, sessionId]);
 
-  return events;
+  return state.sessionId === sessionId ? state.events : [];
 }
 
 /** Return a function that sends input to the current session. */
@@ -107,8 +115,20 @@ export function useSessions(): SessionsApi {
   }, [client]);
 
   useEffect(() => {
-    refresh().catch(() => setLoading(false));
-  }, [refresh]);
+    client
+      .listSessions()
+      .then((list) => {
+        setSessions((local) => {
+          const byId = new Map<SessionId, SessionInfo>();
+          for (const s of list) byId.set(s.sessionId, s);
+          // Keep optimistic locals the snapshot doesn't know about yet.
+          for (const s of local) if (!byId.has(s.sessionId)) byId.set(s.sessionId, s);
+          return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+        });
+      })
+      .catch(noop)
+      .finally(() => setLoading(false));
+  }, [client]);
 
   const create = useCallback(
     async (opts: StartOptions): Promise<SessionId> => {

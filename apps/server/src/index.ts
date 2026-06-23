@@ -1,5 +1,6 @@
 import { parseWireMessage } from '@linkcode/schema';
-import { type WebSocket, WebSocketServer } from 'ws';
+import { WebSocketServer } from 'ws';
+import type { RawData, WebSocket } from 'ws';
 
 /**
  * Link Code Server — relay / tunnel (PLAN §4.7).
@@ -38,7 +39,7 @@ wss.on('connection', (socket, req) => {
   socket.on('message', (data) => {
     let raw: unknown;
     try {
-      raw = JSON.parse(data.toString());
+      raw = JSON.parse(rawDataToString(data));
     } catch {
       return; // not JSON, discard
     }
@@ -58,3 +59,10 @@ wss.on('connection', (socket, req) => {
 });
 
 console.log(`[link-code/server] tunnel listening on ws://localhost:${PORT}`);
+
+function rawDataToString(data: RawData): string {
+  if (typeof data === 'string') return data;
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  if (Buffer.isBuffer(data)) return data.toString('utf8');
+  return Buffer.from(data).toString('utf8');
+}

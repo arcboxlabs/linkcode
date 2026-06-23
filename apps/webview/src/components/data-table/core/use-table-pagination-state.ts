@@ -33,7 +33,10 @@ export function useTablePaginationState({
   const setPageIndex = useCallback((pageIndex: number) => setState({ pageIndex }), [setState]);
 
   // changing the page size invalidates the current page position — reset to the first page
-  const setPageSize = useCallback((pageSize: number) => setState({ pageSize, pageIndex: 0 }), [setState]);
+  const setPageSize = useCallback(
+    (pageSize: number) => setState({ pageSize, pageIndex: 0 }),
+    [setState],
+  );
 
   const firstPage = useCallback(() => setState({ pageIndex: 0 }), [setState]);
 

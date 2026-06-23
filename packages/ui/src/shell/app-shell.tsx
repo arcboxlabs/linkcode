@@ -2,15 +2,14 @@ import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
 import { XIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import { ConversationView, type ConversationViewModel } from '../chat';
+import { ConversationView } from '../chat';
+import type { ConversationViewModel } from '../chat';
 import { Composer } from './composer';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
 import type { WorkbenchSystemBridge } from './types';
-
-const EMPTY_PERMISSION_SET = new Set<string>();
 
 export interface AppShellProps {
   sessions: SessionInfo[];
@@ -35,7 +34,7 @@ export function AppShell({
   activeId,
   conversation,
   answeredPermissions,
-  respondingPermissions = EMPTY_PERMISSION_SET,
+  respondingPermissions,
   errorMessage,
   systemBridge,
   onSelectSession,
@@ -45,7 +44,7 @@ export function AppShell({
   onStopTurn,
   onRespondPermission,
   onDismissError,
-}: AppShellProps): ReactElement {
+}: AppShellProps): ReactNode {
   const tk = useTranslations('workbench.agentKind');
   const te = useTranslations('workbench.error');
 

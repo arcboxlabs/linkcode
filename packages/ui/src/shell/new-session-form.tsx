@@ -1,7 +1,9 @@
-import { type AgentKind, AgentKindSchema } from '@linkcode/schema';
+import { AgentKindSchema } from '@linkcode/schema';
+import type { AgentKind } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { Input } from 'coss-ui/components/input';
-import { type ReactElement, useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 
 export interface NewSessionFormProps {
@@ -10,7 +12,7 @@ export interface NewSessionFormProps {
 }
 
 /** Inline form to start a new agent session (agent kind + working directory). */
-export function NewSessionForm({ onCreate, onCancel }: NewSessionFormProps): ReactElement {
+export function NewSessionForm({ onCreate, onCancel }: NewSessionFormProps): ReactNode {
   const t = useTranslations('workbench.newSession');
   const tk = useTranslations('workbench.agentKind');
   const [kind, setKind] = useState<AgentKind>('claude-code');
