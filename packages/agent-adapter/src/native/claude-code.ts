@@ -7,6 +7,7 @@ import type {
   SessionMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
+  AgentEvent,
   AgentHistoryCapabilities,
   AgentHistoryEvent,
   AgentHistoryId,
@@ -21,6 +22,7 @@ import type {
   PermissionOption,
   StartOptions,
   StopReason,
+  ToolCallContent,
 } from '@linkcode/schema';
 import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
@@ -41,6 +43,11 @@ import { contentToText, toolKindFromName } from '../util';
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantMessage = Extract<SDKMessage, { type: 'assistant' }>['message'];
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
+type UserMessage = Extract<SDKMessage, { type: 'user' }>;
+type ToolResultBlock = Extract<
+  Exclude<UserMessage['message']['content'], string>[number],
+  { type: 'tool_result' }
+>;
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -209,6 +216,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       case 'assistant':
         this.handleAssistant(msg.message);
         break;
+      case 'user':
+        // Tool results arrive on a `user` message (one tool_result block per finished tool call).
+        for (const event of claudeToolResultEvents(msg)) this.emit(event);
+        break;
       case 'result':
         this.handleResult(msg);
         break;
@@ -234,7 +245,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             title: block.name,
             kind: toolKindFromName(block.name),
             status: 'in_progress',
-            content: [],
+            // Edit/Write/MultiEdit carry the change in their input — surface it as a diff up front.
+            content: editToolDiffs(block.input),
             rawInput: block.input,
           },
         });
@@ -257,6 +269,71 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.emitError('Claude returned an error', undefined, true);
     }
   }
+}
+
+/**
+ * Map Claude's `tool_result` blocks (carried on a `user` message) to normalized `tool-call-update`
+ * events. Each finished tool call produces one update: terminal status (completed / failed) plus its
+ * output as content. Pure so it can be unit-tested without a live query.
+ */
+export function claudeToolResultEvents(message: UserMessage): AgentEvent[] {
+  const content = message.message.content;
+  if (typeof content === 'string') return [];
+  const events: AgentEvent[] = [];
+  for (const block of content) {
+    if (block.type !== 'tool_result') continue;
+    events.push({
+      type: 'tool-call-update',
+      update: {
+        toolCallId: block.tool_use_id,
+        status: block.is_error === true ? 'failed' : 'completed',
+        content: toolResultContent(block.content),
+        rawOutput: message.tool_use_result ?? block.content,
+      },
+    });
+  }
+  return events;
+}
+
+/** Flatten a tool_result's content (string or block array) into normalized tool-call content. */
+function toolResultContent(content: ToolResultBlock['content']): ToolCallContent[] {
+  if (content === undefined) return [];
+  if (typeof content === 'string') {
+    return content.length > 0 ? [{ type: 'content', content: { type: 'text', text: content } }] : [];
+  }
+  const out: ToolCallContent[] = [];
+  for (const block of content) {
+    if (block.type === 'text' && block.text.length > 0) {
+      out.push({ type: 'content', content: { type: 'text', text: block.text } });
+    }
+  }
+  return out;
+}
+
+/** Build diff content from an Edit/Write/MultiEdit tool input (detected by shape, not tool name). */
+export function editToolDiffs(input: unknown): ToolCallContent[] {
+  if (!isRecord(input)) return [];
+  const path = typeof input.file_path === 'string' ? input.file_path : undefined;
+  if (path === undefined) return [];
+  // Write: full new contents, no prior text.
+  if (typeof input.content === 'string') {
+    return [{ type: 'diff', path, newText: input.content }];
+  }
+  // Edit: a single old → new replacement.
+  if (typeof input.old_string === 'string' && typeof input.new_string === 'string') {
+    return [{ type: 'diff', path, oldText: input.old_string, newText: input.new_string }];
+  }
+  // MultiEdit: an ordered list of replacements against the same file.
+  if (Array.isArray(input.edits)) {
+    return input.edits.flatMap((edit): ToolCallContent[] =>
+      isRecord(edit) &&
+      typeof edit.old_string === 'string' &&
+      typeof edit.new_string === 'string'
+        ? [{ type: 'diff', path, oldText: edit.old_string, newText: edit.new_string }]
+        : [],
+    );
+  }
+  return [];
 }
 
 function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {

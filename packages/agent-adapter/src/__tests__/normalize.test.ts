@@ -5,7 +5,7 @@ import { env } from 'node:process';
 import type { SessionUpdate } from '@agentclientprotocol/sdk';
 import { describe, expect, it } from 'vitest';
 import { acpUpdateToEvent, mapAcpStop } from '../acp/acp-adapter';
-import { mapClaudeStop } from '../native/claude-code';
+import { claudeToolResultEvents, editToolDiffs, mapClaudeStop } from '../native/claude-code';
 import { CodexAdapter, mapCodexStatus, mapCodexUsage } from '../native/codex';
 import { contentToText, toolKindFromName } from '../util';
 
@@ -180,3 +180,88 @@ describe('acpUpdateToEvent', () => {
 function sessionUpdateFixture(value: object): SessionUpdate {
   return value as SessionUpdate;
 }
+
+type ClaudeUserMessage = Parameters<typeof claudeToolResultEvents>[0];
+function claudeUserFixture(content: unknown, toolUseResult?: unknown): ClaudeUserMessage {
+  return { type: 'user', message: { role: 'user', content }, tool_use_result: toolUseResult } as ClaudeUserMessage;
+}
+
+describe('claudeToolResultEvents', () => {
+  it('maps a successful tool_result to a completed tool-call-update', () => {
+    expect(
+      claudeToolResultEvents(
+        claudeUserFixture([{ type: 'tool_result', tool_use_id: 't1', content: 'done' }]),
+      ),
+    ).toEqual([
+      {
+        type: 'tool-call-update',
+        update: {
+          toolCallId: 't1',
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: 'done' } }],
+          rawOutput: 'done',
+        },
+      },
+    ]);
+  });
+
+  it('marks is_error results as failed and flattens block-array content', () => {
+    const [event] = claudeToolResultEvents(
+      claudeUserFixture([
+        {
+          type: 'tool_result',
+          tool_use_id: 't2',
+          is_error: true,
+          content: [
+            { type: 'text', text: 'boom' },
+            { type: 'image', source: { type: 'base64', data: 'x', media_type: 'image/png' } },
+          ],
+        },
+      ]),
+    );
+    expect(event).toMatchObject({
+      type: 'tool-call-update',
+      update: {
+        toolCallId: 't2',
+        status: 'failed',
+        content: [{ type: 'content', content: { type: 'text', text: 'boom' } }],
+      },
+    });
+  });
+
+  it('ignores non-tool_result blocks and string content', () => {
+    expect(claudeToolResultEvents(claudeUserFixture('just text'))).toEqual([]);
+    expect(claudeToolResultEvents(claudeUserFixture([{ type: 'text', text: 'hi' }]))).toEqual([]);
+  });
+});
+
+describe('editToolDiffs', () => {
+  it('builds an old→new diff for an Edit input', () => {
+    expect(editToolDiffs({ file_path: '/a.ts', old_string: 'foo', new_string: 'bar' })).toEqual([
+      { type: 'diff', path: '/a.ts', oldText: 'foo', newText: 'bar' },
+    ]);
+  });
+  it('builds a new-only diff for a Write input', () => {
+    expect(editToolDiffs({ file_path: '/a.ts', content: 'hello' })).toEqual([
+      { type: 'diff', path: '/a.ts', newText: 'hello' },
+    ]);
+  });
+  it('expands MultiEdit edits into one diff each', () => {
+    expect(
+      editToolDiffs({
+        file_path: '/a.ts',
+        edits: [
+          { old_string: 'a', new_string: 'b' },
+          { old_string: 'c', new_string: 'd' },
+        ],
+      }),
+    ).toEqual([
+      { type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' },
+      { type: 'diff', path: '/a.ts', oldText: 'c', newText: 'd' },
+    ]);
+  });
+  it('returns nothing for non-edit tool inputs', () => {
+    expect(editToolDiffs({ command: 'ls' })).toEqual([]);
+    expect(editToolDiffs('nope')).toEqual([]);
+  });
+});
