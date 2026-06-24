@@ -156,8 +156,8 @@ export function acpUpdateToEvent(update: SessionUpdate): AgentEvent | null {
       return contentChunk('agent-message-chunk', u.content);
     case 'agent_thought_chunk':
       return contentChunk('agent-thought-chunk', u.content);
-    case 'user_message_chunk':
-      return contentChunk('user-message-chunk', u.content);
+    // Note: user_message_chunk is intentionally not mapped — the Engine is the single source of truth
+    // for user messages (it echoes the prompt into the stream), so adapters never emit them.
     case 'tool_call':
       return { type: 'tool-call', toolCall: toToolCall(u) };
     case 'tool_call_update':

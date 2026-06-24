@@ -1,8 +1,10 @@
-import { createAdapter } from '@linkcode/agent-adapter';
+import { createAdapter, nextMessageId } from '@linkcode/agent-adapter';
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { noop } from 'foxact/noop';
 import type {
+  AgentEvent,
   AgentKind,
+  ContentBlock,
   SessionId,
   SessionInfo,
   StartOptions,
@@ -64,6 +66,9 @@ export class Engine {
         await this.tryReply(p.clientReqId, async () => {
           const session = this.sessions.get(p.sessionId);
           if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
+          // The user's prompt is a session-level event, not adapter output: echo it into the broadcast
+          // stream (single source of truth) so every attached client renders it before the agent replies.
+          if (p.input.type === 'prompt') this.emitUserMessage(p.sessionId, p.input.content);
           await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
         });
@@ -163,7 +168,7 @@ export class Engine {
     };
     const unsub = adapter.onEvent((event) => {
       if (event.type === 'status') info.status = event.status;
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+      this.emitSessionEvent(sessionId, event);
     });
     this.sessions.set(sessionId, { adapter, unsub, info });
     try {
@@ -175,6 +180,19 @@ export class Engine {
       throw err;
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  /** Broadcast a normalized agent event for a session to every attached client. */
+  private emitSessionEvent(sessionId: SessionId, event: AgentEvent): void {
+    this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+  }
+
+  /** Echo a user prompt into the session event stream as user-message chunks (one per block, shared id). */
+  private emitUserMessage(sessionId: SessionId, content: ContentBlock[]): void {
+    const messageId = nextMessageId();
+    for (const block of content) {
+      this.emitSessionEvent(sessionId, { type: 'user-message-chunk', messageId, content: block });
+    }
   }
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
