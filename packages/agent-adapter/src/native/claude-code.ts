@@ -31,6 +31,8 @@ import {
   cursorFromFetched,
   cursorOffset,
   firstText,
+  isRecord,
+  numberField,
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
@@ -130,10 +132,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       session: info
         ? mapClaudeHistorySession(info)
         : { historyId, kind: this.kind, title: historyId },
-      events: messages
-        .slice(0, limit)
-        .map((message) => mapClaudeHistoryEvent(historyId, message))
-        .filter((event): event is AgentHistoryEvent => event !== undefined),
+      events: messages.slice(0, limit).reduce<AgentHistoryEvent[]>((events, message) => {
+        const event = mapClaudeHistoryEvent(historyId, message);
+        if (event) events.push(event);
+        return events;
+      }, []),
       cursor: cursorFromFetched(offset, messages.length, limit),
     };
   }
@@ -241,12 +244,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private handleResult(msg: ResultMessage): void {
     if (msg.subtype === 'success') {
-      const usage = msg.usage as unknown as Record<string, number>;
+      const usage = isRecord(msg.usage) ? msg.usage : {};
       this.emitUsage({
-        inputTokens: usage.input_tokens,
-        outputTokens: usage.output_tokens,
-        cacheReadTokens: usage.cache_read_input_tokens,
-        cacheCreationTokens: usage.cache_creation_input_tokens,
+        inputTokens: numberField(usage, 'input_tokens'),
+        outputTokens: numberField(usage, 'output_tokens'),
+        cacheReadTokens: numberField(usage, 'cache_read_input_tokens'),
+        cacheCreationTokens: numberField(usage, 'cache_creation_input_tokens'),
         totalCostUsd: msg.total_cost_usd,
       });
       this.emitStop(mapClaudeStop(msg.stop_reason));

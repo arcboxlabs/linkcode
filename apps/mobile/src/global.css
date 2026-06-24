@@ -2,7 +2,7 @@
 @import "tailwindcss/utilities" source(none);
 @import "nativewind/theme";
 
-@source "./App.tsx";
+@source "./app.tsx";
 @source "../../../packages/ui/src/native/**/*.{ts,tsx}";
 
 @theme {

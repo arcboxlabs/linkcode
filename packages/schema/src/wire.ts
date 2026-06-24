@@ -20,7 +20,7 @@ import { SessionInfoSchema } from './session';
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 3 as const;
+export const WIRE_PROTOCOL_VERSION = 4 as const;
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
   forceRefresh: z.boolean().optional(),
@@ -45,7 +45,11 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
     replyTo: z.string().min(1),
     sessionId: SessionIdSchema,
   }),
-  z.object({ kind: z.literal('session.stop'), sessionId: SessionIdSchema }),
+  z.object({
+    kind: z.literal('session.stop'),
+    clientReqId: z.string().min(1),
+    sessionId: SessionIdSchema,
+  }),
   z.object({ kind: z.literal('session.list'), clientReqId: z.string().min(1) }),
   z.object({
     kind: z.literal('session.listed'),
@@ -91,9 +95,18 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
     message: z.string(),
     code: z.string().optional(),
   }),
+  z.object({
+    kind: z.literal('request.succeeded'),
+    replyTo: z.string().min(1),
+  }),
 
   // ── Data plane ──
-  z.object({ kind: z.literal('agent.input'), sessionId: SessionIdSchema, input: AgentInputSchema }),
+  z.object({
+    kind: z.literal('agent.input'),
+    clientReqId: z.string().min(1),
+    sessionId: SessionIdSchema,
+    input: AgentInputSchema,
+  }),
   z.object({ kind: z.literal('agent.event'), sessionId: SessionIdSchema, event: AgentEventSchema }),
 
   // ── Keep-alive ──

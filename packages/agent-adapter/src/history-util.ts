@@ -59,40 +59,55 @@ export function textHistoryEvent(
 }
 
 export function textFromUnknown(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => textFromUnknown(item))
-      .filter((text) => text.length > 0)
-      .join('\n');
+  let current = value;
+  while (true) {
+    if (typeof current === 'string') return current;
+    if (Array.isArray(current)) {
+      return current
+        .reduce<string[]>((texts, item) => {
+          const text = textFromUnknown(item);
+          if (text.length > 0) texts.push(text);
+          return texts;
+        }, [])
+        .join('\n');
+    }
+    if (!isRecord(current)) return '';
+
+    const text = current.text;
+    if (typeof text === 'string') return text;
+
+    const thinking = current.thinking;
+    if (typeof thinking === 'string') return thinking;
+
+    const content = current.content;
+    if (content !== undefined) {
+      current = content;
+      continue;
+    }
+
+    const message = current.message;
+    if (message !== undefined) {
+      current = message;
+      continue;
+    }
+
+    const parts = current.parts;
+    if (parts !== undefined) {
+      current = parts;
+      continue;
+    }
+
+    return '';
   }
-  if (!isRecord(value)) return '';
-
-  const text = value.text;
-  if (typeof text === 'string') return text;
-
-  const thinking = value.thinking;
-  if (typeof thinking === 'string') return thinking;
-
-  const content = value.content;
-  if (content !== undefined) return textFromUnknown(content);
-
-  const message = value.message;
-  if (message !== undefined) return textFromUnknown(message);
-
-  const parts = value.parts;
-  if (parts !== undefined) return textFromUnknown(parts);
-
-  return '';
 }
 
 export function timestampMs(value: unknown): Timestamp | undefined {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
-    return Math.trunc(value) as Timestamp;
+    return Math.trunc(value);
   }
   if (typeof value !== 'string' || value.length === 0) return undefined;
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? (parsed as Timestamp) : undefined;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 export function stringField(record: Record<string, unknown>, key: string): string | undefined {

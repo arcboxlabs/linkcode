@@ -1,6 +1,8 @@
 import { Engine } from '@linkcode/engine';
-import { createTransportServer, Hub, type TransportServer } from '@linkcode/transport/server';
-import { type DaemonListenerConfig, loadConfig } from './config';
+import { createTransportServer, Hub } from '@linkcode/transport/server';
+import type { TransportServer } from '@linkcode/transport/server';
+import { loadConfig } from './config';
+import type { DaemonListenerConfig } from './config';
 
 /**
  * Link Code daemon — the standalone local host process.
@@ -55,5 +57,7 @@ function formatListener(listener: DaemonListenerConfig): string {
       return `socket.io on http://${listener.host ?? '0.0.0.0'}:${listener.port}`;
     case 'ws':
       return `ws://${listener.host ?? '0.0.0.0'}:${listener.port}`;
+    default:
+      return 'unknown listener';
   }
 }

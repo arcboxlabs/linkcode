@@ -13,14 +13,19 @@ import type {
   SessionInfo,
   StartOptions,
   WireMessage,
+  WirePayload,
 } from '@linkcode/schema';
-import { createWireMessage, type Transport, type Unsubscribe } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import type { Transport, Unsubscribe } from '@linkcode/transport';
 
 type EventCb = (event: AgentEvent) => void;
-type Pending<T> = {
+interface Pending<T> {
   resolve(value: T): void;
   reject(err: Error): void;
-};
+}
+interface RequestAck {
+  ok: true;
+}
 
 export type HistoryListClientOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
@@ -52,6 +57,7 @@ export class LinkCodeClient {
   private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
   private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
   private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
+  private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
   private closed = false;
@@ -62,7 +68,7 @@ export class LinkCodeClient {
     this.closed = false;
     await this.transport.connect();
     // The caller's effect may have been torn down mid-await (React StrictMode / remount); bail if so.
-    if (this.closed) return;
+    if (this.isClosed()) return;
     this.unsub?.();
     this.unsub = this.transport.onMessage((msg) => this.route(msg));
     this.offClose?.();
@@ -98,6 +104,11 @@ export class LinkCodeClient {
         this.rejectPending(p.replyTo, p.message, p.code);
         break;
       }
+      case 'request.succeeded': {
+        this.pendingAcks.get(p.replyTo)?.resolve({ ok: true });
+        this.pendingAcks.delete(p.replyTo);
+        break;
+      }
       case 'agent.event': {
         const buf = this.events.get(p.sessionId);
         if (buf) buf.push(p.event);
@@ -112,45 +123,42 @@ export class LinkCodeClient {
   }
 
   startSession(opts: StartOptions): Promise<SessionId> {
-    const clientReqId = nextClientReqId();
-    return new Promise<SessionId>((resolve, reject) => {
-      this.pendingStarts.set(clientReqId, { resolve, reject });
-      this.transport.send(createWireMessage({ kind: 'session.start', clientReqId, opts }));
-    });
+    return this.sendCorrelated(this.pendingStarts, (clientReqId) => ({
+      kind: 'session.start',
+      clientReqId,
+      opts,
+    }));
   }
 
   listSessions(): Promise<SessionInfo[]> {
-    const clientReqId = nextClientReqId();
-    return new Promise<SessionInfo[]>((resolve, reject) => {
-      this.pendingLists.set(clientReqId, { resolve, reject });
-      this.transport.send(createWireMessage({ kind: 'session.list', clientReqId }));
-    });
+    return this.sendCorrelated(this.pendingLists, (clientReqId) => ({
+      kind: 'session.list',
+      clientReqId,
+    }));
   }
 
   listHistory(
     agentKind: AgentKind,
     opts?: HistoryListClientOptions,
   ): Promise<AgentHistoryListResult> {
-    const clientReqId = nextClientReqId();
-    return new Promise<AgentHistoryListResult>((resolve, reject) => {
-      this.pendingHistoryLists.set(clientReqId, { resolve, reject });
-      this.transport.send(
-        createWireMessage({ kind: 'history.list', clientReqId, agentKind, opts }),
-      );
-    });
+    return this.sendCorrelated(this.pendingHistoryLists, (clientReqId) => ({
+      kind: 'history.list',
+      clientReqId,
+      agentKind,
+      opts,
+    }));
   }
 
   readHistory(
     agentKind: AgentKind,
     opts: HistoryReadClientOptions,
   ): Promise<AgentHistoryReadResult> {
-    const clientReqId = nextClientReqId();
-    return new Promise<AgentHistoryReadResult>((resolve, reject) => {
-      this.pendingHistoryReads.set(clientReqId, { resolve, reject });
-      this.transport.send(
-        createWireMessage({ kind: 'history.read', clientReqId, agentKind, opts }),
-      );
-    });
+    return this.sendCorrelated(this.pendingHistoryReads, (clientReqId) => ({
+      kind: 'history.read',
+      clientReqId,
+      agentKind,
+      opts,
+    }));
   }
 
   resumeHistory(
@@ -158,55 +166,64 @@ export class LinkCodeClient {
     historyId: AgentHistoryId,
     startOpts: StartOptions,
   ): Promise<SessionId> {
-    const clientReqId = nextClientReqId();
-    return new Promise<SessionId>((resolve, reject) => {
-      this.pendingStarts.set(clientReqId, { resolve, reject });
-      this.transport.send(
-        createWireMessage({
-          kind: 'history.resume',
-          clientReqId,
-          agentKind,
-          historyId,
-          startOpts: { ...startOpts, kind: agentKind },
-        }),
-      );
-    });
+    return this.sendCorrelated(this.pendingStarts, (clientReqId) => ({
+      kind: 'history.resume',
+      clientReqId,
+      agentKind,
+      historyId,
+      startOpts: { ...startOpts, kind: agentKind },
+    }));
   }
 
   /** Low-level: send any normalized input to a session. */
-  send(sessionId: SessionId, input: AgentInput): void {
-    this.transport.send(createWireMessage({ kind: 'agent.input', sessionId, input }));
+  send(sessionId: SessionId, input: AgentInput): Promise<RequestAck> {
+    return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
+      kind: 'agent.input',
+      clientReqId,
+      sessionId,
+      input,
+    }));
   }
 
   /** Send a prompt as content blocks. */
-  prompt(sessionId: SessionId, content: ContentBlock[]): void {
-    this.send(sessionId, { type: 'prompt', content });
+  prompt(sessionId: SessionId, content: ContentBlock[]): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'prompt', content });
   }
 
   /** Convenience: send a plain-text prompt. */
-  promptText(sessionId: SessionId, text: string): void {
-    this.prompt(sessionId, [{ type: 'text', text }]);
+  promptText(sessionId: SessionId, text: string): Promise<RequestAck> {
+    return this.prompt(sessionId, [{ type: 'text', text }]);
   }
 
   /** Cancel the in-flight turn. */
-  cancel(sessionId: SessionId): void {
-    this.send(sessionId, { type: 'cancel' });
+  cancel(sessionId: SessionId): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'cancel' });
   }
 
   /** Switch the session mode. */
-  setMode(sessionId: SessionId, modeId: string): void {
-    this.send(sessionId, { type: 'set-mode', modeId });
+  setMode(sessionId: SessionId, modeId: string): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'set-mode', modeId });
   }
 
   /** Answer a pending permission-request. */
-  respondPermission(sessionId: SessionId, requestId: string, outcome: PermissionOutcome): void {
-    this.send(sessionId, { type: 'permission-response', requestId, outcome });
+  respondPermission(
+    sessionId: SessionId,
+    requestId: string,
+    outcome: PermissionOutcome,
+  ): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'permission-response', requestId, outcome });
   }
 
-  stopSession(sessionId: SessionId): void {
-    this.transport.send(createWireMessage({ kind: 'session.stop', sessionId }));
-    this.subscribers.delete(sessionId);
-    this.events.delete(sessionId);
+  stopSession(sessionId: SessionId): Promise<RequestAck> {
+    return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
+      kind: 'session.stop',
+      clientReqId,
+      sessionId,
+    })).then((ack) => {
+      this.subscribers.delete(sessionId);
+      this.events.delete(sessionId);
+      return ack;
+    });
   }
 
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
@@ -219,7 +236,7 @@ export class LinkCodeClient {
     // Replay any buffered events so a late subscriber sees the full timeline, not a blank pane.
     const buf = this.events.get(sessionId);
     if (buf) for (const event of buf) cb(event);
-    return () => set?.delete(cb);
+    return () => set.delete(cb);
   }
 
   dispose(): void {
@@ -241,6 +258,7 @@ export class LinkCodeClient {
       this.pendingLists,
       this.pendingHistoryLists,
       this.pendingHistoryReads,
+      this.pendingAcks,
     ]) {
       for (const pending of map.values()) pending.reject(err);
       map.clear();
@@ -253,7 +271,30 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingStarts, replyTo, err)) return;
     if (rejectFrom(this.pendingLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
-    rejectFrom(this.pendingHistoryReads, replyTo, err);
+    if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
+    rejectFrom(this.pendingAcks, replyTo, err);
+  }
+
+  private sendCorrelated<T>(
+    pendingMap: Map<string, Pending<T>>,
+    makePayload: (clientReqId: string) => WirePayload,
+  ): Promise<T> {
+    const clientReqId = nextClientReqId();
+    return new Promise<T>((resolve, reject) => {
+      pendingMap.set(clientReqId, { resolve, reject });
+      try {
+        const sent = this.transport.send(createWireMessage(makePayload(clientReqId)));
+        void Promise.resolve(sent).catch((err) => {
+          rejectFrom(pendingMap, clientReqId, toError(err));
+        });
+      } catch (err) {
+        rejectFrom(pendingMap, clientReqId, toError(err));
+      }
+    });
+  }
+
+  private isClosed(): boolean {
+    return this.closed;
   }
 }
 
@@ -263,4 +304,8 @@ function rejectFrom<T>(map: Map<string, Pending<T>>, id: string, err: Error): bo
   map.delete(id);
   pending.reject(err);
   return true;
+}
+
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
 }

@@ -1,4 +1,6 @@
-import { type AdapterFactory, type AgentAdapter, createAdapter } from '@linkcode/agent-adapter';
+import { createAdapter } from '@linkcode/agent-adapter';
+import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
+import { noop } from 'foxact/noop';
 import type {
   AgentKind,
   SessionId,
@@ -6,7 +8,8 @@ import type {
   StartOptions,
   WireMessage,
 } from '@linkcode/schema';
-import { createWireMessage, type Transport, type Unsubscribe } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { HistoryService } from './history-service';
 
 interface Session {
@@ -58,16 +61,23 @@ export class Engine {
         break;
       }
       case 'agent.input': {
-        await this.sessions.get(p.sessionId)?.adapter.send(p.input);
+        await this.tryReply(p.clientReqId, async () => {
+          const session = this.sessions.get(p.sessionId);
+          if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
+          await session.adapter.send(p.input);
+          this.sendSuccess(p.clientReqId);
+        });
         break;
       }
       case 'session.stop': {
-        const session = this.sessions.get(p.sessionId);
-        if (session) {
+        await this.tryReply(p.clientReqId, async () => {
+          const session = this.sessions.get(p.sessionId);
+          if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
           session.unsub();
           await session.adapter.stop();
           this.sessions.delete(p.sessionId);
-        }
+          this.sendSuccess(p.clientReqId);
+        });
         break;
       }
       case 'session.list': {
@@ -121,10 +131,12 @@ export class Engine {
   }
 
   async stop(): Promise<void> {
-    for (const session of this.sessions.values()) {
-      session.unsub();
-      await session.adapter.stop();
-    }
+    await Promise.all(
+      Array.from(this.sessions.values(), async (session) => {
+        session.unsub();
+        await session.adapter.stop();
+      }),
+    );
     this.sessions.clear();
     this.transport.close();
   }
@@ -159,7 +171,7 @@ export class Engine {
     } catch (err) {
       unsub();
       this.sessions.delete(sessionId);
-      await adapter.stop().catch(() => undefined);
+      await adapter.stop().catch(noop);
       throw err;
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
@@ -176,5 +188,9 @@ export class Engine {
   private sendFailure(replyTo: string, err: unknown): void {
     const message = err instanceof Error ? err.message : String(err);
     this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
+  }
+
+  private sendSuccess(replyTo: string): void {
+    this.transport.send(createWireMessage({ kind: 'request.succeeded', replyTo }));
   }
 }

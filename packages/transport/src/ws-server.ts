@@ -1,7 +1,9 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { type RawData, WebSocket, WebSocketServer } from 'ws';
-import { Listeners, type Transport, type TransportServer, type Unsubscribe } from './transport';
+import { WebSocket, WebSocketServer } from 'ws';
+import type { RawData } from 'ws';
+import { Listeners } from './transport';
+import type { Transport, TransportServer, Unsubscribe } from './transport';
 
 /**
  * Node-side WebSocket **server** for the host daemon. This module imports the Node-only `ws` package and is
@@ -19,6 +21,8 @@ export interface WsServer extends TransportServer {
   readonly port: number;
 }
 
+const textDecoder = new TextDecoder();
+
 class WsServerConnection implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
@@ -28,7 +32,7 @@ class WsServerConnection implements Transport {
     ws.on('message', (data: RawData) => {
       let raw: unknown;
       try {
-        raw = JSON.parse(typeof data === 'string' ? data : data.toString());
+        raw = JSON.parse(rawDataToString(data));
       } catch {
         return; // Not JSON, discard.
       }
@@ -70,6 +74,10 @@ class WsServerConnection implements Transport {
     this.inbound.clear();
     this.closed.emit();
   }
+}
+
+function rawDataToString(data: RawData): string {
+  return textDecoder.decode(Array.isArray(data) ? Buffer.concat(data) : data);
 }
 
 /** Start a WebSocket server; each accepted socket is surfaced as a `ServerConnection`. */

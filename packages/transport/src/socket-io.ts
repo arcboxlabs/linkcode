@@ -1,7 +1,9 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { io, type ManagerOptions, type Socket, type SocketOptions } from 'socket.io-client';
-import { Listeners, type Transport, type Unsubscribe } from './transport';
+import { io } from 'socket.io-client';
+import type { ManagerOptions, Socket, SocketOptions } from 'socket.io-client';
+import { Listeners } from './transport';
+import type { Transport, Unsubscribe } from './transport';
 
 const FRAME_EVENT = 'frame';
 
@@ -51,8 +53,9 @@ export class SocketIoTransport implements Transport {
       throw new Error('SocketIoTransport: socket not connected');
     }
     const parsed = parseWireMessage(msg);
-    if (!parsed.success)
+    if (!parsed.success) {
       throw new Error(`SocketIoTransport: invalid WireMessage: ${parsed.error.message}`);
+    }
     this.socket.emit(FRAME_EVENT, parsed.data);
   }
 

@@ -1,1 +1,1 @@
-export * from './MobileHome';
+export * from './mobile-home';
