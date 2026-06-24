@@ -8,15 +8,14 @@
     "build": "node ../../node_modules/electron-vite/bin/electron-vite.js build",
     "start": "node ../../node_modules/electron-vite/bin/electron-vite.js preview",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "eslint --format=sukka ."
   },
   "dependencies": {
-    "@linkcode/client-core": "workspace:*",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/ipc": "workspace:*",
-    "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
+    "@linkcode/workbench": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "use-intl": "catalog:"
@@ -27,9 +26,11 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "babel-plugin-react-compiler": "catalog:",
     "electron": "catalog:",
     "electron-vite": "catalog:",
     "tailwindcss": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "catalog:"
   }
 }

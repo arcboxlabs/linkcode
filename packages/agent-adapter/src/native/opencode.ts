@@ -32,7 +32,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       throw err instanceof Error ? err : new Error(detail);
     }
     this.client = started.client;
-    this.closeServer = started.server.close;
+    this.closeServer = () => started.server.close();
     const created = await this.client.session.create({ directory: opts.cwd });
     const id = created.data?.id;
     if (!id) throw new Error('opencode: failed to create session');
@@ -53,8 +53,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   protected override async onCancel(): Promise<void> {
-    if (this.client && this.sessionId)
+    if (this.client && this.sessionId) {
       await this.client.session.abort({ sessionID: this.sessionId });
+    }
   }
 
   protected override onStop(): Promise<void> {
@@ -97,15 +98,27 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   private handlePart(part: Part): void {
-    if (part.type === 'text') {
-      this.streamPartText(part.id, part.text, 'message');
-    } else if (part.type === 'reasoning') {
-      this.streamPartText(part.id, part.text, 'thought');
-    } else if (part.type === 'tool') {
-      this.emit({
-        type: 'tool-call-update',
-        update: { toolCallId: part.id, title: part.tool, status: 'in_progress' },
-      });
+    switch (part.type) {
+      case 'text': {
+        this.streamPartText(part.id, part.text, 'message');
+
+        break;
+      }
+      case 'reasoning': {
+        this.streamPartText(part.id, part.text, 'thought');
+
+        break;
+      }
+      case 'tool': {
+        this.emit({
+          type: 'tool-call-update',
+          update: { toolCallId: part.id, title: part.tool, status: 'in_progress' },
+        });
+
+        break;
+      }
+      default:
+        break;
     }
   }
 

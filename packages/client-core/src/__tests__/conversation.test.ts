@@ -2,14 +2,18 @@ import type { AgentEvent } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { buildConversation, contentPreview, toolCallDiffs } from '../conversation';
 
-const text = (t: string): AgentEvent => ({
-  type: 'agent-message-chunk',
-  content: { type: 'text', text: t },
-});
-const userText = (t: string): AgentEvent => ({
-  type: 'user-message-chunk',
-  content: { type: 'text', text: t },
-});
+function text(t: string): AgentEvent {
+  return {
+    type: 'agent-message-chunk',
+    content: { type: 'text', text: t },
+  };
+}
+function userText(t: string): AgentEvent {
+  return {
+    type: 'user-message-chunk',
+    content: { type: 'text', text: t },
+  };
+}
 
 describe('buildConversation', () => {
   it('returns an empty conversation for no events', () => {
@@ -96,7 +100,7 @@ describe('buildConversation', () => {
     ]);
     const plans = c.items.filter((i) => i.kind === 'plan');
     expect(plans).toHaveLength(1);
-    if (plans[0].kind === 'plan') expect(plans[0].plan.entries).toHaveLength(2);
+    expect(plans[0].plan.entries).toHaveLength(2);
   });
 
   it('tracks a permission as pending until its tool call settles', () => {

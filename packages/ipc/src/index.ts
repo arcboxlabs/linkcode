@@ -3,6 +3,6 @@
  * Used by desktop only; application data must not go through this channel.
  */
 
-export * from './bridge';
+export type * from './bridge';
 export * from './context';
 export * from './events';

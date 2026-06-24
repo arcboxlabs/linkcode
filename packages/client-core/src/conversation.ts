@@ -70,8 +70,8 @@ type MessageItemKind = (typeof MESSAGE_KINDS)[keyof typeof MESSAGE_KINDS];
 
 /** Append a content block to a message item, concatenating consecutive text blocks for smooth streaming. */
 function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
-  const last = blocks[blocks.length - 1];
-  if (last && last.type === 'text' && block.type === 'text') {
+  const last = blocks.at(-1);
+  if (last?.type === 'text' && block.type === 'text') {
     blocks[blocks.length - 1] = {
       ...last,
       text: last.text + block.text,
@@ -112,8 +112,8 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   let stopReason: StopReason | null = null;
 
   const openMessage = (target: MessageItemKind, block: ContentBlock): void => {
-    const last = items[items.length - 1];
-    if (last && last.kind === target) {
+    const last = items.at(-1);
+    if (last?.kind === target) {
       appendBlock(last.blocks, block);
       return;
     }
@@ -130,30 +130,25 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
 
       case 'tool-call': {
         const existing = toolIndex.get(event.toolCall.toolCallId);
-        if (existing !== undefined) {
-          const item = items[existing];
-          if (item.kind === 'tool-call') {
-            item.toolCall = mergeToolCall(item.toolCall, event.toolCall);
-          }
-        } else {
+        if (existing === undefined) {
           items.push({
             kind: 'tool-call',
             id: event.toolCall.toolCallId,
             toolCall: event.toolCall,
           });
           toolIndex.set(event.toolCall.toolCallId, items.length - 1);
+        } else {
+          const item = items[existing];
+          if (item.kind === 'tool-call') {
+            item.toolCall = mergeToolCall(item.toolCall, event.toolCall);
+          }
         }
         break;
       }
 
       case 'tool-call-update': {
         const existing = toolIndex.get(event.update.toolCallId);
-        if (existing !== undefined) {
-          const item = items[existing];
-          if (item.kind === 'tool-call') {
-            item.toolCall = mergeToolCall(item.toolCall, event.update);
-          }
-        } else {
+        if (existing === undefined) {
           // Update before its tool-call (defensive): synthesize a tool call from the update.
           const synthesized: ToolCall = {
             toolCallId: event.update.toolCallId,
@@ -167,6 +162,11 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           };
           items.push({ kind: 'tool-call', id: synthesized.toolCallId, toolCall: synthesized });
           toolIndex.set(synthesized.toolCallId, items.length - 1);
+        } else {
+          const item = items[existing];
+          if (item.kind === 'tool-call') {
+            item.toolCall = mergeToolCall(item.toolCall, event.update);
+          }
         }
         break;
       }
@@ -228,6 +228,8 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           request: event.request,
         });
         break;
+      default:
+        break;
     }
   }
 
@@ -236,7 +238,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   for (const item of items) {
     if (item.kind !== 'permission') continue;
     const toolItemIndex = toolIndex.get(item.toolCall.toolCallId);
-    const toolItem = toolItemIndex !== undefined ? items[toolItemIndex] : undefined;
+    const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
     const settled =
       toolItem?.kind === 'tool-call' &&
       (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');

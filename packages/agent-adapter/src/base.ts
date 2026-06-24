@@ -20,8 +20,10 @@ import type {
   ToolCallUpdate,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
-import { Listeners, type Unsubscribe } from '@linkcode/transport';
-import { type AgentAdapter, nextMessageId, nextRequestId } from './adapter';
+import { Listeners } from '@linkcode/transport';
+import type { Unsubscribe } from '@linkcode/transport';
+import { nextMessageId, nextRequestId } from './adapter';
+import type { AgentAdapter } from './adapter';
 
 type PendingResolver = (value: unknown) => void;
 
@@ -82,7 +84,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
         return;
       case 'client-response':
         this.resolvePending(input.requestId, input.response);
-        return;
+        break;
+      default:
+        break;
     }
   }
 
@@ -176,7 +180,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       const detail = err instanceof Error ? err.message : String(err);
       const message = `${this.kind}: SDK '${name}' is unavailable (${detail})`;
       this.emitError(message, 'sdk-unavailable', false);
-      throw new Error(message);
+      throw new Error(message, { cause: err });
     }
   }
 }

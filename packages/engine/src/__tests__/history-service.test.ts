@@ -1,4 +1,5 @@
-import { type AdapterFactory, BaseAgentAdapter } from '@linkcode/agent-adapter';
+import { BaseAgentAdapter } from '@linkcode/agent-adapter';
+import type { AdapterFactory } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryCapabilities,
   AgentHistoryEvent,
@@ -20,11 +21,11 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from '../engine';
 import { HistoryService } from '../history-service';
 
-type FakeState = {
+interface FakeState {
   listCalls: number;
   readCalls: number;
   resumeCalls: number;
-};
+}
 
 const historyId = 'hist-1' as AgentHistoryId;
 
@@ -117,7 +118,7 @@ function fakeFactory(state: FakeState): AdapterFactory {
 describe('HistoryService', () => {
   it('caches list results until forceRefresh', async () => {
     const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
-    const service = new HistoryService(fakeFactory(state), { ttlMs: 60_000 });
+    const service = new HistoryService(fakeFactory(state), { ttlMs: 60000 });
 
     await service.list('codex', { cwd: '/repo', limit: 10 });
     await service.list('codex', { cwd: '/repo', limit: 10 });
@@ -129,7 +130,7 @@ describe('HistoryService', () => {
 
   it('caches converted events and paginates from memory', async () => {
     const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
-    const service = new HistoryService(fakeFactory(state), { ttlMs: 60_000 });
+    const service = new HistoryService(fakeFactory(state), { ttlMs: 60000 });
 
     const first = await service.read('codex', { historyId, limit: 1 });
     const second = await service.read('codex', { historyId, cursor: first.cursor, limit: 1 });
@@ -192,6 +193,35 @@ describe('Engine history wire API', () => {
     expect(started.replyTo).toBe('resume-1');
     expect(state.resumeCalls).toBe(1);
 
+    clientTransport.send(
+      createWireMessage({
+        kind: 'agent.input',
+        clientReqId: 'input-1',
+        sessionId: started.sessionId,
+        input: { type: 'prompt', content: [{ type: 'text', text: 'hello' }] },
+      }),
+    );
+    const inputAck = await waitForPayload(
+      received,
+      'request.succeeded',
+      (payload) => payload.replyTo === 'input-1',
+    );
+    expect(inputAck.replyTo).toBe('input-1');
+
+    clientTransport.send(
+      createWireMessage({
+        kind: 'session.stop',
+        clientReqId: 'stop-1',
+        sessionId: started.sessionId,
+      }),
+    );
+    const stopAck = await waitForPayload(
+      received,
+      'request.succeeded',
+      (payload) => payload.replyTo === 'stop-1',
+    );
+    expect(stopAck.replyTo).toBe('stop-1');
+
     engine.stop();
     clientTransport.close();
   });
@@ -200,13 +230,20 @@ describe('Engine history wire API', () => {
 function waitForPayload<K extends WirePayload['kind']>(
   messages: WireMessage[],
   kind: K,
+  predicate: (payload: Extract<WirePayload, { kind: K }>) => boolean = () => true,
 ): Promise<Extract<WirePayload, { kind: K }>> {
-  const existing = messages.find((msg) => msg.payload.kind === kind);
+  const existing = messages.find((msg) => {
+    if (msg.payload.kind !== kind) return false;
+    return predicate(msg.payload as Extract<WirePayload, { kind: K }>);
+  });
   if (existing) return Promise.resolve(existing.payload as Extract<WirePayload, { kind: K }>);
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${kind}`)), 500);
     const poll = (): void => {
-      const found = messages.find((msg) => msg.payload.kind === kind);
+      const found = messages.find((msg) => {
+        if (msg.payload.kind !== kind) return false;
+        return predicate(msg.payload as Extract<WirePayload, { kind: K }>);
+      });
       if (found) {
         clearTimeout(timeout);
         resolve(found.payload as Extract<WirePayload, { kind: K }>);

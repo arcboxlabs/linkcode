@@ -1,5 +1,6 @@
 import type { AgentKind } from '@linkcode/schema';
-import { AcpAdapter, type AcpAgentSpec } from './acp/acp-adapter';
+import { AcpAdapter } from './acp/acp-adapter';
+import type { AcpAgentSpec } from './acp/acp-adapter';
 import type { AgentAdapter } from './adapter';
 import { ClaudeCodeAdapter } from './native/claude-code';
 import { CodexAdapter } from './native/codex';
@@ -21,6 +22,8 @@ export function createAdapter(kind: AgentKind): AgentAdapter {
       return new OpenCodeAdapter();
     case 'pi':
       return new PiAdapter();
+    default:
+      throw new Error(`Unsupported agent kind: ${kind}`);
   }
 }
 

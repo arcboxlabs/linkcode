@@ -1,8 +1,8 @@
-export * from './AppShell';
-export * from './Composer';
-export * from './NewSessionForm';
-export * from './SessionItem';
-export * from './SessionList';
-export * from './Sidebar';
-export * from './TopBar';
-export * from './types';
+export * from './app-shell';
+export * from './composer';
+export * from './new-session-form';
+export * from './session-item';
+export * from './session-list';
+export * from './sidebar';
+export * from './top-bar';
+export type * from './types';

@@ -3,29 +3,30 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import {
-  type Client,
-  ClientSideConnection,
-  ndJsonStream,
-  type ReadTextFileRequest,
-  type RequestPermissionRequest,
-  type RequestPermissionResponse,
-  type SessionNotification,
-  type SessionUpdate,
-  type WriteTextFileRequest,
+import { ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
+import type {
+  Client,
+  ReadTextFileRequest,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  SessionNotification,
+  SessionUpdate,
+  WriteTextFileRequest,
 } from '@agentclientprotocol/sdk';
 import type {
   AgentEvent,
   AgentKind,
   ContentBlock,
-  PermissionOption,
   Plan,
   StartOptions,
   StopReason,
   ToolCall,
-  ToolCallStatus,
-  ToolCallUpdate,
-  ToolKind,
+} from '@linkcode/schema';
+import {
+  ContentBlockSchema,
+  ToolCallStatusSchema,
+  ToolKindSchema,
+  ToolCallUpdateSchema,
 } from '@linkcode/schema';
 import { BaseAgentAdapter } from '../base';
 
@@ -102,7 +103,7 @@ export class AcpAdapter extends BaseAgentAdapter {
     this.emitStatus('running');
     const res = await this.conn.prompt({
       sessionId: this.sessionId,
-      prompt: content as unknown as Parameters<ClientSideConnection['prompt']>[0]['prompt'],
+      prompt: content,
     });
     this.emitStop(mapAcpStop(res.stopReason));
     this.emitStatus('idle');
@@ -119,25 +120,26 @@ export class AcpAdapter extends BaseAgentAdapter {
 
   private buildClient(): Client {
     return {
-      sessionUpdate: async (params: SessionNotification) => {
+      sessionUpdate: (params: SessionNotification) => {
         if (params.sessionId === this.sessionId) {
           const event = acpUpdateToEvent(params.update);
           if (event) this.emit(event);
         }
+        return Promise.resolve();
       },
       requestPermission: async (
         params: RequestPermissionRequest,
       ): Promise<RequestPermissionResponse> => {
         const outcome = await this.requestPermission(
-          params.toolCall as unknown as ToolCallUpdate,
-          params.options as unknown as PermissionOption[],
+          ToolCallUpdateSchema.parse(params.toolCall),
+          params.options,
         );
-        return { outcome } as unknown as RequestPermissionResponse;
+        return { outcome };
       },
       readTextFile: async (params: ReadTextFileRequest) => ({
         content: await readFile(params.path, 'utf8'),
       }),
-      writeTextFile: async (params: WriteTextFileRequest) => {
+      async writeTextFile(params: WriteTextFileRequest) {
         await mkdir(dirname(params.path), { recursive: true });
         await writeFile(params.path, params.content, 'utf8');
         return {};
@@ -148,7 +150,7 @@ export class AcpAdapter extends BaseAgentAdapter {
 
 /** Pure mapping from an ACP session/update to our AgentEvent (exported for unit tests). */
 export function acpUpdateToEvent(update: SessionUpdate): AgentEvent | null {
-  const u = update as unknown as Record<string, unknown>;
+  const u = toRecord(update);
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
       return contentChunk('agent-message-chunk', u.content);
@@ -159,11 +161,11 @@ export function acpUpdateToEvent(update: SessionUpdate): AgentEvent | null {
     case 'tool_call':
       return { type: 'tool-call', toolCall: toToolCall(u) };
     case 'tool_call_update':
-      return { type: 'tool-call-update', update: u as unknown as ToolCallUpdate };
+      return { type: 'tool-call-update', update: ToolCallUpdateSchema.parse(u) };
     case 'plan':
       return { type: 'plan', plan: { entries: (u.entries ?? []) as Plan['entries'] } };
     case 'current_mode_update':
-      return { type: 'current-mode-update', currentModeId: String(u.currentModeId ?? '') };
+      return { type: 'current-mode-update', currentModeId: stringFromUnknown(u.currentModeId) };
     default:
       return null;
   }
@@ -174,17 +176,35 @@ function contentChunk(
   content: unknown,
 ): AgentEvent | null {
   if (!content) return null;
-  return { type, content: content as unknown as ContentBlock };
+  const parsed = ContentBlockSchema.safeParse(content);
+  if (!parsed.success) return null;
+  return { type, content: parsed.data };
 }
 
 function toToolCall(u: Record<string, unknown>): ToolCall {
+  const toolCallId = stringFromUnknown(u.toolCallId);
+  const kind = ToolKindSchema.safeParse(u.kind);
+  const status = ToolCallStatusSchema.safeParse(u.status);
+  const update = ToolCallUpdateSchema.safeParse({ toolCallId, content: u.content });
   return {
-    toolCallId: String(u.toolCallId ?? ''),
-    title: typeof u.title === 'string' ? u.title : String(u.toolCallId ?? ''),
-    kind: (u.kind as ToolKind) ?? 'other',
-    status: (u.status as ToolCallStatus) ?? 'pending',
-    content: (u.content as ToolCall['content']) ?? [],
+    toolCallId,
+    title: typeof u.title === 'string' ? u.title : toolCallId,
+    kind: kind.success ? kind.data : 'other',
+    status: status.success ? status.data : 'pending',
+    content: update.success ? (update.data.content ?? []) : [],
     rawInput: u.rawInput,
     rawOutput: u.rawOutput,
   };
+}
+
+function toRecord(value: object): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
+
+function stringFromUnknown(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  return '';
 }
