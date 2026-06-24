@@ -20,6 +20,7 @@
     "eslint": "^10.5.0",
     "eslint-config-sukka": "^8.12.2",
     "eslint-formatter-sukka": "^8.12.2",
+    "eslint-import-resolver-typescript": "^4.4.5",
     "turbo": "^2.9.18",
     "typescript": "catalog:",
     "vite": "catalog:",
