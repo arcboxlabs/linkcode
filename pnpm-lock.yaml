@@ -300,6 +300,9 @@ importers:
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../../packages/transport
+      '@linkcode/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@linkcode/workbench':
         specifier: workspace:*
         version: link:../../packages/workbench
