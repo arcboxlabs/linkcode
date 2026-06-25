@@ -25,17 +25,25 @@ describe('buildConversation', () => {
   });
 
   it('coalesces consecutive same-role text chunks into one streaming block', () => {
-    const c = buildConversation([text('Hel'), text('lo, '), text('world')]);
+    const c = buildConversation([
+      { type: 'status', status: 'running' },
+      text('Hel'),
+      text('lo, '),
+      text('world'),
+    ]);
     expect(c.items).toHaveLength(1);
     const item = c.items[0];
-    expect(item.kind).toBe('assistant-message');
-    if (item.kind === 'assistant-message') {
+    expect(item.kind).toBe('message');
+    if (item.kind === 'message') {
+      expect(item.role).toBe('assistant');
+      expect(item.turnId).toBeNull();
+      expect(item.isStreaming).toBe(true);
       expect(item.blocks).toHaveLength(1);
       expect(item.blocks[0]).toEqual({ type: 'text', text: 'Hello, world' });
     }
   });
 
-  it('separates user and assistant turns and breaks a turn on a tool call', () => {
+  it('separates user and assistant messages while keeping a turn id across activity', () => {
     const c = buildConversation([
       userText('do it'),
       text('working'),
@@ -51,12 +59,43 @@ describe('buildConversation', () => {
       },
       text('done'),
     ]);
-    expect(c.items.map((i) => i.kind)).toEqual([
-      'user-message',
-      'assistant-message',
-      'tool-call',
-      'assistant-message',
+    expect(c.items.map((i) => i.kind)).toEqual(['message', 'message', 'tool', 'message']);
+    const [user, assistant, tool, followup] = c.items;
+    expect(user.kind).toBe('message');
+    expect(assistant.kind).toBe('message');
+    expect(tool.kind).toBe('tool');
+    expect(followup.kind).toBe('message');
+    if (
+      user.kind === 'message' &&
+      assistant.kind === 'message' &&
+      tool.kind === 'tool' &&
+      followup.kind === 'message'
+    ) {
+      expect(user.role).toBe('user');
+      expect(assistant.role).toBe('assistant');
+      expect(followup.role).toBe('assistant');
+      expect(user.turnId).toBeTruthy();
+      expect(assistant.turnId).toBe(user.turnId);
+      expect(tool.turnId).toBe(user.turnId);
+      expect(followup.turnId).toBe(user.turnId);
+    }
+  });
+
+  it('projects thought chunks as reasoning and marks active reasoning as streaming', () => {
+    const c = buildConversation([
+      userText('think'),
+      { type: 'status', status: 'running' },
+      { type: 'agent-thought-chunk', content: { type: 'text', text: 'step 1' } },
+      { type: 'agent-thought-chunk', content: { type: 'text', text: ' step 2' } },
     ]);
+    const reasoning = c.items.at(-1);
+    const first = c.items[0];
+    expect(reasoning?.kind).toBe('reasoning');
+    if (reasoning?.kind === 'reasoning' && first.kind === 'message') {
+      expect(reasoning.blocks).toEqual([{ type: 'text', text: 'step 1 step 2' }]);
+      expect(reasoning.isStreaming).toBe(true);
+      expect(reasoning.turnId).toBe(first.turnId);
+    }
   });
 
   it('merges tool-call updates into the original call by id', () => {
@@ -77,16 +116,17 @@ describe('buildConversation', () => {
     ]);
     expect(c.items).toHaveLength(1);
     const item = c.items[0];
-    expect(item.kind).toBe('tool-call');
-    if (item.kind === 'tool-call') {
+    expect(item.kind).toBe('tool');
+    if (item.kind === 'tool') {
       expect(item.toolCall.status).toBe('completed');
       expect(item.toolCall.title).toBe('Edit');
       expect(toolCallDiffs(item.toolCall)).toHaveLength(1);
     }
   });
 
-  it('keeps only the latest plan as a single item', () => {
+  it('keeps only the latest plan per turn', () => {
     const c = buildConversation([
+      userText('first'),
       { type: 'plan', plan: { entries: [{ content: 'a', priority: 'high', status: 'pending' }] } },
       {
         type: 'plan',
@@ -97,14 +137,26 @@ describe('buildConversation', () => {
           ],
         },
       },
+      userText('second'),
+      {
+        type: 'plan',
+        plan: { entries: [{ content: 'c', priority: 'medium', status: 'pending' }] },
+      },
     ]);
     const plans = c.items.filter((i) => i.kind === 'plan');
-    expect(plans).toHaveLength(1);
-    expect(plans[0].plan.entries).toHaveLength(2);
+    expect(plans).toHaveLength(2);
+    const [firstPlan, secondPlan] = plans;
+    expect(firstPlan.kind).toBe('plan');
+    expect(secondPlan.kind).toBe('plan');
+    expect(firstPlan.plan.entries).toHaveLength(2);
+    expect(firstPlan.plan.entries[0]?.status).toBe('completed');
+    expect(secondPlan.plan.entries).toHaveLength(1);
+    expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
   });
 
   it('tracks a permission as pending until its tool call settles', () => {
     const base: AgentEvent[] = [
+      userText('run'),
       {
         type: 'tool-call',
         toolCall: {
@@ -123,6 +175,7 @@ describe('buildConversation', () => {
       },
     ];
     expect(buildConversation(base).pendingPermissionIds).toEqual(['p1']);
+    expect(buildConversation(base).items.some((i) => i.kind === 'approval')).toBe(true);
 
     const settled = buildConversation([
       ...base,
@@ -144,6 +197,8 @@ describe('buildConversation', () => {
     expect(c.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
     expect(c.stopReason).toBe('end_turn');
     expect(c.items.filter((i) => i.kind === 'error')).toHaveLength(1);
+    const error = c.items.find((i) => i.kind === 'error');
+    expect(error?.turnId).toBeNull();
   });
 });
 

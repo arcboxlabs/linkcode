@@ -1,15 +1,17 @@
-import { TerminalIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
+import { Terminal, TerminalHeader, TerminalTitle } from './terminal';
 
 export function TerminalBlock({ terminalId }: { terminalId: string }): ReactNode {
   const t = useTranslations('workbench.tool');
 
   return (
-    <div className="my-1 flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-      <TerminalIcon className="size-3.5" />
-      <span>{t('terminal')}</span>
-      <span className="opacity-70">{terminalId}</span>
-    </div>
+    <Terminal>
+      <TerminalHeader>
+        <TerminalTitle>
+          {t('terminal')} <span className="opacity-70">{terminalId}</span>
+        </TerminalTitle>
+      </TerminalHeader>
+    </Terminal>
   );
 }

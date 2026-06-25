@@ -16,16 +16,19 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
+    "@linkcode/client-core": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "coss-ui": "workspace:*",
     "foxact": "^0.3.6",
     "lucide-react": "^1.18.0",
+    "motion": "^12.40.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^3.6.0",
-    "use-intl": "catalog:"
+    "use-intl": "catalog:",
+    "use-stick-to-bottom": "^1.1.6"
   },
   "devDependencies": {
     "@types/react": "catalog:",

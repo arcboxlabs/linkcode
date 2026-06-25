@@ -1,0 +1,127 @@
+import { Badge } from 'coss-ui/components/badge';
+import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import { ExternalLinkIcon } from 'lucide-react';
+import type { ComponentProps, ReactNode } from 'react';
+import { cn } from '../lib/cn';
+
+// TODO(linkcode-schema): Provisional UI-only citation reference, not yet wired to daemon/client schema.
+// Move or replace with @linkcode/schema citation metadata when message content supports citations.
+export interface ChatCitation {
+  id: string;
+  sourceId: string;
+  label?: string;
+  title?: string;
+  url?: string;
+}
+
+export type InlineCitationProps = ComponentProps<'span'>;
+
+export function InlineCitation({ className, ...props }: InlineCitationProps): ReactNode {
+  return <span className={cn('inline', className)} {...props} />;
+}
+
+export type InlineCitationTextProps = ComponentProps<'span'>;
+
+export function InlineCitationText({ className, ...props }: InlineCitationTextProps): ReactNode {
+  return <span className={cn('rounded-sm hover:bg-muted', className)} {...props} />;
+}
+
+export type InlineCitationCardProps = ComponentProps<typeof Popover> & {
+  citation: ChatCitation;
+};
+
+export function InlineCitationCard({
+  citation,
+  children,
+  ...props
+}: InlineCitationCardProps): ReactNode {
+  return (
+    <Popover {...props}>
+      {children ?? (
+        <>
+          <InlineCitationTrigger citation={citation} />
+          <InlineCitationContent citation={citation} />
+        </>
+      )}
+    </Popover>
+  );
+}
+
+export type InlineCitationTriggerProps = ComponentProps<typeof Badge> & {
+  citation: ChatCitation;
+};
+
+export function InlineCitationTrigger({
+  className,
+  citation,
+  children,
+  ...props
+}: InlineCitationTriggerProps): ReactNode {
+  return (
+    <PopoverTrigger
+      render={
+        <Badge
+          className={cn('mx-0.5 align-baseline', className)}
+          size="sm"
+          variant="secondary"
+          {...props}
+        >
+          {children ?? citation.label ?? citation.sourceId}
+        </Badge>
+      }
+    />
+  );
+}
+
+export type InlineCitationContentProps = ComponentProps<typeof PopoverPopup> & {
+  citation: ChatCitation;
+};
+
+export function InlineCitationContent({
+  className,
+  citation,
+  children,
+  ...props
+}: InlineCitationContentProps): ReactNode {
+  return (
+    <PopoverPopup align="start" className={cn('w-72 p-0', className)} side="top" {...props}>
+      <div className="space-y-2 p-3 text-[13px]">
+        {children ?? <InlineCitationSource citation={citation} />}
+      </div>
+    </PopoverPopup>
+  );
+}
+
+export type InlineCitationSourceProps = ComponentProps<'div'> & {
+  citation: ChatCitation;
+};
+
+export function InlineCitationSource({
+  className,
+  citation,
+  children,
+  ...props
+}: InlineCitationSourceProps): ReactNode {
+  return (
+    <div className={cn('min-w-0 space-y-1', className)} {...props}>
+      {children ?? (
+        <>
+          <div className="truncate font-medium text-foreground">
+            {citation.title ?? citation.label ?? citation.sourceId}
+          </div>
+          {citation.url ? (
+            <a
+              className="flex min-w-0 items-center gap-1 text-muted-foreground hover:text-foreground"
+              href={citation.url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <span className="truncate">{citation.url}</span>
+              <ExternalLinkIcon className="size-3 shrink-0" />
+            </a>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}

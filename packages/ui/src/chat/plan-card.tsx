@@ -1,40 +1,22 @@
 import type { Plan } from '@linkcode/schema';
-import { CircleCheckIcon, CircleDashedIcon, CircleIcon, ListTodoIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import { cn } from '../lib/cn';
 import { keyedItems, stableContentKey } from './content-keys';
+import { Plan as PlanPrimitive, PlanContent, PlanHeader, PlanItem } from './plan';
 
 export function PlanCard({ plan }: { plan: Plan }): ReactNode {
   const t = useTranslations('workbench.plan');
 
   return (
-    <div className="my-1 rounded-xl border border-border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2 text-[13px] font-medium">
-        <ListTodoIcon className="size-4 text-muted-foreground" />
-        {t('title')}
-      </div>
-      {keyedItems(plan.entries, stableContentKey).map(({ key, item: entry }) => (
-        <div key={key} className="flex items-start gap-2 py-0.5 text-[13px]">
-          {entry.status === 'pending' && (
-            <CircleIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />
-          )}
-          {entry.status === 'in_progress' && (
-            <CircleDashedIcon className="mt-0.5 size-3.5 shrink-0 text-warning-foreground" />
-          )}
-          {entry.status === 'completed' && (
-            <CircleCheckIcon className="mt-0.5 size-3.5 shrink-0 text-success-foreground" />
-          )}
-          <span
-            className={cn(
-              'flex-1',
-              entry.status === 'completed' && 'text-muted-foreground line-through',
-            )}
-          >
+    <PlanPrimitive>
+      <PlanHeader title={t('title')} />
+      <PlanContent>
+        {keyedItems(plan.entries, stableContentKey).map(({ key, item: entry }) => (
+          <PlanItem key={key} status={entry.status}>
             {entry.content}
-          </span>
-        </div>
-      ))}
-    </div>
+          </PlanItem>
+        ))}
+      </PlanContent>
+    </PlanPrimitive>
   );
 }

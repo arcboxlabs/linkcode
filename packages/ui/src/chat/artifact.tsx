@@ -1,0 +1,149 @@
+import { Button } from 'coss-ui/components/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
+import { XIcon } from 'lucide-react';
+import type { ComponentProps, ReactNode } from 'react';
+import { cn } from '../lib/cn';
+
+// TODO(linkcode-schema): Provisional UI-only artifact metadata, not yet wired to daemon/client schema.
+// Move or replace with @linkcode/schema types when generated artifacts are emitted by the data plane.
+export interface ChatArtifact {
+  id: string;
+  title: string;
+  description?: string;
+  kind?: 'code' | 'document' | 'image' | 'preview' | 'unknown';
+}
+
+export type ArtifactProps = ComponentProps<'div'> & {
+  artifact?: ChatArtifact;
+  onClose?: () => void;
+};
+
+export function Artifact({
+  className,
+  artifact,
+  onClose,
+  children,
+  ...props
+}: ArtifactProps): ReactNode {
+  return (
+    <div
+      className={cn(
+        'my-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card',
+        className,
+      )}
+      {...props}
+    >
+      {children ?? (
+        <>
+          <ArtifactHeader>
+            <div className="min-w-0">
+              <ArtifactTitle>{artifact?.title}</ArtifactTitle>
+              {artifact?.description ? (
+                <ArtifactDescription>{artifact.description}</ArtifactDescription>
+              ) : null}
+            </div>
+            {onClose ? <ArtifactClose onClick={onClose} /> : null}
+          </ArtifactHeader>
+          <ArtifactContent />
+        </>
+      )}
+    </div>
+  );
+}
+
+export type ArtifactHeaderProps = ComponentProps<'div'>;
+
+export function ArtifactHeader({ className, ...props }: ArtifactHeaderProps): ReactNode {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-2 border-b border-border px-3 py-2',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export type ArtifactTitleProps = ComponentProps<'div'>;
+
+export function ArtifactTitle({ className, ...props }: ArtifactTitleProps): ReactNode {
+  return (
+    <div className={cn('truncate font-medium text-[13px] text-foreground', className)} {...props} />
+  );
+}
+
+export type ArtifactDescriptionProps = ComponentProps<'div'>;
+
+export function ArtifactDescription({ className, ...props }: ArtifactDescriptionProps): ReactNode {
+  return <div className={cn('truncate text-[12px] text-muted-foreground', className)} {...props} />;
+}
+
+export type ArtifactActionsProps = ComponentProps<'div'>;
+
+export function ArtifactActions({ className, ...props }: ArtifactActionsProps): ReactNode {
+  return <div className={cn('flex items-center gap-1', className)} {...props} />;
+}
+
+export type ArtifactActionProps = ComponentProps<typeof Button> & {
+  tooltip?: string;
+};
+
+export function ArtifactAction({
+  className,
+  tooltip,
+  children,
+  size = 'icon-xs',
+  variant = 'ghost',
+  ...props
+}: ArtifactActionProps): ReactNode {
+  const button = (
+    <Button
+      className={cn('size-7', className)}
+      size={size}
+      type="button"
+      variant={variant}
+      {...props}
+    >
+      {children}
+    </Button>
+  );
+
+  if (!tooltip) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export type ArtifactCloseProps = ComponentProps<typeof Button>;
+
+export function ArtifactClose({
+  className,
+  children,
+  size = 'icon-xs',
+  variant = 'ghost',
+  ...props
+}: ArtifactCloseProps): ReactNode {
+  return (
+    <Button
+      aria-label="Close artifact"
+      className={cn('size-7', className)}
+      size={size}
+      type="button"
+      variant={variant}
+      {...props}
+    >
+      {children ?? <XIcon className="size-3.5" />}
+    </Button>
+  );
+}
+
+export type ArtifactContentProps = ComponentProps<'div'>;
+
+export function ArtifactContent({ className, ...props }: ArtifactContentProps): ReactNode {
+  return <div className={cn('min-h-0 flex-1 overflow-auto p-3', className)} {...props} />;
+}

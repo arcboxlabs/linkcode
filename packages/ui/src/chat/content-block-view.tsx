@@ -2,6 +2,7 @@ import type { ContentBlock } from '@linkcode/schema';
 import { FileTextIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
+import { CodeBlock } from './code-block';
 import { Markdown } from './markdown';
 
 export function ContentBlockView({ block }: { block: ContentBlock }): ReactNode {
@@ -39,9 +40,7 @@ export function ContentBlockView({ block }: { block: ContentBlock }): ReactNode 
       );
     case 'resource':
       return 'text' in block.resource ? (
-        <pre className="my-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-[12.5px]">
-          {block.resource.text}
-        </pre>
+        <CodeBlock code={block.resource.text} title={block.resource.uri} />
       ) : (
         <span className="text-[13px] text-muted-foreground">{t('resource')}</span>
       );
