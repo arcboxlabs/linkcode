@@ -21,24 +21,52 @@ import type {
  * it can be unit-tested without a transport (mirrors the adapter normalizer convention).
  */
 
-/** A single rendered item in the conversation timeline. */
+export type ConversationTurnId = string | null;
+
+/** A single semantic item in the conversation timeline. */
 export type ConversationItem =
-  | { kind: 'user-message'; id: string; blocks: ContentBlock[] }
-  | { kind: 'assistant-message'; id: string; blocks: ContentBlock[] }
-  | { kind: 'thought'; id: string; blocks: ContentBlock[] }
-  | { kind: 'tool-call'; id: string; toolCall: ToolCall }
-  | { kind: 'plan'; id: string; plan: Plan }
   | {
-      kind: 'permission';
+      kind: 'message';
       id: string;
+      turnId: ConversationTurnId;
+      role: 'user' | 'assistant';
+      blocks: ContentBlock[];
+      isStreaming: boolean;
+    }
+  | {
+      kind: 'reasoning';
+      id: string;
+      turnId: ConversationTurnId;
+      blocks: ContentBlock[];
+      isStreaming: boolean;
+    }
+  | { kind: 'tool'; id: string; turnId: ConversationTurnId; toolCall: ToolCall }
+  | { kind: 'plan'; id: string; turnId: ConversationTurnId; plan: Plan }
+  | {
+      kind: 'approval';
+      id: string;
+      turnId: ConversationTurnId;
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
     }
-  | { kind: 'client-request'; id: string; requestId: string; request: ClientRequest }
-  | { kind: 'error'; id: string; message: string; code?: string; recoverable: boolean };
+  | {
+      kind: 'client-request';
+      id: string;
+      turnId: ConversationTurnId;
+      requestId: string;
+      request: ClientRequest;
+    }
+  | {
+      kind: 'error';
+      id: string;
+      turnId: ConversationTurnId;
+      message: string;
+      code?: string;
+      recoverable: boolean;
+    };
 
-export interface Conversation {
+export interface ConversationViewModel {
   /** Ordered timeline of everything the user should see. */
   items: ConversationItem[];
   /** Coarse session lifecycle, from the latest `status` event. */
@@ -60,13 +88,9 @@ export interface Conversation {
   pendingPermissionIds: string[];
 }
 
-const MESSAGE_KINDS = {
-  'user-message-chunk': 'user-message',
-  'agent-message-chunk': 'assistant-message',
-  'agent-thought-chunk': 'thought',
-} as const;
+export type Conversation = ConversationViewModel;
 
-type MessageItemKind = (typeof MESSAGE_KINDS)[keyof typeof MESSAGE_KINDS];
+type MessageRole = Extract<ConversationItem, { kind: 'message' }>['role'];
 
 /** Append a content block to a message item, concatenating consecutive text blocks for smooth streaming. */
 function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
@@ -100,9 +124,11 @@ function mergeToolCall(base: ToolCall, update: ToolCallUpdate): ToolCall {
 export function buildConversation(events: readonly AgentEvent[]): Conversation {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
-  let planIndex = -1;
+  const planIndexByTurn = new Map<ConversationTurnId, number>();
+  let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   const genId = (prefix: string): string => `${prefix}-${gen++}`;
+  const nextTurnId = (): string => genId('turn');
 
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
@@ -111,35 +137,63 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   let configOptions: SessionConfigOption[] = [];
   let stopReason: StopReason | null = null;
 
-  const openMessage = (target: MessageItemKind, block: ContentBlock): void => {
+  const openMessage = (role: MessageRole, block: ContentBlock): void => {
     const last = items.at(-1);
-    if (last?.kind === target) {
+    if (last?.kind === 'message' && last.role === role) {
       appendBlock(last.blocks, block);
       return;
     }
-    items.push({ kind: target, id: genId(target), blocks: [block] });
+    if (role === 'user') currentTurnId = nextTurnId();
+    items.push({
+      kind: 'message',
+      id: genId(`${role}-message`),
+      turnId: currentTurnId,
+      role,
+      blocks: [block],
+      isStreaming: false,
+    });
+  };
+
+  const openReasoning = (block: ContentBlock): void => {
+    const last = items.at(-1);
+    if (last?.kind === 'reasoning') {
+      appendBlock(last.blocks, block);
+      return;
+    }
+    items.push({
+      kind: 'reasoning',
+      id: genId('reasoning'),
+      turnId: currentTurnId,
+      blocks: [block],
+      isStreaming: false,
+    });
   };
 
   for (const event of events) {
     switch (event.type) {
       case 'user-message-chunk':
+        openMessage('user', event.content);
+        break;
       case 'agent-message-chunk':
+        openMessage('assistant', event.content);
+        break;
       case 'agent-thought-chunk':
-        openMessage(MESSAGE_KINDS[event.type], event.content);
+        openReasoning(event.content);
         break;
 
       case 'tool-call': {
         const existing = toolIndex.get(event.toolCall.toolCallId);
         if (existing === undefined) {
           items.push({
-            kind: 'tool-call',
+            kind: 'tool',
             id: event.toolCall.toolCallId,
+            turnId: currentTurnId,
             toolCall: event.toolCall,
           });
           toolIndex.set(event.toolCall.toolCallId, items.length - 1);
         } else {
           const item = items[existing];
-          if (item.kind === 'tool-call') {
+          if (item.kind === 'tool') {
             item.toolCall = mergeToolCall(item.toolCall, event.toolCall);
           }
         }
@@ -160,26 +214,38 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
             rawInput: event.update.rawInput,
             rawOutput: event.update.rawOutput,
           };
-          items.push({ kind: 'tool-call', id: synthesized.toolCallId, toolCall: synthesized });
+          items.push({
+            kind: 'tool',
+            id: synthesized.toolCallId,
+            turnId: currentTurnId,
+            toolCall: synthesized,
+          });
           toolIndex.set(synthesized.toolCallId, items.length - 1);
         } else {
           const item = items[existing];
-          if (item.kind === 'tool-call') {
+          if (item.kind === 'tool') {
             item.toolCall = mergeToolCall(item.toolCall, event.update);
           }
         }
         break;
       }
 
-      case 'plan':
-        if (planIndex >= 0) {
-          const item = items[planIndex];
-          if (item.kind === 'plan') item.plan = event.plan;
-        } else {
-          items.push({ kind: 'plan', id: 'plan', plan: event.plan });
-          planIndex = items.length - 1;
+      case 'plan': {
+        const planIndex = planIndexByTurn.get(currentTurnId);
+        if (planIndex === undefined) {
+          items.push({
+            kind: 'plan',
+            id: genId('plan'),
+            turnId: currentTurnId,
+            plan: event.plan,
+          });
+          planIndexByTurn.set(currentTurnId, items.length - 1);
+          break;
         }
+        const item = items[planIndex];
+        if (item.kind === 'plan') item.plan = event.plan;
         break;
+      }
 
       case 'available-commands-update':
         availableCommands = event.availableCommands;
@@ -204,6 +270,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
         items.push({
           kind: 'error',
           id: genId('error'),
+          turnId: currentTurnId,
           message: event.message,
           code: event.code,
           recoverable: event.recoverable,
@@ -212,8 +279,9 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
 
       case 'permission-request':
         items.push({
-          kind: 'permission',
+          kind: 'approval',
           id: event.requestId,
+          turnId: currentTurnId,
           requestId: event.requestId,
           toolCall: event.toolCall,
           options: event.options,
@@ -224,6 +292,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
         items.push({
           kind: 'client-request',
           id: event.requestId,
+          turnId: currentTurnId,
           requestId: event.requestId,
           request: event.request,
         });
@@ -236,13 +305,21 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   // A permission ask is "pending" until its referenced tool call reaches a terminal status.
   const pendingPermissionIds: string[] = [];
   for (const item of items) {
-    if (item.kind !== 'permission') continue;
+    if (item.kind !== 'approval') continue;
     const toolItemIndex = toolIndex.get(item.toolCall.toolCallId);
     const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
     const settled =
-      toolItem?.kind === 'tool-call' &&
+      toolItem?.kind === 'tool' &&
       (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
     if (!settled) pendingPermissionIds.push(item.requestId);
+  }
+
+  const isSessionStreaming = status === 'running' || status === 'starting';
+  if (isSessionStreaming) {
+    const last = items.at(-1);
+    if (last?.kind === 'reasoning' || (last?.kind === 'message' && last.role === 'assistant')) {
+      last.isStreaming = true;
+    }
   }
 
   return {

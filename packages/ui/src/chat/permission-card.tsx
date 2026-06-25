@@ -1,8 +1,13 @@
 import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
-import { Button } from 'coss-ui/components/button';
-import { ShieldIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
+import {
+  Confirmation,
+  ConfirmationAction,
+  ConfirmationActions,
+  ConfirmationDescription,
+  ConfirmationTitle,
+} from './confirmation';
 
 type ButtonVariant = 'default' | 'secondary' | 'outline' | 'destructive-outline';
 
@@ -37,32 +42,26 @@ export function PermissionCard({
   const t = useTranslations('workbench.permission');
 
   return (
-    <div className="my-1 rounded-xl border border-warning/40 bg-warning/5 p-3">
-      <div className="mb-2 flex items-center gap-2 text-[13px] font-medium text-foreground">
-        <ShieldIcon className="size-4 text-warning-foreground" />
-        {t('title')}
-        <span className="truncate font-normal text-muted-foreground">
-          {toolCall.title ?? toolCall.toolCallId}
-        </span>
-      </div>
+    <Confirmation>
+      <ConfirmationTitle title={t('title')} subject={toolCall.title ?? toolCall.toolCallId} />
       {answered ? (
-        <div className="text-[13px] text-muted-foreground">{t('answered')}</div>
+        <ConfirmationDescription>{t('answered')}</ConfirmationDescription>
       ) : responding ? (
-        <div className="text-[13px] text-muted-foreground">{t('responding')}</div>
+        <ConfirmationDescription>{t('responding')}</ConfirmationDescription>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <ConfirmationActions>
           {options.map((o) => (
-            <Button
+            <ConfirmationAction
               key={o.optionId}
               size="sm"
               variant={variantFor(o.kind)}
               onClick={() => onRespond(o.optionId)}
             >
               {o.name}
-            </Button>
+            </ConfirmationAction>
           ))}
-        </div>
+        </ConfirmationActions>
       )}
-    </div>
+    </Confirmation>
   );
 }

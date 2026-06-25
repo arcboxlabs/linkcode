@@ -1,11 +1,16 @@
 import type { AvailableCommand } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
-import { Button } from 'coss-ui/components/button';
-import { Textarea } from 'coss-ui/components/textarea';
-import { ArrowUpIcon, AtSignIcon, SlashIcon, SquareIcon } from 'lucide-react';
+import { AtSignIcon, SlashIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
+import {
+  PromptInput,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+} from '../chat/prompt-input';
 import { cn } from '../lib/cn';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
@@ -185,7 +190,7 @@ export function Composer({
   return (
     <div className="relative px-4 pb-4">
       <div className="mx-auto max-w-[840px]">
-        <div className="relative rounded-2xl border border-input bg-card shadow-xs focus-within:border-ring">
+        <div className="relative">
           {menu && (
             <AutocompleteMenu
               entries={entries}
@@ -195,49 +200,45 @@ export function Composer({
               onHover={updateActiveIndex}
             />
           )}
-          <Textarea
-            ref={textareaRef}
-            value={value}
-            disabled={disabled}
-            rows={1}
-            placeholder={disabled ? t('placeholderDisconnected') : t('placeholder')}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              setValue(nextValue);
-              updateCaret(e.target.selectionStart, nextValue);
-            }}
-            onClick={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
-            onKeyUp={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
-            onKeyDown={onKeyDown}
-            className="max-h-48 px-3.5 pt-3 pb-1.5"
-          />
-          <div className="flex items-center gap-2 px-3 pb-2.5">
-            {currentModeId && (
-              <Badge variant="secondary">
-                {tw('mode.label')}: {currentModeId}
-              </Badge>
-            )}
-            <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
-              <SlashIcon className="size-3" />
-              {t('commands')}
-              <AtSignIcon className="ml-1 size-3" />
-              {t('mentions')}
-            </span>
-            {isRunning ? (
-              <Button size="icon-sm" variant="secondary" aria-label={t('stop')} onClick={onStop}>
-                <SquareIcon />
-              </Button>
-            ) : (
-              <Button
-                size="icon-sm"
-                aria-label={t('send')}
-                disabled={disabled || value.trim().length === 0}
-                onClick={submit}
-              >
-                <ArrowUpIcon />
-              </Button>
-            )}
-          </div>
+          <PromptInput onSubmit={submit}>
+            <PromptInputTextarea
+              ref={textareaRef}
+              value={value}
+              disabled={disabled}
+              rows={1}
+              placeholder={disabled ? t('placeholderDisconnected') : t('placeholder')}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setValue(nextValue);
+                updateCaret(e.target.selectionStart, nextValue);
+              }}
+              onClick={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
+              onKeyUp={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
+              onKeyDown={onKeyDown}
+            />
+            <PromptInputFooter>
+              <PromptInputTools>
+                {currentModeId && (
+                  <Badge variant="secondary">
+                    {tw('mode.label')}: {currentModeId}
+                  </Badge>
+                )}
+              </PromptInputTools>
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <SlashIcon className="size-3" />
+                {t('commands')}
+                <AtSignIcon className="ml-1 size-3" />
+                {t('mentions')}
+              </span>
+              <PromptInputSubmit
+                aria-label={isRunning ? t('stop') : t('send')}
+                disabled={!isRunning && (disabled || value.trim().length === 0)}
+                onStop={onStop}
+                status={isRunning ? 'streaming' : 'ready'}
+                variant={isRunning ? 'secondary' : 'default'}
+              />
+            </PromptInputFooter>
+          </PromptInput>
         </div>
       </div>
     </div>
