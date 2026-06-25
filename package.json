@@ -1,9 +1,15 @@
 {
-  "name": "link-code",
+  "name": "linkcode",
   "version": "0.0.0",
   "private": true,
-  "description": "Link Code — 面向通用 coding agent 的统一 GUI（PC / Web / Mobile + Server）",
   "type": "module",
+  "author": "ArcBox Labs <team@arcbox.dev>",
+  "contributors": [
+    "Xuan ZHang <dev@aprilnea.me>",
+    "Yifei Zhang <yidadaa@qq.com>",
+    "SukkaW <github@skk.moe>",
+    "Zerlight <zerlight@qq.com>"
+  ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
