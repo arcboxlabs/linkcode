@@ -3,6 +3,7 @@ import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '../lib/cn';
+import { CodeBlock } from './code-block';
 
 const components: Components = {
   a: ({ className, children, node: _node, ...rest }) => (
@@ -58,27 +59,14 @@ const components: Components = {
       {children}
     </blockquote>
   ),
-  pre: ({ className, children, node: _node, ...rest }) => (
-    <pre
-      className={cn(
-        'my-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-[13px] leading-relaxed',
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => children,
   code({ className, children, node: _node, ...rest }) {
     // Fenced blocks may carry no language class; treat multi-line content as a block too.
-    const hasLanguage = typeof className === 'string' && className.includes('language-');
-    const isBlock = hasLanguage || reactNodeText(children).includes('\n');
+    const text = reactNodeText(children);
+    const language = codeLanguageFromClassName(className);
+    const isBlock = Boolean(language) || text.includes('\n');
     if (isBlock) {
-      return (
-        <code className={cn('font-mono', className)} {...rest}>
-          {children}
-        </code>
-      );
+      return <CodeBlock code={trimTrailingMarkdownNewline(text)} language={language} />;
     }
     return (
       <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]" {...rest}>
@@ -118,6 +106,20 @@ const components: Components = {
     </em>
   ),
 };
+
+const LANGUAGE_CLASS_PREFIX = 'language-';
+
+function codeLanguageFromClassName(className: string | undefined): string | undefined {
+  if (!className) return undefined;
+  return className
+    .split(' ')
+    .find((name) => name.startsWith(LANGUAGE_CLASS_PREFIX))
+    ?.slice(LANGUAGE_CLASS_PREFIX.length);
+}
+
+function trimTrailingMarkdownNewline(value: string): string {
+  return value.endsWith('\n') ? value.slice(0, -1) : value;
+}
 
 function reactNodeText(value: ReactNode): string {
   if (typeof value === 'string') return value;

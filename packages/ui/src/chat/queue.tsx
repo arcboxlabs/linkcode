@@ -89,7 +89,7 @@ export function QueueSectionTrigger({
         <>
           <ListOrderedIcon className="size-4 text-muted-foreground" />
           <span className="min-w-0 flex-1">{label}</span>
-          {count !== undefined ? (
+          {typeof count === 'number' ? (
             <Badge size="sm" variant="secondary">
               {count}
             </Badge>
@@ -129,7 +129,7 @@ export function QueueItem({
   children,
   ...props
 }: QueueItemProps): ReactNode {
-  const canCancel = onCancel && (item.status === 'queued' || item.status === 'running');
+  const canCancel = item.status === 'queued' || item.status === 'running';
 
   return (
     <li
@@ -156,7 +156,7 @@ export function QueueItem({
       <Badge className="shrink-0" size="sm" variant={queueBadgeVariant(item.status)}>
         {item.status}
       </Badge>
-      {canCancel ? (
+      {canCancel && onCancel ? (
         <Button
           aria-label={`Cancel ${item.title}`}
           className="size-6 shrink-0 opacity-0 group-hover:opacity-100"

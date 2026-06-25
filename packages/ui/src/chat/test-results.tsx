@@ -102,7 +102,7 @@ export function TestResult({ className, result, children, ...props }: TestResult
           </div>
         ) : null}
       </div>
-      {result.durationMs !== undefined ? (
+      {typeof result.durationMs === 'number' ? (
         <span className="shrink-0 text-[12px] text-muted-foreground">
           {formatDuration(result.durationMs)}
         </span>

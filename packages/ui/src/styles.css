@@ -24,3 +24,157 @@
     font-family: var(--font-mono);
   }
 }
+
+@layer components {
+  .ansi-black-fg {
+    color: #6b7280;
+  }
+
+  .ansi-red-fg {
+    color: #f87171;
+  }
+
+  .ansi-green-fg {
+    color: #4ade80;
+  }
+
+  .ansi-yellow-fg {
+    color: #facc15;
+  }
+
+  .ansi-blue-fg {
+    color: #60a5fa;
+  }
+
+  .ansi-magenta-fg {
+    color: #c084fc;
+  }
+
+  .ansi-cyan-fg {
+    color: #22d3ee;
+  }
+
+  .ansi-white-fg {
+    color: #e5e7eb;
+  }
+
+  .ansi-bright-black-fg {
+    color: #9ca3af;
+  }
+
+  .ansi-bright-red-fg {
+    color: #fca5a5;
+  }
+
+  .ansi-bright-green-fg {
+    color: #86efac;
+  }
+
+  .ansi-bright-yellow-fg {
+    color: #fde047;
+  }
+
+  .ansi-bright-blue-fg {
+    color: #93c5fd;
+  }
+
+  .ansi-bright-magenta-fg {
+    color: #d8b4fe;
+  }
+
+  .ansi-bright-cyan-fg {
+    color: #67e8f9;
+  }
+
+  .ansi-bright-white-fg {
+    color: #f9fafb;
+  }
+
+  .ansi-black-bg {
+    background-color: #111827;
+  }
+
+  .ansi-red-bg {
+    background-color: #7f1d1d;
+  }
+
+  .ansi-green-bg {
+    background-color: #14532d;
+  }
+
+  .ansi-yellow-bg {
+    background-color: #713f12;
+  }
+
+  .ansi-blue-bg {
+    background-color: #1e3a8a;
+  }
+
+  .ansi-magenta-bg {
+    background-color: #581c87;
+  }
+
+  .ansi-cyan-bg {
+    background-color: #164e63;
+  }
+
+  .ansi-white-bg {
+    background-color: #e5e7eb;
+  }
+
+  .ansi-bright-black-bg {
+    background-color: #374151;
+  }
+
+  .ansi-bright-red-bg {
+    background-color: #991b1b;
+  }
+
+  .ansi-bright-green-bg {
+    background-color: #166534;
+  }
+
+  .ansi-bright-yellow-bg {
+    background-color: #854d0e;
+  }
+
+  .ansi-bright-blue-bg {
+    background-color: #1d4ed8;
+  }
+
+  .ansi-bright-magenta-bg {
+    background-color: #7e22ce;
+  }
+
+  .ansi-bright-cyan-bg {
+    background-color: #0e7490;
+  }
+
+  .ansi-bright-white-bg {
+    background-color: #f9fafb;
+  }
+
+  .ansi-bold {
+    font-weight: 700;
+  }
+
+  .ansi-dim {
+    opacity: 0.62;
+  }
+
+  .ansi-italic {
+    font-style: italic;
+  }
+
+  .ansi-underline {
+    text-decoration-line: underline;
+  }
+
+  .ansi-strikethrough {
+    text-decoration-line: line-through;
+  }
+
+  .ansi-hidden {
+    visibility: hidden;
+  }
+}

@@ -78,7 +78,7 @@ export function TaskTrigger({
         <>
           <ListTodoIcon className="size-3.5 shrink-0" />
           <span className="font-medium">{title}</span>
-          {count !== undefined ? (
+          {typeof count === 'number' ? (
             <Badge size="sm" variant="secondary">
               {count}
             </Badge>

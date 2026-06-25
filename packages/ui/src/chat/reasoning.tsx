@@ -5,7 +5,7 @@ import {
 } from 'coss-ui/components/collapsible';
 import { BrainIcon, ChevronRightIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import { Shimmer } from './shimmer';
 
@@ -37,20 +37,8 @@ export function Reasoning({
   children,
   ...props
 }: ReasoningProps): ReactNode {
-  const [isOpenState, setIsOpenState] = useState(defaultOpen ?? isStreaming);
-  const hasStreamedRef = useRef(isStreaming);
-  const isOpen = isStreaming || isOpenState;
-
-  useEffect(() => {
-    if (isStreaming) {
-      hasStreamedRef.current = true;
-      const timer = window.setTimeout(() => setIsOpenState(true), 0);
-      return () => window.clearTimeout(timer);
-    }
-    if (!hasStreamedRef.current) return;
-    const timer = window.setTimeout(() => setIsOpenState(false), 1000);
-    return () => window.clearTimeout(timer);
-  }, [isStreaming]);
+  const [manualOpen, setManualOpen] = useState(defaultOpen ?? false);
+  const isOpen = isStreaming || manualOpen;
 
   const contextValue = useMemo(() => ({ isOpen, isStreaming }), [isOpen, isStreaming]);
 
@@ -58,7 +46,7 @@ export function Reasoning({
     <ReasoningContext.Provider value={contextValue}>
       <Collapsible
         className={cn('text-muted-foreground', className)}
-        onOpenChange={setIsOpenState}
+        onOpenChange={setManualOpen}
         open={isOpen}
         {...props}
       >

@@ -62,7 +62,7 @@ export function Commit({
   );
 }
 
-export type CommitHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type CommitHeaderProps = ComponentProps<'div'> & {
   commit: ChatCommit;
 };
 
@@ -73,7 +73,7 @@ export function CommitHeader({
   ...props
 }: CommitHeaderProps): ReactNode {
   return (
-    <CollapsibleTrigger
+    <div
       className={cn(
         'group flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted',
         className,
@@ -82,21 +82,23 @@ export function CommitHeader({
     >
       {children ?? (
         <>
-          <CommitAvatar commit={commit} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-foreground">{commit.message}</div>
-            <div className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
-              <CommitHash hash={commit.hash} />
-              {commit.authorName ? <span className="truncate">{commit.authorName}</span> : null}
-              {commit.createdAt ? (
-                <time dateTime={commit.createdAt}>{commit.createdAt}</time>
-              ) : null}
+          <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-3 text-left">
+            <CommitAvatar commit={commit} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-foreground">{commit.message}</div>
+              <div className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
+                <CommitHash hash={commit.hash} />
+                {commit.authorName ? <span className="truncate">{commit.authorName}</span> : null}
+                {commit.createdAt ? (
+                  <time dateTime={commit.createdAt}>{commit.createdAt}</time>
+                ) : null}
+              </div>
             </div>
-          </div>
+          </CollapsibleTrigger>
           <CommitCopyButton hash={commit.hash} />
         </>
       )}
-    </CollapsibleTrigger>
+    </div>
   );
 }
 
