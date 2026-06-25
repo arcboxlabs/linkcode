@@ -1,3 +1,4 @@
+import Ansi from 'ansi-to-react';
 import { TerminalIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
@@ -58,7 +59,11 @@ export function TerminalTitle({ className, children, ...props }: TerminalTitlePr
 
 export type TerminalContentProps = ComponentProps<'pre'>;
 
-export function TerminalContent({ className, ...props }: TerminalContentProps): ReactNode {
+export function TerminalContent({
+  className,
+  children,
+  ...props
+}: TerminalContentProps): ReactNode {
   return (
     <pre
       className={cn(
@@ -66,6 +71,14 @@ export function TerminalContent({ className, ...props }: TerminalContentProps): 
         className,
       )}
       {...props}
-    />
+    >
+      {typeof children === 'string' ? (
+        <Ansi useClasses linkify={false}>
+          {children}
+        </Ansi>
+      ) : (
+        children
+      )}
+    </pre>
   );
 }

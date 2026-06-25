@@ -333,7 +333,7 @@ function SchemaDisplaySectionTrigger({
     <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted">
       <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
       <span className="font-medium text-foreground">{label}</span>
-      {count !== undefined ? (
+      {typeof count === 'number' ? (
         <Badge className="ml-auto" variant="secondary">
           {count}
         </Badge>
@@ -362,7 +362,6 @@ function renderPath(path: string): ReactNode {
 
   for (const match of path.matchAll(/\{[^}]+\}/g)) {
     const index = match.index;
-    if (index === undefined) continue;
     if (index > cursor) {
       parts.push(<span key={`text-${cursor}`}>{path.slice(cursor, index)}</span>);
     }

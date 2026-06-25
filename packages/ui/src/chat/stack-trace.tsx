@@ -78,7 +78,7 @@ export function StackTrace({
   );
 }
 
-export type StackTraceHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type StackTraceHeaderProps = ComponentProps<'div'> & {
   parsed: ParsedStackTrace;
   stackTrace: ChatStackTrace;
   open: boolean;
@@ -93,31 +93,33 @@ export function StackTraceHeader({
   ...props
 }: StackTraceHeaderProps): ReactNode {
   return (
-    <CollapsibleTrigger
-      className={cn('flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted', className)}
+    <div
+      className={cn('flex w-full items-center gap-2 px-3 py-2 hover:bg-muted', className)}
       {...props}
     >
       {children ?? (
         <>
-          <AlertTriangleIcon className="size-4 shrink-0 text-destructive-foreground" />
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-semibold text-destructive-foreground">
-              {stackTrace.title ?? parsed.errorType ?? 'Error'}
+          <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <AlertTriangleIcon className="size-4 shrink-0 text-destructive-foreground" />
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-semibold text-destructive-foreground">
+                {stackTrace.title ?? parsed.errorType ?? 'Error'}
+              </span>
+              {parsed.errorMessage ? (
+                <span className="text-foreground">: {parsed.errorMessage}</span>
+              ) : null}
             </span>
-            {parsed.errorMessage ? (
-              <span className="text-foreground">: {parsed.errorMessage}</span>
-            ) : null}
-          </span>
+            <ChevronRightIcon
+              className={cn(
+                'size-3.5 shrink-0 text-muted-foreground transition-transform',
+                open && 'rotate-90',
+              )}
+            />
+          </CollapsibleTrigger>
           <StackTraceCopyButton trace={stackTrace.trace} />
-          <ChevronRightIcon
-            className={cn(
-              'size-3.5 shrink-0 text-muted-foreground transition-transform',
-              open && 'rotate-90',
-            )}
-          />
         </>
       )}
-    </CollapsibleTrigger>
+    </div>
   );
 }
 
@@ -172,8 +174,8 @@ export function StackTraceFrames({
                 type="button"
               >
                 {frame.filePath}
-                {frame.lineNumber !== undefined ? `:${frame.lineNumber}` : ''}
-                {frame.columnNumber !== undefined ? `:${frame.columnNumber}` : ''}
+                {formatStackLocationPart(frame.lineNumber)}
+                {formatStackLocationPart(frame.columnNumber)}
               </button>
             ) : (
               <span>{frame.raw.startsWith('at ') ? frame.raw.slice(3) : frame.raw}</span>
@@ -291,15 +293,15 @@ function parseStackFrame(line: string): ParsedStackFrame {
   const trimmed = line.trim();
   const body = trimmed.startsWith('at ') ? trimmed.slice(3) : trimmed;
   let functionName: string | undefined;
-  let location = body;
+  let frameLocation = body;
 
   const locationStart = body.lastIndexOf(' (');
   if (locationStart >= 0 && body.endsWith(')')) {
     functionName = body.slice(0, locationStart);
-    location = body.slice(locationStart + 2, -1);
+    frameLocation = body.slice(locationStart + 2, -1);
   }
 
-  const parsedLocation = parseStackLocation(location);
+  const parsedLocation = parseStackLocation(frameLocation);
   if (parsedLocation) {
     return {
       raw: trimmed,
@@ -333,4 +335,8 @@ function parseStackLocation(location: string): ParsedStackLocation | null {
 
 function isInternalPath(path: string): boolean {
   return path.includes('node_modules') || path.startsWith('node:') || path.includes('internal/');
+}
+
+function formatStackLocationPart(value: number | undefined): string {
+  return typeof value === 'number' ? `:${value}` : '';
 }

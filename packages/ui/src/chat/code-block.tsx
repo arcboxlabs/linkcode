@@ -1,8 +1,10 @@
 import { Button } from 'coss-ui/components/button';
 import { CheckIcon, CopyIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ComponentProps, CSSProperties, ReactNode } from 'react';
+import { Suspense, use, useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
+import { highlightCode, normalizeCodeLanguage } from './code-highlight';
+import type { HighlightedCode, HighlightedToken } from './code-highlight';
 
 export interface CodeBlockProps extends ComponentProps<'div'> {
   code: string;
@@ -33,9 +35,59 @@ export function CodeBlock({
         </CodeBlockHeader>
       ) : null}
       <pre className="overflow-x-auto p-3 font-mono text-[12.5px] leading-relaxed">
-        <code>{code}</code>
+        <code>
+          <CodeBlockContent code={code} language={language} />
+        </code>
       </pre>
     </div>
+  );
+}
+
+function CodeBlockContent({
+  code,
+  language,
+}: {
+  code: string;
+  language: string | undefined;
+}): ReactNode {
+  const normalizedLanguage = normalizeCodeLanguage(language);
+  if (!normalizedLanguage || code.length === 0) return code;
+
+  return (
+    <Suspense fallback={code}>
+      <HighlightedCodeResult code={code} highlighted={highlightCode(code, normalizedLanguage)} />
+    </Suspense>
+  );
+}
+
+function HighlightedCodeResult({
+  code,
+  highlighted,
+}: {
+  code: string;
+  highlighted: Promise<HighlightedCode | null>;
+}): ReactNode {
+  const highlightedCode = use(highlighted);
+  if (!highlightedCode) return code;
+  return <HighlightedCodeContent highlighted={highlightedCode} />;
+}
+
+function HighlightedCodeContent({ highlighted }: { highlighted: HighlightedCode }): ReactNode {
+  return highlighted.lines.map((line, lineIndex) => (
+    <span key={line.key}>
+      {line.tokens.map((token) => (
+        <HighlightedTokenSpan key={token.key} token={token} />
+      ))}
+      {lineIndex < highlighted.lines.length - 1 ? '\n' : null}
+    </span>
+  ));
+}
+
+function HighlightedTokenSpan({ token }: { token: HighlightedToken }): ReactNode {
+  return (
+    <span style={token.color ? ({ color: token.color } satisfies CSSProperties) : undefined}>
+      {token.content}
+    </span>
   );
 }
 
