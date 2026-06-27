@@ -8,8 +8,6 @@ import { ConversationView } from '../chat';
 import type { ConversationViewModel } from '../chat';
 import { Composer } from './composer';
 import { Sidebar } from './sidebar';
-import { TopBar } from './top-bar';
-import type { WorkbenchSystemBridge } from './types';
 
 export interface AppShellProps {
   sessions: SessionInfo[];
@@ -17,8 +15,8 @@ export interface AppShellProps {
   conversation: ConversationViewModel;
   answeredPermissions: Set<string>;
   respondingPermissions: Set<string>;
+  header: ReactNode;
   errorMessage?: string | null;
-  systemBridge?: WorkbenchSystemBridge;
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
   onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
@@ -35,8 +33,8 @@ export function AppShell({
   conversation,
   answeredPermissions,
   respondingPermissions,
+  header,
   errorMessage,
-  systemBridge,
   onSelectSession,
   onStopSession,
   onCreateSession,
@@ -45,7 +43,6 @@ export function AppShell({
   onRespondPermission,
   onDismissError,
 }: AppShellProps): ReactNode {
-  const tk = useTranslations('workbench.agentKind');
   const te = useTranslations('workbench.error');
 
   const active = sessions.find((s) => s.sessionId === activeId) ?? null;
@@ -61,12 +58,7 @@ export function AppShell({
         onCreate={onCreateSession}
       />
       <main className="flex min-w-0 flex-1 flex-col">
-        <TopBar
-          title={active ? tk(active.kind) : 'Link Code'}
-          subtitle={active?.cwd}
-          usage={conversation.usage}
-          systemBridge={systemBridge}
-        />
+        {header}
         {errorMessage && (
           <div className="border-b border-border px-4 py-2">
             <Alert variant="error" className="rounded-lg py-2">

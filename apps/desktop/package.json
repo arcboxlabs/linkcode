@@ -16,6 +16,7 @@
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
+    "foxact": "^0.3.7",
     "react": "catalog:",
     "react-dom": "catalog:",
     "use-intl": "catalog:"

@@ -1,5 +1,5 @@
 import { useConversation } from '@linkcode/client-core';
-import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import type { AgentKind, SessionId, SessionInfo, TokenUsage } from '@linkcode/schema';
 import {
   cancelTurn,
   listSessions,
@@ -8,17 +8,30 @@ import {
   startSession,
   stopSession,
 } from '@linkcode/sdk';
-import { AppShell } from '@linkcode/ui';
-import type { WorkbenchSystemBridge } from '@linkcode/ui';
+import { AppShell, TopBar } from '@linkcode/ui';
+import type { AppShellProps } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useTranslations } from 'use-intl';
 import { useData, useMutation } from './tayori';
 
 export interface WorkbenchProps {
-  systemBridge?: WorkbenchSystemBridge;
+  shell?: WorkbenchShellComponent;
 }
+
+export interface WorkbenchShellHeader {
+  title: string;
+  subtitle?: string;
+  usage?: TokenUsage | null;
+}
+
+export interface WorkbenchShellProps extends Omit<AppShellProps, 'header'> {
+  header: WorkbenchShellHeader;
+}
+
+export type WorkbenchShellComponent = (props: WorkbenchShellProps) => ReactNode;
 
 /**
  * The workbench feature surface: session inbox + conversation stream + composer.
@@ -28,7 +41,7 @@ export interface WorkbenchProps {
  * Wrap it in `WorkbenchProviders` (at a layout, or inline) and mount it as a
  * routed feature page.
  */
-export function Workbench({ systemBridge }: WorkbenchProps): ReactNode {
+export function Workbench({ shell: Shell = DefaultWorkbenchShell }: WorkbenchProps): ReactNode {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err) ?? String(err));
@@ -43,7 +56,7 @@ export function Workbench({ systemBridge }: WorkbenchProps): ReactNode {
       sessions={sessions}
       conversation={conversation}
       errorMessage={errorMessage}
-      systemBridge={systemBridge}
+      Shell={Shell}
       onClearError={() => setErrorMessage(null)}
       onError={handleError}
     />
@@ -54,7 +67,7 @@ interface WorkbenchSessionSurfaceProps {
   sessions: WorkbenchSessions;
   conversation: ReturnType<typeof useConversation>;
   errorMessage: string | null;
-  systemBridge?: WorkbenchSystemBridge;
+  Shell: WorkbenchShellComponent;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -63,15 +76,17 @@ function WorkbenchSessionSurface({
   sessions,
   conversation,
   errorMessage,
-  systemBridge,
+  Shell,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): ReactNode {
+  const tk = useTranslations('workbench.agentKind');
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
   const [answered, setAnswered] = useState<Set<string>>(() => new Set());
   const [responding, setResponding] = useState<Set<string>>(() => new Set());
+  const active = sessions.sessions.find((s) => s.sessionId === sessions.activeId) ?? null;
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
@@ -109,14 +124,18 @@ function WorkbenchSessionSurface({
   }
 
   return (
-    <AppShell
+    <Shell
       sessions={sessions.sessions}
       activeId={sessions.activeId}
       conversation={conversation}
       answeredPermissions={answered}
       respondingPermissions={responding}
+      header={{
+        title: active ? tk(active.kind) : 'Link Code',
+        subtitle: active?.cwd,
+        usage: conversation.usage,
+      }}
       errorMessage={errorMessage}
-      systemBridge={systemBridge}
       onSelectSession={sessions.select}
       onStopSession={sessions.stop}
       onCreateSession={sessions.create}
@@ -126,6 +145,10 @@ function WorkbenchSessionSurface({
       onDismissError={onClearError}
     />
   );
+}
+
+function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): ReactNode {
+  return <AppShell {...props} header={<TopBar {...header} />} />;
 }
 
 interface WorkbenchSessions {
