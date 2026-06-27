@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react';
-import { RouterProvider } from 'react-router';
 import { RootProviders } from '@/providers/root-providers';
-import { appRouter } from '@/routes';
 
 export function App(): ReactNode {
   return (
     <RootProviders>
-      <RouterProvider router={appRouter} />
+      <main className="min-h-screen bg-background" aria-label="LinkCode startup" />
     </RootProviders>
   );
 }

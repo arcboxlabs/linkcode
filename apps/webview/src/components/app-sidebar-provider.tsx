@@ -12,8 +12,8 @@ interface SidebarStateProviderProps extends React.ComponentProps<'div'> {
 
 /**
  * Sidebar open/collapse state provider with persistence. Owns the coss-ui
- * `SidebarContext` so the dashboard shell and the filterable table layout can
- * each have an independently persisted sidebar (keyed by `storageKey`).
+ * `SidebarContext` so filterable layouts can keep independently persisted
+ * sidebar state (keyed by `storageKey`).
  */
 export function AppSidebarProvider({
   storageKey,
