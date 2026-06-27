@@ -1,154 +1,36 @@
 import type { TokenUsage } from '@linkcode/schema';
-import { noop } from 'foxact/noop';
-import { useEffect } from 'foxact/use-abortable-effect';
-import { Minimize2Icon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
-import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import type { WorkbenchSystemBridge } from './types';
-
-type WindowControlsMode = 'none' | 'native-macos' | 'custom';
-type WindowBridge = NonNullable<WorkbenchSystemBridge['window']>;
-type PlatformReader = NonNullable<WorkbenchSystemBridge['app']>['platform'];
 
 export interface TopBarProps {
   title: string;
   subtitle?: string;
   usage?: TokenUsage | null;
-  systemBridge?: WorkbenchSystemBridge;
+  className?: string;
+  trailing?: ReactNode;
 }
 
-/** Slim header: active-session identity, token usage, and (on desktop) window controls. */
-export function TopBar({ title, subtitle, usage, systemBridge }: TopBarProps): ReactNode {
+/** Slim shared header: active-session identity, token usage, and app-supplied trailing controls. */
+export function TopBar({ title, subtitle, usage, className, trailing }: TopBarProps): ReactNode {
   const t = useTranslations('workbench.usage');
-  const win = systemBridge?.window;
-  const platform = systemBridge?.app?.platform;
   const hasUsage = usage != null && (usage.inputTokens != null || usage.outputTokens != null);
-  const [platformMode, setPlatformMode] = useState<{
-    platform: PlatformReader;
-    mode: WindowControlsMode;
-  } | null>(null);
-  const [maximizedSnapshot, setMaximizedSnapshot] = useState<{
-    window: WindowBridge;
-    value: boolean;
-  } | null>(null);
-  const windowControlsMode: WindowControlsMode = win
-    ? platform
-      ? platformMode?.platform === platform
-        ? platformMode.mode
-        : 'custom'
-      : 'custom'
-    : 'none';
-  const isMaximized =
-    win && windowControlsMode === 'custom' && maximizedSnapshot?.window === win
-      ? maximizedSnapshot.value
-      : false;
-
-  useEffect(
-    (signal) => {
-      if (!win || !platform) return;
-      platform()
-        .then((value) => {
-          if (!signal.aborted) {
-            setPlatformMode({ platform, mode: value === 'darwin' ? 'native-macos' : 'custom' });
-          }
-        })
-        .catch(() => {
-          if (!signal.aborted) setPlatformMode({ platform, mode: 'custom' });
-        });
-    },
-    [win, platform],
-  );
-
-  useEffect(
-    (signal) => {
-      if (!win || windowControlsMode !== 'custom') return;
-
-      let receivedMaximizedEvent = false;
-      const unsubscribe = win.onMaximizedChange?.((value) => {
-        receivedMaximizedEvent = true;
-        setMaximizedSnapshot({ window: win, value });
-      });
-
-      const readIsMaximized = win.isMaximized;
-      if (!readIsMaximized) return unsubscribe;
-      void readIsMaximized()
-        .then((value) => {
-          if (!signal.aborted && !receivedMaximizedEvent) {
-            setMaximizedSnapshot({ window: win, value });
-          }
-        })
-        .catch(() => {
-          if (!signal.aborted && !receivedMaximizedEvent) {
-            setMaximizedSnapshot({ window: win, value: false });
-          }
-        });
-
-      return unsubscribe;
-    },
-    [win, windowControlsMode],
-  );
-
-  async function handleToggleMaximize(): Promise<void> {
-    await win?.toggleMaximize();
-    const next = await win?.isMaximized?.();
-    if (!win) return;
-    setMaximizedSnapshot({ window: win, value: next === undefined ? !isMaximized : next });
-  }
 
   return (
     <header
-      className={cn(
-        'flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 [-webkit-app-region:drag]',
-        windowControlsMode === 'native-macos' && 'pl-20',
-      )}
+      className={cn('flex h-12 shrink-0 items-center gap-3 border-b border-border px-4', className)}
     >
       <div className="min-w-0">
         <div className="truncate font-medium text-[13px] text-foreground">{title}</div>
         {subtitle && <div className="truncate text-[11px] text-muted-foreground">{subtitle}</div>}
       </div>
-      <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
+      <div className="ml-auto flex items-center gap-2">
         {hasUsage && (
           <span className="text-[11px] text-muted-foreground">
             {t('tokens', { input: usage.inputTokens ?? 0, output: usage.outputTokens ?? 0 })}
           </span>
         )}
-        {win && windowControlsMode === 'custom' && (
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              aria-label="Minimize"
-              onClick={win.minimize}
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <MinusIcon className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label={isMaximized ? 'Restore' : 'Maximize'}
-              aria-pressed={isMaximized}
-              onClick={() => {
-                handleToggleMaximize().catch(noop);
-              }}
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              {isMaximized ? (
-                <Minimize2Icon className="size-3.5" />
-              ) : (
-                <SquareIcon className="size-3" />
-              )}
-            </button>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={win.close}
-              className="rounded p-1 text-muted-foreground hover:bg-destructive hover:text-white"
-            >
-              <XIcon className="size-3.5" />
-            </button>
-          </div>
-        )}
+        {trailing}
       </div>
     </header>
   );

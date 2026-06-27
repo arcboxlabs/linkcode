@@ -14,6 +14,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/transport": "workspace:*",
+    "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
     "coss-ui": "workspace:*",
     "foxact": "^0.3.6",

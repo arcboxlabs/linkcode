@@ -165,6 +165,9 @@ importers:
       '@linkcode/workbench':
         specifier: workspace:*
         version: link:../../packages/workbench
+      foxact:
+        specifier: ^0.3.7
+        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react:
         specifier: 'catalog:'
         version: 19.2.7

@@ -3,13 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "author": "ArcBox Labs <team@arcbox.dev>",
-  "contributors": [
-    "Xuan ZHang <dev@aprilnea.me>",
-    "Yifei Zhang <yidadaa@qq.com>",
-    "SukkaW <github@skk.moe>",
-    "Zerlight <zerlight@qq.com>"
-  ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -20,6 +13,13 @@
     "test": "vitest run",
     "clean": "turbo run clean"
   },
+  "author": "ArcBox Labs <team@arcbox.dev>",
+  "contributors": [
+    "Xuan ZHang <dev@aprilnea.me>",
+    "Yifei Zhang <yidadaa@qq.com>",
+    "SukkaW <github@skk.moe>",
+    "Zerlight <zerlight@qq.com>"
+  ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
     "@eslint-sukka/react": "^8.12.2",
