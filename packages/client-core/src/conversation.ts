@@ -1,11 +1,8 @@
 import type {
   AgentEvent,
-  AvailableCommand,
-  ClientRequest,
   ContentBlock,
   PermissionOption,
   Plan,
-  SessionConfigOption,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -35,7 +32,6 @@ export type ConversationItem =
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
     }
-  | { kind: 'client-request'; id: string; requestId: string; request: ClientRequest }
   | { kind: 'error'; id: string; message: string; code?: string; recoverable: boolean };
 
 export interface Conversation {
@@ -47,10 +43,6 @@ export interface Conversation {
   usage: TokenUsage | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
-  /** Slash commands the agent currently advertises. */
-  availableCommands: AvailableCommand[];
-  /** Free-form per-session config options the agent exposes. */
-  configOptions: SessionConfigOption[];
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -59,14 +51,6 @@ export interface Conversation {
    */
   pendingPermissionIds: string[];
 }
-
-const MESSAGE_KINDS = {
-  'user-message-chunk': 'user-message',
-  'agent-message-chunk': 'assistant-message',
-  'agent-thought-chunk': 'thought',
-} as const;
-
-type MessageItemKind = (typeof MESSAGE_KINDS)[keyof typeof MESSAGE_KINDS];
 
 /** Append a content block to a message item, concatenating consecutive text blocks for smooth streaming. */
 function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
@@ -82,24 +66,12 @@ function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
   blocks.push(block);
 }
 
-/** Merge a ToolCallUpdate onto an existing ToolCall (later fields win; absent fields are kept). */
-function mergeToolCall(base: ToolCall, update: ToolCallUpdate): ToolCall {
-  return {
-    ...base,
-    title: update.title ?? base.title,
-    kind: update.kind ?? base.kind,
-    status: update.status ?? base.status,
-    content: update.content ?? base.content,
-    locations: update.locations ?? base.locations,
-    rawInput: update.rawInput ?? base.rawInput,
-    rawOutput: update.rawOutput ?? base.rawOutput,
-  };
-}
-
 /** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */
 export function buildConversation(events: readonly AgentEvent[]): Conversation {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
+  // messageId → item index, so streaming chunks bucket into one bubble regardless of interleaving.
+  const messageIndex = new Map<string, number>();
   let planIndex = -1;
   let gen = 0;
   const genId = (prefix: string): string => `${prefix}-${gen++}`;
@@ -107,28 +79,44 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
   let currentModeId: string | null = null;
-  let availableCommands: AvailableCommand[] = [];
-  let configOptions: SessionConfigOption[] = [];
   let stopReason: StopReason | null = null;
 
-  const openMessage = (target: MessageItemKind, block: ContentBlock): void => {
-    const last = items.at(-1);
-    if (last?.kind === target) {
-      appendBlock(last.blocks, block);
-      return;
+  const openMessage = (
+    kind: 'assistant-message' | 'thought',
+    messageId: string,
+    block: ContentBlock,
+  ): void => {
+    const existing = messageIndex.get(messageId);
+    if (existing !== undefined) {
+      const item = items[existing];
+      if (item.kind === kind) {
+        appendBlock(item.blocks, block);
+        return;
+      }
     }
-    items.push({ kind: target, id: genId(target), blocks: [block] });
+    items.push({ kind, id: messageId, blocks: [block] });
+    messageIndex.set(messageId, items.length - 1);
   };
 
   for (const event of events) {
     switch (event.type) {
-      case 'user-message-chunk':
+      case 'user-message':
+        // A complete, atomic message — pushed whole, never grouped or appended to.
+        items.push({
+          kind: 'user-message',
+          id: event.messageId ?? genId('user-message'),
+          blocks: event.content,
+        });
+        break;
       case 'agent-message-chunk':
+        openMessage('assistant-message', event.messageId, event.content);
+        break;
       case 'agent-thought-chunk':
-        openMessage(MESSAGE_KINDS[event.type], event.content);
+        openMessage('thought', event.messageId, event.content);
         break;
 
       case 'tool-call': {
+        // Every event is a full snapshot, so replace-by-id; no merge, no synthesis, no create check.
         const existing = toolIndex.get(event.toolCall.toolCallId);
         if (existing === undefined) {
           items.push({
@@ -139,34 +127,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           toolIndex.set(event.toolCall.toolCallId, items.length - 1);
         } else {
           const item = items[existing];
-          if (item.kind === 'tool-call') {
-            item.toolCall = mergeToolCall(item.toolCall, event.toolCall);
-          }
-        }
-        break;
-      }
-
-      case 'tool-call-update': {
-        const existing = toolIndex.get(event.update.toolCallId);
-        if (existing === undefined) {
-          // Update before its tool-call (defensive): synthesize a tool call from the update.
-          const synthesized: ToolCall = {
-            toolCallId: event.update.toolCallId,
-            title: event.update.title ?? event.update.toolCallId,
-            kind: event.update.kind ?? 'other',
-            status: event.update.status ?? 'in_progress',
-            content: event.update.content ?? [],
-            locations: event.update.locations,
-            rawInput: event.update.rawInput,
-            rawOutput: event.update.rawOutput,
-          };
-          items.push({ kind: 'tool-call', id: synthesized.toolCallId, toolCall: synthesized });
-          toolIndex.set(synthesized.toolCallId, items.length - 1);
-        } else {
-          const item = items[existing];
-          if (item.kind === 'tool-call') {
-            item.toolCall = mergeToolCall(item.toolCall, event.update);
-          }
+          if (item.kind === 'tool-call') item.toolCall = event.toolCall;
         }
         break;
       }
@@ -181,14 +142,8 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
         }
         break;
 
-      case 'available-commands-update':
-        availableCommands = event.availableCommands;
-        break;
       case 'current-mode-update':
         currentModeId = event.currentModeId;
-        break;
-      case 'config-option-update':
-        configOptions = event.configOptions;
         break;
       case 'status':
         status = event.status;
@@ -219,15 +174,6 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           options: event.options,
         });
         break;
-
-      case 'client-request':
-        items.push({
-          kind: 'client-request',
-          id: event.requestId,
-          requestId: event.requestId,
-          request: event.request,
-        });
-        break;
       default:
         break;
     }
@@ -250,8 +196,6 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     status,
     usage,
     currentModeId,
-    availableCommands,
-    configOptions,
     stopReason,
     pendingPermissionIds,
   };

@@ -1,0 +1,107 @@
+import type { AgentEvent, ContentBlock, ToolCallUpdate } from '@linkcode/schema';
+import { describe, expect, it } from 'vitest';
+import { BaseAgentAdapter } from '../base';
+
+/** Minimal concrete adapter that exposes the protected emit/permission surface for testing. */
+class TestAdapter extends BaseAgentAdapter {
+  readonly kind = 'pi' as const;
+  readonly seen: AgentEvent[] = [];
+
+  constructor() {
+    super();
+    this.onEvent((e) => this.seen.push(e));
+  }
+
+  protected onStart(): Promise<void> {
+    return Promise.resolve();
+  }
+  protected onPrompt(_content: ContentBlock[]): Promise<void> {
+    return Promise.resolve();
+  }
+
+  tool(patch: ToolCallUpdate): void {
+    this.emitTool(patch);
+  }
+  ask(): Promise<unknown> {
+    return this.requestPermission({ toolCallId: 't1' }, [
+      { optionId: 'ok', name: 'Allow', kind: 'allow_once' },
+    ]);
+  }
+}
+
+function toolEvents(a: TestAdapter): Array<Extract<AgentEvent, { type: 'tool-call' }>> {
+  return a.seen.filter((e): e is Extract<AgentEvent, { type: 'tool-call' }> => e.type === 'tool-call');
+}
+
+describe('BaseAgentAdapter.emitTool', () => {
+  it('emits a full snapshot, merging partial patches over the running state', () => {
+    const a = new TestAdapter();
+    a.tool({ toolCallId: 't1', title: 'Read', kind: 'read', status: 'in_progress' });
+    a.tool({ toolCallId: 't1', status: 'completed', rawOutput: 'done' });
+
+    const tools = toolEvents(a);
+    expect(tools).toHaveLength(2);
+    // Each event is a complete ToolCall; the second carries the merged title/kind from the first.
+    expect(tools[1].toolCall).toMatchObject({
+      toolCallId: 't1',
+      title: 'Read',
+      kind: 'read',
+      status: 'completed',
+      rawOutput: 'done',
+    });
+  });
+
+  it('fills defaults on first sight (title=id, kind=other, status=in_progress, content=[])', () => {
+    const a = new TestAdapter();
+    a.tool({ toolCallId: 't9' });
+    expect(toolEvents(a)[0].toolCall).toEqual({
+      toolCallId: 't9',
+      title: 't9',
+      kind: 'other',
+      status: 'in_progress',
+      content: [],
+      locations: undefined,
+      rawInput: undefined,
+      rawOutput: undefined,
+    });
+  });
+
+  it('ignores updates to a tool that already reached a terminal state', () => {
+    const a = new TestAdapter();
+    a.tool({ toolCallId: 't1', title: 'Run', kind: 'execute', status: 'completed' });
+    const before = a.seen.length;
+    a.tool({ toolCallId: 't1', status: 'in_progress' }); // late/stray update — must be dropped
+    expect(a.seen.length).toBe(before);
+  });
+});
+
+describe('BaseAgentAdapter teardown', () => {
+  it('on stop: finalizes non-terminal tools to failed, then emits stopped', async () => {
+    const a = new TestAdapter();
+    a.tool({ toolCallId: 't1', title: 'Run', kind: 'execute', status: 'in_progress' });
+    await a.stop();
+
+    const lastForT1 = toolEvents(a).findLast((e) => e.toolCall.toolCallId === 't1');
+    expect(lastForT1?.toolCall.status).toBe('failed');
+    expect(a.seen.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(true);
+  });
+
+  it('on cancel: finalizes in-progress tools to failed', async () => {
+    const a = new TestAdapter();
+    a.tool({ toolCallId: 't1', title: 'Run', kind: 'execute', status: 'in_progress' });
+    await a.send({ type: 'cancel' });
+
+    expect(
+      toolEvents(a).some((e) => e.toolCall.toolCallId === 't1' && e.toolCall.status === 'failed'),
+    ).toBe(true);
+  });
+
+  it('on cancel: resolves a pending permission ask with cancelled (no hang/leak)', async () => {
+    const a = new TestAdapter();
+    const pending = a.ask();
+    expect(a.seen.some((e) => e.type === 'permission-request')).toBe(true);
+
+    await a.send({ type: 'cancel' });
+    await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
+  });
+});

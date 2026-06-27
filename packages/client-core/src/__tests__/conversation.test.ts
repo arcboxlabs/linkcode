@@ -1,17 +1,18 @@
-import type { AgentEvent } from '@linkcode/schema';
+import type { AgentEvent, MessageId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { buildConversation, contentPreview, toolCallDiffs } from '../conversation';
 
-function text(t: string): AgentEvent {
+function text(t: string, messageId = 'm1'): AgentEvent {
   return {
     type: 'agent-message-chunk',
+    messageId: messageId as MessageId,
     content: { type: 'text', text: t },
   };
 }
 function userText(t: string): AgentEvent {
   return {
-    type: 'user-message-chunk',
-    content: { type: 'text', text: t },
+    type: 'user-message',
+    content: [{ type: 'text', text: t }],
   };
 }
 
@@ -24,7 +25,7 @@ describe('buildConversation', () => {
     expect(c.pendingPermissionIds).toEqual([]);
   });
 
-  it('coalesces consecutive same-role text chunks into one streaming block', () => {
+  it('coalesces same-messageId text chunks into one streaming block', () => {
     const c = buildConversation([text('Hel'), text('lo, '), text('world')]);
     expect(c.items).toHaveLength(1);
     const item = c.items[0];
@@ -35,10 +36,10 @@ describe('buildConversation', () => {
     }
   });
 
-  it('separates user and assistant turns and breaks a turn on a tool call', () => {
+  it('separates user and assistant turns; distinct messageIds make distinct bubbles', () => {
     const c = buildConversation([
       userText('do it'),
-      text('working'),
+      text('working', 'm1'),
       {
         type: 'tool-call',
         toolCall: {
@@ -49,7 +50,7 @@ describe('buildConversation', () => {
           content: [],
         },
       },
-      text('done'),
+      text('done', 'm2'),
     ]);
     expect(c.items.map((i) => i.kind)).toEqual([
       'user-message',
@@ -59,17 +60,61 @@ describe('buildConversation', () => {
     ]);
   });
 
-  it('merges tool-call updates into the original call by id', () => {
+  it('buckets streaming chunks by messageId across an interleaved tool call', () => {
+    const c = buildConversation([
+      text('Let me check ', 'm1'),
+      {
+        type: 'tool-call',
+        toolCall: { toolCallId: 't1', title: 'Read', kind: 'read', status: 'completed', content: [] },
+      },
+      text('the file.', 'm1'),
+    ]);
+    // The second 'm1' chunk merges into the existing bubble, which stays ahead of the tool call.
+    expect(c.items.map((i) => i.kind)).toEqual(['assistant-message', 'tool-call']);
+    const msg = c.items[0];
+    if (msg.kind === 'assistant-message') {
+      expect(msg.blocks).toEqual([{ type: 'text', text: 'Let me check the file.' }]);
+    }
+  });
+
+  it('renders a user-message whole from its content array', () => {
+    const c = buildConversation([
+      {
+        type: 'user-message',
+        content: [
+          { type: 'text', text: 'a' },
+          { type: 'image', data: 'x', mimeType: 'image/png' },
+        ],
+      },
+    ]);
+    expect(c.items).toHaveLength(1);
+    const item = c.items[0];
+    expect(item.kind).toBe('user-message');
+    if (item.kind === 'user-message') expect(item.blocks).toHaveLength(2);
+  });
+
+  it('replaces a tool call by id with the latest full snapshot', () => {
     const c = buildConversation([
       {
         type: 'tool-call',
         toolCall: { toolCallId: 't1', title: 'Edit', kind: 'edit', status: 'pending', content: [] },
       },
-      { type: 'tool-call-update', update: { toolCallId: 't1', status: 'in_progress' } },
       {
-        type: 'tool-call-update',
-        update: {
+        type: 'tool-call',
+        toolCall: {
           toolCallId: 't1',
+          title: 'Edit',
+          kind: 'edit',
+          status: 'in_progress',
+          content: [],
+        },
+      },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'Edit',
+          kind: 'edit',
           status: 'completed',
           content: [{ type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' }],
         },
@@ -126,7 +171,16 @@ describe('buildConversation', () => {
 
     const settled = buildConversation([
       ...base,
-      { type: 'tool-call-update', update: { toolCallId: 't1', status: 'completed' } },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'Run',
+          kind: 'execute',
+          status: 'completed',
+          content: [],
+        },
+      },
     ]);
     expect(settled.pendingPermissionIds).toEqual([]);
   });

@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { ContentBlockSchema } from './content';
 
 /**
- * Tool calls — mirrors ACP ToolCall / ToolCallUpdate. See https://agentclientprotocol.com/protocol/tool-calls.
- * NOTE: the `kind` / `status` enums follow ACP's ToolKind / ToolCallStatus; verify against the shipped
- * @agentclientprotocol/sdk types when wiring the ACP adapter (docs were inconsistent on the kind set).
+ * Tool calls. `ToolCallSchema` is the full materialized tool state carried on the wire (every `tool-call`
+ * event is a complete snapshot); `ToolCallUpdateSchema` is the partial patch an adapter feeds into the base
+ * class's `emitTool`, which merges it into the running snapshot before emitting.
  */
 
 export const ToolKindSchema = z.enum([

@@ -1,6 +1,4 @@
 import type { AgentKind } from '@linkcode/schema';
-import { AcpAdapter } from './acp/acp-adapter';
-import type { AcpAgentSpec } from './acp/acp-adapter';
 import type { AgentAdapter } from './adapter';
 import { ClaudeCodeAdapter } from './native/claude-code';
 import { CodexAdapter } from './native/codex';
@@ -28,11 +26,3 @@ export function createAdapter(kind: AgentKind): AgentAdapter {
 }
 
 export type AdapterFactory = typeof createAdapter;
-
-/**
- * Generic ACP seam: drive any ACP-speaking agent CLI as a subprocess. This is the "long tail" path
- * (native adapters for the four, a generic ACP adapter for the rest).
- */
-export function createAcpAdapter(spec: AcpAgentSpec): AgentAdapter {
-  return new AcpAdapter(spec);
-}

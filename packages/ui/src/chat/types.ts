@@ -1,10 +1,7 @@
 import type {
-  AvailableCommand,
-  ClientRequest,
   ContentBlock,
   PermissionOption,
   Plan,
-  SessionConfigOption,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -25,7 +22,6 @@ export type ConversationItem =
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
     }
-  | { kind: 'client-request'; id: string; requestId: string; request: ClientRequest }
   | { kind: 'error'; id: string; message: string; code?: string; recoverable: boolean };
 
 export interface ConversationViewModel {
@@ -33,8 +29,6 @@ export interface ConversationViewModel {
   status: SessionStatus | null;
   usage: TokenUsage | null;
   currentModeId: string | null;
-  availableCommands: AvailableCommand[];
-  configOptions: SessionConfigOption[];
   stopReason: StopReason | null;
   pendingPermissionIds: string[];
 }

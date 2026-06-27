@@ -1,13 +1,10 @@
 import { z } from 'zod';
-import { ClientRequestSchema, ClientResponseSchema } from './client-rpc';
 import { AgentKindSchema, MessageIdSchema, SessionIdSchema, TimestampSchema } from './common';
 import { ContentBlockSchema } from './content';
 import { PermissionOptionSchema, PermissionOutcomeSchema } from './permission';
 import { PlanSchema } from './plan';
 import {
-  AvailableCommandSchema,
   McpServerSchema,
-  SessionConfigOptionSchema,
   SessionModeIdSchema,
   SessionStatusSchema,
   StopReasonSchema,
@@ -16,9 +13,9 @@ import { ToolCallSchema, ToolCallUpdateSchema } from './tool-call';
 import { TokenUsageSchema } from './usage';
 
 /**
- * Agent data-plane contract. The abstraction layer normalizes each vendor's native agent events into
- * `AgentEvent`, modeled on ACP's `session/update` vocabulary (PLAN §4.3). The flow is always
- * "change the schema first, then the implementation" (PLAN §2.1).
+ * Agent data-plane contract. The abstraction layer normalizes each vendor's native agent events into the
+ * `AgentEvent` union, tailored to the four supported agents (claude-code / codex / opencode / pi) and the
+ * front-end. The flow is always "change the schema first, then the implementation" (PLAN §2.1).
  */
 
 // ── Upstream: client → host → agent ──────────────────────────────────────────
@@ -55,55 +52,46 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
     requestId: z.string().min(1),
     outcome: PermissionOutcomeSchema,
   }),
-  /** Response to a pending client-request (fs/terminal RPC), correlated by requestId. */
-  z.object({
-    type: z.literal('client-response'),
-    requestId: z.string().min(1),
-    response: ClientResponseSchema,
-  }),
 ]);
 export type AgentInput = z.infer<typeof AgentInputSchema>;
 
 // ── Downstream: agent → abstraction layer (normalized) → client ──────────────
 
 /**
- * Normalized agent event. Mirrors ACP's `session/update` variants plus the lifecycle / RPC signals Link
- * Code needs. Note: the `client-request` (fs/terminal) and `permission-request` variants expect a matching
- * reply via `AgentInput`, correlated by `requestId`.
+ * Normalized agent event: the single downstream vocabulary every adapter emits and the front-end folds
+ * into a conversation. The `permission-request` variant expects a matching reply via `AgentInput`,
+ * correlated by `requestId`.
  */
 export const AgentEventSchema = z.discriminatedUnion('type', [
-  // ── Streaming content ──
+  // ── User message: a complete, atomic message (not streamed) ──
   z.object({
-    type: z.literal('user-message-chunk'),
+    type: z.literal('user-message'),
+    // Identity / dedup only — a user message is whole, so this never drives grouping.
     messageId: MessageIdSchema.optional(),
-    content: ContentBlockSchema,
+    // The full message, same shape as `AgentInput.prompt`'s content.
+    content: z.array(ContentBlockSchema),
   }),
+
+  // ── Agent output: streaming chunks, bucketed and concatenated by messageId ──
   z.object({
     type: z.literal('agent-message-chunk'),
-    messageId: MessageIdSchema.optional(),
+    // Required: the grouping authority (chunks with the same id form one bubble).
+    messageId: MessageIdSchema,
     content: ContentBlockSchema,
   }),
   z.object({
     type: z.literal('agent-thought-chunk'),
-    messageId: MessageIdSchema.optional(),
+    // Required: the grouping authority (must differ from the matching message's id).
+    messageId: MessageIdSchema,
     content: ContentBlockSchema,
   }),
 
-  // ── Tools ──
+  // ── Tools: one event per state change, each carrying the full current ToolCall snapshot ──
   z.object({ type: z.literal('tool-call'), toolCall: ToolCallSchema }),
-  z.object({ type: z.literal('tool-call-update'), update: ToolCallUpdateSchema }),
 
   // ── Planning / meta ──
   z.object({ type: z.literal('plan'), plan: PlanSchema }),
-  z.object({
-    type: z.literal('available-commands-update'),
-    availableCommands: z.array(AvailableCommandSchema),
-  }),
   z.object({ type: z.literal('current-mode-update'), currentModeId: SessionModeIdSchema }),
-  z.object({
-    type: z.literal('config-option-update'),
-    configOptions: z.array(SessionConfigOptionSchema),
-  }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),
@@ -116,17 +104,12 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     recoverable: z.boolean().default(true),
   }),
 
-  // ── Agent → client requests (await a reply via AgentInput, correlated by requestId) ──
+  // ── Agent → client request (awaits a reply via AgentInput, correlated by requestId) ──
   z.object({
     type: z.literal('permission-request'),
     requestId: z.string().min(1),
     toolCall: ToolCallUpdateSchema,
     options: z.array(PermissionOptionSchema),
-  }),
-  z.object({
-    type: z.literal('client-request'),
-    requestId: z.string().min(1),
-    request: ClientRequestSchema,
   }),
 ]);
 export type AgentEvent = z.infer<typeof AgentEventSchema>;

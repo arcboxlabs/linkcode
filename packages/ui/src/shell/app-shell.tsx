@@ -101,7 +101,6 @@ export function AppShell({
         <Composer
           disabled={!activeId}
           isRunning={isRunning}
-          availableCommands={conversation.availableCommands}
           currentModeId={conversation.currentModeId}
           onSend={onSendPrompt}
           onStop={onStopTurn}

@@ -106,12 +106,6 @@ export function ConversationView({
                   onRespond={(optionId) => onRespondPermission(item.requestId, optionId)}
                 />
               );
-            case 'client-request':
-              return (
-                <div key={item.id} className="font-mono text-[12px] text-muted-foreground">
-                  ⏵ {item.request.method}
-                </div>
-              );
             case 'error':
               return (
                 <ErrorMessage
