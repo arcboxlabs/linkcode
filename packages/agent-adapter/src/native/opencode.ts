@@ -1,7 +1,41 @@
-import type { ContentBlock, MessageId, StartOptions } from '@linkcode/schema';
+import type {
+  ContentBlock,
+  MessageId,
+  StartOptions,
+  ToolCallContent,
+  ToolCallStatus,
+} from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { BaseAgentAdapter } from '../base';
-import { contentToText } from '../util';
+import { contentToText, toolKindFromName } from '../util';
+
+type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
+
+/** Map OpenCode's tool part state to our ToolCallStatus (running → in_progress, error → failed). */
+function mapOpencodeToolStatus(status: ToolPartState['status']): ToolCallStatus {
+  switch (status) {
+    case 'running':
+      return 'in_progress';
+    case 'completed':
+      return 'completed';
+    case 'error':
+      return 'failed';
+    default:
+      return 'pending';
+  }
+}
+
+/** Surface a terminal tool state's output (completed) or error message (error) as tool-call content. */
+function toolStateContent(state: ToolPartState): ToolCallContent[] {
+  if (state.status === 'completed' && state.output.length > 0) {
+    return [{ type: 'content', content: textBlock(state.output) }];
+  }
+  if (state.status === 'error' && state.error.length > 0) {
+    return [{ type: 'content', content: textBlock(state.error) }];
+  }
+  return [];
+}
 
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
 type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['client'];
@@ -110,9 +144,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         break;
       }
       case 'tool': {
-        this.emit({
-          type: 'tool-call-update',
-          update: { toolCallId: part.id, title: part.tool, status: 'in_progress' },
+        this.emitTool({
+          toolCallId: part.id,
+          title: part.tool,
+          kind: toolKindFromName(part.tool),
+          status: mapOpencodeToolStatus(part.state.status),
+          content: toolStateContent(part.state),
+          rawInput: part.state.input,
+          rawOutput: part.state.status === 'completed' ? part.state.output : undefined,
         });
 
         break;

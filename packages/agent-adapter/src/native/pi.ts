@@ -1,5 +1,6 @@
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import type { ContentBlock, StartOptions } from '@linkcode/schema';
+import type { ContentBlock, MessageId, StartOptions } from '@linkcode/schema';
+import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { contentToText, toolKindFromName } from '../util';
 
@@ -13,6 +14,9 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
+  /** Stable per-turn ids so all text / thinking deltas of one turn group into one bubble each. */
+  private messageId: MessageId = nextMessageId();
+  private thoughtId: MessageId = nextMessageId();
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const pi = await this.loadSdk(
@@ -69,6 +73,9 @@ export class PiAdapter extends BaseAgentAdapter {
   private handleEvent(ev: AgentSessionEvent): void {
     switch (ev.type) {
       case 'agent_start':
+        // Fresh ids per turn; text/thinking within the turn reuse them (one bubble each).
+        this.messageId = nextMessageId();
+        this.thoughtId = nextMessageId();
         this.emitStatus('running');
         break;
       case 'agent_end':
@@ -77,31 +84,24 @@ export class PiAdapter extends BaseAgentAdapter {
         break;
       case 'message_update': {
         const a = ev.assistantMessageEvent;
-        if (a.type === 'text_delta') this.emitAssistantText(a.delta);
-        else if (a.type === 'thinking_delta') this.emitThought(a.delta);
+        if (a.type === 'text_delta') this.emitAssistantText(a.delta, this.messageId);
+        else if (a.type === 'thinking_delta') this.emitThought(a.delta, this.thoughtId);
         break;
       }
       case 'tool_execution_start':
-        this.emit({
-          type: 'tool-call',
-          toolCall: {
-            toolCallId: ev.toolCallId,
-            title: ev.toolName,
-            kind: toolKindFromName(ev.toolName),
-            status: 'in_progress',
-            content: [],
-            rawInput: ev.args,
-          },
+        this.emitTool({
+          toolCallId: ev.toolCallId,
+          title: ev.toolName,
+          kind: toolKindFromName(ev.toolName),
+          status: 'in_progress',
+          rawInput: ev.args,
         });
         break;
       case 'tool_execution_end':
-        this.emit({
-          type: 'tool-call-update',
-          update: {
-            toolCallId: ev.toolCallId,
-            status: ev.isError ? 'failed' : 'completed',
-            rawOutput: ev.result,
-          },
+        this.emitTool({
+          toolCallId: ev.toolCallId,
+          status: ev.isError ? 'failed' : 'completed',
+          rawOutput: ev.result,
         });
         break;
       default:

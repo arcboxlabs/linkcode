@@ -2,11 +2,10 @@
  * @linkcode/agent-adapter — the agent adapter layer + abstraction layer (PLAN §4.2 / §6).
  *
  * Native adapters drive each agent's real SDK (claude-code / codex / opencode / pi) and normalize their
- * events into the zod `AgentEvent` contract (ACP-aligned). A generic ACP adapter is the seam for the long
- * tail. Driven by `@linkcode/engine` but standalone so the adapter set can evolve and be tested independently.
+ * events into the zod `AgentEvent` contract. Driven by `@linkcode/engine` but standalone so the adapter
+ * set can evolve and be tested independently.
  */
 
-export { AcpAdapter, type AcpAgentSpec, acpUpdateToEvent } from './acp/acp-adapter';
 export * from './adapter';
 export * from './base';
 export { ClaudeCodeAdapter } from './native/claude-code';

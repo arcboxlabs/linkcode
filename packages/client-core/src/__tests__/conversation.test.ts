@@ -1,17 +1,18 @@
-import type { AgentEvent } from '@linkcode/schema';
+import type { AgentEvent, MessageId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { buildConversation, contentPreview, toolCallDiffs } from '../conversation';
 
-function text(t: string): AgentEvent {
+function text(t: string, messageId = 'm1'): AgentEvent {
   return {
     type: 'agent-message-chunk',
+    messageId: messageId as MessageId,
     content: { type: 'text', text: t },
   };
 }
 function userText(t: string): AgentEvent {
   return {
-    type: 'user-message-chunk',
-    content: { type: 'text', text: t },
+    type: 'user-message',
+    content: [{ type: 'text', text: t }],
   };
 }
 
@@ -24,7 +25,7 @@ describe('buildConversation', () => {
     expect(c.pendingPermissionIds).toEqual([]);
   });
 
-  it('coalesces consecutive same-role text chunks into one streaming block', () => {
+  it('coalesces same-messageId agent chunks into one streaming block', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },
       text('Hel'),
@@ -46,7 +47,7 @@ describe('buildConversation', () => {
   it('separates user and assistant messages while keeping a turn id across activity', () => {
     const c = buildConversation([
       userText('do it'),
-      text('working'),
+      text('working', 'a1'),
       {
         type: 'tool-call',
         toolCall: {
@@ -57,14 +58,11 @@ describe('buildConversation', () => {
           content: [],
         },
       },
-      text('done'),
+      // A new messageId opens a fresh assistant bubble after the tool call.
+      text('done', 'a2'),
     ]);
     expect(c.items.map((i) => i.kind)).toEqual(['message', 'message', 'tool', 'message']);
     const [user, assistant, tool, followup] = c.items;
-    expect(user.kind).toBe('message');
-    expect(assistant.kind).toBe('message');
-    expect(tool.kind).toBe('tool');
-    expect(followup.kind).toBe('message');
     if (
       user.kind === 'message' &&
       assistant.kind === 'message' &&
@@ -85,8 +83,16 @@ describe('buildConversation', () => {
     const c = buildConversation([
       userText('think'),
       { type: 'status', status: 'running' },
-      { type: 'agent-thought-chunk', content: { type: 'text', text: 'step 1' } },
-      { type: 'agent-thought-chunk', content: { type: 'text', text: ' step 2' } },
+      {
+        type: 'agent-thought-chunk',
+        messageId: 'th1' as MessageId,
+        content: { type: 'text', text: 'step 1' },
+      },
+      {
+        type: 'agent-thought-chunk',
+        messageId: 'th1' as MessageId,
+        content: { type: 'text', text: ' step 2' },
+      },
     ]);
     const reasoning = c.items.at(-1);
     const first = c.items[0];
@@ -98,17 +104,28 @@ describe('buildConversation', () => {
     }
   });
 
-  it('merges tool-call updates into the original call by id', () => {
+  it('replaces a tool call by id with each full snapshot', () => {
     const c = buildConversation([
       {
         type: 'tool-call',
         toolCall: { toolCallId: 't1', title: 'Edit', kind: 'edit', status: 'pending', content: [] },
       },
-      { type: 'tool-call-update', update: { toolCallId: 't1', status: 'in_progress' } },
       {
-        type: 'tool-call-update',
-        update: {
+        type: 'tool-call',
+        toolCall: {
           toolCallId: 't1',
+          title: 'Edit',
+          kind: 'edit',
+          status: 'in_progress',
+          content: [],
+        },
+      },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'Edit',
+          kind: 'edit',
           status: 'completed',
           content: [{ type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' }],
         },
@@ -146,12 +163,12 @@ describe('buildConversation', () => {
     const plans = c.items.filter((i) => i.kind === 'plan');
     expect(plans).toHaveLength(2);
     const [firstPlan, secondPlan] = plans;
-    expect(firstPlan.kind).toBe('plan');
-    expect(secondPlan.kind).toBe('plan');
-    expect(firstPlan.plan.entries).toHaveLength(2);
-    expect(firstPlan.plan.entries[0]?.status).toBe('completed');
-    expect(secondPlan.plan.entries).toHaveLength(1);
-    expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
+    if (firstPlan.kind === 'plan' && secondPlan.kind === 'plan') {
+      expect(firstPlan.plan.entries).toHaveLength(2);
+      expect(firstPlan.plan.entries[0]?.status).toBe('completed');
+      expect(secondPlan.plan.entries).toHaveLength(1);
+      expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
+    }
   });
 
   it('tracks a permission as pending until its tool call settles', () => {
@@ -179,7 +196,16 @@ describe('buildConversation', () => {
 
     const settled = buildConversation([
       ...base,
-      { type: 'tool-call-update', update: { toolCallId: 't1', status: 'completed' } },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'Run',
+          kind: 'execute',
+          status: 'completed',
+          content: [],
+        },
+      },
     ]);
     expect(settled.pendingPermissionIds).toEqual([]);
   });

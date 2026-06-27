@@ -1,11 +1,9 @@
-import type { AvailableCommand } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
 import {
   AtSignIcon,
   ChevronDownIcon,
   PlusIcon,
   ShieldCheckIcon,
-  SlashIcon,
   SparklesIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -34,8 +32,6 @@ export interface ComposerProps {
   disabled: boolean;
   /** A turn is in flight: show Stop instead of Send. */
   isRunning: boolean;
-  /** Slash commands the agent advertises (drives the `/` menu). */
-  availableCommands: AvailableCommand[];
   /** Entries for the `@` menu (default: none). */
   mentionItems?: MentionItem[];
   /** Active session mode id, shown as a read-only badge when set. */
@@ -45,7 +41,6 @@ export interface ComposerProps {
 }
 
 interface MenuState {
-  mode: 'slash' | 'mention';
   query: string;
   start: number;
 }
@@ -61,13 +56,12 @@ const EMPTY_MENTION_ITEMS: MentionItem[] = [];
 const APPROVE_MODES = ['Approve for me', 'Ask each step', 'Read-only'] as const;
 const MODEL_OPTIONS = ['claude-sonnet-4.5', 'codex'] as const;
 
-/** Find a `/` or `@` autocomplete trigger at the caret (the maximal non-whitespace run ending there). */
+/** Find an `@` autocomplete trigger at the caret (the maximal non-whitespace run ending there). */
 function computeMenu(value: string, caret: number): MenuState | null {
   let start = caret;
   while (start > 0 && !/\s/.test(value[start - 1])) start--;
   const token = value.slice(start, caret);
-  if (token.startsWith('/')) return { mode: 'slash', query: token.slice(1), start };
-  if (token.startsWith('@')) return { mode: 'mention', query: token.slice(1), start };
+  if (token.startsWith('@')) return { query: token.slice(1), start };
   return null;
 }
 
@@ -75,7 +69,6 @@ export function Composer({
   agentLabel,
   disabled,
   isRunning,
-  availableCommands,
   mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
   onSend,
@@ -99,28 +92,15 @@ export function Composer({
   const entries = useMemo<MenuEntry[]>(() => {
     if (!menu) return [];
     const q = menu.query.toLowerCase();
-    if (menu.mode === 'slash') {
-      return availableCommands.reduce<MenuEntry[]>((items, c) => {
-        if (c.name.toLowerCase().includes(q)) {
-          items.push({
-            id: c.name,
-            insert: `/${c.name}`,
-            label: `/${c.name}`,
-            hint: c.description,
-          });
-        }
-        return items;
-      }, []);
-    }
     return mentionItems.reduce<MenuEntry[]>((items, m) => {
       if (m.label.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)) {
         items.push({ id: m.id, insert: `@${m.value}`, label: m.label, hint: m.hint });
       }
       return items;
     }, []);
-  }, [menu, availableCommands, mentionItems]);
+  }, [menu, mentionItems]);
 
-  const menuKey = menu ? `${menu.mode}:${menu.query}` : '';
+  const menuKey = menu ? `mention:${menu.query}` : '';
   const maxActiveIndex = Math.max(0, entries.length - 1);
   const activeIndex =
     activeIndexState.menuKey === menuKey ? Math.min(activeIndexState.index, maxActiveIndex) : 0;
@@ -210,7 +190,7 @@ export function Composer({
             <AutocompleteMenu
               entries={entries}
               activeIndex={activeIndex}
-              emptyLabel={menu.mode === 'slash' ? t('noCommands') : t('noMentions')}
+              emptyLabel={t('noMentions')}
               onSelect={selectEntry}
               onHover={updateActiveIndex}
             />
@@ -271,9 +251,7 @@ export function Composer({
                 <ChevronDownIcon className="size-3.5 text-muted-foreground" />
               </button>
               <span className="hidden items-center gap-1 text-muted-foreground text-xs lg:flex">
-                <SlashIcon className="size-3" />
-                {t('commands')}
-                <AtSignIcon className="ml-1 size-3" />
+                <AtSignIcon className="size-3" />
                 {t('mentions')}
               </span>
               <PromptInputSubmit

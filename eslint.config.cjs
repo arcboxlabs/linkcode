@@ -27,7 +27,7 @@ module.exports = require('eslint-config-sukka').sukka(
         'apps/*/*.config.ts',
         'apps/*/tsup.config.ts',
         'apps/desktop/electron.vite.config.ts',
-        'packages/agent-adapter/src/__tests__/normalize.test.ts',
+        'packages/agent-adapter/src/__tests__/*.test.ts',
         'vitest.config.ts',
       ],
     },
