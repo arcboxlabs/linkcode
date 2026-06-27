@@ -15,7 +15,6 @@ export default defineConfig({
     '@openai/codex-sdk',
     '@opencode-ai/sdk',
     '@earendil-works/pi-coding-agent',
-    '@agentclientprotocol/sdk',
     'ws',
   ],
 });

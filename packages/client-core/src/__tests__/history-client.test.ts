@@ -35,8 +35,8 @@ describe('LinkCodeClient history API', () => {
                 {
                   historyId,
                   event: {
-                    type: 'user-message-chunk',
-                    content: { type: 'text', text: 'hello' },
+                    type: 'user-message',
+                    content: [{ type: 'text', text: 'hello' }],
                   },
                 },
               ],
@@ -50,7 +50,7 @@ describe('LinkCodeClient history API', () => {
     expect(listed.sessions[0]?.historyId).toBe(historyId);
 
     const read = await client.readHistory('codex', { historyId, limit: 1 });
-    expect(read.events[0]?.event.type).toBe('user-message-chunk');
+    expect(read.events[0]?.event.type).toBe('user-message');
 
     client.dispose();
     serverTransport.close();

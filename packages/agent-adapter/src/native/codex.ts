@@ -17,7 +17,6 @@ import type {
   MessageId,
   StartOptions,
   TokenUsage,
-  ToolCall,
   ToolCallContent,
   ToolCallStatus,
 } from '@linkcode/schema';
@@ -146,6 +145,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         this.emitError(err instanceof Error ? err.message : String(err));
       }
     }
+    // The turn stream ended (normally, by turn.failed/error, or by abort); finalize any dangling tool.
+    this.teardown();
     this.emitStatus('idle');
   }
 
@@ -195,14 +196,14 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'item.started':
       case 'item.updated':
       case 'item.completed':
-        this.handleItem(ev.item, ev.type === 'item.completed');
+        this.handleItem(ev.item);
         break;
       default:
         break;
     }
   }
 
-  private handleItem(item: ThreadItem, completed: boolean): void {
+  private handleItem(item: ThreadItem): void {
     switch (item.type) {
       case 'agent_message':
         this.streamText(item.id, item.text, 'message');
@@ -211,56 +212,44 @@ export class CodexAdapter extends BaseAgentAdapter {
         this.streamText(item.id, item.text, 'thought');
         break;
       case 'command_execution':
-        this.emitTool(
-          {
-            toolCallId: item.id,
-            title: item.command,
-            kind: 'execute',
-            status: mapCodexStatus(item.status),
-            content: textContent(item.aggregated_output),
-            rawInput: { command: item.command },
-            rawOutput: item.exit_code,
-          },
-          completed,
-        );
+        this.emitTool({
+          toolCallId: item.id,
+          title: item.command,
+          kind: 'execute',
+          status: mapCodexStatus(item.status),
+          content: textContent(item.aggregated_output),
+          rawInput: { command: item.command },
+          rawOutput: item.exit_code,
+        });
         break;
       case 'file_change':
-        this.emitTool(
-          {
-            toolCallId: item.id,
-            title: 'Apply file changes',
-            kind: 'edit',
-            status: item.status === 'completed' ? 'completed' : 'failed',
-            content: textContent(item.changes.map((c) => `${c.kind} ${c.path}`).join('\n')),
-          },
-          completed,
-        );
+        this.emitTool({
+          toolCallId: item.id,
+          title: 'Apply file changes',
+          kind: 'edit',
+          status: item.status === 'completed' ? 'completed' : 'failed',
+          content: textContent(item.changes.map((c) => `${c.kind} ${c.path}`).join('\n')),
+        });
         break;
       case 'mcp_tool_call':
-        this.emitTool(
-          {
-            toolCallId: item.id,
-            title: `${item.server}.${item.tool}`,
-            kind: 'other',
-            status: mapCodexStatus(item.status),
-            content: [],
-            rawInput: item.arguments,
-            rawOutput: item.result ?? item.error,
-          },
-          completed,
-        );
+        this.emitTool({
+          toolCallId: item.id,
+          title: `${item.server}.${item.tool}`,
+          kind: 'other',
+          status: mapCodexStatus(item.status),
+          content: [],
+          rawInput: item.arguments,
+          rawOutput: item.result ?? item.error,
+        });
         break;
       case 'web_search':
-        this.emitTool(
-          {
-            toolCallId: item.id,
-            title: item.query,
-            kind: 'fetch',
-            status: 'completed',
-            content: [],
-          },
-          completed,
-        );
+        this.emitTool({
+          toolCallId: item.id,
+          title: item.query,
+          kind: 'fetch',
+          status: 'completed',
+          content: [],
+        });
         break;
       case 'todo_list':
         this.emit({
@@ -280,12 +269,6 @@ export class CodexAdapter extends BaseAgentAdapter {
       default:
         break;
     }
-  }
-
-  /** Emit the full ToolCall on first sight, then ToolCallUpdate as it progresses. */
-  private emitTool(toolCall: ToolCall, completed: boolean): void {
-    if (completed) this.emit({ type: 'tool-call-update', update: toolCall });
-    else this.emit({ type: 'tool-call', toolCall });
   }
 
   /** Convert Codex's cumulative item text into an incremental chunk. */
