@@ -16,10 +16,14 @@
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
+    "allotment": "^1.20.5",
+    "coss-ui": "workspace:*",
     "foxact": "^0.3.7",
+    "motion": "^12.40.0",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "use-intl": "catalog:"
+    "use-intl": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",

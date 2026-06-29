@@ -1,6 +1,13 @@
 import type { AvailableCommand } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
-import { AtSignIcon, SlashIcon } from 'lucide-react';
+import {
+  AtSignIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  SlashIcon,
+  SparklesIcon,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
@@ -22,6 +29,7 @@ export interface MentionItem {
 }
 
 export interface ComposerProps {
+  agentLabel?: string;
   /** No active session: the composer is inert. */
   disabled: boolean;
   /** A turn is in flight: show Stop instead of Send. */
@@ -50,6 +58,8 @@ interface MenuEntry {
 }
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
+const APPROVE_MODES = ['Approve for me', 'Ask each step', 'Read-only'] as const;
+const MODEL_OPTIONS = ['claude-sonnet-4.5', 'codex'] as const;
 
 /** Find a `/` or `@` autocomplete trigger at the caret (the maximal non-whitespace run ending there). */
 function computeMenu(value: string, caret: number): MenuState | null {
@@ -62,6 +72,7 @@ function computeMenu(value: string, caret: number): MenuState | null {
 }
 
 export function Composer({
+  agentLabel,
   disabled,
   isRunning,
   availableCommands,
@@ -73,6 +84,8 @@ export function Composer({
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
+  const [approveIndex, setApproveIndex] = useState(0);
+  const [modelIndex, setModelIndex] = useState(0);
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
@@ -187,9 +200,11 @@ export function Composer({
     }
   }
 
+  const placeholderAgent = agentLabel ?? 'agent';
+
   return (
     <div className="relative px-4 pb-4">
-      <div className="mx-auto max-w-[840px]">
+      <div className="mx-auto max-w-3xl">
         <div className="relative">
           {menu && (
             <AutocompleteMenu
@@ -206,7 +221,11 @@ export function Composer({
               value={value}
               disabled={disabled}
               rows={1}
-              placeholder={disabled ? t('placeholderDisconnected') : t('placeholder')}
+              placeholder={
+                disabled
+                  ? t('placeholderDisconnected')
+                  : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
+              }
               onChange={(e) => {
                 const nextValue = e.target.value;
                 setValue(nextValue);
@@ -218,13 +237,40 @@ export function Composer({
             />
             <PromptInputFooter>
               <PromptInputTools>
+                <button
+                  type="button"
+                  aria-label="Attach"
+                  title="Attach"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <PlusIcon className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-info-foreground hover:bg-info/10"
+                  onClick={() => setApproveIndex((index) => (index + 1) % APPROVE_MODES.length)}
+                >
+                  <ShieldCheckIcon className="size-4" />
+                  <span className="font-medium text-sm">{APPROVE_MODES[approveIndex]}</span>
+                  <ChevronDownIcon className="size-3.5" />
+                </button>
                 {currentModeId && (
                   <Badge variant="secondary">
                     {tw('mode.label')}: {currentModeId}
                   </Badge>
                 )}
               </PromptInputTools>
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <button
+                type="button"
+                className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-accent sm:flex"
+                onClick={() => setModelIndex((index) => (index + 1) % MODEL_OPTIONS.length)}
+              >
+                <SparklesIcon className="size-3.5 text-muted-foreground" />
+                <span className="font-mono">{MODEL_OPTIONS[modelIndex]}</span>
+                <span className="text-muted-foreground">Extra high</span>
+                <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+              </button>
+              <span className="hidden items-center gap-1 text-muted-foreground text-xs lg:flex">
                 <SlashIcon className="size-3" />
                 {t('commands')}
                 <AtSignIcon className="ml-1 size-3" />
@@ -235,6 +281,7 @@ export function Composer({
                 disabled={!isRunning && (disabled || value.trim().length === 0)}
                 onStop={onStop}
                 status={isRunning ? 'streaming' : 'ready'}
+                className="rounded-full"
                 variant={isRunning ? 'secondary' : 'default'}
               />
             </PromptInputFooter>
@@ -262,9 +309,9 @@ function AutocompleteMenu({
   onHover,
 }: AutocompleteMenuProps): ReactNode {
   return (
-    <div className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-md">
+    <div className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
       {entries.length === 0 ? (
-        <div className="px-3 py-2 text-[13px] text-muted-foreground">{emptyLabel}</div>
+        <div className="px-3 py-2 text-muted-foreground text-sm">{emptyLabel}</div>
       ) : (
         entries.map((entry, i) => (
           <button
@@ -273,7 +320,7 @@ function AutocompleteMenu({
             onMouseEnter={() => onHover(i)}
             onClick={() => onSelect(entry)}
             className={cn(
-              'flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[13px]',
+              'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm',
               i === activeIndex ? 'bg-accent text-accent-foreground' : 'text-foreground',
             )}
           >

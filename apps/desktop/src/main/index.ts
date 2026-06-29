@@ -1,7 +1,12 @@
 import { join } from 'node:path';
 import type { SystemContext } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
+import type { BrowserWindowConstructorOptions } from 'electron';
+
+const TRANSPARENT_WINDOW_BACKGROUND = '#00000000';
+// Keep in sync with coss-ui's light `--sidebar` token used by `bg-sidebar`.
+const SIDEBAR_WINDOW_BACKGROUND = '#fafafa';
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -12,8 +17,9 @@ function createWindow(): BrowserWindow {
     center: true,
     show: false,
     title: 'Link Code',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    backgroundColor: '#0e0f12',
+    titleBarStyle: 'hidden',
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 16, y: 16 } } : null),
+    ...desktopBackdropOptions(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -23,7 +29,12 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  const updateBackgroundColor = (): void => {
+    win.setBackgroundColor(desktopBackgroundColor());
+  };
   win.on('ready-to-show', () => win.show());
+  nativeTheme.on('updated', updateBackgroundColor);
+  win.on('closed', () => nativeTheme.off('updated', updateBackgroundColor));
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('[link-code/desktop] renderer load failed:', {
       errorCode,
@@ -34,6 +45,39 @@ function createWindow(): BrowserWindow {
 
   void loadRenderer(win);
   return win;
+}
+
+function desktopBackgroundColor(): string {
+  if (process.platform === 'darwin') {
+    return TRANSPARENT_WINDOW_BACKGROUND;
+  }
+
+  return SIDEBAR_WINDOW_BACKGROUND;
+}
+
+function desktopBackdropOptions(): Pick<
+  BrowserWindowConstructorOptions,
+  'backgroundColor' | 'backgroundMaterial' | 'transparent' | 'vibrancy' | 'visualEffectState'
+> {
+  if (process.platform === 'darwin') {
+    return {
+      backgroundColor: TRANSPARENT_WINDOW_BACKGROUND,
+      transparent: true,
+      vibrancy: 'sidebar',
+      visualEffectState: 'followWindow',
+    };
+  }
+
+  if (process.platform === 'win32') {
+    return {
+      backgroundColor: SIDEBAR_WINDOW_BACKGROUND,
+      backgroundMaterial: 'acrylic',
+    };
+  }
+
+  return {
+    backgroundColor: desktopBackgroundColor(),
+  };
 }
 
 async function loadRenderer(win: BrowserWindow): Promise<void> {

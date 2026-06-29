@@ -24,7 +24,7 @@ export type ConversationContentProps = ComponentProps<typeof StickToBottom.Conte
 export function ConversationContent({ className, ...props }: ConversationContentProps): ReactNode {
   return (
     <StickToBottom.Content
-      className={cn('mx-auto flex max-w-[840px] flex-col gap-3 px-5 py-6', className)}
+      className={cn('mx-auto flex max-w-3xl flex-col gap-6 px-7 py-6', className)}
       {...props}
     />
   );

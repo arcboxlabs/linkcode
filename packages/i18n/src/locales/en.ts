@@ -2,7 +2,6 @@ import type { LocaleMessages } from './zh-cn';
 
 export const en = {
   common: {
-    appName: 'Link Code',
     daemonCommand: 'pnpm --filter @linkcode/daemon dev',
   },
   workbench: {
@@ -10,23 +9,6 @@ export const en = {
       connecting: 'Connecting to the daemon…',
       error: 'Unable to connect to the daemon ({url}). Run {command} first.',
       retry: 'Retry',
-    },
-    sidebar: {
-      title: 'Sessions',
-      newSession: 'New session',
-      empty: 'No sessions yet',
-      searchPlaceholder: 'Search sessions…',
-    },
-    session: {
-      stop: 'Stop session',
-    },
-    newSession: {
-      title: 'New session',
-      agent: 'Agent',
-      cwd: 'Working directory',
-      cwdPlaceholder: '/path/to/repo',
-      create: 'Create',
-      cancel: 'Cancel',
     },
     conversation: {
       emptyTitle: 'Start the conversation',
@@ -56,14 +38,8 @@ export const en = {
       answered: 'Handled',
       responding: 'Submitting…',
     },
-    error: {
-      title: 'Action failed',
-      dismiss: 'Dismiss',
-    },
     composer: {
-      placeholder: 'Type a message…  (/ commands, @ mentions)',
       placeholderDisconnected: 'Create or pick a session first',
-      add: 'Add',
       send: 'Send',
       stop: 'Stop',
       commands: 'Commands',
@@ -73,9 +49,6 @@ export const en = {
     },
     mode: {
       label: 'Mode',
-    },
-    usage: {
-      tokens: '{input} in · {output} out',
     },
     content: {
       audio: '[audio]',

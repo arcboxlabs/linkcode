@@ -1,6 +1,5 @@
 export const zhCN = {
   common: {
-    appName: 'Link Code',
     daemonCommand: 'pnpm --filter @linkcode/daemon dev',
   },
   workbench: {
@@ -8,23 +7,6 @@ export const zhCN = {
       connecting: '正在连接 daemon…',
       error: '无法连接到 daemon（{url}）。请先运行 {command}。',
       retry: '重试',
-    },
-    sidebar: {
-      title: '会话',
-      newSession: '新建会话',
-      empty: '还没有会话',
-      searchPlaceholder: '搜索会话…',
-    },
-    session: {
-      stop: '停止会话',
-    },
-    newSession: {
-      title: '新建会话',
-      agent: 'Agent',
-      cwd: '工作目录',
-      cwdPlaceholder: '/path/to/repo',
-      create: '创建',
-      cancel: '取消',
     },
     conversation: {
       emptyTitle: '开始对话',
@@ -54,14 +36,8 @@ export const zhCN = {
       answered: '已处理',
       responding: '正在提交…',
     },
-    error: {
-      title: '操作失败',
-      dismiss: '关闭',
-    },
     composer: {
-      placeholder: '输入消息…（/ 命令，@ 提及）',
       placeholderDisconnected: '请先创建或选择会话',
-      add: '添加',
       send: '发送',
       stop: '停止',
       commands: '命令',
@@ -71,9 +47,6 @@ export const zhCN = {
     },
     mode: {
       label: '模式',
-    },
-    usage: {
-      tokens: '{input} 输入 · {output} 输出',
     },
     content: {
       audio: '[音频]',
