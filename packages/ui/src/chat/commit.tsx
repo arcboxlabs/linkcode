@@ -7,8 +7,8 @@ import {
 } from 'coss-ui/components/collapsible';
 import { CheckIcon, CopyIcon, FileIcon, GitCommitIcon, MinusIcon, PlusIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
+import { useCopyButton } from './use-copy-button';
 
 // TODO(linkcode-schema): Provisional UI-only commit metadata, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when git/checkpoint events expose structured commits.
@@ -145,16 +145,7 @@ export function CommitCopyButton({
   children,
   ...props
 }: CommitCopyButtonProps): ReactNode {
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
-  const Icon = copied ? CheckIcon : CopyIcon;
-
-  useEffect(
-    () => () => {
-      if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-    },
-    [],
-  );
+  const { copied, copyValue } = useCopyButton(hash, timeout);
 
   return (
     <Button
@@ -162,21 +153,15 @@ export function CommitCopyButton({
       className={cn('size-6 shrink-0', className)}
       onClick={(event) => {
         event.stopPropagation();
-        void navigator.clipboard
-          .writeText(hash)
-          .then(() => {
-            setCopied(true);
-            if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-            timeoutRef.current = window.setTimeout(() => setCopied(false), timeout);
-          })
-          .catch(() => setCopied(false));
+        copyValue();
       }}
       size="icon-xs"
       type="button"
       variant="ghost"
       {...props}
     >
-      {children ?? <Icon className="size-3.5" />}
+      {children ??
+        (copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />)}
     </Button>
   );
 }
