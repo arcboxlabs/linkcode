@@ -3,19 +3,17 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/compon
 import { Button } from 'coss-ui/components/button';
 import { XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useTranslations } from 'use-intl';
-import { ConversationView } from '../chat';
 import type { ConversationViewModel } from '../chat';
-import { Composer } from './composer';
-import { Sidebar } from './sidebar';
+import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
+import { WorkbenchConversationSurface } from './workbench-conversation-surface';
 
-export interface AppShellProps {
+export interface WorkbenchFrameProps {
   sessions: SessionInfo[];
   activeId: SessionId | null;
   conversation: ConversationViewModel;
   answeredPermissions: Set<string>;
   respondingPermissions: Set<string>;
-  header: ReactNode;
+  header?: ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
@@ -26,8 +24,7 @@ export interface AppShellProps {
   onDismissError?: () => void;
 }
 
-/** The full workbench layout: session inbox + conversation stream + composer. */
-export function AppShell({
+export function WorkbenchFrame({
   sessions,
   activeId,
   conversation,
@@ -42,34 +39,36 @@ export function AppShell({
   onStopTurn,
   onRespondPermission,
   onDismissError,
-}: AppShellProps): ReactNode {
-  const te = useTranslations('workbench.error');
-
+}: WorkbenchFrameProps): ReactNode {
   const active = sessions.find((s) => s.sessionId === activeId) ?? null;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
+  const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';
 
   return (
-    <div className="flex h-full">
-      <Sidebar
-        sessions={sessions}
-        activeId={activeId}
-        onSelect={onSelectSession}
-        onStop={onStopSession}
-        onCreate={onCreateSession}
-      />
+    <div className="flex h-full min-h-0 bg-background text-foreground">
+      <div className="w-72 shrink-0">
+        <SessionSidebar
+          sessions={sessions}
+          activeId={activeId}
+          footer={<DefaultHostFooter />}
+          onSelect={onSelectSession}
+          onStop={onStopSession}
+          onCreate={(kind) => onCreateSession({ kind, cwd: fallbackCwd })}
+        />
+      </div>
       <main className="flex min-w-0 flex-1 flex-col">
         {header}
         {errorMessage && (
-          <div className="border-b border-border px-4 py-2">
-            <Alert variant="error" className="rounded-lg py-2">
-              <AlertTitle>{te('title')}</AlertTitle>
+          <div className="border-border border-b px-4 py-2">
+            <Alert variant="error" className="rounded-md py-2">
+              <AlertTitle>Action failed</AlertTitle>
               <AlertDescription>{errorMessage}</AlertDescription>
               {onDismissError && (
                 <AlertAction>
                   <Button
                     size="icon-xs"
                     variant="ghost"
-                    aria-label={te('dismiss')}
+                    aria-label="Dismiss"
                     onClick={onDismissError}
                   >
                     <XIcon />
@@ -79,24 +78,19 @@ export function AppShell({
             </Alert>
           </div>
         )}
-        <div className="min-h-0 flex-1">
-          <ConversationView
-            conversation={conversation}
-            agentKind={active?.kind}
-            cwd={active?.cwd}
-            answeredPermissions={answeredPermissions}
-            respondingPermissions={respondingPermissions}
-            pendingPermissions={new Set(conversation.pendingPermissionIds)}
-            onRespondPermission={onRespondPermission}
-          />
-        </div>
-        <Composer
+        <WorkbenchConversationSurface
+          className="min-h-0 flex-1"
+          conversation={conversation}
+          agentKind={active?.kind}
+          agentLabel={active ? active.kind : undefined}
           disabled={!activeId}
           isRunning={isRunning}
-          availableCommands={conversation.availableCommands}
-          currentModeId={conversation.currentModeId}
-          onSend={onSendPrompt}
-          onStop={onStopTurn}
+          cwd={active?.cwd}
+          answeredPermissions={answeredPermissions}
+          respondingPermissions={respondingPermissions}
+          onSendPrompt={onSendPrompt}
+          onStopTurn={onStopTurn}
+          onRespondPermission={onRespondPermission}
         />
       </main>
     </div>

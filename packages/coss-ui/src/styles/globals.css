@@ -102,7 +102,7 @@
   --sidebar: var(--color-zinc-50);
   --sidebar-foreground: color-mix(
     in srgb,
-    var(--color-zinc-800) 64%,
+    var(--color-zinc-800) 80%,
     var(--sidebar)
   );
   --sidebar-primary: var(--color-zinc-800);

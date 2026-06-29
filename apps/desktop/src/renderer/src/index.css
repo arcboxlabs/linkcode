@@ -3,9 +3,62 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light dark;
   }
+
   body {
-    overflow: hidden;
+    @apply bg-transparent overflow-hidden;
   }
+}
+
+@layer components {
+  .linkcode-shell-split {
+    /* Match the chrome segment / sidebar borders (solid `--border`) so every
+       divider reads as one color; allotment's softened default looked lighter. */
+    --separator-border: var(--border);
+    --focus-border: var(--info);
+    --sash-hover-size: 1px;
+    --sash-hover-transition-duration: 120ms;
+  }
+}
+
+/*
+ * Each chrome divider visually continues the allotment sash directly beneath it,
+ * so it adopts the sash's focus color whenever that sash is hovered or dragged.
+ * Allotment flags the active sash with `.sash-hover` / `.sash-active`; `:has()`
+ * mirrors that onto the aligned `[data-chrome-divider]`. Left unlayered so it
+ * overrides the Tailwind border-color utilities on the segments. The
+ * `> .sash-container` child combinator scopes each rule to that split's own sash,
+ * not the nested split's.
+ */
+.linkcode-desktop-shell [data-chrome-divider] {
+  transition: border-color var(--sash-hover-transition-duration, 120ms) ease-out;
+}
+
+.linkcode-desktop-shell:has(
+    .linkcode-shell-sidebar-main-split > .sash-container > :is(.sash-hover, .sash-active)
+  )
+  [data-chrome-divider="sidebar-main"],
+.linkcode-desktop-shell:has(
+    .linkcode-shell-main-right-split > .sash-container > :is(.sash-hover, .sash-active)
+  )
+  [data-chrome-divider="main-right"] {
+  border-color: var(--info);
+}
+
+/*
+ * Allotment centers the sash's 1px focus bar on the pane boundary, but each
+ * chrome divider above it is an inset 1px border sitting on one side of that
+ * boundary: sidebar↔main on the sidebar segment's right edge, main↔right on the
+ * right segment's left edge. Nudge each sash bar onto that same edge so the
+ * chrome border and the sash read as one continuous line instead of a 1px jog.
+ * `> .sash-container > .sash` targets only the split's own sash, never a nested
+ * split's; the higher specificity overrides allotment's centered default.
+ */
+.linkcode-shell-sidebar-main-split > .sash-container > .sash::before {
+  left: calc(50% - var(--sash-hover-size));
+}
+
+.linkcode-shell-main-right-split > .sash-container > .sash::before {
+  left: 50%;
 }

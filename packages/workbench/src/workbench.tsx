@@ -8,8 +8,8 @@ import {
   startSession,
   stopSession,
 } from '@linkcode/sdk';
-import { AppShell, TopBar } from '@linkcode/ui';
-import type { AppShellProps } from '@linkcode/ui';
+import { TitleStrip, WorkbenchFrame } from '@linkcode/ui';
+import type { WorkbenchFrameProps } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useMemo, useState } from 'react';
@@ -27,7 +27,7 @@ export interface WorkbenchShellHeader {
   usage?: TokenUsage | null;
 }
 
-export interface WorkbenchShellProps extends Omit<AppShellProps, 'header'> {
+export interface WorkbenchShellProps extends Omit<WorkbenchFrameProps, 'header'> {
   header: WorkbenchShellHeader;
 }
 
@@ -148,7 +148,28 @@ function WorkbenchSessionSurface({
 }
 
 function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): ReactNode {
-  return <AppShell {...props} header={<TopBar {...header} />} />;
+  return <WorkbenchFrame {...props} header={<DefaultTitleStrip header={header} />} />;
+}
+
+function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): ReactNode {
+  const hasUsage =
+    header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
+
+  return (
+    <TitleStrip className="border-border border-b">
+      <div className="min-w-0">
+        <div className="truncate font-medium text-sm">{header.title}</div>
+        {header.subtitle && (
+          <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
+        )}
+      </div>
+      {hasUsage && (
+        <span className="ml-auto font-mono text-muted-foreground text-xs">
+          {header.usage?.inputTokens ?? 0} in / {header.usage?.outputTokens ?? 0} out
+        </span>
+      )}
+    </TitleStrip>
+  );
 }
 
 interface WorkbenchSessions {
