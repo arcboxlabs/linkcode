@@ -2,8 +2,8 @@ import { Button } from 'coss-ui/components/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
+import { useCopyButton } from './use-copy-button';
 
 // TODO(linkcode-schema): Provisional UI-only snippet model, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when tool outputs expose reusable command/code snippets.
@@ -68,37 +68,20 @@ export function SnippetCopyButton({
   children,
   ...props
 }: SnippetCopyButtonProps): ReactNode {
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
-  const Icon = copied ? CheckIcon : CopyIcon;
-
-  useEffect(
-    () => () => {
-      if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-    },
-    [],
-  );
+  const { copied, copyValue } = useCopyButton(code, timeout);
 
   return (
     <Button
       aria-label={copied ? 'Copied' : 'Copy'}
       className={cn('size-6', className)}
-      onClick={() => {
-        void navigator.clipboard
-          .writeText(code)
-          .then(() => {
-            setCopied(true);
-            if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-            timeoutRef.current = window.setTimeout(() => setCopied(false), timeout);
-          })
-          .catch(() => setCopied(false));
-      }}
+      onClick={copyValue}
       size="icon-xs"
       type="button"
       variant="ghost"
       {...props}
     >
-      {children ?? <Icon className="size-3.5" />}
+      {children ??
+        (copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />)}
     </Button>
   );
 }

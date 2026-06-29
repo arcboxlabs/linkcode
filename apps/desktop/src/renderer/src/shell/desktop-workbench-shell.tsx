@@ -30,13 +30,12 @@ import {
   getPanelFromShellState,
   normalizeLayout,
   pushExpandedPanel,
-  readDesktopShellState,
   readPaneSize,
   removeExpandedPanel,
   setPanelInShellState,
-  writeDesktopShellState,
 } from './state/shell-state';
 import type { DesktopShellState, LayoutState, PanelSide, PanelState } from './state/shell-state';
+import { useDesktopShellState } from './state/use-shell-state';
 
 type DesktopPlatform = 'darwin' | 'win32' | 'other';
 
@@ -70,8 +69,7 @@ function DesktopShell({
   onRespondPermission,
   onDismissError,
 }: WorkbenchShellProps & { systemBridge: SystemBridge }): ReactNode {
-  const [shellState, setShellState] = useState<DesktopShellState>(() => readDesktopShellState());
-  const shellStateRef = useRef(shellState);
+  const [shellState, setShellState] = useDesktopShellState();
   const shellRootRef = useRef<HTMLDivElement | null>(null);
   const [shellStyle] = useState<DesktopShellStyle>(() => createDesktopShellStyle(shellState));
   const [desktopPlatform, setDesktopPlatform] = useState<DesktopPlatform>(() =>
@@ -145,10 +143,7 @@ function DesktopShell({
   const agentLabel = active?.kind;
 
   function updateShellState(updater: (current: DesktopShellState) => DesktopShellState): void {
-    const next = updater(shellStateRef.current);
-    shellStateRef.current = next;
-    writeDesktopShellState(next);
-    setShellState(next);
+    setShellState((current) => updater(current ?? shellState));
   }
 
   function createSession(kind: AgentKind): void {

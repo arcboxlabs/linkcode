@@ -11,6 +11,7 @@ import {
 import { TitleStrip, WorkbenchFrame } from '@linkcode/ui';
 import type { WorkbenchFrameProps } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
+import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -84,8 +85,8 @@ function WorkbenchSessionSurface({
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
-  const [answered, setAnswered] = useState<Set<string>>(() => new Set());
-  const [responding, setResponding] = useState<Set<string>>(() => new Set());
+  const [answered, addAnswered] = useSet<string>();
+  const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.sessions.find((s) => s.sessionId === sessions.activeId) ?? null;
 
   function handleSend(text: string): void {
@@ -103,7 +104,7 @@ function WorkbenchSessionSurface({
   function handleRespond(requestId: string, optionId: string): void {
     if (!sessions.activeId) return;
     onClearError();
-    setResponding((prev) => new Set(prev).add(requestId));
+    addResponding(requestId);
     void permissionMutation
       .trigger({
         sessionId: sessions.activeId,
@@ -111,15 +112,11 @@ function WorkbenchSessionSurface({
         outcome: { outcome: 'selected', optionId },
       })
       .then(() => {
-        setAnswered((prev) => new Set(prev).add(requestId));
+        addAnswered(requestId);
       })
       .catch(noop)
       .finally(() => {
-        setResponding((prev) => {
-          const next = new Set(prev);
-          next.delete(requestId);
-          return next;
-        });
+        removeResponding(requestId);
       });
   }
 
@@ -185,7 +182,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
   const createMutation = useMutation(startSession, { onError });
   const stopMutation = useMutation(stopSession, { onError });
   const [localSessions, setLocalSessions] = useState<SessionInfo[]>([]);
-  const [stoppedIds, setStoppedIds] = useState<Set<SessionId>>(() => new Set());
+  const [stoppedIds, addStoppedId, removeStoppedId] = useSet<SessionId>();
   const [selectedId, setSelectedId] = useState<SessionId | null>(null);
 
   const sessions = useMemo(() => {
@@ -222,11 +219,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
           status: 'starting',
           createdAt: Date.now(),
         };
-        setStoppedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(sessionId);
-          return next;
-        });
+        removeStoppedId(sessionId);
         setLocalSessions((prev) =>
           prev.some((session) => session.sessionId === sessionId) ? prev : [...prev, optimistic],
         );
@@ -240,7 +233,7 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
     void stopMutation
       .trigger({ sessionId: id })
       .then(() => {
-        setStoppedIds((prev) => new Set(prev).add(id));
+        addStoppedId(id);
         setLocalSessions((prev) => prev.filter((session) => session.sessionId !== id));
         setSelectedId((current) => (current === id ? null : current));
         void mutate();

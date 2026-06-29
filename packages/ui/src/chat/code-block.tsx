@@ -1,10 +1,11 @@
 import { Button } from 'coss-ui/components/button';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import type { ComponentProps, CSSProperties, ReactNode } from 'react';
-import { Suspense, use, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, use } from 'react';
 import { cn } from '../lib/cn';
 import { highlightCode, normalizeCodeLanguage } from './code-highlight';
 import type { HighlightedCode, HighlightedToken } from './code-highlight';
+import { useCopyButton } from './use-copy-button';
 
 export interface CodeBlockProps extends ComponentProps<'div'> {
   code: string;
@@ -129,40 +130,19 @@ export function CodeBlockCopyButton({
   className,
   ...props
 }: CodeBlockCopyButtonProps): ReactNode {
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
-
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard
-      .writeText(code)
-      .then(() => {
-        setCopied(true);
-        if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = window.setTimeout(() => setCopied(false), timeout);
-      })
-      .catch(() => setCopied(false));
-  }, [code, timeout]);
-
-  useEffect(
-    () => () => {
-      if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-    },
-    [],
-  );
-
-  const Icon = copied ? CheckIcon : CopyIcon;
+  const { copied, copyValue } = useCopyButton(code, timeout);
 
   return (
     <Button
       aria-label={copied ? 'Copied' : 'Copy'}
       className={cn('size-6', className)}
-      onClick={handleCopy}
+      onClick={copyValue}
       size="icon-xs"
       type="button"
       variant="ghost"
       {...props}
     >
-      {children ?? <Icon />}
+      {children ?? (copied ? <CheckIcon /> : <CopyIcon />)}
     </Button>
   );
 }

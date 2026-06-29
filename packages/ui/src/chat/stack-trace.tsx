@@ -6,8 +6,9 @@ import {
 } from 'coss-ui/components/collapsible';
 import { AlertTriangleIcon, CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
+import { useCopyButton } from './use-copy-button';
 
 // TODO(linkcode-schema): Provisional UI-only stack trace model, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when test/tool outputs expose structured stack traces.
@@ -217,15 +218,7 @@ export function StackTraceCopyButton({
   children,
   ...props
 }: StackTraceCopyButtonProps): ReactNode {
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-    },
-    [],
-  );
+  const { copied, copyValue } = useCopyButton(trace, timeout);
 
   return (
     <Button
@@ -233,14 +226,7 @@ export function StackTraceCopyButton({
       className={cn('size-6 shrink-0', className)}
       onClick={(event) => {
         event.stopPropagation();
-        void navigator.clipboard
-          .writeText(trace)
-          .then(() => {
-            setCopied(true);
-            if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-            timeoutRef.current = window.setTimeout(() => setCopied(false), timeout);
-          })
-          .catch(() => setCopied(false));
+        copyValue();
       }}
       size="icon-xs"
       type="button"
