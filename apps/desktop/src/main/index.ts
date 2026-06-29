@@ -5,8 +5,9 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
 import type { BrowserWindowConstructorOptions } from 'electron';
 
 const TRANSPARENT_WINDOW_BACKGROUND = '#00000000';
-// Keep in sync with coss-ui's light `--sidebar` token used by `bg-sidebar`.
-const SIDEBAR_WINDOW_BACKGROUND = '#fafafa';
+// Keep in sync with coss-ui's light/dark `--sidebar` tokens used by `bg-sidebar`.
+const SIDEBAR_LIGHT_WINDOW_BACKGROUND = '#fafafa';
+const SIDEBAR_DARK_WINDOW_BACKGROUND = '#09090b';
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -52,7 +53,9 @@ function desktopBackgroundColor(): string {
     return TRANSPARENT_WINDOW_BACKGROUND;
   }
 
-  return SIDEBAR_WINDOW_BACKGROUND;
+  return nativeTheme.shouldUseDarkColors
+    ? SIDEBAR_DARK_WINDOW_BACKGROUND
+    : SIDEBAR_LIGHT_WINDOW_BACKGROUND;
 }
 
 function desktopBackdropOptions(): Pick<
@@ -70,7 +73,7 @@ function desktopBackdropOptions(): Pick<
 
   if (process.platform === 'win32') {
     return {
-      backgroundColor: SIDEBAR_WINDOW_BACKGROUND,
+      backgroundColor: desktopBackgroundColor(),
       backgroundMaterial: 'acrylic',
     };
   }
