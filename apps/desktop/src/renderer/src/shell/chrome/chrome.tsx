@@ -349,7 +349,7 @@ function StableLeftChrome({
 
 function MainChromeTitle({ header }: { header: WorkbenchShellHeader }): ReactNode {
   return (
-    <div className="pointer-events-none flex h-full max-w-[min(420px,100%)] min-w-0 items-center gap-[var(--lc-chrome-control-gap)]">
+    <div className="pointer-events-none flex h-full max-w-[min(420px,100%)] min-w-0 px-2 items-center gap-[var(--lc-chrome-control-gap)]">
       <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
       <ShellIconButton label="More" disabled>
