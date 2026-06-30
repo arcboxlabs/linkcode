@@ -1,0 +1,63 @@
+{
+  "fill": "automatic",
+  "groups": [
+    {
+      "blur-material": null,
+      "layers": [
+        {
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "extended-gray:0.50000,1.00000"
+              }
+            }
+          ],
+          "image-name": "accent.svg",
+          "name": "accent"
+        },
+        {
+          "blend-mode-specializations": [
+            {
+              "value": "normal"
+            },
+            {
+              "appearance": "dark",
+              "value": "normal"
+            }
+          ],
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "extended-gray:1.00000,1.00000"
+              }
+            },
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
+          "glass": true,
+          "image-name": "foreground.svg",
+          "name": "foreground"
+        }
+      ],
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": ["watchOS"],
+    "squares": "shared"
+  }
+}
