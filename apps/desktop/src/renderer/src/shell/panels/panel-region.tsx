@@ -21,7 +21,7 @@ interface PanelChromePlacement {
 }
 
 const DESKTOP_PANEL_STRIP_CLASS =
-  'h-[var(--lc-chrome-h)] border-border border-b-0 bg-background/95 px-[var(--lc-chrome-edge)]';
+  'h-(--lc-chrome-h) border-border border-b-0 bg-background/95 px-(--lc-chrome-edge)';
 
 export function PanelRegion({
   side,

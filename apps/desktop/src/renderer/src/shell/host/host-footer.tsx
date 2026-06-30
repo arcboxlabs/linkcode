@@ -40,7 +40,7 @@ export function DesktopHostFooter({
 
   return (
     <Popover>
-      <PopoverTrigger className="flex h-10 w-full items-center gap-[var(--lc-chrome-section-gap)] border-sidebar-border border-t px-[var(--lc-chrome-edge)] text-left text-xs outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring">
+      <PopoverTrigger className="flex h-10 w-full items-center gap-(--lc-chrome-section-gap) border-sidebar-border border-t px-(--lc-chrome-edge) text-left text-xs outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring">
         <span className="size-2 rounded-full bg-success" />
         <span className="font-medium text-sidebar-foreground">Local Host</span>
         <span className="text-muted-foreground">Connected</span>

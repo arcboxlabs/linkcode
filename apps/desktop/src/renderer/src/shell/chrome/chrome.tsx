@@ -157,7 +157,7 @@ export function DesktopChrome({
     <ChromePortalTargetContext value={portalTargets}>
       <div
         ref={chromeRootRef}
-        className="pointer-events-none absolute inset-x-0 top-0 z-30 h-[var(--lc-chrome-h)] text-foreground [-webkit-app-region:drag]"
+        className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
       >
         <ChromeSegmentGrid
           header={header}
@@ -260,7 +260,7 @@ function ChromeSegment({
     >
       <div
         className={cn(
-          'pointer-events-none absolute inset-0 grid grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-[var(--lc-chrome-section-gap)]',
+          'pointer-events-none absolute inset-0 grid grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-(--lc-chrome-section-gap)',
         )}
         style={slotInsetStyle}
       >
@@ -301,7 +301,7 @@ function ChromeSlotTarget({
     <div
       ref={setSlotElement}
       className={cn(
-        'flex h-full min-w-0 max-w-full items-center gap-[var(--lc-chrome-section-gap)] overflow-hidden empty:hidden',
+        'flex h-full min-w-0 max-w-full items-center gap-(--lc-chrome-section-gap) overflow-hidden empty:hidden',
         CHROME_SLOT_CLASS[position],
       )}
       data-chrome-segment={segment}
@@ -326,10 +326,10 @@ function StableLeftChrome({
   onHideSidebar: () => void;
 }): ReactNode {
   return (
-    <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-[var(--lc-chrome-edge)]">
+    <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-(--lc-chrome-edge)">
       <div
         ref={contentRef}
-        className="pointer-events-none flex h-full items-center gap-[var(--lc-chrome-control-gap)]"
+        className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
         {hasNativeTrafficLights ? <NativeTrafficLightInset /> : null}
         <ShellIconButton
@@ -352,7 +352,7 @@ function StableLeftChrome({
 
 function MainChromeTitle({ header }: { header: WorkbenchShellHeader }): ReactNode {
   return (
-    <div className="pointer-events-none flex h-full max-w-[min(420px,100%)] min-w-0 px-2 items-center gap-[var(--lc-chrome-control-gap)]">
+    <div className="pointer-events-none flex h-full max-w-[min(420px,100%)] min-w-0 px-2 items-center gap-(--lc-chrome-control-gap)">
       <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
       <ShellIconButton label="More" disabled>
@@ -376,10 +376,10 @@ function StableRightChrome({
   onToggleBottom: () => void;
 }): ReactNode {
   return (
-    <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-[var(--lc-chrome-edge)]">
+    <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-(--lc-chrome-edge)">
       <div
         ref={contentRef}
-        className="pointer-events-none flex h-full items-center gap-[var(--lc-chrome-control-gap)]"
+        className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
         <ShellIconButton
           label={bottomPanelOpen ? 'Close bottom panel' : 'Open bottom panel'}
@@ -405,7 +405,7 @@ function StableRightChrome({
 }
 
 function NativeTrafficLightInset(): ReactNode {
-  return <div aria-hidden className="w-[var(--lc-chrome-traffic-inset)] shrink-0" />;
+  return <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />;
 }
 
 function getActiveExpandedPanel({

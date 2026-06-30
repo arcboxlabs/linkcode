@@ -12,7 +12,7 @@ export const DESKTOP_CHROME_METRICS = {
   sidebarGap: 8,
 } as const;
 
-export const DESKTOP_CHROME_SPACER_CLASS = 'h-[var(--lc-chrome-h)]';
+export const DESKTOP_CHROME_SPACER_CLASS = 'h-(--lc-chrome-h)';
 
 export type DesktopChromeMetricsStyle = CSSProperties & {
   '--lc-chrome-h': string;
