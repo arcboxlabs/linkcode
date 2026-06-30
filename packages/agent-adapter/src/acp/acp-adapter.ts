@@ -3,7 +3,6 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
 import type {
   Client,
   ReadTextFileRequest,
@@ -13,6 +12,7 @@ import type {
   SessionUpdate,
   WriteTextFileRequest,
 } from '@agentclientprotocol/sdk';
+import { ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
 import type {
   AgentEvent,
   AgentKind,
@@ -25,8 +25,8 @@ import type {
 import {
   ContentBlockSchema,
   ToolCallStatusSchema,
-  ToolKindSchema,
   ToolCallUpdateSchema,
+  ToolKindSchema,
 } from '@linkcode/schema';
 import { BaseAgentAdapter } from '../base';
 

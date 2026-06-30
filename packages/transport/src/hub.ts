@@ -1,6 +1,6 @@
 import type { WireMessage } from '@linkcode/schema';
-import { Listeners } from './transport';
 import type { Transport, Unsubscribe } from './transport';
+import { Listeners } from './transport';
 
 /**
  * Hub: composes many client connections into the single `Transport` the daemon's `Host` consumes.

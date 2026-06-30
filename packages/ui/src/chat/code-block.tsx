@@ -3,8 +3,8 @@ import { CheckIcon, CopyIcon } from 'lucide-react';
 import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import { Suspense, use } from 'react';
 import { cn } from '../lib/cn';
-import { highlightCode, normalizeCodeLanguage } from './code-highlight';
 import type { HighlightedCode, HighlightedToken } from './code-highlight';
+import { highlightCode, normalizeCodeLanguage } from './code-highlight';
 import { useCopyButton } from './use-copy-button';
 
 export interface CodeBlockProps extends ComponentProps<'div'> {

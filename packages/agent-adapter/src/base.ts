@@ -20,10 +20,10 @@ import type {
   ToolCallUpdate,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
-import { Listeners } from '@linkcode/transport';
 import type { Unsubscribe } from '@linkcode/transport';
-import { nextMessageId, nextRequestId } from './adapter';
+import { Listeners } from '@linkcode/transport';
 import type { AgentAdapter } from './adapter';
+import { nextMessageId, nextRequestId } from './adapter';
 
 type PendingResolver = (value: unknown) => void;
 

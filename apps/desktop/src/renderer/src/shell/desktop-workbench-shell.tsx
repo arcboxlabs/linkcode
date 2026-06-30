@@ -1,30 +1,29 @@
-import { Allotment, LayoutPriority } from 'allotment';
 import type { SystemBridge } from '@linkcode/ipc';
 import type { AgentKind } from '@linkcode/schema';
-import { SessionSidebar, WorkbenchConversationSurface } from '@linkcode/ui';
 import type { PanelWindowType } from '@linkcode/ui';
+import { SessionSidebar, WorkbenchConversationSurface } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
+import { Allotment, LayoutPriority } from 'allotment';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { XIcon } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { systemBridge } from '@/ipc';
 import { DesktopChrome } from './chrome/chrome';
-import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import type { DesktopChromeMetricsStyle } from './chrome/metrics';
+import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import { DesktopHostFooter } from './host/host-footer';
 import { getShellContentMotionStyle, useAnimatedSplit } from './layout/use-animated-split';
 import { DesktopWorkspace } from './layout/workspace';
 import { getChromeSurface, getWorkspaceMinSize } from './panels/panel-layout';
 import { PanelRegion } from './panels/panel-region';
+import type { DesktopShellState, LayoutState, PanelSide, PanelState } from './state/local/model';
 import {
-  DEFAULT_LAYOUT,
-  SIDEBAR_MAX_SIZE,
-  SIDEBAR_MIN_SIZE,
   createTab,
+  DEFAULT_LAYOUT,
   defaultWindowFor,
   getExpandedPanel,
   getPanelFromShellState,
@@ -32,9 +31,10 @@ import {
   pushExpandedPanel,
   readPaneSize,
   removeExpandedPanel,
+  SIDEBAR_MAX_SIZE,
+  SIDEBAR_MIN_SIZE,
   setPanelInShellState,
 } from './state/local/model';
-import type { DesktopShellState, LayoutState, PanelSide, PanelState } from './state/local/model';
 import { useDesktopShellState } from './state/local/storage';
 
 type DesktopPlatform = 'darwin' | 'win32' | 'other';

@@ -9,7 +9,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "eslint --format=sukka .",
     "lint:fix": "eslint --format=sukka --fix .",
-    "format": "biome format --write .",
+    "format": "biome check --write .",
     "test": "vitest run",
     "clean": "turbo run clean"
   },

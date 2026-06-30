@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import type { DesktopShellState } from '../shell/state/local/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
+  createPanelState,
   DEFAULT_LAYOUT,
+  desktopShellStateModel,
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
-  createPanelState,
-  desktopShellStateModel,
 } from '../shell/state/local/model';
-import type { DesktopShellState } from '../shell/state/local/model';
 
 describe('desktop shell state persistence', () => {
   it('requires the persisted version marker', () => {

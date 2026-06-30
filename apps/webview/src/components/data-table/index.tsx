@@ -25,22 +25,22 @@ export type {
   TableDefinition,
 } from './core/create-table';
 export { createTable } from './core/create-table';
-export { createTableRender } from './core/table-render';
+export type { TableManualPagination } from './core/table-manual-pagination';
+export { paginateTableData } from './core/table-manual-pagination';
 export type {
   TableRender,
   TableRenderCell,
   TableRenderColumn,
   TableRenderRow,
 } from './core/table-render';
+export { createTableRender } from './core/table-render';
 export type { SortDirection, SortState } from './core/types';
-export { paginateTableData } from './core/table-manual-pagination';
-export type { TableManualPagination } from './core/table-manual-pagination';
-export { useTablePaginationState } from './core/use-table-pagination-state';
-export type { TablePaginationState } from './core/use-table-pagination-state';
-export { useTableColumnSizing } from './core/use-table-column-sizing';
 export type { TableColumnSizing, TableColumnSizingHeader } from './core/use-table-column-sizing';
-export { useTableSort } from './core/use-table-sort';
+export { useTableColumnSizing } from './core/use-table-column-sizing';
+export type { TablePaginationState } from './core/use-table-pagination-state';
+export { useTablePaginationState } from './core/use-table-pagination-state';
 export type { TableSort, TableSortMode, TableSortsState } from './core/use-table-sort';
+export { useTableSort } from './core/use-table-sort';
 
 const SORT_ICON: Record<SortDirection, ReactNode> = {
   asc: <ChevronUpIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />,

@@ -1,11 +1,11 @@
-import { createServer } from 'node:http';
 import type { Server as HttpServer } from 'node:http';
+import { createServer } from 'node:http';
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { Server as SocketIoServerImpl } from 'socket.io';
 import type { Socket } from 'socket.io';
-import { Listeners } from './transport';
+import { Server as SocketIoServerImpl } from 'socket.io';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
+import { Listeners } from './transport';
 
 const FRAME_EVENT = 'frame';
 

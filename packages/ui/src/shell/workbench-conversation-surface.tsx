@@ -1,7 +1,7 @@
 import type { AgentKind } from '@linkcode/schema';
 import type { ReactNode } from 'react';
-import { ConversationView } from '../chat';
 import type { ConversationViewModel } from '../chat';
+import { ConversationView } from '../chat';
 import { cn } from '../lib/cn';
 import { Composer } from './composer';
 

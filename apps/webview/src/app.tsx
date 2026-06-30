@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
 import { Workbench, WorkbenchProviders } from '@linkcode/workbench';
+import type { ReactNode } from 'react';
 import { DAEMON_URL, transport } from '@/lib/transport';
 import { RootProviders } from '@/providers/root-providers';
 import { WebWorkbenchShell } from '@/shell/web-workbench-shell';

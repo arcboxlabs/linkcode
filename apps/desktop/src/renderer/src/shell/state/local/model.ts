@@ -1,5 +1,5 @@
-import { PANEL_WINDOW_TYPES } from '@linkcode/ui';
 import type { PanelTab, PanelWindowType } from '@linkcode/ui';
+import { PANEL_WINDOW_TYPES } from '@linkcode/ui';
 import { z } from 'zod';
 
 export type PanelSide = 'right' | 'bottom';

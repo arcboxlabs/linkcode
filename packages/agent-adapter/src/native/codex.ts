@@ -1,5 +1,5 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { env } from 'node:process';

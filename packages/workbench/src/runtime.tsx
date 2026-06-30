@@ -1,5 +1,5 @@
-import { createClient, setDefaultClient } from '@linkcode/sdk';
 import type { LinkCodeSdkClient } from '@linkcode/sdk';
+import { createClient, setDefaultClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
 import { createContextState } from 'foxact/context-state';
 import { nullthrow } from 'foxact/nullthrow';
@@ -7,8 +7,8 @@ import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { wait } from 'foxts/wait';
 import type * as React from 'react';
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
 import { useDebug } from './debug';

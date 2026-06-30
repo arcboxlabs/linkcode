@@ -4,8 +4,8 @@ import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import { subDays } from 'date-fns/subDays';
 import { BotIcon, ClockIcon, FilePlus2Icon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 
 export interface SessionSidebarProps {

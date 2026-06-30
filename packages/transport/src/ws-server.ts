@@ -1,9 +1,9 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { WebSocket, WebSocketServer } from 'ws';
 import type { RawData } from 'ws';
-import { Listeners } from './transport';
+import { WebSocket, WebSocketServer } from 'ws';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
+import { Listeners } from './transport';
 
 /**
  * Node-side WebSocket **server** for the host daemon. This module imports the Node-only `ws` package and is

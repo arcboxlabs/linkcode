@@ -1,8 +1,8 @@
 import { defineInvokeHandlers } from '@moeru/eventa';
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main';
 import type { BrowserWindow, IpcMain } from 'electron';
-import { PickFileOptionsSchema } from './context';
 import type { SystemContext } from './context';
+import { PickFileOptionsSchema } from './context';
 import { systemIpcEvents, WINDOW_MAXIMIZED_CHANGED_CHANNEL } from './events';
 
 export interface ElectronSystemIpcOptions {
