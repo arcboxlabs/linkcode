@@ -1,0 +1,151 @@
+# Reusable build workflow for the Electron desktop app (@linkcode/desktop).
+#
+# - Builds on macOS / Linux / Windows via a matrix.
+# - Packages with electron-builder (--publish never; publishing lives in release-desktop.yml).
+# - Signs + notarizes ONLY when called with `sign: true` (release flow). PR builds stay unsigned,
+#   so PRs from forks (no secret access) still build cleanly.
+#
+# Windows signing uses Azure Trusted Signing, injected via `-c.win.azureSignOptions.*` only on
+# signed builds — keeping it out of electron-builder.yml so unsigned builds skip signing instead
+# of failing. macOS skips signing when CSC_IDENTITY_AUTO_DISCOVERY=false.
+
+name: Build Desktop
+
+on:
+  # Invoked by release-desktop.yml (caller must use `secrets: inherit`).
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build
+        type: string
+        required: false
+        default: ""
+      sign:
+        description: Sign and notarize the build
+        type: boolean
+        required: false
+        default: false
+  # CI builds on PRs — unsigned.
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/build-desktop.yml"
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: Sign and notarize the build
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-desktop-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  DESKTOP_DIR: apps/desktop
+  DESKTOP_PACKAGE: "@linkcode/desktop" # name in package.json (used by `pnpm turbo --filter`)
+  OUTPUT_DIR: apps/desktop/release # must match electron-builder `directories.output`
+
+  # ---- Windows Azure Trusted Signing: non-secret account identifiers ----
+  # TODO(release): set these to your Trusted Signing account/profile. Authentication
+  # uses the AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET secrets.
+  AZURE_PUBLISHER_NAME: "ArcBox Labs" # must match the certificate subject CN exactly
+  AZURE_SIGN_ENDPOINT: "https://eus.codesigning.azure.net/" # region-specific Trusted Signing endpoint
+  AZURE_CODE_SIGNING_ACCOUNT: "linkcode-signing"
+  AZURE_CERTIFICATE_PROFILE: "linkcode"
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14 # arm64 runner; produces universal builds (see electron-builder.yml)
+            platform: mac
+          # Temporarily macOS-only. Re-enable Linux/Windows by uncommenting these — the Windows
+          # job already carries the Azure Trusted Signing wiring below.
+          # - os: ubuntu-22.04 # older glibc => broader Linux/AppImage compatibility
+          #   platform: linux
+          # - os: windows-latest
+          #   platform: win
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      # pnpm MUST be set up before setup-node so `cache: pnpm` can find the binary.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6 # reads version from package.json "packageManager"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        # Builds the desktop package (and any workspace deps that expose a build task) via turbo.
+        run: pnpm turbo run build --filter "${{ env.DESKTOP_PACKAGE }}..."
+
+      - name: Package with electron-builder
+        working-directory: ${{ env.DESKTOP_DIR }}
+        shell: bash # unify quoting across runners for the conditional signing args below
+        # On signed Windows builds, inject Azure Trusted Signing options; otherwise no signing config
+        # is present, so electron-builder skips Windows signing (no cert) and macOS honors CSC_* below.
+        run: >
+          pnpm exec electron-builder --${{ matrix.platform }} --publish never
+          ${{ (runner.os == 'Windows' && inputs.sign) && format('-c.win.azureSignOptions.publisherName="{0}" -c.win.azureSignOptions.endpoint="{1}" -c.win.azureSignOptions.codeSigningAccountName="{2}" -c.win.azureSignOptions.certificateProfileName="{3}"', env.AZURE_PUBLISHER_NAME, env.AZURE_SIGN_ENDPOINT, env.AZURE_CODE_SIGNING_ACCOUNT, env.AZURE_CERTIFICATE_PROFILE) || '' }}
+        env:
+          # Lets electron-builder read existing releases without hitting rate limits. Harmless on build.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ---- macOS code signing (only the macOS runner consumes these) ----
+          CSC_LINK: ${{ (runner.os == 'macOS' && inputs.sign) && secrets.MACOS_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ (runner.os == 'macOS' && inputs.sign) && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
+
+          # ---- macOS notarization (electron-builder drives notarytool) ----
+          APPLE_ID: ${{ inputs.sign && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ inputs.sign && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ inputs.sign && secrets.APPLE_TEAM_ID || '' }}
+
+          # Stop macOS from trying to sign with random keychain identities on unsigned builds.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ (runner.os == 'macOS' && inputs.sign) && 'true' || 'false' }}
+
+          # ---- Windows Azure Trusted Signing (service-principal auth via EnvironmentCredential) ----
+          AZURE_TENANT_ID: ${{ (runner.os == 'Windows' && inputs.sign) && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ (runner.os == 'Windows' && inputs.sign) && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ (runner.os == 'Windows' && inputs.sign) && secrets.AZURE_CLIENT_SECRET || '' }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.platform }}
+          if-no-files-found: error
+          retention-days: 7
+          # Installers + update manifests (*.yml) + delta blockmaps. The *.yml and *.blockmap
+          # files are what electron-updater needs — do not drop them.
+          path: |
+            ${{ env.OUTPUT_DIR }}/*.dmg
+            ${{ env.OUTPUT_DIR }}/*.zip
+            ${{ env.OUTPUT_DIR }}/*.exe
+            ${{ env.OUTPUT_DIR }}/*.msi
+            ${{ env.OUTPUT_DIR }}/*.appx
+            ${{ env.OUTPUT_DIR }}/*.AppImage
+            ${{ env.OUTPUT_DIR }}/*.deb
+            ${{ env.OUTPUT_DIR }}/*.rpm
+            ${{ env.OUTPUT_DIR }}/*.snap
+            ${{ env.OUTPUT_DIR }}/*.yml
+            ${{ env.OUTPUT_DIR }}/*.blockmap

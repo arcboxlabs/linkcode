@@ -1,0 +1,126 @@
+# Orchestrates a desktop release:
+#   1. calls build-desktop.yml with sign: true (signed + notarized artifacts)
+#   2. uploads the artifacts to Cloudflare R2 — this is the electron-updater feed
+#   3. publishes a GitHub Release for human-facing downloads / changelog
+#
+# The repo is private, so the auto-update feed is Cloudflare R2 (publish.provider: generic over
+# R2's public URL), not GitHub Releases. The GitHub Release is convenience only, not read by the updater.
+# Triggered by pushing a tag like v1.2.3, or manually with a dry-run option.
+
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref (tag / branch / SHA) to release
+        type: string
+        required: true
+      dry_run:
+        description: Build + sign but DO NOT publish a release
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false # never cancel a release mid-flight
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build signed artifacts
+    uses: ./.github/workflows/build-desktop.yml
+    secrets: inherit # required so build-desktop.yml can read the signing secrets
+    with:
+      ref: ${{ inputs.ref || github.ref }}
+      sign: true
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write # required to create the GitHub Release
+    env:
+      R2_BUCKET: linkcode-desktop-releases # TODO(release): R2 bucket name
+      R2_ACCOUNT_ID: REPLACE_ME # TODO(release): Cloudflare account id (host of the R2 S3 endpoint)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: artifacts
+
+      - name: Resolve tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish update feed to R2
+        # The live electron-updater feed: installers + latest*.yml + *.blockmap, uploaded via R2's
+        # S3-compatible API. The bucket must be publicly readable (r2.dev or a custom domain) so the
+        # shipped app reads updates without credentials. No --delete: keep prior versions for delta.
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto # R2 ignores region, but the CLI requires one to be set
+          # R2 doesn't implement the CRC32 upload checksums that recent aws-cli sends by default.
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+        run: |
+          aws s3 sync artifacts/ "s3://${R2_BUCKET}/" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --no-progress \
+            --exclude "*" \
+            --include "*.dmg" --include "*.zip" --include "*.exe" --include "*.msi" \
+            --include "*.appx" --include "*.AppImage" --include "*.deb" --include "*.rpm" \
+            --include "*.snap" --include "*.yml" --include "*.blockmap"
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          draft: false
+          prerelease: ${{ contains(steps.meta.outputs.tag, '-') }} # v1.2.3-beta.1 => prerelease
+          generate_release_notes: true
+          files: |
+            artifacts/*.dmg
+            artifacts/*.zip
+            artifacts/*.exe
+            artifacts/*.msi
+            artifacts/*.appx
+            artifacts/*.AppImage
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.snap
+            artifacts/*.yml
+            artifacts/*.blockmap
+
+      - name: Dry-run summary
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+        run: |
+          {
+            echo "### Dry run — nothing published"
+            echo ""
+            echo "Artifacts that *would* be released for \`${{ steps.meta.outputs.tag }}\`:"
+            echo '```'
+            ls -1 artifacts
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
