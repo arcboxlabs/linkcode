@@ -25,23 +25,29 @@ export interface DesktopShellState {
   bottomPanel: PanelState;
 }
 
-export interface StoredShellState {
+export interface PersistedDesktopShellState {
   version: 1;
   sidebarOpen: boolean;
   layout: LayoutState;
   expansionStack: PanelSide[];
-  rightPanel: StoredPanelState;
-  bottomPanel: StoredPanelState;
+  rightPanel: PersistedPanelState;
+  bottomPanel: PersistedPanelState;
 }
 
-export interface StoredPanelState {
+export interface PersistedPanelState {
   open: boolean;
   tabs: PanelWindowType[];
   activeTabIndex: number;
 }
 
+export interface DesktopShellStateModel {
+  storageKey: string;
+  createDefault: () => DesktopShellState;
+  parse: (value: unknown) => DesktopShellState;
+  serialize: (state: DesktopShellState) => PersistedDesktopShellState;
+}
+
 export const DESKTOP_SHELL_STORAGE_KEY = 'linkcode.desktop.shell-state:v1';
-export const LEGACY_DESKTOP_SHELL_STORAGE_KEY = 'linkcode.desktop.shell-state';
 
 export const SIDEBAR_MIN_SIZE = 240;
 export const SIDEBAR_MAX_SIZE = 520;
@@ -67,7 +73,7 @@ let tabSequence = 0;
 const PanelSideSchema = z.enum(['right', 'bottom']);
 const PanelWindowTypeSchema = z.enum(PANEL_WINDOW_TYPES);
 const FiniteNumberSchema = z.number();
-const StoredLayoutSchema = z
+const PersistedLayoutSchema = z
   .object({
     sidebarW: FiniteNumberSchema.catch(DEFAULT_LAYOUT.sidebarW),
     rightW: FiniteNumberSchema.catch(DEFAULT_LAYOUT.rightW),
@@ -76,7 +82,7 @@ const StoredLayoutSchema = z
   .catch(DEFAULT_LAYOUT)
   .transform(normalizeLayout);
 
-const StoredExpansionStackSchema = z
+const PersistedExpansionStackSchema = z
   .array(z.unknown())
   .catch([])
   .transform((items) =>
@@ -179,12 +185,19 @@ export function readPaneSize(value: number | undefined, fallback: number): numbe
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-export function parseDesktopShellState(value: unknown): DesktopShellState {
-  const parsed = createStoredShellStateSchema().safeParse(value);
+export const desktopShellStateModel = {
+  storageKey: DESKTOP_SHELL_STORAGE_KEY,
+  createDefault: createDefaultDesktopShellState,
+  parse: parseDesktopShellState,
+  serialize: serializeDesktopShellState,
+} satisfies DesktopShellStateModel;
+
+function parseDesktopShellState(value: unknown): DesktopShellState {
+  const parsed = createPersistedShellStateSchema().safeParse(value);
   return parsed.success ? parsed.data : createDefaultDesktopShellState();
 }
 
-export function serializeShellState(state: DesktopShellState): StoredShellState {
+function serializeDesktopShellState(state: DesktopShellState): PersistedDesktopShellState {
   return {
     version: 1,
     sidebarOpen: state.sidebarOpen,
@@ -199,47 +212,17 @@ export function serializeShellState(state: DesktopShellState): StoredShellState 
   };
 }
 
-export function readDesktopShellState(storage: Storage = localStorage): DesktopShellState {
-  clearLegacyDesktopShellState(storage);
-
-  try {
-    const raw = storage.getItem(DESKTOP_SHELL_STORAGE_KEY);
-    if (!raw) return createDefaultDesktopShellState();
-    return parseDesktopShellState(JSON.parse(raw));
-  } catch {
-    return createDefaultDesktopShellState();
-  }
-}
-
-export function writeDesktopShellState(
-  state: DesktopShellState,
-  storage: Storage = localStorage,
-): void {
-  try {
-    clearLegacyDesktopShellState(storage);
-    storage.setItem(DESKTOP_SHELL_STORAGE_KEY, JSON.stringify(serializeShellState(state)));
-  } catch {
-    // A failed UI-state write should never block the shell interaction itself.
-  }
-}
-
-export function clearLegacyDesktopShellState(storage: Storage = localStorage): void {
-  try {
-    storage.removeItem(LEGACY_DESKTOP_SHELL_STORAGE_KEY);
-  } catch {}
-}
-
-function createStoredShellStateSchema(): z.ZodType<DesktopShellState> {
+function createPersistedShellStateSchema(): z.ZodType<DesktopShellState> {
   const fallback = createDefaultDesktopShellState();
-  const rightPanelSchema = createStoredPanelSchema('review', false);
-  const bottomPanelSchema = createStoredPanelSchema('terminal', false);
+  const rightPanelSchema = createPersistedPanelSchema('review', false);
+  const bottomPanelSchema = createPersistedPanelSchema('terminal', false);
 
   return z
     .object({
       version: z.literal(1),
       sidebarOpen: z.boolean().catch(fallback.sidebarOpen),
-      layout: StoredLayoutSchema,
-      expansionStack: StoredExpansionStackSchema,
+      layout: PersistedLayoutSchema,
+      expansionStack: PersistedExpansionStackSchema,
       rightPanel: rightPanelSchema,
       bottomPanel: bottomPanelSchema,
     })
@@ -256,7 +239,7 @@ function createStoredShellStateSchema(): z.ZodType<DesktopShellState> {
     }));
 }
 
-function createStoredPanelSchema(
+function createPersistedPanelSchema(
   fallbackType: PanelWindowType,
   fallbackOpen: boolean,
 ): z.ZodType<PanelState> {
@@ -292,7 +275,7 @@ function createStoredPanelSchema(
     });
 }
 
-function serializePanel(panel: PanelState): StoredPanelState {
+function serializePanel(panel: PanelState): PersistedPanelState {
   return {
     open: panel.open,
     tabs: panel.tabs.map((tab) => tab.type),

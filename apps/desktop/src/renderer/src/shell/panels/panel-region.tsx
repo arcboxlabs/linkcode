@@ -7,7 +7,7 @@ import { DesktopChromePortal } from '../chrome/chrome';
 import type { DesktopChromePosition, DesktopChromeSegment } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
 import { SHELL_TRANSITION } from '../layout/use-animated-split';
-import type { PanelSide, PanelState } from '../state/shell-state';
+import type { PanelSide, PanelState } from '../state/local/model';
 import type { ChromeSurface } from './panel-layout';
 
 type ChromeMotionAxis = 'x' | 'y';
