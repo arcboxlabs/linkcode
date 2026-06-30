@@ -1,5 +1,6 @@
 import { ShellIconButton, cn } from '@linkcode/ui';
 import type { WorkbenchShellHeader } from '@linkcode/workbench';
+import { nullthrow } from 'foxact/nullthrow';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -97,8 +98,10 @@ export function DesktopChromePortal({
   className,
   children,
 }: DesktopChromePortalProps): ReactNode {
-  const targets = use(ChromePortalTargetContext);
-  if (!targets) throw new Error('Desktop chrome portal targets are missing');
+  const targets = nullthrow(
+    use(ChromePortalTargetContext),
+    'Desktop chrome portal targets are missing',
+  );
 
   const target = targets[createChromeSlotKey(segment, position)];
   if (!target) return null;
@@ -328,7 +331,7 @@ function StableLeftChrome({
         ref={contentRef}
         className="pointer-events-none flex h-full items-center gap-[var(--lc-chrome-control-gap)]"
       >
-        <NativeTrafficLightInset enabled={hasNativeTrafficLights} />
+        {hasNativeTrafficLights ? <NativeTrafficLightInset /> : null}
         <ShellIconButton
           label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
           aria-pressed={sidebarOpen}
@@ -401,8 +404,7 @@ function StableRightChrome({
   );
 }
 
-function NativeTrafficLightInset({ enabled }: { enabled: boolean }): ReactNode {
-  if (!enabled) return null;
+function NativeTrafficLightInset(): ReactNode {
   return <div aria-hidden className="w-[var(--lc-chrome-traffic-inset)] shrink-0" />;
 }
 
