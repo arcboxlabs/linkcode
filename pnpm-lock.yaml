@@ -156,6 +156,9 @@ importers:
       '@linkcode/ipc':
         specifier: workspace:*
         version: link:../../packages/ipc
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../../packages/transport
