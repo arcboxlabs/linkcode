@@ -1,16 +1,54 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "LinkCode",
+    "slug": "linkcode",
+    "description": "Every Code Agent in the Palm of your hand.",
+    "privacy": "public",
     "version": "1.0.0",
+    "scheme": "linkcode",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "primaryColor": "#000000",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "ios": {
+      "bundleIdentifier": "com.arcboxlabs.linkcode.mobile",
+      "buildNumber": "1",
       "supportsTablet": true,
-      "icon": "./assets/linkcode.icon"
+      "icon": "./assets/linkcode.icon",
+      "infoPlist": {
+        "NSCameraUsageDescription": "LinkCode needs camera access to attach photos or scan coding-session connection details.",
+        "NSPhotoLibraryUsageDescription": "LinkCode needs photo library access to attach images to coding-agent conversations.",
+        "NSPhotoLibraryAddUsageDescription": "LinkCode needs permission to save generated images or artifacts to your photo library.",
+        "NSLocalNetworkUsageDescription": "LinkCode needs local network access to discover and connect to your local LinkCode daemon.",
+        "NSDocumentsFolderUsageDescription": "LinkCode needs document access to attach files to coding-agent conversations.",
+        "NSDownloadsFolderUsageDescription": "LinkCode needs downloads folder access to save coding-agent artifacts.",
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true,
+        "NSBonjourServices": ["_linkcode._tcp"]
+      }
     },
     "android": {
+      "package": "com.arcboxlabs.linkcode.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.NEARBY_WIFI_DEVICES"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -20,6 +58,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b06b97b7-e026-4f7e-afd5-ac936c93d666"
+      }
     }
   }
 }
