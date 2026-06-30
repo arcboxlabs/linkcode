@@ -8,27 +8,27 @@
     },
     "JavaScript": {
       "format_on_save": "on",
-      "formatter": [
-        { "language_server": { "name": "biome" } },
-        { "code_action": "source.fixAll.eslint" },
-        { "code_action": "source.organizeImports.biome" }
-      ]
+      "formatter": { "language_server": { "name": "biome" } },
+      "code_actions_on_format": {
+        "source.fixAll.eslint": true,
+        "source.organizeImports.biome": true
+      }
     },
     "TypeScript": {
       "format_on_save": "on",
-      "formatter": [
-        { "language_server": { "name": "biome" } },
-        { "code_action": "source.fixAll.eslint" },
-        { "code_action": "source.organizeImports.biome" }
-      ]
+      "formatter": { "language_server": { "name": "biome" } },
+      "code_actions_on_format": {
+        "source.fixAll.eslint": true,
+        "source.organizeImports.biome": true
+      }
     },
     "TSX": {
       "format_on_save": "on",
-      "formatter": [
-        { "language_server": { "name": "biome" } },
-        { "code_action": "source.fixAll.eslint" },
-        { "code_action": "source.organizeImports.biome" }
-      ]
+      "formatter": { "language_server": { "name": "biome" } },
+      "code_actions_on_format": {
+        "source.fixAll.eslint": true,
+        "source.organizeImports.biome": true
+      }
     },
     "JSON": {
       "format_on_save": "on",
@@ -50,6 +50,9 @@
     },
     "eslint": {
       "settings": {
+        "experimental": {
+          "useFlatConfig": true
+        },
         "workingDirectory": {
           "mode": "auto"
         }

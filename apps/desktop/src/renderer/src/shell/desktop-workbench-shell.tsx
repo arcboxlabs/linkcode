@@ -1,3 +1,4 @@
+import { systemBridge } from '@desktop/ipc';
 import type { SystemBridge } from '@linkcode/ipc';
 import type { AgentKind } from '@linkcode/schema';
 import type { PanelWindowType } from '@linkcode/ui';
@@ -11,7 +12,6 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { XIcon } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useRef, useState } from 'react';
-import { systemBridge } from '@/ipc';
 import { DesktopChrome } from './chrome/chrome';
 import type { DesktopChromeMetricsStyle } from './chrome/metrics';
 import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';

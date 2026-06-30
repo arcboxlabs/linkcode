@@ -1,3 +1,4 @@
+import { AppSidebarProvider } from '@webview/components/app-sidebar-provider';
 import { Checkbox } from 'coss-ui/components/checkbox';
 import {
   Sidebar,
@@ -11,7 +12,6 @@ import {
   SidebarSeparator,
 } from 'coss-ui/components/sidebar';
 import { cn } from 'coss-ui/lib/utils';
-import { AppSidebarProvider } from '@/components/app-sidebar-provider';
 
 interface FilterSidebarLayoutProps {
   children: React.ReactNode;

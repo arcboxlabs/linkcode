@@ -1,6 +1,6 @@
+import type { TablePaginationState } from '@webview/components/data-table/core/use-table-pagination-state';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { useCallback, useId, useMemo } from 'react';
-import type { TablePaginationState } from '@/components/data-table/core/use-table-pagination-state';
 
 /** `key` is unique and stable — use it directly as the React key when mapping. */
 export type PaginationRangeItem =
