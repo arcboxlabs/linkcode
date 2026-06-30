@@ -12,7 +12,7 @@ export function App(): ReactNode {
   return (
     <AppI18nProvider>
       <WorkbenchProviders transport={transport} daemonUrl={DAEMON_URL}>
-        <Workbench shell={DesktopWorkbenchShell} />
+        <Workbench shellComponent={DesktopWorkbenchShell} />
       </WorkbenchProviders>
     </AppI18nProvider>
   );
