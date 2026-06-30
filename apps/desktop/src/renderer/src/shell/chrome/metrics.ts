@@ -28,18 +28,16 @@ export type DesktopChromeMetricsStyle = CSSProperties & {
   '--lc-sidebar-gap': string;
 };
 
-export function createDesktopChromeMetricsStyle(): DesktopChromeMetricsStyle {
-  return {
-    '--lc-chrome-h': `${DESKTOP_CHROME_METRICS.height}px`,
-    '--lc-chrome-edge': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
-    '--lc-chrome-control-gap': `${DESKTOP_CHROME_METRICS.controlGap}px`,
-    '--lc-chrome-section-gap': `${DESKTOP_CHROME_METRICS.sectionGap}px`,
-    '--lc-chrome-traffic-inset': `${DESKTOP_CHROME_METRICS.nativeTrafficInset}px`,
-    '--lc-chrome-left-rail-w': `${DESKTOP_CHROME_METRICS.leftRailWidth}px`,
-    '--lc-chrome-right-rail-w': `${DESKTOP_CHROME_METRICS.rightRailWidth}px`,
-    '--lc-chrome-left-local-inset': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
-    '--lc-chrome-right-local-inset': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
-    '--lc-sidebar-edge': `${DESKTOP_CHROME_METRICS.sidebarEdgePadding}px`,
-    '--lc-sidebar-gap': `${DESKTOP_CHROME_METRICS.sidebarGap}px`,
-  };
-}
+export const DESKTOP_CHROME_METRICS_STYLE = {
+  '--lc-chrome-h': `${DESKTOP_CHROME_METRICS.height}px`,
+  '--lc-chrome-edge': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
+  '--lc-chrome-control-gap': `${DESKTOP_CHROME_METRICS.controlGap}px`,
+  '--lc-chrome-section-gap': `${DESKTOP_CHROME_METRICS.sectionGap}px`,
+  '--lc-chrome-traffic-inset': `${DESKTOP_CHROME_METRICS.nativeTrafficInset}px`,
+  '--lc-chrome-left-rail-w': `${DESKTOP_CHROME_METRICS.leftRailWidth}px`,
+  '--lc-chrome-right-rail-w': `${DESKTOP_CHROME_METRICS.rightRailWidth}px`,
+  '--lc-chrome-left-local-inset': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
+  '--lc-chrome-right-local-inset': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
+  '--lc-sidebar-edge': `${DESKTOP_CHROME_METRICS.sidebarEdgePadding}px`,
+  '--lc-sidebar-gap': `${DESKTOP_CHROME_METRICS.sidebarGap}px`,
+} satisfies DesktopChromeMetricsStyle;
