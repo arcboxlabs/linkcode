@@ -37,7 +37,7 @@ interface UseAnimatedSplitOptions {
 
 type SplitSizes = [number, number];
 
-interface SplitTransitionState {
+export interface SplitTransitionState {
   requestedOpen: boolean;
   phase: SplitPanePhase;
   targetPaneSize: number;
@@ -215,7 +215,7 @@ function isAnimatingPhase(phase: SplitPanePhase): boolean {
  * rather than read live in the animation effect, which would otherwise restart every frame as the
  * controlled `paneSize` updates during the animation.
  */
-function reconcileTransition(
+export function reconcileTransition(
   current: SplitTransitionState,
   open: boolean,
   paneSize: number,
