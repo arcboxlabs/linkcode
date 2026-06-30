@@ -188,7 +188,15 @@ export function useAnimatedSplit({
         controls.stop();
       };
     },
-    [applyPaneSize, paneIndex, phase, setTransition, shouldStartFromZero, targetPaneSize, transitionVersion],
+    [
+      applyPaneSize,
+      paneIndex,
+      phase,
+      setTransition,
+      shouldStartFromZero,
+      targetPaneSize,
+      transitionVersion,
+    ],
   );
 
   const paneVisible = open || phase !== 'closed';

@@ -28,7 +28,7 @@ export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactNode {
         title={toolCall.title}
       />
 
-      {hasBody && (
+      {open && hasBody && (
         <ToolContent>
           {toolCall.rawInput !== undefined && (
             <ToolSection label={t('input')}>

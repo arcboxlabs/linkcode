@@ -125,6 +125,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
   const planIndexByTurn = new Map<ConversationTurnId, number>();
+  const messageIdByItemId = new Map<string, string>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   const genId = (prefix: string): string => `${prefix}-${gen++}`;
@@ -137,21 +138,38 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   let configOptions: SessionConfigOption[] = [];
   let stopReason: StopReason | null = null;
 
-  const openMessage = (role: MessageRole, block: ContentBlock): void => {
+  const shouldAppendMessage = (
+    last: ConversationItem | undefined,
+    role: MessageRole,
+    messageId: string | undefined,
+  ): last is Extract<ConversationItem, { kind: 'message' }> => {
+    if (last?.kind !== 'message' || last.role !== role) return false;
+    const lastMessageId = messageIdByItemId.get(last.id);
+    if (lastMessageId !== undefined || messageId !== undefined) return lastMessageId === messageId;
+    return role !== 'user';
+  };
+
+  const openMessage = (
+    role: MessageRole,
+    block: ContentBlock,
+    messageId: string | undefined,
+  ): void => {
     const last = items.at(-1);
-    if (last?.kind === 'message' && last.role === role) {
+    if (shouldAppendMessage(last, role, messageId)) {
       appendBlock(last.blocks, block);
       return;
     }
     if (role === 'user') currentTurnId = nextTurnId();
+    const id = genId(`${role}-message`);
     items.push({
       kind: 'message',
-      id: genId(`${role}-message`),
+      id,
       turnId: currentTurnId,
       role,
       blocks: [block],
       isStreaming: false,
     });
+    if (messageId !== undefined) messageIdByItemId.set(id, messageId);
   };
 
   const openReasoning = (block: ContentBlock): void => {
@@ -172,10 +190,10 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   for (const event of events) {
     switch (event.type) {
       case 'user-message-chunk':
-        openMessage('user', event.content);
+        openMessage('user', event.content, event.messageId);
         break;
       case 'agent-message-chunk':
-        openMessage('assistant', event.content);
+        openMessage('assistant', event.content, event.messageId);
         break;
       case 'agent-thought-chunk':
         openReasoning(event.content);

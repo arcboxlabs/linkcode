@@ -49,11 +49,11 @@ const debugMiddleware: SWRMiddleware = (useSWRNext) =>
 
     if (isLoadingOverride) {
       return {
+        ...swr,
         data: undefined,
         error: undefined,
         isLoading: true,
         isValidating: true,
-        mutate: swr.mutate,
       };
     }
 

@@ -5,16 +5,9 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ChevronRightIcon,
-  ExternalLinkIcon,
-  GlobeIcon,
-  RotateCwIcon,
-} from 'lucide-react';
+import { ChevronRightIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { cn } from '../lib/cn';
 
 const EMPTY_WEB_PREVIEW_LOGS: readonly ChatWebPreviewLog[] = [];
@@ -47,23 +40,6 @@ export function WebPreview({
   children,
   ...props
 }: WebPreviewProps): ReactNode {
-  const [currentAddress, setCurrentAddress] = useState(preview.url);
-  const [reloadToken, setReloadToken] = useState(0);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  function commitAddress(nextAddress: string): void {
-    setCurrentAddress(nextAddress);
-    onAddressCommit?.(nextAddress);
-  }
-
-  function navigateHistory(direction: 'back' | 'forward'): void {
-    try {
-      iframeRef.current?.contentWindow?.history[direction]();
-    } catch {
-      // Cross-origin frames forbid history access; the buttons simply no-op there.
-    }
-  }
-
   return (
     <div
       className={cn(
@@ -73,41 +49,48 @@ export function WebPreview({
       {...props}
     >
       {children ?? (
-        <>
-          <WebPreviewNavigation>
-            <WebPreviewNavigationButton onClick={() => navigateHistory('back')} tooltip="Back">
-              <ArrowLeftIcon />
-            </WebPreviewNavigationButton>
-            <WebPreviewNavigationButton
-              onClick={() => navigateHistory('forward')}
-              tooltip="Forward"
-            >
-              <ArrowRightIcon />
-            </WebPreviewNavigationButton>
-            <WebPreviewNavigationButton
-              onClick={() => setReloadToken((token) => token + 1)}
-              tooltip="Reload"
-            >
-              <RotateCwIcon />
-            </WebPreviewNavigationButton>
-            <WebPreviewUrl defaultValue={currentAddress} onCommit={commitAddress} />
-            <WebPreviewNavigationButton
-              render={<a href={currentAddress} rel="noreferrer" target="_blank" />}
-              tooltip="Open in new tab"
-            >
-              <ExternalLinkIcon />
-            </WebPreviewNavigationButton>
-          </WebPreviewNavigation>
-          <WebPreviewBody
-            key={reloadToken}
-            ref={iframeRef}
-            src={currentAddress}
-            title={preview.title ?? 'Preview'}
-          />
-          <WebPreviewConsole logs={preview.logs ?? []} />
-        </>
+        <WebPreviewSession
+          key={`${preview.id}:${preview.url}`}
+          onAddressCommit={onAddressCommit}
+          preview={preview}
+        />
       )}
     </div>
+  );
+}
+
+function WebPreviewSession({
+  preview,
+  onAddressCommit,
+}: Pick<WebPreviewProps, 'preview' | 'onAddressCommit'>): ReactNode {
+  const [currentAddress, setCurrentAddress] = useState(preview.url);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  function commitAddress(nextAddress: string): void {
+    setCurrentAddress(nextAddress);
+    onAddressCommit?.(nextAddress);
+  }
+
+  return (
+    <>
+      <WebPreviewNavigation>
+        <WebPreviewNavigationButton
+          onClick={() => setReloadToken((token) => token + 1)}
+          tooltip="Reload"
+        >
+          <RotateCwIcon />
+        </WebPreviewNavigationButton>
+        <WebPreviewUrl defaultValue={currentAddress} onCommit={commitAddress} />
+        <WebPreviewNavigationButton
+          render={<a href={currentAddress} rel="noreferrer" target="_blank" />}
+          tooltip="Open in new tab"
+        >
+          <ExternalLinkIcon />
+        </WebPreviewNavigationButton>
+      </WebPreviewNavigation>
+      <WebPreviewBody key={reloadToken} src={currentAddress} title={preview.title ?? 'Preview'} />
+      <WebPreviewConsole logs={preview.logs ?? []} />
+    </>
   );
 }
 
