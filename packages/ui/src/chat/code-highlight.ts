@@ -58,7 +58,15 @@ let highlighterPromise: Promise<Highlighter> | null = null;
 type Highlighter = HighlighterCore;
 
 function getHighlighter(): Promise<Highlighter> {
-  highlighterPromise ??= createChatHighlighter();
+  if (highlighterPromise === null) {
+    const pending = createChatHighlighter();
+    // A failed init (e.g. a WASM/grammar chunk that fails to fetch) must not poison every future
+    // highlight: drop the rejected promise so the next request retries from scratch.
+    pending.catch(() => {
+      if (highlighterPromise === pending) highlighterPromise = null;
+    });
+    highlighterPromise = pending;
+  }
   return highlighterPromise;
 }
 
@@ -155,7 +163,11 @@ export function highlightCode(
         tokens: line.map((token, tokenIndex) => tokenFromShiki(token, lineIndex, tokenIndex)),
       })),
     }))
-    .catch(() => null);
+    .catch(() => {
+      // Don't pin a transient failure in the cache forever; let a later render retry.
+      highlightCache.delete(cacheKey);
+      return null;
+    });
 
   highlightCache.set(cacheKey, highlighted);
   return highlighted;
