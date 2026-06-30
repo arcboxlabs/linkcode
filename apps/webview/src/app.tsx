@@ -8,7 +8,7 @@ export function App(): ReactNode {
   return (
     <RootProviders>
       <WorkbenchProviders transport={transport} daemonUrl={DAEMON_URL}>
-        <Workbench shell={WebWorkbenchShell} />
+        <Workbench shellComponent={WebWorkbenchShell} />
       </WorkbenchProviders>
     </RootProviders>
   );

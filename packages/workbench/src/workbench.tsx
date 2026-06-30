@@ -19,7 +19,7 @@ import { useTranslations } from 'use-intl';
 import { useData, useMutation } from './tayori';
 
 export interface WorkbenchProps {
-  shell?: WorkbenchShellComponent;
+  shellComponent?: WorkbenchShellComponent;
 }
 
 export interface WorkbenchShellHeader {
@@ -42,7 +42,9 @@ export type WorkbenchShellComponent = (props: WorkbenchShellProps) => ReactNode;
  * Wrap it in `WorkbenchProviders` (at a layout, or inline) and mount it as a
  * routed feature page.
  */
-export function Workbench({ shell: Shell = DefaultWorkbenchShell }: WorkbenchProps): ReactNode {
+export function Workbench({
+  shellComponent: ShellComponent = DefaultWorkbenchShell,
+}: WorkbenchProps): ReactNode {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err) ?? String(err));
@@ -57,7 +59,7 @@ export function Workbench({ shell: Shell = DefaultWorkbenchShell }: WorkbenchPro
       sessions={sessions}
       conversation={conversation}
       errorMessage={errorMessage}
-      Shell={Shell}
+      ShellComponent={ShellComponent}
       onClearError={() => setErrorMessage(null)}
       onError={handleError}
     />
@@ -68,7 +70,7 @@ interface WorkbenchSessionSurfaceProps {
   sessions: WorkbenchSessions;
   conversation: ReturnType<typeof useConversation>;
   errorMessage: string | null;
-  Shell: WorkbenchShellComponent;
+  ShellComponent: WorkbenchShellComponent;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -77,7 +79,7 @@ function WorkbenchSessionSurface({
   sessions,
   conversation,
   errorMessage,
-  Shell,
+  ShellComponent,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): ReactNode {
@@ -121,7 +123,7 @@ function WorkbenchSessionSurface({
   }
 
   return (
-    <Shell
+    <ShellComponent
       sessions={sessions.sessions}
       activeId={sessions.activeId}
       conversation={conversation}
