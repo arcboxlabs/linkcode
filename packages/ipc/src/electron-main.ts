@@ -1,9 +1,13 @@
 import { defineInvokeHandlers } from '@moeru/eventa';
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main';
-import type { BrowserWindow, IpcMain } from 'electron';
+import type { BrowserWindow, IpcMain, IpcMainEvent } from 'electron';
 import type { SystemContext } from './context';
-import { PickFileOptionsSchema } from './context';
-import { systemIpcEvents, WINDOW_MAXIMIZED_CHANGED_CHANNEL } from './events';
+import { DesktopSettingsPatchSchema, PickFileOptionsSchema } from './context';
+import {
+  SETTINGS_SNAPSHOT_CHANNEL,
+  systemIpcEvents,
+  WINDOW_MAXIMIZED_CHANGED_CHANNEL,
+} from './events';
 
 export interface ElectronSystemIpcOptions {
   ipcMain: IpcMain;
@@ -34,7 +38,18 @@ export function bindElectronSystemIpc({
     fsPickFile: (opts) => ctx.dialog.pickFile(PickFileOptionsSchema.optional().parse(opts)),
     appVersion: () => ctx.app.getVersion(),
     appPlatform: () => ctx.app.getPlatform(),
+    appCheckForUpdates: () => ctx.app.checkForUpdates(),
+    settingsGet: () => ctx.settings.get(),
+    settingsSet: (patch) => ctx.settings.set(DesktopSettingsPatchSchema.parse(patch)),
   });
+
+  // Synchronous boot snapshot: the renderer needs locale + daemonUrl before first paint, which the
+  // async invoke path can't provide. Served over a raw `sendSync` channel returning the current store.
+  const handleSnapshot = (event: IpcMainEvent): void => {
+    event.returnValue = ctx.settings.get();
+  };
+  ipcMain.on(SETTINGS_SNAPSHOT_CHANNEL, handleSnapshot);
+
   const emitMaximizedState = (): void => {
     if (!window.isDestroyed()) {
       window.webContents.send(WINDOW_MAXIMIZED_CHANGED_CHANNEL, ctx.window.isMaximized());
@@ -50,6 +65,7 @@ export function bindElectronSystemIpc({
     if (disposed) return;
     disposed = true;
     for (const removeHandler of Object.values(removeHandlers)) removeHandler();
+    ipcMain.removeListener(SETTINGS_SNAPSHOT_CHANNEL, handleSnapshot);
     window.off('maximize', emitMaximizedState);
     window.off('unmaximize', emitMaximizedState);
     window.off('enter-full-screen', emitMaximizedState);

@@ -1,5 +1,15 @@
+import type { ThemePreference } from '@linkcode/ipc';
 import type { BrowserWindowConstructorOptions } from 'electron';
 import { nativeTheme } from 'electron';
+
+/**
+ * Apply the user's color-scheme preference. Setting `nativeTheme.themeSource` is the single lever:
+ * it drives the renderer's `prefers-color-scheme` (so the existing media-query listener flips `.dark`)
+ * and `nativeTheme.shouldUseDarkColors` (so `desktopBackgroundColor()` keeps the window chrome correct).
+ */
+export function applyThemePreference(theme: ThemePreference): void {
+  nativeTheme.themeSource = theme;
+}
 
 const TRANSPARENT_WINDOW_BACKGROUND = '#00000000';
 // Keep in sync with coss-ui's light/dark `--sidebar` tokens used by `bg-sidebar`.

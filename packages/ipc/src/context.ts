@@ -18,6 +18,12 @@ export interface SystemContext {
   app: {
     getVersion(): string;
     getPlatform(): NodeJS.Platform;
+    /** Trigger a manual update check (no-op when the app is not packaged). */
+    checkForUpdates(): void;
+  };
+  settings: {
+    get(): DesktopSettings;
+    set(patch: DesktopSettingsPatch): DesktopSettings;
   };
 }
 
@@ -27,3 +33,43 @@ export const PickFileOptionsSchema = z.object({
   directory: z.boolean().optional(),
 });
 export type PickFileOptions = z.infer<typeof PickFileOptionsSchema>;
+
+/** Renderer color-scheme preference; `system` follows the OS via `nativeTheme.themeSource`. */
+export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark']);
+export type ThemePreference = z.infer<typeof ThemePreferenceSchema>;
+
+/**
+ * System-plane desktop settings — color scheme, locale override, and the daemon endpoint the
+ * renderer dials. Carries no business data; persisted by the main process under `userData`.
+ */
+export const DesktopSettingsSchema = z.object({
+  theme: ThemePreferenceSchema.default('system'),
+  /** Locale override; `null` follows the OS (navigator.languages). */
+  locale: z.string().nullable().default(null),
+  /** Daemon endpoint the renderer connects to over transport. */
+  daemonUrl: z.url().default('http://127.0.0.1:4317'),
+});
+export type DesktopSettings = z.infer<typeof DesktopSettingsSchema>;
+
+/**
+ * A settings patch — every field optional, **no defaults** so absent keys are left untouched
+ * (a `DesktopSettingsSchema.partial()` would re-inject defaults and clobber the stored values).
+ */
+export const DesktopSettingsPatchSchema = z.object({
+  theme: ThemePreferenceSchema.optional(),
+  locale: z.string().nullable().optional(),
+  daemonUrl: z.url().optional(),
+});
+export type DesktopSettingsPatch = z.infer<typeof DesktopSettingsPatchSchema>;
+
+/** Auto-update lifecycle state surfaced to the renderer (no business data). */
+export const UpdaterStatusSchema = z.enum([
+  'idle',
+  'checking',
+  'available',
+  'not-available',
+  'downloading',
+  'downloaded',
+  'error',
+]);
+export type UpdaterStatus = z.infer<typeof UpdaterStatusSchema>;

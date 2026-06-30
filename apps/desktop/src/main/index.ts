@@ -1,7 +1,10 @@
 import { join } from 'node:path';
 import * as Sentry from '@sentry/electron/main';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
+import { applyThemePreference } from './appearance';
 import { APP_NAME } from './constants';
+import { buildAppMenu } from './menu';
+import { getSettings } from './settings';
 import { initAutoUpdates } from './updater';
 import { createDesktopWindow } from './window';
 
@@ -21,6 +24,9 @@ app
     if (process.platform === 'darwin' && !app.isPackaged) {
       app.dock?.setIcon(join(__dirname, '../../../../assets/icon-dock.png'));
     }
+    // Apply the stored color scheme before the window exists so its chrome paints correctly first time.
+    applyThemePreference(getSettings().theme);
+    Menu.setApplicationMenu(buildAppMenu());
     createDesktopWindow();
     initAutoUpdates();
 
