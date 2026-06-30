@@ -34,7 +34,25 @@ publish:
   url: https://pub-REPLACE_ME.r2.dev # TODO(release): R2 public bucket URL (r2.dev or a custom domain)
 
 mac:
+  # Apple Icon Composer source. Single shared copy at the repo-root assets/ dir (also consumed
+  # by the mobile app via ios.icon); referenced here to avoid duplicating the bundle. electron-builder
+  # runs `actool` (Xcode 26+) to emit Assets.car + CFBundleIconName (native Liquid Glass on
+  # macOS 26) and a fallback Icon.icns. Windows/Linux use build-resources/icon.png instead.
+  icon: ../../assets/linkcode.icon
   category: public.app-category.developer-tools
+  extendInfo:
+    NSCameraUsageDescription: LinkCode needs camera access to attach photos or scan coding-session connection details.
+    NSMicrophoneUsageDescription: LinkCode needs microphone access to attach audio context to coding-agent conversations.
+    NSPhotoLibraryUsageDescription: LinkCode needs photo library access to attach images to coding-agent conversations.
+    NSLocalNetworkUsageDescription: LinkCode needs local network access to discover and connect to your local LinkCode daemon.
+    NSAppleEventsUsageDescription: LinkCode needs automation access only when you choose to connect coding-agent workflows with other apps.
+    NSDocumentsFolderUsageDescription: LinkCode needs document access to attach files and open coding workspaces.
+    NSDownloadsFolderUsageDescription: LinkCode needs downloads folder access to save coding-agent artifacts.
+    NSDesktopFolderUsageDescription: LinkCode needs desktop folder access when you choose it as a coding workspace or artifact location.
+    NSNetworkVolumesUsageDescription: LinkCode needs network volume access when you choose a workspace or artifact location on a network drive.
+    NSRemovableVolumesUsageDescription: LinkCode needs removable volume access when you choose a workspace or artifact location on an external drive.
+    NSBonjourServices:
+      - _linkcode._tcp
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build-resources/entitlements.mac.plist

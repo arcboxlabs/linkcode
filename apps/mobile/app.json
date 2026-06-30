@@ -19,7 +19,7 @@
       "bundleIdentifier": "com.arcboxlabs.linkcode.mobile",
       "buildNumber": "1",
       "supportsTablet": true,
-      "icon": "./assets/linkcode.icon",
+      "icon": "../../assets/linkcode.icon",
       "infoPlist": {
         "NSCameraUsageDescription": "LinkCode needs camera access to attach photos or scan coding-session connection details.",
         "NSPhotoLibraryUsageDescription": "LinkCode needs photo library access to attach images to coding-agent conversations.",
