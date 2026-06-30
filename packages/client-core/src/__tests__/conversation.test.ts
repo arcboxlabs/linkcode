@@ -1,4 +1,5 @@
 import type { AgentEvent } from '@linkcode/schema';
+import { MessageIdSchema } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { buildConversation, contentPreview, toolCallDiffs } from '../conversation';
 
@@ -11,6 +12,16 @@ function text(t: string): AgentEvent {
 function userText(t: string): AgentEvent {
   return {
     type: 'user-message-chunk',
+    content: { type: 'text', text: t },
+  };
+}
+function userTextWithMessageId(
+  t: string,
+  messageId: ReturnType<typeof MessageIdSchema.parse>,
+): AgentEvent {
+  return {
+    type: 'user-message-chunk',
+    messageId,
     content: { type: 'text', text: t },
   };
 }
@@ -78,6 +89,46 @@ describe('buildConversation', () => {
       expect(assistant.turnId).toBe(user.turnId);
       expect(tool.turnId).toBe(user.turnId);
       expect(followup.turnId).toBe(user.turnId);
+    }
+  });
+
+  it('starts a new turn for consecutive user prompts without message ids', () => {
+    const c = buildConversation([
+      userText('first'),
+      { type: 'status', status: 'running' },
+      userText('second'),
+      {
+        type: 'plan',
+        plan: { entries: [{ content: 'second plan', priority: 'high', status: 'pending' }] },
+      },
+    ]);
+
+    expect(c.items.map((i) => i.kind)).toEqual(['message', 'message', 'plan']);
+    const [first, second, plan] = c.items;
+    expect(first.kind).toBe('message');
+    expect(second.kind).toBe('message');
+    expect(plan.kind).toBe('plan');
+    if (first.kind === 'message' && second.kind === 'message' && plan.kind === 'plan') {
+      expect(first.role).toBe('user');
+      expect(second.role).toBe('user');
+      expect(first.turnId).not.toBe(second.turnId);
+      expect(plan.turnId).toBe(second.turnId);
+    }
+  });
+
+  it('coalesces user chunks with the same message id', () => {
+    const messageId = MessageIdSchema.parse('u1');
+    const c = buildConversation([
+      userTextWithMessageId('Hel', messageId),
+      userTextWithMessageId('lo', messageId),
+    ]);
+
+    expect(c.items).toHaveLength(1);
+    const item = c.items[0];
+    expect(item.kind).toBe('message');
+    if (item.kind === 'message') {
+      expect(item.role).toBe('user');
+      expect(item.blocks).toEqual([{ type: 'text', text: 'Hello' }]);
     }
   });
 

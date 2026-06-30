@@ -13,8 +13,8 @@ import {
 import { Separator } from 'coss-ui/components/separator';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { ChevronDownIcon, SettingsIcon } from 'lucide-react';
-import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 
 const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];
 
