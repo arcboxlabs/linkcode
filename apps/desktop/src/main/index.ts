@@ -5,10 +5,13 @@ import type { BrowserWindowConstructorOptions } from 'electron';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
 import { initAutoUpdates } from './updater';
 
+const APP_NAME = 'LinkCode';
 const TRANSPARENT_WINDOW_BACKGROUND = '#00000000';
 // Keep in sync with coss-ui's light/dark `--sidebar` tokens used by `bg-sidebar`.
 const SIDEBAR_LIGHT_WINDOW_BACKGROUND = '#fafafa';
 const SIDEBAR_DARK_WINDOW_BACKGROUND = '#09090b';
+
+app.setName(APP_NAME);
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -18,7 +21,7 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     center: true,
     show: false,
-    title: 'Link Code',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 16, y: 16 } } : null),
     ...desktopBackdropOptions(),
