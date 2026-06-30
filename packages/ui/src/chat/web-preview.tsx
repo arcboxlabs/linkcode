@@ -37,23 +37,23 @@ export interface ChatWebPreviewLog {
 
 export type WebPreviewProps = ComponentProps<'div'> & {
   preview: ChatWebPreviewData;
-  onUrlChange?: (url: string) => void;
+  onAddressCommit?: (url: string) => void;
 };
 
 export function WebPreview({
   className,
   preview,
-  onUrlChange,
+  onAddressCommit,
   children,
   ...props
 }: WebPreviewProps): ReactNode {
-  const [url, setUrl] = useState(preview.url);
+  const [currentAddress, setCurrentAddress] = useState(preview.url);
   const [reloadToken, setReloadToken] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  function commitUrl(nextUrl: string): void {
-    setUrl(nextUrl);
-    onUrlChange?.(nextUrl);
+  function commitAddress(nextAddress: string): void {
+    setCurrentAddress(nextAddress);
+    onAddressCommit?.(nextAddress);
   }
 
   function navigateHistory(direction: 'back' | 'forward'): void {
@@ -90,9 +90,9 @@ export function WebPreview({
             >
               <RotateCwIcon />
             </WebPreviewNavigationButton>
-            <WebPreviewUrl defaultValue={url} onCommit={commitUrl} />
+            <WebPreviewUrl defaultValue={currentAddress} onCommit={commitAddress} />
             <WebPreviewNavigationButton
-              render={<a href={url} rel="noreferrer" target="_blank" />}
+              render={<a href={currentAddress} rel="noreferrer" target="_blank" />}
               tooltip="Open in new tab"
             >
               <ExternalLinkIcon />
@@ -101,7 +101,7 @@ export function WebPreview({
           <WebPreviewBody
             key={reloadToken}
             ref={iframeRef}
-            src={url}
+            src={currentAddress}
             title={preview.title ?? 'Preview'}
           />
           <WebPreviewConsole logs={preview.logs ?? []} />
