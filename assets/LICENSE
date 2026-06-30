@@ -1,0 +1,61 @@
+LinkCode Brand Assets License
+=============================
+
+Copyright (c) 2026 ArcBox, Inc., d/b/a ArcBox Labs. All rights reserved.
+
+This file governs the "Brand Assets" of LinkCode. The Brand Assets are NOT part
+of the "Licensed Work" and are NOT licensed under the Business Source License
+1.1 (see the repository-root LICENSE). They are licensed only as set out below.
+
+
+1. Brand Assets
+
+   "Brand Assets" means the LinkCode and ArcBox logos, wordmarks, application
+   icons, splash screens, and other brand imagery owned by ArcBox, Inc.,
+   including the following files in this repository:
+
+   - assets/ (this directory), including assets/icon.png and the Icon Composer
+     source bundle assets/linkcode.icon/
+   - apps/mobile/assets/ (favicon.png, android-icon-foreground.png,
+     android-icon-monochrome.png, splash-icon.png)
+   - apps/desktop/build-resources/icon-dock.png
+
+   This list is illustrative, not exhaustive: any other logo, icon, or brand
+   image owned by ArcBox, Inc. in this repository is a Brand Asset whether or
+   not it is listed here. Functional files that merely sit alongside Brand
+   Assets -- for example, apps/desktop/build-resources/entitlements.mac.plist --
+   are part of the Licensed Work and are not Brand Assets.
+
+
+2. What you may do without asking
+
+   You may reproduce and display the Brand Assets, unmodified and in their
+   original proportions, solely to refer or link to LinkCode and ArcBox, Inc.
+   (for example, to state that your project works with LinkCode, or to link
+   back to this repository), provided you do not imply sponsorship, endorsement,
+   or affiliation that does not exist.
+
+
+3. What requires written permission
+
+   Any other use requires the prior written permission of ArcBox, Inc.,
+   including (without limitation): modifying or recoloring the Brand Assets;
+   using them as, or as part of, the name, logo, or icon of your own product,
+   service, company, app, fork, or distribution; using them on merchandise; or
+   using them in any way likely to cause confusion about the origin of a
+   product or service.
+
+   Forking the source code grants no right to the LinkCode or ArcBox names,
+   logos, or icons. A fork or redistribution must replace the Brand Assets with
+   its own branding.
+
+
+4. Trademarks
+
+   "LinkCode" and "ArcBox", and the associated logos, are trademarks of
+   ArcBox, Inc. This file licenses copyright in the Brand Asset files only; it
+   grants no trademark rights. For the full brand and trademark policy, see
+   BRAND.md.
+
+
+To request permission, contact legal@arcbox.dev.
