@@ -394,9 +394,6 @@ importers:
 
   packages/agent-adapter:
     dependencies:
-      '@agentclientprotocol/sdk':
-        specifier: ^0.26.0
-        version: 0.26.0(zod@4.4.3)
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.179
         version: 0.3.179(@anthropic-ai/sdk@0.104.2(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
@@ -703,11 +700,6 @@ importers:
         version: 6.0.3
 
 packages:
-
-  '@agentclientprotocol/sdk@0.26.0':
-    resolution: {integrity: sha512-ialrcI+RzKOYe+fw+TfpyTdRmEoqIkXLlwbTi6XgaXXfdhNcdod7TmE1VsTnG3yTlox8TMTSMQgWbLLbz3r86Q==}
-    peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -6969,10 +6961,6 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
-
-  '@agentclientprotocol/sdk@0.26.0(zod@4.4.3)':
-    dependencies:
-      zod: 4.4.3
 
   '@alloc/quick-lru@5.2.0': {}
 

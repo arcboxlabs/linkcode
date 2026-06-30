@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AgentKindSchema, SessionIdSchema } from './common';
 
-/** Session modes — mirrors ACP SessionMode / SessionModeState. */
+/** Session modes (e.g. plan / accept-edits) the agent advertises and the user can switch between. */
 export const SessionModeIdSchema = z.string().min(1);
 export type SessionModeId = z.infer<typeof SessionModeIdSchema>;
 
@@ -18,24 +18,7 @@ export const SessionModeStateSchema = z.object({
 });
 export type SessionModeState = z.infer<typeof SessionModeStateSchema>;
 
-/** Slash commands the agent advertises — mirrors ACP AvailableCommand. */
-export const AvailableCommandSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  input: z.object({ hint: z.string() }).optional(),
-});
-export type AvailableCommand = z.infer<typeof AvailableCommandSchema>;
-
-/** A free-form per-session config option the agent exposes — mirrors ACP config_option_update. */
-export const SessionConfigOptionSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  description: z.string().optional(),
-  value: z.unknown(),
-});
-export type SessionConfigOption = z.infer<typeof SessionConfigOptionSchema>;
-
-/** Why a prompt turn ended — mirrors ACP StopReason. (Verify the enum against the shipped SDK.) */
+/** Why a prompt turn ended. */
 export const StopReasonSchema = z.enum([
   'end_turn',
   'max_tokens',

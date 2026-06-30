@@ -1,9 +1,8 @@
 import { z } from 'zod';
 
 /**
- * Content blocks — mirrors the Agent Client Protocol (ACP) ContentBlock union (which ACP shares with MCP).
- * The discriminator is `type`; values stay in ACP/MCP snake_case form (`resource_link`) so the generic
- * ACP adapter maps 1:1. See https://agentclientprotocol.com/protocol/content.
+ * Content blocks shared by all four supported agents. The discriminator is `type`; values stay in MCP
+ * snake_case form (`resource_link`) so MCP tool results and resources map across with no renaming.
  */
 
 /** Optional MCP-style annotations attached to a content block. */

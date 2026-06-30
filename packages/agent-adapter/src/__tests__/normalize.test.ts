@@ -2,9 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
-import type { SessionUpdate } from '@agentclientprotocol/sdk';
 import { describe, expect, it } from 'vitest';
-import { acpUpdateToEvent, mapAcpStop } from '../acp/acp-adapter';
 import { mapClaudeStop } from '../native/claude-code';
 import { CodexAdapter, mapCodexStatus, mapCodexUsage } from '../native/codex';
 import { contentToText, toolKindFromName } from '../util';
@@ -116,13 +114,13 @@ describe('CodexAdapter history', () => {
 
       const read = await adapter.readHistory({ historyId: session.historyId, limit: 10 });
       expect(read.events.map((event) => event.event.type)).toEqual([
-        'user-message-chunk',
+        'user-message',
         'agent-message-chunk',
       ]);
       expect(read.events[0]?.event).toMatchObject({
-        type: 'user-message-chunk',
+        type: 'user-message',
         messageId: 'user-1',
-        content: { type: 'text', text: 'hello' },
+        content: [{ type: 'text', text: 'hello' }],
       });
       expect(read.events[1]?.event).toMatchObject({
         type: 'agent-message-chunk',
@@ -143,40 +141,4 @@ describe('stop reason mappers', () => {
     expect(mapClaudeStop('tool_use')).toBe('end_turn');
     expect(mapClaudeStop(null)).toBe('end_turn');
   });
-  it('acp (identity-ish)', () => {
-    expect(mapAcpStop('refusal')).toBe('refusal');
-    expect(mapAcpStop('something_else')).toBe('end_turn');
-  });
 });
-
-describe('acpUpdateToEvent', () => {
-  it('maps an agent message chunk', () => {
-    expect(
-      acpUpdateToEvent(
-        sessionUpdateFixture({
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text: 'hi' },
-        }),
-      ),
-    ).toEqual({ type: 'agent-message-chunk', content: { type: 'text', text: 'hi' } });
-  });
-  it('maps a tool call with fallbacks', () => {
-    const event = acpUpdateToEvent(
-      sessionUpdateFixture({
-        sessionUpdate: 'tool_call',
-        toolCallId: 't1',
-      }),
-    );
-    expect(event).toEqual({
-      type: 'tool-call',
-      toolCall: { toolCallId: 't1', title: 't1', kind: 'other', status: 'pending', content: [] },
-    });
-  });
-  it('returns null for unknown updates', () => {
-    expect(acpUpdateToEvent(sessionUpdateFixture({ sessionUpdate: 'something_new' }))).toBeNull();
-  });
-});
-
-function sessionUpdateFixture(value: object): SessionUpdate {
-  return value as SessionUpdate;
-}

@@ -47,9 +47,9 @@ function historyEvents(): AgentHistoryEvent[] {
       historyId,
       itemId: 'u1',
       event: {
-        type: 'user-message-chunk' as const,
+        type: 'user-message' as const,
         messageId: 'u1' as MessageId,
-        content: { type: 'text' as const, text: 'hello' },
+        content: [{ type: 'text' as const, text: 'hello' }],
       },
     },
     {
@@ -106,7 +106,7 @@ class FakeHistoryAdapter extends BaseAgentAdapter {
   }
 
   protected onPrompt(_content: ContentBlock[]): Promise<void> {
-    this.emitAssistantText('ok');
+    this.emitAssistantText('ok', 'm1' as MessageId);
     return Promise.resolve();
   }
 }

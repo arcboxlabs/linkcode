@@ -64,6 +64,17 @@ export class Engine {
         await this.tryReply(p.clientReqId, async () => {
           const session = this.sessions.get(p.sessionId);
           if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
+          // Echo the user's prompt into the broadcast stream so every attached client (and any
+          // reconnect) sees the full conversation; ordered before the adapter's reply events.
+          if (p.input.type === 'prompt') {
+            this.transport.send(
+              createWireMessage({
+                kind: 'agent.event',
+                sessionId: p.sessionId,
+                event: { type: 'user-message', content: p.input.content },
+              }),
+            );
+          }
           await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
         });

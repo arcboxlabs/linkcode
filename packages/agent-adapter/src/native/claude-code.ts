@@ -21,7 +21,9 @@ import type {
   PermissionOption,
   StartOptions,
   StopReason,
+  ToolCallContent,
 } from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import {
@@ -40,7 +42,12 @@ import { contentToText, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantMessage = Extract<SDKMessage, { type: 'assistant' }>['message'];
+type UserMessage = Extract<SDKMessage, { type: 'user' }>['message'];
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
+type ToolResultParam = Extract<
+  Exclude<UserMessage['content'], string>[number],
+  { type: 'tool_result' }
+>;
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -171,6 +178,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       }
     }
     this.q = null;
+    // The turn loop ended (normally, by error, or by abort); finalize anything it left dangling.
+    this.teardown();
     this.emitStatus('idle');
   }
 
@@ -202,12 +211,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private handleMessage(msg: SDKMessage, messageId: MessageId, thoughtId: MessageId): void {
     if ('session_id' in msg && typeof msg.session_id === 'string') this.sessionId = msg.session_id;
+    // Resumed sessions replay prior turns as `isReplay` frames (historical text + tool_results). Skip
+    // them: re-emitting as live events would flood the stream and pollute the tool-call snapshot map.
+    if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
         this.handleStreamEvent(msg.event, messageId, thoughtId);
         break;
       case 'assistant':
         this.handleAssistant(msg.message);
+        break;
+      case 'user':
+        this.handleUser(msg.message);
         break;
       case 'result':
         this.handleResult(msg);
@@ -227,18 +242,34 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private handleAssistant(message: AssistantMessage): void {
     for (const block of message.content) {
       if (block.type === 'tool_use') {
-        this.emit({
-          type: 'tool-call',
-          toolCall: {
-            toolCallId: block.id,
-            title: block.name,
-            kind: toolKindFromName(block.name),
-            status: 'in_progress',
-            content: [],
-            rawInput: block.input,
-          },
+        // Announce the tool the moment Claude requests it; the matching tool_result settles it.
+        this.emitTool({
+          toolCallId: block.id,
+          title: block.name,
+          kind: toolKindFromName(block.name),
+          status: 'in_progress',
+          rawInput: block.input,
         });
       }
+    }
+  }
+
+  /**
+   * Tool results come back on the *user* message (Claude's API pairs every `tool_use` with a
+   * `tool_result`). This is also where a denied permission lands: the SDK synthesizes an `is_error`
+   * result with "Denied by the user", so the same branch settles success, failure, and deny alike.
+   */
+  private handleUser(message: UserMessage): void {
+    const content = message.content;
+    if (typeof content === 'string') return;
+    for (const block of content) {
+      if (block.type !== 'tool_result') continue;
+      this.emitTool({
+        toolCallId: block.tool_use_id,
+        status: block.is_error === true ? 'failed' : 'completed',
+        content: toolResultContent(block.content),
+        rawOutput: block.content,
+      });
     }
   }
 
@@ -257,6 +288,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.emitError('Claude returned an error', undefined, true);
     }
   }
+}
+
+/** Normalize a tool_result's payload (string or content blocks) into tool-call content. */
+function toolResultContent(content: ToolResultParam['content']): ToolCallContent[] {
+  if (content === undefined) return [];
+  if (typeof content === 'string') {
+    return content.length > 0 ? [{ type: 'content', content: textBlock(content) }] : [];
+  }
+  return content.reduce<ToolCallContent[]>((items, block) => {
+    if (block.type === 'text' && block.text.length > 0) {
+      items.push({ type: 'content', content: textBlock(block.text) });
+    }
+    return items;
+  }, []);
 }
 
 function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
