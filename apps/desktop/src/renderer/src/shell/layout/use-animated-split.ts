@@ -1,8 +1,9 @@
 import type { AllotmentHandle } from 'allotment';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useStateWithDeps } from 'foxact/use-state-with-deps';
 import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
 
 export const SHELL_TRANSITION = {
@@ -55,48 +56,62 @@ export function useAnimatedSplit({
 
   const reducedMotion = useReducedMotion() ?? false;
 
-  const [transition, setTransition] = useState<SplitTransitionState>(() => ({
+  const [transition, setTransition] = useStateWithDeps<SplitTransitionState>({
     requestedOpen: open,
     phase: open ? 'open' : 'closed',
     targetPaneSize: open ? Math.max(0, paneSize) : 0,
     shouldStartFromZero: false,
     version: 0,
-  }));
+  });
 
-  let currentTransition = transition;
+  let phase = transition.phase;
+  let shouldStartFromZero = transition.shouldStartFromZero;
+  let targetPaneSize = transition.targetPaneSize;
+  let transitionVersion = transition.version;
 
   // Capture the target pane size at the moment `open` changes.
   //
   // During animation, `onPaneSizeChange` may update the controlled `paneSize`.
   // If the animation effect directly depended on `paneSize`, it could restart
   // on every animation frame. This state records the transition request instead.
-  if (currentTransition.requestedOpen !== open) {
-    currentTransition = {
+  if (transition.requestedOpen !== open) {
+    const nextPhase: SplitPanePhase = reducedMotion
+      ? open
+        ? 'open'
+        : 'closed'
+      : open
+        ? 'opening'
+        : 'closing';
+    const nextTargetPaneSize = open ? Math.max(0, paneSize) : 0;
+    const nextShouldStartFromZero = !reducedMotion && open && transition.phase === 'closed';
+    const nextVersion = transition.version + 1;
+
+    setTransition({
       requestedOpen: open,
-      phase: reducedMotion ? (open ? 'open' : 'closed') : open ? 'opening' : 'closing',
-      targetPaneSize: open ? Math.max(0, paneSize) : 0,
-      shouldStartFromZero: !reducedMotion && open && currentTransition.phase === 'closed',
-      version: currentTransition.version + 1,
-    };
+      phase: nextPhase,
+      targetPaneSize: nextTargetPaneSize,
+      shouldStartFromZero: nextShouldStartFromZero,
+      version: nextVersion,
+    });
 
-    setTransition(currentTransition);
-  } else if (reducedMotion && isAnimatingPhase(currentTransition.phase)) {
-    currentTransition = {
-      ...currentTransition,
-      phase: currentTransition.requestedOpen ? 'open' : 'closed',
+    phase = nextPhase;
+    shouldStartFromZero = nextShouldStartFromZero;
+    targetPaneSize = nextTargetPaneSize;
+    transitionVersion = nextVersion;
+  } else if (reducedMotion && isAnimatingPhase(transition.phase)) {
+    const nextPhase: SplitPanePhase = transition.requestedOpen ? 'open' : 'closed';
+    const nextVersion = transition.version + 1;
+
+    setTransition({
+      phase: nextPhase,
       shouldStartFromZero: false,
-      version: currentTransition.version + 1,
-    };
+      version: nextVersion,
+    });
 
-    setTransition(currentTransition);
+    phase = nextPhase;
+    shouldStartFromZero = false;
+    transitionVersion = nextVersion;
   }
-
-  const {
-    phase,
-    shouldStartFromZero,
-    targetPaneSize,
-    version: transitionVersion,
-  } = currentTransition;
 
   const setAllotmentHandle = useCallback((handle: AllotmentHandle | null): void => {
     allotmentRef.current = handle;
@@ -159,10 +174,9 @@ export function useAnimatedSplit({
           applyPaneSize(targetPaneSize);
 
           setTransition((latest) => {
-            if (latest.version !== transitionVersion) return latest;
+            if (latest.version !== transitionVersion) return {};
 
             return {
-              ...latest,
               phase: completedPhase,
               shouldStartFromZero: false,
             };
@@ -174,7 +188,7 @@ export function useAnimatedSplit({
         controls.stop();
       };
     },
-    [applyPaneSize, paneIndex, phase, shouldStartFromZero, targetPaneSize, transitionVersion],
+    [applyPaneSize, paneIndex, phase, setTransition, shouldStartFromZero, targetPaneSize, transitionVersion],
   );
 
   const paneVisible = open || phase !== 'closed';
