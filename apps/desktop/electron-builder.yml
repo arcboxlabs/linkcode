@@ -1,0 +1,65 @@
+# electron-builder configuration for @linkcode/desktop.
+#
+# Packaging only — the app itself is compiled by `electron-vite build` (run via
+# `pnpm turbo run build`) into `out/`; electron-builder just wraps that output.
+#
+# Windows code signing is intentionally NOT declared here: Azure Trusted Signing
+# (win.azureSignOptions) is injected by the release workflow via `-c` overrides so
+# that unsigned PR builds skip signing instead of failing. See build-desktop.yml.
+
+appId: com.arcboxlabs.linkcode.desktop
+productName: LinkCode
+copyright: Copyright © 2026 ArcBox Labs
+
+# electron-builder needs an exact Electron version (it downloads per-platform binaries) and
+# cannot read pnpm's `catalog:` protocol. Keep in sync with the `electron` catalog entry.
+electronVersion: 42.4.1
+
+directories:
+  output: release # MUST match OUTPUT_DIR in .github/workflows/build-desktop.yml
+  buildResources: build-resources # not `build/`: that path is gitignored and is a turbo build output
+
+# electron-vite emits main, preload and renderer under `out/`. Production
+# dependencies (electron-updater, electron-log) are added automatically.
+files:
+  - out/**
+  - package.json
+
+# The published artifacts double as the electron-updater feed. The repo is private, so updates
+# are served from Cloudflare R2 instead of GitHub Releases (a private GitHub feed would require
+# embedding a token in the shipped app). The generic provider reads over R2's public URL with no
+# token; CI uploads through R2's S3-compatible API (see release-desktop.yml).
+publish:
+  provider: generic
+  url: https://pub-REPLACE_ME.r2.dev # TODO(release): R2 public bucket URL (r2.dev or a custom domain)
+
+mac:
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build-resources/entitlements.mac.plist
+  entitlementsInherit: build-resources/entitlements.mac.inherit.plist
+  notarize: true # consumes APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip # REQUIRED for macOS auto-update (electron-updater pulls the .zip, not the .dmg)
+      arch: [universal]
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb
+  # rpm/snap need extra host tooling (rpm/fakeroot, snapcraft); add install steps to
+  # build-desktop.yml's Linux job before enabling them here.

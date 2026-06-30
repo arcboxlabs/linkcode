@@ -2,6 +2,8 @@
   "name": "@linkcode/desktop",
   "version": "0.0.0",
   "private": true,
+  "description": "LinkCode desktop application",
+  "author": "ArcBox Labs <team@arcbox.dev>",
   "productName": "LinkCode",
   "main": "out/main/index.js",
   "scripts": {
@@ -22,6 +24,8 @@
     "@linkcode/workbench": "workspace:*",
     "allotment": "^1.20.5",
     "coss-ui": "workspace:*",
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9",
     "foxact": "^0.3.7",
     "lucide-react": "catalog:",
     "motion": "^12.40.0",
@@ -43,9 +47,5 @@
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
-  },
-  "build": {
-    "appId": "com.arcboxlabs.LinkCode",
-    "electronVersion": "42.4.1"
   }
 }

@@ -3,6 +3,7 @@ import type { SystemContext } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
 import type { BrowserWindowConstructorOptions } from 'electron';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
+import { initAutoUpdates } from './updater';
 
 const TRANSPARENT_WINDOW_BACKGROUND = '#00000000';
 // Keep in sync with coss-ui's light/dark `--sidebar` tokens used by `bg-sidebar`.
@@ -139,6 +140,7 @@ app
   .whenReady()
   .then(() => {
     createDesktopWindow();
+    initAutoUpdates();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createDesktopWindow();
