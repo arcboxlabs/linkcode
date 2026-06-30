@@ -13,7 +13,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { systemBridge } from '@/ipc';
 import { DesktopChrome } from './chrome/chrome';
-import { DESKTOP_CHROME_SPACER_CLASS, createDesktopChromeMetricsStyle } from './chrome/metrics';
+import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import type { DesktopChromeMetricsStyle } from './chrome/metrics';
 import { DesktopHostFooter } from './host/host-footer';
 import { getShellContentMotionStyle, useAnimatedSplit } from './layout/use-animated-split';
@@ -470,7 +470,7 @@ function toDesktopPlatform(platform: string): DesktopPlatform {
 
 function createDesktopShellStyle(state: DesktopShellState): DesktopShellStyle {
   return {
-    ...createDesktopChromeMetricsStyle(),
+    ...DESKTOP_CHROME_METRICS_STYLE,
     '--lc-sidebar-w': `${state.sidebarOpen ? state.layout.sidebarW : 0}px`,
     '--lc-right-w': `${state.rightPanel.open ? state.layout.rightW : 0}px`,
     '--lc-bottom-h': `${state.bottomPanel.open ? state.layout.bottomH : 0}px`,
