@@ -1,5 +1,6 @@
 import type { AgentHistoryEvent, AgentHistoryId, MessageId, Timestamp } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { nextMessageId } from './adapter';
 
 export function asHistoryId(value: string): AgentHistoryId {
   return value as AgentHistoryId;
@@ -45,16 +46,16 @@ export function textHistoryEvent(
 ): AgentHistoryEvent | undefined {
   const text = textFromUnknown(value);
   if (text.trim().length === 0) return undefined;
-  const messageId = itemId ? asMessageId(itemId) : undefined;
+  // agent-message-chunk now requires a messageId (the grouping authority); guarantee one.
+  const messageId = itemId ? asMessageId(itemId) : nextMessageId();
   return {
     historyId,
     itemId,
     ts,
-    event: {
-      type: role === 'user' ? 'user-message-chunk' : 'agent-message-chunk',
-      messageId,
-      content: textBlock(text),
-    },
+    event:
+      role === 'user'
+        ? { type: 'user-message', messageId, content: [textBlock(text)] }
+        : { type: 'agent-message-chunk', messageId, content: textBlock(text) },
   };
 }
 

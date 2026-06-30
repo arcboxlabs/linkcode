@@ -56,7 +56,6 @@ export function WorkbenchConversationSurface({
         agentLabel={agentLabel}
         disabled={disabled}
         isRunning={isRunning}
-        availableCommands={conversation.availableCommands}
         currentModeId={conversation.currentModeId}
         onSend={onSendPrompt}
         onStop={onStopTurn}

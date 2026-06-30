@@ -1,11 +1,8 @@
 import type {
   AgentEvent,
-  AvailableCommand,
-  ClientRequest,
   ContentBlock,
   PermissionOption,
   Plan,
-  SessionConfigOption,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -16,9 +13,9 @@ import type {
 
 /**
  * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
- * structured timeline (turn-grouped messages, tool calls merged from their updates, plan, permissions)
- * plus the session's live lifecycle state. `buildConversation` is a pure reducer over the event list so
- * it can be unit-tested without a transport (mirrors the adapter normalizer convention).
+ * structured timeline (turn-grouped messages bucketed by messageId, tool calls as full snapshots, plan,
+ * permissions) plus the session's live lifecycle state. `buildConversation` is a pure reducer over the
+ * event list so it can be unit-tested without a transport (mirrors the adapter normalizer convention).
  */
 
 export type ConversationTurnId = string | null;
@@ -51,13 +48,6 @@ export type ConversationItem =
       options: PermissionOption[];
     }
   | {
-      kind: 'client-request';
-      id: string;
-      turnId: ConversationTurnId;
-      requestId: string;
-      request: ClientRequest;
-    }
-  | {
       kind: 'error';
       id: string;
       turnId: ConversationTurnId;
@@ -75,10 +65,6 @@ export interface ConversationViewModel {
   usage: TokenUsage | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
-  /** Slash commands the agent currently advertises. */
-  availableCommands: AvailableCommand[];
-  /** Free-form per-session config options the agent exposes. */
-  configOptions: SessionConfigOption[];
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -89,8 +75,6 @@ export interface ConversationViewModel {
 }
 
 export type Conversation = ConversationViewModel;
-
-type MessageRole = Extract<ConversationItem, { kind: 'message' }>['role'];
 
 /** Append a content block to a message item, concatenating consecutive text blocks for smooth streaming. */
 function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
@@ -106,26 +90,13 @@ function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
   blocks.push(block);
 }
 
-/** Merge a ToolCallUpdate onto an existing ToolCall (later fields win; absent fields are kept). */
-function mergeToolCall(base: ToolCall, update: ToolCallUpdate): ToolCall {
-  return {
-    ...base,
-    title: update.title ?? base.title,
-    kind: update.kind ?? base.kind,
-    status: update.status ?? base.status,
-    content: update.content ?? base.content,
-    locations: update.locations ?? base.locations,
-    rawInput: update.rawInput ?? base.rawInput,
-    rawOutput: update.rawOutput ?? base.rawOutput,
-  };
-}
-
 /** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */
 export function buildConversation(events: readonly AgentEvent[]): Conversation {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
+  // messageId → item index, so streaming chunks bucket into one item regardless of interleaving.
+  const messageIndex = new Map<string, number>();
   const planIndexByTurn = new Map<ConversationTurnId, number>();
-  const messageIdByItemId = new Map<string, string>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   const genId = (prefix: string): string => `${prefix}-${gen++}`;
@@ -134,72 +105,67 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
   let currentModeId: string | null = null;
-  let availableCommands: AvailableCommand[] = [];
-  let configOptions: SessionConfigOption[] = [];
   let stopReason: StopReason | null = null;
 
-  const shouldAppendMessage = (
-    last: ConversationItem | undefined,
-    role: MessageRole,
-    messageId: string | undefined,
-  ): last is Extract<ConversationItem, { kind: 'message' }> => {
-    if (last?.kind !== 'message' || last.role !== role) return false;
-    const lastMessageId = messageIdByItemId.get(last.id);
-    if (lastMessageId !== undefined || messageId !== undefined) return lastMessageId === messageId;
-    return role !== 'user';
-  };
-
-  const openMessage = (
-    role: MessageRole,
+  // Bucket an agent message / thought chunk into its messageId-keyed item (creating it on first sight).
+  const openAgentStream = (
+    kind: 'message' | 'reasoning',
+    messageId: string,
     block: ContentBlock,
-    messageId: string | undefined,
   ): void => {
-    const last = items.at(-1);
-    if (shouldAppendMessage(last, role, messageId)) {
-      appendBlock(last.blocks, block);
-      return;
+    const existing = messageIndex.get(messageId);
+    if (existing !== undefined) {
+      const item = items[existing];
+      if (item.kind === kind) {
+        appendBlock(item.blocks, block);
+        return;
+      }
     }
-    if (role === 'user') currentTurnId = nextTurnId();
-    const id = genId(`${role}-message`);
-    items.push({
-      kind: 'message',
-      id,
-      turnId: currentTurnId,
-      role,
-      blocks: [block],
-      isStreaming: false,
-    });
-    if (messageId !== undefined) messageIdByItemId.set(id, messageId);
-  };
-
-  const openReasoning = (block: ContentBlock): void => {
-    const last = items.at(-1);
-    if (last?.kind === 'reasoning') {
-      appendBlock(last.blocks, block);
-      return;
+    if (kind === 'message') {
+      items.push({
+        kind: 'message',
+        id: messageId,
+        turnId: currentTurnId,
+        role: 'assistant',
+        blocks: [block],
+        isStreaming: false,
+      });
+    } else {
+      items.push({
+        kind: 'reasoning',
+        id: messageId,
+        turnId: currentTurnId,
+        blocks: [block],
+        isStreaming: false,
+      });
     }
-    items.push({
-      kind: 'reasoning',
-      id: genId('reasoning'),
-      turnId: currentTurnId,
-      blocks: [block],
-      isStreaming: false,
-    });
+    messageIndex.set(messageId, items.length - 1);
   };
 
   for (const event of events) {
     switch (event.type) {
-      case 'user-message-chunk':
-        openMessage('user', event.content, event.messageId);
+      case 'user-message': {
+        // A complete, atomic message: opens a new turn and is pushed whole (never grouped/appended).
+        currentTurnId = nextTurnId();
+        items.push({
+          kind: 'message',
+          id: event.messageId ?? genId('user-message'),
+          turnId: currentTurnId,
+          role: 'user',
+          blocks: [...event.content],
+          isStreaming: false,
+        });
         break;
+      }
       case 'agent-message-chunk':
-        openMessage('assistant', event.content, event.messageId);
+        openAgentStream('message', event.messageId, event.content);
         break;
       case 'agent-thought-chunk':
-        openReasoning(event.content);
+        openAgentStream('reasoning', event.messageId, event.content);
         break;
 
       case 'tool-call': {
+        // Every event is a full snapshot, so replace-by-id; no merge, no synthesis.
         const existing = toolIndex.get(event.toolCall.toolCallId);
         if (existing === undefined) {
           items.push({
@@ -211,39 +177,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           toolIndex.set(event.toolCall.toolCallId, items.length - 1);
         } else {
           const item = items[existing];
-          if (item.kind === 'tool') {
-            item.toolCall = mergeToolCall(item.toolCall, event.toolCall);
-          }
-        }
-        break;
-      }
-
-      case 'tool-call-update': {
-        const existing = toolIndex.get(event.update.toolCallId);
-        if (existing === undefined) {
-          // Update before its tool-call (defensive): synthesize a tool call from the update.
-          const synthesized: ToolCall = {
-            toolCallId: event.update.toolCallId,
-            title: event.update.title ?? event.update.toolCallId,
-            kind: event.update.kind ?? 'other',
-            status: event.update.status ?? 'in_progress',
-            content: event.update.content ?? [],
-            locations: event.update.locations,
-            rawInput: event.update.rawInput,
-            rawOutput: event.update.rawOutput,
-          };
-          items.push({
-            kind: 'tool',
-            id: synthesized.toolCallId,
-            turnId: currentTurnId,
-            toolCall: synthesized,
-          });
-          toolIndex.set(synthesized.toolCallId, items.length - 1);
-        } else {
-          const item = items[existing];
-          if (item.kind === 'tool') {
-            item.toolCall = mergeToolCall(item.toolCall, event.update);
-          }
+          if (item.kind === 'tool') item.toolCall = event.toolCall;
         }
         break;
       }
@@ -265,14 +199,8 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
         break;
       }
 
-      case 'available-commands-update':
-        availableCommands = event.availableCommands;
-        break;
       case 'current-mode-update':
         currentModeId = event.currentModeId;
-        break;
-      case 'config-option-update':
-        configOptions = event.configOptions;
         break;
       case 'status':
         status = event.status;
@@ -305,16 +233,6 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           options: event.options,
         });
         break;
-
-      case 'client-request':
-        items.push({
-          kind: 'client-request',
-          id: event.requestId,
-          turnId: currentTurnId,
-          requestId: event.requestId,
-          request: event.request,
-        });
-        break;
       default:
         break;
     }
@@ -345,8 +263,6 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     status,
     usage,
     currentModeId,
-    availableCommands,
-    configOptions,
     stopReason,
     pendingPermissionIds,
   };
