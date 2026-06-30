@@ -13,6 +13,7 @@ export * from './content';
 export * from './history';
 export * from './permission';
 export * from './plan';
+export * from './provider-config';
 export * from './session';
 export * from './tool-call';
 export * from './usage';

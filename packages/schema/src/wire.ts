@@ -8,6 +8,7 @@ import {
   AgentHistoryReadOptionsSchema,
   AgentHistoryReadResultSchema,
 } from './history';
+import { ProvidersConfigSchema } from './provider-config';
 import { SessionInfoSchema } from './session';
 
 /**
@@ -98,6 +99,19 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('request.succeeded'),
     replyTo: z.string().min(1),
+  }),
+
+  // ── Host configuration (daemon-owned provider config) ──
+  z.object({ kind: z.literal('config.get'), clientReqId: z.string().min(1) }),
+  z.object({
+    kind: z.literal('config.get.result'),
+    replyTo: z.string().min(1),
+    providers: ProvidersConfigSchema,
+  }),
+  z.object({
+    kind: z.literal('config.set'),
+    clientReqId: z.string().min(1),
+    providers: ProvidersConfigSchema,
   }),
 
   // ── Data plane ──
