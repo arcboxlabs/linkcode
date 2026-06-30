@@ -1,0 +1,75 @@
+{
+  "load_direnv": "direct",
+  "format_on_save": "off",
+  "languages": {
+    "Rust": {
+      "format_on_save": "on",
+      "formatter": "language_server"
+    },
+    "JavaScript": {
+      "format_on_save": "on",
+      "formatter": [
+        { "language_server": { "name": "biome" } },
+        { "code_action": "source.fixAll.eslint" },
+        { "code_action": "source.organizeImports.biome" }
+      ]
+    },
+    "TypeScript": {
+      "format_on_save": "on",
+      "formatter": [
+        { "language_server": { "name": "biome" } },
+        { "code_action": "source.fixAll.eslint" },
+        { "code_action": "source.organizeImports.biome" }
+      ]
+    },
+    "TSX": {
+      "format_on_save": "on",
+      "formatter": [
+        { "language_server": { "name": "biome" } },
+        { "code_action": "source.fixAll.eslint" },
+        { "code_action": "source.organizeImports.biome" }
+      ]
+    },
+    "JSON": {
+      "format_on_save": "on",
+      "formatter": { "language_server": { "name": "biome" } }
+    },
+    "JSONC": {
+      "format_on_save": "on",
+      "formatter": { "language_server": { "name": "biome" } }
+    }
+  },
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        // Mirror the CI lint: `cargo clippy --all-targets` (CLAUDE.md).
+        "check": {
+          "command": "clippy"
+        }
+      }
+    },
+    "eslint": {
+      "settings": {
+        "workingDirectory": {
+          "mode": "auto"
+        }
+      }
+    }
+  },
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.direnv",
+    "**/target",
+    "**/node_modules",
+    "**/dist",
+    "**/out",
+    "**/build",
+    "**/.vite",
+    "**/.turbo",
+    "**/.next",
+    "**/.expo",
+    "**/expo-export",
+    "**/.wrangler",
+    "**/.DS_Store"
+  ]
+}
