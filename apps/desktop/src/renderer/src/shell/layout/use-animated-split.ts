@@ -1,5 +1,6 @@
 import type { AllotmentHandle } from 'allotment';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useStateWithDeps } from 'foxact/use-state-with-deps';
 import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
@@ -144,6 +145,16 @@ export function useAnimatedSplit({
     },
     [onPaneSizeChange, paneIndex],
   );
+
+  // Snap the pane to its closed (zero) start position before paint when opening from a closed
+  // state. Allotment restores the pane's cached visible size in its own (child) layout effect, so
+  // without this pre-paint reset the panel flashes one full-width frame before the post-paint
+  // animation effect drives it from zero.
+  useLayoutEffect(() => {
+    if (shouldStartFromZero && phase === 'opening') {
+      applyPaneSize(0);
+    }
+  }, [applyPaneSize, phase, shouldStartFromZero]);
 
   useAbortableEffect(
     (signal) => {
