@@ -1,5 +1,8 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import { addDays } from 'date-fns/addDays';
+import { startOfDay } from 'date-fns/startOfDay';
+import { subDays } from 'date-fns/subDays';
 import { BotIcon, ClockIcon, FilePlus2Icon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -274,7 +277,7 @@ export interface SessionGroupData {
 
 export function groupSessions(
   sessions: readonly SessionInfo[],
-  currentDayStart = startOfLocalDay(Date.now()),
+  currentDayStart = startOfDay(Date.now()).getTime(),
 ): SessionGroupData[] {
   const groups: Record<SessionGroupKey, SessionInfo[]> = {
     today: [],
@@ -293,7 +296,7 @@ export function groupSessions(
 }
 
 function groupKey(timestamp: number, currentDayStart: number): SessionGroupKey {
-  const startYesterday = startOfPreviousLocalDay(currentDayStart);
+  const startYesterday = subDays(currentDayStart, 1).getTime();
 
   if (timestamp >= currentDayStart) return 'today';
   if (timestamp >= startYesterday) return 'yesterday';
@@ -320,7 +323,7 @@ function timeLabel(timestamp: number): string {
 }
 
 function useCurrentLocalDayStart(): number {
-  const [currentDayStart, setCurrentDayStart] = useState(() => startOfLocalDay(Date.now()));
+  const [currentDayStart, setCurrentDayStart] = useState(() => startOfDay(Date.now()).getTime());
 
   useEffect(() => {
     let timeoutId: number | null = null;
@@ -328,10 +331,10 @@ function useCurrentLocalDayStart(): number {
     const scheduleNextDay = (): void => {
       timeoutId = window.setTimeout(
         () => {
-          setCurrentDayStart(startOfLocalDay(Date.now()));
+          setCurrentDayStart(startOfDay(Date.now()).getTime());
           scheduleNextDay();
         },
-        Math.max(1, startOfNextLocalDay(startOfLocalDay(Date.now())) - Date.now()),
+        Math.max(1, addDays(startOfDay(Date.now()), 1).getTime() - Date.now()),
       );
     };
 
@@ -343,21 +346,6 @@ function useCurrentLocalDayStart(): number {
   }, []);
 
   return currentDayStart;
-}
-
-function startOfLocalDay(timestamp: number): number {
-  const date = new Date(timestamp);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
-function startOfPreviousLocalDay(currentDayStart: number): number {
-  const date = new Date(currentDayStart);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1).getTime();
-}
-
-function startOfNextLocalDay(currentDayStart: number): number {
-  const date = new Date(currentDayStart);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
 }
 
 export function DefaultHostFooter({
