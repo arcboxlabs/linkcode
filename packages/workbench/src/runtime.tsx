@@ -9,7 +9,7 @@ import { wait } from 'foxts/wait';
 import type * as React from 'react';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Middleware as SWRMiddleware, SWRResponse } from 'swr';
+import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
 import { useDebug } from './debug';
 import { TayoriProvider } from './tayori';
@@ -33,7 +33,32 @@ const [
 
 const WorkbenchRuntimeControlsContext = createContext<WorkbenchRuntimeControls | null>(null);
 const WorkbenchSdkClientContext = createContext<LinkCodeSdkClient | null>(null);
-const LOADING_OVERRIDE_EMPTY_VALUE = Object.freeze({});
+
+const debugMiddleware: SWRMiddleware = (useSWRNext) =>
+  function useDebugSWRMiddleware(key, fetcher, config) {
+    const { enableArtificialDelay, isLoadingOverride } = useDebug();
+    const wrappedFetcher =
+      enableArtificialDelay && typeof fetcher === 'function'
+        ? async (...args: Parameters<NonNullable<typeof fetcher>>) => {
+            await wait(500);
+            return fetcher(...args);
+          }
+        : fetcher;
+
+    const swr = useSWRNext(key, wrappedFetcher, config);
+
+    if (isLoadingOverride) {
+      return {
+        data: undefined,
+        error: undefined,
+        isLoading: true,
+        isValidating: true,
+        mutate: swr.mutate,
+      };
+    }
+
+    return swr;
+  };
 
 export function useWorkbenchRuntimeStatus(): WorkbenchRuntimeStatus {
   return useWorkbenchRuntimeStatusValue();
@@ -116,21 +141,6 @@ function WorkbenchRuntimeConnection({
 }
 
 function WorkbenchSWRConfig({ children }: React.PropsWithChildren): ReactNode {
-  const debug = useDebug();
-  const debugMiddleware: SWRMiddleware = (useSWRNext) => (key, fetcher, config) => {
-    const wrappedFetcher =
-      debug.enableArtificialDelay && typeof fetcher === 'function'
-        ? async (...args: Parameters<NonNullable<typeof fetcher>>) => {
-            await wait(500);
-            return fetcher(...args);
-          }
-        : fetcher;
-    // eslint-disable-next-line @eslint-react/rules-of-hooks, react-hooks/rules-of-hooks -- SWR middleware receives the next hook here by contract.
-    const swr = useSWRNext(key, wrappedFetcher, config);
-
-    return debug.isLoadingOverride ? createLoadingOverrideResponse(swr) : swr;
-  };
-
   return (
     <SWRConfig
       value={{
@@ -146,32 +156,4 @@ function WorkbenchSWRConfig({ children }: React.PropsWithChildren): ReactNode {
 
 function handleFetchError(error: unknown): void {
   console.error('[LinkCode data error]', extractErrorMessage(error) ?? error);
-}
-
-function createLoadingOverrideResponse<Data, Error>(
-  swr: SWRResponse<Data, Error>,
-): SWRResponse<Data, Error> {
-  return Object.create(swr, {
-    data: {
-      configurable: true,
-      enumerable: true,
-      get: () =>
-        Reflect.get(LOADING_OVERRIDE_EMPTY_VALUE, 'data') as SWRResponse<Data, Error>['data'],
-    },
-    error: {
-      configurable: true,
-      enumerable: true,
-      get: () => Reflect.get(LOADING_OVERRIDE_EMPTY_VALUE, 'error'),
-    },
-    isLoading: {
-      configurable: true,
-      enumerable: true,
-      get: () => true as SWRResponse<Data, Error>['isLoading'],
-    },
-    isValidating: {
-      configurable: true,
-      enumerable: true,
-      get: () => true,
-    },
-  }) as SWRResponse<Data, Error>;
 }
