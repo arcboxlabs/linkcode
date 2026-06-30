@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'vitest';
-import type { DesktopShellState } from '../shell/state/local/model';
+import type { DesktopShellState } from '@desktop/shell/state/local/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
@@ -10,7 +9,8 @@ import {
   RIGHT_PANEL_MIN_SIZE,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
-} from '../shell/state/local/model';
+} from '@desktop/shell/state/local/model';
+import { describe, expect, it } from 'vitest';
 
 describe('desktop shell state persistence', () => {
   it('requires the persisted version marker', () => {

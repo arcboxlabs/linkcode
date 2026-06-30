@@ -1,7 +1,4 @@
-import type { AllotmentHandle } from 'allotment';
-import { Allotment, LayoutPriority } from 'allotment';
-import type { ReactNode } from 'react';
-import type { LayoutState, PanelSide } from '../state/local/model';
+import type { LayoutState, PanelSide } from '@desktop/shell/state/local/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
@@ -10,7 +7,10 @@ import {
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
   readPaneSize,
-} from '../state/local/model';
+} from '@desktop/shell/state/local/model';
+import type { AllotmentHandle } from 'allotment';
+import { Allotment, LayoutPriority } from 'allotment';
+import type { ReactNode } from 'react';
 
 export function DesktopWorkspace({
   main,

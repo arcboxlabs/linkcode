@@ -1,13 +1,13 @@
+import type { DesktopChromePosition, DesktopChromeSegment } from '@desktop/shell/chrome/chrome';
+import { DesktopChromePortal } from '@desktop/shell/chrome/chrome';
+import { DESKTOP_CHROME_SPACER_CLASS } from '@desktop/shell/chrome/metrics';
+import { SHELL_TRANSITION } from '@desktop/shell/layout/use-animated-split';
+import type { PanelSide, PanelState } from '@desktop/shell/state/local/model';
 import type { PanelControl, PanelWindowType } from '@linkcode/ui';
 import { cn, FreePanel, PanelControlButton, PanelStubContent, PanelTabStrip } from '@linkcode/ui';
 import { Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { DesktopChromePosition, DesktopChromeSegment } from '../chrome/chrome';
-import { DesktopChromePortal } from '../chrome/chrome';
-import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
-import { SHELL_TRANSITION } from '../layout/use-animated-split';
-import type { PanelSide, PanelState } from '../state/local/model';
 import type { ChromeSurface } from './panel-layout';
 
 type ChromeMotionAxis = 'x' | 'y';
