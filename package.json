@@ -10,6 +10,8 @@
     "lint": "eslint --format=sukka .",
     "lint:fix": "eslint --format=sukka --fix .",
     "format": "biome check --write .",
+    "format:check": "biome check .",
+    "check:ci": "pnpm format:check && pnpm lint && pnpm typecheck",
     "test": "vitest run",
     "clean": "turbo run clean"
   },

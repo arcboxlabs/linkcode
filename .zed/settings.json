@@ -42,7 +42,7 @@
   "lsp": {
     "rust-analyzer": {
       "initialization_options": {
-        // Mirror the CI lint: `cargo clippy --all-targets` (CLAUDE.md).
+        // Mirror Rust analyzer checks to Clippy when Rust files are opened.
         "check": {
           "command": "clippy"
         }

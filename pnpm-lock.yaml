@@ -156,6 +156,9 @@ importers:
       '@linkcode/ipc':
         specifier: workspace:*
         version: link:../../packages/ipc
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../../packages/transport
@@ -174,6 +177,9 @@ importers:
       foxact:
         specifier: ^0.3.7
         version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      lucide-react:
+        specifier: 'catalog:'
+        version: 1.18.0(react@19.2.7)
       motion:
         specifier: ^12.40.0
         version: 12.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
