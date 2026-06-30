@@ -65,54 +65,11 @@ export function useAnimatedSplit({
     version: 0,
   });
 
-  let phase = transition.phase;
-  let shouldStartFromZero = transition.shouldStartFromZero;
-  let targetPaneSize = transition.targetPaneSize;
-  let transitionVersion = transition.version;
-
-  // Capture the target pane size at the moment `open` changes.
-  //
-  // During animation, `onPaneSizeChange` may update the controlled `paneSize`.
-  // If the animation effect directly depended on `paneSize`, it could restart
-  // on every animation frame. This state records the transition request instead.
-  if (transition.requestedOpen !== open) {
-    const nextPhase: SplitPanePhase = reducedMotion
-      ? open
-        ? 'open'
-        : 'closed'
-      : open
-        ? 'opening'
-        : 'closing';
-    const nextTargetPaneSize = open ? Math.max(0, paneSize) : 0;
-    const nextShouldStartFromZero = !reducedMotion && open && transition.phase === 'closed';
-    const nextVersion = transition.version + 1;
-
-    setTransition({
-      requestedOpen: open,
-      phase: nextPhase,
-      targetPaneSize: nextTargetPaneSize,
-      shouldStartFromZero: nextShouldStartFromZero,
-      version: nextVersion,
-    });
-
-    phase = nextPhase;
-    shouldStartFromZero = nextShouldStartFromZero;
-    targetPaneSize = nextTargetPaneSize;
-    transitionVersion = nextVersion;
-  } else if (reducedMotion && isAnimatingPhase(transition.phase)) {
-    const nextPhase: SplitPanePhase = transition.requestedOpen ? 'open' : 'closed';
-    const nextVersion = transition.version + 1;
-
-    setTransition({
-      phase: nextPhase,
-      shouldStartFromZero: false,
-      version: nextVersion,
-    });
-
-    phase = nextPhase;
-    shouldStartFromZero = false;
-    transitionVersion = nextVersion;
-  }
+  // Derive the next transition from the latest `open` request during render — React's prescribed way
+  // to adjust state when props change (it re-renders before paint, avoiding an effect round-trip).
+  const active = reconcileTransition(transition, open, paneSize, reducedMotion);
+  if (active !== transition) setTransition(active);
+  const { phase, shouldStartFromZero, targetPaneSize, version: transitionVersion } = active;
 
   const setAllotmentHandle = useCallback((handle: AllotmentHandle | null): void => {
     allotmentRef.current = handle;
@@ -250,6 +207,40 @@ export function getShellContentMotionStyle({
 
 function isAnimatingPhase(phase: SplitPanePhase): boolean {
   return phase === 'opening' || phase === 'closing';
+}
+
+/**
+ * Derive the next transition from the latest `open` request, returning the same reference when
+ * nothing changed so the caller can skip the state update. The target pane size is snapshotted here
+ * rather than read live in the animation effect, which would otherwise restart every frame as the
+ * controlled `paneSize` updates during the animation.
+ */
+function reconcileTransition(
+  current: SplitTransitionState,
+  open: boolean,
+  paneSize: number,
+  reducedMotion: boolean,
+): SplitTransitionState {
+  if (current.requestedOpen !== open) {
+    return {
+      requestedOpen: open,
+      phase: reducedMotion ? (open ? 'open' : 'closed') : open ? 'opening' : 'closing',
+      targetPaneSize: open ? Math.max(0, paneSize) : 0,
+      shouldStartFromZero: !reducedMotion && open && current.phase === 'closed',
+      version: current.version + 1,
+    };
+  }
+
+  if (reducedMotion && isAnimatingPhase(current.phase)) {
+    return {
+      ...current,
+      phase: current.requestedOpen ? 'open' : 'closed',
+      shouldStartFromZero: false,
+      version: current.version + 1,
+    };
+  }
+
+  return current;
 }
 
 function createInitialSizes(
