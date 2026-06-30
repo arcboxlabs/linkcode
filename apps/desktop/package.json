@@ -2,11 +2,14 @@
   "name": "@linkcode/desktop",
   "version": "0.0.0",
   "private": true,
+  "productName": "LinkCode",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "node ../../node_modules/electron-vite/bin/electron-vite.js dev",
-    "build": "node ../../node_modules/electron-vite/bin/electron-vite.js build",
-    "start": "node ../../node_modules/electron-vite/bin/electron-vite.js preview",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "package": "pnpm run build && electron-builder --dir -c.mac.identity=null",
+    "dist": "pnpm run build && electron-builder",
+    "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
@@ -35,9 +38,14 @@
     "@vitejs/plugin-react": "catalog:",
     "babel-plugin-react-compiler": "catalog:",
     "electron": "catalog:",
+    "electron-builder": "catalog:",
     "electron-vite": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
+  },
+  "build": {
+    "appId": "com.arcboxlabs.LinkCode",
+    "electronVersion": "42.4.1"
   }
 }
