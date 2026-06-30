@@ -1,8 +1,8 @@
 import type { AllotmentHandle } from 'allotment';
-import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
+import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 export const SHELL_TRANSITION = {
@@ -33,6 +33,16 @@ interface UseAnimatedSplitOptions {
   onPaneSizeChange?: (size: number) => void;
 }
 
+type SplitSizes = [number, number];
+
+interface SplitTransitionState {
+  requestedOpen: boolean;
+  phase: SplitPanePhase;
+  targetPaneSize: number;
+  shouldStartFromZero: boolean;
+  version: number;
+}
+
 export function useAnimatedSplit({
   open,
   paneIndex,
@@ -42,111 +52,133 @@ export function useAnimatedSplit({
 }: UseAnimatedSplitOptions): AnimatedSplit {
   const allotmentRef = useRef<AllotmentHandle | null>(null);
   const sizesRef = useRef<SplitSizes>(createInitialSizes(open, paneIndex, paneSize, restSize));
-  const animationRef = useRef<ReturnType<typeof animate> | null>(null);
-  const mountedRef = useRef(false);
-  const lastOpenRef = useRef(open);
-  const onPaneSizeChangeRef = useRef(onPaneSizeChange);
-  const paneSizeRef = useRef(paneSize);
-  const [phaseStore] = useState(() => createPhaseStore(open ? 'open' : 'closed'));
-  const phase = useSyncExternalStore(
-    phaseStore.subscribe,
-    phaseStore.getSnapshot,
-    phaseStore.getSnapshot,
-  );
-  const phaseRef = useRef<SplitPanePhase>(phase);
+
   const reducedMotion = useReducedMotion() ?? false;
+
+  const [transition, setTransition] = useState<SplitTransitionState>(() => ({
+    requestedOpen: open,
+    phase: open ? 'open' : 'closed',
+    targetPaneSize: open ? Math.max(0, paneSize) : 0,
+    shouldStartFromZero: false,
+    version: 0,
+  }));
+
+  let currentTransition = transition;
+
+  // Capture the target pane size at the moment `open` changes.
+  //
+  // During animation, `onPaneSizeChange` may update the controlled `paneSize`.
+  // If the animation effect directly depended on `paneSize`, it could restart
+  // on every animation frame. This state records the transition request instead.
+  if (currentTransition.requestedOpen !== open) {
+    currentTransition = {
+      requestedOpen: open,
+      phase: reducedMotion ? (open ? 'open' : 'closed') : open ? 'opening' : 'closing',
+      targetPaneSize: open ? Math.max(0, paneSize) : 0,
+      shouldStartFromZero: !reducedMotion && open && currentTransition.phase === 'closed',
+      version: currentTransition.version + 1,
+    };
+
+    setTransition(currentTransition);
+  } else if (reducedMotion && isAnimatingPhase(currentTransition.phase)) {
+    currentTransition = {
+      ...currentTransition,
+      phase: currentTransition.requestedOpen ? 'open' : 'closed',
+      shouldStartFromZero: false,
+      version: currentTransition.version + 1,
+    };
+
+    setTransition(currentTransition);
+  }
+
+  const {
+    phase,
+    shouldStartFromZero,
+    targetPaneSize,
+    version: transitionVersion,
+  } = currentTransition;
 
   const setAllotmentHandle = useCallback((handle: AllotmentHandle | null): void => {
     allotmentRef.current = handle;
   }, []);
 
-  const setPaneSize = useCallback(
+  const applyPaneSize = useCallback(
     (size: number): void => {
       const next = composePaneSizes(sizesRef.current, paneIndex, size);
+
       sizesRef.current = next;
-      onPaneSizeChangeRef.current?.(readPaneSize(next, paneIndex));
+      onPaneSizeChange?.(readPaneSize(next, paneIndex));
       allotmentRef.current?.resize(next);
     },
-    [paneIndex],
+    [onPaneSizeChange, paneIndex],
+  );
+
+  const setPaneSize = useCallback(
+    (size: number): void => {
+      applyPaneSize(size);
+    },
+    [applyPaneSize],
   );
 
   const onChange = useCallback(
     (sizes: number[]): void => {
-      sizesRef.current = normalizeSplitSizes(sizes, sizesRef.current);
-      onPaneSizeChangeRef.current?.(readPaneSize(sizesRef.current, paneIndex));
+      const next = normalizeSplitSizes(sizes, sizesRef.current);
+
+      sizesRef.current = next;
+      onPaneSizeChange?.(readPaneSize(next, paneIndex));
     },
-    [paneIndex],
+    [onPaneSizeChange, paneIndex],
   );
 
-  useLayoutEffect(() => {
-    paneSizeRef.current = paneSize;
-  }, [paneSize]);
+  useAbortableEffect(
+    (signal) => {
+      if (transitionVersion === 0) return;
 
-  useLayoutEffect(() => {
-    onPaneSizeChangeRef.current = onPaneSizeChange;
-  }, [onPaneSizeChange]);
+      if (phase === 'open' || phase === 'closed') {
+        if (readPaneSize(sizesRef.current, paneIndex) !== targetPaneSize) {
+          applyPaneSize(targetPaneSize);
+        }
 
-  useLayoutEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
+        return;
+      }
 
-    if (lastOpenRef.current === open) return;
-    lastOpenRef.current = open;
+      const startSize = shouldStartFromZero ? 0 : readPaneSize(sizesRef.current, paneIndex);
+      const completedPhase: SplitPanePhase = phase === 'opening' ? 'open' : 'closed';
 
-    const setPhaseState = (nextPhase: SplitPanePhase): void => {
-      phaseRef.current = nextPhase;
-      phaseStore.setPhase(nextPhase);
-    };
+      applyPaneSize(startSize);
 
-    const applyPaneSize = (size: number): void => {
-      const next = composePaneSizes(sizesRef.current, paneIndex, size);
-      sizesRef.current = next;
-      onPaneSizeChangeRef.current?.(readPaneSize(next, paneIndex));
-      allotmentRef.current?.resize(next);
-    };
+      const controls = animate(startSize, targetPaneSize, {
+        duration: SHELL_TRANSITION.duration,
+        ease: SHELL_TRANSITION.ease,
+        onUpdate(latest) {
+          if (!signal.aborted) applyPaneSize(latest);
+        },
+        onComplete() {
+          if (signal.aborted) return;
 
-    animationRef.current?.stop();
+          applyPaneSize(targetPaneSize);
 
-    const targetSize = open ? paneSizeRef.current : 0;
-    const currentSize = readPaneSize(sizesRef.current, paneIndex);
-    const startSize = open && phaseRef.current === 'closed' ? 0 : currentSize;
-    const nextPhase: SplitPanePhase = open ? 'opening' : 'closing';
+          setTransition((latest) => {
+            if (latest.version !== transitionVersion) return latest;
 
-    setPhaseState(nextPhase);
-    applyPaneSize(startSize);
+            return {
+              ...latest,
+              phase: completedPhase,
+              shouldStartFromZero: false,
+            };
+          });
+        },
+      });
 
-    if (reducedMotion || Math.abs(targetSize - startSize) < 0.5) {
-      applyPaneSize(targetSize);
-      setPhaseState(open ? 'open' : 'closed');
-      animationRef.current = null;
-      return;
-    }
-
-    let controls: ReturnType<typeof animate> | null = null;
-    controls = animate(startSize, targetSize, {
-      duration: SHELL_TRANSITION.duration,
-      ease: SHELL_TRANSITION.ease,
-      onUpdate: applyPaneSize,
-      onComplete() {
-        if (animationRef.current !== controls) return;
-        animationRef.current = null;
-        setPhaseState(open ? 'open' : 'closed');
-      },
-    });
-    animationRef.current = controls;
-
-    return () => {
-      controls.stop();
-      if (animationRef.current === controls) animationRef.current = null;
-    };
-  }, [open, paneIndex, phaseStore, reducedMotion]);
-
-  useEffect(() => () => animationRef.current?.stop(), []);
+      return () => {
+        controls.stop();
+      };
+    },
+    [applyPaneSize, paneIndex, phase, shouldStartFromZero, targetPaneSize, transitionVersion],
+  );
 
   const paneVisible = open || phase !== 'closed';
-  const isAnimating = phase === 'opening' || phase === 'closing';
+  const isAnimating = isAnimatingPhase(phase);
 
   return {
     setAllotmentHandle,
@@ -183,30 +215,8 @@ export function getShellContentMotionStyle({
   };
 }
 
-type SplitSizes = [number, number];
-
-interface PhaseStore {
-  getSnapshot: () => SplitPanePhase;
-  setPhase: (phase: SplitPanePhase) => void;
-  subscribe: (listener: () => void) => () => void;
-}
-
-function createPhaseStore(initialPhase: SplitPanePhase): PhaseStore {
-  let phase = initialPhase;
-  const listeners = new Set<() => void>();
-
-  return {
-    getSnapshot: () => phase,
-    setPhase(nextPhase) {
-      if (phase === nextPhase) return;
-      phase = nextPhase;
-      for (const listener of listeners) listener();
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
+function isAnimatingPhase(phase: SplitPanePhase): boolean {
+  return phase === 'opening' || phase === 'closing';
 }
 
 function createInitialSizes(
@@ -215,24 +225,32 @@ function createInitialSizes(
   paneSize: number,
   restSize: number,
 ): SplitSizes {
-  return paneIndex === 0 ? [open ? paneSize : 0, restSize] : [restSize, open ? paneSize : 0];
+  const safePaneSize = open ? Math.max(0, paneSize) : 0;
+  const safeRestSize = Math.max(0, restSize);
+
+  return paneIndex === 0 ? [safePaneSize, safeRestSize] : [safeRestSize, safePaneSize];
 }
 
 function normalizeSplitSizes(sizes: number[], fallback: SplitSizes): SplitSizes {
-  return [readSize(sizes[0], fallback[0]), readSize(sizes[1], fallback[1])];
+  const first =
+    typeof sizes[0] === 'number' && Number.isFinite(sizes[0]) ? Math.max(0, sizes[0]) : fallback[0];
+
+  const second =
+    typeof sizes[1] === 'number' && Number.isFinite(sizes[1]) ? Math.max(0, sizes[1]) : fallback[1];
+
+  return [first, second];
 }
 
 function composePaneSizes(current: SplitSizes, paneIndex: 0 | 1, paneSize: number): SplitSizes {
   const total = Math.max(1, current[0] + current[1]);
   const safePaneSize = Math.max(0, paneSize);
   const restSize = Math.max(0, total - safePaneSize);
+
   return paneIndex === 0 ? [safePaneSize, restSize] : [restSize, safePaneSize];
 }
 
 function readPaneSize(sizes: SplitSizes, paneIndex: 0 | 1): number {
-  return Math.max(0, sizes[paneIndex]);
-}
+  const size = sizes[paneIndex];
 
-function readSize(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Number.isFinite(size) ? Math.max(0, size) : 0;
 }

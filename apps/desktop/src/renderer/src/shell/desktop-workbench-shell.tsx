@@ -9,7 +9,7 @@ import { Button } from 'coss-ui/components/button';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { XIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { systemBridge } from '@/ipc';
 import { DesktopChrome } from './chrome/chrome';
@@ -75,6 +75,15 @@ function DesktopShell({
   const [desktopPlatform, setDesktopPlatform] = useState<DesktopPlatform>(() =>
     initialDesktopPlatform(),
   );
+  const syncSidebarPaneSize = useCallback((size: number): void => {
+    setShellPaneCssSize(shellRootRef.current, '--lc-sidebar-w', size);
+  }, []);
+  const syncRightPaneSize = useCallback((size: number): void => {
+    setShellPaneCssSize(shellRootRef.current, '--lc-right-w', size);
+  }, []);
+  const syncBottomPaneSize = useCallback((size: number): void => {
+    setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size);
+  }, []);
   const { sidebarOpen, layout, expansionStack, rightPanel, bottomPanel } = shellState;
   const {
     setAllotmentHandle: setSidebarAllotmentHandle,
@@ -87,7 +96,7 @@ function DesktopShell({
     open: sidebarOpen,
     paneIndex: 0,
     paneSize: layout.sidebarW,
-    onPaneSizeChange: (size) => setShellPaneCssSize(shellRootRef.current, '--lc-sidebar-w', size),
+    onPaneSizeChange: syncSidebarPaneSize,
   });
   const {
     setAllotmentHandle: setRightAllotmentHandle,
@@ -102,7 +111,7 @@ function DesktopShell({
     open: rightPanel.open,
     paneIndex: 1,
     paneSize: layout.rightW,
-    onPaneSizeChange: (size) => setShellPaneCssSize(shellRootRef.current, '--lc-right-w', size),
+    onPaneSizeChange: syncRightPaneSize,
   });
   const {
     setAllotmentHandle: setBottomAllotmentHandle,
@@ -117,7 +126,7 @@ function DesktopShell({
     open: bottomPanel.open,
     paneIndex: 1,
     paneSize: layout.bottomH,
-    onPaneSizeChange: (size) => setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size),
+    onPaneSizeChange: syncBottomPaneSize,
   });
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
