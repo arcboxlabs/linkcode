@@ -191,7 +191,7 @@ export function WebPreviewBody({
     <iframe
       className={cn('min-h-0 flex-1 border-0 bg-white', className)}
       ref={ref}
-      sandbox="allow-scripts allow-forms allow-popups allow-presentation"
+      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation"
       title={title}
       {...props}
     />
