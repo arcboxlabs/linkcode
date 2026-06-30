@@ -3,65 +3,19 @@ import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
   DEFAULT_LAYOUT,
-  DESKTOP_SHELL_STORAGE_KEY,
-  LEGACY_DESKTOP_SHELL_STORAGE_KEY,
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
   createPanelState,
-  parseDesktopShellState,
-  readDesktopShellState,
-  serializeShellState,
-} from '../shell/state/shell-state';
-import type { DesktopShellState } from '../shell/state/shell-state';
+  desktopShellStateModel,
+} from '../shell/state/local/model';
+import type { DesktopShellState } from '../shell/state/local/model';
 
-class MemoryStorage implements Storage {
-  readonly #items = new Map<string, string>();
-
-  get length(): number {
-    return this.#items.size;
-  }
-
-  clear(): void {
-    this.#items.clear();
-  }
-
-  getItem(key: string): string | null {
-    return this.#items.get(key) ?? null;
-  }
-
-  key(index: number): string | null {
-    return Array.from(this.#items.keys())[index] ?? null;
-  }
-
-  removeItem(key: string): void {
-    this.#items.delete(key);
-  }
-
-  setItem(key: string, value: string): void {
-    this.#items.set(key, value);
-  }
-}
-
-describe('desktop shell state storage', () => {
-  it('falls back for invalid JSON and removes the old storage key', () => {
-    const storage = new MemoryStorage();
-    storage.setItem(LEGACY_DESKTOP_SHELL_STORAGE_KEY, JSON.stringify({ maxPanel: 'right' }));
-    storage.setItem(DESKTOP_SHELL_STORAGE_KEY, '{');
-
-    const state = readDesktopShellState(storage);
-
-    expect(panelTypes(state.rightPanel)).toEqual(['review']);
-    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
-    expect(state.layout).toEqual(DEFAULT_LAYOUT);
-    expect(storage.getItem(LEGACY_DESKTOP_SHELL_STORAGE_KEY)).toBeNull();
-  });
-
-  it('ignores old unversioned shapes even when stored under the latest key', () => {
-    const state = parseDesktopShellState({
+describe('desktop shell state persistence', () => {
+  it('requires the persisted version marker', () => {
+    const state = desktopShellStateModel.parse({
       sidebarOpen: false,
-      maxPanel: 'right',
       rightPanel: { open: true, tabs: ['browser'], activeTabIndex: 0 },
       bottomPanel: { open: true, tabs: ['files'], activeTabIndex: 0 },
     });
@@ -73,7 +27,7 @@ describe('desktop shell state storage', () => {
   });
 
   it('clamps latest layout values', () => {
-    const state = parseDesktopShellState({
+    const state = desktopShellStateModel.parse({
       version: 1,
       sidebarOpen: true,
       layout: { sidebarW: 10, rightW: 10000, bottomH: 1 },
@@ -90,7 +44,7 @@ describe('desktop shell state storage', () => {
   });
 
   it('rejects invalid panel tabs and falls back when none remain', () => {
-    const state = parseDesktopShellState({
+    const state = desktopShellStateModel.parse({
       version: 1,
       sidebarOpen: true,
       layout: {
@@ -110,7 +64,7 @@ describe('desktop shell state storage', () => {
   });
 
   it('clamps active indexes below bounds', () => {
-    const state = parseDesktopShellState({
+    const state = desktopShellStateModel.parse({
       version: 1,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
@@ -122,12 +76,11 @@ describe('desktop shell state storage', () => {
     expect(activePanelType(state, 'rightPanel')).toBe('files');
   });
 
-  it('filters expansion stack to open panels and ignores legacy maxPanel', () => {
-    const state = parseDesktopShellState({
+  it('filters expansion stack to open panels', () => {
+    const state = desktopShellStateModel.parse({
       version: 1,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
-      maxPanel: 'right',
       expansionStack: ['right', 'bottom', 'bottom', 'invalid'],
       rightPanel: { open: false, tabs: ['review'], activeTabIndex: 0 },
       bottomPanel: { open: true, tabs: ['terminal'], activeTabIndex: 0 },
@@ -145,35 +98,13 @@ describe('desktop shell state storage', () => {
       bottomPanel: createPanelState(true, 'files'),
     };
 
-    const parsed = parseDesktopShellState(serializeShellState(source));
+    const parsed = desktopShellStateModel.parse(desktopShellStateModel.serialize(source));
 
     expect(parsed.sidebarOpen).toBe(false);
     expect(parsed.layout).toEqual(source.layout);
     expect(parsed.expansionStack).toEqual(['right', 'bottom']);
     expect(panelTypes(parsed.rightPanel)).toEqual(['browser']);
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
-  });
-
-  it('ignores and removes the old unversioned storage key', () => {
-    const storage = new MemoryStorage();
-    storage.setItem(
-      LEGACY_DESKTOP_SHELL_STORAGE_KEY,
-      JSON.stringify({
-        sidebarOpen: false,
-        maxPanel: 'right',
-        rightPanel: { open: true, tabs: ['browser'], activeTabIndex: 0 },
-      }),
-    );
-
-    const state = readDesktopShellState(storage);
-
-    expect(state.sidebarOpen).toBe(true);
-    expect(state.layout).toEqual(DEFAULT_LAYOUT);
-    expect(state.rightPanel.open).toBe(false);
-    expect(state.bottomPanel.open).toBe(false);
-    expect(panelTypes(state.rightPanel)).toEqual(['review']);
-    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
-    expect(storage.getItem(LEGACY_DESKTOP_SHELL_STORAGE_KEY)).toBeNull();
   });
 });
 

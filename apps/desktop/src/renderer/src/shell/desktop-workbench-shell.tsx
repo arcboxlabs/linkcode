@@ -33,9 +33,9 @@ import {
   readPaneSize,
   removeExpandedPanel,
   setPanelInShellState,
-} from './state/shell-state';
-import type { DesktopShellState, LayoutState, PanelSide, PanelState } from './state/shell-state';
-import { useDesktopShellState } from './state/use-shell-state';
+} from './state/local/model';
+import type { DesktopShellState, LayoutState, PanelSide, PanelState } from './state/local/model';
+import { useDesktopShellState } from './state/local/storage';
 
 type DesktopPlatform = 'darwin' | 'win32' | 'other';
 

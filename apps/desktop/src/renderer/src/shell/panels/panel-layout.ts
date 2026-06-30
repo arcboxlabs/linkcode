@@ -1,5 +1,5 @@
-import { MIN_MAIN_SIZE, RIGHT_PANEL_MIN_SIZE } from '../state/shell-state';
-import type { PanelSide } from '../state/shell-state';
+import { MIN_MAIN_SIZE, RIGHT_PANEL_MIN_SIZE } from '../state/local/model';
+import type { PanelSide } from '../state/local/model';
 
 export type ChromeSurface = 'normal' | 'right-max' | 'bottom-max';
 
