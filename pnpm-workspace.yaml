@@ -85,6 +85,10 @@ catalog:
 
   # Testing
   vitest: ^4.1.9
+  unplugin-icons: ^23.0.1
+  '@svgr/core': ^8.1.0
+  '@svgr/plugin-jsx': ^8.1.0
+  '@proj-airi/lobe-icons': ^1.0.19
 
 minimumReleaseAgeExclude:
   - '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.179'

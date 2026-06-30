@@ -7,6 +7,7 @@ import { BotIcon, ClockIcon, FilePlus2Icon, SearchIcon, SparklesIcon, XIcon } fr
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
+import { AGENT_LABELS, AgentIcon } from './agent-icon';
 
 export interface SessionSidebarProps {
   sessions: SessionInfo[];
@@ -20,20 +21,6 @@ export interface SessionSidebarProps {
 }
 
 export type SessionGroupKey = 'today' | 'yesterday' | 'earlier';
-
-const AGENT_LABELS: Record<AgentKind, string> = {
-  'claude-code': 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'Pi',
-};
-
-const AGENT_INITIALS: Record<AgentKind, string> = {
-  'claude-code': 'CC',
-  codex: 'CX',
-  opencode: 'OC',
-  pi: 'PI',
-};
 
 const GROUP_LABELS: Record<SessionGroupKey, string> = {
   today: 'Today',
@@ -122,9 +109,7 @@ function NewTaskMenu({ onCreate }: { onCreate: (kind: AgentKind) => void }): Rea
                 onCreate(kind);
               }}
             >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary font-semibold text-primary-foreground text-xs">
-                {AGENT_INITIALS[kind]}
-              </span>
+              <AgentIcon kind={kind} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm">{AGENT_LABELS[kind]}</span>
                 <span className="block truncate text-muted-foreground text-xs">
@@ -242,9 +227,7 @@ export function CompactSessionRow({
         className="flex w-full min-w-0 gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] py-1.5 pr-8 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onSelect}
       >
-        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-primary font-semibold text-primary-foreground text-xs">
-          {AGENT_INITIALS[session.kind]}
-        </span>
+        <AgentIcon kind={session.kind} className="mt-0.5" />
         <span className="min-w-0 flex-1">
           <span className="line-clamp-2 font-medium text-sm leading-snug">{title}</span>
           <span className="mt-0.5 flex min-w-0 items-center gap-1 font-mono text-muted-foreground text-xs">

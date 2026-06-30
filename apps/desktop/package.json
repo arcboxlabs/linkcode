@@ -22,6 +22,8 @@
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
+    "@sentry/electron": "^7.14.0",
+    "@sentry/react": "10.60.0",
     "allotment": "^1.20.5",
     "coss-ui": "workspace:*",
     "electron-log": "^5.4.4",
@@ -35,6 +37,9 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/lobe-icons": "catalog:",
+    "@svgr/core": "catalog:",
+    "@svgr/plugin-jsx": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
@@ -46,6 +51,7 @@
     "electron-vite": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
+    "unplugin-icons": "catalog:",
     "vite": "catalog:"
   }
 }

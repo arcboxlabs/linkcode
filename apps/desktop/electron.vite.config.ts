@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
+import { ExternalPackageIconLoader } from 'unplugin-icons/loaders';
+import Icons from 'unplugin-icons/vite';
 
 // Workspace packages are exported as TS source, so they must be bundled into main/preload (they can't be runtime externals).
 const bundleWorkspace = {
@@ -34,6 +36,11 @@ export default defineConfig({
         },
       }),
       tailwindcss(),
+      Icons({
+        compiler: 'jsx',
+        jsx: 'react',
+        customCollections: ExternalPackageIconLoader('@proj-airi/lobe-icons'),
+      }),
     ],
     resolve: {
       alias: { '@desktop': resolve(__dirname, 'src/renderer/src') },

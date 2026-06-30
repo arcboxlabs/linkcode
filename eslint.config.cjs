@@ -7,6 +7,7 @@ module.exports = require('eslint-config-sukka').sukka(
   {
     ignores: {
       customGlobs: [
+        'assets/**',
         '**/dist/**',
         '**/out/**',
         '**/build/**',
@@ -90,6 +91,15 @@ module.exports = require('eslint-config-sukka').sukka(
     ],
     rules: {
       '@typescript-eslint/class-methods-use-this': 'off',
+    },
+  },
+  {
+    // `~icons/*` are unplugin-icons virtual modules resolved by Vite at build time,
+    // so the TypeScript import resolver can't see them.
+    name: 'linkcode/unplugin-icons-virtual-modules',
+    files: ['packages/ui/src/shell/agent-icon.tsx'],
+    rules: {
+      'import-x/no-unresolved': ['error', { ignore: ['^~icons/'] }],
     },
   },
 );

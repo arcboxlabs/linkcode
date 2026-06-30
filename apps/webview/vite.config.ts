@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { ExternalPackageIconLoader } from 'unplugin-icons/loaders';
+import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -11,6 +13,11 @@ export default defineConfig({
       },
     }),
     tailwindcss(),
+    Icons({
+      compiler: 'jsx',
+      jsx: 'react',
+      customCollections: ExternalPackageIconLoader('@proj-airi/lobe-icons'),
+    }),
   ],
   resolve: { alias: { '@webview': resolve(import.meta.dirname, 'src') } },
   server: { port: 5173 },
