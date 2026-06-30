@@ -13,6 +13,7 @@
   "dependencies": {
     "@linkcode/i18n": "workspace:*",
     "@linkcode/ipc": "workspace:*",
+    "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
