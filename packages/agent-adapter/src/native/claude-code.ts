@@ -85,6 +85,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private q: Query | null = null;
   private abort: AbortController | null = null;
   private sessionId: string | undefined;
+  /** Current segment's ids, refreshed each turn and after every tool call so text / thinking emitted
+   * before and after a tool render as separate bubbles instead of merging into one. */
+  private messageId: MessageId = nextMessageId();
+  private thoughtId: MessageId = nextMessageId();
 
   protected async onStart(): Promise<void> {
     // query() starts per-prompt; just verify the SDK is installed up front.
@@ -154,8 +158,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const abort = new AbortController();
     this.abort = abort;
-    const messageId = nextMessageId();
-    const thoughtId = nextMessageId();
+    this.messageId = nextMessageId();
+    this.thoughtId = nextMessageId();
     this.emitStatus('running');
     const q = query({
       prompt: contentToText(content),
@@ -171,7 +175,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
     this.q = q;
     try {
-      for await (const msg of q) this.handleMessage(msg, messageId, thoughtId);
+      for await (const msg of q) this.handleMessage(msg);
     } catch (err) {
       if (!abort.signal.aborted) {
         this.emitError(err instanceof Error ? err.message : String(err));
@@ -209,14 +213,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return { behavior: 'deny', message: 'Denied by the user' } satisfies PermissionResult;
   };
 
-  private handleMessage(msg: SDKMessage, messageId: MessageId, thoughtId: MessageId): void {
+  protected handleMessage(msg: SDKMessage): void {
     if ('session_id' in msg && typeof msg.session_id === 'string') this.sessionId = msg.session_id;
     // Resumed sessions replay prior turns as `isReplay` frames (historical text + tool_results). Skip
     // them: re-emitting as live events would flood the stream and pollute the tool-call snapshot map.
     if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
-        this.handleStreamEvent(msg.event, messageId, thoughtId);
+        this.handleStreamEvent(msg.event);
         break;
       case 'assistant':
         this.handleAssistant(msg.message);
@@ -232,14 +236,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
   }
 
-  private handleStreamEvent(event: StreamEvent, messageId: MessageId, thoughtId: MessageId): void {
+  private handleStreamEvent(event: StreamEvent): void {
     if (event.type !== 'content_block_delta') return;
     const delta = event.delta;
-    if (delta.type === 'text_delta') this.emitAssistantText(delta.text, messageId);
-    else if (delta.type === 'thinking_delta') this.emitThought(delta.thinking, thoughtId);
+    if (delta.type === 'text_delta') this.emitAssistantText(delta.text, this.messageId);
+    else if (delta.type === 'thinking_delta') this.emitThought(delta.thinking, this.thoughtId);
   }
 
   private handleAssistant(message: AssistantMessage): void {
+    let calledTool = false;
     for (const block of message.content) {
       if (block.type === 'tool_use') {
         // Announce the tool the moment Claude requests it; the matching tool_result settles it.
@@ -250,7 +255,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           status: 'in_progress',
           rawInput: block.input,
         });
+        calledTool = true;
       }
+    }
+    // A tool call closes this assistant segment; text Claude streams after the tool_result groups into a
+    // fresh bubble rather than merging with the pre-tool narration.
+    if (calledTool) {
+      this.messageId = nextMessageId();
+      this.thoughtId = nextMessageId();
     }
   }
 
