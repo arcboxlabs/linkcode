@@ -1,3 +1,5 @@
+import { PaginationFooter } from '@webview/components/pagination';
+import { usePaginationRender } from '@webview/components/pagination/use-pagination-render';
 import {
   TableBody,
   TableCell,
@@ -10,8 +12,6 @@ import { cn } from 'coss-ui/lib/utils';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { PaginationFooter } from '@/components/pagination';
-import { usePaginationRender } from '@/components/pagination/use-pagination-render';
 import type { TableDefinition } from './core/create-table';
 import { createTableRender } from './core/table-render';
 import type { SortDirection } from './core/types';

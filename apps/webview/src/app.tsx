@@ -1,8 +1,8 @@
 import { Workbench, WorkbenchProviders } from '@linkcode/workbench';
+import { DAEMON_URL, transport } from '@webview/lib/transport';
+import { RootProviders } from '@webview/providers/root-providers';
+import { WebWorkbenchShell } from '@webview/shell/web-workbench-shell';
 import type { ReactNode } from 'react';
-import { DAEMON_URL, transport } from '@/lib/transport';
-import { RootProviders } from '@/providers/root-providers';
-import { WebWorkbenchShell } from '@/shell/web-workbench-shell';
 
 export function App(): ReactNode {
   return (

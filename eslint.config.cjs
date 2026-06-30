@@ -1,5 +1,6 @@
 'use strict';
 
+const path = require('node:path');
 const { createTypeScriptImportResolver } = require('eslint-import-resolver-typescript');
 
 module.exports = require('eslint-config-sukka').sukka(
@@ -23,6 +24,7 @@ module.exports = require('eslint-config-sukka').sukka(
     },
     stylistic: false,
     ts: {
+      tsconfigRootDir: __dirname,
       allowDefaultProject: [
         '*.config.ts',
         'apps/*/*.config.ts',
@@ -39,7 +41,11 @@ module.exports = require('eslint-config-sukka').sukka(
       'import-x/resolver-next': [
         createTypeScriptImportResolver({
           noWarnOnMultipleProjects: true,
-          project: ['tsconfig.json', 'apps/*/tsconfig.json', 'packages/*/tsconfig.json'],
+          project: [
+            path.join(__dirname, 'tsconfig.json'),
+            path.join(__dirname, 'apps/*/tsconfig.json'),
+            path.join(__dirname, 'packages/*/tsconfig.json'),
+          ],
         }),
       ],
     },
