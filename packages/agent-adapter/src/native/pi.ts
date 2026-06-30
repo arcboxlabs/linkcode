@@ -14,7 +14,8 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
-  /** Stable per-turn ids so all text / thinking deltas of one turn group into one bubble each. */
+  /** Current segment's ids, refreshed each turn and at every tool boundary so text / thinking emitted
+   * before and after a tool render as separate bubbles instead of merging into one. */
   private messageId: MessageId = nextMessageId();
   private thoughtId: MessageId = nextMessageId();
 
@@ -70,10 +71,10 @@ export class PiAdapter extends BaseAgentAdapter {
     return Array.isArray(t) ? t.filter((x): x is string => typeof x === 'string') : undefined;
   }
 
-  private handleEvent(ev: AgentSessionEvent): void {
+  protected handleEvent(ev: AgentSessionEvent): void {
     switch (ev.type) {
       case 'agent_start':
-        // Fresh ids per turn; text/thinking within the turn reuse them (one bubble each).
+        // Fresh ids at the turn start; a tool boundary later opens the next segment (see below).
         this.messageId = nextMessageId();
         this.thoughtId = nextMessageId();
         this.emitStatus('running');
@@ -96,6 +97,9 @@ export class PiAdapter extends BaseAgentAdapter {
           status: 'in_progress',
           rawInput: ev.args,
         });
+        // The tool closes the current segment; narration after it groups into a new bubble.
+        this.messageId = nextMessageId();
+        this.thoughtId = nextMessageId();
         break;
       case 'tool_execution_end':
         this.emitTool({
