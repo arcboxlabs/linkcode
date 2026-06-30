@@ -2,9 +2,9 @@ packages:
   - "apps/*"
   - "packages/*"
 
-# pnpm 11 从 pnpm-workspace.yaml（而非 .npmrc）读取这些设置。
-# hoisted 布局让三方依赖平铺，React Native / Expo 的 Metro 才能解析传递依赖
-# （如 nativewind → react-native-css-interop）。
+# pnpm 11 reads these settings from pnpm-workspace.yaml instead of .npmrc.
+# A hoisted layout flattens third-party dependencies so React Native / Expo's Metro
+# can resolve transitive dependencies such as nativewind → react-native-css-interop.
 nodeLinker: hoisted
 autoInstallPeers: true
 strictPeerDependencies: false
@@ -18,7 +18,8 @@ peerDependencyRules:
 # falsely reports "node_modules missing". Turbo already orders/builds deps, so disable the per-run check.
 verifyDepsBeforeRun: false
 
-# pnpm 默认拦截依赖的安装脚本，这里显式放行需要编译/下载的原生包。
+# pnpm blocks dependency install scripts by default, so explicitly allow native packages
+# that need compilation or downloads.
 allowBuilds:
   "@biomejs/biome": true
   electron: true
@@ -31,56 +32,58 @@ allowBuilds:
   "@google/genai": false
   protobufjs: false
   unrs-resolver: false
+  electron-winstaller: false
 
-# 共享依赖版本集中在 catalog，业务包用 "catalog:" 引用，保证全仓一致。
-# apps/mobile 的 React 版本同样走 catalog；react-native 仍由 Expo SDK 锁定。
+# Shared dependency versions live in the catalog. Application packages reference them
+# with "catalog:" to keep versions consistent across the workspace.
+# apps/mobile's React version also comes from the catalog; react-native remains pinned by the Expo SDK.
 catalog:
-  # 语言 / 类型
+  # Language / types
   typescript: ^6.0.3
   "@types/node": ^25.9.3
 
-  # 数据契约
+  # Data contracts
   zod: ^4.4.3
 
-  # React（web / desktop 渲染层）
+  # React for web / desktop renderers
   react: 19.2.7
   react-dom: 19.2.7
   react-router: ^7.18.0
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
 
-  # 客户端数据层
+  # Client data layer
   "@tanstack/react-query": ^5.62.7
   swr: ^2.3.0
   use-intl: ^4.13.0
   lucide-react: ^1.18.0
 
-  # web 构建
+  # Web build
   vite: ^7.3.5
   "@vitejs/plugin-react": ^5.2.0
   babel-plugin-react-compiler: ^1.0.0
 
-  # 样式（web / desktop 渲染层）
+  # Styling for web / desktop renderers
   tailwindcss: ^4.3.1
   "@tailwindcss/postcss": ^4.3.1
   "@tailwindcss/vite": ^4.3.1
 
-  # desktop（Electron）
+  # Desktop / Electron
   electron: ^42.4.1
   electron-vite: ^5.0.0
   electron-builder: ^26.15.3
 
-  # server / 通信
+  # Server / communication
   ws: ^8.18.0
   "@types/ws": ^8.5.13
   socket.io: ^4.8.1
   socket.io-client: ^4.8.1
 
-  # 构建 / 运行工具
+  # Build / runtime tools
   tsx: ^4.19.2
   tsup: ^8.3.5
 
-  # 测试
+  # Testing
   vitest: ^4.1.9
 
 minimumReleaseAgeExclude:
