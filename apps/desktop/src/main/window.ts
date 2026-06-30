@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { UPDATER_STATUS_CHANNEL } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
 import { BrowserWindow, ipcMain, nativeTheme } from 'electron';
 // electron-vite resolves `?asset` to a runtime file path. Used as the Win/Linux window icon in dev
@@ -7,6 +8,7 @@ import icon from '../../build-resources/icon-dock.png?asset';
 import { desktopBackdropOptions, desktopBackgroundColor } from './appearance';
 import { APP_NAME } from './constants';
 import { systemContextFor } from './system-context';
+import { onUpdaterStatus } from './updater';
 
 export function createDesktopWindow(): BrowserWindow {
   const win = createWindow();
@@ -14,6 +16,13 @@ export function createDesktopWindow(): BrowserWindow {
 
   // The data plane never goes through here; Eventa is used only for desktop system / UI calls.
   bindElectronSystemIpc({ ipcMain, window: win, ctx });
+
+  // Forward auto-update status (a main-side singleton) to this window's renderer.
+  const unsubscribeUpdater = onUpdaterStatus((status) => {
+    if (!win.isDestroyed()) win.webContents.send(UPDATER_STATUS_CHANNEL, status);
+  });
+  win.once('closed', unsubscribeUpdater);
+
   return win;
 }
 

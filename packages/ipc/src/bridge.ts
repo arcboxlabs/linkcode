@@ -1,4 +1,9 @@
-import type { PickFileOptions } from './context';
+import type {
+  DesktopSettings,
+  DesktopSettingsPatch,
+  PickFileOptions,
+  UpdaterStatus,
+} from './context';
 
 /**
  * SystemBridge: the capability contract of TypeSafe IPC (PLAN §6) — system / UI capabilities only.
@@ -18,5 +23,17 @@ export interface SystemBridge {
   app: {
     version(): Promise<string>;
     platform(): Promise<string>;
+    /** Trigger a manual update check; observe progress via `onUpdaterStatus`. */
+    checkForUpdates(): Promise<void>;
+    /** Subscribe to auto-update lifecycle status pushed from main. */
+    onUpdaterStatus(cb: (status: UpdaterStatus) => void): () => void;
+    /** Subscribe to the menubar/Cmd+, "open settings" push from main. */
+    onOpenSettings(cb: () => void): () => void;
+  };
+  settings: {
+    get(): Promise<DesktopSettings>;
+    set(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
+    /** Synchronous boot snapshot — safe to read during first render. */
+    snapshot(): DesktopSettings;
   };
 }

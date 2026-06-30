@@ -1,7 +1,13 @@
 import { defineInvokeEventa } from '@moeru/eventa';
-import type { PickFileOptions } from './context';
+import type { DesktopSettings, DesktopSettingsPatch, PickFileOptions } from './context';
 
 export const WINDOW_MAXIMIZED_CHANGED_CHANNEL = 'linkcode.system.window.maximizedChanged';
+/** Synchronous boot snapshot of desktop settings (read via `ipcRenderer.sendSync`). */
+export const SETTINGS_SNAPSHOT_CHANNEL = 'linkcode.system.settings.snapshot';
+/** Main → renderer push: the menubar/Cmd+, asked to open Settings. */
+export const SETTINGS_OPEN_CHANNEL = 'linkcode.system.settings.open';
+/** Main → renderer push: auto-update lifecycle status. */
+export const UPDATER_STATUS_CHANNEL = 'linkcode.system.app.updaterStatus';
 
 export const systemIpcEvents = {
   windowMinimize: defineInvokeEventa<void>('linkcode.system.window.minimize'),
@@ -13,4 +19,9 @@ export const systemIpcEvents = {
   ),
   appVersion: defineInvokeEventa<string>('linkcode.system.app.version'),
   appPlatform: defineInvokeEventa<string>('linkcode.system.app.platform'),
+  appCheckForUpdates: defineInvokeEventa<void>('linkcode.system.app.checkForUpdates'),
+  settingsGet: defineInvokeEventa<DesktopSettings>('linkcode.system.settings.get'),
+  settingsSet: defineInvokeEventa<DesktopSettings, DesktopSettingsPatch>(
+    'linkcode.system.settings.set',
+  ),
 };
