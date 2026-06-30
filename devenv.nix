@@ -42,6 +42,13 @@
         entry = "pnpm typecheck";
         pass_filenames = false;
       };
+
+      # Reject newly added files over 512 KB so baked PNGs / stray binaries can't bloat history.
+      # Vector/.icon sources and optimized icons stay well under this; raise per-file via Git LFS if ever needed.
+      check-added-large-files = {
+        enable = true;
+        args = [ "--maxkb=512" ];
+      };
     };
   };
 
