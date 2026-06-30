@@ -68,7 +68,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14 # arm64 runner; produces universal builds (see electron-builder.yml)
+          - os: macos-26 # arm64 runner; needs Xcode 26 (actool >= 26) to compile mac.icon (.icon) into Assets.car. Produces universal builds (see electron-builder.yml)
             platform: mac
           # Temporarily macOS-only. Re-enable Linux/Windows by uncommenting these — the Windows
           # job already carries the Azure Trusted Signing wiring below.
