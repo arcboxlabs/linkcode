@@ -13,7 +13,10 @@
     enable = true;
     package = pkgs.nodejs_24;
     corepack.enable = false;
-    pnpm.enable = true;
+    pnpm = {
+      enable = true;
+      install.enable = true;
+    };
   };
 
   scripts.daemon.exec = "pnpm run --filter @linkcode/daemon dev";
