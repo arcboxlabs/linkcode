@@ -3,8 +3,8 @@ import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useStateWithDeps } from 'foxact/use-state-with-deps';
 import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
+import { useCallback, useRef } from 'react';
 
 export const SHELL_TRANSITION = {
   duration: 0.18,

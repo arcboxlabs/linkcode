@@ -8,8 +8,8 @@ import {
   SlashIcon,
   SparklesIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   PromptInput,

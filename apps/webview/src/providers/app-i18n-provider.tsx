@@ -1,8 +1,8 @@
-import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import type { Locale } from '@linkcode/i18n';
+import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import type * as React from 'react';
-import { useMemo } from 'react';
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { IntlProvider } from 'use-intl';
 
 function runtimeLocale(): Locale {

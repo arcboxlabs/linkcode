@@ -1,9 +1,9 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { io } from 'socket.io-client';
 import type { ManagerOptions, Socket, SocketOptions } from 'socket.io-client';
-import { Listeners } from './transport';
+import { io } from 'socket.io-client';
 import type { Transport, Unsubscribe } from './transport';
+import { Listeners } from './transport';
 
 const FRAME_EVENT = 'frame';
 

@@ -1,5 +1,5 @@
-import { BaseAgentAdapter } from '@linkcode/agent-adapter';
 import type { AdapterFactory } from '@linkcode/agent-adapter';
+import { BaseAgentAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryCapabilities,
   AgentHistoryEvent,

@@ -1,7 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { Listeners } from './transport';
 import type { Transport, Unsubscribe } from './transport';
+import { Listeners } from './transport';
 
 /**
  * LocalTransport: local direct-connection (in-process / over IPC) implementation (PLAN §4.4).

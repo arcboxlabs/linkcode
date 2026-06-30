@@ -1,7 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { Listeners } from './transport';
 import type { Transport, Unsubscribe } from './transport';
+import { Listeners } from './transport';
 
 export interface WsTransportOptions {
   url: string;

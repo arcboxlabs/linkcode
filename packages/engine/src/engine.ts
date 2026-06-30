@@ -1,6 +1,5 @@
-import { createAdapter } from '@linkcode/agent-adapter';
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { noop } from 'foxact/noop';
+import { createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentKind,
   SessionId,
@@ -8,8 +7,9 @@ import type {
   StartOptions,
   WireMessage,
 } from '@linkcode/schema';
-import { createWireMessage } from '@linkcode/transport';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import { noop } from 'foxact/noop';
 import { HistoryService } from './history-service';
 
 interface Session {

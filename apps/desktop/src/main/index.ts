@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 import type { SystemContext } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
 import type { BrowserWindowConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
 
 const TRANSPARENT_WINDOW_BACKGROUND = '#00000000';
 // Keep in sync with coss-ui's light/dark `--sidebar` tokens used by `bg-sidebar`.

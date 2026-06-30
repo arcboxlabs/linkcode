@@ -7,7 +7,7 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from 'coss-ui/components/menu';
-import { FileTextIcon, FilesIcon, GlobeIcon, PlusIcon, TerminalIcon, XIcon } from 'lucide-react';
+import { FilesIcon, FileTextIcon, GlobeIcon, PlusIcon, TerminalIcon, XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { PanelControlButton, ShellIconButton } from './shell-control';

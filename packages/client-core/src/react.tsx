@@ -5,13 +5,13 @@ import type {
   SessionInfo,
   StartOptions,
 } from '@linkcode/schema';
-import { nullthrow } from 'foxact/nullthrow';
 import { noop } from 'foxact/noop';
+import { nullthrow } from 'foxact/nullthrow';
 import type * as React from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { LinkCodeClient } from './client';
-import { buildConversation } from './conversation';
 import type { Conversation } from './conversation';
+import { buildConversation } from './conversation';
 
 const ClientContext = createContext<LinkCodeClient | null>(null);
 

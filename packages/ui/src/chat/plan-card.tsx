@@ -2,7 +2,7 @@ import type { Plan } from '@linkcode/schema';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { keyedItems, stableContentKey } from './content-keys';
-import { Plan as PlanPrimitive, PlanContent, PlanHeader, PlanItem } from './plan';
+import { PlanContent, PlanHeader, PlanItem, Plan as PlanPrimitive } from './plan';
 
 export function PlanCard({ plan }: { plan: Plan }): ReactNode {
   const t = useTranslations('workbench.plan');

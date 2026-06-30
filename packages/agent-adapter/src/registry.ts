@@ -1,6 +1,6 @@
 import type { AgentKind } from '@linkcode/schema';
-import { AcpAdapter } from './acp/acp-adapter';
 import type { AcpAgentSpec } from './acp/acp-adapter';
+import { AcpAdapter } from './acp/acp-adapter';
 import type { AgentAdapter } from './adapter';
 import { ClaudeCodeAdapter } from './native/claude-code';
 import { CodexAdapter } from './native/codex';

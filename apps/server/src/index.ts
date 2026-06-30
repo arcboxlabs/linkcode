@@ -1,6 +1,6 @@
 import { parseWireMessage } from '@linkcode/schema';
-import { WebSocketServer } from 'ws';
 import type { RawData, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 
 /**
  * Link Code Server — relay / tunnel (PLAN §4.7).

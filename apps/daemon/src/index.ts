@@ -1,8 +1,8 @@
 import { Engine } from '@linkcode/engine';
-import { createTransportServer, Hub } from '@linkcode/transport/server';
 import type { TransportServer } from '@linkcode/transport/server';
-import { loadConfig } from './config';
+import { createTransportServer, Hub } from '@linkcode/transport/server';
 import type { DaemonListenerConfig } from './config';
+import { loadConfig } from './config';
 
 /**
  * Link Code daemon — the standalone local host process.

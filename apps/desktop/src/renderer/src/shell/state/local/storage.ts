@@ -1,6 +1,6 @@
 import { createLocalStorageState } from 'foxact/create-local-storage-state';
-import { desktopShellStateModel } from './model';
 import type { DesktopShellState } from './model';
+import { desktopShellStateModel } from './model';
 
 const DESKTOP_SHELL_STORAGE_OPTIONS = {
   serializer: stringifyDesktopShellState,

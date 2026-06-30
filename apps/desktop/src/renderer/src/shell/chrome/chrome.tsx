@@ -1,4 +1,4 @@
-import { ShellIconButton, cn } from '@linkcode/ui';
+import { cn, ShellIconButton } from '@linkcode/ui';
 import type { WorkbenchShellHeader } from '@linkcode/workbench';
 import { nullthrow } from 'foxact/nullthrow';
 import {
@@ -10,9 +10,9 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
 } from 'lucide-react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
 import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { CSSProperties, ReactNode, Ref } from 'react';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
 
 type DesktopPanelSide = 'right' | 'bottom';
