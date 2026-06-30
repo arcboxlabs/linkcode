@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --import ./src/instrument.ts src/index.ts",
     "build": "tsup",
-    "start": "node dist/index.js",
+    "start": "node --import ./dist/instrument.js dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
@@ -14,7 +14,9 @@
     "@linkcode/agent-adapter": "workspace:*",
     "@linkcode/engine": "workspace:*",
     "@linkcode/schema": "workspace:*",
-    "@linkcode/transport": "workspace:*"
+    "@linkcode/transport": "workspace:*",
+    "@sentry/node": "10.60.0",
+    "@sentry/profiling-node": "10.60.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",

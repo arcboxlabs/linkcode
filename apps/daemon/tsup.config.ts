@@ -1,7 +1,9 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // instrument.ts is a separate entry so it can be loaded via `node --import ./dist/instrument.js`
+  // before the main bundle — Sentry must initialize before any instrumented module loads.
+  entry: ['src/index.ts', 'src/instrument.ts'],
   format: ['esm'],
   target: 'node24',
   clean: true,

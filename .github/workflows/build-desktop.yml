@@ -99,6 +99,12 @@ jobs:
       - name: Build workspace
         # Builds the desktop package (and any workspace deps that expose a build task) via turbo.
         run: pnpm turbo run build --filter "${{ env.DESKTOP_PACKAGE }}..."
+        env:
+          # electron-vite inlines this into the main bundle here (DSN is a publishable id, not a secret).
+          # Scoped secret name keeps it from clashing with other apps' Sentry DSNs; only signed release
+          # builds carry it. Declared in apps/desktop/turbo.json `build.env` so turbo's strict env mode
+          # passes it through and rebuilds when it changes.
+          MAIN_VITE_SENTRY_DSN: ${{ inputs.sign && secrets.SENTRY_DSN_DESKTOP || '' }}
 
       - name: Package with electron-builder
         working-directory: ${{ env.DESKTOP_DIR }}

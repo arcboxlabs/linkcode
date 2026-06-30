@@ -27,6 +27,9 @@ allowBuilds:
   "@parcel/watcher": true
   core-js: true
   sharp: true
+  # Native CPU profiler backing @sentry/profiling-node in the daemon. Without its build script the
+  # prebuilt binary isn't fetched and profiling fails at runtime.
+  "@sentry/node-cpu-profiler": true
   # Transitive deps of the agent SDKs (pi / codex). Build scripts not needed for typecheck/build or
   # our default runtime path, so skip them explicitly to keep installs deterministic.
   "@google/genai": false
