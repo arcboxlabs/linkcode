@@ -37,7 +37,7 @@ mac:
   # Apple Icon Composer source. Single shared copy at the repo-root assets/ dir (also consumed
   # by the mobile app via ios.icon); referenced here to avoid duplicating the bundle. electron-builder
   # runs `actool` (Xcode 26+) to emit Assets.car + CFBundleIconName (native Liquid Glass on
-  # macOS 26) and a fallback Icon.icns. Windows/Linux use build-resources/icon.png instead.
+  # macOS 26) and a fallback Icon.icns. Windows/Linux use the shared assets/icon.png (win/linux below).
   icon: ../../assets/linkcode.icon
   category: public.app-category.developer-tools
   extendInfo:
@@ -65,6 +65,7 @@ mac:
       arch: [universal]
 
 win:
+  icon: ../../assets/icon.png # shared repo-root raster (no Liquid Glass on Windows)
   target:
     - target: nsis
       arch: [x64]
@@ -75,6 +76,7 @@ nsis:
   allowToChangeInstallationDirectory: true
 
 linux:
+  icon: ../../assets/icon.png # shared repo-root raster
   category: Development
   target:
     - AppImage

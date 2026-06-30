@@ -7,7 +7,7 @@
     "version": "1.0.0",
     "scheme": "linkcode",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "../../assets/icon.png",
     "primaryColor": "#000000",
     "userInterfaceStyle": "light",
     "splash": {
