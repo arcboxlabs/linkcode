@@ -154,6 +154,15 @@ while routing inbound input back up to the matching adapter. The Engine is agnos
 the carrier: a direct local connection, a fan-out `Hub`, or a Server tunnel all drive
 the same Engine.
 
+Sessions are persisted as `SessionRecord`s through an injectable `SessionStore` (the
+daemon backs it with SQLite via drizzle at `~/.linkcode/daemon.db`). A record is the
+stable Link Code identity: each start/resume appends a *run* that the adapter's
+`session-ref` event binds to the provider-local history id. `session.list` includes
+cold (stopped) sessions, `session.resume` wakes one under the same id, and
+`session.import` registers a provider-local history session as a cold record.
+Transcripts are not copied — they stay in provider-local history and are read back
+through the history contract.
+
 **Agent adapters.** One adapter per agent — `claude-code`, `codex`, `opencode`, `pi` —
 each hiding its SDK's differences behind the unified `AgentAdapter` interface. A shared
 `BaseAgentAdapter` factors out the common machinery (event fan-out, pending permission
@@ -225,6 +234,8 @@ class LinkCodeSdkClient {
   listSessions(): RequestResult<SessionInfo[]>;
   startSession(opts: StartOptions): RequestResult<SessionId>;
   stopSession(id: SessionId): RequestResult<{ ok: true }>;
+  resumeSession(id: SessionId): RequestResult<SessionId>;   // cold session → live again, same id
+  importSession(kind: AgentKind, historyId: AgentHistoryId): RequestResult<SessionRecord>;
   sendInput(id: SessionId, input: AgentInput): RequestResult<{ ok: true }>;
   promptText(id: SessionId, text: string): RequestResult<{ ok: true }>;
   cancel(id: SessionId): RequestResult<{ ok: true }>;
