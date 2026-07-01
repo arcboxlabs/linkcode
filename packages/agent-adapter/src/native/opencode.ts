@@ -98,11 +98,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  // No onSetModel override: unlike claude-code's onPrompt (rebuilt via query() each turn), opencode's
-  // this.model() also re-derives from this.opts?.model fresh every onPrompt call — the mechanism looks
-  // live-switchable — but this has not been verified against a real provider yet (claude-code's own
-  // "looks live-switchable from reading the code" turned out wrong once the vendor CLI was actually
-  // tested with --resume). Falls back to the base class's reject until someone verifies it live.
+  // No onSetModel override: like claude-code's persistent Query (BaseAgentAdapter#onSetModel calls
+  // Query#setModel()), opencode's this.model() also re-derives from this.opts?.model fresh every
+  // onPrompt call — the mechanism looks live-switchable — but this has not been verified against a
+  // real provider yet (claude-code's own "looks live-switchable from reading the code" turned out
+  // wrong the first time, before it moved off the single-message + resume design that silently
+  // ignored the override). Falls back to the base class's reject until someone verifies it live.
 
   private model(): { providerID: string; modelID: string } | undefined {
     const m = this.opts?.model;
