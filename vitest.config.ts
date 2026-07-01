@@ -18,10 +18,10 @@ export default defineConfig({
     environment: 'node',
   },
   resolve: {
-    // Mirror apps/desktop's `@desktop` path alias (apps/desktop/tsconfig.json + electron.vite.config.ts)
+    // Mirror apps/desktop's `@renderer` path alias (apps/desktop/tsconfig.json + electron.vite.config.ts)
     // so the desktop unit tests resolve when run under the root vitest runner.
     alias: {
-      '@desktop': fileURLToPath(new URL('./apps/desktop/src/renderer/src', import.meta.url)),
+      '@renderer': fileURLToPath(new URL('./apps/desktop/src/renderer/src', import.meta.url)),
     },
   },
 });

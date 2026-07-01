@@ -1,4 +1,4 @@
-import { useConversation } from '@linkcode/client-core';
+import { useConversation, useTerminalOutput } from '@linkcode/client-core';
 import type { AgentKind, SessionId, SessionInfo, TokenUsage } from '@linkcode/schema';
 import {
   cancelTurn,
@@ -8,8 +8,8 @@ import {
   startSession,
   stopSession,
 } from '@linkcode/sdk';
-import type { WorkbenchFrameProps } from '@linkcode/ui';
-import { TitleStrip, WorkbenchFrame } from '@linkcode/ui';
+import type { ShellFrameProps } from '@linkcode/ui';
+import { ShellFrame, TerminalBlock, TitleStrip } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -27,7 +27,7 @@ export interface WorkbenchShellHeader {
   usage?: TokenUsage | null;
 }
 
-export interface WorkbenchShellProps extends Omit<WorkbenchFrameProps, 'header'> {
+export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
 }
 
@@ -140,13 +140,19 @@ function WorkbenchSessionSurface({
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
+      TerminalBlockComponent={RuntimeTerminalBlock}
       onDismissError={onClearError}
     />
   );
 }
 
+function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): React.ReactNode {
+  const output = useTerminalOutput(terminalId);
+  return <TerminalBlock terminalId={terminalId} output={output} />;
+}
+
 function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
-  return <WorkbenchFrame {...props} header={<DefaultTitleStrip header={header} />} />;
+  return <ShellFrame {...props} header={<DefaultTitleStrip header={header} />} />;
 }
 
 function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): React.ReactNode {

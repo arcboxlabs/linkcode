@@ -1,14 +1,13 @@
-import { Workbench, WorkbenchProviders } from '@linkcode/workbench';
-import { DAEMON_URL, transport } from '@webview/lib/transport';
-import { RootProviders } from '@webview/providers/root-providers';
-import { WebWorkbenchShell } from '@webview/shell/web-workbench-shell';
+import type { WorkbenchShellComponent } from '@linkcode/workbench';
+import { WorkbenchApp } from '@linkcode/workbench';
+import { DAEMON_URL, transport } from './lib/transport';
 
-export function App(): React.ReactNode {
+export function WebviewApp({
+  shellComponent,
+}: {
+  shellComponent?: WorkbenchShellComponent;
+}): React.ReactNode {
   return (
-    <RootProviders>
-      <WorkbenchProviders transport={transport} daemonUrl={DAEMON_URL}>
-        <Workbench shellComponent={WebWorkbenchShell} />
-      </WorkbenchProviders>
-    </RootProviders>
+    <WorkbenchApp transport={transport} daemonUrl={DAEMON_URL} shellComponent={shellComponent} />
   );
 }

@@ -47,6 +47,12 @@ pnpm-debug.log*
 # test coverage
 coverage/
 
+# Electron build output
+/out
+
+# Rust
+/target
+
 # Devenv
 .devenv*
 devenv.local.nix

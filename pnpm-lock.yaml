@@ -99,6 +99,9 @@ catalogs:
     zod:
       specifier: ^4.4.3
       version: 4.4.3
+    zustand:
+      specifier: ^5.0.14
+      version: 5.0.14
 
 importers:
 
@@ -183,9 +186,9 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@linkcode/i18n':
+      '@linkcode/common':
         specifier: workspace:*
-        version: link:../../packages/i18n
+        version: link:../../packages/common
       '@linkcode/ipc':
         specifier: workspace:*
         version: link:../../packages/ipc
@@ -234,12 +237,12 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.7(react@19.2.7)
-      use-intl:
-        specifier: 'catalog:'
-        version: 4.13.0(react@19.2.7)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
     devDependencies:
       '@proj-airi/lobe-icons':
         specifier: 'catalog:'
@@ -393,9 +396,6 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.80.0(react@19.2.7))
-      '@linkcode/i18n':
-        specifier: workspace:*
-        version: link:../../packages/i18n
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../../packages/transport
@@ -531,6 +531,15 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/common:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
 
   packages/coss-ui:
     dependencies:
@@ -669,9 +678,6 @@ importers:
       '@fontsource/ibm-plex-mono':
         specifier: ^5.2.7
         version: 5.2.7
-      '@linkcode/client-core':
-        specifier: workspace:*
-        version: link:../client-core
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
@@ -708,6 +714,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
+      restty:
+        specifier: ^0.1.35
+        version: 0.1.35(typescript@6.0.3)
       shiki:
         specifier: ^4.3.0
         version: 4.3.0
@@ -745,6 +754,9 @@ importers:
       '@linkcode/client-core':
         specifier: workspace:*
         version: link:../client-core
+      '@linkcode/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
@@ -7123,6 +7135,10 @@ packages:
     resolution: {integrity: sha512-6IzJLuGi4+R14vwagDHX+JrXmPVtPpn4mffDJ1UdR7/Edm87fl6yi8mMBIVvFtJaNTUvjughmW4hwLhRG7gC1Q==}
     engines: {node: '>=4'}
 
+  restty@0.1.35:
+    resolution: {integrity: sha512-IUr4NsdYCTErKBxuAd0eu/KdiGZhADBxA0ddSPEEIxAz8np3RT1bLiL9iIH+wglmUeSmHRmJzkPN7hGJJ+E/Yw==}
+    engines: {bun: '>=1.2.0'}
+
   retry@0.12.0:
     resolution: {integrity: sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow==}
     engines: {node: '>= 4'}
@@ -7517,6 +7533,11 @@ packages:
     resolution: {integrity: sha512-J/9An6vs9Us6wKRriSFXBWdRZapREHqFzdNUKk0pmu804EMR6dr6winwo7e5JDxN4xahxQsuysyYFwlwj4XN/Q==}
     engines: {node: '>=10'}
     hasBin: true
+
+  text-shaper@0.1.22:
+    resolution: {integrity: sha512-OYxqPcNEox3tlXilxZVPNub8EU/A6Lxy9vlCAe362fiGI9f3pMav497wL7cecX0CPq1yVtiBn/lii/ZZUUk9bQ==}
+    peerDependencies:
+      typescript: ^5
 
   thenify-all@1.6.0:
     resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
@@ -8127,6 +8148,24 @@ packages:
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
+  zustand@5.0.14:
+    resolution: {integrity: sha512-/8tAspM5LMPr28b3fwLYrtdj77ECpfZviaP75CMTnwO8ISyaE4GDIG/9rDDYq/cH9D2Xw2A2RXglLInmVBQB/g==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -15380,6 +15419,12 @@ snapshots:
       onetime: 2.0.1
       signal-exit: 3.0.7
 
+  restty@0.1.35(typescript@6.0.3):
+    dependencies:
+      text-shaper: 0.1.22(typescript@6.0.3)
+    transitivePeerDependencies:
+      - typescript
+
   retry@0.12.0: {}
 
   retry@0.13.1: {}
@@ -15853,6 +15898,10 @@ snapshots:
       acorn: 8.17.0
       commander: 2.20.3
       source-map-support: 0.5.21
+
+  text-shaper@0.1.22(typescript@6.0.3):
+    dependencies:
+      typescript: 6.0.3
 
   thenify-all@1.6.0:
     dependencies:
@@ -16386,5 +16435,11 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.4.3: {}
+
+  zustand@5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7)):
+    optionalDependencies:
+      '@types/react': 19.2.17
+      react: 19.2.7
+      use-sync-external-store: 1.6.0(react@19.2.7)
 
   zwitch@2.0.4: {}

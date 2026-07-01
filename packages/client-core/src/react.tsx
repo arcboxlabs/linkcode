@@ -57,6 +57,28 @@ export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   return state.sessionId === sessionId ? state.events : [];
 }
 
+/** Subscribe to a terminal's output, accumulating it into a string for read-only display. */
+export function useTerminalOutput(terminalId: string | null): string {
+  const client = useLinkCodeClient();
+  const [state, setState] = useState<{ id: string | null; output: string }>({
+    id: null,
+    output: '',
+  });
+
+  useEffect(() => {
+    if (!terminalId) return;
+    return client.subscribeTerminalOutput(terminalId, (data) => {
+      setState((prev) =>
+        prev.id === terminalId
+          ? { id: terminalId, output: prev.output + data }
+          : { id: terminalId, output: data },
+      );
+    });
+  }, [client, terminalId]);
+
+  return state.id === terminalId ? state.output : '';
+}
+
 /** Return a function that sends input to the current session. */
 export function useSendInput(sessionId: SessionId | null): (input: AgentInput) => void {
   const client = useLinkCodeClient();

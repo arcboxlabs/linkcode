@@ -1,9 +1,28 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
+import { Badge } from 'coss-ui/components/badge';
+import { Button } from 'coss-ui/components/button';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from 'coss-ui/components/select';
+import { Separator } from 'coss-ui/components/separator';
 import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import { subDays } from 'date-fns/subDays';
-import { BotIcon, ClockIcon, FilePlus2Icon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react';
+import {
+  BotIcon,
+  ChevronDownIcon,
+  FilePlus2Icon,
+  SearchIcon,
+  SettingsIcon,
+  SparklesIcon,
+  XIcon,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
@@ -26,6 +45,8 @@ const GROUP_LABELS: Record<SessionGroupKey, string> = {
   yesterday: 'Yesterday',
   earlier: 'Earlier',
 };
+
+const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];
 
 const sidebarMenuButtonClassName =
   'flex h-8 w-full items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] text-left text-sidebar-foreground text-sm outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64';
@@ -338,19 +359,119 @@ function useCurrentLocalDayStart(): number {
 }
 
 export function DefaultHostFooter({
-  state = 'Connected',
+  state,
   latency,
 }: {
   state?: string;
   latency?: string;
 }): React.ReactNode {
+  if (!latency) return <HostFooter state={state} />;
+
   return (
     <div className="flex h-10 shrink-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-xs">
       <span className="size-2 rounded-full bg-success" />
       <span className="font-medium text-sidebar-foreground">Local Host</span>
-      <span className="text-muted-foreground">{state}</span>
+      {state && <span className="text-muted-foreground">{state}</span>}
       {latency && <span className="text-muted-foreground">{latency}</span>}
-      <ClockIcon className="ml-auto size-3.5 text-muted-foreground" />
+      <ChevronDownIcon className="ml-auto size-3.5 text-muted-foreground" />
+    </div>
+  );
+}
+
+export function HostFooter({
+  state,
+  appVersion,
+  pendingPermissionCount = 0,
+}: {
+  state?: string;
+  appVersion?: string;
+  pendingPermissionCount?: number;
+}): React.ReactNode {
+  const pendingPermissionLabel =
+    pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
+
+  return (
+    <Popover>
+      <PopoverTrigger className="flex h-10 w-full items-center gap-(--lc-chrome-section-gap) border-sidebar-border border-t px-(--lc-chrome-edge) text-left text-xs outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="size-2 rounded-full bg-success" />
+        <span className="font-medium text-sidebar-foreground">Local Host</span>
+        {state && <span className="text-muted-foreground">{state}</span>}
+        <ChevronDownIcon className="ml-auto size-3.5 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverPopup side="top" align="start" sideOffset={8} className="w-80 text-sm">
+        <div className="flex items-center gap-2 py-1.5">
+          <span className="size-2 rounded-full bg-success" />
+          <span className="font-semibold">Local Host</span>
+          {state && (
+            <Badge size="sm" variant="success">
+              {state}
+            </Badge>
+          )}
+          {appVersion && (
+            <span className="ml-auto font-mono text-muted-foreground text-xs">{appVersion}</span>
+          )}
+        </div>
+
+        <Separator className="my-1" />
+
+        <HostFooterRow label="Remote access">
+          <Badge size="sm" variant="secondary">
+            Off
+          </Badge>
+          <Button disabled size="xs" variant="outline">
+            Enable
+          </Button>
+        </HostFooterRow>
+        <HostFooterRow label="Permission requests">
+          <span className="text-muted-foreground text-xs">{pendingPermissionLabel}</span>
+        </HostFooterRow>
+
+        <Separator className="my-1" />
+
+        <HostFooterRow label="Agent availability">
+          <span className="text-muted-foreground text-xs">Not reported</span>
+        </HostFooterRow>
+
+        <Separator className="my-1" />
+
+        <div className="flex items-center gap-2 pt-1">
+          <Select defaultValue="arcbox" items={ORGS}>
+            <SelectTrigger disabled aria-label="Workspace" className="min-w-0 flex-1" size="sm">
+              <Avatar className="size-5 rounded-sm">
+                <AvatarFallback className="rounded-sm bg-primary text-primary-foreground">
+                  A
+                </AvatarFallback>
+              </Avatar>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {ORGS.map((org) => (
+                <SelectItem key={org.value} value={org.value}>
+                  {org.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+          <Button disabled size="icon-sm" variant="outline" aria-label="Settings">
+            <SettingsIcon />
+          </Button>
+        </div>
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
+function HostFooterRow({
+  label,
+  children,
+}: {
+  label: string;
+  children?: React.ReactNode;
+}): React.ReactNode {
+  return (
+    <div className="flex h-8 items-center gap-2">
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {children}
     </div>
   );
 }

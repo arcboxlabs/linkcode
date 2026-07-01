@@ -17,6 +17,6 @@ export interface SystemBridge {
   };
   app: {
     version(): Promise<string>;
-    platform(): Promise<string>;
+    platform(): Promise<NodeJS.Platform>;
   };
 }

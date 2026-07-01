@@ -7,7 +7,13 @@ import { DiffBlock } from './diff-block';
 import { TerminalBlock } from './terminal-block';
 import { Tool, ToolContent, ToolHeader, ToolJson, ToolSection } from './tool';
 
-export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): React.ReactNode {
+export function ToolCallItem({
+  toolCall,
+  TerminalBlockComponent,
+}: {
+  toolCall: ToolCall;
+  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+}): React.ReactNode {
   const t = useTranslations('workbench.tool');
   const [open, setOpen] = useState(false);
 
@@ -41,6 +47,9 @@ export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): React.ReactN
             }
             if (c.type === 'diff') {
               return <DiffBlock key={key} path={c.path} oldText={c.oldText} newText={c.newText} />;
+            }
+            if (TerminalBlockComponent) {
+              return <TerminalBlockComponent key={key} terminalId={c.terminalId} />;
             }
             return <TerminalBlock key={key} terminalId={c.terminalId} />;
           })}
