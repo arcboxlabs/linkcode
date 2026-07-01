@@ -1,26 +1,24 @@
-import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
-import { MobileHome } from '@linkcode/ui/native';
-import { StatusBar } from 'expo-status-bar';
-import { ScrollView, View } from 'react-native';
-import { useTranslations } from 'use-intl';
+import { Redirect } from 'expo-router';
+import { Spinner } from 'heroui-native';
+import { View } from 'react-native';
+import { useHostRegistryHydrated, useHostRegistryStore } from '../stores/host-store';
 
-export default function HomeScreen() {
-  const t = useTranslations('mobile.about');
+/** Startup router: waits for the persisted registry, then lands on connect or the last active host. */
+export default function StartupScreen() {
+  const hydrated = useHostRegistryHydrated();
+  const hosts = useHostRegistryStore((state) => state.hosts);
+  const lastActiveHostId = useHostRegistryStore((state) => state.lastActiveHostId);
 
-  return (
-    <View className="flex-1 bg-background">
-      <StatusBar style="auto" />
-      <ScrollView className="flex-1">
-        <View className="p-6 pt-16">
-          <MobileHome
-            title={t('title')}
-            contract={t('contract', { version: WIRE_PROTOCOL_VERSION })}
-            registeredAgentsLabel={t('registeredAgents')}
-            agentKinds={AgentKindSchema.options}
-            note={t('note')}
-          />
-        </View>
-      </ScrollView>
-    </View>
-  );
+  if (!hydrated) {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <Spinner />
+      </View>
+    );
+  }
+
+  if (hosts.length === 0) return <Redirect href="/connect" />;
+
+  const target = hosts.find((host) => host.id === lastActiveHostId) ?? hosts[0];
+  return <Redirect href={`/host/${target.id}`} />;
 }
