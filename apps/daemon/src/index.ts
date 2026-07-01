@@ -39,6 +39,7 @@ async function main(): Promise<void> {
     console.log(`[linkcode/daemon] listening on ${formatListener(listener)}`);
   }
 
+  // foxts `once` prewarms (executes) by default; `false` defers it to the first real call.
   const shutdown = once((): void => {
     void (async () => {
       try {
@@ -49,7 +50,7 @@ async function main(): Promise<void> {
         process.exit(0);
       }
     })();
-  });
+  }, false);
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

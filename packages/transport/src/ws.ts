@@ -36,10 +36,11 @@ export class WsTransport implements Transport {
 
     const ws = new Impl(this.opts.url);
     this.ws = ws;
+    // foxts `once` prewarms (executes) by default; `false` defers it to the first real close.
     this.emitClosed = once(() => {
       this.inbound.clear();
       this.closed.emit();
-    });
+    }, false);
 
     ws.addEventListener('message', (ev: MessageEvent) => {
       let raw: unknown;
