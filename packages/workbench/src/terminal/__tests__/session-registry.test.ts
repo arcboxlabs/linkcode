@@ -1,3 +1,4 @@
+import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TerminalSessionClient } from '../session-registry';
 import { acquireTerminalSession, peekTerminalSession } from '../session-registry';
@@ -9,24 +10,26 @@ interface FakeClient extends TerminalSessionClient {
 
 function createFakeClient(): FakeClient {
   let seq = 0;
-  const client: FakeClient = {
-    opened: [],
-    closed: [],
+  const opened: string[] = [];
+  const closed: string[] = [];
+
+  return {
+    opened,
+    closed,
     openTerminal() {
       seq += 1;
       const id = `term-${seq}`;
-      client.opened.push(id);
+      opened.push(id);
       return Promise.resolve(id);
     },
     closeTerminal(terminalId) {
-      client.closed.push(terminalId);
+      closed.push(terminalId);
     },
-    subscribeTerminalOutput: () => () => {},
-    subscribeTerminalExit: () => () => {},
-    terminalInput: () => {},
-    resizeTerminal: () => {},
+    subscribeTerminalOutput: () => noop,
+    subscribeTerminalExit: () => noop,
+    terminalInput: noop,
+    resizeTerminal: noop,
   };
-  return client;
 }
 
 describe('terminal session registry', () => {
@@ -76,7 +79,7 @@ describe('terminal session registry', () => {
 
   it('closes a terminal whose open resolves after the lease already expired', async () => {
     const client = createFakeClient();
-    let resolveOpen: (id: string) => void = () => {};
+    let resolveOpen: (id: string) => void = noop;
     client.openTerminal = () =>
       new Promise<string>((resolve) => {
         resolveOpen = resolve;
