@@ -1,5 +1,6 @@
 import type { PanelTab, PanelWindowType } from '@linkcode/ui';
 import { PANEL_WINDOW_TYPES } from '@linkcode/ui';
+import { clamp } from 'foxts/clamp';
 import { z } from 'zod';
 
 export type PanelSide = 'right' | 'bottom';
@@ -283,8 +284,4 @@ function isPanelOpen(
 ): side is PanelSide {
   if (side === 'right') return rightPanel.open;
   return bottomPanel.open;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }

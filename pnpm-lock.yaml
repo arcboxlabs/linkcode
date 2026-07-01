@@ -225,6 +225,9 @@ importers:
       foxact:
         specifier: ^0.3.7
         version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
       lucide-react:
         specifier: 'catalog:'
         version: 1.18.0(react@19.2.7)
@@ -5380,6 +5383,9 @@ packages:
 
   foxts@5.5.1:
     resolution: {integrity: sha512-jBm7lzO/D8CK2S/BhVHUbFb4n3NdjkCTRbvHgtqYitFzUYqK2iH6jEQNEI/Erde6WjLnrmZfdxAoIXbkm4pfxA==}
+
+  foxts@5.6.0:
+    resolution: {integrity: sha512-KovPkzPutn/SMR/SwK1+a2DuaeTpnCYzoIbPO97O003VVT9Yhjnp7JF9UH8vRiAUIks2Ztwkr8EQoV7wSDSiwg==}
 
   framer-motion@12.40.0:
     resolution: {integrity: sha512-uaBd3qC1v3KQqBEjwTUd183K6PbS+j0yR9w9VmEOLWA/tnUcSn8Xa3uck7t4dgpDoUss8xQTcj8W2L07lrnLFg==}
@@ -13320,6 +13326,8 @@ snapshots:
       react-dom: 19.2.7(react@19.2.7)
 
   foxts@5.5.1: {}
+
+  foxts@5.6.0: {}
 
   framer-motion@12.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:

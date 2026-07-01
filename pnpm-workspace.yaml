@@ -124,3 +124,4 @@ minimumReleaseAgeExclude:
   - '@expo/ui@56.0.19'
   - expo-constants@56.0.19
   - expo-router@56.2.12
+  - foxts@5.6.0
