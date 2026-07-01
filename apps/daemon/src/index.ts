@@ -1,11 +1,19 @@
 import { Engine } from '@linkcode/engine';
+import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
 import type { TransportServer } from '@linkcode/transport/server';
-import { createTransportServer, Hub } from '@linkcode/transport/server';
+import { Hub } from '@linkcode/transport/server';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { once } from 'foxts/once';
-import type { DaemonListenerConfig } from './config';
 import { databasePath, loadConfig } from './config';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
+import {
+  DaemonAlreadyRunningError,
+  findRunningDaemon,
+  listenWithPortHunt,
+  removeRuntimeFile,
+  writeRuntimeFile,
+} from './runtime';
 import { createSessionStore } from './session-store';
 
 /**
@@ -17,6 +25,21 @@ import { createSessionStore } from './session-store';
  */
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // One daemon per machine — a second instance would share ~/.linkcode/daemon.db and split sessions.
+  const running = await findRunningDaemon();
+  if (running) {
+    const urls = running.listeners.map((listener) => listener.url).join(', ');
+    console.error(`[linkcode/daemon] already running (pid ${running.pid}) at ${urls}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const identity: DaemonIdentity = {
+    name: 'linkcode-daemon',
+    pid: process.pid,
+    startedAt: Date.now(),
+  };
   const hub = new Hub();
   const store = createProviderConfigStore(config.providers ?? {});
   const engine = new Engine(
@@ -29,23 +52,41 @@ async function main(): Promise<void> {
   await engine.start();
 
   const servers: TransportServer[] = [];
-  for (const listener of config.listeners) {
-    const server = createTransportServer(listener);
-    server.onConnection((conn) => {
-      hub.addConnection(conn);
-      conn.onClose(() => hub.removeConnection(conn));
-    });
-    servers.push(server);
-    console.log(`[linkcode/daemon] listening on ${formatListener(listener)}`);
+  const stopAll = async (): Promise<void> => {
+    await Promise.all(servers.map((server) => server.close()));
+    hub.close();
+    await engine.stop();
+  };
+
+  const bound: DaemonListenerInfo[] = [];
+  try {
+    for (const listener of config.listeners) {
+      const { server, url } = await listenWithPortHunt(listener, identity);
+      server.onConnection((conn) => {
+        hub.addConnection(conn);
+        conn.onClose(() => hub.removeConnection(conn));
+      });
+      servers.push(server);
+      bound.push({ type: listener.type, url });
+      console.log(`[linkcode/daemon] listening on ${url} (${listener.type})`);
+    }
+  } catch (err) {
+    if (err instanceof DaemonAlreadyRunningError) {
+      console.error(`[linkcode/daemon] ${extractErrorMessage(err)}`);
+      await stopAll();
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
   }
+  writeRuntimeFile({ ...identity, listeners: bound });
 
   // foxts `once` prewarms (executes) by default; `false` defers it to the first real call.
   const shutdown = once((): void => {
     void (async () => {
       try {
-        await Promise.all(servers.map((server) => server.close()));
-        hub.close();
-        await engine.stop();
+        removeRuntimeFile();
+        await stopAll();
       } finally {
         process.exit(0);
       }
@@ -59,14 +100,3 @@ main().catch((err) => {
   console.error('[linkcode/daemon] fatal:', err);
   process.exit(1);
 });
-
-function formatListener(listener: DaemonListenerConfig): string {
-  switch (listener.type) {
-    case 'socket.io':
-      return `socket.io on http://${listener.host ?? '0.0.0.0'}:${listener.port}`;
-    case 'ws':
-      return `ws://${listener.host ?? '0.0.0.0'}:${listener.port}`;
-    default:
-      return 'unknown listener';
-  }
-}

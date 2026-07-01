@@ -1,10 +1,11 @@
 import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
-import type { WireMessage } from '@linkcode/schema';
+import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import { once } from 'foxts/once';
 import type { Socket } from 'socket.io';
 import { Server as SocketIoServerImpl } from 'socket.io';
+import { boundPort, createIdentityRequestHandler, listenHttp } from './http-server';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
@@ -13,6 +14,8 @@ const FRAME_EVENT = 'frame';
 export interface SocketIoServerOptions {
   port: number;
   host?: string;
+  /** Served at `GET /linkcode` so peers can tell this port belongs to a linkcode daemon. */
+  identity?: DaemonIdentity;
 }
 
 export interface SocketIoServer extends TransportServer {
@@ -63,8 +66,8 @@ class SocketIoServerConnection implements Transport {
   }
 }
 
-export function createSocketIoServer(opts: SocketIoServerOptions): SocketIoServer {
-  const httpServer = createServer();
+export async function createSocketIoServer(opts: SocketIoServerOptions): Promise<SocketIoServer> {
+  const httpServer = createServer(createIdentityRequestHandler(opts.identity));
   const io = new SocketIoServerImpl(httpServer, {
     cors: { origin: true },
   });
@@ -74,10 +77,10 @@ export function createSocketIoServer(opts: SocketIoServerOptions): SocketIoServe
     connections.emit(new SocketIoServerConnection(socket));
   });
 
-  httpServer.listen(opts.port, opts.host);
+  await listenHttp(httpServer, opts.port, opts.host);
 
   return {
-    port: opts.port,
+    port: boundPort(httpServer, opts.port),
     onConnection: (cb) => connections.add(cb),
     close: () => closeSocketIoServer(io, httpServer),
   };

@@ -1,8 +1,11 @@
-import type { WireMessage } from '@linkcode/schema';
+import type { Server as HttpServer } from 'node:http';
+import { createServer } from 'node:http';
+import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import { once } from 'foxts/once';
 import type { RawData } from 'ws';
 import { WebSocket, WebSocketServer } from 'ws';
+import { boundPort, createIdentityRequestHandler, listenHttp } from './http-server';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
@@ -16,6 +19,8 @@ import { Listeners } from './transport';
 export interface WsServerOptions {
   port: number;
   host?: string;
+  /** Served at `GET /linkcode` so peers can tell this port belongs to a linkcode daemon. */
+  identity?: DaemonIdentity;
 }
 
 export interface WsServer extends TransportServer {
@@ -79,8 +84,13 @@ function rawDataToString(data: RawData): string {
 }
 
 /** Start a WebSocket server; each accepted socket is surfaced as a `ServerConnection`. */
-export function createWsServer(opts: WsServerOptions): WsServer {
-  const wss = new WebSocketServer({ port: opts.port, host: opts.host });
+export async function createWsServer(opts: WsServerOptions): Promise<WsServer> {
+  const httpServer = createServer(createIdentityRequestHandler(opts.identity));
+  await listenHttp(httpServer, opts.port, opts.host);
+
+  // Attach only after a successful bind: `ws` re-emits the http server's 'error' events on the
+  // wss, which would turn a handled bind failure into an unhandled-'error' crash.
+  const wss = new WebSocketServer({ server: httpServer });
   const connections = new Listeners<Transport>();
 
   wss.on('connection', (ws) => {
@@ -88,11 +98,24 @@ export function createWsServer(opts: WsServerOptions): WsServer {
   });
 
   return {
-    port: opts.port,
+    port: boundPort(httpServer, opts.port),
     onConnection: (cb) => connections.add(cb),
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        wss.close((err) => (err ? reject(err) : resolve()));
-      }),
+    close: () => closeWsServer(wss, httpServer),
   };
+}
+
+function closeWsServer(wss: WebSocketServer, httpServer: HttpServer): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    wss.close((err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      if (!httpServer.listening) {
+        resolve();
+        return;
+      }
+      httpServer.close((httpErr) => (httpErr ? reject(httpErr) : resolve()));
+    });
+  });
 }

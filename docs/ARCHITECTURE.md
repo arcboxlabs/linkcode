@@ -96,6 +96,13 @@ connects to. The `Engine` is the host proper — it owns session lifecycle and a
 orchestration. Clients are thin: they render the normalized conversation and send
 normalized input back.
 
+Listeners bind at the configured port (default `19523`, ascii `LC`) and hunt upward
+past foreign occupants. Every listener answers `GET /linkcode` with the daemon's
+identity, which enforces one daemon per machine: a second instance detects the first
+and exits. The actually-bound endpoints are advertised in `~/.linkcode/runtime.json`
+(removed on shutdown) so local clients — desktop main in particular — can discover
+the endpoint instead of hard-coding it.
+
 ## Data plane vs system plane
 
 Two channels run side by side and never overlap:
