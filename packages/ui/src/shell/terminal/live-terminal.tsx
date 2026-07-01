@@ -110,12 +110,14 @@ export function LiveTerminal({
   session: TerminalSession;
   className?: string;
 }): React.ReactNode {
+  const frameRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useAbortableEffect(
     (signal) => {
+      const frame = frameRef.current;
       const container = containerRef.current;
-      if (!container) return;
+      if (!frame || !container) return;
 
       let revealFrame = 0;
       const restty = createRestty({
@@ -130,12 +132,12 @@ export function LiveTerminal({
           callbacks: {
             onBackend() {
               if (signal.aborted) return;
-              applyTerminalTheme(restty);
+              applyTerminalTheme(restty, frame);
               restty.connectPty('session://terminal');
               // Reveal only once a themed frame can be painted, so the default black frames restty
               // draws while the WASM core boots are never shown.
               revealFrame = requestAnimationFrame(() => {
-                container.style.opacity = '1';
+                frame.style.opacity = '1';
               });
             },
           },
@@ -144,7 +146,7 @@ export function LiveTerminal({
 
       // The terminal theme follows the app's `.dark` class, so re-apply whenever it flips
       // (light/dark mode change) — no need to tear down the terminal.
-      const modeObserver = new MutationObserver(() => applyTerminalTheme(restty));
+      const modeObserver = new MutationObserver(() => applyTerminalTheme(restty, frame));
       modeObserver.observe(document.documentElement, {
         attributes: true,
         attributeFilter: ['class'],
@@ -159,10 +161,11 @@ export function LiveTerminal({
     [session],
   );
 
+  // Padding lives on the frame, never on the restty root: restty sizes its canvas from the root's
+  // clientWidth/clientHeight, which include padding, so a padded root would overflow into the inset.
   return (
-    <div
-      ref={containerRef}
-      className={cn('opacity-0 transition-opacity duration-150', className)}
-    />
+    <div ref={frameRef} className={cn('p-2 opacity-0 transition-opacity duration-150', className)}>
+      <div ref={containerRef} className="size-full" />
+    </div>
   );
 }
