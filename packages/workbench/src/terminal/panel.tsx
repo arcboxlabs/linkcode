@@ -12,7 +12,14 @@ const TERMINAL_INITIAL_SIZE = { cols: 80, rows: 24 };
  * registry — an external store — so remounts such as the docked↔maximized panel handoff
  * reattach to the same terminal instead of spawning a new one.
  */
-export function TerminalPanel({ sessionKey }: { sessionKey: string }): React.ReactNode {
+export function TerminalPanel({
+  sessionKey,
+  suspended,
+}: {
+  sessionKey: string;
+  /** Freeze the terminal's box while the host panel animates shut/open — see {@link LiveTerminal}. */
+  suspended?: boolean;
+}): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
 
@@ -36,5 +43,5 @@ export function TerminalPanel({ sessionKey }: { sessionKey: string }): React.Rea
       </div>
     );
   }
-  return <LiveTerminal session={session} className="h-full w-full" />;
+  return <LiveTerminal session={session} suspended={suspended} className="h-full w-full" />;
 }

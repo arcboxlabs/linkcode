@@ -51,7 +51,9 @@ export function DesktopPanelRegion({
         phase,
         reducedMotion,
       })}
-      panelContentByType={{ terminal: (tab) => <TerminalPanel sessionKey={tab.id} /> }}
+      panelContentByType={{
+        terminal: (tab) => <TerminalPanel sessionKey={tab.id} suspended={phase !== 'open'} />,
+      }}
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
       onAddWindow={onAddWindow}
