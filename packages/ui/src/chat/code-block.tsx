@@ -1,9 +1,6 @@
 import { Button } from 'coss-ui/components/button';
 import { CheckIcon, CopyIcon } from 'lucide-react';
-import { Suspense, use } from 'react';
 import { cn } from '../lib/cn';
-import type { HighlightedCode, HighlightedToken } from './code-highlight';
-import { highlightCode, normalizeCodeLanguage } from './code-highlight';
 import { useCopyButton } from './use-copy-button';
 
 export interface CodeBlockProps extends React.ComponentProps<'div'> {
@@ -35,63 +32,9 @@ export function CodeBlock({
         </CodeBlockHeader>
       ) : null}
       <pre className="overflow-x-auto p-3 font-mono text-[12.5px] leading-relaxed">
-        <code>
-          <CodeBlockContent code={code} language={language} />
-        </code>
+        <code>{code}</code>
       </pre>
     </div>
-  );
-}
-
-function CodeBlockContent({
-  code,
-  language,
-}: {
-  code: string;
-  language: string | undefined;
-}): React.ReactNode {
-  const normalizedLanguage = normalizeCodeLanguage(language);
-  if (!normalizedLanguage || code.length === 0) return code;
-
-  return (
-    <Suspense fallback={code}>
-      <HighlightedCodeResult code={code} highlighted={highlightCode(code, normalizedLanguage)} />
-    </Suspense>
-  );
-}
-
-function HighlightedCodeResult({
-  code,
-  highlighted,
-}: {
-  code: string;
-  highlighted: Promise<HighlightedCode | null>;
-}): React.ReactNode {
-  const highlightedCode = use(highlighted);
-  if (!highlightedCode) return code;
-  return <HighlightedCodeContent highlighted={highlightedCode} />;
-}
-
-function HighlightedCodeContent({
-  highlighted,
-}: {
-  highlighted: HighlightedCode;
-}): React.ReactNode {
-  return highlighted.lines.map((line, lineIndex) => (
-    <span key={line.key}>
-      {line.tokens.map((token) => (
-        <HighlightedTokenSpan key={token.key} token={token} />
-      ))}
-      {lineIndex < highlighted.lines.length - 1 ? '\n' : null}
-    </span>
-  ));
-}
-
-function HighlightedTokenSpan({ token }: { token: HighlightedToken }): React.ReactNode {
-  return (
-    <span style={token.color ? ({ color: token.color } satisfies React.CSSProperties) : undefined}>
-      {token.content}
-    </span>
   );
 }
 
