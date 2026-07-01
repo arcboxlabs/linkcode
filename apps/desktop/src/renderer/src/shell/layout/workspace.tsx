@@ -10,54 +10,37 @@ import {
 } from '@renderer/shell/store/model';
 import type { AllotmentHandle } from 'allotment';
 import { Allotment, LayoutPriority } from 'allotment';
+import type { AnimatedSplit } from './use-animated-split';
 
-interface DesktopWorkspacePanels {
-  bottom: React.ReactNode;
-  bottomExpanded: React.ReactNode;
-  right: React.ReactNode;
-  rightExpanded: React.ReactNode;
+/** One dockable side of the workspace: its animated split plus the docked and maximized-overlay nodes. */
+export interface WorkspaceSide {
+  split: Omit<AnimatedSplit, 'setAllotmentHandle'>;
+  open: boolean;
+  node: React.ReactNode;
+  expandedNode: React.ReactNode;
+  onResetSize: () => void;
 }
 
 export function DesktopWorkspace({
   main,
-  panels,
+  right,
+  bottom,
+  // The allotment ref setters arrive as standalone props: the React Compiler only
+  // accepts a plain identifier in `ref={…}`, so they cannot live on the side objects.
+  rightAllotmentRef,
+  bottomAllotmentRef,
   expandedPanel,
-  rightPanelOpen,
-  bottomPanelOpen,
-  setRightAllotmentHandle,
-  rightAllowZeroSize,
-  rightIsAnimating,
-  rightPaneVisible,
-  rightOnChange,
-  setBottomAllotmentHandle,
-  bottomAllowZeroSize,
-  bottomIsAnimating,
-  bottomPaneVisible,
-  bottomOnChange,
   layout,
   onLayoutChange,
-  onResetRightSize,
-  onResetBottomSize,
 }: {
   main: React.ReactNode;
-  panels: DesktopWorkspacePanels;
+  right: WorkspaceSide;
+  bottom: WorkspaceSide;
+  rightAllotmentRef: (handle: AllotmentHandle | null) => void;
+  bottomAllotmentRef: (handle: AllotmentHandle | null) => void;
   expandedPanel: PanelSide | null;
-  rightPanelOpen: boolean;
-  bottomPanelOpen: boolean;
-  setRightAllotmentHandle: (handle: AllotmentHandle | null) => void;
-  rightAllowZeroSize: boolean;
-  rightIsAnimating: boolean;
-  rightPaneVisible: boolean;
-  rightOnChange: (sizes: number[]) => void;
-  setBottomAllotmentHandle: (handle: AllotmentHandle | null) => void;
-  bottomAllowZeroSize: boolean;
-  bottomIsAnimating: boolean;
-  bottomPaneVisible: boolean;
-  bottomOnChange: (sizes: number[]) => void;
   layout: LayoutState;
   onLayoutChange: (updater: (current: LayoutState) => LayoutState) => void;
-  onResetRightSize: () => void;
-  onResetBottomSize: () => void;
 }): React.ReactNode {
   const rowOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'editor-row');
   const workbenchOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'workbench');
@@ -73,33 +56,33 @@ export function DesktopWorkspace({
         inert={rowOverlayPanel !== null}
       >
         <Allotment
-          ref={setRightAllotmentHandle}
+          ref={rightAllotmentRef}
           className="linkcode-shell-split linkcode-shell-main-right-split h-full"
           defaultSizes={[1000, layout.rightW]}
           proportionalLayout={false}
-          onChange={rightOnChange}
+          onChange={right.split.onChange}
           onDragEnd={(sizes) => {
-            rightOnChange(sizes);
-            if (rightPanelOpen && !rightIsAnimating) {
+            right.split.onChange(sizes);
+            if (right.open && !right.split.isAnimating) {
               onLayoutChange((current) => ({
                 ...current,
                 rightW: readPaneSize(sizes[1], current.rightW),
               }));
             }
           }}
-          onReset={onResetRightSize}
+          onReset={right.onResetSize}
         >
           <Allotment.Pane minSize={MIN_MAIN_SIZE} priority={LayoutPriority.High}>
             {main}
           </Allotment.Pane>
           <Allotment.Pane
             maxSize={RIGHT_PANEL_MAX_SIZE}
-            minSize={rightAllowZeroSize ? 0 : RIGHT_PANEL_MIN_SIZE}
+            minSize={right.split.allowZeroSize ? 0 : RIGHT_PANEL_MIN_SIZE}
             preferredSize={layout.rightW}
-            visible={rightPaneVisible}
+            visible={right.split.paneVisible}
           >
-            <div aria-hidden={!rightPanelOpen} inert={!rightPanelOpen} className="h-full min-h-0">
-              {panels.right}
+            <div aria-hidden={!right.open} inert={!right.open} className="h-full min-h-0">
+              {right.node}
             </div>
           </Allotment.Pane>
         </Allotment>
@@ -107,7 +90,7 @@ export function DesktopWorkspace({
 
       {rowOverlayPanel && (
         <ExpandedPanelOverlay side={rowOverlayPanel}>
-          {rowOverlayPanel === 'right' ? panels.rightExpanded : panels.bottomExpanded}
+          {rowOverlayPanel === 'right' ? right.expandedNode : bottom.expandedNode}
         </ExpandedPanelOverlay>
       )}
     </div>
@@ -117,33 +100,33 @@ export function DesktopWorkspace({
     <div className="relative isolate h-full min-h-0 min-w-0">
       <div className="h-full min-h-0" aria-hidden={dockedInert} inert={dockedInert}>
         <Allotment
-          ref={setBottomAllotmentHandle}
+          ref={bottomAllotmentRef}
           className="linkcode-shell-split h-full"
           vertical
           defaultSizes={[1000, layout.bottomH]}
           proportionalLayout={false}
-          onChange={bottomOnChange}
+          onChange={bottom.split.onChange}
           onDragEnd={(sizes) => {
-            bottomOnChange(sizes);
-            if (!bottomPanelOpen || bottomIsAnimating) return;
+            bottom.split.onChange(sizes);
+            if (!bottom.open || bottom.split.isAnimating) return;
             onLayoutChange((current) => ({
               ...current,
               bottomH: readPaneSize(sizes[1], current.bottomH),
             }));
           }}
-          onReset={onResetBottomSize}
+          onReset={bottom.onResetSize}
         >
           <Allotment.Pane minSize={MIN_MAIN_SIZE} priority={LayoutPriority.High}>
             {contentRow}
           </Allotment.Pane>
           <Allotment.Pane
             maxSize={BOTTOM_PANEL_MAX_SIZE}
-            minSize={bottomAllowZeroSize ? 0 : BOTTOM_PANEL_MIN_SIZE}
+            minSize={bottom.split.allowZeroSize ? 0 : BOTTOM_PANEL_MIN_SIZE}
             preferredSize={layout.bottomH}
-            visible={bottomPaneVisible}
+            visible={bottom.split.paneVisible}
           >
-            <div aria-hidden={!bottomPanelOpen} inert={!bottomPanelOpen} className="h-full min-h-0">
-              {panels.bottom}
+            <div aria-hidden={!bottom.open} inert={!bottom.open} className="h-full min-h-0">
+              {bottom.node}
             </div>
           </Allotment.Pane>
         </Allotment>
@@ -151,7 +134,7 @@ export function DesktopWorkspace({
 
       {workbenchOverlayPanel && (
         <ExpandedPanelOverlay side={workbenchOverlayPanel}>
-          {workbenchOverlayPanel === 'right' ? panels.rightExpanded : panels.bottomExpanded}
+          {workbenchOverlayPanel === 'right' ? right.expandedNode : bottom.expandedNode}
         </ExpandedPanelOverlay>
       )}
     </div>

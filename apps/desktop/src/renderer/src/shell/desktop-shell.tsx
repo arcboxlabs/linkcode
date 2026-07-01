@@ -16,6 +16,7 @@ import { DesktopPanelRegion } from './layout/panel-region';
 import type { DesktopShellStyle } from './layout/shell-style';
 import { createDesktopShellStyle, setShellPaneCssSize } from './layout/shell-style';
 import { useAnimatedSplit } from './layout/use-animated-split';
+import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
 import type { PanelSide } from './store/model';
 import {
@@ -90,44 +91,22 @@ export function DesktopShell({
     setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size);
   }, []);
   const { sidebarOpen, layout, expansionStack, rightPanel, bottomPanel } = shellState;
-  const {
-    setAllotmentHandle: setSidebarAllotmentHandle,
-    setPaneSize: setSidebarPaneSize,
-    allowZeroSize: sidebarAllowZeroSize,
-    isAnimating: sidebarIsAnimating,
-    paneVisible: sidebarPaneVisible,
-    onChange: handleSidebarSplitChange,
-  } = useAnimatedSplit({
+  // The allotment ref setters are destructured to standalone identifiers: the React
+  // Compiler only accepts a plain identifier in `ref={…}` — a member access there marks
+  // the whole object as a ref and rejects every other render-time read of it.
+  const { setAllotmentHandle: sidebarAllotmentRef, ...sidebarSplit } = useAnimatedSplit({
     open: sidebarOpen,
     paneIndex: 0,
     paneSize: layout.sidebarW,
     onPaneSizeChange: syncSidebarPaneSize,
   });
-  const {
-    setAllotmentHandle: setRightAllotmentHandle,
-    setPaneSize: setRightPaneSize,
-    allowZeroSize: rightAllowZeroSize,
-    isAnimating: rightIsAnimating,
-    paneVisible: rightPaneVisible,
-    phase: rightPhase,
-    reducedMotion: rightReducedMotion,
-    onChange: handleRightSplitChange,
-  } = useAnimatedSplit({
+  const { setAllotmentHandle: rightAllotmentRef, ...rightSplit } = useAnimatedSplit({
     open: rightPanel.open,
     paneIndex: 1,
     paneSize: layout.rightW,
     onPaneSizeChange: syncRightPaneSize,
   });
-  const {
-    setAllotmentHandle: setBottomAllotmentHandle,
-    setPaneSize: setBottomPaneSize,
-    allowZeroSize: bottomAllowZeroSize,
-    isAnimating: bottomIsAnimating,
-    paneVisible: bottomPaneVisible,
-    phase: bottomPhase,
-    reducedMotion: bottomReducedMotion,
-    onChange: handleBottomSplitChange,
-  } = useAnimatedSplit({
+  const { setAllotmentHandle: bottomAllotmentRef, ...bottomSplit } = useAnimatedSplit({
     open: bottomPanel.open,
     paneIndex: 1,
     paneSize: layout.bottomH,
@@ -140,7 +119,7 @@ export function DesktopShell({
   const chromeSurface = getChromeSurface(expandedPanel);
   const workspaceMinSize = getWorkspaceMinSize({
     rightPanelOpen: rightPanel.open,
-    rightAllowZeroSize,
+    rightAllowZeroSize: rightSplit.allowZeroSize,
     minMainSize: MIN_MAIN_SIZE,
     rightPanelMinSize: RIGHT_PANEL_MIN_SIZE,
   });
@@ -191,17 +170,17 @@ export function DesktopShell({
   }
 
   function resetSidebarSize(): void {
-    setSidebarPaneSize(DEFAULT_LAYOUT.sidebarW);
+    sidebarSplit.setPaneSize(DEFAULT_LAYOUT.sidebarW);
     resetSidebarLayoutSize();
   }
 
   function resetRightPanelSize(): void {
-    setRightPaneSize(DEFAULT_LAYOUT.rightW);
+    rightSplit.setPaneSize(DEFAULT_LAYOUT.rightW);
     resetRightPanelLayoutSize();
   }
 
   function resetBottomPanelSize(): void {
-    setBottomPaneSize(DEFAULT_LAYOUT.bottomH);
+    bottomSplit.setPaneSize(DEFAULT_LAYOUT.bottomH);
     resetBottomPanelLayoutSize();
   }
 
@@ -247,8 +226,8 @@ export function DesktopShell({
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={side === 'right' ? rightPhase : bottomPhase}
-        reducedMotion={side === 'right' ? rightReducedMotion : bottomReducedMotion}
+        phase={side === 'right' ? rightSplit.phase : bottomSplit.phase}
+        reducedMotion={side === 'right' ? rightSplit.reducedMotion : bottomSplit.reducedMotion}
         onSelectTab={(id) => updatePanel(side, (current) => ({ ...current, activeTabId: id }))}
         onCloseTab={(id) => closeTab(side, id)}
         onAddWindow={(type) => addWindow(side, type)}
@@ -258,27 +237,35 @@ export function DesktopShell({
     );
   }
 
-  const workspacePanels = {
-    bottom: renderPanel('bottom', {
-      maximized: expandedPanel === 'bottom',
-      chromeVisible: bottomPaneVisible,
-      contentHidden: expandedPanel === 'bottom',
-    }),
-    bottomExpanded: renderPanel('bottom', {
-      maximized: true,
-      chromeVisible: false,
-      contentHidden: false,
-    }),
-    right: renderPanel('right', {
+  const workspaceRight: WorkspaceSide = {
+    split: rightSplit,
+    open: rightPanel.open,
+    node: renderPanel('right', {
       maximized: expandedPanel === 'right',
-      chromeVisible: rightPaneVisible,
+      chromeVisible: rightSplit.paneVisible,
       contentHidden: expandedPanel === 'right',
     }),
-    rightExpanded: renderPanel('right', {
+    expandedNode: renderPanel('right', {
       maximized: true,
       chromeVisible: false,
       contentHidden: false,
     }),
+    onResetSize: resetRightPanelSize,
+  };
+  const workspaceBottom: WorkspaceSide = {
+    split: bottomSplit,
+    open: bottomPanel.open,
+    node: renderPanel('bottom', {
+      maximized: expandedPanel === 'bottom',
+      chromeVisible: bottomSplit.paneVisible,
+      contentHidden: expandedPanel === 'bottom',
+    }),
+    expandedNode: renderPanel('bottom', {
+      maximized: true,
+      chromeVisible: false,
+      contentHidden: false,
+    }),
+    onResetSize: resetBottomPanelSize,
   };
 
   return (
@@ -301,17 +288,17 @@ export function DesktopShell({
         onToggleBottom={() => togglePanel('bottom')}
       >
         <Allotment
-          ref={setSidebarAllotmentHandle}
+          ref={sidebarAllotmentRef}
           className="linkcode-shell-split linkcode-shell-sidebar-main-split h-full"
           defaultSizes={[layout.sidebarW, 1000]}
           proportionalLayout={false}
           // The sidebar already draws its own right border at the boundary, so
           // allotment's separator would stack a second offset line beside it.
           separator={false}
-          onChange={handleSidebarSplitChange}
+          onChange={sidebarSplit.onChange}
           onDragEnd={(sizes) => {
-            handleSidebarSplitChange(sizes);
-            if (sidebarOpen && !sidebarIsAnimating) {
+            sidebarSplit.onChange(sizes);
+            if (sidebarOpen && !sidebarSplit.isAnimating) {
               updateLayout((current) => ({
                 ...current,
                 sidebarW: readPaneSize(sizes[0], current.sidebarW),
@@ -322,9 +309,9 @@ export function DesktopShell({
         >
           <Allotment.Pane
             maxSize={SIDEBAR_MAX_SIZE}
-            minSize={sidebarAllowZeroSize ? 0 : SIDEBAR_MIN_SIZE}
+            minSize={sidebarSplit.allowZeroSize ? 0 : SIDEBAR_MIN_SIZE}
             preferredSize={layout.sidebarW}
-            visible={sidebarPaneVisible}
+            visible={sidebarSplit.paneVisible}
           >
             <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
               <SessionSidebar
@@ -349,24 +336,13 @@ export function DesktopShell({
           <Allotment.Pane minSize={workspaceMinSize} priority={LayoutPriority.High}>
             <DesktopWorkspace
               main={main}
-              panels={workspacePanels}
+              right={workspaceRight}
+              bottom={workspaceBottom}
+              rightAllotmentRef={rightAllotmentRef}
+              bottomAllotmentRef={bottomAllotmentRef}
               expandedPanel={expandedPanel}
-              rightPanelOpen={rightPanel.open}
-              bottomPanelOpen={bottomPanel.open}
-              setRightAllotmentHandle={setRightAllotmentHandle}
-              rightAllowZeroSize={rightAllowZeroSize}
-              rightIsAnimating={rightIsAnimating}
-              rightPaneVisible={rightPaneVisible}
-              rightOnChange={handleRightSplitChange}
-              setBottomAllotmentHandle={setBottomAllotmentHandle}
-              bottomAllowZeroSize={bottomAllowZeroSize}
-              bottomIsAnimating={bottomIsAnimating}
-              bottomPaneVisible={bottomPaneVisible}
-              bottomOnChange={handleBottomSplitChange}
               layout={layout}
               onLayoutChange={updateLayout}
-              onResetRightSize={resetRightPanelSize}
-              onResetBottomSize={resetBottomPanelSize}
             />
           </Allotment.Pane>
         </Allotment>
