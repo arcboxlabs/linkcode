@@ -13,6 +13,8 @@
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
     "@linkcode/i18n": "workspace:*",
+    "@linkcode/schema": "workspace:*",
+    "@linkcode/sdk": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
@@ -25,7 +27,8 @@
     "react-router": "catalog:",
     "use-intl": "catalog:",
     "zod": "catalog:",
-    "zod-validation-error": "^5.0.0"
+    "zod-validation-error": "^5.0.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@proj-airi/lobe-icons": "catalog:",

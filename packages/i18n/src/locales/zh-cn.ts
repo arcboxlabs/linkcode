@@ -63,6 +63,7 @@ export const zhCN = {
   settings: {
     title: '设置',
     done: '完成',
+    back: '返回',
     tabs: {
       general: '通用',
       connection: '连接',

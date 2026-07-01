@@ -25,6 +25,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: [
       '@linkcode/i18n',
+      '@linkcode/schema',
       '@linkcode/sdk',
       '@linkcode/transport',
       '@linkcode/ui',

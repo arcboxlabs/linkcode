@@ -65,6 +65,7 @@ export const en = {
   settings: {
     title: 'Settings',
     done: 'Done',
+    back: 'Back',
     tabs: {
       general: 'General',
       connection: 'Connection',
