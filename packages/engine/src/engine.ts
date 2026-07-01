@@ -1,10 +1,11 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { createAdapter } from '@linkcode/agent-adapter';
 import type {
-  AgentKind,
+  AgentHistoryId,
+  ContentBlock,
   SessionId,
   SessionInfo,
-  StartOptions,
+  SessionRecord,
   WireMessage,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
@@ -16,12 +17,14 @@ import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
 import type { PtyBackend } from './pty-backend';
+import type { SessionStore } from './session-store';
+import { InMemorySessionStore } from './session-store';
 import { TerminalService } from './terminal-service';
 
 interface Session {
   adapter: AgentAdapter;
   unsub: Unsubscribe;
-  info: SessionInfo;
+  status: SessionInfo['status'];
 }
 
 /**
@@ -36,6 +39,8 @@ interface Session {
  */
 export class Engine {
   private readonly sessions = new Map<SessionId, Session>();
+  /** Persisted session identities (live and cold), loaded from the store and kept in sync. */
+  private readonly records = new Map<SessionId, SessionRecord>();
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
   private seq = 0;
@@ -45,6 +50,7 @@ export class Engine {
     private readonly factory: AdapterFactory = createAdapter,
     private readonly providerStore: ProviderConfigStore = new InMemoryProviderConfigStore(),
     ptyBackend?: PtyBackend,
+    private readonly sessionStore: SessionStore = new InMemorySessionStore(),
   ) {
     this.history = new HistoryService(factory);
     this.terminals = ptyBackend
@@ -53,6 +59,9 @@ export class Engine {
   }
 
   async start(): Promise<void> {
+    for (const record of await this.sessionStore.load()) {
+      this.records.set(record.sessionId, record);
+    }
     await this.transport.connect();
     this.transport.onMessage((msg) => {
       // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
@@ -65,9 +74,19 @@ export class Engine {
     switch (p.kind) {
       case 'session.start': {
         const opts = applyProviderDefaults(p.opts, this.providerStore.get());
-        await this.tryReply(p.clientReqId, () =>
-          this.startLiveSession(p.clientReqId, opts.kind, opts, (adapter) => adapter.start(opts)),
-        );
+        await this.tryReply(p.clientReqId, () => {
+          const now = Date.now();
+          const record: SessionRecord = {
+            sessionId: this.nextSessionId(),
+            kind: opts.kind,
+            cwd: opts.cwd,
+            origin: { type: 'created' },
+            createdAt: now,
+            updatedAt: now,
+            runs: [{ startedAt: now }],
+          };
+          return this.startLiveSession(p.clientReqId, record, (adapter) => adapter.start(opts));
+        });
         break;
       }
       case 'agent.input': {
@@ -86,6 +105,7 @@ export class Engine {
                 event: { type: 'user-message', content: p.input.content },
               }),
             );
+            this.maybeSetTitle(p.sessionId, p.input.content);
           }
           await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
@@ -102,15 +122,66 @@ export class Engine {
           await session.adapter.stop();
           this.sessions.delete(p.sessionId);
           this.terminals?.killBySession(p.sessionId);
+          this.sealCurrentRun(p.sessionId);
           this.sendSuccess(p.clientReqId);
         });
         break;
       }
       case 'session.list': {
-        const sessions = Array.from(this.sessions.values(), (s) => s.info);
+        const sessions = Array.from(this.records.values(), (record) => this.toSessionInfo(record));
         this.transport.send(
           createWireMessage({ kind: 'session.listed', replyTo: p.clientReqId, sessions }),
         );
+        break;
+      }
+      case 'session.resume': {
+        await this.tryReply(p.clientReqId, async () => {
+          if (this.sessions.has(p.sessionId)) {
+            throw new Error(`Session is already running: ${p.sessionId}`);
+          }
+          const record = nullthrow(
+            this.records.get(p.sessionId),
+            `Unknown session: ${p.sessionId}`,
+          );
+          const historyId = nullthrow(
+            latestHistoryId(record),
+            `Session has no provider history to resume: ${p.sessionId}`,
+          );
+          const startOpts = applyProviderDefaults(
+            { kind: record.kind, cwd: record.cwd },
+            this.providerStore.get(),
+          );
+          record.runs.push({ historyId, startedAt: Date.now() });
+          await this.startLiveSession(p.clientReqId, record, (adapter) =>
+            this.history.resume(adapter, historyId, startOpts),
+          );
+        });
+        break;
+      }
+      case 'session.import': {
+        await this.tryReply(p.clientReqId, async () => {
+          // Read one event only: the summary (title/cwd/createdAt) is what the record needs.
+          const { session } = await this.history.read(p.agentKind, {
+            historyId: p.historyId,
+            limit: 1,
+          });
+          const now = Date.now();
+          const record: SessionRecord = {
+            sessionId: this.nextSessionId(),
+            kind: p.agentKind,
+            cwd: session.cwd ?? '',
+            title: session.title,
+            origin: { type: 'imported', historyId: p.historyId, importedAt: now },
+            createdAt: session.createdAt ?? now,
+            updatedAt: now,
+            runs: [],
+          };
+          this.records.set(record.sessionId, record);
+          await this.sessionStore.save(record);
+          this.transport.send(
+            createWireMessage({ kind: 'session.imported', replyTo: p.clientReqId, record }),
+          );
+        });
         break;
       }
       case 'history.list': {
@@ -136,11 +207,21 @@ export class Engine {
           { ...p.startOpts, kind: p.agentKind },
           this.providerStore.get(),
         );
-        await this.tryReply(p.clientReqId, () =>
-          this.startLiveSession(p.clientReqId, p.agentKind, startOpts, (adapter) =>
+        await this.tryReply(p.clientReqId, () => {
+          const now = Date.now();
+          const record: SessionRecord = {
+            sessionId: this.nextSessionId(),
+            kind: p.agentKind,
+            cwd: startOpts.cwd,
+            origin: { type: 'imported', historyId: p.historyId, importedAt: now },
+            createdAt: now,
+            updatedAt: now,
+            runs: [{ historyId: p.historyId, startedAt: now }],
+          };
+          return this.startLiveSession(p.clientReqId, record, (adapter) =>
             this.history.resume(adapter, p.historyId, startOpts),
-          ),
-        );
+          );
+        });
         break;
       }
       case 'config.get': {
@@ -214,35 +295,85 @@ export class Engine {
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
   }
 
+  /**
+   * Bind a (new or resumed) record to a live adapter run. The record — already carrying its
+   * current run as the last entry of `runs` — becomes the persisted identity; the adapter's
+   * `session-ref` event later backfills that run's provider-local id.
+   */
   private async startLiveSession(
     replyTo: string,
-    kind: AgentKind,
-    opts: StartOptions,
+    record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Promise<void>,
   ): Promise<void> {
-    const sessionId = this.nextSessionId();
-    const adapter = this.factory(kind);
-    const info: SessionInfo = {
-      sessionId,
-      kind,
-      cwd: opts.cwd,
-      status: 'starting',
-      createdAt: Date.now(),
-    };
-    const unsub = adapter.onEvent((event) => {
-      if (event.type === 'status') info.status = event.status;
+    const sessionId = record.sessionId;
+    const adapter = this.factory(record.kind);
+    const session: Session = { adapter, unsub: noop, status: 'starting' };
+    session.unsub = adapter.onEvent((event) => {
+      if (event.type === 'status') {
+        session.status = event.status;
+        if (event.status === 'stopped') this.sealCurrentRun(sessionId);
+      } else if (event.type === 'session-ref') {
+        this.bindSessionRef(sessionId, event.historyId);
+      }
       this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
     });
-    this.sessions.set(sessionId, { adapter, unsub, info });
+    this.sessions.set(sessionId, session);
+    this.records.set(sessionId, record);
+    this.persistRecord(record);
     try {
       await startAdapter(adapter);
     } catch (err) {
-      unsub();
+      session.unsub();
       this.sessions.delete(sessionId);
+      this.sealCurrentRun(sessionId);
       await adapter.stop().catch(noop);
       throw err;
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  private toSessionInfo(record: SessionRecord): SessionInfo {
+    return {
+      sessionId: record.sessionId,
+      kind: record.kind,
+      cwd: record.cwd,
+      status: this.sessions.get(record.sessionId)?.status ?? 'stopped',
+      createdAt: record.createdAt,
+      title: record.title,
+      origin: record.origin,
+    };
+  }
+
+  /** Record the provider-local id of the session's current (last) run. */
+  private bindSessionRef(sessionId: SessionId, historyId: AgentHistoryId): void {
+    const record = this.records.get(sessionId);
+    const run = record?.runs.at(-1);
+    if (!record || !run || run.historyId === historyId) return;
+    run.historyId = historyId;
+    this.persistRecord(record);
+  }
+
+  private sealCurrentRun(sessionId: SessionId): void {
+    const record = this.records.get(sessionId);
+    const run = record?.runs.at(-1);
+    if (!record || !run || run.endedAt !== undefined) return;
+    run.endedAt = Date.now();
+    this.persistRecord(record);
+  }
+
+  private maybeSetTitle(sessionId: SessionId, content: ContentBlock[]): void {
+    const record = this.records.get(sessionId);
+    if (!record || record.title !== undefined) return;
+    const title = titleFromContent(content);
+    if (title === undefined) return;
+    record.title = title;
+    this.persistRecord(record);
+  }
+
+  private persistRecord(record: SessionRecord): void {
+    record.updatedAt = Date.now();
+    // TODO: Error reporting (same stance as handle(): pending the Server realtime / perm model).
+    void this.sessionStore.save(record).catch(noop);
   }
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
@@ -261,4 +392,27 @@ export class Engine {
   private sendSuccess(replyTo: string): void {
     this.transport.send(createWireMessage({ kind: 'request.succeeded', replyTo }));
   }
+}
+
+/** The provider-local id to resume from: the latest run that has one, else the imported origin. */
+function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
+  for (let index = record.runs.length - 1; index >= 0; index -= 1) {
+    const historyId = record.runs[index].historyId;
+    if (historyId !== undefined) return historyId;
+  }
+  return record.origin.type === 'imported' ? record.origin.historyId : undefined;
+}
+
+const SESSION_TITLE_MAX_LENGTH = 80;
+
+function titleFromContent(content: ContentBlock[]): string | undefined {
+  for (const block of content) {
+    if (block.type !== 'text') continue;
+    const text = block.text.trim().replaceAll(/\s+/g, ' ');
+    if (text.length === 0) continue;
+    return text.length > SESSION_TITLE_MAX_LENGTH
+      ? `${text.slice(0, SESSION_TITLE_MAX_LENGTH - 1)}…`
+      : text;
+  }
+  return undefined;
 }
