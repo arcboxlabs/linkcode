@@ -12,12 +12,11 @@
     "dist": "pnpm run build && electron-builder",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint --format=sukka ."
+    "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
   "dependencies": {
-    "@linkcode/client-core": "workspace:*",
-    "@linkcode/i18n": "workspace:*",
+    "@linkcode/common": "workspace:*",
     "@linkcode/ipc": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
@@ -34,8 +33,8 @@
     "motion": "^12.40.0",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "use-intl": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "zustand": "catalog:"
   },
   "devDependencies": {
     "@proj-airi/lobe-icons": "catalog:",

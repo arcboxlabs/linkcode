@@ -1,5 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
-import { AtSignIcon, ChevronDownIcon, PlusIcon, ShieldCheckIcon, SparklesIcon } from 'lucide-react';
+import { AtSignIcon, PlusIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -46,8 +46,6 @@ interface MenuEntry {
 }
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
-const APPROVE_MODES = ['Approve for me', 'Ask each step', 'Read-only'] as const;
-const MODEL_OPTIONS = ['claude-sonnet-4.5', 'codex'] as const;
 const WHITESPACE_RE = /\s/;
 const LEADING_WHITESPACE_RE = /^\s/;
 
@@ -72,8 +70,6 @@ export function Composer({
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
-  const [approveIndex, setApproveIndex] = useState(0);
-  const [modelIndex, setModelIndex] = useState(0);
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
@@ -220,31 +216,12 @@ export function Composer({
                 >
                   <PlusIcon className="size-4" />
                 </button>
-                <button
-                  type="button"
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-info-foreground hover:bg-info/10"
-                  onClick={() => setApproveIndex((index) => (index + 1) % APPROVE_MODES.length)}
-                >
-                  <ShieldCheckIcon className="size-4" />
-                  <span className="font-medium text-sm">{APPROVE_MODES[approveIndex]}</span>
-                  <ChevronDownIcon className="size-3.5" />
-                </button>
                 {currentModeId && (
                   <Badge variant="secondary">
                     {tw('mode.label')}: {currentModeId}
                   </Badge>
                 )}
               </PromptInputTools>
-              <button
-                type="button"
-                className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-accent sm:flex"
-                onClick={() => setModelIndex((index) => (index + 1) % MODEL_OPTIONS.length)}
-              >
-                <SparklesIcon className="size-3.5 text-muted-foreground" />
-                <span className="font-mono">{MODEL_OPTIONS[modelIndex]}</span>
-                <span className="text-muted-foreground">Extra high</span>
-                <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-              </button>
               <span className="hidden items-center gap-1 text-muted-foreground text-xs lg:flex">
                 <AtSignIcon className="size-3" />
                 {t('mentions')}

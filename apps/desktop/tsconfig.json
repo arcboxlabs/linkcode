@@ -3,7 +3,8 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "paths": {
-      "@desktop/*": ["./src/renderer/src/*"]
+      "@desktop/*": ["./src/*"],
+      "@renderer/*": ["./src/renderer/src/*"]
     },
     "types": ["node"]
   },

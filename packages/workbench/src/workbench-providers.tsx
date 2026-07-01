@@ -11,8 +11,6 @@ import {
   WorkbenchRuntimeProvider,
 } from './runtime';
 
-export type WorkbenchConnectionStatus = 'connecting' | 'error';
-
 export interface WorkbenchProvidersProps extends React.PropsWithChildren {
   transport: Transport;
   /** Used by the default connection-state fallback to tell the user where the host should be. */

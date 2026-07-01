@@ -17,7 +17,7 @@ export interface SystemContext {
   };
   app: {
     getVersion(): string;
-    getPlatform(): string;
+    getPlatform(): NodeJS.Platform;
   };
 }
 

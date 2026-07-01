@@ -1,5 +1,5 @@
-import type { SplitTransitionState } from '@desktop/shell/layout/use-animated-split';
-import { reconcileTransition } from '@desktop/shell/layout/use-animated-split';
+import type { SplitTransitionState } from '@renderer/shell/layout/use-animated-split';
+import { reconcileTransition } from '@renderer/shell/layout/use-animated-split';
 import { describe, expect, it } from 'vitest';
 
 function transition(overrides?: Partial<SplitTransitionState>): SplitTransitionState {

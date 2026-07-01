@@ -4,7 +4,7 @@ import { ConversationView } from '../chat';
 import { cn } from '../lib/cn';
 import { Composer } from './composer';
 
-export interface WorkbenchConversationSurfaceProps {
+export interface ConversationSurfaceProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   agentLabel?: string;
@@ -16,12 +16,13 @@ export interface WorkbenchConversationSurfaceProps {
   topContent?: React.ReactNode;
   className?: string;
   conversationClassName?: string;
+  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
 }
 
-export function WorkbenchConversationSurface({
+export function ConversationSurface({
   conversation,
   agentKind,
   agentLabel,
@@ -33,10 +34,11 @@ export function WorkbenchConversationSurface({
   topContent,
   className,
   conversationClassName,
+  TerminalBlockComponent,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
-}: WorkbenchConversationSurfaceProps): React.ReactNode {
+}: ConversationSurfaceProps): React.ReactNode {
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
       {topContent}
@@ -48,6 +50,7 @@ export function WorkbenchConversationSurface({
           answeredPermissions={answeredPermissions}
           respondingPermissions={respondingPermissions}
           pendingPermissions={new Set(conversation.pendingPermissionIds)}
+          TerminalBlockComponent={TerminalBlockComponent}
           onRespondPermission={onRespondPermission}
         />
       </div>

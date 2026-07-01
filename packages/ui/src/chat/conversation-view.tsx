@@ -27,6 +27,7 @@ export interface ConversationViewProps {
   respondingPermissions: Set<string>;
   /** requestIds still awaiting a decision (from the normalizer); others are treated as resolved. */
   pendingPermissions: Set<string>;
+  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onRespondPermission: (requestId: string, optionId: string) => void;
 }
 
@@ -38,6 +39,7 @@ export function ConversationView({
   answeredPermissions,
   respondingPermissions,
   pendingPermissions,
+  TerminalBlockComponent,
   onRespondPermission,
 }: ConversationViewProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
@@ -86,7 +88,13 @@ export function ConversationView({
                 <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />
               );
             case 'tool':
-              return <ToolCallItem key={item.id} toolCall={item.toolCall} />;
+              return (
+                <ToolCallItem
+                  key={item.id}
+                  toolCall={item.toolCall}
+                  TerminalBlockComponent={TerminalBlockComponent}
+                />
+              );
             case 'plan':
               return <PlanCard key={item.id} plan={item.plan} />;
             case 'approval':

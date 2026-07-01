@@ -1,6 +1,4 @@
-import type { PanelSide } from './panel-region';
-
-export type ChromeSurface = 'normal' | 'right-max' | 'bottom-max';
+import type { ChromeSurface, PanelSide } from './panel-region';
 
 export function getChromeSurface(expandedPanel: PanelSide | null): ChromeSurface {
   if (expandedPanel === 'bottom') return 'bottom-max';

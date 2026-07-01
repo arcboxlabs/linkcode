@@ -42,5 +42,11 @@
     "parser": {
       "tailwindDirectives": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/schema/src/wire.ts"],
+      "formatter": { "enabled": false }
+    }
+  ]
 }

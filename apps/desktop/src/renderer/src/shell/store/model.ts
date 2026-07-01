@@ -40,13 +40,6 @@ export interface PersistedPanelState {
   activeTabIndex: number;
 }
 
-export interface DesktopShellStateModel {
-  storageKey: string;
-  createDefault: () => DesktopShellState;
-  parse: (value: unknown) => DesktopShellState;
-  serialize: (state: DesktopShellState) => PersistedDesktopShellState;
-}
-
 export const DESKTOP_SHELL_STORAGE_KEY = 'linkcode.desktop.shell-state:v1';
 
 export const SIDEBAR_MIN_SIZE = 240;
@@ -73,6 +66,7 @@ let tabSequence = 0;
 const PanelSideSchema = z.enum(['right', 'bottom']);
 const PanelWindowTypeSchema = z.enum(PANEL_WINDOW_TYPES);
 const FiniteNumberSchema = z.number();
+
 const PersistedLayoutSchema = z
   .object({
     sidebarW: FiniteNumberSchema.catch(DEFAULT_LAYOUT.sidebarW),
@@ -185,19 +179,14 @@ export function readPaneSize(value: number | undefined, fallback: number): numbe
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-export const desktopShellStateModel = {
-  storageKey: DESKTOP_SHELL_STORAGE_KEY,
-  createDefault: createDefaultDesktopShellState,
-  parse: parseDesktopShellState,
-  serialize: serializeDesktopShellState,
-} satisfies DesktopShellStateModel;
+export const PersistedDesktopShellStateSchema = createPersistedShellStateSchema();
 
-function parseDesktopShellState(value: unknown): DesktopShellState {
-  const parsed = createPersistedShellStateSchema().safeParse(value);
+export function parsePersistedDesktopShellState(value: unknown): DesktopShellState {
+  const parsed = PersistedDesktopShellStateSchema.safeParse(value);
   return parsed.success ? parsed.data : createDefaultDesktopShellState();
 }
 
-function serializeDesktopShellState(state: DesktopShellState): PersistedDesktopShellState {
+export function serializeDesktopShellState(state: DesktopShellState): PersistedDesktopShellState {
   return {
     version: 1,
     sidebarOpen: state.sidebarOpen,

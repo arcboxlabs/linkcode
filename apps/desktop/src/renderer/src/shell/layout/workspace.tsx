@@ -1,4 +1,4 @@
-import type { LayoutState, PanelSide } from '@desktop/shell/state/local/model';
+import type { LayoutState, PanelSide } from '@renderer/shell/store/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
@@ -7,7 +7,7 @@ import {
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
   readPaneSize,
-} from '@desktop/shell/state/local/model';
+} from '@renderer/shell/store/model';
 import type { AllotmentHandle } from 'allotment';
 import { Allotment, LayoutPriority } from 'allotment';
 

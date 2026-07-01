@@ -20,7 +20,6 @@
     "@base-ui/react": "^1.5.0",
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@linkcode/client-core": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "ansi-to-react": "^6.2.6",
     "class-variance-authority": "^0.7.1",

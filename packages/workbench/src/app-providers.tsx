@@ -1,6 +1,8 @@
 import type { Locale } from '@linkcode/i18n';
 import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
+import { AnchoredToastProvider, ToastProvider } from 'coss-ui/components/toast';
 import type * as React from 'react';
+import { useMemo } from 'react';
 import { IntlProvider } from 'use-intl';
 
 function runtimeLocale(): Locale {
@@ -15,11 +17,22 @@ export function AppI18nProvider({
   locale?: Locale;
 }>): React.ReactNode {
   const resolved = locale ?? runtimeLocale();
-  const messages = getMessages(resolved);
+  const messages = useMemo(() => getMessages(resolved), [resolved]);
 
   return (
     <IntlProvider locale={resolved} messages={messages}>
       {children}
     </IntlProvider>
+  );
+}
+
+/** Global, app-agnostic providers shared by browser and desktop renderers. */
+export function WorkbenchAppProviders({ children }: React.PropsWithChildren): React.ReactNode {
+  return (
+    <ToastProvider>
+      <AnchoredToastProvider>
+        <AppI18nProvider>{children}</AppI18nProvider>
+      </AnchoredToastProvider>
+    </ToastProvider>
   );
 }

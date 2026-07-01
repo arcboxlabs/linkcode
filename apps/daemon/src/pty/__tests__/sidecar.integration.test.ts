@@ -27,7 +27,10 @@ const TIMEOUT_MS = 10000;
 function outputContaining(proc: PtyProcess, needle: string): Promise<void> {
   return new Promise((resolve, reject) => {
     let text = '';
-    const timer = setTimeout(() => reject(new Error(`timed out waiting for "${needle}"`)), TIMEOUT_MS);
+    const timer = setTimeout(
+      () => reject(new Error(`timed out waiting for "${needle}"`)),
+      TIMEOUT_MS,
+    );
     proc.onData((data) => {
       text += data;
       if (text.includes(needle)) {

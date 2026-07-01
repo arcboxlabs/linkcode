@@ -12,5 +12,5 @@ export const systemIpcEvents = {
     'linkcode.system.fs.pickFile',
   ),
   appVersion: defineInvokeEventa<string>('linkcode.system.app.version'),
-  appPlatform: defineInvokeEventa<string>('linkcode.system.app.platform'),
+  appPlatform: defineInvokeEventa<NodeJS.Platform>('linkcode.system.app.platform'),
 };

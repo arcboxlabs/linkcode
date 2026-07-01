@@ -1,7 +1,25 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs');
 const { createTypeScriptImportResolver } = require('eslint-import-resolver-typescript');
+
+const tsconfigProjects = [
+  path.join(__dirname, 'tsconfig.base.json'),
+  ...workspaceTsconfigs('apps'),
+  ...workspaceTsconfigs('packages'),
+];
+
+function workspaceTsconfigs(dir) {
+  return fs
+    .readdirSync(path.join(__dirname, dir), { withFileTypes: true })
+    .reduce((configs, entry) => {
+      if (!entry.isDirectory()) return configs;
+      const tsconfig = path.join(__dirname, dir, entry.name, 'tsconfig.json');
+      if (fs.existsSync(tsconfig)) configs.push(tsconfig);
+      return configs;
+    }, []);
+}
 
 module.exports = require('eslint-config-sukka').sukka(
   {
@@ -12,6 +30,7 @@ module.exports = require('eslint-config-sukka').sukka(
         '**/dist/**',
         '**/out/**',
         '**/build/**',
+        '**/release/**',
         '**/.vite/**',
         '**/.turbo/**',
         '**/.expo/**',
@@ -40,14 +59,16 @@ module.exports = require('eslint-config-sukka').sukka(
   {
     name: 'linkcode/import-resolver',
     settings: {
+      'import-x/resolver': {
+        typescript: {
+          noWarnOnMultipleProjects: true,
+          project: tsconfigProjects,
+        },
+      },
       'import-x/resolver-next': [
         createTypeScriptImportResolver({
           noWarnOnMultipleProjects: true,
-          project: [
-            path.join(__dirname, 'tsconfig.json'),
-            path.join(__dirname, 'apps/*/tsconfig.json'),
-            path.join(__dirname, 'packages/*/tsconfig.json'),
-          ],
+          project: tsconfigProjects,
         }),
       ],
     },

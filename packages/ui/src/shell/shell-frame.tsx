@@ -1,12 +1,10 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
-import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
-import { Button } from 'coss-ui/components/button';
-import { XIcon } from 'lucide-react';
 import type { ConversationViewModel } from '../chat';
+import { ConversationSurface } from './conversation-surface';
+import { ErrorBanner } from './error-banner';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
-import { WorkbenchConversationSurface } from './workbench-conversation-surface';
 
-export interface WorkbenchFrameProps {
+export interface ShellFrameProps {
   sessions: SessionInfo[];
   activeId: SessionId | null;
   conversation: ConversationViewModel;
@@ -20,10 +18,11 @@ export interface WorkbenchFrameProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
+  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onDismissError?: () => void;
 }
 
-export function WorkbenchFrame({
+export function ShellFrame({
   sessions,
   activeId,
   conversation,
@@ -37,8 +36,9 @@ export function WorkbenchFrame({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  TerminalBlockComponent,
   onDismissError,
-}: WorkbenchFrameProps): React.ReactNode {
+}: ShellFrameProps): React.ReactNode {
   const active = sessionById(sessions, activeId);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';
@@ -57,27 +57,8 @@ export function WorkbenchFrame({
       </div>
       <main className="flex min-w-0 flex-1 flex-col">
         {header}
-        {errorMessage && (
-          <div className="border-border border-b px-4 py-2">
-            <Alert variant="error" className="rounded-md py-2">
-              <AlertTitle>Action failed</AlertTitle>
-              <AlertDescription>{errorMessage}</AlertDescription>
-              {onDismissError && (
-                <AlertAction>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label="Dismiss"
-                    onClick={onDismissError}
-                  >
-                    <XIcon />
-                  </Button>
-                </AlertAction>
-              )}
-            </Alert>
-          </div>
-        )}
-        <WorkbenchConversationSurface
+        <ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />
+        <ConversationSurface
           className="min-h-0 flex-1"
           conversation={conversation}
           agentKind={active?.kind}
@@ -87,6 +68,7 @@ export function WorkbenchFrame({
           cwd={active?.cwd}
           answeredPermissions={answeredPermissions}
           respondingPermissions={respondingPermissions}
+          TerminalBlockComponent={TerminalBlockComponent}
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}

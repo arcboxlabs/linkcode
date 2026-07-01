@@ -1,6 +1,6 @@
-export type { ChromeSurface } from './panel-layout';
 export { getChromeSurface, getWorkspaceMinSize } from './panel-layout';
 export type {
+  ChromeSurface,
   PanelChromePortalProps,
   PanelChromePosition,
   PanelChromeSegment,
