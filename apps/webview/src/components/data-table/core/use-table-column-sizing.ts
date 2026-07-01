@@ -1,5 +1,6 @@
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useStateWithDeps } from 'foxact/use-state-with-deps';
+import { clamp } from 'foxts/clamp';
 import { useCallback, useMemo, useRef } from 'react';
 import type { TableDefinition } from './create-table';
 
@@ -81,9 +82,10 @@ export function useTableColumnSizing<TData>({
       // prevent scrolling while dragging on touch devices
       event.preventDefault();
 
-      const nextWidth = Math.min(
+      const nextWidth = clamp(
+        drag.startWidth + (clientX - drag.startClientX),
+        drag.minWidth,
         drag.maxWidth,
-        Math.max(drag.minWidth, drag.startWidth + (clientX - drag.startClientX)),
       );
       if (columnResizeMode === 'onChange') {
         setWidths({ [drag.columnId]: nextWidth });

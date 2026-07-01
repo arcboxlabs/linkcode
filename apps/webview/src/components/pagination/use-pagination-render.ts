@@ -1,5 +1,6 @@
 import type { TablePaginationState } from '@webview/components/data-table/core/use-table-pagination-state';
 import { createFixedArray } from 'foxact/create-fixed-array';
+import { clamp } from 'foxts/clamp';
 import { useCallback, useId, useMemo } from 'react';
 
 /** `key` is unique and stable — use it directly as the React key when mapping. */
@@ -130,7 +131,8 @@ export function usePaginationRender({
   }, [pagination]);
 
   const nextPage = useCallback(() => {
-    pagination.setPageIndex(Math.min(Math.max(0, pageCount - 1), pagination.pageIndex + 1));
+    // upper bound stays 0 when there are no pages, so an empty table never yields index -1
+    pagination.setPageIndex(clamp(pagination.pageIndex + 1, 0, Math.max(0, pageCount - 1)));
   }, [pagination, pageCount]);
 
   // The instance only recreates when pageCount/rowCount change (state and actions

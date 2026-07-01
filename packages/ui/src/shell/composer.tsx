@@ -1,6 +1,7 @@
 import type { AgentKind } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import { clamp } from 'foxts/clamp';
 import { AtSignIcon, ChevronDownIcon, PlusIcon, SparklesIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -112,7 +113,7 @@ export function Composer({
     setActiveIndexState((prev) => {
       const current = prev.menuKey === menuKey ? prev.index : 0;
       const index = typeof next === 'function' ? next(current) : next;
-      return { menuKey, index: Math.min(Math.max(0, index), maxActiveIndex) };
+      return { menuKey, index: clamp(index, 0, maxActiveIndex) };
     });
   }
 
