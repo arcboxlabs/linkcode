@@ -68,7 +68,7 @@
     fi
   '';
 
-  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon dev";
+  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm run --filter @linkcode/daemon dev";
   scripts.desktop.exec = "pnpm run --filter @linkcode/desktop dev";
-  scripts.app.exec = "pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
+  scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
 }

@@ -10,3 +10,9 @@ description = "Every Code Agent in the Palm of your hand"
 homepage = "https://github.com/arcboxlabs/linkcode#readme"
 repository = "https://github.com/arcboxlabs/linkcode"
 license = "BUSL-1.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

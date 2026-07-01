@@ -188,14 +188,14 @@ export class SidecarPtyBackend implements PtyBackend {
   }
 }
 
-/** Resolve the sidecar binary: an explicit override (set by the desktop supervisor), else the dev build. */
+/** Resolve the sidecar binary: an explicit override (set by the desktop supervisor), else the release build. */
 export function resolveSidecarPath(): string {
   const override = process.env.LINKCODE_PTY_SIDECAR_PATH;
   if (override) return override;
   // Dev: this file runs from source (tsx) at apps/daemon/src/pty, so the repo root is four levels up.
   const here = dirname(fileURLToPath(import.meta.url));
   const repoRoot = join(here, '..', '..', '..', '..');
-  return join(repoRoot, 'target', 'debug', binaryName());
+  return join(repoRoot, 'target', 'release', binaryName());
 }
 
 function binaryName(): string {
