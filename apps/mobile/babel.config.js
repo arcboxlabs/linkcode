@@ -1,7 +1,7 @@
-// NativeWind v5 delegates to react-native-css/babel, which injects the worklets plugin.
+// babel-preset-expo auto-injects the react-native-worklets plugin when the package resolves.
 module.exports = (api) => {
   api.cache(true);
   return {
-    presets: ['babel-preset-expo', 'nativewind/babel'],
+    presets: ['babel-preset-expo'],
   };
 };

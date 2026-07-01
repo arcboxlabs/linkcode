@@ -48,6 +48,10 @@
     {
       "includes": ["packages/schema/src/wire.ts"],
       "formatter": { "enabled": false }
+    },
+    {
+      "includes": ["apps/mobile/src/uniwind-types.d.ts"],
+      "formatter": { "enabled": false }
     }
   ]
 }

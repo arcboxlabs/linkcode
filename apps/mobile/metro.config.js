@@ -1,7 +1,7 @@
-// Expo monorepo Metro config + NativeWind + Sentry.
+// Expo monorepo Metro config + Uniwind + Sentry.
 // getSentryExpoConfig wraps Expo's default config with Sentry's source-map serializer.
 const { getSentryExpoConfig } = require('@sentry/react-native/metro');
-const { withNativeWind } = require('nativewind/metro');
+const { withUniwindConfig } = require('uniwind/metro');
 const path = require('node:path');
 
 const projectRoot = __dirname;
@@ -18,5 +18,8 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// 3) Apply NativeWind, compiling ./src/global.css into the bundle.
-module.exports = withNativeWind(config, { input: './src/global.css' });
+// 3) Apply Uniwind, compiling ./src/global.css and generating className typings.
+module.exports = withUniwindConfig(config, {
+  cssEntryFile: './src/global.css',
+  dtsFile: './src/uniwind-types.d.ts',
+});

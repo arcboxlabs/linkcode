@@ -1,17 +1,7 @@
-@import "tailwindcss/theme";
-@import "tailwindcss/utilities" source(none);
-@import "nativewind/theme";
+@import "tailwindcss";
+@import "uniwind";
+@import "heroui-native/styles";
 
-@source "./app.tsx";
+/* Workspace sources are outside Tailwind's automatic content detection root. */
 @source "../../../packages/ui/src/native/**/*.{ts,tsx}";
-
-@theme {
-  --color-bg: #0e0f12;
-  --color-surface: #16181d;
-  --color-border: #262a33;
-  --color-text: #e6e8ec;
-  --color-muted: #9aa1ad;
-  --color-accent: #6ea8fe;
-  --color-danger: #f08a8a;
-  --color-success: #7fd6a3;
-}
+@source "../../../node_modules/heroui-native/lib";
