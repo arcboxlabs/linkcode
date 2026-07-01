@@ -183,6 +183,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@fontsource/ibm-plex-mono':
+        specifier: ^5.2.7
+        version: 5.2.7
       '@linkcode/client-core':
         specifier: workspace:*
         version: link:../../packages/client-core

@@ -16,6 +16,7 @@
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@linkcode/client-core": "workspace:*",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/ipc": "workspace:*",
