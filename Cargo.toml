@@ -6,6 +6,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 publish = false
+authors = ["ArcBox Labs <team@arcbox.dev>"]
 description = "Every Code Agent in the Palm of your hand"
 homepage = "https://github.com/arcboxlabs/linkcode#readme"
 repository = "https://github.com/arcboxlabs/linkcode"
