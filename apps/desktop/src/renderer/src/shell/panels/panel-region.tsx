@@ -8,6 +8,7 @@ import { cn, FreePanel, PanelControlButton, PanelStubContent, PanelTabStrip } fr
 import { Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { ChromeSurface } from './panel-layout';
+import { TerminalPanel } from './terminal';
 
 type ChromeMotionAxis = 'x' | 'y';
 
@@ -51,7 +52,7 @@ export function PanelRegion({
   const chromePlacement = getPanelChromePlacement(side, chromeSurface);
   const content = (
     <div className="h-full min-h-0" style={contentStyle}>
-      <PanelStubContent type={activeType} />
+      {activeType === 'terminal' ? <TerminalPanel /> : <PanelStubContent type={activeType} />}
     </div>
   );
 

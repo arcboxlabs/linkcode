@@ -16,6 +16,7 @@
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
   "dependencies": {
+    "@linkcode/client-core": "workspace:*",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/ipc": "workspace:*",
     "@linkcode/schema": "workspace:*",
@@ -33,6 +34,7 @@
     "motion": "^12.40.0",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "restty": "^0.1.35",
     "use-intl": "catalog:",
     "zod": "catalog:"
   },

@@ -183,6 +183,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@linkcode/client-core':
+        specifier: workspace:*
+        version: link:../../packages/client-core
       '@linkcode/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -234,6 +237,9 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.7(react@19.2.7)
+      restty:
+        specifier: ^0.1.35
+        version: 0.1.35(typescript@6.0.3)
       use-intl:
         specifier: 'catalog:'
         version: 4.13.0(react@19.2.7)
@@ -7123,6 +7129,10 @@ packages:
     resolution: {integrity: sha512-6IzJLuGi4+R14vwagDHX+JrXmPVtPpn4mffDJ1UdR7/Edm87fl6yi8mMBIVvFtJaNTUvjughmW4hwLhRG7gC1Q==}
     engines: {node: '>=4'}
 
+  restty@0.1.35:
+    resolution: {integrity: sha512-IUr4NsdYCTErKBxuAd0eu/KdiGZhADBxA0ddSPEEIxAz8np3RT1bLiL9iIH+wglmUeSmHRmJzkPN7hGJJ+E/Yw==}
+    engines: {bun: '>=1.2.0'}
+
   retry@0.12.0:
     resolution: {integrity: sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow==}
     engines: {node: '>= 4'}
@@ -7517,6 +7527,11 @@ packages:
     resolution: {integrity: sha512-J/9An6vs9Us6wKRriSFXBWdRZapREHqFzdNUKk0pmu804EMR6dr6winwo7e5JDxN4xahxQsuysyYFwlwj4XN/Q==}
     engines: {node: '>=10'}
     hasBin: true
+
+  text-shaper@0.1.22:
+    resolution: {integrity: sha512-OYxqPcNEox3tlXilxZVPNub8EU/A6Lxy9vlCAe362fiGI9f3pMav497wL7cecX0CPq1yVtiBn/lii/ZZUUk9bQ==}
+    peerDependencies:
+      typescript: ^5
 
   thenify-all@1.6.0:
     resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
@@ -15380,6 +15395,12 @@ snapshots:
       onetime: 2.0.1
       signal-exit: 3.0.7
 
+  restty@0.1.35(typescript@6.0.3):
+    dependencies:
+      text-shaper: 0.1.22(typescript@6.0.3)
+    transitivePeerDependencies:
+      - typescript
+
   retry@0.12.0: {}
 
   retry@0.13.1: {}
@@ -15853,6 +15874,10 @@ snapshots:
       acorn: 8.17.0
       commander: 2.20.3
       source-map-support: 0.5.21
+
+  text-shaper@0.1.22(typescript@6.0.3):
+    dependencies:
+      typescript: 6.0.3
 
   thenify-all@1.6.0:
     dependencies:
