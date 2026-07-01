@@ -5,9 +5,7 @@ import type { DesktopAppConfig } from './app-config-context';
 import { DesktopAppConfigContext } from './app-config-context';
 import { systemBridge } from './ipc';
 
-export function DesktopAppConfigProvider({
-  children,
-}: React.PropsWithChildren): React.ReactNode {
+export function DesktopAppConfigProvider({ children }: React.PropsWithChildren): React.ReactNode {
   const { current: initial } = useSingleton(() => systemBridge.settings.snapshot());
   const [theme, setTheme] = useState<ThemePreference>(initial.theme);
   const [localeOverride, setLocaleOverride] = useState<string | null>(initial.locale);
