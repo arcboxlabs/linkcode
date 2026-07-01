@@ -4,7 +4,6 @@ import type { AgentKind } from '@linkcode/schema';
 import type { PanelWindowType } from '@linkcode/ui';
 import { SessionSidebar, WorkbenchConversationSurface } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
-import { Allotment, LayoutPriority } from 'allotment';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
 import { noop } from 'foxact/noop';
@@ -12,8 +11,8 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { XIcon } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useRef, useState } from 'react';
-import { DesktopChrome } from './chrome/chrome';
-import type { DesktopChromeMetricsStyle } from './chrome/metrics';
+import type { DesktopChromeFrameStyle } from './chrome/desktop-chrome-frame';
+import { DesktopChromeFrame } from './chrome/desktop-chrome-frame';
 import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import { DesktopHostFooter } from './host/host-footer';
 import { getShellContentMotionStyle, useAnimatedSplit } from './layout/use-animated-split';
@@ -40,7 +39,7 @@ import { useDesktopShellState } from './state/local/storage';
 type DesktopPlatform = 'darwin' | 'win32' | 'other';
 
 type DesktopShellStyle = CSSProperties &
-  DesktopChromeMetricsStyle & {
+  DesktopChromeFrameStyle & {
     '--lc-sidebar-w': string;
     '--lc-right-w': string;
     '--lc-bottom-h': string;
@@ -339,94 +338,85 @@ function DesktopShell({
   }
 
   return (
-    <div
-      ref={shellRootRef}
-      className="linkcode-desktop-shell relative h-full bg-transparent text-foreground"
+    <DesktopChromeFrame
+      rootRef={shellRootRef}
       style={shellStyle}
-    >
-      <DesktopChrome
-        header={header}
-        sidebarOpen={sidebarOpen}
-        rightPanelOpen={rightPanel.open}
-        bottomPanelOpen={bottomPanel.open}
-        expandedPanel={expandedPanel}
-        hasNativeBackdrop={hasNativeBackdrop}
-        hasNativeTrafficLights={hasNativeTrafficLights}
-        onShowSidebar={() => updateSidebarOpen(true)}
-        onHideSidebar={() => updateSidebarOpen(false)}
-        onToggleRight={() => togglePanel('right')}
-        onToggleBottom={() => togglePanel('bottom')}
-      >
-        <Allotment
-          ref={setSidebarAllotmentHandle}
-          className="linkcode-shell-split linkcode-shell-sidebar-main-split h-full"
-          defaultSizes={[layout.sidebarW, 1000]}
-          proportionalLayout={false}
-          // The sidebar already draws its own right border at the boundary, so
-          // allotment's separator would stack a second offset line beside it.
-          separator={false}
-          onChange={handleSidebarSplitChange}
-          onDragEnd={(sizes) => {
-            handleSidebarSplitChange(sizes);
-            if (sidebarOpen && !sidebarIsAnimating) {
-              updateLayout((current) => ({
-                ...current,
-                sidebarW: readPaneSize(sizes[0], current.sidebarW),
-              }));
-            }
-          }}
-          onReset={resetSidebarSize}
-        >
-          <Allotment.Pane
-            maxSize={SIDEBAR_MAX_SIZE}
-            minSize={sidebarAllowZeroSize ? 0 : SIDEBAR_MIN_SIZE}
-            preferredSize={layout.sidebarW}
-            visible={sidebarPaneVisible}
-          >
-            <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
-              <SessionSidebar
-                className={sidebarClassName}
-                sessions={sessions}
-                activeId={activeId}
-                topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
-                footer={
-                  <DesktopHostFooter
-                    systemBridge={systemBridge}
-                    pendingPermissionCount={conversation.pendingPermissionIds.length}
-                  />
-                }
-                onSelect={onSelectSession}
-                onStop={onStopSession}
-                onCreate={createSession}
+      chrome={{
+        header,
+        sidebarOpen,
+        rightPanelOpen: rightPanel.open,
+        bottomPanelOpen: bottomPanel.open,
+        expandedPanel,
+        hasNativeBackdrop,
+        hasNativeTrafficLights,
+        onShowSidebar: () => updateSidebarOpen(true),
+        onHideSidebar: () => updateSidebarOpen(false),
+        onToggleRight: () => togglePanel('right'),
+        onToggleBottom: () => togglePanel('bottom'),
+      }}
+      sidebar={
+        <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
+          <SessionSidebar
+            className={sidebarClassName}
+            sessions={sessions}
+            activeId={activeId}
+            topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
+            footer={
+              <DesktopHostFooter
+                systemBridge={systemBridge}
+                pendingPermissionCount={conversation.pendingPermissionIds.length}
               />
-            </div>
-          </Allotment.Pane>
-          <Allotment.Pane minSize={workspaceMinSize} priority={LayoutPriority.High}>
-            <DesktopWorkspace
-              main={main}
-              renderPanel={renderPanel}
-              expandedPanel={expandedPanel}
-              rightPanelOpen={rightPanel.open}
-              bottomPanelOpen={bottomPanel.open}
-              setRightAllotmentHandle={setRightAllotmentHandle}
-              rightAllowZeroSize={rightAllowZeroSize}
-              rightIsAnimating={rightIsAnimating}
-              rightPaneVisible={rightPaneVisible}
-              rightOnChange={handleRightSplitChange}
-              setBottomAllotmentHandle={setBottomAllotmentHandle}
-              bottomAllowZeroSize={bottomAllowZeroSize}
-              bottomIsAnimating={bottomIsAnimating}
-              bottomPaneVisible={bottomPaneVisible}
-              bottomOnChange={handleBottomSplitChange}
-              layout={layout}
-              onLayoutChange={updateLayout}
-              onResetRightSize={resetRightPanelSize}
-              onResetBottomSize={resetBottomPanelSize}
-            />
-          </Allotment.Pane>
-        </Allotment>
-      </DesktopChrome>
-    </div>
+            }
+            onSelect={onSelectSession}
+            onStop={onStopSession}
+            onCreate={createSession}
+          />
+        </div>
+      }
+      main={
+        <DesktopWorkspace
+          main={main}
+          renderPanel={renderPanel}
+          expandedPanel={expandedPanel}
+          rightPanelOpen={rightPanel.open}
+          bottomPanelOpen={bottomPanel.open}
+          setRightAllotmentHandle={setRightAllotmentHandle}
+          rightAllowZeroSize={rightAllowZeroSize}
+          rightIsAnimating={rightIsAnimating}
+          rightPaneVisible={rightPaneVisible}
+          rightOnChange={handleRightSplitChange}
+          setBottomAllotmentHandle={setBottomAllotmentHandle}
+          bottomAllowZeroSize={bottomAllowZeroSize}
+          bottomIsAnimating={bottomIsAnimating}
+          bottomPaneVisible={bottomPaneVisible}
+          bottomOnChange={handleBottomSplitChange}
+          layout={layout}
+          onLayoutChange={updateLayout}
+          onResetRightSize={resetRightPanelSize}
+          onResetBottomSize={resetBottomPanelSize}
+        />
+      }
+      sidebarSplit={{
+        defaultSizes: [layout.sidebarW, 1000],
+        mainMinSize: workspaceMinSize,
+        maxSize: SIDEBAR_MAX_SIZE,
+        minSize: sidebarAllowZeroSize ? 0 : SIDEBAR_MIN_SIZE,
+        preferredSize: layout.sidebarW,
+        visible: sidebarPaneVisible,
+        setAllotmentHandle: setSidebarAllotmentHandle,
+        onChange: handleSidebarSplitChange,
+        onDragEnd(sizes) {
+          handleSidebarSplitChange(sizes);
+          if (sidebarOpen && !sidebarIsAnimating) {
+            updateLayout((current) => ({
+              ...current,
+              sidebarW: readPaneSize(sizes[0], current.sidebarW),
+            }));
+          }
+        },
+        onReset: resetSidebarSize,
+      }}
+    />
   );
 }
 

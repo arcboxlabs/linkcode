@@ -32,6 +32,12 @@ export interface DesktopChromeProps {
   onHideSidebar: () => void;
   onToggleRight: () => void;
   onToggleBottom: () => void;
+  /** `undefined` renders workbench defaults, `null` renders no left controls. */
+  leftControls?: ReactNode | null;
+  /** `undefined` renders workbench defaults, `null` renders no right controls. */
+  rightControls?: ReactNode | null;
+  /** `undefined` renders the workbench title content. */
+  titleContent?: ReactNode;
 }
 
 export type DesktopChromeSegment = 'sidebar' | 'main' | 'right';
@@ -130,6 +136,9 @@ export function DesktopChrome({
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
+  leftControls,
+  rightControls,
+  titleContent,
 }: DesktopChromeProps): ReactNode {
   const [portalTargets, setPortalTargets] = useState<ChromePortalTargetMap>({});
   const chromeRootRef = useRef<HTMLDivElement | null>(null);
@@ -163,12 +172,14 @@ export function DesktopChrome({
           header={header}
           activeExpandedPanel={activeExpandedPanel}
           hasNativeBackdrop={hasNativeBackdrop}
+          titleContent={titleContent}
           setPortalTarget={setPortalTarget}
         />
         <StableLeftChrome
           contentRef={leftRailContentRef}
           sidebarOpen={sidebarOpen}
           hasNativeTrafficLights={hasNativeTrafficLights}
+          controls={leftControls}
           onShowSidebar={onShowSidebar}
           onHideSidebar={onHideSidebar}
         />
@@ -176,6 +187,7 @@ export function DesktopChrome({
           contentRef={rightRailContentRef}
           rightPanelOpen={rightPanelOpen}
           bottomPanelOpen={bottomPanelOpen}
+          controls={rightControls}
           onToggleRight={onToggleRight}
           onToggleBottom={onToggleBottom}
         />
@@ -189,13 +201,17 @@ function ChromeSegmentGrid({
   header,
   activeExpandedPanel,
   hasNativeBackdrop,
+  titleContent,
   setPortalTarget,
 }: {
   header: WorkbenchShellHeader;
   activeExpandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
+  titleContent?: ReactNode;
   setPortalTarget: SetChromePortalTarget;
 }): ReactNode {
+  const mainTitle = titleContent === undefined ? <MainChromeTitle header={header} /> : titleContent;
+
   return (
     <div
       className="absolute inset-0 grid overflow-hidden"
@@ -223,7 +239,7 @@ function ChromeSegmentGrid({
         // While any panel is maximized the main segment hosts that panel's tabs
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
-          left: activeExpandedPanel ? null : <MainChromeTitle header={header} />,
+          left: activeExpandedPanel ? null : mainTitle,
         }}
         setPortalTarget={setPortalTarget}
       />
@@ -316,22 +332,20 @@ function StableLeftChrome({
   contentRef,
   sidebarOpen,
   hasNativeTrafficLights,
+  controls,
   onShowSidebar,
   onHideSidebar,
 }: {
   contentRef: Ref<HTMLDivElement>;
   sidebarOpen: boolean;
   hasNativeTrafficLights: boolean;
+  controls?: ReactNode | null;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
 }): ReactNode {
-  return (
-    <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-(--lc-chrome-edge)">
-      <div
-        ref={contentRef}
-        className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
-      >
-        {hasNativeTrafficLights ? <NativeTrafficLightInset /> : null}
+  const renderedControls =
+    controls === undefined ? (
+      <>
         <ShellIconButton
           label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
           aria-pressed={sidebarOpen}
@@ -345,6 +359,19 @@ function StableLeftChrome({
         <ShellIconButton label="Forward" disabled>
           <ChevronRightIcon className="size-4" />
         </ShellIconButton>
+      </>
+    ) : (
+      controls
+    );
+
+  return (
+    <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-(--lc-chrome-edge)">
+      <div
+        ref={contentRef}
+        className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
+      >
+        {hasNativeTrafficLights ? <NativeTrafficLightInset /> : null}
+        {renderedControls}
       </div>
     </div>
   );
@@ -366,21 +393,20 @@ function StableRightChrome({
   contentRef,
   rightPanelOpen,
   bottomPanelOpen,
+  controls,
   onToggleRight,
   onToggleBottom,
 }: {
   contentRef: Ref<HTMLDivElement>;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
+  controls?: ReactNode | null;
   onToggleRight: () => void;
   onToggleBottom: () => void;
 }): ReactNode {
-  return (
-    <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-(--lc-chrome-edge)">
-      <div
-        ref={contentRef}
-        className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
-      >
+  const renderedControls =
+    controls === undefined ? (
+      <>
         <ShellIconButton
           label={bottomPanelOpen ? 'Close bottom panel' : 'Open bottom panel'}
           aria-pressed={bottomPanelOpen}
@@ -399,6 +425,18 @@ function StableRightChrome({
         >
           <PanelRightIcon className="size-4" />
         </ShellIconButton>
+      </>
+    ) : (
+      controls
+    );
+
+  return (
+    <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-(--lc-chrome-edge)">
+      <div
+        ref={contentRef}
+        className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
+      >
+        {renderedControls}
       </div>
     </div>
   );

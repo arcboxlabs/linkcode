@@ -5,6 +5,7 @@ import { XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ConversationViewModel } from '../chat';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
+import { ShellFrame } from './shell-frame';
 import { WorkbenchConversationSurface } from './workbench-conversation-surface';
 
 export interface WorkbenchFrameProps {
@@ -45,8 +46,8 @@ export function WorkbenchFrame({
   const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';
 
   return (
-    <div className="flex h-full min-h-0 bg-background text-foreground">
-      <div className="w-72 shrink-0">
+    <ShellFrame
+      sidebar={
         <SessionSidebar
           sessions={sessions}
           activeId={activeId}
@@ -55,44 +56,43 @@ export function WorkbenchFrame({
           onStop={onStopSession}
           onCreate={(kind) => onCreateSession({ kind, cwd: fallbackCwd })}
         />
-      </div>
-      <main className="flex min-w-0 flex-1 flex-col">
-        {header}
-        {errorMessage && (
-          <div className="border-border border-b px-4 py-2">
-            <Alert variant="error" className="rounded-md py-2">
-              <AlertTitle>Action failed</AlertTitle>
-              <AlertDescription>{errorMessage}</AlertDescription>
-              {onDismissError && (
-                <AlertAction>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label="Dismiss"
-                    onClick={onDismissError}
-                  >
-                    <XIcon />
-                  </Button>
-                </AlertAction>
-              )}
-            </Alert>
-          </div>
-        )}
-        <WorkbenchConversationSurface
-          className="min-h-0 flex-1"
-          conversation={conversation}
-          agentKind={active?.kind}
-          agentLabel={active ? active.kind : undefined}
-          disabled={!activeId}
-          isRunning={isRunning}
-          cwd={active?.cwd}
-          answeredPermissions={answeredPermissions}
-          respondingPermissions={respondingPermissions}
-          onSendPrompt={onSendPrompt}
-          onStopTurn={onStopTurn}
-          onRespondPermission={onRespondPermission}
-        />
-      </main>
-    </div>
+      }
+    >
+      {header}
+      {errorMessage && (
+        <div className="border-border border-b px-4 py-2">
+          <Alert variant="error" className="rounded-md py-2">
+            <AlertTitle>Action failed</AlertTitle>
+            <AlertDescription>{errorMessage}</AlertDescription>
+            {onDismissError && (
+              <AlertAction>
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Dismiss"
+                  onClick={onDismissError}
+                >
+                  <XIcon />
+                </Button>
+              </AlertAction>
+            )}
+          </Alert>
+        </div>
+      )}
+      <WorkbenchConversationSurface
+        className="min-h-0 flex-1"
+        conversation={conversation}
+        agentKind={active?.kind}
+        agentLabel={active ? active.kind : undefined}
+        disabled={!activeId}
+        isRunning={isRunning}
+        cwd={active?.cwd}
+        answeredPermissions={answeredPermissions}
+        respondingPermissions={respondingPermissions}
+        onSendPrompt={onSendPrompt}
+        onStopTurn={onStopTurn}
+        onRespondPermission={onRespondPermission}
+      />
+    </ShellFrame>
   );
 }
