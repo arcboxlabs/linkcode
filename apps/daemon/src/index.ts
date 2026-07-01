@@ -1,6 +1,7 @@
 import { Engine } from '@linkcode/engine';
 import type { TransportServer } from '@linkcode/transport/server';
 import { createTransportServer, Hub } from '@linkcode/transport/server';
+import { once } from 'foxts/once';
 import type { DaemonListenerConfig } from './config';
 import { loadConfig } from './config';
 import { createProviderConfigStore } from './provider-store';
@@ -31,10 +32,7 @@ async function main(): Promise<void> {
     console.log(`[linkcode/daemon] listening on ${formatListener(listener)}`);
   }
 
-  let shuttingDown = false;
-  const shutdown = (): void => {
-    if (shuttingDown) return;
-    shuttingDown = true;
+  const shutdown = once((): void => {
     void (async () => {
       try {
         await Promise.all(servers.map((server) => server.close()));
@@ -44,7 +42,7 @@ async function main(): Promise<void> {
         process.exit(0);
       }
     })();
-  };
+  });
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
