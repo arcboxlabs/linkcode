@@ -170,6 +170,9 @@ importers:
       '@sentry/profiling-node':
         specifier: 10.60.0
         version: 10.60.0(@opentelemetry/core@2.8.0(@opentelemetry/api@1.9.1))
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -426,6 +429,9 @@ importers:
       foxact:
         specifier: ^0.3.6
         version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
       lucide-react:
         specifier: 'catalog:'
         version: 1.18.0(react@19.2.7)
@@ -517,6 +523,9 @@ importers:
       '@opencode-ai/sdk':
         specifier: ^1.17.7
         version: 1.17.7
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -536,6 +545,9 @@ importers:
       foxact:
         specifier: ^0.3.6
         version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
@@ -601,6 +613,9 @@ importers:
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../transport
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -649,6 +664,9 @@ importers:
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../transport
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -659,6 +677,9 @@ importers:
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
       socket.io:
         specifier: 'catalog:'
         version: 4.8.3
@@ -714,6 +735,9 @@ importers:
       foxact:
         specifier: ^0.3.6
         version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      foxts:
+        specifier: ^5.6.0
+        version: 5.6.0
       lucide-react:
         specifier: ^1.18.0
         version: 1.18.0(react@19.2.7)
@@ -791,8 +815,8 @@ importers:
         specifier: ^0.3.6
         version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       foxts:
-        specifier: ^5.5.1
-        version: 5.5.1
+        specifier: ^5.6.0
+        version: 5.6.0
       swr:
         specifier: 'catalog:'
         version: 2.4.1(react@19.2.7)
@@ -5393,9 +5417,6 @@ packages:
       react-dom:
         optional: true
 
-  foxts@5.5.1:
-    resolution: {integrity: sha512-jBm7lzO/D8CK2S/BhVHUbFb4n3NdjkCTRbvHgtqYitFzUYqK2iH6jEQNEI/Erde6WjLnrmZfdxAoIXbkm4pfxA==}
-
   foxts@5.6.0:
     resolution: {integrity: sha512-KovPkzPutn/SMR/SwK1+a2DuaeTpnCYzoIbPO97O003VVT9Yhjnp7JF9UH8vRiAUIks2Ztwkr8EQoV7wSDSiwg==}
 
@@ -9507,7 +9528,7 @@ snapshots:
       '@typescript-eslint/utils': 8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3)
       eslint-plugin-react-hooks: 7.1.1(eslint@10.6.0(jiti@2.7.0))
       eslint-plugin-ssr-friendly: 1.3.0(eslint@10.6.0(jiti@2.7.0))
-      foxts: 5.5.1
+      foxts: 5.6.0
     transitivePeerDependencies:
       - eslint
       - supports-color
@@ -9519,7 +9540,7 @@ snapshots:
       '@typescript-eslint/utils': 8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3)
       enhanced-resolve: 5.24.1
       eslint: 10.6.0(jiti@2.7.0)
-      foxts: 5.5.1
+      foxts: 5.6.0
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -12750,7 +12771,7 @@ snapshots:
       eslint-plugin-promise: 7.3.0(eslint@10.6.0(jiti@2.7.0))
       eslint-plugin-regexp: 3.1.1(eslint@10.6.0(jiti@2.7.0))
       eslint-plugin-unused-imports: 4.4.1(@typescript-eslint/eslint-plugin@8.62.1(@typescript-eslint/parser@8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.6.0(jiti@2.7.0))
-      foxts: 5.5.1
+      foxts: 5.6.0
       jsonc-eslint-parser: 3.1.0
       picocolors: 1.1.1
       typescript-eslint: 8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3)
@@ -12767,7 +12788,7 @@ snapshots:
     dependencies:
       ci-info: 4.4.0
       eslint: 10.6.0(jiti@2.7.0)
-      foxts: 5.5.1
+      foxts: 5.6.0
       picocolors: 1.1.1
 
   eslint-import-context@0.1.9(unrs-resolver@1.12.2):
@@ -12867,7 +12888,7 @@ snapshots:
       '@typescript-eslint/types': 8.62.1
       '@typescript-eslint/utils': 8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3)
       eslint: 10.6.0(jiti@2.7.0)
-      foxts: 5.5.1
+      foxts: 5.6.0
       typescript: 6.0.3
     transitivePeerDependencies:
       - supports-color
@@ -13336,8 +13357,6 @@ snapshots:
     optionalDependencies:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
-
-  foxts@5.5.1: {}
 
   foxts@5.6.0: {}
 

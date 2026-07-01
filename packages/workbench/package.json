@@ -22,7 +22,7 @@
     "@linkcode/ui": "workspace:*",
     "coss-ui": "workspace:*",
     "foxact": "^0.3.6",
-    "foxts": "^5.5.1",
+    "foxts": "^5.6.0",
     "swr": "catalog:",
     "tayori": "^0.3.6",
     "use-intl": "catalog:",

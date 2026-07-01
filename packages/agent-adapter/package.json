@@ -19,7 +19,8 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@openai/codex-sdk": "^0.140.0",
-    "@opencode-ai/sdk": "^1.17.7"
+    "@opencode-ai/sdk": "^1.17.7",
+    "foxts": "^5.6.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",

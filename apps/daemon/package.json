@@ -18,7 +18,8 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@sentry/node": "10.60.0",
-    "@sentry/profiling-node": "10.60.0"
+    "@sentry/profiling-node": "10.60.0",
+    "foxts": "^5.6.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",

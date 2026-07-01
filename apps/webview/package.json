@@ -26,6 +26,7 @@
     "@sentry/react": "10.60.0",
     "coss-ui": "workspace:*",
     "foxact": "^0.3.6",
+    "foxts": "^5.6.0",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

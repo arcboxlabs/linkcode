@@ -15,7 +15,8 @@
   "dependencies": {
     "@linkcode/agent-adapter": "workspace:*",
     "@linkcode/schema": "workspace:*",
-    "@linkcode/transport": "workspace:*"
+    "@linkcode/transport": "workspace:*",
+    "foxts": "^5.6.0"
   },
   "devDependencies": {
     "typescript": "catalog:"
