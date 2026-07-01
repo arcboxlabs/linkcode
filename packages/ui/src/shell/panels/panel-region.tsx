@@ -52,6 +52,7 @@ export function PanelRegion({
   maximized,
   chromeVisible,
   chromeSurface,
+  contentHidden,
   ChromePortal,
   chromeSpacerClassName,
   contentStyle,
@@ -67,10 +68,16 @@ export function PanelRegion({
   maximized: boolean;
   chromeVisible: boolean;
   chromeSurface: ChromeSurface;
+  /**
+   * Skips mounting the tab content entirely. For shells that render a panel twice
+   * (docked + maximized overlay), exactly one instance shows content, so stateful
+   * tabs like the terminal never run in duplicate.
+   */
+  contentHidden?: boolean;
   ChromePortal?: React.ComponentType<PanelChromePortalProps>;
   chromeSpacerClassName?: string;
   contentStyle?: React.CSSProperties;
-  panelContentByType?: Partial<Record<PanelWindowType, () => React.ReactNode>>;
+  panelContentByType?: Partial<Record<PanelWindowType, (tab: PanelTab) => React.ReactNode>>;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
@@ -82,7 +89,7 @@ export function PanelRegion({
   // Render every tab and toggle visibility instead of resolving a single node by type: two tabs of
   // the same type (e.g. two terminals) each keep their own mounted instance and live session, so
   // switching actually swaps what's shown.
-  const content = (
+  const content = contentHidden ? null : (
     <div className="relative h-full min-h-0" style={contentStyle}>
       {panel.tabs.map((tab) => {
         const active = tab.id === panel.activeTabId;
@@ -94,7 +101,7 @@ export function PanelRegion({
             aria-hidden={!active}
             inert={!active}
           >
-            {panelContentByType?.[tab.type]?.() ?? <PanelStubContent type={tab.type} />}
+            {panelContentByType?.[tab.type]?.(tab) ?? <PanelStubContent type={tab.type} />}
           </div>
         );
       })}

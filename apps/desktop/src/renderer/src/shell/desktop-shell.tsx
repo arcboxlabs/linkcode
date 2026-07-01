@@ -230,10 +230,13 @@ export function DesktopShell({
   // One renderer, two mount points: the docked instance (inside the Allotment,
   // owns the chrome tabs/controls) and the maximized overlay instance (chrome
   // suppressed — the docked instance keeps owning the chrome so the two never
-  // portal duplicate tabs during the transition).
+  // portal duplicate tabs during the transition). Tab content mounts in exactly
+  // one of them (the overlay while expanded, via contentHidden), so stateful tabs
+  // like the terminal never run twice; the terminal session registry hands the
+  // PTY across the remount.
   function renderPanel(
     side: PanelSide,
-    options: { maximized: boolean; chromeVisible: boolean },
+    options: { maximized: boolean; chromeVisible: boolean; contentHidden: boolean },
   ): React.ReactNode {
     const panel = side === 'right' ? rightPanel : bottomPanel;
     return (
@@ -242,6 +245,7 @@ export function DesktopShell({
         panel={panel}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
+        contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
         phase={side === 'right' ? rightPhase : bottomPhase}
         reducedMotion={side === 'right' ? rightReducedMotion : bottomReducedMotion}
@@ -258,13 +262,23 @@ export function DesktopShell({
     bottom: renderPanel('bottom', {
       maximized: expandedPanel === 'bottom',
       chromeVisible: bottomPaneVisible,
+      contentHidden: expandedPanel === 'bottom',
     }),
-    bottomExpanded: renderPanel('bottom', { maximized: true, chromeVisible: false }),
+    bottomExpanded: renderPanel('bottom', {
+      maximized: true,
+      chromeVisible: false,
+      contentHidden: false,
+    }),
     right: renderPanel('right', {
       maximized: expandedPanel === 'right',
       chromeVisible: rightPaneVisible,
+      contentHidden: expandedPanel === 'right',
     }),
-    rightExpanded: renderPanel('right', { maximized: true, chromeVisible: false }),
+    rightExpanded: renderPanel('right', {
+      maximized: true,
+      chromeVisible: false,
+      contentHidden: false,
+    }),
   };
 
   return (

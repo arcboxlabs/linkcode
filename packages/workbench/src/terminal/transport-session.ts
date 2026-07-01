@@ -1,9 +1,15 @@
 import type { LinkCodeClient } from '@linkcode/client-core';
 import type { TerminalSession } from '@linkcode/ui/shell/terminal';
 
+/** The slice of `LinkCodeClient` a live terminal session drives. */
+export type TerminalTransportClient = Pick<
+  LinkCodeClient,
+  'subscribeTerminalOutput' | 'subscribeTerminalExit' | 'terminalInput' | 'resizeTerminal'
+>;
+
 /** A `TerminalSession` backed by an open terminal on the daemon, over the `terminal.*` wire messages. */
 export function createTransportTerminalSession(
-  client: LinkCodeClient,
+  client: TerminalTransportClient,
   terminalId: string,
 ): TerminalSession {
   return {

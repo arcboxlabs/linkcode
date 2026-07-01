@@ -25,8 +25,9 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   and its hooks, the typed tayori instance, the debug toggles.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
   contract plus the default shell, and session orchestration hooks.
-- `terminal/` — the daemon-backed interactive terminal: the panel container and the
-  transport-backed `TerminalSession`.
+- `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
+  session registry that owns PTY lifetime across remounts, and the transport-backed
+  `TerminalSession`.
 
 The public API is the root barrel (`src/index.ts`) plus the `./tayori` subpath (pinned in
 `package.json` `exports`). Consumers never deep-import other paths — export new modules through the

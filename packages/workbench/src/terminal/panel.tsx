@@ -1,45 +1,34 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
+import type { TerminalSession } from '@linkcode/ui/shell/terminal';
 import { LiveTerminal } from '@linkcode/ui/shell/terminal';
-import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { createTransportTerminalSession } from './transport-session';
+import { acquireTerminalSession, peekTerminalSession } from './session-registry';
 
-/** Daemon-backed interactive shell: opens a terminal and renders it with restty. */
-export function TerminalPanel(): React.ReactNode {
+const TERMINAL_INITIAL_SIZE = { cols: 80, rows: 24 };
+
+/**
+ * Daemon-backed interactive shell: attaches to the host terminal keyed by `sessionKey`
+ * (opening it on first mount) and renders it with restty. The PTY lives in the session
+ * registry, so remounts — e.g. the docked↔maximized panel handoff — reattach to the same
+ * terminal instead of spawning a new one.
+ */
+export function TerminalPanel({ sessionKey }: { sessionKey: string }): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
-  const [terminalId, setTerminalId] = useState<string | null>(null);
-
-  useAbortableEffect(
-    (signal) => {
-      let opened: string | null = null;
-      void client
-        .openTerminal({ cols: 80, rows: 24 })
-        .then((id) => {
-          if (signal.aborted) {
-            // Unmounted mid-open — don't leak the host terminal.
-            client.closeTerminal(id);
-            return;
-          }
-          opened = id;
-          setTerminalId(id);
-        })
-        // Open failure surfaces via the daemon's request.failed; leave the panel starting.
-        .catch(noop);
-      return () => {
-        if (opened) client.closeTerminal(opened);
-      };
-    },
-    [client],
+  const [session, setSession] = useState<TerminalSession | null>(() =>
+    peekTerminalSession(client, sessionKey),
   );
 
-  // Stable identity per terminal so LiveTerminal's effect doesn't tear down on every render.
-  const session = useMemo(
-    () => (terminalId ? createTransportTerminalSession(client, terminalId) : null),
-    [client, terminalId],
-  );
+  useEffect(() => {
+    const lease = acquireTerminalSession(client, sessionKey, TERMINAL_INITIAL_SIZE);
+    setSession(lease.getSession());
+    const unsubscribe = lease.subscribe(() => setSession(lease.getSession()));
+    return () => {
+      unsubscribe();
+      lease.release();
+    };
+  }, [client, sessionKey]);
 
   if (!session) {
     return (

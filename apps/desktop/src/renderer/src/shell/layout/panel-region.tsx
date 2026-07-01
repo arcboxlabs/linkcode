@@ -13,6 +13,7 @@ export function DesktopPanelRegion({
   maximized,
   chromeVisible,
   chromeSurface,
+  contentHidden,
   phase,
   reducedMotion,
   onSelectTab,
@@ -26,6 +27,7 @@ export function DesktopPanelRegion({
   maximized: boolean;
   chromeVisible: boolean;
   chromeSurface: ChromeSurface;
+  contentHidden: boolean;
   phase: SplitPanePhase;
   reducedMotion: boolean;
   onSelectTab: (id: string) => void;
@@ -41,6 +43,7 @@ export function DesktopPanelRegion({
       maximized={maximized}
       chromeVisible={chromeVisible}
       chromeSurface={chromeSurface}
+      contentHidden={contentHidden}
       chromeSpacerClassName={DESKTOP_CHROME_SPACER_CLASS}
       ChromePortal={DesktopChromePortal}
       contentStyle={getShellContentMotionStyle({
@@ -48,7 +51,7 @@ export function DesktopPanelRegion({
         phase,
         reducedMotion,
       })}
-      panelContentByType={{ terminal: () => <TerminalPanel /> }}
+      panelContentByType={{ terminal: (tab) => <TerminalPanel sessionKey={tab.id} /> }}
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
       onAddWindow={onAddWindow}
