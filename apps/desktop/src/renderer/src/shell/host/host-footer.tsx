@@ -1,3 +1,4 @@
+import { useDesktopAppConfig } from '@desktop/app-config-context';
 import type { SystemBridge } from '@linkcode/ipc';
 import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
@@ -25,6 +26,7 @@ export function DesktopHostFooter({
   systemBridge: SystemBridge;
   pendingPermissionCount: number;
 }): ReactNode {
+  const { openSettings } = useDesktopAppConfig();
   const [version, setVersion] = useState('v0.0.0');
   const pendingPermissionLabel =
     pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
@@ -96,7 +98,7 @@ export function DesktopHostFooter({
               ))}
             </SelectPopup>
           </Select>
-          <Button disabled size="icon-sm" variant="outline" aria-label="Settings">
+          <Button size="icon-sm" variant="outline" aria-label="Settings" onClick={openSettings}>
             <SettingsIcon />
           </Button>
         </div>
