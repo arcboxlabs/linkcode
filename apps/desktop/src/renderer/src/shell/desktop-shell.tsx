@@ -159,6 +159,32 @@ export function DesktopShell({
     resetBottomPanelSize: resetBottomPanelLayoutSize,
   } = shellState;
 
+  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel. Captured at the window so it wins
+  // even while the terminal canvas holds focus; on mac the Ctrl variant stays with the shell
+  // (Ctrl+J is a real terminal keystroke there).
+  useAbortableEffect(
+    (signal) => {
+      if (desktopPlatform === null) return;
+      const isMac = desktopPlatform === 'darwin';
+      window.addEventListener(
+        'keydown',
+        (event) => {
+          const modifier = isMac
+            ? event.metaKey && !event.ctrlKey
+            : event.ctrlKey && !event.metaKey;
+          if (!modifier || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'j') {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          togglePanel('bottom');
+        },
+        { capture: true, signal },
+      );
+    },
+    [desktopPlatform, togglePanel],
+  );
+
   function createSession(kind: AgentKind): void {
     void systemBridge.fs
       .pickFile({ title: 'Choose working folder', directory: true })
