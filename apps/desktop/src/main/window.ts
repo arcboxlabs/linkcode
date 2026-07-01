@@ -3,7 +3,8 @@ import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
 import { BrowserWindow, ipcMain, nativeTheme } from 'electron';
 // electron-vite resolves `?asset` to a runtime file path. Used as the Win/Linux window icon in dev
 // (packaged builds get the real icon from the bundle). macOS uses a separate Dock image set at bootstrap.
-import icon from '../../build-resources/icon-dock.png?asset';
+// eslint-disable-next-line import-x/no-relative-packages -- shared repo-root brand asset; this private app has no package export for it, so a relative import is the resolvable form
+import icon from '../../../../assets/icon-dock.png?asset';
 import { desktopBackdropOptions, desktopBackgroundColor } from './appearance';
 import { APP_NAME } from './constants';
 import { systemContextFor } from './system-context';
