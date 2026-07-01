@@ -112,6 +112,14 @@ describe('listenWithPortHunt', () => {
       listenWithPortHunt({ type: 'ws', port, host: '127.0.0.1' }, identity(process.pid)),
     ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
   });
+
+  it('hunts past an occupant with its own pid (a sibling listener)', async () => {
+    const self = identity(process.pid);
+    const port = await serveIdentity(self);
+    const { server, url } = await listenWithPortHunt({ type: 'ws', port, host: '127.0.0.1' }, self);
+    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    await server.close();
+  });
 });
 
 describe('findRunningDaemon', () => {

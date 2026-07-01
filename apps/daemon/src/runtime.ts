@@ -55,26 +55,39 @@ export async function probeDaemonIdentity(baseUrl: string): Promise<DaemonIdenti
  * Bind a listener, hunting upward from the configured port when a foreign process holds it.
  * Throws `DaemonAlreadyRunningError` when the occupant is a live linkcode daemon.
  */
-export async function listenWithPortHunt(
+export function listenWithPortHunt(
   listener: DaemonListenerConfig,
   identity: DaemonIdentity,
 ): Promise<{ server: TransportServer; url: string }> {
-  for (let attempt = 0; attempt < PORT_HUNT_ATTEMPTS; attempt++) {
-    const port = listener.port + attempt;
-    try {
-      const server = await createTransportServer({ ...listener, port, identity });
-      return { server, url: listenerUrl(listener.type, listener.host, port) };
-    } catch (err) {
-      if (!isAddrInUse(err)) throw err;
-      const probeUrl = httpUrl(listener.host, port);
-      const occupant = await probeDaemonIdentity(probeUrl);
-      if (occupant) throw new DaemonAlreadyRunningError(occupant, probeUrl);
-      // Foreign occupant — hunt the next port.
+  return huntFrom(listener, identity, 0);
+}
+
+// Recursive rather than a loop: each attempt depends on the previous one (bind, probe, next port).
+async function huntFrom(
+  listener: DaemonListenerConfig,
+  identity: DaemonIdentity,
+  attempt: number,
+): Promise<{ server: TransportServer; url: string }> {
+  const port = listener.port + attempt;
+  try {
+    const server = await createTransportServer({ ...listener, port, identity });
+    return { server, url: listenerUrl(listener.type, listener.host, port) };
+  } catch (err) {
+    if (!isAddrInUse(err)) throw err;
+    const probeUrl = httpUrl(listener.host, port);
+    const occupant = await probeDaemonIdentity(probeUrl);
+    // Our own pid means another of this daemon's listeners hunted onto the port — keep going.
+    if (occupant && occupant.pid !== identity.pid) {
+      throw new DaemonAlreadyRunningError(occupant, probeUrl);
     }
+    if (attempt + 1 >= PORT_HUNT_ATTEMPTS) {
+      throw new Error(
+        `no free port for ${listener.type} in ${listener.port}–${listener.port + PORT_HUNT_ATTEMPTS - 1}`,
+        { cause: err },
+      );
+    }
+    return huntFrom(listener, identity, attempt + 1);
   }
-  throw new Error(
-    `no free port for ${listener.type} in ${listener.port}–${listener.port + PORT_HUNT_ATTEMPTS - 1}`,
-  );
 }
 
 /**

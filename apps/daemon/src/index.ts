@@ -58,18 +58,22 @@ async function main(): Promise<void> {
     await engine.stop();
   };
 
-  const bound: DaemonListenerInfo[] = [];
   try {
-    for (const listener of config.listeners) {
-      const { server, url } = await listenWithPortHunt(listener, identity);
-      server.onConnection((conn) => {
-        hub.addConnection(conn);
-        conn.onClose(() => hub.removeConnection(conn));
-      });
-      servers.push(server);
-      bound.push({ type: listener.type, url });
-      console.log(`[linkcode/daemon] listening on ${url} (${listener.type})`);
-    }
+    // Listeners hunt concurrently; a transient collision between two of our own hunts resolves
+    // itself because listenWithPortHunt treats an occupant with our pid as "keep hunting".
+    const bound: DaemonListenerInfo[] = await Promise.all(
+      config.listeners.map(async (listener) => {
+        const { server, url } = await listenWithPortHunt(listener, identity);
+        server.onConnection((conn) => {
+          hub.addConnection(conn);
+          conn.onClose(() => hub.removeConnection(conn));
+        });
+        servers.push(server);
+        console.log(`[linkcode/daemon] listening on ${url} (${listener.type})`);
+        return { type: listener.type, url };
+      }),
+    );
+    writeRuntimeFile({ ...identity, listeners: bound });
   } catch (err) {
     if (err instanceof DaemonAlreadyRunningError) {
       console.error(`[linkcode/daemon] ${extractErrorMessage(err)}`);
@@ -79,7 +83,6 @@ async function main(): Promise<void> {
     }
     throw err;
   }
-  writeRuntimeFile({ ...identity, listeners: bound });
 
   // foxts `once` prewarms (executes) by default; `false` defers it to the first real call.
   const shutdown = once((): void => {
