@@ -43,7 +43,9 @@ export class Engine {
     ptyBackend?: PtyBackend,
   ) {
     this.history = new HistoryService(factory);
-    this.terminals = ptyBackend ? new TerminalService(ptyBackend, transport) : undefined;
+    this.terminals = ptyBackend
+      ? new TerminalService(ptyBackend, transport, (id) => this.sessions.has(id))
+      : undefined;
   }
 
   async start(): Promise<void> {

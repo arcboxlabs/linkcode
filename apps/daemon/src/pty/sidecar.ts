@@ -76,7 +76,9 @@ export class SidecarPtyBackend implements PtyBackend {
     this.child = null;
     this.decoder.reset();
     this.failAll(new Error('pty backend shutdown'));
-    child?.kill();
+    // Close stdin (EOF) rather than SIGKILL: the sidecar's stdin loop then runs its own kill_all and
+    // reaps every shell — including setsid-detached ones that a bare kill of the sidecar would orphan.
+    child?.stdin.end();
   }
 
   private ensureChild(): SidecarChild {
@@ -163,11 +165,15 @@ export class SidecarPtyBackend implements PtyBackend {
     if (this.child) writeFrame(this.child.stdin, type, body);
   }
 
-  private finish(terminalId: string, exitCode: number | null): void {
+  private finish(terminalId: string, exitCode: number | null, flushTail = true): void {
     const terminal = this.terminals.get(terminalId);
     if (!terminal) return;
-    const tail = terminal.decoder.decode();
-    if (tail.length > 0) terminal.data.emit(tail);
+    // Skip the decoder's final flush on an abnormal teardown (crash/broken pipe): flushing a
+    // half-received multibyte sequence would synthesize a bogus U+FFFD the shell never produced.
+    if (flushTail) {
+      const tail = terminal.decoder.decode();
+      if (tail.length > 0) terminal.data.emit(tail);
+    }
     this.terminals.delete(terminalId);
     terminal.exit.emit(exitCode);
     terminal.data.clear();
@@ -184,7 +190,7 @@ export class SidecarPtyBackend implements PtyBackend {
     for (const waiter of this.pending.values()) waiter.reject(error);
     this.pending.clear();
     const terminalIds = Array.from(this.terminals.keys());
-    for (const terminalId of terminalIds) this.finish(terminalId, null);
+    for (const terminalId of terminalIds) this.finish(terminalId, null, false);
   }
 }
 

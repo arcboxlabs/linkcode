@@ -29,19 +29,38 @@ struct CloseParams {
     terminal_id: String,
 }
 
+/// Minimal projection used to recover a terminal id from an OPEN frame that failed full parsing,
+/// so the failure can be reported for just that terminal instead of the whole host.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TerminalIdOnly {
+    terminal_id: String,
+}
+
 fn main() {
     let mux = Mux::shared();
     let mut stdin = BufReader::new(io::stdin());
 
-    // Loop until stdin ends (the daemon closed the pipe) or a read error stops us.
-    while let Ok(Some((type_byte, body))) = read_frame(&mut stdin) {
+    loop {
+        let (type_byte, body) = match read_frame(&mut stdin) {
+            Ok(Some(frame)) => frame,
+            // Clean end-of-stream: the daemon closed the pipe.
+            Ok(None) => break,
+            // A truncated/corrupt frame is distinct from a graceful close — surface it before exiting.
+            Err(err) => {
+                eprintln!("pty protocol read error: {err}");
+                break;
+            }
+        };
         match type_byte {
             OPEN => match serde_json::from_slice::<OpenParams>(&body) {
                 Ok(params) => mux.open(params),
                 Err(err) => {
                     eprintln!("invalid OPEN frame: {err}");
-                    mux.kill_all();
-                    std::process::exit(1);
+                    // Fail only this terminal (recover its id if we can); never kill the whole host.
+                    if let Ok(id) = serde_json::from_slice::<TerminalIdOnly>(&body) {
+                        mux.reject_open(&id.terminal_id, &err.to_string());
+                    }
                 }
             },
             INPUT => {

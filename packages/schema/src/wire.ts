@@ -117,8 +117,10 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
     kind: z.literal('terminal.open'),
     clientReqId: z.string().min(1),
     opts: z.object({
-      cols: z.number().int().positive(),
-      rows: z.number().int().positive(),
+      // Capped at the sidecar's u16 winsize range; an out-of-range value would overflow its
+      // deserialize and tear down the whole PTY host, so reject it at the wire boundary.
+      cols: z.number().int().positive().max(0xFFFF),
+      rows: z.number().int().positive().max(0xFFFF),
       cwd: z.string().optional(),
       shell: z.string().optional(),
       // Present for agent-owned terminals so the host can reap them when the session stops.
@@ -134,8 +136,8 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('terminal.resize'),
     terminalId: z.string().min(1),
-    cols: z.number().int().positive(),
-    rows: z.number().int().positive(),
+    cols: z.number().int().positive().max(0xFFFF),
+    rows: z.number().int().positive().max(0xFFFF),
   }),
   z.object({ kind: z.literal('terminal.close'), terminalId: z.string().min(1) }),
   z.object({ kind: z.literal('terminal.output'), terminalId: z.string().min(1), data: z.string() }),

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::Path;
 
 use anyhow::{Result, bail};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -50,8 +51,9 @@ pub fn spawn(params: &OpenParams) -> Result<SpawnedPty> {
     params.validate()?;
 
     let pair = native_pty_system().openpty(PtySize {
-        rows: params.rows,
-        cols: params.cols,
+        // Clamp to at least 1×1: openpty accepts a 0-sized winsize, which makes TUIs misbehave.
+        rows: params.rows.max(1),
+        cols: params.cols.max(1),
         pixel_width: 0,
         pixel_height: 0,
     })?;
@@ -61,6 +63,11 @@ pub fn spawn(params: &OpenParams) -> Result<SpawnedPty> {
         cmd.arg(arg);
     }
     if let Some(cwd) = &params.cwd {
+        // portable-pty silently substitutes $HOME for a non-directory cwd; surface it as an error
+        // instead so a deleted/renamed workspace dir doesn't yield a shell in the wrong place.
+        if !Path::new(cwd).is_dir() {
+            bail!("cwd is not a directory: {cwd}");
+        }
         cmd.cwd(cwd);
     }
     cmd.env("TERM", "xterm-256color");

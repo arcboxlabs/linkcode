@@ -11,6 +11,9 @@ interface TerminalEntry {
   unsubExit: Unsubscribe;
 }
 
+/** Force a flush once the coalescing buffer reaches this, so one wire message can't grow unbounded. */
+const OUTPUT_FLUSH_CAP = 256 * 1024;
+
 /**
  * TerminalService: owns the host's live terminals and bridges a {@link PtyBackend} to the `terminal.*`
  * wire messages. Sits beside `HistoryService` in the {@link Engine}. Output is coalesced per microtask
@@ -23,12 +26,21 @@ export class TerminalService {
   constructor(
     private readonly backend: PtyBackend,
     private readonly transport: Transport,
+    /** Liveness check for the owning session; lets `open` bail if the session stopped mid-spawn. */
+    private readonly isSessionActive?: (sessionId: SessionId) => boolean,
   ) {}
 
   /** Spawn a terminal, reply `terminal.opened`, then stream `terminal.output` / `terminal.exit`. */
   async open(clientReqId: string, opts: PtyOpenOptions & { sessionId?: SessionId }): Promise<void> {
     const terminalId = this.nextTerminalId();
     const process = await this.backend.open(terminalId, opts);
+
+    // `backend.open` is async; a `session.stop` may have run its `killBySession` while we awaited,
+    // before this terminal was ever registered. Reap it now instead of leaking an orphaned PTY.
+    if (opts.sessionId && this.isSessionActive?.(opts.sessionId) === false) {
+      process.kill();
+      throw new Error(`session ${opts.sessionId} stopped before terminal ${terminalId} opened`);
+    }
 
     let pending = '';
     let scheduled = false;
@@ -42,7 +54,9 @@ export class TerminalService {
 
     const unsubData = process.onData((data) => {
       pending += data;
-      if (!scheduled) {
+      if (pending.length >= OUTPUT_FLUSH_CAP) {
+        flush();
+      } else if (!scheduled) {
         scheduled = true;
         queueMicrotask(flush);
       }

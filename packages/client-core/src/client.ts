@@ -42,6 +42,18 @@ export type HistoryReadClientOptions = AgentHistoryReadOptions & {
 /** Cap on per-terminal output buffered before the first subscriber, so an unread PTY can't grow unbounded. */
 const TERMINAL_PREBUFFER_CAP = 128 * 1024;
 
+/**
+ * Trim buffered terminal output to the cap on a line boundary. Slicing raw would leave the buffer
+ * starting mid-ANSI-escape (the head byte gone, the tail rendered as literal garbage); dropping the
+ * partial leading line keeps the replay parseable.
+ */
+function capPrebuffer(text: string): string {
+  if (text.length <= TERMINAL_PREBUFFER_CAP) return text;
+  const sliced = text.slice(-TERMINAL_PREBUFFER_CAP);
+  const nl = sliced.indexOf('\n');
+  return nl === -1 ? sliced : sliced.slice(nl + 1);
+}
+
 let __reqSeq = 0;
 function nextClientReqId(): string {
   __reqSeq += 1;
@@ -140,7 +152,7 @@ export class LinkCodeClient {
           for (const cb of subs) cb(p.data);
         } else {
           const prev = this.terminalPrebuffer.get(p.terminalId) ?? '';
-          this.terminalPrebuffer.set(p.terminalId, (prev + p.data).slice(-TERMINAL_PREBUFFER_CAP));
+          this.terminalPrebuffer.set(p.terminalId, capPrebuffer(prev + p.data));
         }
         break;
       }
@@ -307,12 +319,10 @@ export class LinkCodeClient {
       this.terminalOutputSubs.set(terminalId, set);
     }
     set.add(cb);
-    // Replay output buffered before this first subscription, then stream live.
+    // Replay output buffered before a subscriber attached. Kept (not deleted) until `terminal.exit`
+    // so a remount/second subscriber still gets the initial prompt instead of a blank pane.
     const buffered = this.terminalPrebuffer.get(terminalId);
-    if (buffered !== undefined) {
-      this.terminalPrebuffer.delete(terminalId);
-      cb(buffered);
-    }
+    if (buffered !== undefined) cb(buffered);
     return () => set.delete(cb);
   }
 

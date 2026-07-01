@@ -75,6 +75,15 @@ impl Mux {
         Arc::clone(self).spawn_reader(terminal_id, reader);
     }
 
+    /// Reply `ERROR` for a single terminal that could not be opened (e.g. a malformed OPEN frame),
+    /// leaving every other live terminal untouched.
+    pub fn reject_open(&self, terminal_id: &str, message: &str) {
+        self.send_json(
+            ERROR,
+            &json!({ "terminalId": terminal_id, "message": message }),
+        );
+    }
+
     /// Forward keystrokes to a terminal. Best effort: a dead terminal is reaped by its reader thread.
     pub fn input(&self, terminal_id: &str, data: &[u8]) {
         if let Some(terminal) = self.terminal(terminal_id) {
@@ -147,13 +156,18 @@ impl Mux {
     }
 
     /// Remove a terminal and wait on its child for the exit code (`None` if the wait failed).
-    fn reap(&self, terminal_id: &str) -> Option<i32> {
+    /// Kept as `i64` so a platform exit code with the high bit set (e.g. a Windows crash code like
+    /// 0xC0000005) is preserved as its true unsigned value rather than wrapping to a negative `i32`.
+    fn reap(&self, terminal_id: &str) -> Option<i64> {
         let terminal = self.lock_terminals().remove(terminal_id)?;
         let mut child = terminal
             .child
             .lock()
             .expect("terminal child mutex poisoned");
-        child.wait().ok().map(|status| status.exit_code() as i32)
+        child
+            .wait()
+            .ok()
+            .map(|status| i64::from(status.exit_code()))
     }
 
     fn send(&self, type_byte: u8, body: &[u8]) {
