@@ -6,6 +6,7 @@ import {
   MessageIdSchema,
   SessionIdSchema,
   TimestampSchema,
+  WorkspaceIdSchema,
 } from './common';
 import { GitPullRequestStatusSchema, GitStatusSchema } from './git';
 import {
@@ -16,6 +17,7 @@ import {
 } from './history';
 import { ProvidersConfigSchema } from './provider-config';
 import { SessionInfoSchema, SessionRecordSchema } from './session';
+import { WorkspaceRecordSchema } from './workspace';
 
 /**
  * Wire protocol: the envelope actually transmitted by the transport layer (PLAN §6).
@@ -27,7 +29,7 @@ import { SessionInfoSchema, SessionRecordSchema } from './session';
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 6 as const;
+export const WIRE_PROTOCOL_VERSION = 7 as const;
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
   forceRefresh: z.boolean().optional(),
@@ -136,6 +138,36 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
     kind: z.literal('config.set'),
     clientReqId: z.string().min(1),
     providers: ProvidersConfigSchema,
+  }),
+
+  // ── Workspaces (registered directories, see workspace.ts) ──
+  z.object({ kind: z.literal('workspace.list'), clientReqId: z.string().min(1) }),
+  z.object({
+    kind: z.literal('workspace.listed'),
+    replyTo: z.string().min(1),
+    workspaces: z.array(WorkspaceRecordSchema),
+  }),
+  z.object({
+    kind: z.literal('workspace.register'),
+    clientReqId: z.string().min(1),
+    cwd: z.string().min(1),
+    name: z.string().min(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('workspace.registered'),
+    replyTo: z.string().min(1),
+    record: WorkspaceRecordSchema,
+  }),
+  z.object({
+    kind: z.literal('workspace.update'),
+    clientReqId: z.string().min(1),
+    workspaceId: WorkspaceIdSchema,
+    name: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('workspace.archive'),
+    clientReqId: z.string().min(1),
+    workspaceId: WorkspaceIdSchema,
   }),
 
   // ── Git (directory-backed: keyed by cwd, shared by same-cwd sessions — see git.ts) ──
