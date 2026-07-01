@@ -50,12 +50,9 @@
     },
     "eslint": {
       "settings": {
-        "experimental": {
-          "useFlatConfig": true
-        },
-        "workingDirectory": {
-          "mode": "auto"
-        }
+        "nodePath": "./node_modules",
+        "useFlatConfig": true,
+        "workingDirectories": [{ "directory": "." }]
       }
     }
   },

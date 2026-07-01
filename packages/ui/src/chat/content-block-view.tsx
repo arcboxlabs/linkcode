@@ -1,11 +1,10 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { FileTextIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { CodeBlock } from './code-block';
 import { Markdown } from './markdown';
 
-export function ContentBlockView({ block }: { block: ContentBlock }): ReactNode {
+export function ContentBlockView({ block }: { block: ContentBlock }): React.ReactNode {
   const t = useTranslations('workbench.content');
 
   switch (block.type) {

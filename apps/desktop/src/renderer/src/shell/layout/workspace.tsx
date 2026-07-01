@@ -1,4 +1,4 @@
-import type { LayoutState, PanelSide } from '@desktop/shell/state/local/model';
+import type { LayoutState, PanelSide } from '@renderer/shell/store/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
@@ -7,14 +7,20 @@ import {
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
   readPaneSize,
-} from '@desktop/shell/state/local/model';
+} from '@renderer/shell/store/model';
 import type { AllotmentHandle } from 'allotment';
 import { Allotment, LayoutPriority } from 'allotment';
-import type { ReactNode } from 'react';
+
+interface DesktopWorkspacePanels {
+  bottom: React.ReactNode;
+  bottomExpanded: React.ReactNode;
+  right: React.ReactNode;
+  rightExpanded: React.ReactNode;
+}
 
 export function DesktopWorkspace({
   main,
-  renderPanel,
+  panels,
   expandedPanel,
   rightPanelOpen,
   bottomPanelOpen,
@@ -33,11 +39,8 @@ export function DesktopWorkspace({
   onResetRightSize,
   onResetBottomSize,
 }: {
-  main: ReactNode;
-  renderPanel: (
-    side: PanelSide,
-    options: { maximized: boolean; chromeVisible: boolean },
-  ) => ReactNode;
+  main: React.ReactNode;
+  panels: DesktopWorkspacePanels;
   expandedPanel: PanelSide | null;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
@@ -55,7 +58,7 @@ export function DesktopWorkspace({
   onLayoutChange: (updater: (current: LayoutState) => LayoutState) => void;
   onResetRightSize: () => void;
   onResetBottomSize: () => void;
-}): ReactNode {
+}): React.ReactNode {
   const rowOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'editor-row');
   const workbenchOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'workbench');
   // Expanded panels render as direct overlays. Docked panels stay mounted so
@@ -96,10 +99,7 @@ export function DesktopWorkspace({
             visible={rightPaneVisible}
           >
             <div aria-hidden={!rightPanelOpen} inert={!rightPanelOpen} className="h-full min-h-0">
-              {renderPanel('right', {
-                maximized: expandedPanel === 'right',
-                chromeVisible: rightPaneVisible,
-              })}
+              {panels.right}
             </div>
           </Allotment.Pane>
         </Allotment>
@@ -107,7 +107,7 @@ export function DesktopWorkspace({
 
       {rowOverlayPanel && (
         <ExpandedPanelOverlay side={rowOverlayPanel}>
-          {renderPanel(rowOverlayPanel, { maximized: true, chromeVisible: false })}
+          {rowOverlayPanel === 'right' ? panels.rightExpanded : panels.bottomExpanded}
         </ExpandedPanelOverlay>
       )}
     </div>
@@ -143,10 +143,7 @@ export function DesktopWorkspace({
             visible={bottomPaneVisible}
           >
             <div aria-hidden={!bottomPanelOpen} inert={!bottomPanelOpen} className="h-full min-h-0">
-              {renderPanel('bottom', {
-                maximized: expandedPanel === 'bottom',
-                chromeVisible: bottomPaneVisible,
-              })}
+              {panels.bottom}
             </div>
           </Allotment.Pane>
         </Allotment>
@@ -154,7 +151,7 @@ export function DesktopWorkspace({
 
       {workbenchOverlayPanel && (
         <ExpandedPanelOverlay side={workbenchOverlayPanel}>
-          {renderPanel(workbenchOverlayPanel, { maximized: true, chromeVisible: false })}
+          {workbenchOverlayPanel === 'right' ? panels.rightExpanded : panels.bottomExpanded}
         </ExpandedPanelOverlay>
       )}
     </div>
@@ -166,8 +163,8 @@ function ExpandedPanelOverlay({
   children,
 }: {
   side: PanelSide;
-  children: ReactNode;
-}): ReactNode {
+  children: React.ReactNode;
+}): React.ReactNode {
   return (
     <div data-expanded-panel={side} className="absolute inset-0 z-20 overflow-hidden bg-background">
       {children}

@@ -11,7 +11,6 @@ import {
 import { cn } from 'coss-ui/lib/utils';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import type { TableDefinition } from './core/create-table';
 import { createTableRender } from './core/table-render';
 import type { SortDirection } from './core/types';
@@ -42,7 +41,7 @@ export { useTablePaginationState } from './core/use-table-pagination-state';
 export type { TableSort, TableSortMode, TableSortsState } from './core/use-table-sort';
 export { useTableSort } from './core/use-table-sort';
 
-const SORT_ICON: Record<SortDirection, ReactNode> = {
+const SORT_ICON: Record<SortDirection, React.ReactNode> = {
   asc: <ChevronUpIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />,
   desc: <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />,
 };
@@ -64,9 +63,9 @@ interface DataTableProps<TData> {
   rowCount: number;
   /**
    * Rendered below the header row, outside the table element, when the resolved
-   * data is empty. A plain ReactNode slot.
+   * data is empty. A plain React.ReactNode slot.
    */
-  empty?: ReactNode;
+  empty?: React.ReactNode;
   /** Noun for the footer count, e.g. "of 47 machines". */
   rowNoun?: string;
   /** Number of skeleton rows rendered during the first load. */

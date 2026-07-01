@@ -1,14 +1,18 @@
+import { noop } from 'foxact/noop';
+
 const THEME_QUERY = '(prefers-color-scheme: dark)';
 
 export function installAdaptiveTheme(): () => void {
-  const media = window.matchMedia(THEME_QUERY);
+  const media = document.defaultView?.matchMedia(THEME_QUERY);
+  if (!media) return noop;
+  const colorSchemeMedia = media;
 
   function applyTheme(): void {
-    document.documentElement.classList.toggle('dark', media.matches);
+    document.documentElement.classList.toggle('dark', colorSchemeMedia.matches);
   }
 
   applyTheme();
-  media.addEventListener('change', applyTheme);
+  colorSchemeMedia.addEventListener('change', applyTheme);
 
-  return () => media.removeEventListener('change', applyTheme);
+  return () => colorSchemeMedia.removeEventListener('change', applyTheme);
 }

@@ -10,7 +10,10 @@ import type {
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { HistoryService } from './history-service';
+import type { PtyBackend } from './pty-backend';
+import { TerminalService } from './terminal-service';
 
 interface Session {
   adapter: AgentAdapter;
@@ -31,21 +34,25 @@ interface Session {
 export class Engine {
   private readonly sessions = new Map<SessionId, Session>();
   private readonly history: HistoryService;
+  private readonly terminals?: TerminalService;
   private seq = 0;
 
   constructor(
     private readonly transport: Transport,
     private readonly factory: AdapterFactory = createAdapter,
+    ptyBackend?: PtyBackend,
   ) {
     this.history = new HistoryService(factory);
+    this.terminals = ptyBackend
+      ? new TerminalService(ptyBackend, transport, (id) => this.sessions.has(id))
+      : undefined;
   }
 
   async start(): Promise<void> {
     await this.transport.connect();
     this.transport.onMessage((msg) => {
-      this.handle(msg).catch(() => {
-        // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
-      });
+      // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
+      this.handle(msg).catch(noop);
     });
   }
 
@@ -87,6 +94,7 @@ export class Engine {
           session.unsub();
           await session.adapter.stop();
           this.sessions.delete(p.sessionId);
+          this.terminals?.killBySession(p.sessionId);
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -131,6 +139,27 @@ export class Engine {
         // no-ops for now; a future enhancement can replay buffered state to a freshly-attached client.
         break;
       }
+      case 'terminal.open': {
+        const terminals = this.terminals;
+        if (!terminals) {
+          this.sendFailure(p.clientReqId, new Error('Terminals are not supported on this host'));
+          break;
+        }
+        await this.tryReply(p.clientReqId, () => terminals.open(p.clientReqId, p.opts));
+        break;
+      }
+      case 'terminal.input': {
+        this.terminals?.input(p.terminalId, p.data);
+        break;
+      }
+      case 'terminal.resize': {
+        this.terminals?.resize(p.terminalId, p.cols, p.rows);
+        break;
+      }
+      case 'terminal.close': {
+        this.terminals?.close(p.terminalId);
+        break;
+      }
       case 'ping': {
         this.transport.send(createWireMessage({ kind: 'pong' }));
         break;
@@ -149,6 +178,7 @@ export class Engine {
       }),
     );
     this.sessions.clear();
+    this.terminals?.closeAll();
     this.transport.close();
   }
 
@@ -197,7 +227,7 @@ export class Engine {
   }
 
   private sendFailure(replyTo: string, err: unknown): void {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = extractErrorMessage(err) ?? 'Unknown error';
     this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
   }
 

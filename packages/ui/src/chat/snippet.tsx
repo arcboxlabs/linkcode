@@ -1,7 +1,6 @@
 import { Button } from 'coss-ui/components/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import { CheckIcon, CopyIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { useCopyButton } from './use-copy-button';
 
@@ -14,11 +13,11 @@ export interface ChatSnippet {
   language?: string;
 }
 
-export type SnippetProps = ComponentProps<typeof InputGroup> & {
+export type SnippetProps = React.ComponentProps<typeof InputGroup> & {
   snippet: ChatSnippet;
 };
 
-export function Snippet({ className, snippet, children, ...props }: SnippetProps): ReactNode {
+export function Snippet({ className, snippet, children, ...props }: SnippetProps): React.ReactNode {
   return (
     <InputGroup className={cn('my-2 font-mono', className)} {...props}>
       {children ?? (
@@ -39,13 +38,13 @@ export function Snippet({ className, snippet, children, ...props }: SnippetProps
 }
 
 export type SnippetInputProps = Omit<
-  ComponentProps<typeof InputGroupInput>,
+  React.ComponentProps<typeof InputGroupInput>,
   'readOnly' | 'value'
 > & {
   code: string;
 };
 
-export function SnippetInput({ className, code, ...props }: SnippetInputProps): ReactNode {
+export function SnippetInput({ className, code, ...props }: SnippetInputProps): React.ReactNode {
   return (
     <InputGroupInput
       className={cn('text-foreground', className)}
@@ -56,7 +55,7 @@ export function SnippetInput({ className, code, ...props }: SnippetInputProps): 
   );
 }
 
-export type SnippetCopyButtonProps = ComponentProps<typeof Button> & {
+export type SnippetCopyButtonProps = React.ComponentProps<typeof Button> & {
   code: string;
   timeout?: number;
 };
@@ -67,7 +66,7 @@ export function SnippetCopyButton({
   timeout = 1600,
   children,
   ...props
-}: SnippetCopyButtonProps): ReactNode {
+}: SnippetCopyButtonProps): React.ReactNode {
   const { copied, copyValue } = useCopyButton(code, timeout);
 
   return (

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@linkcode/client-core": "workspace:*",
+    "@linkcode/i18n": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/sdk": "workspace:*",
     "@linkcode/transport": "workspace:*",

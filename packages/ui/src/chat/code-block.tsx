@@ -1,13 +1,12 @@
 import { Button } from 'coss-ui/components/button';
 import { CheckIcon, CopyIcon } from 'lucide-react';
-import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import { Suspense, use } from 'react';
 import { cn } from '../lib/cn';
 import type { HighlightedCode, HighlightedToken } from './code-highlight';
 import { highlightCode, normalizeCodeLanguage } from './code-highlight';
 import { useCopyButton } from './use-copy-button';
 
-export interface CodeBlockProps extends ComponentProps<'div'> {
+export interface CodeBlockProps extends React.ComponentProps<'div'> {
   code: string;
   language?: string;
   title?: string;
@@ -20,7 +19,7 @@ export function CodeBlock({
   className,
   children,
   ...props
-}: CodeBlockProps): ReactNode {
+}: CodeBlockProps): React.ReactNode {
   const hasHeader = Boolean(title || language || children);
 
   return (
@@ -50,7 +49,7 @@ function CodeBlockContent({
 }: {
   code: string;
   language: string | undefined;
-}): ReactNode {
+}): React.ReactNode {
   const normalizedLanguage = normalizeCodeLanguage(language);
   if (!normalizedLanguage || code.length === 0) return code;
 
@@ -67,13 +66,17 @@ function HighlightedCodeResult({
 }: {
   code: string;
   highlighted: Promise<HighlightedCode | null>;
-}): ReactNode {
+}): React.ReactNode {
   const highlightedCode = use(highlighted);
   if (!highlightedCode) return code;
   return <HighlightedCodeContent highlighted={highlightedCode} />;
 }
 
-function HighlightedCodeContent({ highlighted }: { highlighted: HighlightedCode }): ReactNode {
+function HighlightedCodeContent({
+  highlighted,
+}: {
+  highlighted: HighlightedCode;
+}): React.ReactNode {
   return highlighted.lines.map((line, lineIndex) => (
     <span key={line.key}>
       {line.tokens.map((token) => (
@@ -84,17 +87,17 @@ function HighlightedCodeContent({ highlighted }: { highlighted: HighlightedCode 
   ));
 }
 
-function HighlightedTokenSpan({ token }: { token: HighlightedToken }): ReactNode {
+function HighlightedTokenSpan({ token }: { token: HighlightedToken }): React.ReactNode {
   return (
-    <span style={token.color ? ({ color: token.color } satisfies CSSProperties) : undefined}>
+    <span style={token.color ? ({ color: token.color } satisfies React.CSSProperties) : undefined}>
       {token.content}
     </span>
   );
 }
 
-export type CodeBlockHeaderProps = ComponentProps<'div'>;
+export type CodeBlockHeaderProps = React.ComponentProps<'div'>;
 
-export function CodeBlockHeader({ className, ...props }: CodeBlockHeaderProps): ReactNode {
+export function CodeBlockHeader({ className, ...props }: CodeBlockHeaderProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -106,19 +109,19 @@ export function CodeBlockHeader({ className, ...props }: CodeBlockHeaderProps): 
   );
 }
 
-export type CodeBlockTitleProps = ComponentProps<'div'>;
+export type CodeBlockTitleProps = React.ComponentProps<'div'>;
 
-export function CodeBlockTitle({ className, ...props }: CodeBlockTitleProps): ReactNode {
+export function CodeBlockTitle({ className, ...props }: CodeBlockTitleProps): React.ReactNode {
   return <div className={cn('truncate font-mono text-muted-foreground', className)} {...props} />;
 }
 
-export type CodeBlockActionsProps = ComponentProps<'div'>;
+export type CodeBlockActionsProps = React.ComponentProps<'div'>;
 
-export function CodeBlockActions({ className, ...props }: CodeBlockActionsProps): ReactNode {
+export function CodeBlockActions({ className, ...props }: CodeBlockActionsProps): React.ReactNode {
   return <div className={cn('-my-1 flex items-center gap-1', className)} {...props} />;
 }
 
-export type CodeBlockCopyButtonProps = ComponentProps<typeof Button> & {
+export type CodeBlockCopyButtonProps = React.ComponentProps<typeof Button> & {
   code: string;
   timeout?: number;
 };
@@ -129,7 +132,7 @@ export function CodeBlockCopyButton({
   children,
   className,
   ...props
-}: CodeBlockCopyButtonProps): ReactNode {
+}: CodeBlockCopyButtonProps): React.ReactNode {
   const { copied, copyValue } = useCopyButton(code, timeout);
 
   return (

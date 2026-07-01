@@ -1,6 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
-import { AtSignIcon, ChevronDownIcon, PlusIcon, ShieldCheckIcon, SparklesIcon } from 'lucide-react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import { AtSignIcon, PlusIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -47,15 +46,15 @@ interface MenuEntry {
 }
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
-const APPROVE_MODES = ['Approve for me', 'Ask each step', 'Read-only'] as const;
-const MODEL_OPTIONS = ['claude-sonnet-4.5', 'codex'] as const;
+const WHITESPACE_RE = /\s/;
+const LEADING_WHITESPACE_RE = /^\s/;
 
 /** Find an `@` autocomplete trigger at the caret (the maximal non-whitespace run ending there). */
 function computeMenu(value: string, caret: number): MenuState | null {
   let start = caret;
-  while (start > 0 && !/\s/.test(value[start - 1])) start--;
+  while (start > 0 && !WHITESPACE_RE.test(value[start - 1])) start--;
   const token = value.slice(start, caret);
-  if (token.startsWith('@')) return { query: token.slice(1), start };
+  if (token[0] === '@') return { query: token.slice(1), start };
   return null;
 }
 
@@ -67,12 +66,10 @@ export function Composer({
   currentModeId,
   onSend,
   onStop,
-}: ComposerProps): ReactNode {
+}: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
-  const [approveIndex, setApproveIndex] = useState(0);
-  const [modelIndex, setModelIndex] = useState(0);
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
@@ -134,7 +131,7 @@ export function Composer({
     if (!menu) return;
     // Avoid a double space when the trigger token is already followed by whitespace.
     const rest = value.slice(caret);
-    const sep = /^\s/.test(rest) ? '' : ' ';
+    const sep = LEADING_WHITESPACE_RE.test(rest) ? '' : ' ';
     const next = `${value.slice(0, menu.start)}${entry.insert}${sep}${rest}`;
     const pos = menu.start + entry.insert.length + sep.length;
     setValue(next);
@@ -142,7 +139,7 @@ export function Composer({
     pendingCaretRef.current = pos;
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
     // Don't treat IME-composition Enter (CJK candidate confirm) as submit/select.
     if (e.nativeEvent.isComposing || e.key === 'Process') return;
     // An open menu (even with no matches) owns Enter/Tab/Escape/arrows.
@@ -219,31 +216,12 @@ export function Composer({
                 >
                   <PlusIcon className="size-4" />
                 </button>
-                <button
-                  type="button"
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-info-foreground hover:bg-info/10"
-                  onClick={() => setApproveIndex((index) => (index + 1) % APPROVE_MODES.length)}
-                >
-                  <ShieldCheckIcon className="size-4" />
-                  <span className="font-medium text-sm">{APPROVE_MODES[approveIndex]}</span>
-                  <ChevronDownIcon className="size-3.5" />
-                </button>
                 {currentModeId && (
                   <Badge variant="secondary">
                     {tw('mode.label')}: {currentModeId}
                   </Badge>
                 )}
               </PromptInputTools>
-              <button
-                type="button"
-                className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-accent sm:flex"
-                onClick={() => setModelIndex((index) => (index + 1) % MODEL_OPTIONS.length)}
-              >
-                <SparklesIcon className="size-3.5 text-muted-foreground" />
-                <span className="font-mono">{MODEL_OPTIONS[modelIndex]}</span>
-                <span className="text-muted-foreground">Extra high</span>
-                <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-              </button>
               <span className="hidden items-center gap-1 text-muted-foreground text-xs lg:flex">
                 <AtSignIcon className="size-3" />
                 {t('mentions')}
@@ -279,7 +257,7 @@ function AutocompleteMenu({
   emptyLabel,
   onSelect,
   onHover,
-}: AutocompleteMenuProps): ReactNode {
+}: AutocompleteMenuProps): React.ReactNode {
   return (
     <div className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
       {entries.length === 0 ? (

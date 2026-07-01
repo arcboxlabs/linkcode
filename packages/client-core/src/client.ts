@@ -17,8 +17,12 @@ import type {
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 
 type EventCb = (event: AgentEvent) => void;
+type TerminalOutputCb = (data: string) => void;
+type TerminalExitCb = (exitCode: number | null) => void;
+type TerminalErrorCb = (err: Error) => void;
 interface Pending<T> {
   resolve(value: T): void;
   reject(err: Error): void;
@@ -34,6 +38,21 @@ export type HistoryListClientOptions = AgentHistoryListOptions & {
 export type HistoryReadClientOptions = AgentHistoryReadOptions & {
   forceRefresh?: boolean;
 };
+
+/** Cap on per-terminal output buffered before the first subscriber, so an unread PTY can't grow unbounded. */
+const TERMINAL_PREBUFFER_CAP = 128 * 1024;
+
+/**
+ * Trim buffered terminal output to the cap on a line boundary. Slicing raw would leave the buffer
+ * starting mid-ANSI-escape (the head byte gone, the tail rendered as literal garbage); dropping the
+ * partial leading line keeps the replay parseable.
+ */
+function capPrebuffer(text: string): string {
+  if (text.length <= TERMINAL_PREBUFFER_CAP) return text;
+  const sliced = text.slice(-TERMINAL_PREBUFFER_CAP);
+  const nl = sliced.indexOf('\n');
+  return nl === -1 ? sliced : sliced.slice(nl + 1);
+}
 
 let __reqSeq = 0;
 function nextClientReqId(): string {
@@ -58,6 +77,13 @@ export class LinkCodeClient {
   private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
   private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
   private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
+  private readonly pendingTerminalOpens = new Map<string, Pending<string>>();
+  private readonly terminalOutputSubs = new Map<string, Set<TerminalOutputCb>>();
+  private readonly terminalExitSubs = new Map<string, Set<TerminalExitCb>>();
+  /** Notified when a fire-and-forget terminal frame (input/resize/close) fails to send. */
+  private readonly terminalErrorSubs = new Map<string, Set<TerminalErrorCb>>();
+  /** Output seen before anyone subscribed (covers the open→subscribe gap and late mounts); capped. */
+  private readonly terminalPrebuffer = new Map<string, string>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
   private closed = false;
@@ -115,6 +141,30 @@ export class LinkCodeClient {
         else this.events.set(p.sessionId, [p.event]);
         const subs = this.subscribers.get(p.sessionId);
         if (subs) for (const cb of subs) cb(p.event);
+        break;
+      }
+      case 'terminal.opened': {
+        this.pendingTerminalOpens.get(p.replyTo)?.resolve(p.terminalId);
+        this.pendingTerminalOpens.delete(p.replyTo);
+        break;
+      }
+      case 'terminal.output': {
+        const subs = this.terminalOutputSubs.get(p.terminalId);
+        if (subs && subs.size > 0) {
+          for (const cb of subs) cb(p.data);
+        } else {
+          const prev = this.terminalPrebuffer.get(p.terminalId) ?? '';
+          this.terminalPrebuffer.set(p.terminalId, capPrebuffer(prev + p.data));
+        }
+        break;
+      }
+      case 'terminal.exit': {
+        const subs = this.terminalExitSubs.get(p.terminalId);
+        if (subs) for (const cb of subs) cb(p.exitCode);
+        this.terminalOutputSubs.delete(p.terminalId);
+        this.terminalExitSubs.delete(p.terminalId);
+        this.terminalErrorSubs.delete(p.terminalId);
+        this.terminalPrebuffer.delete(p.terminalId);
         break;
       }
       default:
@@ -239,6 +289,71 @@ export class LinkCodeClient {
     return () => set.delete(cb);
   }
 
+  openTerminal(opts: {
+    cols: number;
+    rows: number;
+    cwd?: string;
+    shell?: string;
+    sessionId?: SessionId;
+  }): Promise<string> {
+    return this.sendCorrelated(this.pendingTerminalOpens, (clientReqId) => ({
+      kind: 'terminal.open',
+      clientReqId,
+      opts,
+    }));
+  }
+
+  terminalInput(terminalId: string, data: string): void {
+    this.sendTerminalFrame(terminalId, { kind: 'terminal.input', terminalId, data });
+  }
+
+  resizeTerminal(terminalId: string, cols: number, rows: number): void {
+    this.sendTerminalFrame(terminalId, { kind: 'terminal.resize', terminalId, cols, rows });
+  }
+
+  closeTerminal(terminalId: string): void {
+    this.sendTerminalFrame(terminalId, { kind: 'terminal.close', terminalId });
+  }
+
+  subscribeTerminalOutput(terminalId: string, cb: TerminalOutputCb): Unsubscribe {
+    let set = this.terminalOutputSubs.get(terminalId);
+    if (!set) {
+      set = new Set();
+      this.terminalOutputSubs.set(terminalId, set);
+    }
+    set.add(cb);
+    // Replay output buffered before a subscriber attached. Kept (not deleted) until `terminal.exit`
+    // so a remount/second subscriber still gets the initial prompt instead of a blank pane.
+    const buffered = this.terminalPrebuffer.get(terminalId);
+    if (buffered !== undefined) cb(buffered);
+    return () => set.delete(cb);
+  }
+
+  subscribeTerminalExit(terminalId: string, cb: TerminalExitCb): Unsubscribe {
+    let set = this.terminalExitSubs.get(terminalId);
+    if (!set) {
+      set = new Set();
+      this.terminalExitSubs.set(terminalId, set);
+    }
+    set.add(cb);
+    return () => set.delete(cb);
+  }
+
+  /**
+   * Observe transport-send failures for a terminal's fire-and-forget frames (input/resize/close).
+   * Those carry no reply to await, so without this a dropped keystroke would vanish silently; a
+   * subscriber can surface the drop instead (e.g. flag the pane as disconnected).
+   */
+  subscribeTerminalError(terminalId: string, cb: TerminalErrorCb): Unsubscribe {
+    let set = this.terminalErrorSubs.get(terminalId);
+    if (!set) {
+      set = new Set();
+      this.terminalErrorSubs.set(terminalId, set);
+    }
+    set.add(cb);
+    return () => set.delete(cb);
+  }
+
   dispose(): void {
     this.closed = true;
     this.unsub?.();
@@ -248,6 +363,10 @@ export class LinkCodeClient {
     this.failAllPending(new Error('client disposed'));
     this.subscribers.clear();
     this.events.clear();
+    this.terminalOutputSubs.clear();
+    this.terminalExitSubs.clear();
+    this.terminalErrorSubs.clear();
+    this.terminalPrebuffer.clear();
     this.transport.close();
   }
 
@@ -259,6 +378,7 @@ export class LinkCodeClient {
       this.pendingHistoryLists,
       this.pendingHistoryReads,
       this.pendingAcks,
+      this.pendingTerminalOpens,
     ]) {
       for (const pending of map.values()) pending.reject(err);
       map.clear();
@@ -272,7 +392,23 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
-    rejectFrom(this.pendingAcks, replyTo, err);
+    if (rejectFrom(this.pendingAcks, replyTo, err)) return;
+    rejectFrom(this.pendingTerminalOpens, replyTo, err);
+  }
+
+  /** Send a fire-and-forget terminal frame, routing any send failure to the terminal's error subs. */
+  private sendTerminalFrame(terminalId: string, payload: WirePayload): void {
+    const onFail = (err: unknown) => this.emitTerminalError(terminalId, toError(err));
+    try {
+      void Promise.resolve(this.transport.send(createWireMessage(payload))).catch(onFail);
+    } catch (err) {
+      onFail(err);
+    }
+  }
+
+  private emitTerminalError(terminalId: string, err: Error): void {
+    const subs = this.terminalErrorSubs.get(terminalId);
+    if (subs) for (const cb of subs) cb(err);
   }
 
   private sendCorrelated<T>(
@@ -307,5 +443,5 @@ function rejectFrom<T>(map: Map<string, Pending<T>>, id: string, err: Error): bo
 }
 
 function toError(err: unknown): Error {
-  return err instanceof Error ? err : new Error(String(err));
+  return new Error(extractErrorMessage(err) ?? 'Unknown error');
 }

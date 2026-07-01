@@ -10,12 +10,11 @@ import {
   CircleIcon,
   ListTodoIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
-export type PlanProps = ComponentProps<typeof Collapsible>;
+export type PlanProps = React.ComponentProps<typeof Collapsible>;
 
-export function Plan({ className, defaultOpen = true, ...props }: PlanProps): ReactNode {
+export function Plan({ className, defaultOpen = true, ...props }: PlanProps): React.ReactNode {
   return (
     <Collapsible
       className={cn('my-1 rounded-xl border border-border bg-card p-3', className)}
@@ -25,11 +24,16 @@ export function Plan({ className, defaultOpen = true, ...props }: PlanProps): Re
   );
 }
 
-export type PlanHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type PlanHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   title: string;
 };
 
-export function PlanHeader({ className, title, children, ...props }: PlanHeaderProps): ReactNode {
+export function PlanHeader({
+  className,
+  title,
+  children,
+  ...props
+}: PlanHeaderProps): React.ReactNode {
   return (
     <CollapsibleTrigger
       className={cn(
@@ -49,19 +53,24 @@ export function PlanHeader({ className, title, children, ...props }: PlanHeaderP
   );
 }
 
-export type PlanContentProps = ComponentProps<typeof CollapsibleContent>;
+export type PlanContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function PlanContent({ className, ...props }: PlanContentProps): ReactNode {
+export function PlanContent({ className, ...props }: PlanContentProps): React.ReactNode {
   return <CollapsibleContent className={cn('mt-2', className)} {...props} />;
 }
 
 export type PlanItemStatus = 'pending' | 'in_progress' | 'completed';
 
-export type PlanItemProps = ComponentProps<'div'> & {
+export type PlanItemProps = React.ComponentProps<'div'> & {
   status: PlanItemStatus;
 };
 
-export function PlanItem({ className, status, children, ...props }: PlanItemProps): ReactNode {
+export function PlanItem({
+  className,
+  status,
+  children,
+  ...props
+}: PlanItemProps): React.ReactNode {
   return (
     <div className={cn('flex items-start gap-2 py-0.5 text-[13px]', className)} {...props}>
       <PlanItemIcon status={status} />
@@ -74,7 +83,7 @@ export function PlanItem({ className, status, children, ...props }: PlanItemProp
   );
 }
 
-function PlanItemIcon({ status }: { status: PlanItemStatus }): ReactNode {
+function PlanItemIcon({ status }: { status: PlanItemStatus }): React.ReactNode {
   switch (status) {
     case 'pending':
       return <CircleIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />;

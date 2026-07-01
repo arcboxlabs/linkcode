@@ -1,12 +1,11 @@
 import { Button } from 'coss-ui/components/button';
-import type { ComponentProps, HTMLAttributes, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
-export type MessageProps = HTMLAttributes<HTMLDivElement> & {
+export type MessageProps = React.HTMLAttributes<HTMLDivElement> & {
   from: 'user' | 'assistant';
 };
 
-export function Message({ className, from, ...props }: MessageProps): ReactNode {
+export function Message({ className, from, ...props }: MessageProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -20,9 +19,13 @@ export function Message({ className, from, ...props }: MessageProps): ReactNode 
   );
 }
 
-export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
+export type MessageContentProps = React.HTMLAttributes<HTMLDivElement>;
 
-export function MessageContent({ className, children, ...props }: MessageContentProps): ReactNode {
+export function MessageContent({
+  className,
+  children,
+  ...props
+}: MessageContentProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -38,13 +41,13 @@ export function MessageContent({ className, children, ...props }: MessageContent
   );
 }
 
-export type MessageActionsProps = ComponentProps<'div'>;
+export type MessageActionsProps = React.ComponentProps<'div'>;
 
-export function MessageActions({ className, ...props }: MessageActionsProps): ReactNode {
+export function MessageActions({ className, ...props }: MessageActionsProps): React.ReactNode {
   return <div className={cn('flex items-center gap-1', className)} {...props} />;
 }
 
-export type MessageActionProps = ComponentProps<typeof Button> & {
+export type MessageActionProps = React.ComponentProps<typeof Button> & {
   tooltip?: string;
   label?: string;
 };
@@ -56,7 +59,7 @@ export function MessageAction({
   size = 'icon-sm',
   variant = 'ghost',
   ...props
-}: MessageActionProps): ReactNode {
+}: MessageActionProps): React.ReactNode {
   return (
     <Button
       aria-label={label ?? tooltip}
@@ -71,8 +74,8 @@ export function MessageAction({
   );
 }
 
-export type MessageToolbarProps = ComponentProps<'div'>;
+export type MessageToolbarProps = React.ComponentProps<'div'>;
 
-export function MessageToolbar({ className, ...props }: MessageToolbarProps): ReactNode {
+export function MessageToolbar({ className, ...props }: MessageToolbarProps): React.ReactNode {
   return <div className={cn('mt-2 flex w-full items-center gap-2', className)} {...props} />;
 }

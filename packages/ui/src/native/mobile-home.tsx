@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 export interface MobileHomeProps {
@@ -7,7 +6,7 @@ export interface MobileHomeProps {
   registeredAgentsLabel: string;
   agentKinds: readonly string[];
   tunnel: string;
-  statusBar?: ReactNode;
+  statusBar?: React.ReactNode;
 }
 
 export function MobileHome({
@@ -17,7 +16,7 @@ export function MobileHome({
   agentKinds,
   tunnel,
   statusBar,
-}: MobileHomeProps): ReactNode {
+}: MobileHomeProps): React.ReactNode {
   return (
     <View className="flex-1 bg-bg">
       {statusBar}

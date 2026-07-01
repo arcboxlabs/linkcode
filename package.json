@@ -2,6 +2,21 @@
   "name": "linkcode",
   "version": "0.0.0",
   "private": true,
+  "description": "Every Code Agent in the Palm of your hand",
+  "contributors": [
+    "Xuan Zhang <dev@aprilnea.me>",
+    "Yifei Zhang <yidadaa@qq.com>",
+    "SukkaW <github@skk.moe>",
+    "Zerlight <me@zerlight.cc>"
+  ],
+  "homepage": "https://github.com/arcboxlabs/linkcode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arcboxlabs/linkcode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arcboxlabs/linkcode/issues"
+  },
   "type": "module",
   "scripts": {
     "build": "turbo run build",
@@ -15,23 +30,24 @@
     "test": "vitest run",
     "clean": "turbo run clean"
   },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "developer-tools",
+    "desktop",
+    "mobile"
+  ],
   "author": "ArcBox Labs <team@arcbox.dev>",
   "license": "BUSL-1.1",
-  "contributors": [
-    "Xuan Zhang <dev@aprilnea.me>",
-    "Yifei Zhang <yidadaa@qq.com>",
-    "SukkaW <github@skk.moe>",
-    "Zerlight <me@zerlight.cc>"
-  ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
-    "@eslint-sukka/react": "^8.12.2",
+    "@eslint-sukka/react": "^8.13.2",
     "@proj-airi/lobe-icons": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",
-    "eslint": "^10.5.0",
-    "eslint-config-sukka": "^8.12.2",
-    "eslint-formatter-sukka": "^8.12.2",
+    "eslint": "^10.6.0",
+    "eslint-config-sukka": "^8.13.2",
+    "eslint-formatter-sukka": "^8.13.2",
     "eslint-import-resolver-typescript": "^4.4.5",
     "turbo": "^2.9.18",
     "typescript": "catalog:",

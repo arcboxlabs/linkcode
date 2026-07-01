@@ -1,6 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
 import { CheckCircleIcon, CircleIcon, XCircleIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 const EMPTY_TEST_RESULTS: readonly ChatTestResult[] = [];
@@ -15,7 +14,7 @@ export interface ChatTestResult {
   message?: string;
 }
 
-export type TestResultsProps = ComponentProps<'div'> & {
+export type TestResultsProps = React.ComponentProps<'div'> & {
   testResults?: readonly ChatTestResult[];
 };
 
@@ -24,7 +23,7 @@ export function TestResults({
   testResults = EMPTY_TEST_RESULTS,
   children,
   ...props
-}: TestResultsProps): ReactNode {
+}: TestResultsProps): React.ReactNode {
   const summary = summarizeTests(testResults);
 
   return (
@@ -56,7 +55,7 @@ interface TestSummary {
   total: number;
 }
 
-export type TestResultsHeaderProps = ComponentProps<'div'> & {
+export type TestResultsHeaderProps = React.ComponentProps<'div'> & {
   summary: TestSummary;
 };
 
@@ -65,7 +64,7 @@ export function TestResultsHeader({
   summary,
   children,
   ...props
-}: TestResultsHeaderProps): ReactNode {
+}: TestResultsHeaderProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -86,11 +85,16 @@ export function TestResultsHeader({
   );
 }
 
-export type TestResultProps = ComponentProps<'div'> & {
+export type TestResultProps = React.ComponentProps<'div'> & {
   result: ChatTestResult;
 };
 
-export function TestResult({ className, result, children, ...props }: TestResultProps): ReactNode {
+export function TestResult({
+  className,
+  result,
+  children,
+  ...props
+}: TestResultProps): React.ReactNode {
   return (
     <div className={cn('flex min-w-0 items-start gap-2 px-3 py-2', className)} {...props}>
       <TestStatusIcon status={result.status} />
@@ -123,7 +127,7 @@ function summarizeTests(results: readonly ChatTestResult[]): TestSummary {
   );
 }
 
-function TestStatusIcon({ status }: { status: ChatTestResult['status'] }): ReactNode {
+function TestStatusIcon({ status }: { status: ChatTestResult['status'] }): React.ReactNode {
   const className = cn('mt-0.5 size-4 shrink-0', testStatusClass(status));
 
   switch (status) {

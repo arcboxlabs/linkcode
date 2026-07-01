@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "@linkcode/ui/styles.css";
 
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 @layer base {
   :root {
     color-scheme: light dark;

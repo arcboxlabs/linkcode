@@ -6,6 +6,7 @@ export const en = {
   },
   workbench: {
     connection: {
+      connected: 'Connected',
       connecting: 'Connecting to the daemon…',
       error: 'Unable to connect to the daemon ({url}). Run {command} first.',
       retry: 'Retry',

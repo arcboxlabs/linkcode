@@ -1,4 +1,3 @@
-import type { Key, ReactNode } from 'react';
 import type { SortDirection } from './types';
 
 /**
@@ -17,7 +16,7 @@ export const DEFAULT_SORTING_CYCLE: SortingCycle = ['asc', 'desc', null];
 // React Compiler memoization. `skeleton` is required at the type level so every
 // column ships a loading placeholder colocated with its cell renderer.
 interface DataTableColumnBase<TData> {
-  header: ReactNode;
+  header: React.ReactNode;
   /**
    * Declared column width in px, surfaced via `useTableRender`. Omit for a
    * content-sized column.
@@ -30,8 +29,8 @@ interface DataTableColumnBase<TData> {
    */
   resizeMinWidth?: number;
   resizeMaxWidth?: number;
-  skeleton: ReactNode;
-  cell: (row: TData) => ReactNode;
+  skeleton: React.ReactNode;
+  cell: (row: TData) => React.ReactNode;
 }
 
 // A sortable column must declare an explicit `id` — it doubles as the sort field
@@ -61,13 +60,13 @@ export interface TableDefinition<TData> {
   columnsById: ReadonlyMap<string, ResolvedDataTableColumn<TData>>;
   /** Table-level default cycle — columns without their own `sortingCycle` inherit this. */
   sortingCycle: SortingCycle;
-  getRowId: (row: TData, index: number) => Key;
+  getRowId: (row: TData, index: number) => React.Key;
   getCellId: (
     row: TData,
     column: ResolvedDataTableColumn<TData>,
     rowIndex: number,
     columnIndex: number,
-  ) => Key;
+  ) => React.Key;
 }
 
 interface CreateTableOptions<TData> {
@@ -84,7 +83,7 @@ interface CreateTableOptions<TData> {
    * reorder (sorting/pagination) so React moves the existing DOM instead of
    * rewriting it row by row.
    */
-  getRowId?: (row: TData, index: number) => Key;
+  getRowId?: (row: TData, index: number) => React.Key;
   /**
    * Cell identity for React keys, consumed via `useTableRender` — never called
    * directly by UI code. Defaults to joining the row id (via `getRowId`) with
@@ -95,10 +94,10 @@ interface CreateTableOptions<TData> {
     column: ResolvedDataTableColumn<TData>,
     rowIndex: number,
     columnIndex: number,
-  ) => Key;
+  ) => React.Key;
 }
 
-const defaultGetRowId = (_row: unknown, index: number): Key => index;
+const defaultGetRowId = (_row: unknown, index: number): React.Key => index;
 
 /**
  * Define a table at module scope, in a shared module free of hooks and

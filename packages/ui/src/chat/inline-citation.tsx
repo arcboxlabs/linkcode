@@ -1,7 +1,6 @@
 import { Badge } from 'coss-ui/components/badge';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { ExternalLinkIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only citation reference, not yet wired to daemon/client schema.
@@ -14,19 +13,22 @@ export interface ChatCitation {
   url?: string;
 }
 
-export type InlineCitationProps = ComponentProps<'span'>;
+export type InlineCitationProps = React.ComponentProps<'span'>;
 
-export function InlineCitation({ className, ...props }: InlineCitationProps): ReactNode {
+export function InlineCitation({ className, ...props }: InlineCitationProps): React.ReactNode {
   return <span className={cn('inline', className)} {...props} />;
 }
 
-export type InlineCitationTextProps = ComponentProps<'span'>;
+export type InlineCitationTextProps = React.ComponentProps<'span'>;
 
-export function InlineCitationText({ className, ...props }: InlineCitationTextProps): ReactNode {
+export function InlineCitationText({
+  className,
+  ...props
+}: InlineCitationTextProps): React.ReactNode {
   return <span className={cn('rounded-sm hover:bg-muted', className)} {...props} />;
 }
 
-export type InlineCitationCardProps = ComponentProps<typeof Popover> & {
+export type InlineCitationCardProps = React.ComponentProps<typeof Popover> & {
   citation: ChatCitation;
 };
 
@@ -34,7 +36,7 @@ export function InlineCitationCard({
   citation,
   children,
   ...props
-}: InlineCitationCardProps): ReactNode {
+}: InlineCitationCardProps): React.ReactNode {
   return (
     <Popover {...props}>
       {children ?? (
@@ -47,7 +49,7 @@ export function InlineCitationCard({
   );
 }
 
-export type InlineCitationTriggerProps = ComponentProps<typeof Badge> & {
+export type InlineCitationTriggerProps = React.ComponentProps<typeof Badge> & {
   citation: ChatCitation;
 };
 
@@ -56,7 +58,7 @@ export function InlineCitationTrigger({
   citation,
   children,
   ...props
-}: InlineCitationTriggerProps): ReactNode {
+}: InlineCitationTriggerProps): React.ReactNode {
   return (
     <PopoverTrigger
       render={
@@ -73,7 +75,7 @@ export function InlineCitationTrigger({
   );
 }
 
-export type InlineCitationContentProps = ComponentProps<typeof PopoverPopup> & {
+export type InlineCitationContentProps = React.ComponentProps<typeof PopoverPopup> & {
   citation: ChatCitation;
 };
 
@@ -82,7 +84,7 @@ export function InlineCitationContent({
   citation,
   children,
   ...props
-}: InlineCitationContentProps): ReactNode {
+}: InlineCitationContentProps): React.ReactNode {
   return (
     <PopoverPopup align="start" className={cn('w-72 p-0', className)} side="top" {...props}>
       <div className="space-y-2 p-3 text-[13px]">
@@ -92,7 +94,7 @@ export function InlineCitationContent({
   );
 }
 
-export type InlineCitationSourceProps = ComponentProps<'div'> & {
+export type InlineCitationSourceProps = React.ComponentProps<'div'> & {
   citation: ChatCitation;
 };
 
@@ -101,7 +103,7 @@ export function InlineCitationSource({
   citation,
   children,
   ...props
-}: InlineCitationSourceProps): ReactNode {
+}: InlineCitationSourceProps): React.ReactNode {
   return (
     <div className={cn('min-w-0 space-y-1', className)} {...props}>
       {children ?? (

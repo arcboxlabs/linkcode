@@ -11,7 +11,6 @@ import {
   LoaderCircleIcon,
   XIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only attachment model, not yet wired to daemon/client schema.
@@ -29,7 +28,7 @@ export interface ChatAttachment {
 
 export type AttachmentVariant = 'grid' | 'inline' | 'list';
 
-export type AttachmentsProps = ComponentProps<'div'> & {
+export type AttachmentsProps = React.ComponentProps<'div'> & {
   attachments?: readonly ChatAttachment[];
   variant?: AttachmentVariant;
   onRemove?: (attachment: ChatAttachment) => void;
@@ -42,7 +41,7 @@ export function Attachments({
   onRemove,
   children,
   ...props
-}: AttachmentsProps): ReactNode {
+}: AttachmentsProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -66,7 +65,7 @@ export function Attachments({
   );
 }
 
-export type AttachmentProps = ComponentProps<'div'> & {
+export type AttachmentProps = React.ComponentProps<'div'> & {
   attachment: ChatAttachment;
   variant?: AttachmentVariant;
   onRemove?: () => void;
@@ -79,7 +78,7 @@ export function Attachment({
   onRemove,
   children,
   ...props
-}: AttachmentProps): ReactNode {
+}: AttachmentProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -104,7 +103,7 @@ export function Attachment({
   );
 }
 
-export type AttachmentPreviewProps = ComponentProps<'div'> & {
+export type AttachmentPreviewProps = React.ComponentProps<'div'> & {
   attachment: ChatAttachment;
   variant?: AttachmentVariant;
 };
@@ -114,7 +113,7 @@ export function AttachmentPreview({
   attachment,
   variant = 'grid',
   ...props
-}: AttachmentPreviewProps): ReactNode {
+}: AttachmentPreviewProps): React.ReactNode {
   if (attachment.kind === 'image' && attachment.url) {
     return (
       <div
@@ -143,7 +142,7 @@ export function AttachmentPreview({
   );
 }
 
-export type AttachmentInfoProps = ComponentProps<'div'> & {
+export type AttachmentInfoProps = React.ComponentProps<'div'> & {
   attachment: ChatAttachment;
   variant?: AttachmentVariant;
 };
@@ -153,7 +152,7 @@ export function AttachmentInfo({
   attachment,
   variant = 'grid',
   ...props
-}: AttachmentInfoProps): ReactNode {
+}: AttachmentInfoProps): React.ReactNode {
   if (variant === 'grid') {
     return attachment.status === 'failed' ? (
       <div className="absolute inset-x-1 bottom-1 rounded bg-background/90 px-1 text-[11px] text-destructive-foreground">
@@ -174,7 +173,7 @@ export function AttachmentInfo({
   );
 }
 
-export type AttachmentStatusProps = ComponentProps<'div'> & {
+export type AttachmentStatusProps = React.ComponentProps<'div'> & {
   attachment: ChatAttachment;
   variant?: AttachmentVariant;
 };
@@ -184,7 +183,7 @@ export function AttachmentStatus({
   attachment,
   variant = 'grid',
   ...props
-}: AttachmentStatusProps): ReactNode {
+}: AttachmentStatusProps): React.ReactNode {
   const status = attachment.status;
   if (!status || status === 'ready') return null;
 
@@ -216,7 +215,7 @@ export function AttachmentStatus({
   );
 }
 
-export type AttachmentRemoveProps = ComponentProps<typeof Button> & {
+export type AttachmentRemoveProps = React.ComponentProps<typeof Button> & {
   attachmentVariant?: AttachmentVariant;
   onRemove?: () => void;
 };
@@ -227,7 +226,7 @@ export function AttachmentRemove({
   onRemove,
   children,
   ...props
-}: AttachmentRemoveProps): ReactNode {
+}: AttachmentRemoveProps): React.ReactNode {
   if (!onRemove) return null;
 
   return (
@@ -258,7 +257,7 @@ function AttachmentKindIcon({
 }: {
   kind: ChatAttachment['kind'];
   className?: string;
-}): ReactNode {
+}): React.ReactNode {
   switch (kind) {
     case 'image':
       return <FileImageIcon className={className} />;

@@ -3,19 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint --format=sukka ."
+    "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/webview"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
-    "@linkcode/i18n": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
+    "@sentry/react": "10.60.0",
     "coss-ui": "workspace:*",
     "foxact": "^0.3.6",
     "lucide-react": "catalog:",

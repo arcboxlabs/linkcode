@@ -10,7 +10,6 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
 } from 'lucide-react';
-import type { CSSProperties, ReactNode, Ref } from 'react';
 import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
@@ -21,7 +20,7 @@ type DesktopChromeDivider = 'sidebar-main' | 'main-right';
 
 export interface DesktopChromeProps {
   header: WorkbenchShellHeader;
-  children: ReactNode;
+  children: React.ReactNode;
   sidebarOpen: boolean;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
@@ -42,13 +41,13 @@ export interface DesktopChromePortalProps {
   position: DesktopChromePosition;
   order?: number;
   className?: string;
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 type DesktopChromeSlotKey = `${DesktopChromeSegment}:${DesktopChromePosition}`;
 type ChromePortalTargetMap = Partial<Record<DesktopChromeSlotKey, HTMLElement>>;
 type SetChromePortalTarget = (key: DesktopChromeSlotKey, target: HTMLElement | null) => void;
-type ChromeBackgroundGridStyle = CSSProperties & {
+type ChromeBackgroundGridStyle = React.CSSProperties & {
   '--lc-chrome-right-segment-w': string;
 };
 
@@ -74,19 +73,19 @@ const CHROME_SLOT_CLASS: Record<DesktopChromePosition, string> = {
 const SIDEBAR_SLOT_INSET_STYLE = {
   paddingLeft: 'var(--lc-chrome-left-local-inset)',
   paddingRight: 'var(--lc-chrome-edge)',
-} satisfies CSSProperties;
+} satisfies React.CSSProperties;
 
 const MAIN_SLOT_INSET_STYLE = {
   paddingLeft:
     'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-w)))',
   paddingRight:
     'max(var(--lc-chrome-edge), calc(var(--lc-chrome-right-local-inset) - var(--lc-chrome-right-segment-w)))',
-} satisfies CSSProperties;
+} satisfies React.CSSProperties;
 
 const RIGHT_SLOT_INSET_STYLE = {
   paddingLeft: 'var(--lc-chrome-edge)',
   paddingRight: 'var(--lc-chrome-right-local-inset)',
-} satisfies CSSProperties;
+} satisfies React.CSSProperties;
 
 const ACTIVE_CHROME_BUTTON_CLASS =
   'bg-info/10 text-info-foreground hover:bg-info/15 hover:text-info-foreground';
@@ -97,7 +96,7 @@ export function DesktopChromePortal({
   order = 0,
   className,
   children,
-}: DesktopChromePortalProps): ReactNode {
+}: DesktopChromePortalProps): React.ReactNode {
   const targets = nullthrow(
     use(ChromePortalTargetContext),
     'Desktop chrome portal targets are missing',
@@ -130,7 +129,7 @@ export function DesktopChrome({
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
-}: DesktopChromeProps): ReactNode {
+}: DesktopChromeProps): React.ReactNode {
   const [portalTargets, setPortalTargets] = useState<ChromePortalTargetMap>({});
   const chromeRootRef = useRef<HTMLDivElement | null>(null);
   const leftRailContentRef = useRef<HTMLDivElement | null>(null);
@@ -195,7 +194,7 @@ function ChromeSegmentGrid({
   activeExpandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
   setPortalTarget: SetChromePortalTarget;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <div
       className="absolute inset-0 grid overflow-hidden"
@@ -249,10 +248,10 @@ function ChromeSegment({
   segment: DesktopChromeSegment;
   divider?: DesktopChromeDivider;
   className: string;
-  slotInsetStyle: CSSProperties;
-  defaultSlots?: Partial<Record<DesktopChromePosition, ReactNode>>;
+  slotInsetStyle: React.CSSProperties;
+  defaultSlots?: Partial<Record<DesktopChromePosition, React.ReactNode>>;
   setPortalTarget: SetChromePortalTarget;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <div
       className={cn('relative min-w-0 overflow-hidden backdrop-blur-xl', className)}
@@ -287,8 +286,8 @@ function ChromeSlotTarget({
   segment: DesktopChromeSegment;
   position: DesktopChromePosition;
   setPortalTarget: SetChromePortalTarget;
-  children?: ReactNode;
-}): ReactNode {
+  children?: React.ReactNode;
+}): React.ReactNode {
   const slotKey = createChromeSlotKey(segment, position);
   const setSlotElement = useCallback(
     (element: HTMLDivElement | null): void => {
@@ -319,12 +318,12 @@ function StableLeftChrome({
   onShowSidebar,
   onHideSidebar,
 }: {
-  contentRef: Ref<HTMLDivElement>;
+  contentRef: React.Ref<HTMLDivElement>;
   sidebarOpen: boolean;
   hasNativeTrafficLights: boolean;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-(--lc-chrome-edge)">
       <div
@@ -350,7 +349,7 @@ function StableLeftChrome({
   );
 }
 
-function MainChromeTitle({ header }: { header: WorkbenchShellHeader }): ReactNode {
+function MainChromeTitle({ header }: { header: WorkbenchShellHeader }): React.ReactNode {
   return (
     <div className="pointer-events-none flex h-full max-w-[min(420px,100%)] min-w-0 px-2 items-center gap-(--lc-chrome-control-gap)">
       <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -369,12 +368,12 @@ function StableRightChrome({
   onToggleRight,
   onToggleBottom,
 }: {
-  contentRef: Ref<HTMLDivElement>;
+  contentRef: React.Ref<HTMLDivElement>;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
   onToggleRight: () => void;
   onToggleBottom: () => void;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-(--lc-chrome-edge)">
       <div
@@ -404,7 +403,7 @@ function StableRightChrome({
   );
 }
 
-function NativeTrafficLightInset(): ReactNode {
+function NativeTrafficLightInset(): React.ReactNode {
   return <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />;
 }
 

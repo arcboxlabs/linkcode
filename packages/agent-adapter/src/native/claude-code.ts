@@ -25,6 +25,7 @@ import type {
   ToolCallContent,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import {
@@ -252,7 +253,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       for await (const msg of q) this.handleMessage(msg);
     } catch (err) {
       if (this.cancelling) this.cancelling = false;
-      else this.emitError(err instanceof Error ? err.message : String(err));
+      else this.emitError(extractErrorMessage(err) ?? 'Unknown error');
     }
     // Guard against clobbering a newer Query: if onPrompt already replaced this.q while this call
     // was unwinding, only this call's own q/inputQueue should be torn down here.

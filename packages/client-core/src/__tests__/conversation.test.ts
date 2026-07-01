@@ -1,4 +1,5 @@
 import type { AgentEvent, MessageId } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
 import { buildConversation, contentPreview, toolCallDiffs } from '../conversation';
 
@@ -162,13 +163,12 @@ describe('buildConversation', () => {
     ]);
     const plans = c.items.filter((i) => i.kind === 'plan');
     expect(plans).toHaveLength(2);
-    const [firstPlan, secondPlan] = plans;
-    if (firstPlan.kind === 'plan' && secondPlan.kind === 'plan') {
-      expect(firstPlan.plan.entries).toHaveLength(2);
-      expect(firstPlan.plan.entries[0]?.status).toBe('completed');
-      expect(secondPlan.plan.entries).toHaveLength(1);
-      expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
-    }
+    const firstPlan = nullthrow(plans[0]);
+    const secondPlan = nullthrow(plans[1]);
+    expect(firstPlan.plan.entries).toHaveLength(2);
+    expect(firstPlan.plan.entries[0]?.status).toBe('completed');
+    expect(secondPlan.plan.entries).toHaveLength(1);
+    expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
   });
 
   it('tracks a permission as pending until its tool call settles', () => {

@@ -10,7 +10,6 @@ import {
   PanelsTopLeftIcon,
   XIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only context item, not yet wired to daemon/client schema.
@@ -24,7 +23,7 @@ export interface ChatContextItem {
   removable?: boolean;
 }
 
-export type ChatContextProps = ComponentProps<'div'> & {
+export type ChatContextProps = React.ComponentProps<'div'> & {
   items?: readonly ChatContextItem[];
   onRemove?: (item: ChatContextItem) => void;
 };
@@ -35,7 +34,7 @@ export function ChatContext({
   onRemove,
   children,
   ...props
-}: ChatContextProps): ReactNode {
+}: ChatContextProps): React.ReactNode {
   return (
     <div className={cn('flex flex-wrap items-center gap-1.5', className)} {...props}>
       {children ??
@@ -50,7 +49,7 @@ export function ChatContext({
   );
 }
 
-export type ChatContextChipProps = ComponentProps<'span'> & {
+export type ChatContextChipProps = React.ComponentProps<'span'> & {
   item: ChatContextItem;
   onRemove?: () => void;
 };
@@ -61,7 +60,7 @@ export function ChatContextChip({
   onRemove,
   children,
   ...props
-}: ChatContextChipProps): ReactNode {
+}: ChatContextChipProps): React.ReactNode {
   return (
     <span
       className={cn(
@@ -102,7 +101,7 @@ function ContextKindIcon({
 }: {
   kind: ChatContextItem['kind'];
   className?: string;
-}): ReactNode {
+}): React.ReactNode {
   switch (kind) {
     case 'directory':
       return <FolderIcon className={className} />;

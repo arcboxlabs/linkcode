@@ -1,8 +1,14 @@
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import { Terminal, TerminalHeader, TerminalTitle } from './terminal';
+import { Terminal, TerminalContent, TerminalHeader, TerminalTitle } from './terminal';
 
-export function TerminalBlock({ terminalId }: { terminalId: string }): ReactNode {
+/** Read-only view of an agent-spawned terminal referenced from tool-call content, streamed live. */
+export function TerminalBlock({
+  terminalId,
+  output,
+}: {
+  terminalId: string;
+  output?: string;
+}): React.ReactNode {
   const t = useTranslations('workbench.tool');
 
   return (
@@ -12,6 +18,7 @@ export function TerminalBlock({ terminalId }: { terminalId: string }): ReactNode
           {t('terminal')} <span className="opacity-70">{terminalId}</span>
         </TerminalTitle>
       </TerminalHeader>
+      {output ? <TerminalContent>{output}</TerminalContent> : null}
     </Terminal>
   );
 }

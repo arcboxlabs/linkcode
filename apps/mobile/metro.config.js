@@ -1,12 +1,13 @@
-// Expo monorepo Metro config + NativeWind.
-const { getDefaultConfig } = require('expo/metro-config');
+// Expo monorepo Metro config + NativeWind + Sentry.
+// getSentryExpoConfig wraps Expo's default config with Sentry's source-map serializer.
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 const { withNativeWind } = require('nativewind/metro');
 const path = require('node:path');
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
 
-const config = getDefaultConfig(projectRoot);
+const config = getSentryExpoConfig(projectRoot);
 
 // 1) Watch the whole workspace so source from other packages (@linkcode/schema, exported as TS) is visible.
 config.watchFolders = [workspaceRoot];

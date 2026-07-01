@@ -1,13 +1,13 @@
 import type { LinkCodeSdkClient } from '@linkcode/sdk';
 import { createClient, setDefaultClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
+import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import { createContextState } from 'foxact/context-state';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { wait } from 'foxts/wait';
 import type * as React from 'react';
-import type { ReactNode } from 'react';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig } from 'swr';
@@ -16,7 +16,7 @@ import { TayoriProvider } from './tayori';
 
 export interface WorkbenchRuntimeProviderProps extends React.PropsWithChildren {
   transport: Transport;
-  fallback: ReactNode;
+  fallback: React.ReactNode;
 }
 
 export type WorkbenchRuntimeStatus = 'connecting' | 'ready' | 'error';
@@ -78,7 +78,7 @@ export function useWorkbenchSdkClient(): LinkCodeSdkClient {
   );
 }
 
-export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): ReactNode {
+export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): React.ReactNode {
   return (
     <WorkbenchRuntimeStatusProvider>
       <WorkbenchRuntimeConnection {...props} />
@@ -90,7 +90,7 @@ function WorkbenchRuntimeConnection({
   transport,
   children,
   fallback,
-}: WorkbenchRuntimeProviderProps): ReactNode {
+}: WorkbenchRuntimeProviderProps): React.ReactNode {
   const [client, setClient] = useState(() => createClient({ transport }));
   const status = useWorkbenchRuntimeStatus();
   const setStatus = useSetWorkbenchRuntimeStatus();
@@ -130,17 +130,20 @@ function WorkbenchRuntimeConnection({
   }
 
   return (
-    <WorkbenchRuntimeControlsContext.Provider value={controls}>
-      <WorkbenchSdkClientContext.Provider value={client}>
-        <TayoriProvider initClient={() => client}>
-          <WorkbenchSWRConfig>{children}</WorkbenchSWRConfig>
-        </TayoriProvider>
-      </WorkbenchSdkClientContext.Provider>
-    </WorkbenchRuntimeControlsContext.Provider>
+    <ComposeContextProvider
+      contexts={[
+        <WorkbenchRuntimeControlsContext.Provider key="runtime-controls" value={controls} />,
+        <WorkbenchSdkClientContext.Provider key="sdk-client" value={client} />,
+        <TayoriProvider key="tayori" initClient={() => client} />,
+        <WorkbenchSWRConfig key="swr" />,
+      ]}
+    >
+      {children}
+    </ComposeContextProvider>
   );
 }
 
-function WorkbenchSWRConfig({ children }: React.PropsWithChildren): ReactNode {
+function WorkbenchSWRConfig({ children }: React.PropsWithChildren): React.ReactNode {
   return (
     <SWRConfig
       value={{

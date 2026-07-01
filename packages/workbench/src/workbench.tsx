@@ -1,4 +1,4 @@
-import { useConversation } from '@linkcode/client-core';
+import { useConversation, useTerminalOutput } from '@linkcode/client-core';
 import type { AgentKind, SessionId, SessionInfo, TokenUsage } from '@linkcode/schema';
 import {
   cancelTurn,
@@ -8,12 +8,11 @@ import {
   startSession,
   stopSession,
 } from '@linkcode/sdk';
-import type { WorkbenchFrameProps } from '@linkcode/ui';
-import { TitleStrip, WorkbenchFrame } from '@linkcode/ui';
+import type { ShellFrameProps } from '@linkcode/ui';
+import { ShellFrame, TerminalBlock, TitleStrip } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useData, useMutation } from './tayori';
@@ -28,11 +27,11 @@ export interface WorkbenchShellHeader {
   usage?: TokenUsage | null;
 }
 
-export interface WorkbenchShellProps extends Omit<WorkbenchFrameProps, 'header'> {
+export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
 }
 
-export type WorkbenchShellComponent = (props: WorkbenchShellProps) => ReactNode;
+export type WorkbenchShellComponent = (props: WorkbenchShellProps) => React.ReactNode;
 
 /**
  * The workbench feature surface: session inbox + conversation stream + composer.
@@ -44,10 +43,10 @@ export type WorkbenchShellComponent = (props: WorkbenchShellProps) => ReactNode;
  */
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
-}: WorkbenchProps): ReactNode {
+}: WorkbenchProps): React.ReactNode {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
-    setErrorMessage(extractErrorMessage(err) ?? String(err));
+    setErrorMessage(extractErrorMessage(err));
   }
 
   const sessions = useWorkbenchSessions(handleError);
@@ -82,14 +81,14 @@ function WorkbenchSessionSurface({
   ShellComponent,
   onClearError,
   onError,
-}: WorkbenchSessionSurfaceProps): ReactNode {
+}: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
-  const active = sessions.sessions.find((s) => s.sessionId === sessions.activeId) ?? null;
+  const active = sessionById(sessions.sessions, sessions.activeId);
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
@@ -141,16 +140,22 @@ function WorkbenchSessionSurface({
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
+      TerminalBlockComponent={RuntimeTerminalBlock}
       onDismissError={onClearError}
     />
   );
 }
 
-function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): ReactNode {
-  return <WorkbenchFrame {...props} header={<DefaultTitleStrip header={header} />} />;
+function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): React.ReactNode {
+  const output = useTerminalOutput(terminalId);
+  return <TerminalBlock terminalId={terminalId} output={output} />;
 }
 
-function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): ReactNode {
+function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
+  return <ShellFrame {...props} header={<DefaultTitleStrip header={header} />} />;
+}
+
+function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): React.ReactNode {
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
@@ -199,14 +204,11 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
   }, [localSessions, remoteSessions, stoppedIds]);
 
   const activeId = useMemo(() => {
-    if (selectedId && sessions.some((session) => session.sessionId === selectedId)) {
+    if (selectedId && sessionById(sessions, selectedId)) {
       return selectedId;
     }
 
-    const preferred =
-      sessions.find(
-        (session) => session.status === 'running' || session.status === 'awaiting-input',
-      ) ?? sessions.at(-1);
+    const preferred = preferredActiveSession(sessions) ?? sessions.at(-1);
     return preferred?.sessionId ?? null;
   }, [selectedId, sessions]);
 
@@ -250,4 +252,22 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
     create,
     stop,
   };
+}
+
+function sessionById(
+  sessions: readonly SessionInfo[],
+  sessionId: SessionId | null,
+): SessionInfo | null {
+  if (!sessionId) return null;
+  for (const session of sessions) {
+    if (session.sessionId === sessionId) return session;
+  }
+  return null;
+}
+
+function preferredActiveSession(sessions: readonly SessionInfo[]): SessionInfo | null {
+  for (const session of sessions) {
+    if (session.status === 'running' || session.status === 'awaiting-input') return session;
+  }
+  return null;
 }

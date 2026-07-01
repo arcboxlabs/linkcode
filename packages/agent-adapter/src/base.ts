@@ -22,6 +22,7 @@ import type {
 import { textBlock } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { Listeners } from '@linkcode/transport';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { AgentAdapter } from './adapter';
 import { nextRequestId } from './adapter';
 
@@ -238,7 +239,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     try {
       return await loader();
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = extractErrorMessage(err) ?? 'Unknown error';
       const message = `${this.kind}: SDK '${name}' is unavailable (${detail})`;
       this.emitError(message, 'sdk-unavailable', false);
       throw new Error(message, { cause: err });
