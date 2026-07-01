@@ -19,10 +19,14 @@
     "@linkcode/transport": "workspace:*",
     "@sentry/node": "10.60.0",
     "@sentry/profiling-node": "10.60.0",
+    "better-sqlite3": "^12.11.1",
+    "drizzle-orm": "^0.45.2",
     "foxts": "^5.6.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "catalog:",
+    "drizzle-kit": "^0.31.10",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"

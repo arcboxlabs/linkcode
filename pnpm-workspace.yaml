@@ -22,6 +22,8 @@ verifyDepsBeforeRun: false
 # that need compilation or downloads.
 allowBuilds:
   "@biomejs/biome": true
+  # Native SQLite bindings backing the daemon's session store.
+  better-sqlite3: true
   electron: true
   esbuild: true
   "@parcel/watcher": true

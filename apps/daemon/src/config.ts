@@ -32,6 +32,11 @@ function configPath(): string {
   return join(homedir(), '.linkcode', 'config.json');
 }
 
+/** The daemon's SQLite database (session registry), next to config.json. */
+export function databasePath(): string {
+  return join(homedir(), '.linkcode', 'daemon.db');
+}
+
 export function loadConfig(): DaemonConfig {
   let file: ConfigFile = {};
   try {

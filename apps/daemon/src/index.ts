@@ -3,9 +3,10 @@ import type { TransportServer } from '@linkcode/transport/server';
 import { createTransportServer, Hub } from '@linkcode/transport/server';
 import { once } from 'foxts/once';
 import type { DaemonListenerConfig } from './config';
-import { loadConfig } from './config';
+import { databasePath, loadConfig } from './config';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
+import { createSessionStore } from './session-store';
 
 /**
  * Link Code daemon — the standalone local host process.
@@ -18,7 +19,13 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const hub = new Hub();
   const store = createProviderConfigStore(config.providers ?? {});
-  const engine = new Engine(hub, undefined, store, new SidecarPtyBackend(resolveSidecarPath()));
+  const engine = new Engine(
+    hub,
+    undefined,
+    store,
+    new SidecarPtyBackend(resolveSidecarPath()),
+    createSessionStore(databasePath()),
+  );
   await engine.start();
 
   const servers: TransportServer[] = [];
