@@ -50,9 +50,7 @@
     },
     "eslint": {
       "settings": {
-        "experimental": {
-          "useFlatConfig": true
-        },
+        "useFlatConfig": true,
         "workingDirectory": {
           "mode": "auto"
         }
@@ -62,6 +60,7 @@
   "file_scan_exclusions": [
     "**/.git",
     "**/.direnv",
+    "**/.claude",
     "**/target",
     "**/node_modules",
     "**/dist",
