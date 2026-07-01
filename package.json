@@ -1,6 +1,7 @@
 {
   "name": "linkcode",
   "version": "0.0.0",
+  "description": "Every Code Agent in the Palm of your hand",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,6 +23,21 @@
     "Yifei Zhang <yidadaa@qq.com>",
     "SukkaW <github@skk.moe>",
     "Zerlight <me@zerlight.cc>"
+  ],
+  "homepage": "https://github.com/arcboxlabs/linkcode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arcboxlabs/linkcode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arcboxlabs/linkcode/issues"
+  },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "developer-tools",
+    "desktop",
+    "mobile"
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
