@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
+import { ShellSidebar, shellSidebarItemClassName } from './shell-sidebar';
 
 export interface SessionSidebarProps {
   sessions: SessionInfo[];
@@ -47,9 +48,6 @@ const GROUP_LABELS: Record<SessionGroupKey, string> = {
 };
 
 const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];
-
-const sidebarMenuButtonClassName =
-  'flex h-8 w-full items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] text-left text-sidebar-foreground text-sm outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64';
 
 const ROOT_PATH_RE = /^[\\/]+$/;
 const PATH_SEPARATOR_RE = /[\\/]+/;
@@ -73,13 +71,13 @@ export function SessionSidebar({
   );
 
   return (
-    <aside
-      className={cn(
-        'flex h-full min-h-0 flex-col border-sidebar-border border-r bg-sidebar text-sidebar-foreground',
-        className,
-      )}
+    <ShellSidebar
+      className={className}
+      topInset={
+        topInsetClassName ? <div aria-hidden className={cn('shrink-0', topInsetClassName)} /> : null
+      }
+      footer={footer}
     >
-      {topInsetClassName && <div aria-hidden className={cn('shrink-0', topInsetClassName)} />}
       <div className="px-[var(--lc-sidebar-edge,0.5rem)]">
         <NewTaskMenu onCreate={onCreate} />
         <SidebarMenuButton disabled icon={<SearchIcon />} label="Search" />
@@ -107,9 +105,7 @@ export function SessionSidebar({
           )}
         </div>
       </div>
-
-      {footer}
-    </aside>
+    </ShellSidebar>
   );
 }
 
@@ -118,7 +114,7 @@ function NewTaskMenu({ onCreate }: { onCreate: (kind: AgentKind) => void }): Rea
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className={sidebarMenuButtonClassName}>
+      <PopoverTrigger className={shellSidebarItemClassName}>
         <SidebarMenuButtonContent icon={<FilePlus2Icon />} label="New Task" />
       </PopoverTrigger>
       <PopoverPopup align="start" side="right" sideOffset={8} className="w-64 p-0">
@@ -165,7 +161,7 @@ function SidebarMenuButton({
   return (
     <button
       type="button"
-      className={sidebarMenuButtonClassName}
+      className={shellSidebarItemClassName}
       disabled={disabled}
       onClick={onClick}
     >
