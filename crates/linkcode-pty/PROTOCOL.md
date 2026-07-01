@@ -1,8 +1,8 @@
 # LinkCode PTY sidecar protocol
 
-`linkcode-pty` is a local sidecar process spawned by the LinkCode daemon. The daemon writes control and input frames to the sidecar's stdin; the sidecar writes output and lifecycle frames to stdout. Stderr is reserved for diagnostics and must not carry protocol data.
+Private stdin/stdout IPC protocol for `linkcode-pty`. For build, development, and benchmark notes, see [`README.md`](./README.md).
 
-This is a private, in-repository IPC protocol. The Rust implementation is in [`src/proto.rs`](src/proto.rs); the TypeScript counterpart is in [`apps/daemon/src/pty/codec.ts`](../../apps/daemon/src/pty/codec.ts).
+The Rust implementation is in [`src/proto.rs`](src/proto.rs); the TypeScript counterpart is in [`apps/daemon/src/pty/codec.ts`](../../apps/daemon/src/pty/codec.ts). Stderr is reserved for diagnostics and must not carry protocol data.
 
 ## Transport
 
@@ -161,7 +161,3 @@ Behavior:
 - If the sidecar exits or its stream becomes corrupt, the daemon rejects pending opens and emits `exit(null)` for live terminals.
 - After a sidecar restart, the daemon resets its frame decoder so partial bytes from the old process cannot corrupt the new stream.
 - When daemon stdin closes, the sidecar kills all known terminals and exits.
-
-## Why JSON control bodies and binary data frames?
-
-Control frames are low-frequency and small, so JSON keeps debugging and cross-language parsing simple. PTY input/output is the hot path and carries raw bytes in binary data frames, avoiding base64 and preserving arbitrary terminal byte sequences.
