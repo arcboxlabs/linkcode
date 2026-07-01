@@ -1,11 +1,11 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
+import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import { noop } from 'foxts/noop';
 import { useMemo, useState } from 'react';
 import { LiveTerminal } from './live-terminal';
 import { createTransportTerminalSession } from './session';
 
-/** The desktop bottom-panel interactive shell: opens a host terminal and renders it with restty. */
+/** Daemon-backed interactive shell: opens a terminal and renders it with restty. */
 export function TerminalPanel(): React.ReactNode {
   const client = useLinkCodeClient();
   const [terminalId, setTerminalId] = useState<string | null>(null);

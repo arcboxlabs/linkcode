@@ -9,6 +9,48 @@ import type { TerminalSession } from './session';
 // `fontPreset: 'default-cdn'` fetches from cdn.jsdelivr.net, which the renderer CSP blocks. Bundle
 // IBM Plex Mono inline instead (no network, no CDN).
 const MONO_FONT = decodeDataUri(ibmPlexMonoWoff2);
+const TERMINAL_FONT_SOURCES: NonNullable<Parameters<typeof createRestty>[0]['fontSources']> = [
+  { type: 'buffer', data: MONO_FONT, label: 'IBM Plex Mono' },
+  // Fall back to the user's installed fonts for glyphs IBM Plex Mono lacks — Nerd/powerline
+  // icons, CJK, emoji — via the Local Font Access API when the host allows it. Match both full
+  // Nerd Font names and common abbreviated NF family names such as MesloLGS NF / CaskaydiaCove NF.
+  {
+    type: 'local',
+    matchers: [
+      'symbols nerd font',
+      'symbols nerd font mono',
+      'jetbrainsmono nerd font',
+      'jetbrains mono nerd font',
+      'fira code nerd font',
+      'hack nerd font',
+      'meslo lgm nerd font',
+      'meslo lgs nf',
+      'meslolgs nf',
+      'caskaydia',
+      'cascadia code nf',
+      'monaspace nerd font',
+      'nerd font mono',
+      'nerd font',
+      'powerline',
+    ],
+    label: 'symbols',
+  },
+  {
+    type: 'local',
+    matchers: ['pingfang', 'hiragino sans', 'microsoft yahei', 'noto sans cjk', 'source han sans'],
+    label: 'cjk',
+  },
+  {
+    type: 'local',
+    matchers: ['apple color emoji', 'segoe ui emoji', 'noto color emoji'],
+    label: 'emoji',
+  },
+  {
+    type: 'local',
+    matchers: ['sf mono', 'menlo', 'monaco', 'consolas', 'dejavu sans mono'],
+    label: 'mono',
+  },
+];
 
 function decodeDataUri(uri: string): ArrayBuffer {
   const binary = atob(uri.slice(uri.indexOf(',') + 1));
@@ -75,38 +117,10 @@ export function LiveTerminal({
 
       const restty = createRestty({
         root: container,
+        fontSources: TERMINAL_FONT_SOURCES,
         appOptions: {
           autoResize: true,
           fontPreset: 'none',
-          fontSources: [
-            { type: 'buffer', data: MONO_FONT, label: 'IBM Plex Mono' },
-            // Fall back to the user's installed fonts for glyphs IBM Plex Mono lacks — Nerd/powerline
-            // icons, CJK, emoji — via the Local Font Access API (Electron allows queryLocalFonts with
-            // no prompt). Each source resolves the first family whose name contains a matcher
-            // (case-insensitive); unmatched families are skipped, so the list is safe.
-            { type: 'local', matchers: ['nerd font', 'powerline'], label: 'symbols' },
-            {
-              type: 'local',
-              matchers: [
-                'pingfang',
-                'hiragino sans',
-                'microsoft yahei',
-                'noto sans cjk',
-                'source han sans',
-              ],
-              label: 'cjk',
-            },
-            {
-              type: 'local',
-              matchers: ['apple color emoji', 'segoe ui emoji', 'noto color emoji'],
-              label: 'emoji',
-            },
-            {
-              type: 'local',
-              matchers: ['sf mono', 'menlo', 'monaco', 'consolas', 'dejavu sans mono'],
-              label: 'mono',
-            },
-          ],
           ptyTransport: createSessionPtyTransport(session),
           // Connect once the renderer core is ready, so the shell's initial prompt (replayed from the
           // client prebuffer on subscribe) isn't dropped before the WASM terminal can render it.

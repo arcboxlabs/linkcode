@@ -16,7 +16,6 @@
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
   "dependencies": {
-    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@linkcode/client-core": "workspace:*",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/ipc": "workspace:*",
@@ -35,7 +34,6 @@
     "motion": "^12.40.0",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "restty": "^0.1.35",
     "use-intl": "catalog:",
     "zod": "catalog:"
   },

@@ -8,6 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./native": "./src/native/index.ts",
+    "./shell/panels": "./src/shell/panels/index.ts",
+    "./shell/terminal": "./src/shell/terminal/index.ts",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
@@ -30,6 +32,7 @@
     "motion": "^12.40.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0",
+    "restty": "^0.1.35",
     "shiki": "^4.3.0",
     "tailwind-merge": "^3.6.0",
     "use-intl": "catalog:",

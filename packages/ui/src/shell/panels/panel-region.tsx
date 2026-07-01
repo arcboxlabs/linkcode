@@ -1,27 +1,46 @@
-import type { DesktopChromePosition, DesktopChromeSegment } from '@desktop/shell/chrome/chrome';
-import { DesktopChromePortal } from '@desktop/shell/chrome/chrome';
-import { DESKTOP_CHROME_SPACER_CLASS } from '@desktop/shell/chrome/metrics';
-import { SHELL_TRANSITION } from '@desktop/shell/layout/use-animated-split';
-import type { PanelSide, PanelState } from '@desktop/shell/state/local/model';
-import type { PanelControl, PanelWindowType } from '@linkcode/ui';
-import { cn, FreePanel, PanelControlButton, PanelStubContent, PanelTabStrip } from '@linkcode/ui';
 import { Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import type { ChromeSurface } from './panel-layout';
-import { TerminalPanel } from './terminal';
+import { cn } from '../../lib/cn';
+import type { PanelControl, PanelTab, PanelWindowType } from '../free-panel';
+import { FreePanel, PanelStubContent, PanelTabStrip } from '../free-panel';
+import { PanelControlButton } from '../shell-control';
+
+export type PanelSide = 'right' | 'bottom';
+export type ChromeSurface = 'normal' | 'right-max' | 'bottom-max';
+
+export interface PanelStateLike {
+  open: boolean;
+  tabs: PanelTab[];
+  activeTabId: string | null;
+}
+
+export type PanelChromeSegment = 'main' | 'right';
+export type PanelChromePosition = 'left' | 'right';
 
 type ChromeMotionAxis = 'x' | 'y';
 
+export interface PanelChromePortalProps {
+  segment: PanelChromeSegment;
+  position: PanelChromePosition;
+  order: number;
+  className?: string;
+  children: React.ReactNode;
+}
+
 interface PanelChromePlacement {
-  segment: DesktopChromeSegment;
-  tabsPosition: DesktopChromePosition;
-  controlsPosition: DesktopChromePosition;
+  segment: PanelChromeSegment;
+  tabsPosition: PanelChromePosition;
+  controlsPosition: PanelChromePosition;
   order: number;
   motionAxis: ChromeMotionAxis;
 }
 
 const DESKTOP_PANEL_STRIP_CLASS =
   'h-(--lc-chrome-h) border-border border-b-0 bg-background/95 px-(--lc-chrome-edge)';
+const PANEL_CHROME_TRANSITION = {
+  duration: 0.18,
+  ease: [0.2, 0, 0, 1] as [number, number, number, number],
+};
 
 export function PanelRegion({
   side,
@@ -29,7 +48,10 @@ export function PanelRegion({
   maximized,
   chromeVisible,
   chromeSurface,
+  ChromePortal,
+  chromeSpacerClassName,
   contentStyle,
+  panelContentByType,
   onSelectTab,
   onCloseTab,
   onAddWindow,
@@ -37,11 +59,14 @@ export function PanelRegion({
   onClose,
 }: {
   side: PanelSide;
-  panel: PanelState;
+  panel: PanelStateLike;
   maximized: boolean;
   chromeVisible: boolean;
   chromeSurface: ChromeSurface;
+  ChromePortal?: React.ComponentType<PanelChromePortalProps>;
+  chromeSpacerClassName?: string;
   contentStyle?: React.CSSProperties;
+  panelContentByType?: Partial<Record<PanelWindowType, React.ReactNode>>;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
@@ -52,7 +77,7 @@ export function PanelRegion({
   const chromePlacement = getPanelChromePlacement(side, chromeSurface);
   const content = (
     <div className="h-full min-h-0" style={contentStyle}>
-      {activeType === 'terminal' ? <TerminalPanel /> : <PanelStubContent type={activeType} />}
+      {panelContentByType?.[activeType] ?? <PanelStubContent type={activeType} />}
     </div>
   );
 
@@ -64,6 +89,7 @@ export function PanelRegion({
         {chromePlacement && chromeVisible && (
           <>
             <PanelContextualChromePortal
+              ChromePortal={ChromePortal}
               segment={chromePlacement.segment}
               position={chromePlacement.tabsPosition}
               order={chromePlacement.order}
@@ -79,6 +105,7 @@ export function PanelRegion({
               />
             </PanelContextualChromePortal>
             <PanelContextualChromePortal
+              ChromePortal={ChromePortal}
               segment={chromePlacement.segment}
               position={chromePlacement.controlsPosition}
               order={chromePlacement.order + 1}
@@ -89,7 +116,9 @@ export function PanelRegion({
             </PanelContextualChromePortal>
           </>
         )}
-        <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
+        {chromeSpacerClassName && (
+          <div aria-hidden className={`${chromeSpacerClassName} shrink-0`} />
+        )}
         <div className="min-h-0 flex-1 overflow-hidden">{content}</div>
       </section>
     );
@@ -122,7 +151,7 @@ export function PanelRegion({
   );
 }
 
-function activePanelWindowType(panel: PanelState): PanelWindowType {
+function activePanelWindowType(panel: PanelStateLike): PanelWindowType {
   for (const tab of panel.tabs) {
     if (tab.id === panel.activeTabId) return tab.type;
   }
@@ -130,6 +159,7 @@ function activePanelWindowType(panel: PanelState): PanelWindowType {
 }
 
 function PanelContextualChromePortal({
+  ChromePortal,
   segment,
   position,
   order,
@@ -138,8 +168,9 @@ function PanelContextualChromePortal({
   visible,
   children,
 }: {
-  segment: DesktopChromeSegment;
-  position: DesktopChromePosition;
+  ChromePortal?: React.ComponentType<PanelChromePortalProps>;
+  segment: PanelChromeSegment;
+  position: PanelChromePosition;
   order: number;
   motionAxis: ChromeMotionAxis;
   className?: string;
@@ -147,35 +178,39 @@ function PanelContextualChromePortal({
   children: React.ReactNode;
 }): React.ReactNode {
   const reducedMotion = useReducedMotion() ?? false;
-  const hiddenMotion = getPanelChromeHiddenMotion(motionAxis);
-  const visibleMotion = getPanelChromeVisibleMotion(motionAxis);
+  if (ChromePortal) {
+    const hiddenMotion = getPanelChromeHiddenMotion(motionAxis);
+    const visibleMotion = getPanelChromeVisibleMotion(motionAxis);
 
-  return (
-    <DesktopChromePortal
-      segment={segment}
-      position={position}
-      order={order}
-      className={cn('min-w-0', className)}
-    >
-      <AnimatePresence initial={false}>
-        {visible && (
-          <motion.div
-            key="panel-contextual-chrome"
-            className="flex h-full min-w-0 items-center"
-            initial={reducedMotion ? false : hiddenMotion}
-            animate={reducedMotion ? { opacity: 1 } : visibleMotion}
-            exit={reducedMotion ? { opacity: 0 } : hiddenMotion}
-            transition={{
-              duration: reducedMotion ? 0 : SHELL_TRANSITION.duration,
-              ease: SHELL_TRANSITION.ease,
-            }}
-          >
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </DesktopChromePortal>
-  );
+    return (
+      <ChromePortal
+        segment={segment}
+        position={position}
+        order={order}
+        className={cn('min-w-0', className)}
+      >
+        <AnimatePresence initial={false}>
+          {visible && (
+            <motion.div
+              key="panel-contextual-chrome"
+              className="flex h-full min-w-0 items-center"
+              initial={reducedMotion ? false : hiddenMotion}
+              animate={reducedMotion ? { opacity: 1 } : visibleMotion}
+              exit={reducedMotion ? { opacity: 0 } : hiddenMotion}
+              transition={{
+                duration: reducedMotion ? 0 : PANEL_CHROME_TRANSITION.duration,
+                ease: PANEL_CHROME_TRANSITION.ease,
+              }}
+            >
+              {children}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </ChromePortal>
+    );
+  }
+
+  return null;
 }
 
 function PanelContextualTabs({
@@ -184,7 +219,7 @@ function PanelContextualTabs({
   onCloseTab,
   onAddWindow,
 }: {
-  panel: PanelState;
+  panel: PanelStateLike;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;

@@ -3,6 +3,8 @@ import type { SystemBridge } from '@linkcode/ipc';
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import type { PanelWindowType } from '@linkcode/ui';
 import { SessionSidebar, WorkbenchConversationSurface } from '@linkcode/ui';
+import { getChromeSurface, getWorkspaceMinSize, PanelRegion } from '@linkcode/ui/shell/panels';
+import { TerminalPanel } from '@linkcode/ui/shell/terminal';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
@@ -12,14 +14,12 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { XIcon } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
-import { DesktopChrome } from './chrome/chrome';
+import { DesktopChrome, DesktopChromePortal } from './chrome/chrome';
 import type { DesktopChromeMetricsStyle } from './chrome/metrics';
 import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import { DesktopHostFooter } from './host/host-footer';
 import { getShellContentMotionStyle, useAnimatedSplit } from './layout/use-animated-split';
 import { DesktopWorkspace } from './layout/workspace';
-import { getChromeSurface, getWorkspaceMinSize } from './panels/panel-layout';
-import { PanelRegion } from './panels/panel-region';
 import type { DesktopShellState, LayoutState, PanelSide, PanelState } from './state/local/model';
 import {
   createTab,
@@ -27,8 +27,10 @@ import {
   defaultWindowFor,
   getExpandedPanel,
   getPanelFromShellState,
+  MIN_MAIN_SIZE,
   normalizeLayout,
   pushExpandedPanel,
+  RIGHT_PANEL_MIN_SIZE,
   readPaneSize,
   removeExpandedPanel,
   SIDEBAR_MAX_SIZE,
@@ -138,6 +140,8 @@ function DesktopShell({
   const workspaceMinSize = getWorkspaceMinSize({
     rightPanelOpen: rightPanel.open,
     rightAllowZeroSize,
+    minMainSize: MIN_MAIN_SIZE,
+    rightPanelMinSize: RIGHT_PANEL_MIN_SIZE,
   });
 
   useAbortableEffect(
@@ -326,11 +330,14 @@ function DesktopShell({
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         chromeSurface={chromeSurface}
+        chromeSpacerClassName={DESKTOP_CHROME_SPACER_CLASS}
+        ChromePortal={DesktopChromePortal}
         contentStyle={getShellContentMotionStyle({
           axis: side === 'right' ? 'x' : 'y',
           phase: side === 'right' ? rightPhase : bottomPhase,
           reducedMotion: side === 'right' ? rightReducedMotion : bottomReducedMotion,
         })}
+        panelContentByType={{ terminal: <TerminalPanel /> }}
         onSelectTab={(id) => updatePanel(side, (current) => ({ ...current, activeTabId: id }))}
         onCloseTab={(id) => closeTab(side, id)}
         onAddWindow={(type) => addWindow(side, type)}

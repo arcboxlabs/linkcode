@@ -1,5 +1,4 @@
-import type { PanelSide } from '@desktop/shell/state/local/model';
-import { MIN_MAIN_SIZE, RIGHT_PANEL_MIN_SIZE } from '@desktop/shell/state/local/model';
+import type { PanelSide } from './panel-region';
 
 export type ChromeSurface = 'normal' | 'right-max' | 'bottom-max';
 
@@ -12,11 +11,13 @@ export function getChromeSurface(expandedPanel: PanelSide | null): ChromeSurface
 export function getWorkspaceMinSize({
   rightPanelOpen,
   rightAllowZeroSize,
+  minMainSize,
+  rightPanelMinSize,
 }: {
   rightPanelOpen: boolean;
   rightAllowZeroSize: boolean;
+  minMainSize: number;
+  rightPanelMinSize: number;
 }): number {
-  return rightPanelOpen && !rightAllowZeroSize
-    ? MIN_MAIN_SIZE + RIGHT_PANEL_MIN_SIZE
-    : MIN_MAIN_SIZE;
+  return rightPanelOpen && !rightAllowZeroSize ? minMainSize + rightPanelMinSize : minMainSize;
 }

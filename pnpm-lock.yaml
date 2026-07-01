@@ -183,9 +183,6 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@fontsource/ibm-plex-mono':
-        specifier: ^5.2.7
-        version: 5.2.7
       '@linkcode/client-core':
         specifier: workspace:*
         version: link:../../packages/client-core
@@ -240,9 +237,6 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.7(react@19.2.7)
-      restty:
-        specifier: ^0.1.35
-        version: 0.1.35(typescript@6.0.3)
       use-intl:
         specifier: 'catalog:'
         version: 4.13.0(react@19.2.7)
@@ -717,6 +711,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
+      restty:
+        specifier: ^0.1.35
+        version: 0.1.35(typescript@6.0.3)
       shiki:
         specifier: ^4.3.0
         version: 4.3.0
