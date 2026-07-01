@@ -5,7 +5,7 @@ import { ScrollView, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 export default function HomeScreen() {
-  const t = useTranslations('mobile');
+  const t = useTranslations('mobile.about');
 
   return (
     <View className="flex-1 bg-background">
@@ -17,7 +17,7 @@ export default function HomeScreen() {
             contract={t('contract', { version: WIRE_PROTOCOL_VERSION })}
             registeredAgentsLabel={t('registeredAgents')}
             agentKinds={AgentKindSchema.options}
-            note={t('tunnel')}
+            note={t('note')}
           />
         </View>
       </ScrollView>
