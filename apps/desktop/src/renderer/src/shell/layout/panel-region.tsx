@@ -49,7 +49,7 @@ export function DesktopPanelRegion({
         phase,
         reducedMotion,
       })}
-      panelContentByType={{ terminal: <TerminalPanel /> }}
+      panelContentByType={{ terminal: () => <TerminalPanel /> }}
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
       onAddWindow={onAddWindow}

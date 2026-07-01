@@ -41,6 +41,9 @@ const PANEL_CHROME_TRANSITION = {
   duration: 0.18,
   ease: [0.2, 0, 0, 1] as [number, number, number, number],
 };
+// Inactive tabs keep their layout box (so restty's ResizeObserver never sees a 0×0 container) but
+// paint nothing — cheaper and safer than display:none, which would churn the PTY size on every switch.
+const HIDDEN_TAB_STYLE: React.CSSProperties = { visibility: 'hidden' };
 
 export function PanelRegion({
   side,
@@ -66,18 +69,33 @@ export function PanelRegion({
   ChromePortal?: React.ComponentType<PanelChromePortalProps>;
   chromeSpacerClassName?: string;
   contentStyle?: React.CSSProperties;
-  panelContentByType?: Partial<Record<PanelWindowType, React.ReactNode>>;
+  panelContentByType?: Partial<Record<PanelWindowType, () => React.ReactNode>>;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
   onToggleMax: () => void;
   onClose: () => void;
 }): React.ReactNode {
-  const activeType = activePanelWindowType(panel);
   const chromePlacement = getPanelChromePlacement(side, chromeSurface);
+  // Render every tab and toggle visibility instead of resolving a single node by type: two tabs of
+  // the same type (e.g. two terminals) each keep their own mounted instance and live session, so
+  // switching actually swaps what's shown.
   const content = (
-    <div className="h-full min-h-0" style={contentStyle}>
-      {panelContentByType?.[activeType] ?? <PanelStubContent type={activeType} />}
+    <div className="relative h-full min-h-0" style={contentStyle}>
+      {panel.tabs.map((tab) => {
+        const active = tab.id === panel.activeTabId;
+        return (
+          <div
+            key={tab.id}
+            className="absolute inset-0"
+            style={active ? undefined : HIDDEN_TAB_STYLE}
+            aria-hidden={!active}
+            inert={!active}
+          >
+            {panelContentByType?.[tab.type]?.() ?? <PanelStubContent type={tab.type} />}
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -149,13 +167,6 @@ export function PanelRegion({
       {content}
     </FreePanel>
   );
-}
-
-function activePanelWindowType(panel: PanelStateLike): PanelWindowType {
-  for (const tab of panel.tabs) {
-    if (tab.id === panel.activeTabId) return tab.type;
-  }
-  return 'terminal';
 }
 
 function PanelContextualChromePortal({
