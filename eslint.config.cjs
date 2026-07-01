@@ -15,6 +15,7 @@ module.exports = require('eslint-config-sukka').sukka(
         '**/.turbo/**',
         '**/.expo/**',
         '.zed/**',
+        '.claude/**',
         '**/expo-export/**',
         'packages/coss-ui/**',
         'pnpm-lock.yaml',
