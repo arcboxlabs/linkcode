@@ -47,7 +47,11 @@ export function DesktopShell({
   TerminalBlockComponent,
   onDismissError,
   onModelChange,
-}: WorkbenchShellProps & { systemBridge: SystemBridge }): React.ReactNode {
+  onOpenSettings,
+}: WorkbenchShellProps & {
+  systemBridge: SystemBridge;
+  onOpenSettings?: () => void;
+}): React.ReactNode {
   const shellState = useDesktopShellStore(
     useShallow((state) => ({
       sidebarOpen: state.sidebarOpen,
@@ -319,6 +323,7 @@ export function DesktopShell({
                     state={tConnection('connected')}
                     appVersion={appVersion}
                     pendingPermissionCount={conversation.pendingPermissionIds.length}
+                    onOpenSettings={onOpenSettings}
                   />
                 }
                 onSelect={onSelectSession}

@@ -1,9 +1,7 @@
-import { WorkbenchApp } from '@linkcode/workbench';
 import { init as sentryInit } from '@sentry/electron/renderer';
 import { init as reactInit } from '@sentry/react';
 import { createRoot } from 'react-dom/client';
-import { DAEMON_URL, transport } from './lib/transport';
-import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
+import { DesktopApp } from './app';
 import { installAdaptiveTheme } from './theme';
 import 'allotment/dist/style.css';
 import './index.css';
@@ -18,10 +16,4 @@ if (!el) throw new Error('#root not found');
 const uninstallAdaptiveTheme = installAdaptiveTheme();
 if (import.meta.hot) import.meta.hot.dispose(uninstallAdaptiveTheme);
 
-createRoot(el).render(
-  <WorkbenchApp
-    transport={transport}
-    daemonUrl={DAEMON_URL}
-    shellComponent={DesktopWorkbenchShell}
-  />,
-);
+createRoot(el).render(<DesktopApp />);
