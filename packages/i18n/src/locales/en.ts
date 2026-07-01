@@ -192,6 +192,7 @@ export const en = {
       title: 'Settings',
       manageHosts: 'Manage hosts',
       about: 'About',
+      back: 'Back',
     },
   },
 } as const satisfies LocaleMessages;

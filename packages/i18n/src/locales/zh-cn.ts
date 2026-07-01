@@ -190,6 +190,7 @@ export const zhCN = {
       title: '设置',
       manageHosts: '管理 host',
       about: '关于',
+      back: '返回',
     },
   },
 } as const;
