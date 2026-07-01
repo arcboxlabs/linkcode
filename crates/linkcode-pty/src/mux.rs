@@ -8,20 +8,20 @@ use std::thread;
 use portable_pty::{Child, MasterPty, PtySize};
 use serde_json::json;
 
-use crate::proto::{encode_data, write_frame, ERROR, EXIT, OPENED, OUTPUT};
-use crate::pty::{spawn, OpenParams, SpawnedPty};
+use crate::proto::{ERROR, EXIT, OPENED, OUTPUT, encode_data, write_frame};
+use crate::pty::{OpenParams, SpawnedPty, spawn};
 
 struct Terminal {
-    master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    master: Mutex<Box<dyn MasterPty + Send>>,
+    writer: Mutex<Box<dyn Write + Send>>,
+    child: Mutex<Box<dyn Child + Send + Sync>>,
 }
 
 /// Routes control frames to PTYs and PTY output back to the daemon. Shared across the per-terminal
 /// reader threads via `Arc`; the terminal map and stdout are separate locks, so output streaming
 /// never blocks on the map.
 pub struct Mux {
-    terminals: Mutex<HashMap<String, Terminal>>,
+    terminals: Mutex<HashMap<String, Arc<Terminal>>>,
     stdout: Mutex<Stdout>,
 }
 
@@ -37,6 +37,14 @@ impl Mux {
     /// Spawn a terminal and reply `OPENED`, or reply `ERROR` if the shell could not start.
     pub fn open(self: &Arc<Self>, params: OpenParams) {
         let terminal_id = params.terminal_id.clone();
+        if self.lock_terminals().contains_key(&terminal_id) {
+            self.send_json(
+                ERROR,
+                &json!({ "terminalId": terminal_id, "message": "terminal id already exists" }),
+            );
+            return;
+        }
+
         let SpawnedPty {
             master,
             reader,
@@ -56,11 +64,11 @@ impl Mux {
 
         self.lock_terminals().insert(
             terminal_id.clone(),
-            Terminal {
-                master,
-                writer,
-                child,
-            },
+            Arc::new(Terminal {
+                master: Mutex::new(master),
+                writer: Mutex::new(writer),
+                child: Mutex::new(child),
+            }),
         );
         // Reply OPENED before starting the reader so it always precedes this terminal's output.
         self.send_json(OPENED, &json!({ "terminalId": terminal_id, "pid": pid }));
@@ -69,16 +77,24 @@ impl Mux {
 
     /// Forward keystrokes to a terminal. Best effort: a dead terminal is reaped by its reader thread.
     pub fn input(&self, terminal_id: &str, data: &[u8]) {
-        if let Some(terminal) = self.lock_terminals().get_mut(terminal_id) {
-            let _ = terminal.writer.write_all(data);
-            let _ = terminal.writer.flush();
+        if let Some(terminal) = self.terminal(terminal_id) {
+            let mut writer = terminal
+                .writer
+                .lock()
+                .expect("terminal writer mutex poisoned");
+            let _ = writer.write_all(data);
+            let _ = writer.flush();
         }
     }
 
     /// Resize a terminal's window. Best effort.
     pub fn resize(&self, terminal_id: &str, cols: u16, rows: u16) {
-        if let Some(terminal) = self.lock_terminals().get(terminal_id) {
-            let _ = terminal.master.resize(PtySize {
+        if let Some(terminal) = self.terminal(terminal_id) {
+            let master = terminal
+                .master
+                .lock()
+                .expect("terminal master mutex poisoned");
+            let _ = master.resize(PtySize {
                 rows,
                 cols,
                 pixel_width: 0,
@@ -89,15 +105,24 @@ impl Mux {
 
     /// Request termination; the `EXIT` frame and map removal follow from the reader hitting EOF.
     pub fn close(&self, terminal_id: &str) {
-        if let Some(terminal) = self.lock_terminals().get_mut(terminal_id) {
-            let _ = terminal.child.kill();
+        if let Some(terminal) = self.terminal(terminal_id) {
+            let mut child = terminal
+                .child
+                .lock()
+                .expect("terminal child mutex poisoned");
+            let _ = child.kill();
         }
     }
 
     /// Kill every terminal (sidecar shutdown).
     pub fn kill_all(&self) {
-        for terminal in self.lock_terminals().values_mut() {
-            let _ = terminal.child.kill();
+        let terminals = self.lock_terminals().values().cloned().collect::<Vec<_>>();
+        for terminal in terminals {
+            let mut child = terminal
+                .child
+                .lock()
+                .expect("terminal child mutex poisoned");
+            let _ = child.kill();
         }
     }
 
@@ -107,7 +132,10 @@ impl Mux {
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
-                    Ok(n) => self.send(OUTPUT, &encode_data(&terminal_id, &buf[..n])),
+                    Ok(n) => match encode_data(&terminal_id, &buf[..n]) {
+                        Ok(body) => self.send(OUTPUT, &body),
+                        Err(_) => break,
+                    },
                 }
             }
             let exit_code = self.reap(&terminal_id);
@@ -120,12 +148,12 @@ impl Mux {
 
     /// Remove a terminal and wait on its child for the exit code (`None` if the wait failed).
     fn reap(&self, terminal_id: &str) -> Option<i32> {
-        let mut terminal = self.lock_terminals().remove(terminal_id)?;
-        terminal
+        let terminal = self.lock_terminals().remove(terminal_id)?;
+        let mut child = terminal
             .child
-            .wait()
-            .ok()
-            .map(|status| status.exit_code() as i32)
+            .lock()
+            .expect("terminal child mutex poisoned");
+        child.wait().ok().map(|status| status.exit_code() as i32)
     }
 
     fn send(&self, type_byte: u8, body: &[u8]) {
@@ -138,7 +166,11 @@ impl Mux {
         self.send(type_byte, &body);
     }
 
-    fn lock_terminals(&self) -> std::sync::MutexGuard<'_, HashMap<String, Terminal>> {
+    fn terminal(&self, terminal_id: &str) -> Option<Arc<Terminal>> {
+        self.lock_terminals().get(terminal_id).cloned()
+    }
+
+    fn lock_terminals(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<Terminal>>> {
         self.terminals.lock().expect("terminals mutex poisoned")
     }
 }

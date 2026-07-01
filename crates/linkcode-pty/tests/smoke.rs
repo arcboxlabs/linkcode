@@ -11,6 +11,7 @@ const CLOSE: u8 = 0x04;
 const OPENED: u8 = 0x81;
 const OUTPUT: u8 = 0x82;
 const EXIT: u8 = 0x83;
+const ERROR: u8 = 0x84;
 
 fn write_frame(w: &mut impl Write, type_byte: u8, body: &[u8]) {
     let total = (1 + body.len()) as u32;
@@ -104,6 +105,46 @@ fn spawns_shell_echoes_input_and_exits() {
         }
     }
     assert!(exited, "expected EXIT frame after close");
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn duplicate_terminal_ids_are_rejected() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_linkcode-pty"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn sidecar");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+
+    let id = "t-1";
+    let open = format!(r#"{{"terminalId":"{id}","cols":80,"rows":24,"cmd":"/bin/sh","args":[]}}"#);
+    write_frame(&mut stdin, OPEN, open.as_bytes());
+    let (type_byte, body) = read_frame(&mut stdout).expect("opened frame");
+    assert_eq!(type_byte, OPENED);
+    assert!(String::from_utf8_lossy(&body).contains(id));
+
+    write_frame(&mut stdin, OPEN, open.as_bytes());
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut rejected = false;
+    while Instant::now() < deadline {
+        match read_frame(&mut stdout) {
+            Some((ERROR, body)) => {
+                let body = String::from_utf8_lossy(&body);
+                assert!(body.contains(id));
+                assert!(body.contains("already exists"));
+                rejected = true;
+                break;
+            }
+            Some(_) => {}
+            None => break,
+        }
+    }
+    assert!(rejected, "expected ERROR frame for duplicate terminal id");
 
     let _ = child.kill();
     let _ = child.wait();

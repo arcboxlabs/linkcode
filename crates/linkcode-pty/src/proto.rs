@@ -6,6 +6,12 @@
 
 use std::io::{self, Read, Write};
 
+/// Largest accepted frame payload including the one-byte frame type.
+pub const MAX_FRAME_LEN: usize = 16 * 1024 * 1024;
+
+/// Maximum terminal id length in bytes; data frames encode it as `u16`.
+pub const MAX_TERMINAL_ID_LEN: usize = u16::MAX as usize;
+
 // Daemon → sidecar.
 pub const OPEN: u8 = 0x01;
 pub const INPUT: u8 = 0x02;
@@ -27,10 +33,10 @@ pub fn read_frame(reader: &mut impl Read) -> io::Result<Option<(u8, Vec<u8>)>> {
         Err(e) => return Err(e),
     }
     let total = u32::from_le_bytes(len) as usize;
-    if total == 0 {
+    if total == 0 || total > MAX_FRAME_LEN {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "zero-length frame",
+            "invalid frame length",
         ));
     }
     let mut type_byte = [0u8; 1];
@@ -42,7 +48,14 @@ pub fn read_frame(reader: &mut impl Read) -> io::Result<Option<(u8, Vec<u8>)>> {
 
 /// Write one frame. The caller holds the stdout lock so multi-write frames stay contiguous.
 pub fn write_frame(writer: &mut impl Write, type_byte: u8, body: &[u8]) -> io::Result<()> {
-    let total = (1 + body.len()) as u32;
+    let total = 1 + body.len();
+    if total > MAX_FRAME_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "frame too large",
+        ));
+    }
+    let total = total as u32;
     writer.write_all(&total.to_le_bytes())?;
     writer.write_all(&[type_byte])?;
     writer.write_all(body)?;
@@ -50,13 +63,19 @@ pub fn write_frame(writer: &mut impl Write, type_byte: u8, body: &[u8]) -> io::R
 }
 
 /// Encode a data-frame body: `[u16 LE id_len][id][data]`.
-pub fn encode_data(terminal_id: &str, data: &[u8]) -> Vec<u8> {
+pub fn encode_data(terminal_id: &str, data: &[u8]) -> io::Result<Vec<u8>> {
     let id = terminal_id.as_bytes();
+    if id.is_empty() || id.len() > MAX_TERMINAL_ID_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid terminal id length",
+        ));
+    }
     let mut out = Vec::with_capacity(2 + id.len() + data.len());
     out.extend_from_slice(&(id.len() as u16).to_le_bytes());
     out.extend_from_slice(id);
     out.extend_from_slice(data);
-    out
+    Ok(out)
 }
 
 /// Decode a data-frame body into `(terminal_id, data)`.
@@ -92,7 +111,7 @@ mod tests {
 
     #[test]
     fn data_frame_preserves_id_and_raw_bytes() {
-        let body = encode_data("term-1", b"\x1b[0mls\r\n");
+        let body = encode_data("term-1", b"\x1b[0mls\r\n").unwrap();
         let (id, data) = decode_data(&body).unwrap();
         assert_eq!(id, "term-1");
         assert_eq!(data, b"\x1b[0mls\r\n");
@@ -102,5 +121,27 @@ mod tests {
     fn decode_rejects_truncated_frames() {
         assert!(decode_data(&[1]).is_err());
         assert!(decode_data(&[9, 0, b'x']).is_err());
+    }
+
+    #[test]
+    fn oversized_frames_are_rejected() {
+        let mut encoded = Vec::new();
+        encoded.extend_from_slice(&((MAX_FRAME_LEN as u32) + 1).to_le_bytes());
+        encoded.push(OUTPUT);
+
+        let err = read_frame(&mut Cursor::new(encoded)).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        let err = write_frame(&mut Vec::new(), OUTPUT, &vec![0; MAX_FRAME_LEN]).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn oversized_terminal_ids_are_rejected() {
+        let terminal_id = "x".repeat(MAX_TERMINAL_ID_LEN + 1);
+
+        let err = encode_data(&terminal_id, b"hello").unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 }

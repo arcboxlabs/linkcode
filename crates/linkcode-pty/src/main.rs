@@ -12,7 +12,7 @@ use std::io::{self, BufReader};
 use serde::Deserialize;
 
 use crate::mux::Mux;
-use crate::proto::{decode_data, read_frame, CLOSE, INPUT, OPEN, RESIZE};
+use crate::proto::{CLOSE, INPUT, OPEN, RESIZE, decode_data, read_frame};
 use crate::pty::OpenParams;
 
 #[derive(Deserialize)]
@@ -36,11 +36,14 @@ fn main() {
     // Loop until stdin ends (the daemon closed the pipe) or a read error stops us.
     while let Ok(Some((type_byte, body))) = read_frame(&mut stdin) {
         match type_byte {
-            OPEN => {
-                if let Ok(params) = serde_json::from_slice::<OpenParams>(&body) {
-                    mux.open(params);
+            OPEN => match serde_json::from_slice::<OpenParams>(&body) {
+                Ok(params) => mux.open(params),
+                Err(err) => {
+                    eprintln!("invalid OPEN frame: {err}");
+                    mux.kill_all();
+                    std::process::exit(1);
                 }
-            }
+            },
             INPUT => {
                 if let Ok((terminal_id, data)) = decode_data(&body) {
                     mux.input(&terminal_id, data);

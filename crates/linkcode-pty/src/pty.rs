@@ -3,9 +3,11 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-use anyhow::Result;
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use anyhow::{Result, bail};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Deserialize;
+
+use crate::proto::MAX_TERMINAL_ID_LEN;
 
 /// Parameters for opening a terminal, deserialized from a daemon `OPEN` frame.
 #[derive(Deserialize)]
@@ -23,6 +25,17 @@ pub struct OpenParams {
     pub env: HashMap<String, String>,
 }
 
+impl OpenParams {
+    /// Validate protocol invariants that the rest of the sidecar relies on.
+    pub fn validate(&self) -> Result<()> {
+        let terminal_id_len = self.terminal_id.len();
+        if terminal_id_len == 0 || terminal_id_len > MAX_TERMINAL_ID_LEN {
+            bail!("invalid terminal id length");
+        }
+        Ok(())
+    }
+}
+
 /// A spawned PTY: the master handle, its split reader/writer, and the child process.
 pub struct SpawnedPty {
     pub master: Box<dyn MasterPty + Send>,
@@ -34,6 +47,8 @@ pub struct SpawnedPty {
 
 /// Spawn `params.cmd` attached to a fresh PTY sized to `params.cols` × `params.rows`.
 pub fn spawn(params: &OpenParams) -> Result<SpawnedPty> {
+    params.validate()?;
+
     let pair = native_pty_system().openpty(PtySize {
         rows: params.rows,
         cols: params.cols,

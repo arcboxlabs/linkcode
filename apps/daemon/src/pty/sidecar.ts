@@ -50,6 +50,9 @@ export class SidecarPtyBackend implements PtyBackend {
   constructor(private readonly binaryPath: string) {}
 
   open(terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
+    if (this.pending.has(terminalId) || this.terminals.has(terminalId)) {
+      return Promise.reject(new Error(`terminal already exists: ${terminalId}`));
+    }
     const child = this.ensureChild();
     const body = Buffer.from(
       JSON.stringify({
@@ -69,10 +72,11 @@ export class SidecarPtyBackend implements PtyBackend {
   }
 
   shutdown(): void {
-    this.child?.kill();
+    const child = this.child;
     this.child = null;
-    this.terminals.clear();
-    this.pending.clear();
+    this.decoder.reset();
+    this.failAll(new Error('pty backend shutdown'));
+    child?.kill();
   }
 
   private ensureChild(): SidecarChild {
@@ -80,8 +84,17 @@ export class SidecarPtyBackend implements PtyBackend {
     const child = spawn(this.binaryPath, [], { stdio: ['pipe', 'pipe', 'inherit'] });
     this.child = child;
     child.stdout.on('data', (chunk: Buffer) => {
-      for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
+      try {
+        for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
+      } catch {
+        child.kill();
+        this.onChildGone();
+      }
     });
+    // A failed spawn (e.g. missing binary) errors the pipes; a broken pipe means the child is
+    // gone. Without these listeners the unhandled stream error would crash the daemon.
+    child.stdin.on('error', () => this.onChildGone());
+    child.stdout.on('error', () => this.onChildGone());
     child.on('exit', () => this.onChildGone());
     child.on('error', () => this.onChildGone());
     return child;
@@ -153,6 +166,8 @@ export class SidecarPtyBackend implements PtyBackend {
   private finish(terminalId: string, exitCode: number | null): void {
     const terminal = this.terminals.get(terminalId);
     if (!terminal) return;
+    const tail = terminal.decoder.decode();
+    if (tail.length > 0) terminal.data.emit(tail);
     this.terminals.delete(terminalId);
     terminal.exit.emit(exitCode);
     terminal.data.clear();
@@ -161,10 +176,15 @@ export class SidecarPtyBackend implements PtyBackend {
 
   private onChildGone(): void {
     this.child = null;
-    this.decoder.feed(Buffer.alloc(0)); // drop any partial frame carried from the dead child
-    for (const waiter of this.pending.values()) waiter.reject(new Error('pty sidecar exited'));
+    this.decoder.reset();
+    this.failAll(new Error('pty sidecar exited'));
+  }
+
+  private failAll(error: Error): void {
+    for (const waiter of this.pending.values()) waiter.reject(error);
     this.pending.clear();
-    for (const terminalId of this.terminals.keys()) this.finish(terminalId, null);
+    const terminalIds = Array.from(this.terminals.keys());
+    for (const terminalId of terminalIds) this.finish(terminalId, null);
   }
 }
 

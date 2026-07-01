@@ -1,3 +1,12 @@
 [workspace]
-members = ["crates/pty-host"]
+members = ["crates/linkcode-pty"]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Every Code Agent in the Palm of your hand"
+homepage = "https://github.com/arcboxlabs/linkcode#readme"
+repository = "https://github.com/arcboxlabs/linkcode"
+license = "BUSL-1.1"

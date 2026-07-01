@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch --import ./src/instrument.ts src/index.ts",
     "build": "tsup",
-    "build:rust": "cargo build -p pty-host",
+    "build:rust": "cargo build -p linkcode-pty",
     "start": "node --import ./dist/instrument.js dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
