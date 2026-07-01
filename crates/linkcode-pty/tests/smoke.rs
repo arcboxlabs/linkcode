@@ -2,7 +2,7 @@
 #![cfg(unix)]
 
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{Duration, Instant};
 
 const OPEN: u8 = 0x01;
@@ -41,9 +41,43 @@ fn data_body(id: &str, data: &[u8]) -> Vec<u8> {
 }
 
 fn frame_text(body: &[u8]) -> String {
-    // For data frames, skip the [u16 id_len][id] prefix; for JSON frames, this is a harmless slice.
+    split_data(body).1
+}
+
+/// Split a data-frame body into its terminal id and payload text. Only meaningful for INPUT/OUTPUT
+/// bodies; JSON control frames have no id prefix.
+fn split_data(body: &[u8]) -> (String, String) {
     let id_len = u16::from_le_bytes([body[0], body[1]]) as usize;
-    String::from_utf8_lossy(&body[2 + id_len..]).into_owned()
+    let id = String::from_utf8_lossy(&body[2..2 + id_len]).into_owned();
+    let data = String::from_utf8_lossy(&body[2 + id_len..]).into_owned();
+    (id, data)
+}
+
+fn spawn_sidecar() -> (Child, ChildStdin, ChildStdout) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_linkcode-pty"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn sidecar");
+    let stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    (child, stdin, stdout)
+}
+
+/// Read frames until `handle` returns true or `secs` elapse; returns whether it matched.
+fn wait_for(stdout: &mut impl Read, secs: u64, mut handle: impl FnMut(u8, &[u8]) -> bool) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    while Instant::now() < deadline {
+        match read_frame(stdout) {
+            Some((type_byte, body)) => {
+                if handle(type_byte, &body) {
+                    return true;
+                }
+            }
+            None => return false,
+        }
+    }
+    false
 }
 
 #[test]
@@ -190,6 +224,137 @@ fn shutdown_flushes_a_final_exit_frame() {
     assert!(
         exited,
         "expected a final EXIT frame to be flushed on shutdown"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn multiplexes_two_terminals_without_crosstalk() {
+    let (mut child, mut stdin, mut stdout) = spawn_sidecar();
+
+    for id in ["t-1", "t-2"] {
+        write_frame(
+            &mut stdin,
+            OPEN,
+            format!(r#"{{"terminalId":"{id}","cols":80,"rows":24,"cmd":"/bin/sh","args":[]}}"#)
+                .as_bytes(),
+        );
+    }
+    let mut opened1 = false;
+    let mut opened2 = false;
+    let both_open = wait_for(&mut stdout, 10, |type_byte, body| {
+        if type_byte == OPENED {
+            let s = String::from_utf8_lossy(body);
+            opened1 |= s.contains("\"t-1\"");
+            opened2 |= s.contains("\"t-2\"");
+        }
+        opened1 && opened2
+    });
+    assert!(both_open, "both terminals should open");
+
+    write_frame(&mut stdin, INPUT, &data_body("t-1", b"echo MARKER-AAA\n"));
+    write_frame(&mut stdin, INPUT, &data_body("t-2", b"echo MARKER-BBB\n"));
+
+    let mut buf1 = String::new();
+    let mut buf2 = String::new();
+    let both_seen = wait_for(&mut stdout, 10, |type_byte, body| {
+        if type_byte == OUTPUT {
+            let (id, data) = split_data(body);
+            if id == "t-1" {
+                buf1.push_str(&data);
+            } else if id == "t-2" {
+                buf2.push_str(&data);
+            }
+        }
+        buf1.contains("MARKER-AAA") && buf2.contains("MARKER-BBB")
+    });
+    assert!(both_seen, "each terminal should echo its own marker");
+    // The core multiplexing guarantee: output is routed by terminal id and never crosses over.
+    assert!(!buf1.contains("MARKER-BBB"), "t-1 received t-2's output");
+    assert!(!buf2.contains("MARKER-AAA"), "t-2 received t-1's output");
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn reports_the_shell_exit_code() {
+    let (mut child, mut stdin, mut stdout) = spawn_sidecar();
+    write_frame(
+        &mut stdin,
+        OPEN,
+        br#"{"terminalId":"t-1","cols":80,"rows":24,"cmd":"/bin/sh","args":[]}"#,
+    );
+    assert!(
+        wait_for(&mut stdout, 10, |type_byte, _| type_byte == OPENED),
+        "terminal should open"
+    );
+
+    write_frame(&mut stdin, INPUT, &data_body("t-1", b"exit 42\n"));
+    let got_code = wait_for(&mut stdout, 10, |type_byte, body| {
+        type_byte == EXIT && String::from_utf8_lossy(body).contains("\"exitCode\":42")
+    });
+    assert!(
+        got_code,
+        "shell `exit 42` should surface as EXIT exitCode 42"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn malformed_open_is_rejected_without_killing_the_host() {
+    let (mut child, mut stdin, mut stdout) = spawn_sidecar();
+
+    // Missing the required `cmd` field: the OPEN fails to parse, but its id is still recoverable.
+    write_frame(
+        &mut stdin,
+        OPEN,
+        br#"{"terminalId":"t-bad","cols":80,"rows":24}"#,
+    );
+    let rejected = wait_for(&mut stdout, 10, |type_byte, body| {
+        type_byte == ERROR && String::from_utf8_lossy(body).contains("t-bad")
+    });
+    assert!(
+        rejected,
+        "a malformed OPEN should be rejected for just that terminal"
+    );
+
+    // The host must survive: a well-formed OPEN afterwards still works.
+    write_frame(
+        &mut stdin,
+        OPEN,
+        br#"{"terminalId":"t-good","cols":80,"rows":24,"cmd":"/bin/sh","args":[]}"#,
+    );
+    let opened = wait_for(&mut stdout, 10, |type_byte, body| {
+        type_byte == OPENED && String::from_utf8_lossy(body).contains("t-good")
+    });
+    assert!(
+        opened,
+        "the host should survive a malformed OPEN and keep serving"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn rejects_open_with_a_nonexistent_cwd() {
+    let (mut child, mut stdin, mut stdout) = spawn_sidecar();
+    write_frame(
+        &mut stdin,
+        OPEN,
+        br#"{"terminalId":"t-cwd","cols":80,"rows":24,"cmd":"/bin/sh","args":[],"cwd":"/no/such/dir/linkcode-test"}"#,
+    );
+    let rejected = wait_for(&mut stdout, 10, |type_byte, body| {
+        type_byte == ERROR && String::from_utf8_lossy(body).contains("t-cwd")
+    });
+    assert!(
+        rejected,
+        "an OPEN with a nonexistent cwd should be rejected"
     );
 
     let _ = child.kill();
