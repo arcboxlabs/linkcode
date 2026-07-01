@@ -323,6 +323,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   };
 
   protected handleMessage(msg: SDKMessage): void {
+    // Every SDK message carries the CLI's session id — the provider-local history id this live run
+    // writes to. Sniffed before the replay guard so a resumed session binds immediately.
+    if (typeof msg.session_id === 'string' && msg.session_id.length > 0) {
+      this.emitSessionRef(asHistoryId(msg.session_id));
+    }
     // A history-resumed session (see resumeFrom) replays prior turns as `isReplay` frames (historical
     // text + tool_results) right after the Query is created. Skip them: re-emitting as live events
     // would flood the stream and pollute the tool-call snapshot map.

@@ -1,6 +1,7 @@
 import type {
   AgentEvent,
   AgentHistoryCapabilities,
+  AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
   AgentHistoryReadOptions,
@@ -53,6 +54,8 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
 
   protected readonly events = new Listeners<AgentEvent>();
   protected opts: StartOptions | null = null;
+  /** Last announced provider-local id — `emitSessionRef` dedupes against it. */
+  private sessionRef: AgentHistoryId | null = null;
   /** Permission asks awaiting a reply, keyed by requestId. */
   private readonly pending = new Map<string, PermissionResolver>();
   /** Running tool-call snapshots, keyed by toolCallId — the source for `emitTool`'s full-snapshot emits. */
@@ -190,6 +193,12 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.emit({ type: 'tool-call', toolCall });
   }
 
+  /** Announce the provider-local native id of the live run once known; re-emits only when it changes. */
+  protected emitSessionRef(historyId: AgentHistoryId): void {
+    if (this.sessionRef === historyId) return;
+    this.sessionRef = historyId;
+    this.emit({ type: 'session-ref', historyId });
+  }
   protected emitUsage(usage: TokenUsage): void {
     this.emit({ type: 'token-usage', usage });
   }

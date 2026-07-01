@@ -184,6 +184,10 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   private handleEvent(ev: ThreadEvent): void {
     switch (ev.type) {
+      case 'thread.started':
+        // The rollout id this live thread persists under — the provider-local history id.
+        this.emitSessionRef(asHistoryId(ev.thread_id));
+        break;
       case 'turn.started':
         this.emitStatus('running');
         break;
