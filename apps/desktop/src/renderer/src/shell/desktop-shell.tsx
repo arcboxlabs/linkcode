@@ -195,7 +195,7 @@ export function DesktopShell({
         answeredPermissions={answeredPermissions}
         respondingPermissions={respondingPermissions}
         TerminalBlockComponent={TerminalBlockComponent}
-        disabled={!active}
+        disabled={!active || active.status === 'stopped'}
         isRunning={isRunning}
         topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
         onSendPrompt={onSendPrompt}

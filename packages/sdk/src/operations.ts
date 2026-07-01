@@ -9,6 +9,7 @@ import type {
   ProvidersConfig,
   SessionId,
   SessionInfo,
+  SessionRecord,
   StartOptions,
 } from '@linkcode/schema';
 import type { Options, RequestResult } from './client';
@@ -26,6 +27,18 @@ export function stopSession(
   options: Options<{ sessionId: SessionId }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).stopSession(options.sessionId);
+}
+
+export function resumeSession(
+  options: Options<{ sessionId: SessionId }>,
+): RequestResult<SessionId> {
+  return resolveClient(options).resumeSession(options.sessionId);
+}
+
+export function importSession(
+  options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId }>,
+): RequestResult<SessionRecord> {
+  return resolveClient(options).importSession(options.agentKind, options.historyId);
 }
 
 export function listHistory(

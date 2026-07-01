@@ -12,6 +12,7 @@ import type {
   ProvidersConfig,
   SessionId,
   SessionInfo,
+  SessionRecord,
   StartOptions,
   WireMessage,
   WirePayload,
@@ -75,6 +76,7 @@ export class LinkCodeClient {
   private readonly events = new Map<SessionId, AgentEvent[]>();
   private readonly pendingStarts = new Map<string, Pending<SessionId>>();
   private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
+  private readonly pendingImports = new Map<string, Pending<SessionRecord>>();
   private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
   private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
   private readonly pendingConfigGets = new Map<string, Pending<ProvidersConfig>>();
@@ -116,6 +118,11 @@ export class LinkCodeClient {
       case 'session.listed': {
         this.pendingLists.get(p.replyTo)?.resolve(p.sessions);
         this.pendingLists.delete(p.replyTo);
+        break;
+      }
+      case 'session.imported': {
+        this.pendingImports.get(p.replyTo)?.resolve(p.record);
+        this.pendingImports.delete(p.replyTo);
         break;
       }
       case 'history.listed': {
@@ -191,6 +198,25 @@ export class LinkCodeClient {
     return this.sendCorrelated(this.pendingLists, (clientReqId) => ({
       kind: 'session.list',
       clientReqId,
+    }));
+  }
+
+  /** Resume a persisted (cold) session by its Link Code id; resolves with the same id. */
+  resumeSession(sessionId: SessionId): Promise<SessionId> {
+    return this.sendCorrelated(this.pendingStarts, (clientReqId) => ({
+      kind: 'session.resume',
+      clientReqId,
+      sessionId,
+    }));
+  }
+
+  /** Import a provider-local history session as a cold record (listed, not started). */
+  importSession(agentKind: AgentKind, historyId: AgentHistoryId): Promise<SessionRecord> {
+    return this.sendCorrelated(this.pendingImports, (clientReqId) => ({
+      kind: 'session.import',
+      clientReqId,
+      agentKind,
+      historyId,
     }));
   }
 
@@ -404,6 +430,7 @@ export class LinkCodeClient {
     for (const map of [
       this.pendingStarts,
       this.pendingLists,
+      this.pendingImports,
       this.pendingHistoryLists,
       this.pendingHistoryReads,
       this.pendingConfigGets,
@@ -420,6 +447,7 @@ export class LinkCodeClient {
     if (code) Object.assign(err, { code });
     if (rejectFrom(this.pendingStarts, replyTo, err)) return;
     if (rejectFrom(this.pendingLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingImports, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
     if (rejectFrom(this.pendingConfigGets, replyTo, err)) return;

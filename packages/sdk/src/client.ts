@@ -10,6 +10,7 @@ import type {
   ProvidersConfig,
   SessionId,
   SessionInfo,
+  SessionRecord,
   StartOptions,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -71,6 +72,16 @@ export class LinkCodeSdkClient {
 
   stopSession(sessionId: SessionId): RequestResult<{ ok: true }> {
     return toResult(this.raw.stopSession(sessionId));
+  }
+
+  /** Resume a persisted (cold) session by its Link Code id; resolves with the same id. */
+  resumeSession(sessionId: SessionId): RequestResult<SessionId> {
+    return toResult(this.raw.resumeSession(sessionId));
+  }
+
+  /** Import a provider-local history session as a cold record (listed, not started). */
+  importSession(agentKind: AgentKind, historyId: AgentHistoryId): RequestResult<SessionRecord> {
+    return toResult(this.raw.importSession(agentKind, historyId));
   }
 
   listHistory(

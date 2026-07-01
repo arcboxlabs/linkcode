@@ -1,7 +1,6 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
-import { listSessions, startSession, stopSession } from '@linkcode/sdk';
+import { listSessions, resumeSession, startSession, stopSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
-import { useSet } from 'foxact/use-set';
 import { useMemo, useState } from 'react';
 import { useData, useMutation } from '../runtime/tayori';
 
@@ -15,24 +14,22 @@ export interface WorkbenchSessions {
   stop: (id: SessionId) => void;
 }
 
+/**
+ * Session orchestration over the daemon's persisted session list. The daemon is the single
+ * authority — the list includes cold (stopped) sessions, so there is no client-side optimistic
+ * bookkeeping; mutations just revalidate. Selecting a cold session resumes it in place (same id).
+ */
 export function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSessions {
   const { data: remoteSessions, mutate } = useData(listSessions, {});
   const createMutation = useMutation(startSession, { onError });
   const stopMutation = useMutation(stopSession, { onError });
-  const [localSessions, setLocalSessions] = useState<SessionInfo[]>([]);
-  const [stoppedIds, addStoppedId, removeStoppedId] = useSet<SessionId>();
+  const resumeMutation = useMutation(resumeSession, { onError });
   const [selectedId, setSelectedId] = useState<SessionId | null>(null);
 
-  const sessions = useMemo(() => {
-    const byId = new Map<SessionId, SessionInfo>();
-    for (const session of remoteSessions ?? []) {
-      if (!stoppedIds.has(session.sessionId)) byId.set(session.sessionId, session);
-    }
-    for (const session of localSessions) {
-      if (!stoppedIds.has(session.sessionId)) byId.set(session.sessionId, session);
-    }
-    return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
-  }, [localSessions, remoteSessions, stoppedIds]);
+  const sessions = useMemo(
+    () => [...(remoteSessions ?? [])].sort((a, b) => a.createdAt - b.createdAt),
+    [remoteSessions],
+  );
 
   const active = useMemo(() => {
     if (selectedId) {
@@ -44,21 +41,21 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }, [selectedId, sessions]);
   const activeId = active?.sessionId ?? null;
 
+  function select(id: SessionId): void {
+    setSelectedId(id);
+    // Selecting a cold session wakes it on the daemon, keeping the same Link Code id.
+    if (sessionById(sessions, id)?.status === 'stopped') {
+      void resumeMutation
+        .trigger({ sessionId: id })
+        .then(() => mutate())
+        .catch(noop);
+    }
+  }
+
   function create(opts: { kind: AgentKind; cwd: string }): void {
     void createMutation
       .trigger({ opts })
       .then((sessionId) => {
-        const optimistic: SessionInfo = {
-          sessionId,
-          kind: opts.kind,
-          cwd: opts.cwd,
-          status: 'starting',
-          createdAt: Date.now(),
-        };
-        removeStoppedId(sessionId);
-        setLocalSessions((prev) =>
-          prev.some((session) => session.sessionId === sessionId) ? prev : [...prev, optimistic],
-        );
         setSelectedId(sessionId);
         void mutate();
       })
@@ -69,9 +66,6 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     void stopMutation
       .trigger({ sessionId: id })
       .then(() => {
-        addStoppedId(id);
-        setLocalSessions((prev) => prev.filter((session) => session.sessionId !== id));
-        setSelectedId((current) => (current === id ? null : current));
         void mutate();
       })
       .catch(noop);
@@ -81,7 +75,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     sessions,
     active,
     activeId,
-    select: setSelectedId,
+    select,
     create,
     stop,
   };

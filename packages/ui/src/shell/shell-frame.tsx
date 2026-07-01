@@ -66,7 +66,7 @@ export function ShellFrame({
           conversation={conversation}
           agentKind={active?.kind}
           agentLabel={active ? active.kind : undefined}
-          disabled={!active}
+          disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           cwd={active?.cwd}
           answeredPermissions={answeredPermissions}

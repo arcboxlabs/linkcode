@@ -233,7 +233,7 @@ export function CompactSessionRow({
 }): React.ReactNode {
   const repo = repositoryLabel(session.cwd);
   const agent = AGENT_LABELS[session.kind];
-  const title = `${agent} in ${repo}`;
+  const title = session.title ?? `${agent} in ${repo}`;
 
   return (
     <div
