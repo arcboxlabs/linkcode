@@ -4,6 +4,7 @@ import type {
   Query,
   SDKMessage,
   SDKSessionInfo,
+  SDKUserMessage,
   SessionMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
@@ -56,6 +57,51 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ];
 
+/**
+ * The `prompt` fed to a streaming-input `query()`: an `AsyncIterable<SDKUserMessage>` that stays open
+ * for the whole session so `onPrompt` can push each new turn into an already-running `Query` instead of
+ * spawning a fresh one. Only ever has one consumer (the SDK's own internal read loop).
+ */
+class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
+  private readonly buffered: SDKUserMessage[] = [];
+  private waiting: ((message: SDKUserMessage | null) => void) | null = null;
+  private closed = false;
+
+  push(message: SDKUserMessage): void {
+    if (this.closed) return;
+    if (this.waiting) {
+      const resolve = this.waiting;
+      this.waiting = null;
+      resolve(message);
+    } else {
+      this.buffered.push(message);
+    }
+  }
+
+  /** Ends the iterable, letting the SDK's read loop (and the underlying CLI's stdin) close cleanly. */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.waiting?.(null);
+    this.waiting = null;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncGenerator<SDKUserMessage> {
+    while (true) {
+      if (this.buffered.length > 0) {
+        yield this.buffered.shift()!;
+        continue;
+      }
+      if (this.closed) return;
+      const next = await new Promise<SDKUserMessage | null>((resolve) => {
+        this.waiting = resolve;
+      });
+      if (next === null) return;
+      yield next;
+    }
+  }
+}
+
 /** Map Claude's stop reason to our ACP-aligned StopReason. */
 export function mapClaudeStop(reason: string | null): StopReason {
   switch (reason) {
@@ -70,10 +116,14 @@ export function mapClaudeStop(reason: string | null): StopReason {
 }
 
 /**
- * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` via `query()`.
- * Each prompt is a string turn; conversation continuity is preserved with `resume` (the previous
- * session id). Streaming deltas arrive via `includePartialMessages`; permission asks go through
- * `canUseTool`, bridged onto our permission-request/response round-trip.
+ * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` via `query()` in **streaming input
+ * mode**: one persistent `Query` for the whole session, fed through `AsyncMessageQueue` so each new
+ * prompt is pushed into the already-running session instead of spawning a fresh `query()` call.
+ *
+ * This replaced a single-message-per-turn + `resume` design. That was simpler, but the CLI silently
+ * ignores a changed `model` option once a session is resumed — verified against the live SDK — so
+ * live model switching was impossible. Streaming mode is the only way the SDK exposes mid-session
+ * control (`Query#setModel`, `#setPermissionMode`, `#interrupt`); see `onSetModel` / `onCancel` below.
  */
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
@@ -84,15 +134,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   };
 
   private q: Query | null = null;
-  private abort: AbortController | null = null;
-  private sessionId: string | undefined;
+  private inputQueue: AsyncMessageQueue | null = null;
+  /** Session id to resume *once*, at the first `onPrompt`, when this adapter was started from saved
+   * history — not updated afterwards; the persistent `Query` carries the conversation itself now. */
+  private resumeFrom: string | undefined;
+  /** Suppresses `emitError` for the interrupt-induced stream failure `onCancel` triggers on purpose. */
+  private cancelling = false;
   /** Current segment's ids, refreshed each turn and after every tool call so text / thinking emitted
    * before and after a tool render as separate bubbles instead of merging into one. */
   private messageId: MessageId = nextMessageId();
   private thoughtId: MessageId = nextMessageId();
 
   protected async onStart(): Promise<void> {
-    // query() starts per-prompt; just verify the SDK is installed up front.
+    // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
     await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
@@ -103,7 +157,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     opts: AgentHistoryResumeOptions,
     startOpts: StartOptions,
   ): Promise<void> {
-    this.sessionId = opts.historyId;
+    this.resumeFrom = opts.historyId;
     await this.start(startOpts);
   }
 
@@ -156,45 +210,94 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     const opts = this.opts;
     if (!opts) throw new Error('claude-code: session not started');
-    const { query } = await import('@anthropic-ai/claude-agent-sdk');
-    const abort = new AbortController();
-    this.abort = abort;
     this.messageId = nextMessageId();
     this.thoughtId = nextMessageId();
     this.emitStatus('running');
-    const q = query({
-      prompt: contentToText(content),
+    const message: SDKUserMessage = {
+      type: 'user',
+      message: { role: 'user', content: contentToText(content) },
+      parent_tool_use_id: null,
+    };
+    if (this.inputQueue) {
+      // Session already running: hand the SDK's own queued-message support the next turn.
+      this.inputQueue.push(message);
+      return;
+    }
+    const { query } = await import('@anthropic-ai/claude-agent-sdk');
+    const queue = new AsyncMessageQueue();
+    queue.push(message);
+    this.inputQueue = queue;
+    // One-time use: the persistent Query carries the conversation itself from here on, so a later
+    // Query created after a crash must not resume from this same (by then stale) point again.
+    const resume = this.resumeFrom;
+    this.resumeFrom = undefined;
+    this.q = query({
+      prompt: queue,
       options: {
         cwd: opts.cwd,
         model: opts.model,
-        abortController: abort,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
-        resume: this.sessionId,
+        resume,
         additionalDirectories: opts.additionalDirectories,
       },
     });
-    this.q = q;
+    void this.consume(this.q);
+  }
+
+  /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
+   * emits across every prompt pushed into `inputQueue`. Only returns when the underlying process
+   * exits (crash, `close()`, or the CLI quitting on its own). */
+  private async consume(q: Query): Promise<void> {
     try {
       for await (const msg of q) this.handleMessage(msg);
     } catch (err) {
-      if (!abort.signal.aborted) {
-        this.emitError(extractErrorMessage(err) ?? 'Unknown error');
-      }
+      if (this.cancelling) this.cancelling = false;
+      else this.emitError(extractErrorMessage(err) ?? 'Unknown error');
     }
-    this.q = null;
-    // The turn loop ended (normally, by error, or by abort); finalize anything it left dangling.
+    // Guard against clobbering a newer Query: if onPrompt already replaced this.q while this call
+    // was unwinding, only this call's own q/inputQueue should be torn down here.
+    if (this.q === q) {
+      this.q = null;
+      this.inputQueue = null;
+    }
+    // The process is gone; finalize anything a mid-flight turn left dangling.
     this.teardown();
     this.emitStatus('idle');
   }
 
   protected override async onCancel(): Promise<void> {
+    this.cancelling = true;
     try {
       await this.q?.interrupt();
     } catch {
-      // interrupt may reject if the turn already finished; fall through to abort.
+      // Nothing was in flight, so no result/error will follow to consume the flag — clear it now,
+      // or a later unrelated error would be wrongly swallowed as if it were this cancel's fallout.
+      this.cancelling = false;
     }
-    this.abort?.abort();
+    // interrupt() stops the current turn's generation but doesn't guarantee a matching `result`
+    // message, so finalize here too; teardown()/emitStatus('idle') are idempotent if one does follow.
+    this.teardown();
+    this.emitStatus('idle');
+  }
+
+  protected override onStop(): Promise<void> {
+    this.q?.close();
+    this.inputQueue?.close();
+    return Promise.resolve();
+  }
+
+  /** Real live model switch via the persistent `Query`'s `setModel()` (streaming-input-mode-only
+   * control request) — the single-message + `resume` design this replaced could not do this: the CLI
+   * ignores a changed `model` option once a session is resumed. Before the first prompt, the `Query`
+   * doesn't exist yet; fall back to updating `opts.model`, which `onPrompt` reads when it creates it. */
+  protected override async onSetModel(model: string): Promise<void> {
+    if (!this.q) {
+      if (!this.opts) throw new Error('claude-code: session not started');
+      this.opts.model = model;
+      return;
+    }
+    await this.q.setModel(model);
   }
 
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {
@@ -215,9 +318,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   };
 
   protected handleMessage(msg: SDKMessage): void {
-    if ('session_id' in msg && typeof msg.session_id === 'string') this.sessionId = msg.session_id;
-    // Resumed sessions replay prior turns as `isReplay` frames (historical text + tool_results). Skip
-    // them: re-emitting as live events would flood the stream and pollute the tool-call snapshot map.
+    // A history-resumed session (see resumeFrom) replays prior turns as `isReplay` frames (historical
+    // text + tool_results) right after the Query is created. Skip them: re-emitting as live events
+    // would flood the stream and pollute the tool-call snapshot map.
     if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
@@ -286,6 +389,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
   }
 
+  /** A `result` message ends one turn — not the session, which now spans the whole `consume()` loop —
+   * so this is where per-turn cleanup happens (unlike the old per-turn `query()` design, where the
+   * loop ending *was* the turn ending). */
   private handleResult(msg: ResultMessage): void {
     if (msg.subtype === 'success') {
       const usage = isRecord(msg.usage) ? msg.usage : {};
@@ -297,9 +403,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         totalCostUsd: msg.total_cost_usd,
       });
       this.emitStop(mapClaudeStop(msg.stop_reason));
+    } else if (this.cancelling) {
+      // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real
+      // failure — consume the flag instead of surfacing it as an error.
+      this.cancelling = false;
     } else {
       this.emitError('Claude returned an error', undefined, true);
     }
+    this.teardown();
+    this.emitStatus('idle');
   }
 }
 

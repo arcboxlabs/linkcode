@@ -46,6 +46,9 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cancel') }),
   /** Switch the active session mode. */
   z.object({ type: z.literal('set-mode'), modeId: SessionModeIdSchema }),
+  /** Switch the model for the session, going forward (vendor-specific id). Only adapters that
+   * support changing the model on an already-running session accept this; others reject it. */
+  z.object({ type: z.literal('set-model'), model: z.string().min(1) }),
   /** The user's decision for a pending permission-request (correlated by requestId). */
   z.object({
     type: z.literal('permission-response'),

@@ -90,6 +90,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       case 'set-mode':
         await this.onSetMode(input.modeId);
         return;
+      case 'set-model':
+        await this.onSetModel(input.model);
+        return;
       case 'permission-response':
         this.resolvePending(input.requestId, input.outcome);
         break;
@@ -123,6 +126,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected onSetMode(_modeId: string): Promise<void> {
     return Promise.resolve();
+  }
+  /** Default: reject. Only adapters that can rebind the model on a live session override this. */
+  protected onSetModel(_model: string): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: model can only be set when starting a session`));
   }
   protected onStop(): Promise<void> {
     return Promise.resolve();
