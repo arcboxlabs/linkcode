@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import { AgentEventSchema } from './agent';
-import { AgentKindSchema, TimestampSchema } from './common';
-
-/** Provider-local history id, e.g. a Claude Code session id or a future Codex thread id. */
-export const AgentHistoryIdSchema = z.string().min(1).brand<'AgentHistoryId'>();
-export type AgentHistoryId = z.infer<typeof AgentHistoryIdSchema>;
+import { AgentHistoryIdSchema, AgentKindSchema, TimestampSchema } from './common';
 
 /** History capabilities can vary by adapter and by installed SDK/runtime version. */
 export const AgentHistoryCapabilitiesSchema = z.object({

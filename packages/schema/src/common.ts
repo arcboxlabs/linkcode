@@ -13,6 +13,10 @@ export type SessionId = z.infer<typeof SessionIdSchema>;
 export const MessageIdSchema = z.string().min(1).brand<'MessageId'>();
 export type MessageId = z.infer<typeof MessageIdSchema>;
 
+/** Provider-local history id, e.g. a Claude Code session id or a future Codex thread id. */
+export const AgentHistoryIdSchema = z.string().min(1).brand<'AgentHistoryId'>();
+export type AgentHistoryId = z.infer<typeof AgentHistoryIdSchema>;
+
 /** Epoch timestamp in milliseconds. */
 export const TimestampSchema = z.number().int().nonnegative();
 export type Timestamp = z.infer<typeof TimestampSchema>;

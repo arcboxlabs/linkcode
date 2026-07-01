@@ -1,15 +1,20 @@
 import { z } from 'zod';
 import { AgentEventSchema, AgentInputSchema, StartOptionsSchema } from './agent';
-import { AgentKindSchema, MessageIdSchema, SessionIdSchema, TimestampSchema } from './common';
 import {
   AgentHistoryIdSchema,
+  AgentKindSchema,
+  MessageIdSchema,
+  SessionIdSchema,
+  TimestampSchema,
+} from './common';
+import {
   AgentHistoryListOptionsSchema,
   AgentHistoryListResultSchema,
   AgentHistoryReadOptionsSchema,
   AgentHistoryReadResultSchema,
 } from './history';
 import { ProvidersConfigSchema } from './provider-config';
-import { SessionInfoSchema } from './session';
+import { SessionInfoSchema, SessionRecordSchema } from './session';
 
 /**
  * Wire protocol: the envelope actually transmitted by the transport layer (PLAN §6).
@@ -21,7 +26,7 @@ import { SessionInfoSchema } from './session';
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 4 as const;
+export const WIRE_PROTOCOL_VERSION = 5 as const;
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
   forceRefresh: z.boolean().optional(),
@@ -59,6 +64,24 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('session.attach'), sessionId: SessionIdSchema }),
   z.object({ kind: z.literal('session.detach'), sessionId: SessionIdSchema }),
+  /** Resume a persisted (cold) session by its Link Code id; replies `session.started` with the SAME id. */
+  z.object({
+    kind: z.literal('session.resume'),
+    clientReqId: z.string().min(1),
+    sessionId: SessionIdSchema,
+  }),
+  /** Import a provider-local history session as a cold record (listed, not started). */
+  z.object({
+    kind: z.literal('session.import'),
+    clientReqId: z.string().min(1),
+    agentKind: AgentKindSchema,
+    historyId: AgentHistoryIdSchema,
+  }),
+  z.object({
+    kind: z.literal('session.imported'),
+    replyTo: z.string().min(1),
+    record: SessionRecordSchema,
+  }),
 
   // ── Historical sessions ──
   z.object({

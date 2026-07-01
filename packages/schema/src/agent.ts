@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { AgentKindSchema, MessageIdSchema, SessionIdSchema, TimestampSchema } from './common';
+import {
+  AgentHistoryIdSchema,
+  AgentKindSchema,
+  MessageIdSchema,
+  SessionIdSchema,
+  TimestampSchema,
+} from './common';
 import { ContentBlockSchema } from './content';
 import { PermissionOptionSchema, PermissionOutcomeSchema } from './permission';
 import { PlanSchema } from './plan';
@@ -98,6 +104,10 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),
+  /** The provider-local native id of the live run, once the adapter learns it. Lets the host bind
+   * the Link Code session to provider history for later resume; adapters without history support
+   * never emit it. */
+  z.object({ type: z.literal('session-ref'), historyId: AgentHistoryIdSchema }),
   z.object({ type: z.literal('token-usage'), usage: TokenUsageSchema }),
   z.object({ type: z.literal('stop'), stopReason: StopReasonSchema }),
   z.object({
