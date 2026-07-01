@@ -9,6 +9,7 @@
     "ignoreUnknown": true,
     "includes": [
       "**",
+      "!.claude",
       "!**/dist",
       "!**/out",
       "!**/build",
