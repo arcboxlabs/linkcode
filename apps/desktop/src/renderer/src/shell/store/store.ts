@@ -1,5 +1,6 @@
 import { zodPersist } from '@linkcode/common/zustand';
 import type { PanelWindowType } from '@linkcode/ui/shell/panels';
+import { clamp } from 'foxts/clamp';
 import { create } from 'zustand';
 import type {
   DesktopShellState,
@@ -130,7 +131,7 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
                 { ...panel, open: false, tabs, activeTabId: null },
               );
             }
-            const fallback = tabs[Math.max(0, Math.min(index, tabs.length - 1))];
+            const fallback = tabs[clamp(index, 0, tabs.length - 1)];
             return setPanelInShellState(current, side, {
               ...panel,
               tabs,
