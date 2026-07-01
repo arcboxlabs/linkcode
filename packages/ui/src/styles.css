@@ -11,7 +11,7 @@
 @source "../../workbench/src";
 /* streamdown ships precompiled JSX with Tailwind class strings; scan its dist
    so those utilities compile against our theme (hoisted root node_modules). */
-@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/streamdown/dist/**/*.js";
 
 /*
  * coss-ui ships --font-mono as an inlined literal in its @theme, so the

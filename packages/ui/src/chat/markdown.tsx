@@ -9,10 +9,10 @@ import { cn } from '../lib/cn';
 const components: Components = {
   a: ({ className, children, node: _node, ...rest }) => (
     <a
+      {...rest}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
       target="_blank"
       rel="noreferrer"
-      {...rest}
     >
       {children}
     </a>
