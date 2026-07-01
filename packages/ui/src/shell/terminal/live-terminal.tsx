@@ -121,11 +121,17 @@ export function LiveTerminal({
   const frameRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Layout effect so the freeze lands before the panel's first shrink frame paints.
+  // Layout effect so the freeze lands before the panel's first shrink frame paints. Freeze only
+  // when the terminal's content box has real extent: a collapsed mount (panel never opened yet)
+  // measures 0 there — pinning that would trap restty at birth size — while the frame itself
+  // still reports its padding, so the content box is the reliable signal.
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    if (!frame) return;
+    const container = containerRef.current;
+    if (!frame || !container) return;
     if (suspended) {
+      const content = container.getBoundingClientRect();
+      if (content.width === 0 || content.height === 0) return;
       const rect = frame.getBoundingClientRect();
       frame.style.width = `${rect.width}px`;
       frame.style.height = `${rect.height}px`;
