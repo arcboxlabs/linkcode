@@ -1,23 +1,8 @@
 {
   "name": "linkcode",
   "version": "0.0.0",
-  "description": "Every Code Agent in the Palm of your hand",
   "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "typecheck": "turbo run typecheck",
-    "lint": "eslint --format=sukka .",
-    "lint:fix": "eslint --format=sukka --fix .",
-    "format": "biome check --write .",
-    "format:check": "biome check .",
-    "check:ci": "pnpm format:check && pnpm lint && pnpm typecheck",
-    "test": "vitest run",
-    "clean": "turbo run clean"
-  },
-  "author": "ArcBox Labs <team@arcbox.dev>",
-  "license": "BUSL-1.1",
+  "description": "Every Code Agent in the Palm of your hand",
   "contributors": [
     "Xuan Zhang <dev@aprilnea.me>",
     "Yifei Zhang <yidadaa@qq.com>",
@@ -32,6 +17,19 @@
   "bugs": {
     "url": "https://github.com/arcboxlabs/linkcode/issues"
   },
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint --format=sukka .",
+    "lint:fix": "eslint --format=sukka --fix .",
+    "format": "biome check --write .",
+    "format:check": "biome check .",
+    "check:ci": "pnpm format:check && pnpm lint && pnpm typecheck",
+    "test": "vitest run",
+    "clean": "turbo run clean"
+  },
   "keywords": [
     "ai",
     "coding-agent",
@@ -39,6 +37,8 @@
     "desktop",
     "mobile"
   ],
+  "author": "ArcBox Labs <team@arcbox.dev>",
+  "license": "BUSL-1.1",
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
     "@eslint-sukka/react": "^8.13.2",
