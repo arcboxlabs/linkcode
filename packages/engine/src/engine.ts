@@ -9,8 +9,9 @@ import type {
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { nullthrow } from 'foxts/guard';
+import { noop } from 'foxts/noop';
 import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
@@ -71,8 +72,10 @@ export class Engine {
       }
       case 'agent.input': {
         await this.tryReply(p.clientReqId, async () => {
-          const session = this.sessions.get(p.sessionId);
-          if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
+          const session = nullthrow(
+            this.sessions.get(p.sessionId),
+            `Unknown session: ${p.sessionId}`,
+          );
           // Echo the user's prompt into the broadcast stream so every attached client (and any
           // reconnect) sees the full conversation; ordered before the adapter's reply events.
           if (p.input.type === 'prompt') {
@@ -91,8 +94,10 @@ export class Engine {
       }
       case 'session.stop': {
         await this.tryReply(p.clientReqId, async () => {
-          const session = this.sessions.get(p.sessionId);
-          if (!session) throw new Error(`Unknown session: ${p.sessionId}`);
+          const session = nullthrow(
+            this.sessions.get(p.sessionId),
+            `Unknown session: ${p.sessionId}`,
+          );
           session.unsub();
           await session.adapter.stop();
           this.sessions.delete(p.sessionId);

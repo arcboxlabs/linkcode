@@ -1,4 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
+import { boundedLimit, cursorOffset } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryEvent,
   AgentHistoryId,
@@ -171,17 +172,6 @@ function sessionFingerprint(session: AgentHistorySession): string {
     fileSize: metadata.fileSize ?? null,
     transcriptPath: metadata.transcriptPath ?? null,
   });
-}
-
-function cursorOffset(cursor: string | undefined): number {
-  if (!cursor) return 0;
-  const value = Number.parseInt(cursor, 10);
-  return Number.isFinite(value) && value >= 0 ? value : 0;
-}
-
-function boundedLimit(value: number | undefined, fallback: number, max: number): number {
-  if (value === undefined) return fallback;
-  return Math.min(max, Math.max(1, Math.trunc(value)));
 }
 
 function sliceEventCache(

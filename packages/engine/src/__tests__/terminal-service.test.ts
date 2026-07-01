@@ -1,6 +1,6 @@
 import type { SessionId, WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { noop } from 'foxact/noop';
+import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../pty-backend';
 import { TerminalService } from '../terminal-service';
