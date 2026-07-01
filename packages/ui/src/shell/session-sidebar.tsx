@@ -378,10 +378,12 @@ export function HostFooter({
   state,
   appVersion,
   pendingPermissionCount = 0,
+  onOpenSettings,
 }: {
   state?: string;
   appVersion?: string;
   pendingPermissionCount?: number;
+  onOpenSettings?: () => void;
 }): React.ReactNode {
   const pendingPermissionLabel =
     pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
@@ -448,7 +450,13 @@ export function HostFooter({
               ))}
             </SelectPopup>
           </Select>
-          <Button disabled size="icon-sm" variant="outline" aria-label="Settings">
+          <Button
+            disabled={!onOpenSettings}
+            size="icon-sm"
+            variant="outline"
+            aria-label="Settings"
+            onClick={onOpenSettings}
+          >
             <SettingsIcon />
           </Button>
         </div>

@@ -31,6 +31,12 @@ export interface DesktopChromeProps {
   onHideSidebar: () => void;
   onToggleRight: () => void;
   onToggleBottom: () => void;
+  /** Override the stable left-rail controls (sidebar toggle + history); `null` hides them. */
+  leftControls?: React.ReactNode;
+  /** Override the stable right-rail controls (panel toggles); `null` hides them. */
+  rightControls?: React.ReactNode;
+  /** Override the main segment's default document-title area; `null` hides it. */
+  titleContent?: React.ReactNode;
 }
 
 export type DesktopChromeSegment = 'sidebar' | 'main' | 'right';
@@ -129,6 +135,9 @@ export function DesktopChrome({
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
+  leftControls,
+  rightControls,
+  titleContent,
 }: DesktopChromeProps): React.ReactNode {
   const [portalTargets, setPortalTargets] = useState<ChromePortalTargetMap>({});
   const chromeRootRef = useRef<HTMLDivElement | null>(null);
@@ -162,22 +171,32 @@ export function DesktopChrome({
           header={header}
           activeExpandedPanel={activeExpandedPanel}
           hasNativeBackdrop={hasNativeBackdrop}
+          titleContent={titleContent}
           setPortalTarget={setPortalTarget}
         />
-        <StableLeftChrome
-          contentRef={leftRailContentRef}
-          sidebarOpen={sidebarOpen}
-          hasNativeTrafficLights={hasNativeTrafficLights}
-          onShowSidebar={onShowSidebar}
-          onHideSidebar={onHideSidebar}
-        />
-        <StableRightChrome
-          contentRef={rightRailContentRef}
-          rightPanelOpen={rightPanelOpen}
-          bottomPanelOpen={bottomPanelOpen}
-          onToggleRight={onToggleRight}
-          onToggleBottom={onToggleBottom}
-        />
+        <StableLeftChrome contentRef={leftRailContentRef} hasNativeTrafficLights={hasNativeTrafficLights}>
+          {leftControls === undefined ? (
+            <DefaultLeftChromeControls
+              sidebarOpen={sidebarOpen}
+              onShowSidebar={onShowSidebar}
+              onHideSidebar={onHideSidebar}
+            />
+          ) : (
+            leftControls
+          )}
+        </StableLeftChrome>
+        <StableRightChrome contentRef={rightRailContentRef}>
+          {rightControls === undefined ? (
+            <DefaultRightChromeControls
+              rightPanelOpen={rightPanelOpen}
+              bottomPanelOpen={bottomPanelOpen}
+              onToggleRight={onToggleRight}
+              onToggleBottom={onToggleBottom}
+            />
+          ) : (
+            rightControls
+          )}
+        </StableRightChrome>
       </div>
       {children}
     </ChromePortalTargetContext>
@@ -188,11 +207,13 @@ function ChromeSegmentGrid({
   header,
   activeExpandedPanel,
   hasNativeBackdrop,
+  titleContent,
   setPortalTarget,
 }: {
   header: WorkbenchShellHeader;
   activeExpandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
+  titleContent?: React.ReactNode;
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
   return (
@@ -222,7 +243,11 @@ function ChromeSegmentGrid({
         // While any panel is maximized the main segment hosts that panel's tabs
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
-          left: activeExpandedPanel ? null : <MainChromeTitle header={header} />,
+          left: activeExpandedPanel
+            ? null
+            : titleContent === undefined
+              ? <MainChromeTitle header={header} />
+              : titleContent,
         }}
         setPortalTarget={setPortalTarget}
       />
@@ -313,16 +338,12 @@ function ChromeSlotTarget({
 
 function StableLeftChrome({
   contentRef,
-  sidebarOpen,
   hasNativeTrafficLights,
-  onShowSidebar,
-  onHideSidebar,
+  children,
 }: {
   contentRef: React.Ref<HTMLDivElement>;
-  sidebarOpen: boolean;
   hasNativeTrafficLights: boolean;
-  onShowSidebar: () => void;
-  onHideSidebar: () => void;
+  children: React.ReactNode;
 }): React.ReactNode {
   return (
     <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-(--lc-chrome-edge)">
@@ -331,21 +352,37 @@ function StableLeftChrome({
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
         {hasNativeTrafficLights ? <NativeTrafficLightInset /> : null}
-        <ShellIconButton
-          label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-          aria-pressed={sidebarOpen}
-          onClick={sidebarOpen ? onHideSidebar : onShowSidebar}
-        >
-          <PanelLeftIcon className="size-4" />
-        </ShellIconButton>
-        <ShellIconButton label="Back" disabled>
-          <ChevronLeftIcon className="size-4" />
-        </ShellIconButton>
-        <ShellIconButton label="Forward" disabled>
-          <ChevronRightIcon className="size-4" />
-        </ShellIconButton>
+        {children}
       </div>
     </div>
+  );
+}
+
+function DefaultLeftChromeControls({
+  sidebarOpen,
+  onShowSidebar,
+  onHideSidebar,
+}: {
+  sidebarOpen: boolean;
+  onShowSidebar: () => void;
+  onHideSidebar: () => void;
+}): React.ReactNode {
+  return (
+    <>
+      <ShellIconButton
+        label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+        aria-pressed={sidebarOpen}
+        onClick={sidebarOpen ? onHideSidebar : onShowSidebar}
+      >
+        <PanelLeftIcon className="size-4" />
+      </ShellIconButton>
+      <ShellIconButton label="Back" disabled>
+        <ChevronLeftIcon className="size-4" />
+      </ShellIconButton>
+      <ShellIconButton label="Forward" disabled>
+        <ChevronRightIcon className="size-4" />
+      </ShellIconButton>
+    </>
   );
 }
 
@@ -363,16 +400,10 @@ function MainChromeTitle({ header }: { header: WorkbenchShellHeader }): React.Re
 
 function StableRightChrome({
   contentRef,
-  rightPanelOpen,
-  bottomPanelOpen,
-  onToggleRight,
-  onToggleBottom,
+  children,
 }: {
   contentRef: React.Ref<HTMLDivElement>;
-  rightPanelOpen: boolean;
-  bottomPanelOpen: boolean;
-  onToggleRight: () => void;
-  onToggleBottom: () => void;
+  children: React.ReactNode;
 }): React.ReactNode {
   return (
     <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-(--lc-chrome-edge)">
@@ -380,26 +411,44 @@ function StableRightChrome({
         ref={contentRef}
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
-        <ShellIconButton
-          label={bottomPanelOpen ? 'Close bottom panel' : 'Open bottom panel'}
-          aria-pressed={bottomPanelOpen}
-          className={bottomPanelOpen ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
-          data-pressed={bottomPanelOpen ? '' : undefined}
-          onClick={onToggleBottom}
-        >
-          <PanelBottomIcon className="size-4" />
-        </ShellIconButton>
-        <ShellIconButton
-          label={rightPanelOpen ? 'Close right panel' : 'Open right panel'}
-          aria-pressed={rightPanelOpen}
-          className={rightPanelOpen ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
-          data-pressed={rightPanelOpen ? '' : undefined}
-          onClick={onToggleRight}
-        >
-          <PanelRightIcon className="size-4" />
-        </ShellIconButton>
+        {children}
       </div>
     </div>
+  );
+}
+
+function DefaultRightChromeControls({
+  rightPanelOpen,
+  bottomPanelOpen,
+  onToggleRight,
+  onToggleBottom,
+}: {
+  rightPanelOpen: boolean;
+  bottomPanelOpen: boolean;
+  onToggleRight: () => void;
+  onToggleBottom: () => void;
+}): React.ReactNode {
+  return (
+    <>
+      <ShellIconButton
+        label={bottomPanelOpen ? 'Close bottom panel' : 'Open bottom panel'}
+        aria-pressed={bottomPanelOpen}
+        className={bottomPanelOpen ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
+        data-pressed={bottomPanelOpen ? '' : undefined}
+        onClick={onToggleBottom}
+      >
+        <PanelBottomIcon className="size-4" />
+      </ShellIconButton>
+      <ShellIconButton
+        label={rightPanelOpen ? 'Close right panel' : 'Open right panel'}
+        aria-pressed={rightPanelOpen}
+        className={rightPanelOpen ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
+        data-pressed={rightPanelOpen ? '' : undefined}
+        onClick={onToggleRight}
+      >
+        <PanelRightIcon className="size-4" />
+      </ShellIconButton>
+    </>
   );
 }
 
