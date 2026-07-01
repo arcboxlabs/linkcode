@@ -3,7 +3,9 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useRef } from 'react';
 import { createRestty } from 'restty';
 import type { PtyTransport } from 'restty/internal';
+import { cn } from '../../lib/cn';
 import type { TerminalSession } from './session';
+import { applyTerminalTheme } from './terminal-theme';
 
 // restty renders on a GPU canvas with its own text shaper and needs raw font bytes; its default
 // `fontPreset: 'default-cdn'` fetches from cdn.jsdelivr.net, which the renderer CSP blocks. Bundle
@@ -115,6 +117,7 @@ export function LiveTerminal({
       const container = containerRef.current;
       if (!container) return;
 
+      let revealFrame = 0;
       const restty = createRestty({
         root: container,
         fontSources: TERMINAL_FONT_SOURCES,
@@ -126,18 +129,40 @@ export function LiveTerminal({
           // client prebuffer on subscribe) isn't dropped before the WASM terminal can render it.
           callbacks: {
             onBackend() {
-              if (!signal.aborted) restty.connectPty('session://terminal');
+              if (signal.aborted) return;
+              applyTerminalTheme(restty);
+              restty.connectPty('session://terminal');
+              // Reveal only once a themed frame can be painted, so the default black frames restty
+              // draws while the WASM core boots are never shown.
+              revealFrame = requestAnimationFrame(() => {
+                container.style.opacity = '1';
+              });
             },
           },
         },
       });
 
+      // The terminal theme follows the app's `.dark` class, so re-apply whenever it flips
+      // (light/dark mode change) — no need to tear down the terminal.
+      const modeObserver = new MutationObserver(() => applyTerminalTheme(restty));
+      modeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class'],
+      });
+
       return () => {
+        cancelAnimationFrame(revealFrame);
+        modeObserver.disconnect();
         restty.destroy();
       };
     },
     [session],
   );
 
-  return <div ref={containerRef} className={className} />;
+  return (
+    <div
+      ref={containerRef}
+      className={cn('opacity-0 transition-opacity duration-150', className)}
+    />
+  );
 }
