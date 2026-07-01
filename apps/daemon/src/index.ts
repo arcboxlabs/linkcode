@@ -15,6 +15,7 @@ import {
   writeRuntimeFile,
 } from './runtime';
 import { createSessionStore } from './session-store';
+import { createWorkspaceStore } from './workspace-store';
 
 /**
  * Link Code daemon — the standalone local host process.
@@ -48,6 +49,8 @@ async function main(): Promise<void> {
     store,
     new SidecarPtyBackend(resolveSidecarPath()),
     createSessionStore(databasePath()),
+    undefined,
+    createWorkspaceStore(databasePath()),
   );
   await engine.start();
 
