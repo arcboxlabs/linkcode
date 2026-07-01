@@ -9,6 +9,11 @@
     pkgs.prek
   ];
 
+  languages.rust = {
+    enable = true;
+    channel = "stable";
+  };
+
   languages.javascript = {
     enable = true;
     package = pkgs.nodejs_24;

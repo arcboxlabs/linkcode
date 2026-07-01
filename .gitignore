@@ -47,6 +47,9 @@ pnpm-debug.log*
 # test coverage
 coverage/
 
+# Rust
+/target
+
 # Devenv
 .devenv*
 devenv.local.nix
