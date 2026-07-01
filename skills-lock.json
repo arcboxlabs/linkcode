@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "linear": {
+      "source": "arcboxlabs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "project-skills/linear/SKILL.md",
+      "computedHash": "d0aa291314f196ae030a3c2c13433042b63cb6982ef5370336e82cbebc8f93d5"
+    }
+  }
+}
