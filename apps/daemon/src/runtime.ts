@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { isPidAlive, readJsonFileSync } from '@linkcode/common/node';
 import type { DaemonIdentity, DaemonRuntimeInfo } from '@linkcode/schema';
 import {
   DAEMON_IDENTITY_PATH,
@@ -20,7 +21,6 @@ import { runtimeFilePath } from './config';
 
 const PORT_HUNT_ATTEMPTS = 10;
 const PROBE_TIMEOUT_MS = 1000;
-const WS_SCHEME_RE = /^ws(s?):/;
 
 /** The configured port is held by a live linkcode daemon — the caller should exit instead of hunting on. */
 export class DaemonAlreadyRunningError extends Error {
@@ -96,22 +96,11 @@ async function huntFrom(
  * advertised endpoint no longer answering as a linkcode daemon.
  */
 export async function findRunningDaemon(): Promise<DaemonRuntimeInfo | null> {
-  let raw: string;
-  try {
-    raw = readFileSync(runtimeFilePath(), 'utf8');
-  } catch {
-    return null;
-  }
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  const parsed = DaemonRuntimeInfoSchema.safeParse(json);
+  const parsed = DaemonRuntimeInfoSchema.safeParse(readJsonFileSync(runtimeFilePath()));
   if (!parsed.success || !isPidAlive(parsed.data.pid)) return null;
-  const probeBase = parsed.data.listeners[0].url.replace(WS_SCHEME_RE, 'http$1:');
-  const identity = await probeDaemonIdentity(probeBase);
+  const probeBase = new URL(parsed.data.listeners[0].url);
+  probeBase.protocol = probeBase.protocol === 'wss:' ? 'https:' : 'http:';
+  const identity = await probeDaemonIdentity(probeBase.href);
   return identity?.pid === parsed.data.pid ? parsed.data : null;
 }
 
@@ -145,14 +134,4 @@ function clientHost(host: string | undefined): string {
 
 function isAddrInUse(err: unknown): boolean {
   return isErrorLikeObject(err) && (err as NodeJS.ErrnoException).code === 'EADDRINUSE';
-}
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // EPERM means the process exists but belongs to someone else — still alive.
-    return (err as NodeJS.ErrnoException).code === 'EPERM';
-  }
 }

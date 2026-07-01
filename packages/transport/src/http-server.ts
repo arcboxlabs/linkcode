@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
 import type { DaemonIdentity } from '@linkcode/schema';
 import { DAEMON_IDENTITY_PATH } from '@linkcode/schema';
@@ -22,14 +23,10 @@ export function createIdentityRequestHandler(
   };
 }
 
-export function listenHttp(server: HttpServer, port: number, host?: string): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, host, () => {
-      server.removeListener('error', reject);
-      resolve();
-    });
-  });
+export async function listenHttp(server: HttpServer, port: number, host?: string): Promise<void> {
+  server.listen(port, host);
+  // events.once resolves on 'listening' and rejects if 'error' (e.g. EADDRINUSE) fires first.
+  await once(server, 'listening');
 }
 
 /** The actually-bound port — differs from the requested one when listening on port 0. */
