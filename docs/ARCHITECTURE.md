@@ -136,6 +136,7 @@ A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable en
 | `agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi`) plus the abstraction layer that normalizes native events into `schema`.    |
 | `engine`        | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`.                                                           |
 | `client-core`   | Shared client data layer: `LinkCodeClient`, the conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`).           |
+| `common`        | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers).       |
 | `sdk`           | Transport-backed SDK (`LinkCodeSdkClient` over a `Transport`): typed operations plus the `Options` / `RequestResult` types `tayori` is parameterized with. Hand-written RPC, not OpenAPI-generated. |
 | `workbench`     | Shared workbench runtime: `WorkbenchProviders` (data plane + connection gate), the `Workbench` surface (session / conversation / composer), the typed `tayori` wrapper, and the debug context. |
 | `ui`            | Shared, business-free presentation: chat and shell view components (`AppShell`). Receives view-models and callbacks; owns no routing, connection, or state. |

@@ -25,6 +25,19 @@ When asked to plan, the plan must be fully resolved before implementation begins
 
 When the project provides a shared layer (data fetching via `client-core`/`tayori`/`sdk`, the transport, the workbench providers), route through it. A custom fetcher or ad-hoc SWR key skips cross-cutting concerns (connection gating, error reporting). Inline connection/navigation/error handling usually means something upstream is wired wrong — fix the usage, or extend the shared layer; don't work around it.
 
+## Ownership Boundaries
+
+Use dependency direction to decide where code belongs; do not place a file by the app that first needed it.
+
+- `apps/*` are runnable ends, not shared libraries. One app must not import another app to reuse providers, routing, transports, or UI. Shared app/runtime glue belongs in `packages/workbench`; shared presentation belongs in `packages/ui`.
+- `apps/desktop` owns Electron-only concerns: main/preload, `SystemBridge` calls, native window/chrome behavior, desktop transport construction, and desktop-specific shell layout integration. If a component only needs one desktop value, read that value at the desktop boundary and pass it down as a prop; do not keep the whole component in desktop.
+- `apps/webview` owns the browser entry and browser transport construction. It has no system plane and no Electron fallback path.
+- `packages/workbench` owns the client runtime/data plane: `client-core`, `sdk`, `tayori`, SWR, transport-backed containers, session orchestration, and runtime providers.
+- `packages/ui` owns business-free React presentation. It may consume schema/view-model types and callbacks, but it must not import `client-core`, `sdk`, `transport`, `tayori`, app packages, or Electron IPC.
+- `packages/common` is for framework-agnostic utilities only. Do not move UI, hooks tied to React renderers, or product behavior there.
+
+When moving code across a boundary, move the dependency with the responsibility: keep system-plane reads at desktop edges, data-plane reads in workbench, and pure rendering in UI.
+
 ## Restructure, Don't Just Remove
 
 Large rewrites are encouraged when they're the right fix — replace subsystems instead of layering patches. But drive-by deletion of things that look unused is not: scaffolding (placeholder pages, stubs, mocks, feature-flagged paths) is usually deliberate. If it's in your way, rewrite it as part of your change; don't leave a gap.
@@ -33,6 +46,12 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 
 - When a file grows visual section dividers (`// ── Section ──` or `====` / `----`), that's the signal to split it into submodules — extract each section into its own file under a directory module. One file should cover one resource/concern.
 - Keep table-definition / schema modules free of hooks and browser APIs so they stay importable anywhere.
+- Directory names must describe responsibility, not incidental data. For example, a sidebar footer belongs with sidebar/workbench presentation, not in a `host/` folder just because it displays host state; a layout adapter belongs under layout, not a one-file pseudo-subsystem.
+
+## Tooling And Aliases
+
+- Keep configured path aliases such as `@renderer/*` when they express a project boundary or renderer root. If IDE ESLint cannot resolve an alias but CLI TypeScript/lint can, fix the resolver/tooling configuration instead of rewriting imports to work around the IDE.
+- Prefer authoritative platform/system values from the owning runtime. In Electron, use main-process `process.platform` exposed through the system plane; do not infer desktop OS from browser APIs such as `navigator.platform` in the renderer.
 
 ## References
 
