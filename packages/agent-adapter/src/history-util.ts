@@ -1,5 +1,6 @@
 import type { AgentHistoryEvent, AgentHistoryId, MessageId, Timestamp } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { clamp } from 'foxts/clamp';
 import { nextMessageId } from './adapter';
 
 export function asHistoryId(value: string): AgentHistoryId {
@@ -18,7 +19,7 @@ export function cursorOffset(cursor: string | undefined): number {
 
 export function boundedLimit(value: number | undefined, fallback: number, max: number): number {
   if (value === undefined) return fallback;
-  return Math.min(max, Math.max(1, Math.trunc(value)));
+  return clamp(Math.trunc(value), 1, max);
 }
 
 export function cursorFromFetched(

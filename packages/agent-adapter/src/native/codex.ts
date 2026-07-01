@@ -23,6 +23,7 @@ import type {
 import type { ThreadEvent, ThreadItem, ThreadOptions, Usage } from '@openai/codex-sdk';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { invariant, not } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -134,7 +135,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    if (!this.thread) throw new Error('codex: session not started');
+    invariant(this.thread, 'codex: session not started');
     const abort = new AbortController();
     this.abort = abort;
     this.emitStatus('running');
@@ -342,7 +343,7 @@ async function readCodexTranscriptSummaries(
   const fileSets = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
   const files = fileSets.flat();
   const summaries = await Promise.all(files.map((file) => readCodexTranscriptSummary(file, index)));
-  return summaries.filter((summary): summary is CodexTranscriptSummary => summary !== undefined);
+  return summaries.filter(not(undefined));
 }
 
 async function findCodexTranscript(

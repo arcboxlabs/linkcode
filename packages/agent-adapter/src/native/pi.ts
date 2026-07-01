@@ -1,5 +1,6 @@
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import type { ContentBlock, MessageId, StartOptions } from '@linkcode/schema';
+import { invariant } from 'foxts/guard';
 import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { contentToText, toolKindFromName } from '../util';
@@ -53,7 +54,7 @@ export class PiAdapter extends BaseAgentAdapter {
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    if (!this.session) throw new Error('pi: session not started');
+    invariant(this.session, 'pi: session not started');
     const text = contentToText(content);
     this.emitStatus('running');
     if (this.session.isStreaming) {

@@ -1,4 +1,5 @@
 import type { AgentKind } from '@linkcode/schema';
+import { never } from 'foxts/guard';
 import type { AgentAdapter } from './adapter';
 import { ClaudeCodeAdapter } from './native/claude-code';
 import { CodexAdapter } from './native/codex';
@@ -21,7 +22,7 @@ export function createAdapter(kind: AgentKind): AgentAdapter {
     case 'pi':
       return new PiAdapter();
     default:
-      throw new Error(`Unsupported agent kind: ${kind}`);
+      return never(kind, 'agent kind');
   }
 }
 

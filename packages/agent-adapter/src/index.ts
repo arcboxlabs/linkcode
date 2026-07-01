@@ -8,6 +8,7 @@
 
 export * from './adapter';
 export * from './base';
+export { boundedLimit, cursorOffset } from './history-util';
 export { ClaudeCodeAdapter } from './native/claude-code';
 export { CodexAdapter } from './native/codex';
 export { OpenCodeAdapter } from './native/opencode';

@@ -27,6 +27,7 @@ import type {
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { invariant, nullthrow } from 'foxts/guard';
 import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import {
@@ -209,8 +210,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    const opts = this.opts;
-    if (!opts) throw new Error('claude-code: session not started');
+    const opts = nullthrow(this.opts, 'claude-code: session not started');
     this.messageId = nextMessageId();
     this.thoughtId = nextMessageId();
     this.emitStatus('running');
@@ -298,7 +298,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * doesn't exist yet; fall back to updating `opts.model`, which `onPrompt` reads when it creates it. */
   protected override async onSetModel(model: string): Promise<void> {
     if (!this.q) {
-      if (!this.opts) throw new Error('claude-code: session not started');
+      invariant(this.opts, 'claude-code: session not started');
       this.opts.model = model;
       return;
     }
