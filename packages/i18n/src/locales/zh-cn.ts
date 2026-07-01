@@ -160,6 +160,7 @@ export const zhCN = {
       cwdLabel: '工作目录',
       cwdPlaceholder: '/host 上的绝对路径',
       create: '启动',
+      settings: '设置',
       status: {
         starting: '启动中',
         idle: '空闲',

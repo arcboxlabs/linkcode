@@ -162,6 +162,7 @@ export const en = {
       cwdLabel: 'Working directory',
       cwdPlaceholder: '/absolute/path/on/the/host',
       create: 'Start',
+      settings: 'Settings',
       status: {
         starting: 'Starting',
         idle: 'Idle',
