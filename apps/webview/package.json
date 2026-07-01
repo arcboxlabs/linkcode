@@ -16,6 +16,7 @@
     "@linkcode/transport": "workspace:*",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
+    "@sentry/react": "10.60.0",
     "coss-ui": "workspace:*",
     "foxact": "^0.3.6",
     "lucide-react": "catalog:",
