@@ -149,3 +149,49 @@ fn duplicate_terminal_ids_are_rejected() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+#[test]
+fn shutdown_flushes_a_final_exit_frame() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_linkcode-pty"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn sidecar");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+
+    let id = "t-shutdown";
+    write_frame(
+        &mut stdin,
+        OPEN,
+        format!(r#"{{"terminalId":"{id}","cols":80,"rows":24,"cmd":"/bin/sh","args":[]}}"#)
+            .as_bytes(),
+    );
+    let (type_byte, _) = read_frame(&mut stdout).expect("opened frame");
+    assert_eq!(type_byte, OPENED);
+
+    // Closing the control pipe (EOF) triggers shutdown. It must kill the terminal, then join the
+    // reader thread *before* stopping the writer, so the reader's final EXIT frame is flushed
+    // rather than raced away by the writer shutting down first.
+    drop(stdin);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut exited = false;
+    while Instant::now() < deadline {
+        match read_frame(&mut stdout) {
+            Some((EXIT, body)) => {
+                assert!(String::from_utf8_lossy(&body).contains(id));
+                exited = true;
+                break;
+            }
+            Some(_) => {}
+            None => break,
+        }
+    }
+    assert!(
+        exited,
+        "expected a final EXIT frame to be flushed on shutdown"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}

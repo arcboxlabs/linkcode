@@ -15,7 +15,56 @@ use crate::pty::{OpenParams, SpawnedPty, spawn};
 struct Terminal {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
-    child: Mutex<Box<dyn Child + Send + Sync>>,
+    /// `None` once the reader thread has reaped the child; guards `signal_group` from ever
+    /// targeting a pid the OS may have recycled.
+    child: Mutex<Option<Box<dyn Child + Send + Sync>>>,
+}
+
+/// How hard to tear a terminal's process group down.
+#[derive(Clone, Copy)]
+enum Teardown {
+    /// `SIGHUP` — the conventional "the terminal hung up" signal, used when a client closes one
+    /// terminal; shells and well-behaved children exit on it and run their traps first.
+    Hangup,
+    /// `SIGKILL` — unconditional, used on sidecar shutdown right before the reader threads are
+    /// joined, so every group is guaranteed dead and the blocking master reads hit EOF.
+    Kill,
+}
+
+impl Terminal {
+    /// Signal the terminal's whole process group, not just the shell. The shell is a `setsid`
+    /// session leader (its pid is the group id), so a child that inherited the slave — and would
+    /// otherwise keep the master from ever reaching EOF — is torn down with it.
+    #[cfg(unix)]
+    fn signal_group(&self, teardown: Teardown) {
+        let signal = match teardown {
+            Teardown::Hangup => libc::SIGHUP,
+            Teardown::Kill => libc::SIGKILL,
+        };
+        // Hold the child lock so `reap` can't `take` (and then `wait`, freeing the pid) underneath
+        // us; a live `Some(child)` means the pid is still a valid, un-recycled process-group id.
+        let child = self.child.lock().expect("terminal child mutex poisoned");
+        if let Some(pid) = child.as_ref().and_then(|c| c.process_id()) {
+            // SAFETY: `killpg` only delivers `signal` to the process group `pid`; it dereferences
+            // no memory. The unreaped child guarded above keeps `pid` a live group id.
+            unsafe {
+                libc::killpg(pid as libc::pid_t, signal);
+            }
+        }
+    }
+
+    /// Non-Unix fallback: no portable process-group signalling, so just kill the shell itself.
+    #[cfg(not(unix))]
+    fn signal_group(&self, _teardown: Teardown) {
+        if let Some(child) = self
+            .child
+            .lock()
+            .expect("terminal child mutex poisoned")
+            .as_mut()
+        {
+            let _ = child.kill();
+        }
+    }
 }
 
 /// A frame bound for the daemon, or the sentinel that tells the writer thread to drain and stop.
@@ -32,6 +81,9 @@ pub struct Mux {
     terminals: Mutex<HashMap<String, Arc<Terminal>>>,
     out: Sender<OutMsg>,
     writer: Mutex<Option<JoinHandle<()>>>,
+    /// Per-terminal reader threads, joined on shutdown so their final `EXIT` frames reach the
+    /// writer. Finished handles are pruned on each `open` so this stays roughly live-terminal sized.
+    readers: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl Mux {
@@ -53,6 +105,7 @@ impl Mux {
             terminals: Mutex::new(HashMap::new()),
             out,
             writer: Mutex::new(Some(writer)),
+            readers: Mutex::new(Vec::new()),
         })
     }
 
@@ -89,7 +142,7 @@ impl Mux {
             Arc::new(Terminal {
                 master: Mutex::new(master),
                 writer: Mutex::new(writer),
-                child: Mutex::new(child),
+                child: Mutex::new(Some(child)),
             }),
         );
         // Reply OPENED before starting the reader so it always precedes this terminal's output.
@@ -137,30 +190,22 @@ impl Mux {
     /// Request termination; the `EXIT` frame and map removal follow from the reader hitting EOF.
     pub fn close(&self, terminal_id: &str) {
         if let Some(terminal) = self.terminal(terminal_id) {
-            let mut child = terminal
-                .child
-                .lock()
-                .expect("terminal child mutex poisoned");
-            let _ = child.kill();
+            terminal.signal_group(Teardown::Hangup);
         }
     }
 
-    /// Kill every terminal (sidecar shutdown).
-    pub fn kill_all(&self) {
-        let terminals = self.lock_terminals().values().cloned().collect::<Vec<_>>();
-        for terminal in terminals {
-            let mut child = terminal
-                .child
-                .lock()
-                .expect("terminal child mutex poisoned");
-            let _ = child.kill();
-        }
-    }
-
-    /// Tear every terminal down, then drain and stop the writer thread so buffered output is
-    /// flushed before the process exits. Called once when the daemon closes the control pipe.
+    /// Tear every terminal down, then join the reader threads (so their final `EXIT` frames are
+    /// queued) and stop the writer thread once its queue has drained. Called once when the daemon
+    /// closes the control pipe. Groups are `SIGKILL`ed so the blocking master reads are guaranteed
+    /// to hit EOF and the joins can't hang (barring a child stuck in an uninterruptible syscall).
     pub fn shutdown(&self) {
-        self.kill_all();
+        for terminal in self.lock_terminals().values() {
+            terminal.signal_group(Teardown::Kill);
+        }
+        let readers = std::mem::take(&mut *self.readers.lock().expect("readers mutex poisoned"));
+        for reader in readers {
+            let _ = reader.join();
+        }
         let _ = self.out.send(OutMsg::Shutdown);
         if let Some(writer) = self.writer.lock().expect("writer mutex poisoned").take() {
             let _ = writer.join();
@@ -168,23 +213,42 @@ impl Mux {
     }
 
     fn spawn_reader(self: Arc<Self>, terminal_id: String, mut reader: Box<dyn Read + Send>) {
-        thread::spawn(move || {
-            let mut buf = [0u8; 4096];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => match encode_data(&terminal_id, &buf[..n]) {
-                        Ok(body) => self.send(OUTPUT, body),
-                        Err(_) => break,
-                    },
+        let handle = thread::spawn({
+            let mux = Arc::clone(&self);
+            move || {
+                let mut buf = [0u8; 4096];
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => match encode_data(&terminal_id, &buf[..n]) {
+                            Ok(body) => mux.send(OUTPUT, body),
+                            Err(_) => break,
+                        },
+                    }
                 }
+                let exit_code = mux.reap(&terminal_id);
+                mux.send_json(
+                    EXIT,
+                    &json!({ "terminalId": terminal_id, "exitCode": exit_code }),
+                );
             }
-            let exit_code = self.reap(&terminal_id);
-            self.send_json(
-                EXIT,
-                &json!({ "terminalId": terminal_id, "exitCode": exit_code }),
-            );
         });
+        self.push_reader(handle);
+    }
+
+    /// Track a reader thread for the shutdown join, first reaping any handles whose threads have
+    /// already finished so the list doesn't grow across a session's worth of opened terminals.
+    fn push_reader(&self, handle: JoinHandle<()>) {
+        let mut readers = self.readers.lock().expect("readers mutex poisoned");
+        let mut i = 0;
+        while i < readers.len() {
+            if readers[i].is_finished() {
+                let _ = readers.swap_remove(i).join();
+            } else {
+                i += 1;
+            }
+        }
+        readers.push(handle);
     }
 
     /// Remove a terminal and wait on its child for the exit code (`None` if the wait failed).
@@ -192,10 +256,13 @@ impl Mux {
     /// 0xC0000005) is preserved as its true unsigned value rather than wrapping to a negative `i32`.
     fn reap(&self, terminal_id: &str) -> Option<i64> {
         let terminal = self.lock_terminals().remove(terminal_id)?;
+        // `take` the child before waiting so a concurrent `signal_group` sees `None` and won't
+        // signal the pid once `wait` has freed it.
         let mut child = terminal
             .child
             .lock()
-            .expect("terminal child mutex poisoned");
+            .expect("terminal child mutex poisoned")
+            .take()?;
         child
             .wait()
             .ok()
