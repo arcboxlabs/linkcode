@@ -1,6 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
 import { ArrowRightIcon, MinusIcon, PackageIcon, PlusIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only package metadata, not yet wired to daemon/client schema.
@@ -21,7 +20,7 @@ export interface ChatPackageDependency {
   version?: string;
 }
 
-export type PackageInfoProps = ComponentProps<'div'> & {
+export type PackageInfoProps = React.ComponentProps<'div'> & {
   packageInfo: ChatPackageInfo;
 };
 
@@ -30,7 +29,7 @@ export function PackageInfo({
   packageInfo,
   children,
   ...props
-}: PackageInfoProps): ReactNode {
+}: PackageInfoProps): React.ReactNode {
   return (
     <div
       className={cn('my-2 rounded-lg border border-border bg-card p-3 text-[13px]', className)}
@@ -51,7 +50,7 @@ export function PackageInfo({
   );
 }
 
-export type PackageInfoHeaderProps = ComponentProps<'div'> & {
+export type PackageInfoHeaderProps = React.ComponentProps<'div'> & {
   packageInfo: ChatPackageInfo;
 };
 
@@ -60,7 +59,7 @@ export function PackageInfoHeader({
   packageInfo,
   children,
   ...props
-}: PackageInfoHeaderProps): ReactNode {
+}: PackageInfoHeaderProps): React.ReactNode {
   return (
     <div className={cn('flex min-w-0 items-start justify-between gap-2', className)} {...props}>
       {children ?? (
@@ -78,13 +77,13 @@ export function PackageInfoHeader({
   );
 }
 
-export type PackageInfoNameProps = ComponentProps<'div'>;
+export type PackageInfoNameProps = React.ComponentProps<'div'>;
 
 export function PackageInfoName({
   className,
   children,
   ...props
-}: PackageInfoNameProps): ReactNode {
+}: PackageInfoNameProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -99,7 +98,7 @@ export function PackageInfoName({
   );
 }
 
-export type PackageInfoVersionProps = ComponentProps<'div'> & {
+export type PackageInfoVersionProps = React.ComponentProps<'div'> & {
   packageInfo: ChatPackageInfo;
 };
 
@@ -108,7 +107,7 @@ export function PackageInfoVersion({
   packageInfo,
   children,
   ...props
-}: PackageInfoVersionProps): ReactNode {
+}: PackageInfoVersionProps): React.ReactNode {
   if (!packageInfo.currentVersion && !packageInfo.newVersion && !children) return null;
 
   return (
@@ -134,7 +133,7 @@ export function PackageInfoVersion({
   );
 }
 
-export type PackageInfoChangeTypeProps = ComponentProps<typeof Badge> & {
+export type PackageInfoChangeTypeProps = React.ComponentProps<typeof Badge> & {
   changeType: NonNullable<ChatPackageInfo['changeType']>;
 };
 
@@ -143,7 +142,7 @@ export function PackageInfoChangeType({
   changeType,
   children,
   ...props
-}: PackageInfoChangeTypeProps): ReactNode {
+}: PackageInfoChangeTypeProps): React.ReactNode {
   const Icon =
     changeType === 'added' ? PlusIcon : changeType === 'removed' ? MinusIcon : ArrowRightIcon;
 
@@ -159,16 +158,16 @@ export function PackageInfoChangeType({
   );
 }
 
-export type PackageInfoDescriptionProps = ComponentProps<'p'>;
+export type PackageInfoDescriptionProps = React.ComponentProps<'p'>;
 
 export function PackageInfoDescription({
   className,
   ...props
-}: PackageInfoDescriptionProps): ReactNode {
+}: PackageInfoDescriptionProps): React.ReactNode {
   return <p className={cn('mt-2 text-muted-foreground', className)} {...props} />;
 }
 
-export type PackageInfoDependenciesProps = ComponentProps<'div'> & {
+export type PackageInfoDependenciesProps = React.ComponentProps<'div'> & {
   dependencies: readonly ChatPackageDependency[];
 };
 
@@ -177,7 +176,7 @@ export function PackageInfoDependencies({
   dependencies,
   children,
   ...props
-}: PackageInfoDependenciesProps): ReactNode {
+}: PackageInfoDependenciesProps): React.ReactNode {
   return (
     <div className={cn('mt-3 border-t border-border pt-3', className)} {...props}>
       {children ?? (
@@ -194,7 +193,7 @@ export function PackageInfoDependencies({
   );
 }
 
-export type PackageInfoDependencyProps = ComponentProps<'div'> & {
+export type PackageInfoDependencyProps = React.ComponentProps<'div'> & {
   dependency: ChatPackageDependency;
 };
 
@@ -203,7 +202,7 @@ export function PackageInfoDependency({
   dependency,
   children,
   ...props
-}: PackageInfoDependencyProps): ReactNode {
+}: PackageInfoDependencyProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -226,7 +225,7 @@ export function PackageInfoDependency({
 
 function packageChangeVariant(
   changeType: NonNullable<ChatPackageInfo['changeType']>,
-): ComponentProps<typeof Badge>['variant'] {
+): React.ComponentProps<typeof Badge>['variant'] {
   switch (changeType) {
     case 'added':
       return 'info';

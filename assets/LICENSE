@@ -14,17 +14,16 @@ of the "Licensed Work" and are NOT licensed under the Business Source License
    icons, splash screens, and other brand imagery owned by ArcBox, Inc.,
    including the following files in this repository:
 
-   - assets/ (this directory), including assets/icon.png and the Icon Composer
-     source bundle assets/linkcode.icon/
+   - assets/ (this directory), including assets/icon.png, assets/icon-dock.png,
+     and the Icon Composer source bundle assets/linkcode.icon/
    - apps/mobile/assets/ (favicon.png, android-icon-foreground.png,
      android-icon-monochrome.png, splash-icon.png)
-   - apps/desktop/build-resources/icon-dock.png
 
    This list is illustrative, not exhaustive: any other logo, icon, or brand
    image owned by ArcBox, Inc. in this repository is a Brand Asset whether or
-   not it is listed here. Functional files that merely sit alongside Brand
-   Assets -- for example, apps/desktop/build-resources/entitlements.mac.plist --
-   are part of the Licensed Work and are not Brand Assets.
+   not it is listed here. Functional files -- for example,
+   apps/desktop/build-resources/entitlements.mac.plist -- are part of the
+   Licensed Work and are not Brand Assets.
 
 
 2. What you may do without asking

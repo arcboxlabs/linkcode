@@ -21,6 +21,8 @@ import type {
   ToolCallStatus,
 } from '@linkcode/schema';
 import type { ThreadEvent, ThreadItem, ThreadOptions, Usage } from '@openai/codex-sdk';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -41,6 +43,7 @@ import { contentToText } from '../util';
 type CodexModule = typeof import('@openai/codex-sdk');
 type CodexInstance = InstanceType<CodexModule['Codex']>;
 type CodexThread = ReturnType<CodexInstance['startThread']>;
+const WHITESPACE_RUN_RE = /\s+/g;
 
 /** Map a Codex command/MCP status to our ToolCallStatus. */
 export function mapCodexStatus(status: 'in_progress' | 'completed' | 'failed'): ToolCallStatus {
@@ -142,7 +145,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       for await (const ev of events) this.handleEvent(ev);
     } catch (err) {
       if (!abort.signal.aborted) {
-        this.emitError(err instanceof Error ? err.message : String(err));
+        this.emitError(extractErrorMessage(err) ?? 'Unknown error');
       }
     }
     // The turn stream ended (normally, by turn.failed/error, or by abort); finalize any dangling tool.
@@ -366,7 +369,7 @@ async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
     if (entry.isDirectory()) pendingDirs.push(collectJsonlFiles(path, depth - 1));
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path);
   }
-  for (const nestedFiles of await Promise.all(pendingDirs)) files.push(...nestedFiles);
+  for (const nestedFiles of await Promise.all(pendingDirs)) appendArrayInPlace(files, nestedFiles);
   return files;
 }
 
@@ -543,7 +546,7 @@ function idFromFilename(path: string): string {
 }
 
 function previewText(text: string): string {
-  const flat = text.replaceAll(/\s+/g, ' ').trim();
+  const flat = text.replaceAll(WHITESPACE_RUN_RE, ' ').trim();
   if (flat.length <= 120) return flat;
   return `${flat.slice(0, 117)}...`;
 }

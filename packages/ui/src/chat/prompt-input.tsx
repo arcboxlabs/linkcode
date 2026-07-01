@@ -1,16 +1,15 @@
 import { Button } from 'coss-ui/components/button';
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from 'coss-ui/components/input-group';
 import { ArrowUpIcon, SquareIcon } from 'lucide-react';
-import type { ComponentProps, KeyboardEventHandler, ReactNode, SyntheticEvent } from 'react';
 import { cn } from '../lib/cn';
 
 export interface PromptInputMessage {
   text: string;
 }
 
-type PromptInputSubmitEvent = SyntheticEvent<HTMLFormElement, SubmitEvent>;
+type PromptInputSubmitEvent = React.SyntheticEvent<HTMLFormElement, SubmitEvent>;
 
-export type PromptInputProps = Omit<ComponentProps<'form'>, 'onSubmit'> & {
+export type PromptInputProps = Omit<React.ComponentProps<'form'>, 'onSubmit'> & {
   onSubmit: (message: PromptInputMessage, event: PromptInputSubmitEvent) => void;
 };
 
@@ -19,7 +18,7 @@ export function PromptInput({
   children,
   onSubmit,
   ...props
-}: PromptInputProps): ReactNode {
+}: PromptInputProps): React.ReactNode {
   function handleSubmit(event: PromptInputSubmitEvent): void {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -36,8 +35,8 @@ export function PromptInput({
   );
 }
 
-export type PromptInputTextareaProps = ComponentProps<typeof InputGroupTextarea> & {
-  onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
+export type PromptInputTextareaProps = React.ComponentProps<typeof InputGroupTextarea> & {
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
 };
 
 export function PromptInputTextarea({
@@ -45,7 +44,7 @@ export function PromptInputTextarea({
   name = 'message',
   rows = 1,
   ...props
-}: PromptInputTextareaProps): ReactNode {
+}: PromptInputTextareaProps): React.ReactNode {
   return (
     <InputGroupTextarea
       className={cn('max-h-48 px-3.5 pt-3 pb-1.5', className)}
@@ -56,9 +55,12 @@ export function PromptInputTextarea({
   );
 }
 
-export type PromptInputFooterProps = Omit<ComponentProps<typeof InputGroupAddon>, 'align'>;
+export type PromptInputFooterProps = Omit<React.ComponentProps<typeof InputGroupAddon>, 'align'>;
 
-export function PromptInputFooter({ className, ...props }: PromptInputFooterProps): ReactNode {
+export function PromptInputFooter({
+  className,
+  ...props
+}: PromptInputFooterProps): React.ReactNode {
   return (
     <InputGroupAddon
       align="block-end"
@@ -68,28 +70,28 @@ export function PromptInputFooter({ className, ...props }: PromptInputFooterProp
   );
 }
 
-export type PromptInputToolsProps = ComponentProps<'div'>;
+export type PromptInputToolsProps = React.ComponentProps<'div'>;
 
-export function PromptInputTools({ className, ...props }: PromptInputToolsProps): ReactNode {
+export function PromptInputTools({ className, ...props }: PromptInputToolsProps): React.ReactNode {
   // `flex-1` lets the tools cluster fill the row so trailing addons (Submit) sit
   // flush right without each call site adding its own `ml-auto` spacer.
   return <div className={cn('flex min-w-0 flex-1 items-center gap-2', className)} {...props} />;
 }
 
-export type PromptInputButtonProps = ComponentProps<typeof Button>;
+export type PromptInputButtonProps = React.ComponentProps<typeof Button>;
 
 export function PromptInputButton({
   size = 'icon-sm',
   type = 'button',
   variant = 'ghost',
   ...props
-}: PromptInputButtonProps): ReactNode {
+}: PromptInputButtonProps): React.ReactNode {
   return <Button size={size} type={type} variant={variant} {...props} />;
 }
 
 export type PromptInputSubmitStatus = 'ready' | 'submitted' | 'streaming' | 'error';
 
-export type PromptInputSubmitProps = ComponentProps<typeof Button> & {
+export type PromptInputSubmitProps = React.ComponentProps<typeof Button> & {
   status?: PromptInputSubmitStatus;
   onStop?: () => void;
 };
@@ -102,7 +104,7 @@ export function PromptInputSubmit({
   size = 'icon-sm',
   variant = 'default',
   ...props
-}: PromptInputSubmitProps): ReactNode {
+}: PromptInputSubmitProps): React.ReactNode {
   const isRunning = status === 'submitted' || status === 'streaming';
 
   return (

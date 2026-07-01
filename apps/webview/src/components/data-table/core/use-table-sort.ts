@@ -1,5 +1,4 @@
 import { useStateWithDeps } from 'foxact/use-state-with-deps';
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useCallback, useMemo } from 'react';
 import type { TableDefinition } from './create-table';
 import { DEFAULT_SORTING_CYCLE } from './create-table';
@@ -8,7 +7,7 @@ import type { TablePaginationState } from './use-table-pagination-state';
 
 /** Pre-bound per-column handler — attach to BOTH onClick and onKeyDown. */
 export type ToggleSortingHandler = (
-  event: ReactKeyboardEvent<HTMLElement> | ReactMouseEvent<HTMLElement>,
+  event: React.KeyboardEvent<HTMLElement> | React.MouseEvent<HTMLElement>,
 ) => void;
 
 /** Per-column sort directions keyed by column id — `undefined` = not sorted. */
@@ -60,7 +59,7 @@ export interface TableSort {
    */
   toggleSortingHandler: (
     columnId: string,
-    event: ReactKeyboardEvent<HTMLElement> | ReactMouseEvent<HTMLElement>,
+    event: React.KeyboardEvent<HTMLElement> | React.MouseEvent<HTMLElement>,
   ) => void;
 }
 
@@ -201,7 +200,7 @@ export function useTableSort<TData = unknown>({
   );
 
   const toggleSortingHandler = useCallback(
-    (columnId: string, event: ReactKeyboardEvent<HTMLElement> | ReactMouseEvent<HTMLElement>) => {
+    (columnId: string, event: React.KeyboardEvent<HTMLElement> | React.MouseEvent<HTMLElement>) => {
       if ('key' in event) {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();

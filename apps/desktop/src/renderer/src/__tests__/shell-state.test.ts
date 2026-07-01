@@ -1,20 +1,21 @@
-import type { DesktopShellState } from '@desktop/shell/state/local/model';
+import type { DesktopShellState } from '@renderer/shell/store/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
   createPanelState,
   DEFAULT_LAYOUT,
-  desktopShellStateModel,
+  parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
-} from '@desktop/shell/state/local/model';
+  serializeDesktopShellState,
+} from '@renderer/shell/store/model';
 import { describe, expect, it } from 'vitest';
 
 describe('desktop shell state persistence', () => {
   it('requires the persisted version marker', () => {
-    const state = desktopShellStateModel.parse({
+    const state = parsePersistedDesktopShellState({
       sidebarOpen: false,
       rightPanel: { open: true, tabs: ['browser'], activeTabIndex: 0 },
       bottomPanel: { open: true, tabs: ['files'], activeTabIndex: 0 },
@@ -27,7 +28,7 @@ describe('desktop shell state persistence', () => {
   });
 
   it('clamps latest layout values', () => {
-    const state = desktopShellStateModel.parse({
+    const state = parsePersistedDesktopShellState({
       version: 1,
       sidebarOpen: true,
       layout: { sidebarW: 10, rightW: 10000, bottomH: 1 },
@@ -44,7 +45,7 @@ describe('desktop shell state persistence', () => {
   });
 
   it('rejects invalid panel tabs and falls back when none remain', () => {
-    const state = desktopShellStateModel.parse({
+    const state = parsePersistedDesktopShellState({
       version: 1,
       sidebarOpen: true,
       layout: {
@@ -64,7 +65,7 @@ describe('desktop shell state persistence', () => {
   });
 
   it('clamps active indexes below bounds', () => {
-    const state = desktopShellStateModel.parse({
+    const state = parsePersistedDesktopShellState({
       version: 1,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
@@ -77,7 +78,7 @@ describe('desktop shell state persistence', () => {
   });
 
   it('filters expansion stack to open panels', () => {
-    const state = desktopShellStateModel.parse({
+    const state = parsePersistedDesktopShellState({
       version: 1,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
@@ -98,7 +99,7 @@ describe('desktop shell state persistence', () => {
       bottomPanel: createPanelState(true, 'files'),
     };
 
-    const parsed = desktopShellStateModel.parse(desktopShellStateModel.serialize(source));
+    const parsed = parsePersistedDesktopShellState(serializeDesktopShellState(source));
 
     expect(parsed.sidebarOpen).toBe(false);
     expect(parsed.layout).toEqual(source.layout);

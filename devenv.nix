@@ -9,6 +9,11 @@
     pkgs.prek
   ];
 
+  languages.rust = {
+    enable = true;
+    channel = "stable";
+  };
+
   languages.javascript = {
     enable = true;
     package = pkgs.nodejs_24;
@@ -18,6 +23,7 @@
       install.enable = true;
     };
   };
+  languages.typescript.enable = true;
 
   git-hooks = {
     package = pkgs.prek;
@@ -26,6 +32,7 @@
         enable = true;
         name = "Check formatting and imports";
         entry = "pnpm format:check";
+        files = "(^|/)(biome\\.json|package\\.json)$|\\.(css|cjs|js|json|jsonc|jsx|mjs|ts|tsx)$";
         pass_filenames = false;
       };
 
@@ -33,6 +40,7 @@
         enable = true;
         name = "Lint";
         entry = "pnpm lint";
+        files = "(^|/)(eslint\\.config\\.cjs|package\\.json)$|\\.(cjs|js|json|jsonc|jsx|mjs|ts|tsx)$";
         pass_filenames = false;
       };
 
@@ -40,6 +48,7 @@
         enable = true;
         name = "Typecheck";
         entry = "pnpm typecheck";
+        files = "(^|/)(package\\.json|pnpm-lock\\.yaml|pnpm-workspace\\.yaml|tsconfig[^/]*\\.json|turbo\\.json)$|\\.(ts|tsx)$";
         pass_filenames = false;
       };
 
@@ -59,7 +68,7 @@
     fi
   '';
 
-  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon dev";
+  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm run --filter @linkcode/daemon dev";
   scripts.desktop.exec = "pnpm run --filter @linkcode/desktop dev";
-  scripts.app.exec = "pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
+  scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
 }

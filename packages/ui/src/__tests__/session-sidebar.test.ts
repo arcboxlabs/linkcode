@@ -4,7 +4,7 @@ import { groupSessions, repositoryLabel } from '../shell/session-sidebar';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-const FIXTURE_DAY_START = localDayStartFromEpochDay(10_000);
+const FIXTURE_DAY_START = localDayStartFromEpochDay(10000);
 
 describe('session sidebar helpers', () => {
   it('groups sessions relative to the supplied local day', () => {

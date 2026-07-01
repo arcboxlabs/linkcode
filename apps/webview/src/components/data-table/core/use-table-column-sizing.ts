@@ -1,6 +1,5 @@
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useStateWithDeps } from 'foxact/use-state-with-deps';
-import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react';
 import { useCallback, useMemo, useRef } from 'react';
 import type { TableDefinition } from './create-table';
 
@@ -20,7 +19,7 @@ export interface TableColumnSizingHeader {
   width: number | undefined;
   isResizing: boolean;
   /** Attach to BOTH onMouseDown and onTouchStart of the column's resize handle. */
-  resizeHandler: (event: ReactMouseEvent<HTMLElement> | ReactTouchEvent<HTMLElement>) => void;
+  resizeHandler: (event: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>) => void;
   /** Attach to onDoubleClick of the resize handle — restores the declared width. */
   resetSize: () => void;
 }
@@ -120,7 +119,7 @@ export function useTableColumnSizing<TData>({
   }, [columnResizeMode, setWidths, setResizing]);
 
   const startResize = useCallback(
-    (columnId: string, event: ReactMouseEvent<HTMLElement> | ReactTouchEvent<HTMLElement>) => {
+    (columnId: string, event: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>) => {
       const startClientX = getClientX(event.nativeEvent);
       if (startClientX === undefined) return;
       event.preventDefault();
@@ -158,7 +157,7 @@ export function useTableColumnSizing<TData>({
         get isResizing() {
           return resizing.resizingId === column.id;
         },
-        resizeHandler(event: ReactMouseEvent<HTMLElement> | ReactTouchEvent<HTMLElement>) {
+        resizeHandler(event: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>) {
           startResize(column.id, event);
         },
         resetSize() {

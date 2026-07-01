@@ -12,6 +12,7 @@ import type {
   StartOptions,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { nullthrow } from 'foxts/guard';
 
 export type RequestResult<T = unknown> = Promise<{
   data: T;
@@ -129,8 +130,7 @@ export function setDefaultClient(client: LinkCodeSdkClient | null): void {
 }
 
 export function getDefaultClient(): LinkCodeSdkClient {
-  if (!defaultClient) throw new Error('LinkCode SDK client has not been initialized');
-  return defaultClient;
+  return nullthrow(defaultClient, 'LinkCode SDK client has not been initialized');
 }
 
 export function resolveClient(options?: { client?: LinkCodeSdkClient }): LinkCodeSdkClient {

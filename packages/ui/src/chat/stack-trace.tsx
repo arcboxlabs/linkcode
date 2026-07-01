@@ -5,7 +5,6 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { AlertTriangleIcon, CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import { useCopyButton } from './use-copy-button';
@@ -40,7 +39,7 @@ interface ParsedStackLocation {
   columnNumber: number;
 }
 
-export type StackTraceProps = ComponentProps<typeof Collapsible> & {
+export type StackTraceProps = React.ComponentProps<typeof Collapsible> & {
   stackTrace: ChatStackTrace;
   onFilePathClick?: (filePath: string, line?: number, column?: number) => void;
 };
@@ -52,7 +51,7 @@ export function StackTrace({
   onFilePathClick,
   children,
   ...props
-}: StackTraceProps): ReactNode {
+}: StackTraceProps): React.ReactNode {
   const [open, setOpen] = useState(defaultOpen);
   const parsed = useMemo(() => parseStackTrace(stackTrace.trace), [stackTrace.trace]);
 
@@ -79,7 +78,7 @@ export function StackTrace({
   );
 }
 
-export type StackTraceHeaderProps = ComponentProps<'div'> & {
+export type StackTraceHeaderProps = React.ComponentProps<'div'> & {
   parsed: ParsedStackTrace;
   stackTrace: ChatStackTrace;
   open: boolean;
@@ -92,7 +91,7 @@ export function StackTraceHeader({
   open,
   children,
   ...props
-}: StackTraceHeaderProps): ReactNode {
+}: StackTraceHeaderProps): React.ReactNode {
   return (
     <div
       className={cn('flex w-full items-center gap-2 px-3 py-2 hover:bg-muted', className)}
@@ -124,9 +123,12 @@ export function StackTraceHeader({
   );
 }
 
-export type StackTraceContentProps = ComponentProps<typeof CollapsibleContent>;
+export type StackTraceContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function StackTraceContent({ className, ...props }: StackTraceContentProps): ReactNode {
+export function StackTraceContent({
+  className,
+  ...props
+}: StackTraceContentProps): React.ReactNode {
   return (
     <CollapsibleContent
       className={cn('border-t border-border bg-muted/30', className)}
@@ -135,7 +137,7 @@ export function StackTraceContent({ className, ...props }: StackTraceContentProp
   );
 }
 
-export type StackTraceFramesProps = ComponentProps<'div'> & {
+export type StackTraceFramesProps = React.ComponentProps<'div'> & {
   frames: readonly ParsedStackFrame[];
   showInternalFrames?: boolean;
   onFilePathClick?: (filePath: string, line?: number, column?: number) => void;
@@ -147,7 +149,7 @@ export function StackTraceFrames({
   showInternalFrames = true,
   onFilePathClick,
   ...props
-}: StackTraceFramesProps): ReactNode {
+}: StackTraceFramesProps): React.ReactNode {
   const visibleFrames = showInternalFrames ? frames : frames.filter((frame) => !frame.isInternal);
 
   return (
@@ -188,11 +190,11 @@ export function StackTraceFrames({
   );
 }
 
-export type StackTraceRawProps = ComponentProps<'pre'> & {
+export type StackTraceRawProps = React.ComponentProps<'pre'> & {
   trace: string;
 };
 
-export function StackTraceRaw({ className, trace, ...props }: StackTraceRawProps): ReactNode {
+export function StackTraceRaw({ className, trace, ...props }: StackTraceRawProps): React.ReactNode {
   return (
     <pre
       className={cn(
@@ -206,7 +208,7 @@ export function StackTraceRaw({ className, trace, ...props }: StackTraceRawProps
   );
 }
 
-export type StackTraceCopyButtonProps = ComponentProps<typeof Button> & {
+export type StackTraceCopyButtonProps = React.ComponentProps<typeof Button> & {
   trace: string;
   timeout?: number;
 };
@@ -217,7 +219,7 @@ export function StackTraceCopyButton({
   timeout = 1600,
   children,
   ...props
-}: StackTraceCopyButtonProps): ReactNode {
+}: StackTraceCopyButtonProps): React.ReactNode {
   const { copied, copyValue } = useCopyButton(trace, timeout);
 
   return (

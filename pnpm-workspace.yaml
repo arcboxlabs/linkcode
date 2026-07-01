@@ -36,6 +36,8 @@ allowBuilds:
   protobufjs: false
   unrs-resolver: false
   electron-winstaller: false
+  # sentry-cli binary backing @sentry/react-native (mobile) — fetched to upload source maps at build time.
+  '@sentry/cli': true
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.
@@ -59,6 +61,7 @@ catalog:
   "@tanstack/react-query": ^5.62.7
   swr: ^2.3.0
   use-intl: ^4.13.0
+  zustand: ^5.0.14
   lucide-react: ^1.18.0
 
   # Web build
@@ -117,3 +120,7 @@ minimumReleaseAgeExclude:
   - '@shikijs/themes@4.3.0'
   - '@shikijs/types@4.3.0'
   - shiki@4.3.0
+  - '@expo/metro-runtime@56.0.16'
+  - '@expo/ui@56.0.19'
+  - expo-constants@56.0.19
+  - expo-router@56.2.12

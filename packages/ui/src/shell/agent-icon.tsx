@@ -1,6 +1,5 @@
 /// <reference types="unplugin-icons/types/react" />
 import type { AgentKind } from '@linkcode/schema';
-import type { ReactNode } from 'react';
 import ClaudeCodeGlyph from '~icons/lobe-icons/claudecode';
 import CodexGlyph from '~icons/lobe-icons/codex';
 import OpenCodeGlyph from '~icons/lobe-icons/opencode';
@@ -27,7 +26,13 @@ const AGENT_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeGlyph>> = {
   opencode: OpenCodeGlyph,
 };
 
-export function AgentIcon({ kind, className }: { kind: AgentKind; className?: string }): ReactNode {
+export function AgentIcon({
+  kind,
+  className,
+}: {
+  kind: AgentKind;
+  className?: string;
+}): React.ReactNode {
   const Glyph = AGENT_GLYPHS[kind];
   return (
     <span

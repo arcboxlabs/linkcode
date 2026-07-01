@@ -1,4 +1,5 @@
 import type { WireMessage } from '@linkcode/schema';
+import { noop } from 'foxact/noop';
 import type { Transport, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
@@ -46,9 +47,8 @@ export class Hub implements Transport {
   send(msg: WireMessage): void {
     for (const conn of this.conns) {
       try {
-        void Promise.resolve(conn.send(msg)).catch(() => {
-          // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
-        });
+        // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
+        void Promise.resolve(conn.send(msg)).catch(noop);
       } catch {
         // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
       }
@@ -65,9 +65,8 @@ export class Hub implements Transport {
 
   close(): void {
     for (const conn of this.conns) {
-      void Promise.resolve(conn.close()).catch(() => {
-        // Closing is best-effort during daemon shutdown.
-      });
+      // Closing is best-effort during daemon shutdown.
+      void Promise.resolve(conn.close()).catch(noop);
     }
     for (const unsub of this.unsubs.values()) unsub();
     this.conns.clear();

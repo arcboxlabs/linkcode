@@ -8,7 +8,6 @@ import {
   MenuTrigger,
 } from 'coss-ui/components/menu';
 import { FilesIcon, FileTextIcon, GlobeIcon, PlusIcon, TerminalIcon, XIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { PanelControlButton, ShellIconButton } from './shell-control';
 
@@ -19,7 +18,7 @@ export type PanelWindowType = (typeof PANEL_WINDOW_TYPES)[number];
 export interface PanelWindowMeta {
   label: string;
   shortcut?: string;
-  icon: ReactNode;
+  icon: React.ReactNode;
 }
 
 export interface PanelTab {
@@ -30,7 +29,7 @@ export interface PanelTab {
 export interface PanelControl {
   id: string;
   label: string;
-  icon: ReactNode;
+  icon: React.ReactNode;
   active?: boolean;
   onClick: () => void;
 }
@@ -39,10 +38,10 @@ export interface FreePanelProps {
   tabs: PanelTab[];
   activeTabId: string | null;
   controls?: PanelControl[];
-  leading?: ReactNode;
+  leading?: React.ReactNode;
   className?: string;
   stripClassName?: string;
-  children: ReactNode;
+  children: React.ReactNode;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
@@ -52,7 +51,7 @@ export interface PanelTabStripProps {
   tabs: PanelTab[];
   activeTabId: string | null;
   controls?: PanelControl[];
-  leading?: ReactNode;
+  leading?: React.ReactNode;
   className?: string;
   tabsClassName?: string;
   controlsClassName?: string;
@@ -81,7 +80,7 @@ export function FreePanel({
   onSelectTab,
   onCloseTab,
   onAddWindow,
-}: FreePanelProps): ReactNode {
+}: FreePanelProps): React.ReactNode {
   return (
     <section
       className={cn(
@@ -115,7 +114,7 @@ export function PanelTabStrip({
   onSelectTab,
   onCloseTab,
   onAddWindow,
-}: PanelTabStripProps): ReactNode {
+}: PanelTabStripProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -185,7 +184,7 @@ function PanelTabButton({
   active: boolean;
   onSelect: () => void;
   onClose: () => void;
-}): ReactNode {
+}): React.ReactNode {
   const meta = PANEL_WINDOW_META[tab.type];
 
   return (
@@ -227,7 +226,7 @@ export function PanelStubContent({
 }: {
   type: PanelWindowType;
   className?: string;
-}): ReactNode {
+}): React.ReactNode {
   const meta = PANEL_WINDOW_META[type];
 
   return (

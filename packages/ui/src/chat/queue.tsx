@@ -15,7 +15,6 @@ import {
   LoaderCircleIcon,
   XCircleIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only queue item, not yet wired to daemon/client schema.
@@ -27,12 +26,18 @@ export interface ChatQueueItem {
   description?: string;
 }
 
-export type QueueProps = ComponentProps<'div'> & {
+export type QueueProps = React.ComponentProps<'div'> & {
   items?: readonly ChatQueueItem[];
   onCancel?: (item: ChatQueueItem) => void;
 };
 
-export function Queue({ className, items, onCancel, children, ...props }: QueueProps): ReactNode {
+export function Queue({
+  className,
+  items,
+  onCancel,
+  children,
+  ...props
+}: QueueProps): React.ReactNode {
   return (
     <div
       className={cn('my-1 rounded-xl border border-border bg-card p-3 text-[13px]', className)}
@@ -58,17 +63,17 @@ export function Queue({ className, items, onCancel, children, ...props }: QueueP
   );
 }
 
-export type QueueSectionProps = ComponentProps<typeof Collapsible>;
+export type QueueSectionProps = React.ComponentProps<typeof Collapsible>;
 
 export function QueueSection({
   className,
   defaultOpen = true,
   ...props
-}: QueueSectionProps): ReactNode {
+}: QueueSectionProps): React.ReactNode {
   return <Collapsible className={className} defaultOpen={defaultOpen} {...props} />;
 }
 
-export type QueueSectionTriggerProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type QueueSectionTriggerProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   count?: number;
   label?: string;
 };
@@ -79,7 +84,7 @@ export function QueueSectionTrigger({
   label = 'Queue',
   children,
   ...props
-}: QueueSectionTriggerProps): ReactNode {
+}: QueueSectionTriggerProps): React.ReactNode {
   return (
     <CollapsibleTrigger
       className={cn('group flex w-full items-center gap-2 text-left font-medium', className)}
@@ -101,15 +106,18 @@ export function QueueSectionTrigger({
   );
 }
 
-export type QueueSectionContentProps = ComponentProps<typeof CollapsibleContent>;
+export type QueueSectionContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function QueueSectionContent({ className, ...props }: QueueSectionContentProps): ReactNode {
+export function QueueSectionContent({
+  className,
+  ...props
+}: QueueSectionContentProps): React.ReactNode {
   return <CollapsibleContent className={cn('mt-2', className)} {...props} />;
 }
 
-export type QueueListProps = ComponentProps<typeof ScrollArea>;
+export type QueueListProps = React.ComponentProps<typeof ScrollArea>;
 
-export function QueueList({ className, children, ...props }: QueueListProps): ReactNode {
+export function QueueList({ className, children, ...props }: QueueListProps): React.ReactNode {
   return (
     <ScrollArea className={cn('max-h-44 w-full', className)} scrollFade {...props}>
       <ul className="space-y-1 pr-2">{children}</ul>
@@ -117,7 +125,7 @@ export function QueueList({ className, children, ...props }: QueueListProps): Re
   );
 }
 
-export type QueueItemProps = ComponentProps<'li'> & {
+export type QueueItemProps = React.ComponentProps<'li'> & {
   item: ChatQueueItem;
   onCancel?: () => void;
 };
@@ -128,7 +136,7 @@ export function QueueItem({
   onCancel,
   children,
   ...props
-}: QueueItemProps): ReactNode {
+}: QueueItemProps): React.ReactNode {
   const canCancel = item.status === 'queued' || item.status === 'running';
 
   return (
@@ -172,7 +180,7 @@ export function QueueItem({
   );
 }
 
-function QueueStatusIcon({ status }: { status: ChatQueueItem['status'] }): ReactNode {
+function QueueStatusIcon({ status }: { status: ChatQueueItem['status'] }): React.ReactNode {
   const className = cn('mt-0.5 size-3.5 shrink-0', queueStatusClass(status));
 
   switch (status) {
@@ -206,7 +214,7 @@ function queueStatusClass(status: ChatQueueItem['status']): string {
 
 function queueBadgeVariant(
   status: ChatQueueItem['status'],
-): ComponentProps<typeof Badge>['variant'] {
+): React.ComponentProps<typeof Badge>['variant'] {
   switch (status) {
     case 'completed':
       return 'success';

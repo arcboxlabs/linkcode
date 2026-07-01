@@ -4,6 +4,7 @@ export const zhCN = {
   },
   workbench: {
     connection: {
+      connected: '已连接',
       connecting: '正在连接 daemon…',
       error: '无法连接到 daemon（{url}）。请先运行 {command}。',
       retry: '重试',

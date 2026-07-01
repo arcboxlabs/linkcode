@@ -1,8 +1,7 @@
 import { Button } from 'coss-ui/components/button';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
-export type ShellIconButtonProps = ComponentProps<typeof Button> & {
+export type ShellIconButtonProps = React.ComponentProps<typeof Button> & {
   label: string;
 };
 
@@ -13,7 +12,7 @@ export function ShellIconButton({
   size = 'icon-xs',
   variant = 'ghost',
   ...props
-}: ShellIconButtonProps): ReactNode {
+}: ShellIconButtonProps): React.ReactNode {
   return (
     <Button
       aria-label={label}
@@ -41,7 +40,7 @@ export function PanelControlButton({
   className,
   children,
   ...props
-}: PanelControlButtonProps): ReactNode {
+}: PanelControlButtonProps): React.ReactNode {
   return (
     <ShellIconButton
       aria-pressed={active || undefined}
@@ -58,8 +57,8 @@ export function TitleStrip({
   children,
 }: {
   className?: string;
-  children: ReactNode;
-}): ReactNode {
+  children: React.ReactNode;
+}): React.ReactNode {
   return (
     <div
       className={cn(

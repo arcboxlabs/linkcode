@@ -1,6 +1,7 @@
 import type { HighlighterCore, ThemedToken } from 'shiki/core';
 
 const SHIKI_THEME = 'github-dark';
+const LANGUAGE_PREFIX_RE = /^language-/;
 
 const SHIKI_LANGUAGES = [
   'typescript',
@@ -129,10 +130,7 @@ async function createChatHighlighter(): Promise<Highlighter> {
 
 export function normalizeCodeLanguage(language: string | undefined): ShikiLanguage | null {
   if (!language) return null;
-  const normalized = language
-    .trim()
-    .toLowerCase()
-    .replace(/^language-/, '');
+  const normalized = language.trim().toLowerCase().replace(LANGUAGE_PREFIX_RE, '');
   if (!normalized || normalized === 'text' || normalized === 'plaintext') return null;
   if (SHIKI_LANGUAGE_SET.has(normalized)) return normalized as ShikiLanguage;
   return LANGUAGE_ALIASES[normalized] ?? null;

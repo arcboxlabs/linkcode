@@ -19,7 +19,7 @@ app
     // Dock. Loaded by path so this dev-only image isn't bundled into prod; packaged builds render
     // live Liquid Glass from the .icon.
     if (process.platform === 'darwin' && !app.isPackaged) {
-      app.dock?.setIcon(join(__dirname, '../../build-resources/icon-dock.png'));
+      app.dock?.setIcon(join(__dirname, '../../../../assets/icon-dock.png'));
     }
     createDesktopWindow();
     initAutoUpdates();

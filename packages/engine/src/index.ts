@@ -8,3 +8,5 @@
 export * from '@linkcode/agent-adapter';
 export * from './engine';
 export * from './history-service';
+export type * from './pty-backend';
+export * from './terminal-service';

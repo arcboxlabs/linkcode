@@ -8,6 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./native": "./src/native/index.ts",
+    "./shell/panels": "./src/shell/panels/index.ts",
+    "./shell/terminal": "./src/shell/terminal/index.ts",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
@@ -16,7 +18,8 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
-    "@linkcode/client-core": "workspace:*",
+    "@fontsource-variable/ibm-plex-sans": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@linkcode/schema": "workspace:*",
     "ansi-to-react": "^6.2.6",
     "class-variance-authority": "^0.7.1",
@@ -28,6 +31,7 @@
     "motion": "^12.40.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0",
+    "restty": "^0.1.35",
     "shiki": "^4.3.0",
     "tailwind-merge": "^3.6.0",
     "use-intl": "catalog:",

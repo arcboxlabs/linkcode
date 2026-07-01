@@ -6,7 +6,6 @@ import {
 } from 'coss-ui/components/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { ChevronRightIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { useState } from 'react';
 import { cn } from '../lib/cn';
 
@@ -28,7 +27,7 @@ export interface ChatWebPreviewLog {
   timestamp?: string;
 }
 
-export type WebPreviewProps = ComponentProps<'div'> & {
+export type WebPreviewProps = React.ComponentProps<'div'> & {
   preview: ChatWebPreviewData;
   onAddressCommit?: (url: string) => void;
 };
@@ -39,7 +38,7 @@ export function WebPreview({
   onAddressCommit,
   children,
   ...props
-}: WebPreviewProps): ReactNode {
+}: WebPreviewProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -62,7 +61,7 @@ export function WebPreview({
 function WebPreviewSession({
   preview,
   onAddressCommit,
-}: Pick<WebPreviewProps, 'preview' | 'onAddressCommit'>): ReactNode {
+}: Pick<WebPreviewProps, 'preview' | 'onAddressCommit'>): React.ReactNode {
   const [currentAddress, setCurrentAddress] = useState(preview.url);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -94,12 +93,12 @@ function WebPreviewSession({
   );
 }
 
-export type WebPreviewNavigationProps = ComponentProps<'div'>;
+export type WebPreviewNavigationProps = React.ComponentProps<'div'>;
 
 export function WebPreviewNavigation({
   className,
   ...props
-}: WebPreviewNavigationProps): ReactNode {
+}: WebPreviewNavigationProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -111,7 +110,7 @@ export function WebPreviewNavigation({
   );
 }
 
-export type WebPreviewNavigationButtonProps = ComponentProps<typeof Button> & {
+export type WebPreviewNavigationButtonProps = React.ComponentProps<typeof Button> & {
   tooltip?: string;
 };
 
@@ -121,7 +120,7 @@ export function WebPreviewNavigationButton({
   size = 'icon-xs',
   variant = 'ghost',
   ...props
-}: WebPreviewNavigationButtonProps): ReactNode {
+}: WebPreviewNavigationButtonProps): React.ReactNode {
   const button = (
     <Button size={size} type="button" variant={variant} {...props}>
       {children}
@@ -138,12 +137,16 @@ export function WebPreviewNavigationButton({
   );
 }
 
-export type WebPreviewUrlProps = Omit<ComponentProps<'input'>, 'onKeyDown'> & {
+export type WebPreviewUrlProps = Omit<React.ComponentProps<'input'>, 'onKeyDown'> & {
   onCommit?: (url: string) => void;
 };
 
 /** Omnibox-style address bar: a rounded pill with a leading globe, mirroring coss-ui input tokens. */
-export function WebPreviewUrl({ className, onCommit, ...props }: WebPreviewUrlProps): ReactNode {
+export function WebPreviewUrl({
+  className,
+  onCommit,
+  ...props
+}: WebPreviewUrlProps): React.ReactNode {
   return (
     <span className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-full border border-input bg-background px-3 shadow-xs/5 transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/24 dark:bg-input/32">
       <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -162,26 +165,26 @@ export function WebPreviewUrl({ className, onCommit, ...props }: WebPreviewUrlPr
   );
 }
 
-export type WebPreviewBodyProps = ComponentProps<'iframe'>;
+export type WebPreviewBodyProps = React.ComponentProps<'iframe'>;
 
 export function WebPreviewBody({
   className,
   title = 'Preview',
   ref,
   ...props
-}: WebPreviewBodyProps): ReactNode {
+}: WebPreviewBodyProps): React.ReactNode {
   return (
     <iframe
       className={cn('min-h-0 flex-1 border-0 bg-white', className)}
       ref={ref}
-      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation"
+      sandbox="allow-scripts allow-forms allow-popups allow-presentation"
       title={title}
       {...props}
     />
   );
 }
 
-export type WebPreviewConsoleProps = ComponentProps<typeof Collapsible> & {
+export type WebPreviewConsoleProps = React.ComponentProps<typeof Collapsible> & {
   logs?: readonly ChatWebPreviewLog[];
 };
 
@@ -191,7 +194,7 @@ export function WebPreviewConsole({
   children,
   defaultOpen = false,
   ...props
-}: WebPreviewConsoleProps): ReactNode {
+}: WebPreviewConsoleProps): React.ReactNode {
   return (
     <Collapsible
       className={cn('border-t border-border bg-muted/30 text-[12px]', className)}

@@ -17,6 +17,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
+import { trueFn } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { Engine } from '../engine';
 import { HistoryService } from '../history-service';
@@ -230,7 +231,7 @@ describe('Engine history wire API', () => {
 function waitForPayload<K extends WirePayload['kind']>(
   messages: WireMessage[],
   kind: K,
-  predicate: (payload: Extract<WirePayload, { kind: K }>) => boolean = () => true,
+  predicate: (payload: Extract<WirePayload, { kind: K }>) => boolean = trueFn,
 ): Promise<Extract<WirePayload, { kind: K }>> {
   const existing = messages.find((msg) => {
     if (msg.payload.kind !== kind) return false;

@@ -43,7 +43,10 @@ export default defineConfig({
       }),
     ],
     resolve: {
-      alias: { '@desktop': resolve(__dirname, 'src/renderer/src') },
+      alias: {
+        '@desktop': resolve(__dirname, 'src'),
+        '@renderer': resolve(__dirname, 'src/renderer/src'),
+      },
       dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
     },
     // Workspace packages are exported as TS source and transpiled on the fly, so skip prebundling them.

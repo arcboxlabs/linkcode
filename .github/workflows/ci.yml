@@ -56,16 +56,42 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+  rust:
+    name: Rust
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
   all-green:
     name: All Green
     runs-on: blacksmith-2vcpu-ubuntu-2404
     needs:
       - typescript
+      - rust
     if: always()
 
     steps:
       - name: Check required jobs
         run: |
-          if [ '${{ needs.typescript.result }}' != 'success' ]; then
+          if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
             exit 1
           fi

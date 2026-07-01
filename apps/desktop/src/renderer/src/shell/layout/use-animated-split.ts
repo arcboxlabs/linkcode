@@ -4,7 +4,6 @@ import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useStateWithDeps } from 'foxact/use-state-with-deps';
 import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
-import type { CSSProperties } from 'react';
 import { useCallback, useRef } from 'react';
 
 export const SHELL_TRANSITION = {
@@ -192,7 +191,7 @@ export function getShellContentMotionStyle({
   phase: SplitPanePhase;
   reducedMotion: boolean;
   reverse?: boolean;
-}): CSSProperties {
+}): React.CSSProperties {
   const visible = phase === 'open' || phase === 'opening';
   const offset = visible || reducedMotion ? 0 : reverse ? -8 : 8;
 
