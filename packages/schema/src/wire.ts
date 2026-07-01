@@ -7,6 +7,7 @@ import {
   SessionIdSchema,
   TimestampSchema,
 } from './common';
+import { GitPullRequestStatusSchema, GitStatusSchema } from './git';
 import {
   AgentHistoryListOptionsSchema,
   AgentHistoryListResultSchema,
@@ -26,7 +27,7 @@ import { SessionInfoSchema, SessionRecordSchema } from './session';
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 5 as const;
+export const WIRE_PROTOCOL_VERSION = 6 as const;
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
   forceRefresh: z.boolean().optional(),
@@ -135,6 +136,28 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
     kind: z.literal('config.set'),
     clientReqId: z.string().min(1),
     providers: ProvidersConfigSchema,
+  }),
+
+  // ── Git (directory-backed: keyed by cwd, shared by same-cwd sessions — see git.ts) ──
+  z.object({
+    kind: z.literal('git.status.get'),
+    clientReqId: z.string().min(1),
+    cwd: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('git.status.get.result'),
+    replyTo: z.string().min(1),
+    status: GitStatusSchema,
+  }),
+  z.object({
+    kind: z.literal('git.pr_status.get'),
+    clientReqId: z.string().min(1),
+    cwd: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('git.pr_status.get.result'),
+    replyTo: z.string().min(1),
+    prStatus: GitPullRequestStatusSchema,
   }),
 
   // ── Data plane ──
