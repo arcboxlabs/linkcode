@@ -7,7 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./tayori": "./src/tayori.ts"
+    "./tayori": "./src/runtime/tayori.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

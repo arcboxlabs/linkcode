@@ -1,15 +1,9 @@
 import { LinkCodeProvider } from '@linkcode/client-core';
 import type { Transport } from '@linkcode/transport';
-import { Button } from 'coss-ui/components/button';
 import type * as React from 'react';
-import { useTranslations } from 'use-intl';
-import { DebugProvider } from './debug';
-import {
-  useWorkbenchRuntimeRetry,
-  useWorkbenchRuntimeStatus,
-  useWorkbenchSdkClient,
-  WorkbenchRuntimeProvider,
-} from './runtime';
+import { DebugProvider } from '../runtime/debug';
+import { useWorkbenchSdkClient, WorkbenchRuntimeProvider } from '../runtime/provider';
+import { ConnectionState } from './connection-state';
 
 export interface WorkbenchProvidersProps extends React.PropsWithChildren {
   transport: Transport;
@@ -53,33 +47,4 @@ export function WorkbenchProviders({
 function WorkbenchLinkCodeProvider({ children }: React.PropsWithChildren): React.ReactNode {
   const client = useWorkbenchSdkClient();
   return <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>;
-}
-
-export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): React.ReactNode {
-  const status = useWorkbenchRuntimeStatus();
-  const retry = useWorkbenchRuntimeRetry();
-  const t = useTranslations('workbench.connection');
-  const common = useTranslations('common');
-
-  return (
-    <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-md text-center">
-        {status === 'connecting' ? (
-          <p className="text-muted-foreground text-sm">{t('connecting')}</p>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-destructive-foreground text-sm">
-              {t('error', {
-                url: daemonUrl ?? '127.0.0.1:4317',
-                command: common('daemonCommand'),
-              })}
-            </p>
-            <Button variant="outline" size="sm" onClick={retry}>
-              {t('retry')}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }

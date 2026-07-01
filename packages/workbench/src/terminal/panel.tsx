@@ -3,7 +3,7 @@ import { LiveTerminal } from '@linkcode/ui/shell/terminal';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useMemo, useState } from 'react';
-import { createTransportTerminalSession } from './transport-terminal-session';
+import { createTransportTerminalSession } from './transport-session';
 
 /** Daemon-backed interactive shell: opens a terminal and renders it with restty. */
 export function TerminalPanel(): React.ReactNode {

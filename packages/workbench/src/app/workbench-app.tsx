@@ -1,7 +1,7 @@
 import type { Transport } from '@linkcode/transport';
+import type { WorkbenchShellComponent } from '../surface/shell';
+import { Workbench } from '../surface/workbench';
 import { WorkbenchAppProviders } from './app-providers';
-import type { WorkbenchShellComponent } from './workbench';
-import { Workbench } from './workbench';
 import { WorkbenchProviders } from './workbench-providers';
 
 export interface WorkbenchAppProps {
