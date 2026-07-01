@@ -13,6 +13,7 @@ import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
@@ -51,6 +52,7 @@ export class Engine {
     private readonly providerStore: ProviderConfigStore = new InMemoryProviderConfigStore(),
     ptyBackend?: PtyBackend,
     private readonly sessionStore: SessionStore = new InMemorySessionStore(),
+    private readonly git: GitService = new GitService(),
   ) {
     this.history = new HistoryService(factory);
     this.terminals = ptyBackend
@@ -238,6 +240,28 @@ export class Engine {
         await this.tryReply(p.clientReqId, async () => {
           await this.providerStore.set(p.providers);
           this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'git.status.get': {
+        await this.tryReply(p.clientReqId, async () => {
+          const status = await this.git.getStatus(p.cwd);
+          this.transport.send(
+            createWireMessage({ kind: 'git.status.get.result', replyTo: p.clientReqId, status }),
+          );
+        });
+        break;
+      }
+      case 'git.pr_status.get': {
+        await this.tryReply(p.clientReqId, async () => {
+          const prStatus = await this.git.getPullRequestStatus(p.cwd);
+          this.transport.send(
+            createWireMessage({
+              kind: 'git.pr_status.get.result',
+              replyTo: p.clientReqId,
+              prStatus,
+            }),
+          );
         });
         break;
       }
