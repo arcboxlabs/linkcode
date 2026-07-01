@@ -4,14 +4,14 @@ import {
   MenuGroupLabel,
   MenuItem,
   MenuPopup,
-  MenuShortcut,
   MenuTrigger,
 } from 'coss-ui/components/menu';
 import { PlusIcon, XIcon } from 'lucide-react';
+import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { PanelControlButton, ShellIconButton } from '../shell-control';
 import type { PanelControl, PanelTab, PanelWindowType } from './vocabulary';
-import { PANEL_WINDOW_META, PANEL_WINDOW_TYPES } from './vocabulary';
+import { PANEL_WINDOW_ICONS, PANEL_WINDOW_TYPES } from './vocabulary';
 
 export interface PanelTabStripProps {
   tabs: PanelTab[];
@@ -40,6 +40,9 @@ export function PanelTabStrip({
   onCloseTab,
   onAddWindow,
 }: PanelTabStripProps): React.ReactNode {
+  const t = useTranslations('workbench.panel');
+  const tWindow = useTranslations('workbench.panel.window');
+
   return (
     <div
       className={cn(
@@ -61,24 +64,20 @@ export function PanelTabStrip({
         <Menu>
           <MenuTrigger
             render={
-              <ShellIconButton label="Open window">
+              <ShellIconButton label={t('openWindow')}>
                 <PlusIcon />
               </ShellIconButton>
             }
           />
           <MenuPopup align="end" className="w-64" side="bottom">
             <MenuGroup>
-              <MenuGroupLabel>Open window</MenuGroupLabel>
-              {PANEL_WINDOW_TYPES.map((type) => {
-                const meta = PANEL_WINDOW_META[type];
-                return (
-                  <MenuItem key={type} onClick={() => onAddWindow(type)}>
-                    <span className="[&_svg]:size-4">{meta.icon}</span>
-                    <span>{meta.label}</span>
-                    {meta.shortcut && <MenuShortcut>{meta.shortcut}</MenuShortcut>}
-                  </MenuItem>
-                );
-              })}
+              <MenuGroupLabel>{t('openWindow')}</MenuGroupLabel>
+              {PANEL_WINDOW_TYPES.map((type) => (
+                <MenuItem key={type} onClick={() => onAddWindow(type)}>
+                  <span className="[&_svg]:size-4">{PANEL_WINDOW_ICONS[type]}</span>
+                  <span>{tWindow(type)}</span>
+                </MenuItem>
+              ))}
             </MenuGroup>
           </MenuPopup>
         </Menu>
@@ -110,7 +109,9 @@ function PanelTabButton({
   onSelect: () => void;
   onClose: () => void;
 }): React.ReactNode {
-  const meta = PANEL_WINDOW_META[tab.type];
+  const t = useTranslations('workbench.panel');
+  const label = useTranslations('workbench.panel.window')(tab.type);
+  const closeLabel = t('closeTab', { label });
 
   return (
     <div
@@ -126,13 +127,13 @@ function PanelTabButton({
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onSelect}
       >
-        <span className="shrink-0 [&_svg]:size-3.5">{meta.icon}</span>
-        <span className="min-w-0 truncate">{meta.label}</span>
+        <span className="shrink-0 [&_svg]:size-3.5">{PANEL_WINDOW_ICONS[tab.type]}</span>
+        <span className="min-w-0 truncate">{label}</span>
       </button>
       <button
         type="button"
-        aria-label={`Close ${meta.label}`}
-        title={`Close ${meta.label}`}
+        aria-label={closeLabel}
+        title={closeLabel}
         className="mr-1 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-50 outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
         onClick={(event) => {
           event.stopPropagation();

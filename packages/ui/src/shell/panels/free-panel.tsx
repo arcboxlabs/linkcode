@@ -1,7 +1,8 @@
+import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { PanelTabStrip } from './tab-strip';
 import type { PanelControl, PanelTab, PanelWindowType } from './vocabulary';
-import { PANEL_WINDOW_META } from './vocabulary';
+import { PANEL_WINDOW_ICONS } from './vocabulary';
 
 export interface FreePanelProps {
   tabs: PanelTab[];
@@ -57,16 +58,18 @@ export function PanelStubContent({
   type: PanelWindowType;
   className?: string;
 }): React.ReactNode {
-  const meta = PANEL_WINDOW_META[type];
+  const t = useTranslations('workbench.panel');
+  const label = useTranslations('workbench.panel.window')(type);
+  const stubLabel = t('stub', { label });
 
   return (
     <div
-      aria-label={`${meta.label} panel stub`}
+      aria-label={stubLabel}
       className={cn('grid h-full min-h-0 place-items-center bg-background p-4', className)}
     >
       <div className="flex items-center gap-2 rounded-md border border-border border-dashed px-3 py-2 text-muted-foreground text-xs">
-        <span className="[&_svg]:size-3.5">{meta.icon}</span>
-        <span>{meta.label} stub</span>
+        <span className="[&_svg]:size-3.5">{PANEL_WINDOW_ICONS[type]}</span>
+        <span>{stubLabel}</span>
       </div>
     </div>
   );

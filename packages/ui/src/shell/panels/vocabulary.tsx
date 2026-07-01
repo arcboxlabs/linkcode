@@ -6,12 +6,6 @@ export const PANEL_WINDOW_TYPES = ['review', 'terminal', 'browser', 'files'] as 
 
 export type PanelWindowType = (typeof PANEL_WINDOW_TYPES)[number];
 
-export interface PanelWindowMeta {
-  label: string;
-  shortcut?: string;
-  icon: React.ReactNode;
-}
-
 export interface PanelTab {
   id: string;
   type: PanelWindowType;
@@ -25,9 +19,10 @@ export interface PanelControl {
   onClick: () => void;
 }
 
-export const PANEL_WINDOW_META: Record<PanelWindowType, PanelWindowMeta> = {
-  review: { label: 'Review', icon: <FileTextIcon /> },
-  terminal: { label: 'Terminal', icon: <TerminalIcon /> },
-  browser: { label: 'Browser', icon: <GlobeIcon /> },
-  files: { label: 'Files', icon: <FilesIcon /> },
+/** Window labels are translated at the render site (`workbench.panel.window.*`); only icons live here. */
+export const PANEL_WINDOW_ICONS: Record<PanelWindowType, React.ReactNode> = {
+  review: <FileTextIcon />,
+  terminal: <TerminalIcon />,
+  browser: <GlobeIcon />,
+  files: <FilesIcon />,
 };

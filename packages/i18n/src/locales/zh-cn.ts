@@ -50,6 +50,21 @@ export const zhCN = {
     mode: {
       label: '模式',
     },
+    panel: {
+      window: {
+        review: '评审',
+        terminal: '终端',
+        browser: '浏览器',
+        files: '文件',
+      },
+      openWindow: '打开窗口',
+      closeTab: '关闭 {label}',
+      fullscreen: '全屏',
+      restore: '还原',
+      closePanel: '关闭面板',
+      stub: '{label} 占位',
+      terminalStarting: '正在启动终端…',
+    },
     content: {
       audio: '[音频]',
       resourceLink: '[资源：{name}]',

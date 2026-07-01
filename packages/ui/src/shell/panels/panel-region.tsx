@@ -1,5 +1,6 @@
 import { Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { PanelControlButton } from '../shell-control';
 import { FreePanel, PanelStubContent } from './free-panel';
@@ -76,6 +77,7 @@ export function PanelRegion({
   onToggleMax: () => void;
   onClose: () => void;
 }): React.ReactNode {
+  const t = useTranslations('workbench.panel');
   const chromePlacement = getPanelChromePlacement(side, chromeSurface);
   // Render every tab and toggle visibility instead of resolving a single node by type: two tabs of
   // the same type (e.g. two terminals) each keep their own mounted instance and live session, so
@@ -145,12 +147,12 @@ export function PanelRegion({
   const controls: PanelControl[] = [
     {
       id: 'max',
-      label: 'Fullscreen',
+      label: t('fullscreen'),
       icon: <Maximize2Icon />,
       active: false,
       onClick: onToggleMax,
     },
-    { id: 'close', label: 'Close panel', icon: <XIcon />, onClick: onClose },
+    { id: 'close', label: t('closePanel'), icon: <XIcon />, onClick: onClose },
   ];
 
   return (
@@ -255,10 +257,11 @@ function PanelContextualControls({
   maximized: boolean;
   onToggleMax: () => void;
 }): React.ReactNode {
+  const t = useTranslations('workbench.panel');
   const controls: PanelControl[] = [
     {
       id: 'max',
-      label: maximized ? 'Restore' : 'Fullscreen',
+      label: maximized ? t('restore') : t('fullscreen'),
       icon: maximized ? <Minimize2Icon /> : <Maximize2Icon />,
       active: maximized,
       onClick: onToggleMax,

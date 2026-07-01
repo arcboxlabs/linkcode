@@ -52,6 +52,21 @@ export const en = {
     mode: {
       label: 'Mode',
     },
+    panel: {
+      window: {
+        review: 'Review',
+        terminal: 'Terminal',
+        browser: 'Browser',
+        files: 'Files',
+      },
+      openWindow: 'Open window',
+      closeTab: 'Close {label}',
+      fullscreen: 'Fullscreen',
+      restore: 'Restore',
+      closePanel: 'Close panel',
+      stub: '{label} stub',
+      terminalStarting: 'Starting terminal…',
+    },
     content: {
       audio: '[audio]',
       resourceLink: '[resource: {name}]',

@@ -3,10 +3,12 @@ import { LiveTerminal } from '@linkcode/ui/shell/terminal';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { createTransportTerminalSession } from './transport-session';
 
 /** Daemon-backed interactive shell: opens a terminal and renders it with restty. */
 export function TerminalPanel(): React.ReactNode {
+  const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
   const [terminalId, setTerminalId] = useState<string | null>(null);
 
@@ -42,7 +44,7 @@ export function TerminalPanel(): React.ReactNode {
   if (!session) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-        Starting terminal…
+        {t('terminalStarting')}
       </div>
     );
   }
