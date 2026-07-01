@@ -62,8 +62,8 @@ export const zhCN = {
   },
   settings: {
     title: '设置',
-    done: '完成',
     back: '返回',
+    searchPlaceholder: '搜索设置...',
     tabs: {
       general: '通用',
       connection: '连接',

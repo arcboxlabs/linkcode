@@ -64,8 +64,8 @@ export const en = {
   },
   settings: {
     title: 'Settings',
-    done: 'Done',
     back: 'Back',
+    searchPlaceholder: 'Search settings...',
     tabs: {
       general: 'General',
       connection: 'Connection',

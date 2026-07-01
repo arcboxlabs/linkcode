@@ -1,18 +1,36 @@
-import { Button } from 'coss-ui/components/button';
-import { Tabs, TabsList, TabsPanel, TabsTab } from 'coss-ui/components/tabs';
-import { XIcon } from 'lucide-react';
+import { ShellSidebar, ShellSidebarItem } from '@linkcode/ui';
+import { Input } from 'coss-ui/components/input';
+import { noop } from 'foxact/noop';
+import {
+  BotIcon,
+  ChevronLeftIcon,
+  InfoIcon,
+  SearchIcon,
+  SettingsIcon,
+  WifiIcon,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useDesktopAppConfig } from '../app-config-context';
+import type { DesktopChromeFrameStyle } from '../shell/chrome/desktop-chrome-frame';
+import { DesktopChromeFrame } from '../shell/chrome/desktop-chrome-frame';
+import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from '../shell/chrome/metrics';
+import { DEFAULT_LAYOUT } from '../shell/state/local/model';
 import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
 
-function isMacOS(): boolean {
-  return navigator.platform.toLowerCase().includes('mac');
-}
+type SettingsCategory = 'general' | 'connection' | 'about' | 'agents';
+type DesktopPlatform = 'darwin' | 'win32' | 'other';
+
+const SETTINGS_CHROME_STYLE = {
+  ...DESKTOP_CHROME_METRICS_STYLE,
+  '--lc-sidebar-w': `${DEFAULT_LAYOUT.sidebarW}px`,
+  '--lc-right-w': '0px',
+  '--lc-bottom-h': '0px',
+} satisfies DesktopChromeFrameStyle;
 
 /**
  * Full-page Settings surface. Rendered above the connection gate so it stays reachable even when the
@@ -21,6 +39,10 @@ function isMacOS(): boolean {
 export function SettingsView(): ReactNode {
   const t = useTranslations('settings');
   const { closeSettings } = useDesktopAppConfig();
+  const [category, setCategory] = useState<SettingsCategory>('general');
+  const desktopPlatform = initialDesktopPlatform();
+  const hasNativeTrafficLights = desktopPlatform === 'darwin';
+  const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -31,50 +53,111 @@ export function SettingsView(): ReactNode {
   }, [closeSettings]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
-      <header
-        className="flex h-12 shrink-0 items-center gap-2 border-border border-b px-4 [-webkit-app-region:drag]"
-        style={isMacOS() ? { paddingLeft: 80 } : undefined}
-      >
-        <span className="font-semibold text-sm">{t('title')}</span>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto [-webkit-app-region:no-drag]"
-          onClick={closeSettings}
-        >
-          <XIcon />
-          {t('done')}
-        </Button>
-      </header>
-
-      <Tabs defaultValue="general" orientation="vertical" className="min-h-0 flex-1 gap-0">
-        <TabsList
-          variant="underline"
-          className="w-48 shrink-0 items-stretch gap-1 border-border border-r p-3"
-        >
-          <TabsTab value="general">{t('tabs.general')}</TabsTab>
-          <TabsTab value="connection">{t('tabs.connection')}</TabsTab>
-          <TabsTab value="about">{t('tabs.about')}</TabsTab>
-          <TabsTab value="agents">{t('tabs.agents')}</TabsTab>
-        </TabsList>
-        <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-2xl p-6">
-            <TabsPanel value="general">
-              <GeneralTab />
-            </TabsPanel>
-            <TabsPanel value="connection">
-              <ConnectionTab />
-            </TabsPanel>
-            <TabsPanel value="about">
-              <AboutTab />
-            </TabsPanel>
-            <TabsPanel value="agents">
-              <AgentsTab />
-            </TabsPanel>
+    <DesktopChromeFrame
+      className="fixed inset-0 z-50"
+      style={SETTINGS_CHROME_STYLE}
+      chrome={{
+        header: { title: t('title') },
+        sidebarOpen: true,
+        rightPanelOpen: false,
+        bottomPanelOpen: false,
+        expandedPanel: null,
+        hasNativeBackdrop,
+        hasNativeTrafficLights,
+        // Back lives in the settings sidebar, so suppress the workbench navigation controls.
+        leftControls: null,
+        rightControls: null,
+        titleContent: (
+          <div className="pointer-events-none flex h-full min-w-0 items-center px-2">
+            <span className="min-w-0 truncate font-semibold text-sm">{t('title')}</span>
           </div>
+        ),
+        onShowSidebar: noop,
+        onHideSidebar: noop,
+        onToggleRight: noop,
+        onToggleBottom: noop,
+      }}
+      sidebar={
+        <ShellSidebar
+          className={hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar'}
+          topInset={<div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />}
+        >
+          <div className="px-[var(--lc-sidebar-edge,0.5rem)]">
+            <ShellSidebarItem onClick={closeSettings}>
+              <ChevronLeftIcon className="size-4" />
+              {t('back')}
+            </ShellSidebarItem>
+
+            <div className="relative py-[var(--lc-sidebar-edge,0.5rem)]">
+              <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 text-muted-foreground" />
+              {/* Visual placeholder until settings search is backed by the shared registry. */}
+              <Input
+                aria-label={t('searchPlaceholder')}
+                className="[&_[data-slot=input]]:pl-8"
+                nativeInput
+                placeholder={t('searchPlaceholder')}
+                readOnly
+                type="search"
+              />
+            </div>
+
+            <nav className="flex flex-col gap-1">
+              <ShellSidebarItem
+                active={category === 'general'}
+                onClick={() => setCategory('general')}
+              >
+                <SettingsIcon className="size-4" />
+                {t('tabs.general')}
+              </ShellSidebarItem>
+              <ShellSidebarItem
+                active={category === 'connection'}
+                onClick={() => setCategory('connection')}
+              >
+                <WifiIcon className="size-4" />
+                {t('tabs.connection')}
+              </ShellSidebarItem>
+              <ShellSidebarItem active={category === 'about'} onClick={() => setCategory('about')}>
+                <InfoIcon className="size-4" />
+                {t('tabs.about')}
+              </ShellSidebarItem>
+              <ShellSidebarItem
+                active={category === 'agents'}
+                onClick={() => setCategory('agents')}
+              >
+                <BotIcon className="size-4" />
+                {t('tabs.agents')}
+              </ShellSidebarItem>
+            </nav>
+          </div>
+        </ShellSidebar>
+      }
+      main={
+        <div className="min-w-0 flex-1 overflow-y-auto pt-(--lc-chrome-h)">
+          <div className="mx-auto max-w-2xl p-6">{renderSettingsPanel(category)}</div>
         </div>
-      </Tabs>
-    </div>
+      }
+    />
   );
+}
+
+function renderSettingsPanel(category: SettingsCategory): ReactNode {
+  switch (category) {
+    case 'general':
+      return <GeneralTab />;
+    case 'connection':
+      return <ConnectionTab />;
+    case 'about':
+      return <AboutTab />;
+    case 'agents':
+      return <AgentsTab />;
+    default:
+      return null;
+  }
+}
+
+function initialDesktopPlatform(): DesktopPlatform {
+  const platform = navigator.platform.toLowerCase();
+  if (platform.includes('mac')) return 'darwin';
+  if (platform.includes('win')) return 'win32';
+  return 'other';
 }

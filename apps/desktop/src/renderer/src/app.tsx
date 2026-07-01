@@ -22,9 +22,16 @@ function AppContent(): ReactNode {
   return (
     <AppI18nProvider locale={effectiveLocale}>
       {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
-      <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-        <Workbench shellComponent={DesktopWorkbenchShell} />
-      </DaemonConnection>
+      {/* Settings sidebar is translucent; hide the mounted workbench so it cannot bleed through. */}
+      <div
+        aria-hidden={settingsOpen}
+        inert={settingsOpen}
+        className={settingsOpen ? 'invisible h-full' : 'h-full'}
+      >
+        <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
+          <Workbench shellComponent={DesktopWorkbenchShell} />
+        </DaemonConnection>
+      </div>
       {settingsOpen ? <SettingsView /> : null}
     </AppI18nProvider>
   );
