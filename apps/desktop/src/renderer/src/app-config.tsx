@@ -9,7 +9,10 @@ export function DesktopAppConfigProvider({ children }: React.PropsWithChildren):
   const { current: initial } = useSingleton(() => systemBridge.settings.snapshot());
   const [theme, setTheme] = useState<ThemePreference>(initial.theme);
   const [localeOverride, setLocaleOverride] = useState<string | null>(initial.locale);
-  const [daemonUrl, setDaemonUrl] = useState(initial.daemonUrl);
+  const [daemonUrlOverride, setDaemonUrlOverride] = useState(initial.daemonUrl);
+  const [daemonUrl, setDaemonUrl] = useState(
+    () => initial.daemonUrl ?? systemBridge.daemon.resolveUrl(),
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Menubar / Cmd+, opens Settings even while the daemon is unreachable.
@@ -20,6 +23,7 @@ export function DesktopAppConfigProvider({ children }: React.PropsWithChildren):
       theme,
       localeOverride,
       daemonUrl,
+      daemonUrlOverride,
       settingsOpen,
       setTheme(next) {
         void systemBridge.settings.set({ theme: next });
@@ -30,13 +34,21 @@ export function DesktopAppConfigProvider({ children }: React.PropsWithChildren):
         setLocaleOverride(locale);
       },
       setDaemonUrl(url) {
-        void systemBridge.settings.set({ daemonUrl: url });
-        setDaemonUrl(url);
+        setDaemonUrlOverride(url);
+        if (url !== null) {
+          void systemBridge.settings.set({ daemonUrl: url });
+          setDaemonUrl(url);
+          return;
+        }
+        // Discovery reads the persisted settings in main — clear the override there first.
+        void systemBridge.settings.set({ daemonUrl: null }).then(() => {
+          setDaemonUrl(systemBridge.daemon.resolveUrl());
+        });
       },
       openSettings: () => setSettingsOpen(true),
       closeSettings: () => setSettingsOpen(false),
     }),
-    [theme, localeOverride, daemonUrl, settingsOpen],
+    [theme, localeOverride, daemonUrl, daemonUrlOverride, settingsOpen],
   );
 
   return <DesktopAppConfigContext value={value}>{children}</DesktopAppConfigContext>;

@@ -36,4 +36,11 @@ export interface SystemBridge {
     /** Synchronous boot snapshot — safe to read during first render. */
     snapshot(): DesktopSettings;
   };
+  daemon: {
+    /**
+     * Effective daemon endpoint (explicit setting ?? runtime-file discovery ?? default).
+     * Synchronous — safe to read during first render.
+     */
+    resolveUrl(): string;
+  };
 }

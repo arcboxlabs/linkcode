@@ -4,6 +4,7 @@ import type { IpcRenderer } from 'electron';
 import type { SystemBridge } from './bridge';
 import type { DesktopSettings, UpdaterStatus } from './context';
 import {
+  DAEMON_URL_SNAPSHOT_CHANNEL,
   SETTINGS_OPEN_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
   systemIpcEvents,
@@ -19,8 +20,11 @@ type IpcRendererListener = Parameters<IpcRenderer['on']>[1];
 const FALLBACK_SETTINGS: DesktopSettings = {
   theme: 'system',
   locale: null,
-  daemonUrl: 'http://127.0.0.1:4317',
+  daemonUrl: null,
 };
+
+// Mirrors DAEMON_DEFAULT_URL from @linkcode/schema, which cannot be imported here (it would pull zod).
+const FALLBACK_DAEMON_URL = 'http://127.0.0.1:19523';
 
 export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBridge {
   const { context } = createRendererContext(toEventaRendererIpc(ipcRenderer));
@@ -67,6 +71,11 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
       snapshot: () =>
         (ipcRenderer.sendSync(SETTINGS_SNAPSHOT_CHANNEL) as DesktopSettings | undefined) ??
         FALLBACK_SETTINGS,
+    },
+    daemon: {
+      resolveUrl: () =>
+        (ipcRenderer.sendSync(DAEMON_URL_SNAPSHOT_CHANNEL) as string | undefined) ??
+        FALLBACK_DAEMON_URL,
     },
   };
 }

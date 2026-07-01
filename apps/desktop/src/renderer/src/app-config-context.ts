@@ -11,11 +11,15 @@ export interface DesktopAppConfig {
   theme: ThemePreference;
   /** Stored locale override, or null to follow the OS. */
   localeOverride: string | null;
+  /** Effective endpoint the transport dials (explicit override or discovered). */
   daemonUrl: string;
+  /** Stored override, or null to discover the local daemon automatically. */
+  daemonUrlOverride: string | null;
   settingsOpen: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLocaleOverride: (locale: string | null) => void;
-  setDaemonUrl: (url: string) => void;
+  /** Pass null to clear the override and fall back to auto-discovery. */
+  setDaemonUrl: (url: string | null) => void;
   openSettings: () => void;
   closeSettings: () => void;
 }

@@ -2,6 +2,7 @@ import type { SystemContext } from '@linkcode/ipc';
 import type { BrowserWindow } from 'electron';
 import { app, dialog } from 'electron';
 import { applyThemePreference } from './appearance';
+import { resolveDaemonUrl } from './daemon-discovery';
 import { getSettings, setSettings } from './settings';
 import { checkForUpdates } from './updater';
 import { ensureDefaultWorkspace } from './workspace';
@@ -41,6 +42,9 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
         applyThemePreference(next.theme);
         return next;
       },
+    },
+    daemon: {
+      resolveUrl: () => resolveDaemonUrl(),
     },
   };
 }

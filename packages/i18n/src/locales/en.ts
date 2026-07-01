@@ -104,7 +104,8 @@ export const en = {
       title: 'Daemon',
       hint: 'The local daemon this client connects to.',
       url: 'Daemon URL',
-      urlHint: 'Changing this reconnects immediately.',
+      urlHint:
+        'Leave empty to discover the local daemon automatically. Changing this reconnects immediately.',
       invalidUrl: 'Enter a valid URL.',
       save: 'Save & reconnect',
     },
@@ -142,11 +143,11 @@ export const en = {
       title: 'Connect to a host',
       emptyTitle: 'No hosts yet',
       emptyHint:
-        'Add the address of a running Link Code daemon. On the iOS simulator, http://127.0.0.1:4317 reaches the daemon on this machine.',
+        'Add the address of a running Link Code daemon. On the iOS simulator, http://127.0.0.1:19523 reaches the daemon on this machine.',
       nameLabel: 'Name',
       namePlaceholder: 'Local',
       urlLabel: 'Host URL',
-      urlPlaceholder: 'http://127.0.0.1:4317',
+      urlPlaceholder: 'http://127.0.0.1:19523',
       invalidUrl: 'Enter an http(s):// or ws(s):// URL.',
       add: 'Add host',
       savedHosts: 'Saved hosts',
