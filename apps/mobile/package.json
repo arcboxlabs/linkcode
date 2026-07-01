@@ -12,6 +12,7 @@
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@linkcode/client-core": "workspace:*",
     "@linkcode/common": "workspace:*",
     "@linkcode/i18n": "workspace:*",
@@ -25,6 +26,7 @@
     "expo-router": "~56.2.12",
     "expo-sqlite": "~56.0.5",
     "expo-status-bar": "~56.0.4",
+    "foxact": "^0.3.7",
     "heroui-native": "1.0.4",
     "react": "catalog:",
     "react-dom": "catalog:",
