@@ -18,8 +18,11 @@ import type {
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { noop } from 'foxts/noop';
 
 type EventCb = (event: AgentEvent) => void;
+type TerminalOutputCb = (data: string) => void;
+type TerminalExitCb = (exitCode: number | null) => void;
 interface Pending<T> {
   resolve(value: T): void;
   reject(err: Error): void;
@@ -35,6 +38,9 @@ export type HistoryListClientOptions = AgentHistoryListOptions & {
 export type HistoryReadClientOptions = AgentHistoryReadOptions & {
   forceRefresh?: boolean;
 };
+
+/** Cap on per-terminal output buffered before the first subscriber, so an unread PTY can't grow unbounded. */
+const TERMINAL_PREBUFFER_CAP = 128 * 1024;
 
 let __reqSeq = 0;
 function nextClientReqId(): string {
@@ -59,6 +65,11 @@ export class LinkCodeClient {
   private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
   private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
   private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
+  private readonly pendingTerminalOpens = new Map<string, Pending<string>>();
+  private readonly terminalOutputSubs = new Map<string, Set<TerminalOutputCb>>();
+  private readonly terminalExitSubs = new Map<string, Set<TerminalExitCb>>();
+  /** Output seen before anyone subscribed (covers the open→subscribe gap and late mounts); capped. */
+  private readonly terminalPrebuffer = new Map<string, string>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
   private closed = false;
@@ -116,6 +127,29 @@ export class LinkCodeClient {
         else this.events.set(p.sessionId, [p.event]);
         const subs = this.subscribers.get(p.sessionId);
         if (subs) for (const cb of subs) cb(p.event);
+        break;
+      }
+      case 'terminal.opened': {
+        this.pendingTerminalOpens.get(p.replyTo)?.resolve(p.terminalId);
+        this.pendingTerminalOpens.delete(p.replyTo);
+        break;
+      }
+      case 'terminal.output': {
+        const subs = this.terminalOutputSubs.get(p.terminalId);
+        if (subs && subs.size > 0) {
+          for (const cb of subs) cb(p.data);
+        } else {
+          const prev = this.terminalPrebuffer.get(p.terminalId) ?? '';
+          this.terminalPrebuffer.set(p.terminalId, (prev + p.data).slice(-TERMINAL_PREBUFFER_CAP));
+        }
+        break;
+      }
+      case 'terminal.exit': {
+        const subs = this.terminalExitSubs.get(p.terminalId);
+        if (subs) for (const cb of subs) cb(p.exitCode);
+        this.terminalOutputSubs.delete(p.terminalId);
+        this.terminalExitSubs.delete(p.terminalId);
+        this.terminalPrebuffer.delete(p.terminalId);
         break;
       }
       default:
@@ -240,6 +274,58 @@ export class LinkCodeClient {
     return () => set.delete(cb);
   }
 
+  openTerminal(opts: {
+    cols: number;
+    rows: number;
+    cwd?: string;
+    shell?: string;
+    sessionId?: SessionId;
+  }): Promise<string> {
+    return this.sendCorrelated(this.pendingTerminalOpens, (clientReqId) => ({
+      kind: 'terminal.open',
+      clientReqId,
+      opts,
+    }));
+  }
+
+  terminalInput(terminalId: string, data: string): void {
+    this.sendOneWay({ kind: 'terminal.input', terminalId, data });
+  }
+
+  resizeTerminal(terminalId: string, cols: number, rows: number): void {
+    this.sendOneWay({ kind: 'terminal.resize', terminalId, cols, rows });
+  }
+
+  closeTerminal(terminalId: string): void {
+    this.sendOneWay({ kind: 'terminal.close', terminalId });
+  }
+
+  subscribeTerminalOutput(terminalId: string, cb: TerminalOutputCb): Unsubscribe {
+    let set = this.terminalOutputSubs.get(terminalId);
+    if (!set) {
+      set = new Set();
+      this.terminalOutputSubs.set(terminalId, set);
+    }
+    set.add(cb);
+    // Replay output buffered before this first subscription, then stream live.
+    const buffered = this.terminalPrebuffer.get(terminalId);
+    if (buffered !== undefined) {
+      this.terminalPrebuffer.delete(terminalId);
+      cb(buffered);
+    }
+    return () => set.delete(cb);
+  }
+
+  subscribeTerminalExit(terminalId: string, cb: TerminalExitCb): Unsubscribe {
+    let set = this.terminalExitSubs.get(terminalId);
+    if (!set) {
+      set = new Set();
+      this.terminalExitSubs.set(terminalId, set);
+    }
+    set.add(cb);
+    return () => set.delete(cb);
+  }
+
   dispose(): void {
     this.closed = true;
     this.unsub?.();
@@ -249,6 +335,9 @@ export class LinkCodeClient {
     this.failAllPending(new Error('client disposed'));
     this.subscribers.clear();
     this.events.clear();
+    this.terminalOutputSubs.clear();
+    this.terminalExitSubs.clear();
+    this.terminalPrebuffer.clear();
     this.transport.close();
   }
 
@@ -260,6 +349,7 @@ export class LinkCodeClient {
       this.pendingHistoryLists,
       this.pendingHistoryReads,
       this.pendingAcks,
+      this.pendingTerminalOpens,
     ]) {
       for (const pending of map.values()) pending.reject(err);
       map.clear();
@@ -273,7 +363,17 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
-    rejectFrom(this.pendingAcks, replyTo, err);
+    if (rejectFrom(this.pendingAcks, replyTo, err)) return;
+    rejectFrom(this.pendingTerminalOpens, replyTo, err);
+  }
+
+  private sendOneWay(payload: WirePayload): void {
+    try {
+      // A dropped terminal frame (input/resize/close) is acceptable; nothing awaits it.
+      void Promise.resolve(this.transport.send(createWireMessage(payload))).catch(noop);
+    } catch {
+      // Transport already gone; the terminal surfaces its own exit separately.
+    }
   }
 
   private sendCorrelated<T>(
