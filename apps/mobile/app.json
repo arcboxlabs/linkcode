@@ -63,6 +63,7 @@
       "eas": {
         "projectId": "b06b97b7-e026-4f7e-afd5-ac936c93d666"
       }
-    }
+    },
+    "plugins": ["expo-router", "@sentry/react-native/expo"]
   }
 }
