@@ -1,8 +1,31 @@
 @import "coss-ui/styles/globals.css";
+@import "@fontsource-variable/ibm-plex-sans/wght.css";
+@import "@fontsource-variable/ibm-plex-sans/wght-italic.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/700.css";
 
 @source "./";
 @source "../../coss-ui/src";
 @source "../../workbench/src";
+
+/*
+ * coss-ui ships --font-mono as an inlined literal in its @theme, so the
+ * `.font-mono` utility can't be redirected through :root the way --font-sans
+ * can. Re-declare it self-referential (matching the --font-sans pattern) so the
+ * utility resolves the :root value defined below.
+ */
+@theme inline {
+  --font-mono: var(--font-mono);
+}
+
+:root {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
 
 @layer base {
   html,
