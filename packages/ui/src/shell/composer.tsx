@@ -37,8 +37,9 @@ export interface ComposerProps {
   currentModeId: string | null;
   onSend: (text: string) => void;
   onStop: () => void;
-  /** Called when the user picks a model from the (adapter-specific) list. */
-  onModelChange?: (model: string) => void;
+  /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
+   * the pick once this resolves — it stays on the previous model if the switch is rejected. */
+  onModelChange?: (model: string) => Promise<void>;
 }
 
 interface MenuState {
@@ -187,10 +188,16 @@ export function Composer({
   const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
   const selectedModel = modelOptions?.find((option) => option.id === selectedModelId);
 
-  function selectModel(modelId: string): void {
+  async function selectModel(modelId: string): Promise<void> {
     setModelMenuOpen(false);
-    setSelectedModelId(modelId);
-    onModelChange?.(modelId);
+    try {
+      await onModelChange?.(modelId);
+      // Only reflect the pick once the switch is confirmed — otherwise the picker would show a
+      // model that isn't actually the one the session is running.
+      setSelectedModelId(modelId);
+    } catch {
+      // The workbench's error banner already reports the failure; nothing else to do here.
+    }
   }
 
   return (

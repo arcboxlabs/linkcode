@@ -20,7 +20,7 @@ export interface WorkbenchConversationSurfaceProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
-  onModelChange?: (model: string) => void;
+  onModelChange?: (model: string) => Promise<void>;
 }
 
 export function WorkbenchConversationSurface({

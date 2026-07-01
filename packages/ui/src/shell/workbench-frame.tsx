@@ -22,7 +22,7 @@ export interface WorkbenchFrameProps {
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
   onDismissError?: () => void;
-  onModelChange?: (model: string) => void;
+  onModelChange?: (model: string) => Promise<void>;
 }
 
 export function WorkbenchFrame({

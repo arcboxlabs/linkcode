@@ -105,10 +105,12 @@ function WorkbenchSessionSurface({
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
   }
 
-  function handleModelChange(model: string): void {
-    if (!sessions.activeId) return;
+  function handleModelChange(model: string): Promise<void> {
+    if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
-    void modelMutation.trigger({ sessionId: sessions.activeId, model }).catch(noop);
+    // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
+    // onError (wired into modelMutation above) still reports the failure via the error banner.
+    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(noop);
   }
 
   function handleRespond(requestId: string, optionId: string): void {
