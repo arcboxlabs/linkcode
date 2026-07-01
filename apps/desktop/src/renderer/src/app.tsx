@@ -19,10 +19,15 @@ function AppContent(): React.ReactNode {
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
-      {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
-      <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-        <Workbench shellComponent={DesktopWorkbenchShell} />
-      </DaemonConnection>
+      {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over the
+          native backdrop, so any workbench pixels underneath would ghost through the settings
+          sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction. */}
+      <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+        {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
+        <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
+          <Workbench shellComponent={DesktopWorkbenchShell} />
+        </DaemonConnection>
+      </div>
       {settingsOpen ? <SettingsView /> : null}
     </WorkbenchAppProviders>
   );

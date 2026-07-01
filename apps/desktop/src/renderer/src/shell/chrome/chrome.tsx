@@ -174,7 +174,10 @@ export function DesktopChrome({
           titleContent={titleContent}
           setPortalTarget={setPortalTarget}
         />
-        <StableLeftChrome contentRef={leftRailContentRef} hasNativeTrafficLights={hasNativeTrafficLights}>
+        <StableLeftChrome
+          contentRef={leftRailContentRef}
+          hasNativeTrafficLights={hasNativeTrafficLights}
+        >
           {leftControls === undefined ? (
             <DefaultLeftChromeControls
               sidebarOpen={sidebarOpen}
@@ -243,11 +246,11 @@ function ChromeSegmentGrid({
         // While any panel is maximized the main segment hosts that panel's tabs
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
-          left: activeExpandedPanel
-            ? null
-            : titleContent === undefined
-              ? <MainChromeTitle header={header} />
-              : titleContent,
+          left: activeExpandedPanel ? null : titleContent === undefined ? (
+            <MainChromeTitle header={header} />
+          ) : (
+            titleContent
+          ),
         }}
         setPortalTarget={setPortalTarget}
       />
