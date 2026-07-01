@@ -2,6 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
+import { once } from 'foxts/once';
 import type { Socket } from 'socket.io';
 import { Server as SocketIoServerImpl } from 'socket.io';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
@@ -21,7 +22,10 @@ export interface SocketIoServer extends TransportServer {
 class SocketIoServerConnection implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
-  private isClosed = false;
+  private readonly emitClosed = once((): void => {
+    this.inbound.clear();
+    this.closed.emit();
+  });
 
   constructor(private readonly socket: Socket) {
     socket.on(FRAME_EVENT, (raw: unknown) => {
@@ -55,13 +59,6 @@ class SocketIoServerConnection implements Transport {
   close(): void {
     this.socket.disconnect(true);
     this.emitClosed();
-  }
-
-  private emitClosed(): void {
-    if (this.isClosed) return;
-    this.isClosed = true;
-    this.inbound.clear();
-    this.closed.emit();
   }
 }
 

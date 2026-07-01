@@ -1,5 +1,6 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
+import { invariant } from 'foxts/guard';
 import type { Transport, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
@@ -26,7 +27,7 @@ export class LocalTransport implements Transport {
 
   send(msg: WireMessage): void {
     if (!this.connected) throw new Error('LocalTransport: send before connect()');
-    if (!this.peer) throw new Error('LocalTransport: not linked to a peer');
+    invariant(this.peer, 'LocalTransport: not linked to a peer');
     // Trust-boundary validation: validate against the contract even for local direct connections, to catch schema drift in the implementation layer.
     const parsed = parseWireMessage(msg);
     if (!parsed.success) {

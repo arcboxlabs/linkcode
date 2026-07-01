@@ -1,5 +1,8 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
+import { noop } from 'foxts/noop';
+import { once } from 'foxts/once';
 import type { Transport, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
@@ -20,17 +23,23 @@ export class WsTransport implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
   private ws: WebSocket | null = null;
-  private isClosed = true;
+  /** Armed once per connection in connect(); closing before the first connect is a no-op. */
+  private emitClosed: () => void = noop;
 
   constructor(private readonly opts: WsTransportOptions) {}
 
   connect(): Promise<void> {
-    const Impl = this.opts.WebSocketImpl ?? getGlobalWebSocket();
-    if (!Impl) throw new Error('WsTransport: no WebSocket implementation available');
+    const Impl = nullthrow(
+      this.opts.WebSocketImpl ?? getGlobalWebSocket(),
+      'WsTransport: no WebSocket implementation available',
+    );
 
     const ws = new Impl(this.opts.url);
     this.ws = ws;
-    this.isClosed = false;
+    this.emitClosed = once(() => {
+      this.inbound.clear();
+      this.closed.emit();
+    });
 
     ws.addEventListener('message', (ev: MessageEvent) => {
       let raw: unknown;
@@ -76,13 +85,6 @@ export class WsTransport implements Transport {
     this.ws?.close();
     this.ws = null;
     this.emitClosed();
-  }
-
-  private emitClosed(): void {
-    if (this.isClosed) return;
-    this.isClosed = true;
-    this.inbound.clear();
-    this.closed.emit();
   }
 }
 

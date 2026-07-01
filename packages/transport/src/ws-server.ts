@@ -1,5 +1,6 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
+import { once } from 'foxts/once';
 import type { RawData } from 'ws';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
@@ -26,7 +27,10 @@ const textDecoder = new TextDecoder();
 class WsServerConnection implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
-  private isClosed = false;
+  private readonly emitClosed = once((): void => {
+    this.inbound.clear();
+    this.closed.emit();
+  });
 
   constructor(private readonly ws: WebSocket) {
     ws.on('message', (data: RawData) => {
@@ -66,13 +70,6 @@ class WsServerConnection implements Transport {
   close(): void {
     this.ws.close();
     this.emitClosed();
-  }
-
-  private emitClosed(): void {
-    if (this.isClosed) return;
-    this.isClosed = true;
-    this.inbound.clear();
-    this.closed.emit();
   }
 }
 

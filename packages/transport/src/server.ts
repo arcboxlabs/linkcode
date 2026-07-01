@@ -3,6 +3,7 @@
  * Kept separate from the main entry so the Node `ws` dependency never reaches browser / RN bundles.
  */
 
+import { never } from 'foxts/guard';
 import type { SocketIoServerOptions } from './socket-io-server';
 import { createSocketIoServer } from './socket-io-server';
 import type { TransportServer } from './transport';
@@ -25,6 +26,6 @@ export function createTransportServer(opts: TransportServerOptions): TransportSe
     case 'ws':
       return createWsServer({ port: opts.port, host: opts.host });
     default:
-      throw new Error('Unsupported transport server type');
+      return never(opts, 'transport server type');
   }
 }

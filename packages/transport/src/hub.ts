@@ -1,5 +1,5 @@
 import type { WireMessage } from '@linkcode/schema';
-import { noop } from 'foxact/noop';
+import { noop } from 'foxts/noop';
 import type { Transport, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
