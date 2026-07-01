@@ -18,11 +18,11 @@ import type {
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { noop } from 'foxts/noop';
 
 type EventCb = (event: AgentEvent) => void;
 type TerminalOutputCb = (data: string) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
+type TerminalErrorCb = (err: Error) => void;
 interface Pending<T> {
   resolve(value: T): void;
   reject(err: Error): void;
@@ -80,6 +80,8 @@ export class LinkCodeClient {
   private readonly pendingTerminalOpens = new Map<string, Pending<string>>();
   private readonly terminalOutputSubs = new Map<string, Set<TerminalOutputCb>>();
   private readonly terminalExitSubs = new Map<string, Set<TerminalExitCb>>();
+  /** Notified when a fire-and-forget terminal frame (input/resize/close) fails to send. */
+  private readonly terminalErrorSubs = new Map<string, Set<TerminalErrorCb>>();
   /** Output seen before anyone subscribed (covers the open→subscribe gap and late mounts); capped. */
   private readonly terminalPrebuffer = new Map<string, string>();
   private unsub: Unsubscribe | null = null;
@@ -161,6 +163,7 @@ export class LinkCodeClient {
         if (subs) for (const cb of subs) cb(p.exitCode);
         this.terminalOutputSubs.delete(p.terminalId);
         this.terminalExitSubs.delete(p.terminalId);
+        this.terminalErrorSubs.delete(p.terminalId);
         this.terminalPrebuffer.delete(p.terminalId);
         break;
       }
@@ -301,15 +304,15 @@ export class LinkCodeClient {
   }
 
   terminalInput(terminalId: string, data: string): void {
-    this.sendOneWay({ kind: 'terminal.input', terminalId, data });
+    this.sendTerminalFrame(terminalId, { kind: 'terminal.input', terminalId, data });
   }
 
   resizeTerminal(terminalId: string, cols: number, rows: number): void {
-    this.sendOneWay({ kind: 'terminal.resize', terminalId, cols, rows });
+    this.sendTerminalFrame(terminalId, { kind: 'terminal.resize', terminalId, cols, rows });
   }
 
   closeTerminal(terminalId: string): void {
-    this.sendOneWay({ kind: 'terminal.close', terminalId });
+    this.sendTerminalFrame(terminalId, { kind: 'terminal.close', terminalId });
   }
 
   subscribeTerminalOutput(terminalId: string, cb: TerminalOutputCb): Unsubscribe {
@@ -336,6 +339,21 @@ export class LinkCodeClient {
     return () => set.delete(cb);
   }
 
+  /**
+   * Observe transport-send failures for a terminal's fire-and-forget frames (input/resize/close).
+   * Those carry no reply to await, so without this a dropped keystroke would vanish silently; a
+   * subscriber can surface the drop instead (e.g. flag the pane as disconnected).
+   */
+  subscribeTerminalError(terminalId: string, cb: TerminalErrorCb): Unsubscribe {
+    let set = this.terminalErrorSubs.get(terminalId);
+    if (!set) {
+      set = new Set();
+      this.terminalErrorSubs.set(terminalId, set);
+    }
+    set.add(cb);
+    return () => set.delete(cb);
+  }
+
   dispose(): void {
     this.closed = true;
     this.unsub?.();
@@ -347,6 +365,7 @@ export class LinkCodeClient {
     this.events.clear();
     this.terminalOutputSubs.clear();
     this.terminalExitSubs.clear();
+    this.terminalErrorSubs.clear();
     this.terminalPrebuffer.clear();
     this.transport.close();
   }
@@ -377,13 +396,19 @@ export class LinkCodeClient {
     rejectFrom(this.pendingTerminalOpens, replyTo, err);
   }
 
-  private sendOneWay(payload: WirePayload): void {
+  /** Send a fire-and-forget terminal frame, routing any send failure to the terminal's error subs. */
+  private sendTerminalFrame(terminalId: string, payload: WirePayload): void {
+    const onFail = (err: unknown) => this.emitTerminalError(terminalId, toError(err));
     try {
-      // A dropped terminal frame (input/resize/close) is acceptable; nothing awaits it.
-      void Promise.resolve(this.transport.send(createWireMessage(payload))).catch(noop);
-    } catch {
-      // Transport already gone; the terminal surfaces its own exit separately.
+      void Promise.resolve(this.transport.send(createWireMessage(payload))).catch(onFail);
+    } catch (err) {
+      onFail(err);
     }
+  }
+
+  private emitTerminalError(terminalId: string, err: Error): void {
+    const subs = this.terminalErrorSubs.get(terminalId);
+    if (subs) for (const cb of subs) cb(err);
   }
 
   private sendCorrelated<T>(
