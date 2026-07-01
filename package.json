@@ -2,7 +2,6 @@
   "name": "linkcode",
   "version": "0.0.0",
   "private": true,
-  "license": "BUSL-1.1",
   "type": "module",
   "scripts": {
     "build": "turbo run build",
@@ -17,6 +16,7 @@
     "clean": "turbo run clean"
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
+  "license": "BUSL-1.1",
   "contributors": [
     "Xuan Zhang <dev@aprilnea.me>",
     "Yifei Zhang <yidadaa@qq.com>",
