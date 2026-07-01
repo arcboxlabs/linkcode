@@ -11,3 +11,4 @@ export * from './surface/use-workbench-sessions';
 export * from './surface/workbench';
 export * from './terminal/panel';
 export * from './terminal/transport-session';
+export * from './workspace/hooks';

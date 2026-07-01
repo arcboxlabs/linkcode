@@ -18,6 +18,8 @@ import type {
   StartOptions,
   WireMessage,
   WirePayload,
+  WorkspaceId,
+  WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
@@ -84,6 +86,8 @@ export class LinkCodeClient {
   private readonly pendingConfigGets = new Map<string, Pending<ProvidersConfig>>();
   private readonly pendingGitStatuses = new Map<string, Pending<GitStatus>>();
   private readonly pendingGitPrStatuses = new Map<string, Pending<GitPullRequestStatus>>();
+  private readonly pendingWorkspaceLists = new Map<string, Pending<WorkspaceRecord[]>>();
+  private readonly pendingWorkspaceRegisters = new Map<string, Pending<WorkspaceRecord>>();
   private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
   private readonly pendingTerminalOpens = new Map<string, Pending<string>>();
   private readonly terminalOutputSubs = new Map<string, Set<TerminalOutputCb>>();
@@ -152,6 +156,16 @@ export class LinkCodeClient {
       case 'git.pr_status.get.result': {
         this.pendingGitPrStatuses.get(p.replyTo)?.resolve(p.prStatus);
         this.pendingGitPrStatuses.delete(p.replyTo);
+        break;
+      }
+      case 'workspace.listed': {
+        this.pendingWorkspaceLists.get(p.replyTo)?.resolve(p.workspaces);
+        this.pendingWorkspaceLists.delete(p.replyTo);
+        break;
+      }
+      case 'workspace.registered': {
+        this.pendingWorkspaceRegisters.get(p.replyTo)?.resolve(p.record);
+        this.pendingWorkspaceRegisters.delete(p.replyTo);
         break;
       }
       case 'request.failed': {
@@ -363,6 +377,42 @@ export class LinkCodeClient {
     }));
   }
 
+  /** Every registered workspace (directory), most recently used first. */
+  listWorkspaces(): Promise<WorkspaceRecord[]> {
+    return this.sendCorrelated(this.pendingWorkspaceLists, (clientReqId) => ({
+      kind: 'workspace.list',
+      clientReqId,
+    }));
+  }
+
+  /** Register a directory as a workspace; idempotent for an already-registered directory. */
+  registerWorkspace(cwd: string, name?: string): Promise<WorkspaceRecord> {
+    return this.sendCorrelated(this.pendingWorkspaceRegisters, (clientReqId) => ({
+      kind: 'workspace.register',
+      clientReqId,
+      cwd,
+      name,
+    }));
+  }
+
+  updateWorkspace(workspaceId: WorkspaceId, name: string): Promise<RequestAck> {
+    return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
+      kind: 'workspace.update',
+      clientReqId,
+      workspaceId,
+      name,
+    }));
+  }
+
+  /** Drop a workspace from the registry; never touches the directory on disk. */
+  archiveWorkspace(workspaceId: WorkspaceId): Promise<RequestAck> {
+    return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
+      kind: 'workspace.archive',
+      clientReqId,
+      workspaceId,
+    }));
+  }
+
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
     let set = this.subscribers.get(sessionId);
     if (!set) {
@@ -468,6 +518,8 @@ export class LinkCodeClient {
       this.pendingConfigGets,
       this.pendingGitStatuses,
       this.pendingGitPrStatuses,
+      this.pendingWorkspaceLists,
+      this.pendingWorkspaceRegisters,
       this.pendingAcks,
       this.pendingTerminalOpens,
     ]) {
@@ -487,6 +539,8 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingConfigGets, replyTo, err)) return;
     if (rejectFrom(this.pendingGitStatuses, replyTo, err)) return;
     if (rejectFrom(this.pendingGitPrStatuses, replyTo, err)) return;
+    if (rejectFrom(this.pendingWorkspaceLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingWorkspaceRegisters, replyTo, err)) return;
     if (rejectFrom(this.pendingAcks, replyTo, err)) return;
     rejectFrom(this.pendingTerminalOpens, replyTo, err);
   }
