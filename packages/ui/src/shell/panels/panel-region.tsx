@@ -1,11 +1,11 @@
 import { Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/cn';
-import type { PanelControl, PanelTab, PanelWindowType } from '../free-panel';
-import { FreePanel, PanelStubContent, PanelTabStrip } from '../free-panel';
 import { PanelControlButton } from '../shell-control';
+import { FreePanel, PanelStubContent } from './free-panel';
+import { PanelTabStrip } from './tab-strip';
+import type { PanelControl, PanelSide, PanelTab, PanelWindowType } from './vocabulary';
 
-export type PanelSide = 'right' | 'bottom';
 export type ChromeSurface = 'normal' | 'right-max' | 'bottom-max';
 
 export interface PanelStateLike {

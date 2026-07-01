@@ -7,45 +7,11 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from 'coss-ui/components/menu';
-import { FilesIcon, FileTextIcon, GlobeIcon, PlusIcon, TerminalIcon, XIcon } from 'lucide-react';
-import { cn } from '../lib/cn';
-import { PanelControlButton, ShellIconButton } from './shell-control';
-
-export const PANEL_WINDOW_TYPES = ['review', 'terminal', 'browser', 'files'] as const;
-
-export type PanelWindowType = (typeof PANEL_WINDOW_TYPES)[number];
-
-export interface PanelWindowMeta {
-  label: string;
-  shortcut?: string;
-  icon: React.ReactNode;
-}
-
-export interface PanelTab {
-  id: string;
-  type: PanelWindowType;
-}
-
-export interface PanelControl {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  active?: boolean;
-  onClick: () => void;
-}
-
-export interface FreePanelProps {
-  tabs: PanelTab[];
-  activeTabId: string | null;
-  controls?: PanelControl[];
-  leading?: React.ReactNode;
-  className?: string;
-  stripClassName?: string;
-  children: React.ReactNode;
-  onSelectTab: (id: string) => void;
-  onCloseTab: (id: string) => void;
-  onAddWindow: (type: PanelWindowType) => void;
-}
+import { PlusIcon, XIcon } from 'lucide-react';
+import { cn } from '../../lib/cn';
+import { PanelControlButton, ShellIconButton } from '../shell-control';
+import type { PanelControl, PanelTab, PanelWindowType } from './vocabulary';
+import { PANEL_WINDOW_META, PANEL_WINDOW_TYPES } from './vocabulary';
 
 export interface PanelTabStripProps {
   tabs: PanelTab[];
@@ -60,48 +26,7 @@ export interface PanelTabStripProps {
   onAddWindow: (type: PanelWindowType) => void;
 }
 
-export const PANEL_WINDOW_META: Record<PanelWindowType, PanelWindowMeta> = {
-  review: { label: 'Review', icon: <FileTextIcon /> },
-  terminal: { label: 'Terminal', icon: <TerminalIcon /> },
-  browser: { label: 'Browser', icon: <GlobeIcon /> },
-  files: { label: 'Files', icon: <FilesIcon /> },
-};
-
 const EMPTY_PANEL_CONTROLS: PanelControl[] = [];
-
-export function FreePanel({
-  tabs,
-  activeTabId,
-  controls = EMPTY_PANEL_CONTROLS,
-  leading,
-  className,
-  stripClassName,
-  children,
-  onSelectTab,
-  onCloseTab,
-  onAddWindow,
-}: FreePanelProps): React.ReactNode {
-  return (
-    <section
-      className={cn(
-        'flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background text-foreground',
-        className,
-      )}
-    >
-      <PanelTabStrip
-        tabs={tabs}
-        activeTabId={activeTabId}
-        controls={controls}
-        leading={leading}
-        className={stripClassName}
-        onSelectTab={onSelectTab}
-        onCloseTab={onCloseTab}
-        onAddWindow={onAddWindow}
-      />
-      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-    </section>
-  );
-}
 
 export function PanelTabStrip({
   tabs,
@@ -216,28 +141,6 @@ function PanelTabButton({
       >
         <XIcon className="size-3" />
       </button>
-    </div>
-  );
-}
-
-export function PanelStubContent({
-  type,
-  className,
-}: {
-  type: PanelWindowType;
-  className?: string;
-}): React.ReactNode {
-  const meta = PANEL_WINDOW_META[type];
-
-  return (
-    <div
-      aria-label={`${meta.label} panel stub`}
-      className={cn('grid h-full min-h-0 place-items-center bg-background p-4', className)}
-    >
-      <div className="flex items-center gap-2 rounded-md border border-border border-dashed px-3 py-2 text-muted-foreground text-xs">
-        <span className="[&_svg]:size-3.5">{meta.icon}</span>
-        <span>{meta.label} stub</span>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,4 @@
-import type { PanelWindowType } from '@linkcode/ui';
-import type { ChromeSurface } from '@linkcode/ui/shell/panels';
+import type { ChromeSurface, PanelWindowType } from '@linkcode/ui/shell/panels';
 import { PanelRegion } from '@linkcode/ui/shell/panels';
 import { TerminalPanel } from '@linkcode/workbench';
 import { DesktopChromePortal } from '../chrome/chrome';

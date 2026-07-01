@@ -1,5 +1,5 @@
 import { zodPersist } from '@linkcode/common/zustand';
-import type { PanelWindowType } from '@linkcode/ui';
+import type { PanelWindowType } from '@linkcode/ui/shell/panels';
 import { create } from 'zustand';
 import type {
   DesktopShellState,

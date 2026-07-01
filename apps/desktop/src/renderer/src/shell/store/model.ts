@@ -1,9 +1,9 @@
-import type { PanelTab, PanelWindowType } from '@linkcode/ui';
-import { PANEL_WINDOW_TYPES } from '@linkcode/ui';
+import type { PanelSide, PanelTab, PanelWindowType } from '@linkcode/ui/shell/panels';
+import { PANEL_WINDOW_TYPES } from '@linkcode/ui/shell/panels';
 import { clamp } from 'foxts/clamp';
 import { z } from 'zod';
 
-export type PanelSide = 'right' | 'bottom';
+export type { PanelSide } from '@linkcode/ui/shell/panels';
 export type PanelExpansionTarget = 'editor-row' | 'workbench';
 
 export interface PanelState {
