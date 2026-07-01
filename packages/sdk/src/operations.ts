@@ -6,6 +6,7 @@ import type {
   AgentInput,
   AgentKind,
   PermissionOutcome,
+  ProvidersConfig,
   SessionId,
   SessionInfo,
   StartOptions,
@@ -75,4 +76,14 @@ export function respondPermission(
     options.requestId,
     options.outcome,
   );
+}
+
+export function getProviderConfig(options?: Options): RequestResult<ProvidersConfig> {
+  return resolveClient(options).getProviderConfig();
+}
+
+export function setProviderConfig(
+  options: Options<{ providers: ProvidersConfig }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).setProviderConfig(options.providers);
 }

@@ -3,6 +3,7 @@ import type { TransportServer } from '@linkcode/transport/server';
 import { createTransportServer, Hub } from '@linkcode/transport/server';
 import type { DaemonListenerConfig } from './config';
 import { loadConfig } from './config';
+import { createProviderConfigStore } from './provider-store';
 
 /**
  * Link Code daemon — the standalone local host process.
@@ -14,7 +15,8 @@ import { loadConfig } from './config';
 async function main(): Promise<void> {
   const config = loadConfig();
   const hub = new Hub();
-  const engine = new Engine(hub);
+  const store = createProviderConfigStore(config.providers ?? {});
+  const engine = new Engine(hub, undefined, store);
   await engine.start();
 
   const servers: TransportServer[] = [];

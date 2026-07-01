@@ -1,3 +1,4 @@
+import { env } from 'node:process';
 import type {
   CanUseTool,
   PermissionResult,
@@ -161,6 +162,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.messageId = nextMessageId();
     this.thoughtId = nextMessageId();
     this.emitStatus('running');
+    // The SDK has no apiKey option; the key reaches the subprocess via `env`. Because `env` *replaces*
+    // the subprocess environment entirely, spread `env` so PATH/HOME and other inherited vars survive.
+    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
     const q = query({
       prompt: contentToText(content),
       options: {
@@ -171,6 +175,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         canUseTool: this.canUseTool,
         resume: this.sessionId,
         additionalDirectories: opts.additionalDirectories,
+        ...(apiKey ? { env: { ...env, ANTHROPIC_API_KEY: apiKey } } : null),
       },
     });
     this.q = q;
