@@ -6,6 +6,8 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  GitPullRequestStatus,
+  GitStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -138,6 +140,16 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned provider config (data plane). */
   setProviderConfig(providers: ProvidersConfig): RequestResult<{ ok: true }> {
     return toResult(this.raw.setProviderConfig(providers));
+  }
+
+  /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitStatus(cwd: string): RequestResult<GitStatus> {
+    return toResult(this.raw.getGitStatus(cwd));
+  }
+
+  /** Hosting-provider PR state for a directory's current branch. */
+  getGitPullRequestStatus(cwd: string): RequestResult<GitPullRequestStatus> {
+    return toResult(this.raw.getGitPullRequestStatus(cwd));
   }
 }
 

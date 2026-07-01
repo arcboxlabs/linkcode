@@ -5,6 +5,8 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  GitPullRequestStatus,
+  GitStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -105,4 +107,16 @@ export function setProviderConfig(
   options: Options<{ providers: ProvidersConfig }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).setProviderConfig(options.providers);
+}
+
+/** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
+export function getGitStatus(options: Options<{ cwd: string }>): RequestResult<GitStatus> {
+  return resolveClient(options).getGitStatus(options.cwd);
+}
+
+/** Hosting-provider PR state for a directory's current branch. */
+export function getGitPullRequestStatus(
+  options: Options<{ cwd: string }>,
+): RequestResult<GitPullRequestStatus> {
+  return resolveClient(options).getGitPullRequestStatus(options.cwd);
 }

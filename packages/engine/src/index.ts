@@ -7,6 +7,8 @@
  */
 export * from '@linkcode/agent-adapter';
 export * from './engine';
+export * from './git/git-service';
+export type * from './git/provider';
 export * from './history-service';
 export * from './provider-config';
 export type * from './pty-backend';
