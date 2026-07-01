@@ -20,6 +20,7 @@ export interface ShellFrameProps {
   onRespondPermission: (requestId: string, optionId: string) => void;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onDismissError?: () => void;
+  onModelChange?: (model: string) => Promise<void>;
 }
 
 export function ShellFrame({
@@ -38,6 +39,7 @@ export function ShellFrame({
   onRespondPermission,
   TerminalBlockComponent,
   onDismissError,
+  onModelChange,
 }: ShellFrameProps): React.ReactNode {
   const active = sessionById(sessions, activeId);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -72,6 +74,7 @@ export function ShellFrame({
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
+          onModelChange={onModelChange}
         />
       </main>
     </div>

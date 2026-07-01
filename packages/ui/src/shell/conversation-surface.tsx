@@ -20,6 +20,7 @@ export interface ConversationSurfaceProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
+  onModelChange?: (model: string) => Promise<void>;
 }
 
 export function ConversationSurface({
@@ -38,6 +39,7 @@ export function ConversationSurface({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onModelChange,
 }: ConversationSurfaceProps): React.ReactNode {
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
@@ -56,11 +58,13 @@ export function ConversationSurface({
       </div>
       <Composer
         agentLabel={agentLabel}
+        agentKind={agentKind}
         disabled={disabled}
         isRunning={isRunning}
         currentModeId={conversation.currentModeId}
         onSend={onSendPrompt}
         onStop={onStopTurn}
+        onModelChange={onModelChange}
       />
     </div>
   );

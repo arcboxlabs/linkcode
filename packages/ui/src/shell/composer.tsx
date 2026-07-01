@@ -1,5 +1,7 @@
+import type { AgentKind } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
-import { AtSignIcon, PlusIcon } from 'lucide-react';
+import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import { AtSignIcon, ChevronDownIcon, PlusIcon, SparklesIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -10,6 +12,7 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { cn } from '../lib/cn';
+import { AGENT_MODEL_OPTIONS } from './agent-models';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
 export interface MentionItem {
@@ -21,6 +24,8 @@ export interface MentionItem {
 
 export interface ComposerProps {
   agentLabel?: string;
+  /** Which adapter is running the active session; picks the model list to show (if any). */
+  agentKind?: AgentKind;
   /** No active session: the composer is inert. */
   disabled: boolean;
   /** A turn is in flight: show Stop instead of Send. */
@@ -31,6 +36,9 @@ export interface ComposerProps {
   currentModeId: string | null;
   onSend: (text: string) => void;
   onStop: () => void;
+  /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
+   * the pick once this resolves — it stays on the previous model if the switch is rejected. */
+  onModelChange?: (model: string) => Promise<void>;
 }
 
 interface MenuState {
@@ -60,16 +68,20 @@ function computeMenu(value: string, caret: number): MenuState | null {
 
 export function Composer({
   agentLabel,
+  agentKind,
   disabled,
   isRunning,
   mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
   onSend,
   onStop,
+  onModelChange,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
@@ -172,6 +184,20 @@ export function Composer({
   }
 
   const placeholderAgent = agentLabel ?? 'agent';
+  const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
+  const selectedModel = modelOptions?.find((option) => option.id === selectedModelId);
+
+  async function selectModel(modelId: string): Promise<void> {
+    setModelMenuOpen(false);
+    try {
+      await onModelChange?.(modelId);
+      // Only reflect the pick once the switch is confirmed — otherwise the picker would show a
+      // model that isn't actually the one the session is running.
+      setSelectedModelId(modelId);
+    } catch {
+      // The workbench's error banner already reports the failure; nothing else to do here.
+    }
+  }
 
   return (
     <div className="relative px-4 pb-4">
@@ -222,6 +248,27 @@ export function Composer({
                   </Badge>
                 )}
               </PromptInputTools>
+              {modelOptions && modelOptions.length > 0 && (
+                <Popover open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
+                  <PopoverTrigger className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-accent sm:flex">
+                    <SparklesIcon className="size-3.5 text-muted-foreground" />
+                    <span className="font-mono">{selectedModel?.label ?? t('modelDefault')}</span>
+                    <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+                  </PopoverTrigger>
+                  <PopoverPopup align="end" side="top" sideOffset={8} className="w-56 p-1">
+                    {modelOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => selectModel(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </PopoverPopup>
+                </Popover>
+              )}
               <span className="hidden items-center gap-1 text-muted-foreground text-xs lg:flex">
                 <AtSignIcon className="size-3" />
                 {t('mentions')}

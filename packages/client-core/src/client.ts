@@ -255,6 +255,11 @@ export class LinkCodeClient {
     return this.send(sessionId, { type: 'set-mode', modeId });
   }
 
+  /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */
+  setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'set-model', model });
+  }
+
   /** Answer a pending permission-request. */
   respondPermission(
     sessionId: SessionId,

@@ -46,6 +46,7 @@ export function DesktopShell({
   onRespondPermission,
   TerminalBlockComponent,
   onDismissError,
+  onModelChange,
 }: WorkbenchShellProps & { systemBridge: SystemBridge }): React.ReactNode {
   const shellState = useDesktopShellStore(
     useShallow((state) => ({
@@ -217,6 +218,7 @@ export function DesktopShell({
         onSendPrompt={onSendPrompt}
         onStopTurn={onStopTurn}
         onRespondPermission={onRespondPermission}
+        onModelChange={onModelChange}
       />
     </main>
   );

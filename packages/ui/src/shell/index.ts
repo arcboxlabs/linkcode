@@ -1,3 +1,4 @@
+export * from './agent-models';
 export * from './composer';
 export * from './conversation-surface';
 export * from './error-banner';

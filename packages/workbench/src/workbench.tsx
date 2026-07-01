@@ -5,6 +5,7 @@ import {
   listSessions,
   promptText,
   respondPermission,
+  setModel,
   startSession,
   stopSession,
 } from '@linkcode/sdk';
@@ -86,6 +87,7 @@ function WorkbenchSessionSurface({
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
+  const modelMutation = useMutation(setModel, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessionById(sessions.sessions, sessions.activeId);
@@ -100,6 +102,14 @@ function WorkbenchSessionSurface({
     if (!sessions.activeId) return;
     onClearError();
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
+  }
+
+  function handleModelChange(model: string): Promise<void> {
+    if (!sessions.activeId) return Promise.reject(new Error('No active session'));
+    onClearError();
+    // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
+    // onError (wired into modelMutation above) still reports the failure via the error banner.
+    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(noop);
   }
 
   function handleRespond(requestId: string, optionId: string): void {
@@ -142,6 +152,7 @@ function WorkbenchSessionSurface({
       onRespondPermission={handleRespond}
       TerminalBlockComponent={RuntimeTerminalBlock}
       onDismissError={onClearError}
+      onModelChange={handleModelChange}
     />
   );
 }

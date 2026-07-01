@@ -67,6 +67,12 @@ export function cancelTurn(
   return resolveClient(options).cancel(options.sessionId);
 }
 
+export function setModel(
+  options: Options<{ sessionId: SessionId; model: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).setModel(options.sessionId, options.model);
+}
+
 export function respondPermission(
   options: Options<{ sessionId: SessionId; requestId: string; outcome: PermissionOutcome }>,
 ): RequestResult<{ ok: true }> {

@@ -45,6 +45,7 @@ export const zhCN = {
       mentions: '提及',
       noCommands: '没有可用命令',
       noMentions: '没有匹配项',
+      modelDefault: '默认',
     },
     mode: {
       label: '模式',

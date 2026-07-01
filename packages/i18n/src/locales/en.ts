@@ -47,6 +47,7 @@ export const en = {
       mentions: 'Mentions',
       noCommands: 'No commands available',
       noMentions: 'No matches',
+      modelDefault: 'Default',
     },
     mode: {
       label: 'Mode',
