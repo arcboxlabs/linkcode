@@ -48,11 +48,13 @@ interface MenuEntry {
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
 const APPROVE_MODES = ['Approve for me', 'Ask each step', 'Read-only'] as const;
 const MODEL_OPTIONS = ['claude-sonnet-4.5', 'codex'] as const;
+const WHITESPACE_RE = /\s/;
+const LEADING_WHITESPACE_RE = /^\s/;
 
 /** Find an `@` autocomplete trigger at the caret (the maximal non-whitespace run ending there). */
 function computeMenu(value: string, caret: number): MenuState | null {
   let start = caret;
-  while (start > 0 && !/\s/.test(value[start - 1])) start--;
+  while (start > 0 && !WHITESPACE_RE.test(value[start - 1])) start--;
   const token = value.slice(start, caret);
   if (token[0] === '@') return { query: token.slice(1), start };
   return null;
@@ -133,7 +135,7 @@ export function Composer({
     if (!menu) return;
     // Avoid a double space when the trigger token is already followed by whitespace.
     const rest = value.slice(caret);
-    const sep = /^\s/.test(rest) ? '' : ' ';
+    const sep = LEADING_WHITESPACE_RE.test(rest) ? '' : ' ';
     const next = `${value.slice(0, menu.start)}${entry.insert}${sep}${rest}`;
     const pos = menu.start + entry.insert.length + sep.length;
     setValue(next);

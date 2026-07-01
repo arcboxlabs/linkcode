@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
 import { BrowserWindow, ipcMain, nativeTheme } from 'electron';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 // electron-vite resolves `?asset` to a runtime file path. Used as the Win/Linux window icon in dev
 // (packaged builds get the real icon from the bundle). macOS uses a separate Dock image set at bootstrap.
 // eslint-disable-next-line import-x/no-relative-packages -- shared repo-root brand asset; this private app has no package export for it, so a relative import is the resolvable form
@@ -47,7 +48,7 @@ function createWindow(): BrowserWindow {
   nativeTheme.on('updated', updateBackgroundColor);
   win.on('closed', () => nativeTheme.off('updated', updateBackgroundColor));
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    console.error('[link-code/desktop] renderer load failed:', {
+    writeDesktopError('[link-code/desktop] renderer load failed:', {
       errorCode,
       errorDescription,
       url: validatedURL,
@@ -68,6 +69,10 @@ async function loadRenderer(win: BrowserWindow): Promise<void> {
       await win.loadFile(join(__dirname, '../renderer/index.html'));
     }
   } catch (err) {
-    console.error('[link-code/desktop] unable to load renderer:', err);
+    writeDesktopError('[link-code/desktop] unable to load renderer:', extractErrorMessage(err));
   }
+}
+
+function writeDesktopError(message: string, detail: unknown): void {
+  process.stderr.write(`${message} ${JSON.stringify(detail)}\n`);
 }

@@ -7,6 +7,8 @@ import {
 import { ChevronRightIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
+const PATH_PARAM_RE = /\{[^}]+\}/g;
+
 // TODO(linkcode-schema): Provisional UI-only schema endpoint model, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when tools expose structured API/schema metadata.
 export interface ChatSchemaEndpoint {
@@ -362,7 +364,7 @@ function renderPath(path: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
   let cursor = 0;
 
-  for (const match of path.matchAll(/\{[^}]+\}/g)) {
+  for (const match of path.matchAll(PATH_PARAM_RE)) {
     const index = match.index;
     if (index > cursor) {
       parts.push(<span key={`text-${cursor}`}>{path.slice(cursor, index)}</span>);

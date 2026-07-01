@@ -18,6 +18,7 @@
       install.enable = true;
     };
   };
+  languages.typescript.enable = true;
 
   git-hooks = {
     package = pkgs.prek;
@@ -26,6 +27,7 @@
         enable = true;
         name = "Check formatting and imports";
         entry = "pnpm format:check";
+        files = "(^|/)(biome\\.json|package\\.json)$|\\.(css|cjs|js|json|jsonc|jsx|mjs|ts|tsx)$";
         pass_filenames = false;
       };
 
@@ -33,6 +35,7 @@
         enable = true;
         name = "Lint";
         entry = "pnpm lint";
+        files = "(^|/)(eslint\\.config\\.cjs|package\\.json)$|\\.(cjs|js|json|jsonc|jsx|mjs|ts|tsx)$";
         pass_filenames = false;
       };
 
@@ -40,6 +43,7 @@
         enable = true;
         name = "Typecheck";
         entry = "pnpm typecheck";
+        files = "(^|/)(package\\.json|pnpm-lock\\.yaml|pnpm-workspace\\.yaml|tsconfig[^/]*\\.json|turbo\\.json)$|\\.(ts|tsx)$";
         pass_filenames = false;
       };
 

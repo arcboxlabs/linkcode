@@ -1,6 +1,6 @@
 import { systemBridge } from '@desktop/ipc';
 import type { SystemBridge } from '@linkcode/ipc';
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import type { PanelWindowType } from '@linkcode/ui';
 import { SessionSidebar, WorkbenchConversationSurface } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
@@ -149,7 +149,7 @@ function DesktopShell({
     [systemBridge],
   );
 
-  const active = sessions.find((session) => session.sessionId === activeId) ?? null;
+  const active = sessionById(sessions, activeId);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const agentLabel = active?.kind;
 
@@ -469,6 +469,17 @@ function DesktopErrorBanner({
       </Alert>
     </div>
   );
+}
+
+function sessionById(
+  sessions: readonly SessionInfo[],
+  sessionId: SessionId | null,
+): SessionInfo | null {
+  if (!sessionId) return null;
+  for (const session of sessions) {
+    if (session.sessionId === sessionId) return session;
+  }
+  return null;
 }
 
 function initialDesktopPlatform(): DesktopPlatform {

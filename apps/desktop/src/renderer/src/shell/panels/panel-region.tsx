@@ -47,7 +47,7 @@ export function PanelRegion({
   onToggleMax: () => void;
   onClose: () => void;
 }): React.ReactNode {
-  const activeType = panel.tabs.find((tab) => tab.id === panel.activeTabId)?.type ?? 'terminal';
+  const activeType = activePanelWindowType(panel);
   const chromePlacement = getPanelChromePlacement(side, chromeSurface);
   const content = (
     <div className="h-full min-h-0" style={contentStyle}>
@@ -119,6 +119,13 @@ export function PanelRegion({
       {content}
     </FreePanel>
   );
+}
+
+function activePanelWindowType(panel: PanelState): PanelWindowType {
+  for (const tab of panel.tabs) {
+    if (tab.id === panel.activeTabId) return tab.type;
+  }
+  return 'terminal';
 }
 
 function PanelContextualChromePortal({

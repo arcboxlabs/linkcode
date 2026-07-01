@@ -88,7 +88,7 @@ function WorkbenchSessionSurface({
   const permissionMutation = useMutation(respondPermission, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
-  const active = sessions.sessions.find((s) => s.sessionId === sessions.activeId) ?? null;
+  const active = sessionById(sessions.sessions, sessions.activeId);
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
@@ -198,14 +198,11 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
   }, [localSessions, remoteSessions, stoppedIds]);
 
   const activeId = useMemo(() => {
-    if (selectedId && sessions.some((session) => session.sessionId === selectedId)) {
+    if (selectedId && sessionById(sessions, selectedId)) {
       return selectedId;
     }
 
-    const preferred =
-      sessions.find(
-        (session) => session.status === 'running' || session.status === 'awaiting-input',
-      ) ?? sessions.at(-1);
+    const preferred = preferredActiveSession(sessions) ?? sessions.at(-1);
     return preferred?.sessionId ?? null;
   }, [selectedId, sessions]);
 
@@ -249,4 +246,22 @@ function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSession
     create,
     stop,
   };
+}
+
+function sessionById(
+  sessions: readonly SessionInfo[],
+  sessionId: SessionId | null,
+): SessionInfo | null {
+  if (!sessionId) return null;
+  for (const session of sessions) {
+    if (session.sessionId === sessionId) return session;
+  }
+  return null;
+}
+
+function preferredActiveSession(sessions: readonly SessionInfo[]): SessionInfo | null {
+  for (const session of sessions) {
+    if (session.status === 'running' || session.status === 'awaiting-input') return session;
+  }
+  return null;
 }

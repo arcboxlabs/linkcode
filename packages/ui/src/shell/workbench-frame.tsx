@@ -39,7 +39,7 @@ export function WorkbenchFrame({
   onRespondPermission,
   onDismissError,
 }: WorkbenchFrameProps): React.ReactNode {
-  const active = sessions.find((s) => s.sessionId === activeId) ?? null;
+  const active = sessionById(sessions, activeId);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';
 
@@ -94,4 +94,15 @@ export function WorkbenchFrame({
       </main>
     </div>
   );
+}
+
+function sessionById(
+  sessions: readonly SessionInfo[],
+  sessionId: SessionId | null,
+): SessionInfo | null {
+  if (!sessionId) return null;
+  for (const session of sessions) {
+    if (session.sessionId === sessionId) return session;
+  }
+  return null;
 }

@@ -30,6 +30,11 @@ const GROUP_LABELS: Record<SessionGroupKey, string> = {
 const sidebarMenuButtonClassName =
   'flex h-8 w-full items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] text-left text-sidebar-foreground text-sm outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64';
 
+const ROOT_PATH_RE = /^[\\/]+$/;
+const PATH_SEPARATOR_RE = /[\\/]+/;
+const WINDOWS_DRIVE_LABEL_RE = /^[a-z]:$/i;
+const WINDOWS_DRIVE_ROOT_RE = /^[a-z]:[\\/]*$/i;
+
 export function SessionSidebar({
   sessions,
   activeId,
@@ -288,12 +293,14 @@ function groupKey(timestamp: number, currentDayStart: number): SessionGroupKey {
 export function repositoryLabel(cwd: string): string {
   const trimmed = cwd.trim();
   if (!trimmed) return cwd;
-  if (/^[\\/]+$/.test(trimmed)) return trimmed[0] === '\\' ? '\\' : '/';
+  if (ROOT_PATH_RE.test(trimmed)) return trimmed[0] === '\\' ? '\\' : '/';
 
-  const parts = trimmed.split(/[\\/]+/).filter(Boolean);
+  const parts = trimmed.split(PATH_SEPARATOR_RE).filter(Boolean);
   const label = parts.at(-1);
   if (!label) return trimmed;
-  if (/^[a-z]:$/i.test(label) && /^[a-z]:[\\/]*$/i.test(trimmed)) return `${label}\\`;
+  if (WINDOWS_DRIVE_LABEL_RE.test(label) && WINDOWS_DRIVE_ROOT_RE.test(trimmed)) {
+    return `${label}\\`;
+  }
   return label;
 }
 

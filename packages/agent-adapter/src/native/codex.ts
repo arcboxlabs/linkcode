@@ -43,6 +43,7 @@ import { contentToText } from '../util';
 type CodexModule = typeof import('@openai/codex-sdk');
 type CodexInstance = InstanceType<CodexModule['Codex']>;
 type CodexThread = ReturnType<CodexInstance['startThread']>;
+const WHITESPACE_RUN_RE = /\s+/g;
 
 /** Map a Codex command/MCP status to our ToolCallStatus. */
 export function mapCodexStatus(status: 'in_progress' | 'completed' | 'failed'): ToolCallStatus {
@@ -545,7 +546,7 @@ function idFromFilename(path: string): string {
 }
 
 function previewText(text: string): string {
-  const flat = text.replaceAll(/\s+/g, ' ').trim();
+  const flat = text.replaceAll(WHITESPACE_RUN_RE, ' ').trim();
   if (flat.length <= 120) return flat;
   return `${flat.slice(0, 117)}...`;
 }
