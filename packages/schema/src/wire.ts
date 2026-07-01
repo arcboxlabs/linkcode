@@ -109,6 +109,43 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('agent.event'), sessionId: SessionIdSchema, event: AgentEventSchema }),
 
+  // ── Terminals (data plane) ──
+  // Interactive PTYs the host owns; bytes travel as UTF-8 strings (host-side streaming decode keeps
+  // the JSON wire base64-free). `open` is request/reply (clientReqId → replyTo); input/resize/close are
+  // fire-and-forget so keystrokes never pay a round-trip; output/exit broadcast like `agent.event`.
+  z.object({
+    kind: z.literal('terminal.open'),
+    clientReqId: z.string().min(1),
+    opts: z.object({
+      cols: z.number().int().positive(),
+      rows: z.number().int().positive(),
+      cwd: z.string().optional(),
+      shell: z.string().optional(),
+      // Present for agent-owned terminals so the host can reap them when the session stops.
+      sessionId: SessionIdSchema.optional(),
+    }),
+  }),
+  z.object({
+    kind: z.literal('terminal.opened'),
+    replyTo: z.string().min(1),
+    terminalId: z.string().min(1),
+  }),
+  z.object({ kind: z.literal('terminal.input'), terminalId: z.string().min(1), data: z.string() }),
+  z.object({
+    kind: z.literal('terminal.resize'),
+    terminalId: z.string().min(1),
+    cols: z.number().int().positive(),
+    rows: z.number().int().positive(),
+  }),
+  z.object({ kind: z.literal('terminal.close'), terminalId: z.string().min(1) }),
+  z.object({ kind: z.literal('terminal.output'), terminalId: z.string().min(1), data: z.string() }),
+  z.object({
+    kind: z.literal('terminal.exit'),
+    terminalId: z.string().min(1),
+    // null when the shell was terminated by a signal rather than exiting with a code.
+    exitCode: z.number().int().nullable(),
+  }),
+
   // ── Keep-alive ──
   z.object({ kind: z.literal('ping') }),
   z.object({ kind: z.literal('pong') }),
