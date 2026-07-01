@@ -194,6 +194,9 @@ The payload is a discriminated union keyed by `kind` (`session.start` / `session
 `session.list` / `session.listed`, `history.list` / `history.listed`, `agent.event`, and
 so on). Local direct connections and remote tunnels share the identical format, and both
 ends validate with zod at the trust boundary — before sending and after receiving.
+Any change to the payload union bumps `WIRE_PROTOCOL_VERSION`; the version is a validated
+literal, so a stale peer rejects every message — after a bump, restart the daemon and all
+clients together.
 
 ## Key contracts
 

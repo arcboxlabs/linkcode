@@ -17,8 +17,10 @@ When asked to plan, the plan must be fully resolved before implementation begins
 
 ## Tooling
 
+- **The toolchain comes from devenv** (`devenv.nix`: Node, pnpm, Rust, prek hooks). If your shell isn't already inside the environment (direnv), run repo commands as `devenv shell -- pnpm …`. Native dependencies (e.g. `better-sqlite3`) must be allow-listed under `allowBuilds:` in `pnpm-workspace.yaml`, or pnpm skips their build scripts and they fail at require time.
 - **pnpm only**, never `npm` / `npx`. Prefer existing npm scripts (e.g. `pnpm -F @linkcode/webview run lint`) over invoking binaries directly.
 - **Lint = ESLint (`eslint-config-sukka`); format = Biome (its linter is disabled — Biome only formats).** Don't fix lint by hand first; finish the task, then run `pnpm lint:fix` and re-check — most issues auto-fix. `packages/coss-ui` is the one exception (linted by biome, ignored by ESLint).
+  - A new `*.config.ts` at a package root must be added to that package's tsconfig `include` and kept out of eslint's `allowDefaultProject` globs — typescript-eslint's default project hard-caps at 8 files and rejects files matched by both.
 - React Compiler is enabled on the Vite renderers — write code that satisfies its rules (no manual `useMemo`/`useCallback` gymnastics that fight it; keep components pure).
 
 ## Use Existing Abstractions
