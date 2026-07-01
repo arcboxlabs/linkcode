@@ -82,5 +82,5 @@ fn main() {
         }
     }
 
-    mux.kill_all();
+    mux.shutdown();
 }

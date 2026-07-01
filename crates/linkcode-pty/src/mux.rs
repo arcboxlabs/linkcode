@@ -1,9 +1,10 @@
 //! Terminal multiplexer: owns every live PTY and serializes event frames back to the daemon.
 
 use std::collections::HashMap;
-use std::io::{Read, Stdout, Write};
+use std::io::{self, Read, Write};
+use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 use portable_pty::{Child, MasterPty, PtySize};
 use serde_json::json;
@@ -17,20 +18,41 @@ struct Terminal {
     child: Mutex<Box<dyn Child + Send + Sync>>,
 }
 
+/// A frame bound for the daemon, or the sentinel that tells the writer thread to drain and stop.
+enum OutMsg {
+    Frame { type_byte: u8, body: Vec<u8> },
+    Shutdown,
+}
+
 /// Routes control frames to PTYs and PTY output back to the daemon. Shared across the per-terminal
-/// reader threads via `Arc`; the terminal map and stdout are separate locks, so output streaming
-/// never blocks on the map.
+/// reader threads via `Arc`. Every outbound frame is funneled through `out` to the single writer
+/// thread that owns stdout, so a slow or blocked stdout can't head-of-line block one terminal's
+/// output behind another's, and concurrent readers can never interleave (tear) a frame.
 pub struct Mux {
     terminals: Mutex<HashMap<String, Arc<Terminal>>>,
-    stdout: Mutex<Stdout>,
+    out: Sender<OutMsg>,
+    writer: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Mux {
     /// Create a shared multiplexer. Returns `Arc<Self>` because reader threads co-own it.
     pub fn shared() -> Arc<Self> {
+        let (out, rx) = channel::<OutMsg>();
+        let writer = thread::spawn(move || {
+            let mut stdout = io::stdout();
+            while let Ok(msg) = rx.recv() {
+                match msg {
+                    OutMsg::Frame { type_byte, body } => {
+                        let _ = write_frame(&mut stdout, type_byte, &body);
+                    }
+                    OutMsg::Shutdown => break,
+                }
+            }
+        });
         Arc::new(Self {
             terminals: Mutex::new(HashMap::new()),
-            stdout: Mutex::new(std::io::stdout()),
+            out,
+            writer: Mutex::new(Some(writer)),
         })
     }
 
@@ -135,6 +157,16 @@ impl Mux {
         }
     }
 
+    /// Tear every terminal down, then drain and stop the writer thread so buffered output is
+    /// flushed before the process exits. Called once when the daemon closes the control pipe.
+    pub fn shutdown(&self) {
+        self.kill_all();
+        let _ = self.out.send(OutMsg::Shutdown);
+        if let Some(writer) = self.writer.lock().expect("writer mutex poisoned").take() {
+            let _ = writer.join();
+        }
+    }
+
     fn spawn_reader(self: Arc<Self>, terminal_id: String, mut reader: Box<dyn Read + Send>) {
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
@@ -142,7 +174,7 @@ impl Mux {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => match encode_data(&terminal_id, &buf[..n]) {
-                        Ok(body) => self.send(OUTPUT, &body),
+                        Ok(body) => self.send(OUTPUT, body),
                         Err(_) => break,
                     },
                 }
@@ -170,14 +202,14 @@ impl Mux {
             .map(|status| i64::from(status.exit_code()))
     }
 
-    fn send(&self, type_byte: u8, body: &[u8]) {
-        let mut stdout = self.stdout.lock().expect("stdout mutex poisoned");
-        let _ = write_frame(&mut *stdout, type_byte, body);
+    fn send(&self, type_byte: u8, body: Vec<u8>) {
+        // Best effort: once the writer thread has stopped (shutdown), the frame is simply dropped.
+        let _ = self.out.send(OutMsg::Frame { type_byte, body });
     }
 
     fn send_json(&self, type_byte: u8, value: &serde_json::Value) {
         let body = serde_json::to_vec(value).expect("serde_json::Value always serializes");
-        self.send(type_byte, &body);
+        self.send(type_byte, body);
     }
 
     fn terminal(&self, terminal_id: &str) -> Option<Arc<Terminal>> {

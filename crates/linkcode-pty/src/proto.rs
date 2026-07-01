@@ -46,7 +46,8 @@ pub fn read_frame(reader: &mut impl Read) -> io::Result<Option<(u8, Vec<u8>)>> {
     Ok(Some((type_byte[0], body)))
 }
 
-/// Write one frame. The caller holds the stdout lock so multi-write frames stay contiguous.
+/// Write one frame. On stdout only the single writer thread calls this, so its several `write_all`s
+/// stay contiguous.
 pub fn write_frame(writer: &mut impl Write, type_byte: u8, body: &[u8]) -> io::Result<()> {
     let total = 1 + body.len();
     if total > MAX_FRAME_LEN {
