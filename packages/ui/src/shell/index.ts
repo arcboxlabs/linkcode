@@ -1,3 +1,4 @@
+export * from './agent-models';
 export * from './composer';
 export * from './free-panel';
 export * from './session-sidebar';

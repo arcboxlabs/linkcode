@@ -105,6 +105,10 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.cancel(sessionId));
   }
 
+  setModel(sessionId: SessionId, model: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setModel(sessionId, model));
+  }
+
   respondPermission(
     sessionId: SessionId,
     requestId: string,

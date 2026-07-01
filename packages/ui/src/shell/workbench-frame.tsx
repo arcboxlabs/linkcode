@@ -22,6 +22,7 @@ export interface WorkbenchFrameProps {
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
   onDismissError?: () => void;
+  onModelChange?: (model: string) => void;
 }
 
 export function WorkbenchFrame({
@@ -39,6 +40,7 @@ export function WorkbenchFrame({
   onStopTurn,
   onRespondPermission,
   onDismissError,
+  onModelChange,
 }: WorkbenchFrameProps): ReactNode {
   const active = sessions.find((s) => s.sessionId === activeId) ?? null;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -91,6 +93,7 @@ export function WorkbenchFrame({
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
+          onModelChange={onModelChange}
         />
       </main>
     </div>

@@ -5,6 +5,7 @@ import {
   listSessions,
   promptText,
   respondPermission,
+  setModel,
   startSession,
   stopSession,
 } from '@linkcode/sdk';
@@ -87,6 +88,7 @@ function WorkbenchSessionSurface({
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
+  const modelMutation = useMutation(setModel, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.sessions.find((s) => s.sessionId === sessions.activeId) ?? null;
@@ -101,6 +103,12 @@ function WorkbenchSessionSurface({
     if (!sessions.activeId) return;
     onClearError();
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
+  }
+
+  function handleModelChange(model: string): void {
+    if (!sessions.activeId) return;
+    onClearError();
+    void modelMutation.trigger({ sessionId: sessions.activeId, model }).catch(noop);
   }
 
   function handleRespond(requestId: string, optionId: string): void {
@@ -142,6 +150,7 @@ function WorkbenchSessionSurface({
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
       onDismissError={onClearError}
+      onModelChange={handleModelChange}
     />
   );
 }

@@ -68,6 +68,7 @@ function DesktopShell({
   onStopTurn,
   onRespondPermission,
   onDismissError,
+  onModelChange,
 }: WorkbenchShellProps & { systemBridge: SystemBridge }): ReactNode {
   const [shellState, setShellState] = useDesktopShellState();
   const shellRootRef = useRef<HTMLDivElement | null>(null);
@@ -304,6 +305,7 @@ function DesktopShell({
         onSendPrompt={onSendPrompt}
         onStopTurn={onStopTurn}
         onRespondPermission={onRespondPermission}
+        onModelChange={onModelChange}
       />
     </main>
   );

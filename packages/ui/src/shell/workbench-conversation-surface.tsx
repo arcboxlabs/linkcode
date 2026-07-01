@@ -20,6 +20,7 @@ export interface WorkbenchConversationSurfaceProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
+  onModelChange?: (model: string) => void;
 }
 
 export function WorkbenchConversationSurface({
@@ -37,6 +38,7 @@ export function WorkbenchConversationSurface({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onModelChange,
 }: WorkbenchConversationSurfaceProps): ReactNode {
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
@@ -54,11 +56,13 @@ export function WorkbenchConversationSurface({
       </div>
       <Composer
         agentLabel={agentLabel}
+        agentKind={agentKind}
         disabled={disabled}
         isRunning={isRunning}
         currentModeId={conversation.currentModeId}
         onSend={onSendPrompt}
         onStop={onStopTurn}
+        onModelChange={onModelChange}
       />
     </div>
   );
