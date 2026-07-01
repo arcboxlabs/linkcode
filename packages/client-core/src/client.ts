@@ -8,6 +8,8 @@ import type {
   AgentInput,
   AgentKind,
   ContentBlock,
+  GitPullRequestStatus,
+  GitStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -80,6 +82,8 @@ export class LinkCodeClient {
   private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
   private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
   private readonly pendingConfigGets = new Map<string, Pending<ProvidersConfig>>();
+  private readonly pendingGitStatuses = new Map<string, Pending<GitStatus>>();
+  private readonly pendingGitPrStatuses = new Map<string, Pending<GitPullRequestStatus>>();
   private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
   private readonly pendingTerminalOpens = new Map<string, Pending<string>>();
   private readonly terminalOutputSubs = new Map<string, Set<TerminalOutputCb>>();
@@ -138,6 +142,16 @@ export class LinkCodeClient {
       case 'config.get.result': {
         this.pendingConfigGets.get(p.replyTo)?.resolve(p.providers);
         this.pendingConfigGets.delete(p.replyTo);
+        break;
+      }
+      case 'git.status.get.result': {
+        this.pendingGitStatuses.get(p.replyTo)?.resolve(p.status);
+        this.pendingGitStatuses.delete(p.replyTo);
+        break;
+      }
+      case 'git.pr_status.get.result': {
+        this.pendingGitPrStatuses.get(p.replyTo)?.resolve(p.prStatus);
+        this.pendingGitPrStatuses.delete(p.replyTo);
         break;
       }
       case 'request.failed': {
@@ -331,6 +345,24 @@ export class LinkCodeClient {
     }));
   }
 
+  /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitStatus(cwd: string): Promise<GitStatus> {
+    return this.sendCorrelated(this.pendingGitStatuses, (clientReqId) => ({
+      kind: 'git.status.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** Hosting-provider PR state for a directory's current branch. */
+  getGitPullRequestStatus(cwd: string): Promise<GitPullRequestStatus> {
+    return this.sendCorrelated(this.pendingGitPrStatuses, (clientReqId) => ({
+      kind: 'git.pr_status.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
     let set = this.subscribers.get(sessionId);
     if (!set) {
@@ -434,6 +466,8 @@ export class LinkCodeClient {
       this.pendingHistoryLists,
       this.pendingHistoryReads,
       this.pendingConfigGets,
+      this.pendingGitStatuses,
+      this.pendingGitPrStatuses,
       this.pendingAcks,
       this.pendingTerminalOpens,
     ]) {
@@ -451,6 +485,8 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
     if (rejectFrom(this.pendingConfigGets, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitStatuses, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitPrStatuses, replyTo, err)) return;
     if (rejectFrom(this.pendingAcks, replyTo, err)) return;
     rejectFrom(this.pendingTerminalOpens, replyTo, err);
   }

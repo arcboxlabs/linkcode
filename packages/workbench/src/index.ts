@@ -2,6 +2,7 @@ export * from './app/app-providers';
 export * from './app/connection-state';
 export * from './app/workbench-app';
 export * from './app/workbench-providers';
+export * from './git/hooks';
 export * from './runtime/debug';
 export * from './runtime/provider';
 export * from './runtime/tayori';
