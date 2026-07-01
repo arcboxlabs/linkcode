@@ -211,7 +211,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (!opts) throw new Error('claude-code: session not started');
     this.messageId = nextMessageId();
     this.thoughtId = nextMessageId();
-    this.cancelling = false;
     this.emitStatus('running');
     const message: SDKUserMessage = {
       type: 'user',
@@ -227,6 +226,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const queue = new AsyncMessageQueue();
     queue.push(message);
     this.inputQueue = queue;
+    // One-time use: the persistent Query carries the conversation itself from here on, so a later
+    // Query created after a crash must not resume from this same (by then stale) point again.
+    const resume = this.resumeFrom;
+    this.resumeFrom = undefined;
     this.q = query({
       prompt: queue,
       options: {
@@ -234,7 +237,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         model: opts.model,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
-        resume: this.resumeFrom,
+        resume,
         additionalDirectories: opts.additionalDirectories,
       },
     });
@@ -248,12 +251,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     try {
       for await (const msg of q) this.handleMessage(msg);
     } catch (err) {
-      if (!this.cancelling) {
-        this.emitError(err instanceof Error ? err.message : String(err));
-      }
+      if (this.cancelling) this.cancelling = false;
+      else this.emitError(err instanceof Error ? err.message : String(err));
     }
-    this.q = null;
-    this.inputQueue = null;
+    // Guard against clobbering a newer Query: if onPrompt already replaced this.q while this call
+    // was unwinding, only this call's own q/inputQueue should be torn down here.
+    if (this.q === q) {
+      this.q = null;
+      this.inputQueue = null;
+    }
     // The process is gone; finalize anything a mid-flight turn left dangling.
     this.teardown();
     this.emitStatus('idle');
@@ -264,7 +270,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     try {
       await this.q?.interrupt();
     } catch {
-      // Rejects if nothing was in flight — fine, there's nothing to interrupt.
+      // Nothing was in flight, so no result/error will follow to consume the flag — clear it now,
+      // or a later unrelated error would be wrongly swallowed as if it were this cancel's fallout.
+      this.cancelling = false;
     }
     // interrupt() stops the current turn's generation but doesn't guarantee a matching `result`
     // message, so finalize here too; teardown()/emitStatus('idle') are idempotent if one does follow.
@@ -280,9 +288,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   /** Real live model switch via the persistent `Query`'s `setModel()` (streaming-input-mode-only
    * control request) — the single-message + `resume` design this replaced could not do this: the CLI
-   * ignores a changed `model` option once a session is resumed. */
+   * ignores a changed `model` option once a session is resumed. Before the first prompt, the `Query`
+   * doesn't exist yet; fall back to updating `opts.model`, which `onPrompt` reads when it creates it. */
   protected override async onSetModel(model: string): Promise<void> {
-    if (!this.q) throw new Error('claude-code: session not started');
+    if (!this.q) {
+      if (!this.opts) throw new Error('claude-code: session not started');
+      this.opts.model = model;
+      return;
+    }
     await this.q.setModel(model);
   }
 
@@ -389,6 +402,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         totalCostUsd: msg.total_cost_usd,
       });
       this.emitStop(mapClaudeStop(msg.stop_reason));
+    } else if (this.cancelling) {
+      // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real
+      // failure — consume the flag instead of surfacing it as an error.
+      this.cancelling = false;
     } else {
       this.emitError('Claude returned an error', undefined, true);
     }
