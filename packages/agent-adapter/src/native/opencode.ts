@@ -59,8 +59,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
     let started: Awaited<ReturnType<OpencodeModule['createOpencode']>>;
+    // OpenCode routes by provider; inject the configured key under the model's provider id (the
+    // `providerID` half of `providerID/modelID`) so the spawned server authenticates that provider.
+    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
+    const serverOptions =
+      apiKey && providerID
+        ? { config: { provider: { [providerID]: { options: { apiKey } } } } }
+        : undefined;
     try {
-      started = await mod.createOpencode();
+      started = await mod.createOpencode(serverOptions);
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);

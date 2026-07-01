@@ -9,6 +9,7 @@ import type {
   AgentKind,
   ContentBlock,
   PermissionOutcome,
+  ProvidersConfig,
   SessionId,
   SessionInfo,
   StartOptions,
@@ -76,6 +77,7 @@ export class LinkCodeClient {
   private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
   private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
   private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
+  private readonly pendingConfigGets = new Map<string, Pending<ProvidersConfig>>();
   private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
   private readonly pendingTerminalOpens = new Map<string, Pending<string>>();
   private readonly terminalOutputSubs = new Map<string, Set<TerminalOutputCb>>();
@@ -124,6 +126,11 @@ export class LinkCodeClient {
       case 'history.read.result': {
         this.pendingHistoryReads.get(p.replyTo)?.resolve(p.result);
         this.pendingHistoryReads.delete(p.replyTo);
+        break;
+      }
+      case 'config.get.result': {
+        this.pendingConfigGets.get(p.replyTo)?.resolve(p.providers);
+        this.pendingConfigGets.delete(p.replyTo);
         break;
       }
       case 'request.failed': {
@@ -281,6 +288,23 @@ export class LinkCodeClient {
     });
   }
 
+  /** Read the daemon-owned provider config (data plane). */
+  getProviderConfig(): Promise<ProvidersConfig> {
+    return this.sendCorrelated(this.pendingConfigGets, (clientReqId) => ({
+      kind: 'config.get',
+      clientReqId,
+    }));
+  }
+
+  /** Persist the daemon-owned provider config (data plane). */
+  setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
+    return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
+      kind: 'config.set',
+      clientReqId,
+      providers,
+    }));
+  }
+
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
     let set = this.subscribers.get(sessionId);
     if (!set) {
@@ -382,6 +406,7 @@ export class LinkCodeClient {
       this.pendingLists,
       this.pendingHistoryLists,
       this.pendingHistoryReads,
+      this.pendingConfigGets,
       this.pendingAcks,
       this.pendingTerminalOpens,
     ]) {
@@ -397,6 +422,7 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
+    if (rejectFrom(this.pendingConfigGets, replyTo, err)) return;
     if (rejectFrom(this.pendingAcks, replyTo, err)) return;
     rejectFrom(this.pendingTerminalOpens, replyTo, err);
   }

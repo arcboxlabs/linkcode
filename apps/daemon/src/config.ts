@@ -1,19 +1,21 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import type { ProvidersConfig } from '@linkcode/schema';
+import { ProvidersConfigSchema } from '@linkcode/schema';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 
 /**
  * Daemon configuration, loaded from `~/.linkcode/config.json` (optional) with env overrides.
- * Per-provider settings (binary paths / API keys / default model) are passed through to adapters via the
- * session's StartOptions.config; this file only configures the daemon's own listeners.
+ * Per-provider settings (API keys / default model) are typed by `ProvidersConfigSchema` (data plane)
+ * and applied to a session's StartOptions by the Engine; the daemon reads/writes them here.
  */
 export type DaemonListenerConfig = TransportServerOptions;
 
 export interface DaemonConfig {
   listeners: DaemonListenerConfig[];
-  /** Free-form per-provider configuration, surfaced to adapters later. */
-  providers?: Record<string, unknown>;
+  /** Typed per-provider configuration (data plane); undefined when nothing is configured. */
+  providers?: ProvidersConfig;
 }
 
 const DEFAULT_PORT = 4317;
@@ -23,14 +25,17 @@ interface ConfigFile {
   port?: unknown;
   hostname?: unknown;
   listeners?: unknown;
-  providers?: Record<string, unknown>;
+  providers?: unknown;
+}
+
+function configPath(): string {
+  return join(homedir(), '.linkcode', 'config.json');
 }
 
 export function loadConfig(): DaemonConfig {
-  const path = join(homedir(), '.linkcode', 'config.json');
   let file: ConfigFile = {};
   try {
-    file = JSON.parse(readFileSync(path, 'utf8')) as ConfigFile;
+    file = JSON.parse(readFileSync(configPath(), 'utf8')) as ConfigFile;
   } catch {
     // No config file (or unreadable) — fall back to defaults.
   }
@@ -42,12 +47,32 @@ export function loadConfig(): DaemonConfig {
       })
     : [];
 
+  const providers = ProvidersConfigSchema.safeParse(file.providers ?? {});
+
   return {
     listeners: applyEnvOverrides(
       configuredListeners.length > 0 ? configuredListeners : [fallbackListener],
     ),
-    providers: file.providers,
+    providers: providers.success ? providers.data : {},
   };
+}
+
+/**
+ * Persist provider config back to `~/.linkcode/config.json`, preserving the file's other fields
+ * (listeners / port / host). Written `0600` since it may hold API keys.
+ */
+export function saveProviders(providers: ProvidersConfig): void {
+  const path = configPath();
+  let file: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    if (isRecord(parsed)) file = parsed;
+  } catch {
+    // Start from an empty document if the file is missing or malformed.
+  }
+  file.providers = providers;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
 }
 
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {

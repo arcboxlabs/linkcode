@@ -12,6 +12,8 @@ import { createWireMessage } from '@linkcode/transport';
 import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { HistoryService } from './history-service';
+import type { ProviderConfigStore } from './provider-config';
+import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
 import type { PtyBackend } from './pty-backend';
 import { TerminalService } from './terminal-service';
 
@@ -40,6 +42,7 @@ export class Engine {
   constructor(
     private readonly transport: Transport,
     private readonly factory: AdapterFactory = createAdapter,
+    private readonly providerStore: ProviderConfigStore = new InMemoryProviderConfigStore(),
     ptyBackend?: PtyBackend,
   ) {
     this.history = new HistoryService(factory);
@@ -60,10 +63,9 @@ export class Engine {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start': {
+        const opts = applyProviderDefaults(p.opts, this.providerStore.get());
         await this.tryReply(p.clientReqId, () =>
-          this.startLiveSession(p.clientReqId, p.opts.kind, p.opts, (adapter) =>
-            adapter.start(p.opts),
-          ),
+          this.startLiveSession(p.clientReqId, opts.kind, opts, (adapter) => adapter.start(opts)),
         );
         break;
       }
@@ -125,12 +127,32 @@ export class Engine {
         break;
       }
       case 'history.resume': {
-        const startOpts: StartOptions = { ...p.startOpts, kind: p.agentKind };
+        const startOpts = applyProviderDefaults(
+          { ...p.startOpts, kind: p.agentKind },
+          this.providerStore.get(),
+        );
         await this.tryReply(p.clientReqId, () =>
           this.startLiveSession(p.clientReqId, p.agentKind, startOpts, (adapter) =>
             this.history.resume(adapter, p.historyId, startOpts),
           ),
         );
+        break;
+      }
+      case 'config.get': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'config.get.result',
+            replyTo: p.clientReqId,
+            providers: this.providerStore.get(),
+          }),
+        );
+        break;
+      }
+      case 'config.set': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.providerStore.set(p.providers);
+          this.sendSuccess(p.clientReqId);
+        });
         break;
       }
       case 'session.attach':

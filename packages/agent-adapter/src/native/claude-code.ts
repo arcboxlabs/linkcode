@@ -1,3 +1,4 @@
+import { env } from 'node:process';
 import type {
   CanUseTool,
   PermissionResult,
@@ -231,6 +232,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
     this.resumeFrom = undefined;
+    // The SDK has no apiKey option; the key reaches the subprocess via `env`. Because `env` *replaces*
+    // the subprocess environment entirely, spread `env` so PATH/HOME and other inherited vars survive.
+    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
     this.q = query({
       prompt: queue,
       options: {
@@ -240,6 +244,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         canUseTool: this.canUseTool,
         resume,
         additionalDirectories: opts.additionalDirectories,
+        ...(apiKey && { env: { ...env, ANTHROPIC_API_KEY: apiKey } }),
       },
     });
     void this.consume(this.q);

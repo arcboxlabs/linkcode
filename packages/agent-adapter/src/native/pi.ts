@@ -36,6 +36,11 @@ export class PiAdapter extends BaseAgentAdapter {
       }
     }
 
+    // Pi resolves auth through AuthStorage; inject the configured key as a runtime override for the
+    // selected model's provider so it takes precedence over ~/.pi/agent/auth.json and env vars.
+    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    if (apiKey) authStorage.setRuntimeApiKey(model.provider, apiKey);
+
     const { session } = await pi.createAgentSession({
       cwd: opts.cwd,
       authStorage,

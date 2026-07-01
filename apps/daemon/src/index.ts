@@ -3,6 +3,7 @@ import type { TransportServer } from '@linkcode/transport/server';
 import { createTransportServer, Hub } from '@linkcode/transport/server';
 import type { DaemonListenerConfig } from './config';
 import { loadConfig } from './config';
+import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
 
 /**
@@ -15,7 +16,8 @@ import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
 async function main(): Promise<void> {
   const config = loadConfig();
   const hub = new Hub();
-  const engine = new Engine(hub, undefined, new SidecarPtyBackend(resolveSidecarPath()));
+  const store = createProviderConfigStore(config.providers ?? {});
+  const engine = new Engine(hub, undefined, store, new SidecarPtyBackend(resolveSidecarPath()));
   await engine.start();
 
   const servers: TransportServer[] = [];

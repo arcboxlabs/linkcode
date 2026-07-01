@@ -7,6 +7,7 @@ import type {
   AgentInput,
   AgentKind,
   PermissionOutcome,
+  ProvidersConfig,
   SessionId,
   SessionInfo,
   StartOptions,
@@ -116,6 +117,16 @@ export class LinkCodeSdkClient {
     outcome: PermissionOutcome,
   ): RequestResult<{ ok: true }> {
     return toResult(this.raw.respondPermission(sessionId, requestId, outcome));
+  }
+
+  /** Read the daemon-owned provider config (data plane). */
+  getProviderConfig(): RequestResult<ProvidersConfig> {
+    return toResult(this.raw.getProviderConfig());
+  }
+
+  /** Persist the daemon-owned provider config (data plane). */
+  setProviderConfig(providers: ProvidersConfig): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setProviderConfig(providers));
   }
 }
 
