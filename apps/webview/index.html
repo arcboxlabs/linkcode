@@ -1,9 +1,20 @@
 <!doctype html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Link Code · Web</title>
+    <script>
+      // Anti-FOUC: apply the stored theme before the app loads (installTheme re-syncs on mount).
+      try {
+        var s = JSON.parse(localStorage.getItem('linkcode.webview.settings:v1') || '{}');
+        var t = (s.state && s.state.theme) || 'system';
+        var dark =
+          t === 'dark' ||
+          (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -26,12 +26,20 @@ export function AppI18nProvider({
   );
 }
 
-/** Global, app-agnostic providers shared by browser and desktop renderers. */
-export function WorkbenchAppProviders({ children }: React.PropsWithChildren): React.ReactNode {
+/**
+ * Global, app-agnostic providers shared by browser and desktop renderers.
+ * `locale` is a raw override (e.g. from a settings store); unset follows the runtime.
+ */
+export function WorkbenchAppProviders({
+  children,
+  locale,
+}: React.PropsWithChildren<{ locale?: string | null }>): React.ReactNode {
   return (
     <ToastProvider>
       <AnchoredToastProvider>
-        <AppI18nProvider>{children}</AppI18nProvider>
+        <AppI18nProvider locale={locale ? resolveLocale(locale) : undefined}>
+          {children}
+        </AppI18nProvider>
       </AnchoredToastProvider>
     </ToastProvider>
   );

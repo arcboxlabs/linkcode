@@ -4,6 +4,10 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+  }
+
+  :root:is(.dark) {
     color-scheme: dark;
   }
 }

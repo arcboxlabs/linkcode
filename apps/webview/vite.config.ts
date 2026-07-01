@@ -24,7 +24,9 @@ export default defineConfig({
   // Workspace packages are exported as TS source and transpiled on the fly by Vite/esbuild, so no prebundling is needed.
   optimizeDeps: {
     exclude: [
+      '@linkcode/common',
       '@linkcode/i18n',
+      '@linkcode/schema',
       '@linkcode/sdk',
       '@linkcode/transport',
       '@linkcode/ui',
