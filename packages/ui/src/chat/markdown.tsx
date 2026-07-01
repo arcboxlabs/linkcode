@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -121,7 +120,7 @@ function trimTrailingMarkdownNewline(value: string): string {
   return value.endsWith('\n') ? value.slice(0, -1) : value;
 }
 
-function reactNodeText(value: ReactNode): string {
+function reactNodeText(value: React.ReactNode): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value);
@@ -136,7 +135,7 @@ export function Markdown({
 }: {
   children: string;
   className?: string;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <div className={cn('break-words text-[14px] leading-relaxed', className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>

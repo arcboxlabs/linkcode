@@ -3,8 +3,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
+import { nullthrow } from 'foxts/guard';
 import { BrainIcon, ChevronRightIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { createContext, useContext, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import { Shimmer } from './shimmer';
@@ -17,13 +17,14 @@ interface ReasoningContextValue {
 const ReasoningContext = createContext<ReasoningContextValue | null>(null);
 
 function useReasoning(): ReasoningContextValue {
-  const context = useContext(ReasoningContext);
-  if (!context) throw new Error('Reasoning components must be used within Reasoning');
-  return context;
+  return nullthrow(
+    useContext(ReasoningContext),
+    'Reasoning components must be used within Reasoning',
+  );
 }
 
 export type ReasoningProps = Omit<
-  ComponentProps<typeof Collapsible>,
+  React.ComponentProps<typeof Collapsible>,
   'defaultOpen' | 'onOpenChange' | 'open'
 > & {
   isStreaming?: boolean;
@@ -36,7 +37,7 @@ export function Reasoning({
   defaultOpen,
   children,
   ...props
-}: ReasoningProps): ReactNode {
+}: ReasoningProps): React.ReactNode {
   const [manualOpen, setManualOpen] = useState(defaultOpen ?? false);
   const isOpen = isStreaming || manualOpen;
 
@@ -56,7 +57,7 @@ export function Reasoning({
   );
 }
 
-export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type ReasoningTriggerProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   label: string;
   preview?: string;
 };
@@ -67,7 +68,7 @@ export function ReasoningTrigger({
   preview,
   children,
   ...props
-}: ReasoningTriggerProps): ReactNode {
+}: ReasoningTriggerProps): React.ReactNode {
   const { isOpen, isStreaming } = useReasoning();
 
   return (
@@ -94,9 +95,9 @@ export function ReasoningTrigger({
   );
 }
 
-export type ReasoningContentProps = ComponentProps<typeof CollapsibleContent>;
+export type ReasoningContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function ReasoningContent({ className, ...props }: ReasoningContentProps): ReactNode {
+export function ReasoningContent({ className, ...props }: ReasoningContentProps): React.ReactNode {
   return (
     <CollapsibleContent
       className={cn('mt-1 border-l-2 border-border pl-3 text-[13px] italic opacity-90', className)}

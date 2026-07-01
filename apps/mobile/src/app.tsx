@@ -2,7 +2,8 @@ import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { MobileHome } from '@linkcode/ui/native';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useSingleton } from 'foxact/use-singleton';
+import { useMemo } from 'react';
 import { IntlProvider, useTranslations } from 'use-intl';
 import './global.css';
 
@@ -14,7 +15,7 @@ import './global.css';
  * The HeroUI component library (PLAN ✅) builds on NativeWind; its remaining setup is in HEROUI_SETUP.md.
  */
 export default function App() {
-  const [locale] = useState(getRuntimeLocale);
+  const { current: locale } = useSingleton(getRuntimeLocale);
   const messages = useMemo(() => getMessages(locale), [locale]);
 
   return (

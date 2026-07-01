@@ -1,6 +1,5 @@
 import { Button } from 'coss-ui/components/button';
 import { ScrollArea } from 'coss-ui/components/scroll-area';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only suggested action, not yet wired to daemon/client schema.
@@ -13,7 +12,7 @@ export interface ChatSuggestion {
   disabled?: boolean;
 }
 
-export type SuggestionsProps = ComponentProps<typeof ScrollArea> & {
+export type SuggestionsProps = React.ComponentProps<typeof ScrollArea> & {
   suggestions?: readonly ChatSuggestion[];
   onSuggestionSelect?: (suggestion: ChatSuggestion) => void;
 };
@@ -24,7 +23,7 @@ export function Suggestions({
   onSuggestionSelect,
   children,
   ...props
-}: SuggestionsProps): ReactNode {
+}: SuggestionsProps): React.ReactNode {
   return (
     <ScrollArea className={cn('w-full max-w-full', className)} {...props}>
       <div className="flex w-max max-w-full flex-nowrap items-center gap-2 py-1">
@@ -41,7 +40,7 @@ export function Suggestions({
   );
 }
 
-export type SuggestionProps = Omit<ComponentProps<typeof Button>, 'onClick'> & {
+export type SuggestionProps = Omit<React.ComponentProps<typeof Button>, 'onClick'> & {
   suggestion: ChatSuggestion;
   onSuggestionSelect?: (suggestion: ChatSuggestion) => void;
 };
@@ -55,7 +54,7 @@ export function Suggestion({
   size = 'sm',
   variant = 'outline',
   ...props
-}: SuggestionProps): ReactNode {
+}: SuggestionProps): React.ReactNode {
   return (
     <Button
       className={cn('max-w-72 rounded-full px-3', className)}

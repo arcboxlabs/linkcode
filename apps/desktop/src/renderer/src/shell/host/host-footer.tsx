@@ -13,7 +13,6 @@ import {
 import { Separator } from 'coss-ui/components/separator';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { ChevronDownIcon, SettingsIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { useState } from 'react';
 
 const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];
@@ -24,7 +23,7 @@ export function DesktopHostFooter({
 }: {
   systemBridge: SystemBridge;
   pendingPermissionCount: number;
-}): ReactNode {
+}): React.ReactNode {
   const [version, setVersion] = useState('v0.0.0');
   const pendingPermissionLabel =
     pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
@@ -105,7 +104,13 @@ export function DesktopHostFooter({
   );
 }
 
-function HostRow({ label, children }: { label: string; children?: ReactNode }): ReactNode {
+function HostRow({
+  label,
+  children,
+}: {
+  label: string;
+  children?: React.ReactNode;
+}): React.ReactNode {
   return (
     <div className="flex h-8 items-center gap-2">
       <span className="min-w-0 flex-1 truncate">{label}</span>

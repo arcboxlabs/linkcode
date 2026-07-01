@@ -21,6 +21,8 @@ import type {
   ToolCallStatus,
 } from '@linkcode/schema';
 import type { ThreadEvent, ThreadItem, ThreadOptions, Usage } from '@openai/codex-sdk';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -142,7 +144,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       for await (const ev of events) this.handleEvent(ev);
     } catch (err) {
       if (!abort.signal.aborted) {
-        this.emitError(err instanceof Error ? err.message : String(err));
+        this.emitError(extractErrorMessage(err) ?? 'Unknown error');
       }
     }
     // The turn stream ended (normally, by turn.failed/error, or by abort); finalize any dangling tool.
@@ -366,7 +368,7 @@ async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
     if (entry.isDirectory()) pendingDirs.push(collectJsonlFiles(path, depth - 1));
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path);
   }
-  for (const nestedFiles of await Promise.all(pendingDirs)) files.push(...nestedFiles);
+  for (const nestedFiles of await Promise.all(pendingDirs)) appendArrayInPlace(files, nestedFiles);
   return files;
 }
 

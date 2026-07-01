@@ -1,6 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
 import { AtSignIcon, ChevronDownIcon, PlusIcon, ShieldCheckIcon, SparklesIcon } from 'lucide-react';
-import type { KeyboardEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -55,7 +54,7 @@ function computeMenu(value: string, caret: number): MenuState | null {
   let start = caret;
   while (start > 0 && !/\s/.test(value[start - 1])) start--;
   const token = value.slice(start, caret);
-  if (token.startsWith('@')) return { query: token.slice(1), start };
+  if (token[0] === '@') return { query: token.slice(1), start };
   return null;
 }
 
@@ -67,7 +66,7 @@ export function Composer({
   currentModeId,
   onSend,
   onStop,
-}: ComposerProps): ReactNode {
+}: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
@@ -142,7 +141,7 @@ export function Composer({
     pendingCaretRef.current = pos;
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
     // Don't treat IME-composition Enter (CJK candidate confirm) as submit/select.
     if (e.nativeEvent.isComposing || e.key === 'Process') return;
     // An open menu (even with no matches) owns Enter/Tab/Escape/arrows.
@@ -279,7 +278,7 @@ function AutocompleteMenu({
   emptyLabel,
   onSelect,
   onHover,
-}: AutocompleteMenuProps): ReactNode {
+}: AutocompleteMenuProps): React.ReactNode {
   return (
     <div className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
       {entries.length === 0 ? (

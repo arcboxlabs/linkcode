@@ -1,13 +1,12 @@
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import type { RefObject } from 'react';
 import { DESKTOP_CHROME_METRICS } from './metrics';
 
 type ChromeRailInsetProperty = '--lc-chrome-left-local-inset' | '--lc-chrome-right-local-inset';
 
 interface ChromeRailInsetRefs {
-  rootRef: RefObject<HTMLElement | null>;
-  leftRailContentRef: RefObject<HTMLElement | null>;
-  rightRailContentRef: RefObject<HTMLElement | null>;
+  rootRef: React.RefObject<HTMLElement | null>;
+  leftRailContentRef: React.RefObject<HTMLElement | null>;
+  rightRailContentRef: React.RefObject<HTMLElement | null>;
 }
 
 const LEFT_LOCAL_INSET_PROPERTY = '--lc-chrome-left-local-inset';

@@ -1,5 +1,4 @@
 import type { AgentKind } from '@linkcode/schema';
-import type { ReactNode } from 'react';
 import type { ConversationViewModel } from '../chat';
 import { ConversationView } from '../chat';
 import { cn } from '../lib/cn';
@@ -14,7 +13,7 @@ export interface WorkbenchConversationSurfaceProps {
   respondingPermissions: Set<string>;
   disabled?: boolean;
   isRunning: boolean;
-  topContent?: ReactNode;
+  topContent?: React.ReactNode;
   className?: string;
   conversationClassName?: string;
   onSendPrompt: (text: string) => void;
@@ -37,7 +36,7 @@ export function WorkbenchConversationSurface({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
-}: WorkbenchConversationSurfaceProps): ReactNode {
+}: WorkbenchConversationSurfaceProps): React.ReactNode {
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
       {topContent}

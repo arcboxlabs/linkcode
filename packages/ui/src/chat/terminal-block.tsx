@@ -1,8 +1,7 @@
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { Terminal, TerminalHeader, TerminalTitle } from './terminal';
 
-export function TerminalBlock({ terminalId }: { terminalId: string }): ReactNode {
+export function TerminalBlock({ terminalId }: { terminalId: string }): React.ReactNode {
   const t = useTranslations('workbench.tool');
 
   return (

@@ -1,4 +1,3 @@
-import type { Key, ReactNode } from 'react';
 import type { ResolvedDataTableColumn, TableDefinition } from './create-table';
 import type { SortDirection } from './types';
 import type { TableColumnSizing, TableColumnSizingHeader } from './use-table-column-sizing';
@@ -29,7 +28,7 @@ type SizingOverlay<TSizing> = TSizing extends TableColumnSizing
 // ── Core types ──
 
 export interface TableRenderColumn<TData, TSort = undefined, TSizing = undefined> {
-  key: Key;
+  key: React.Key;
   column: ResolvedDataTableColumn<TData>;
   width: number | undefined;
   sort: SortOverlay<TSort>;
@@ -37,13 +36,13 @@ export interface TableRenderColumn<TData, TSort = undefined, TSizing = undefined
 }
 
 export interface TableRenderCell<TData> {
-  key: Key;
+  key: React.Key;
   column: ResolvedDataTableColumn<TData>;
-  node: ReactNode;
+  node: React.ReactNode;
 }
 
 export interface TableRenderRow<TData> {
-  key: Key;
+  key: React.Key;
   data: TData;
   cells: Array<TableRenderCell<TData>>;
 }

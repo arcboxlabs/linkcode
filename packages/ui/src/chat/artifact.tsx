@@ -1,7 +1,6 @@
 import { Button } from 'coss-ui/components/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { XIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only artifact metadata, not yet wired to daemon/client schema.
@@ -13,7 +12,7 @@ export interface ChatArtifact {
   kind?: 'code' | 'document' | 'image' | 'preview' | 'unknown';
 }
 
-export type ArtifactProps = ComponentProps<'div'> & {
+export type ArtifactProps = React.ComponentProps<'div'> & {
   artifact?: ChatArtifact;
   onClose?: () => void;
 };
@@ -24,7 +23,7 @@ export function Artifact({
   onClose,
   children,
   ...props
-}: ArtifactProps): ReactNode {
+}: ArtifactProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -51,9 +50,9 @@ export function Artifact({
   );
 }
 
-export type ArtifactHeaderProps = ComponentProps<'div'>;
+export type ArtifactHeaderProps = React.ComponentProps<'div'>;
 
-export function ArtifactHeader({ className, ...props }: ArtifactHeaderProps): ReactNode {
+export function ArtifactHeader({ className, ...props }: ArtifactHeaderProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -65,27 +64,30 @@ export function ArtifactHeader({ className, ...props }: ArtifactHeaderProps): Re
   );
 }
 
-export type ArtifactTitleProps = ComponentProps<'div'>;
+export type ArtifactTitleProps = React.ComponentProps<'div'>;
 
-export function ArtifactTitle({ className, ...props }: ArtifactTitleProps): ReactNode {
+export function ArtifactTitle({ className, ...props }: ArtifactTitleProps): React.ReactNode {
   return (
     <div className={cn('truncate font-medium text-[13px] text-foreground', className)} {...props} />
   );
 }
 
-export type ArtifactDescriptionProps = ComponentProps<'div'>;
+export type ArtifactDescriptionProps = React.ComponentProps<'div'>;
 
-export function ArtifactDescription({ className, ...props }: ArtifactDescriptionProps): ReactNode {
+export function ArtifactDescription({
+  className,
+  ...props
+}: ArtifactDescriptionProps): React.ReactNode {
   return <div className={cn('truncate text-[12px] text-muted-foreground', className)} {...props} />;
 }
 
-export type ArtifactActionsProps = ComponentProps<'div'>;
+export type ArtifactActionsProps = React.ComponentProps<'div'>;
 
-export function ArtifactActions({ className, ...props }: ArtifactActionsProps): ReactNode {
+export function ArtifactActions({ className, ...props }: ArtifactActionsProps): React.ReactNode {
   return <div className={cn('flex items-center gap-1', className)} {...props} />;
 }
 
-export type ArtifactActionProps = ComponentProps<typeof Button> & {
+export type ArtifactActionProps = React.ComponentProps<typeof Button> & {
   tooltip?: string;
 };
 
@@ -96,7 +98,7 @@ export function ArtifactAction({
   size = 'icon-xs',
   variant = 'ghost',
   ...props
-}: ArtifactActionProps): ReactNode {
+}: ArtifactActionProps): React.ReactNode {
   const button = (
     <Button
       className={cn('size-7', className)}
@@ -119,7 +121,7 @@ export function ArtifactAction({
   );
 }
 
-export type ArtifactCloseProps = ComponentProps<typeof Button>;
+export type ArtifactCloseProps = React.ComponentProps<typeof Button>;
 
 export function ArtifactClose({
   className,
@@ -127,7 +129,7 @@ export function ArtifactClose({
   size = 'icon-xs',
   variant = 'ghost',
   ...props
-}: ArtifactCloseProps): ReactNode {
+}: ArtifactCloseProps): React.ReactNode {
   return (
     <Button
       aria-label="Close artifact"
@@ -142,8 +144,8 @@ export function ArtifactClose({
   );
 }
 
-export type ArtifactContentProps = ComponentProps<'div'>;
+export type ArtifactContentProps = React.ComponentProps<'div'>;
 
-export function ArtifactContent({ className, ...props }: ArtifactContentProps): ReactNode {
+export function ArtifactContent({ className, ...props }: ArtifactContentProps): React.ReactNode {
   return <div className={cn('min-h-0 flex-1 overflow-auto p-3', className)} {...props} />;
 }

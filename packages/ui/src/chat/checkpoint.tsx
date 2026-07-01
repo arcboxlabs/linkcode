@@ -2,7 +2,6 @@ import { Button } from 'coss-ui/components/button';
 import { Separator } from 'coss-ui/components/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { BookmarkIcon, RotateCcwIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only checkpoint metadata, not yet wired to daemon/client schema.
@@ -16,7 +15,7 @@ export interface ChatCheckpoint {
   restorable?: boolean;
 }
 
-export type CheckpointProps = ComponentProps<'div'> & {
+export type CheckpointProps = React.ComponentProps<'div'> & {
   checkpoint?: ChatCheckpoint;
   onRestore?: (checkpoint: ChatCheckpoint) => void;
 };
@@ -27,7 +26,7 @@ export function Checkpoint({
   onRestore,
   children,
   ...props
-}: CheckpointProps): ReactNode {
+}: CheckpointProps): React.ReactNode {
   return (
     <div
       className={cn('my-2 flex items-center gap-2 text-[13px] text-muted-foreground', className)}
@@ -56,13 +55,13 @@ export function Checkpoint({
   );
 }
 
-export type CheckpointIconProps = ComponentProps<typeof BookmarkIcon>;
+export type CheckpointIconProps = React.ComponentProps<typeof BookmarkIcon>;
 
-export function CheckpointIcon({ className, ...props }: CheckpointIconProps): ReactNode {
+export function CheckpointIcon({ className, ...props }: CheckpointIconProps): React.ReactNode {
   return <BookmarkIcon className={cn('size-4 shrink-0', className)} {...props} />;
 }
 
-export type CheckpointTriggerProps = ComponentProps<typeof Button> & {
+export type CheckpointTriggerProps = React.ComponentProps<typeof Button> & {
   tooltip?: string;
 };
 
@@ -73,7 +72,7 @@ export function CheckpointTrigger({
   size = 'icon-xs',
   variant = 'ghost',
   ...props
-}: CheckpointTriggerProps): ReactNode {
+}: CheckpointTriggerProps): React.ReactNode {
   const button = (
     <Button
       className={cn('size-7', className)}

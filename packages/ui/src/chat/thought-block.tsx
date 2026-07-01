@@ -1,5 +1,4 @@
 import type { ContentBlock } from '@linkcode/schema';
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { ContentBlockView } from './content-block-view';
 import { keyedItems, stableContentKey } from './content-keys';
@@ -12,7 +11,7 @@ export function ThoughtBlock({
 }: {
   blocks: ContentBlock[];
   isStreaming?: boolean;
-}): ReactNode {
+}): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const preview = contentPreview(blocks);
 

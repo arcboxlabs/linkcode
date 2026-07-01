@@ -13,7 +13,6 @@ import { TitleStrip, WorkbenchFrame } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useData, useMutation } from './tayori';
@@ -32,7 +31,7 @@ export interface WorkbenchShellProps extends Omit<WorkbenchFrameProps, 'header'>
   header: WorkbenchShellHeader;
 }
 
-export type WorkbenchShellComponent = (props: WorkbenchShellProps) => ReactNode;
+export type WorkbenchShellComponent = (props: WorkbenchShellProps) => React.ReactNode;
 
 /**
  * The workbench feature surface: session inbox + conversation stream + composer.
@@ -44,10 +43,10 @@ export type WorkbenchShellComponent = (props: WorkbenchShellProps) => ReactNode;
  */
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
-}: WorkbenchProps): ReactNode {
+}: WorkbenchProps): React.ReactNode {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
-    setErrorMessage(extractErrorMessage(err) ?? String(err));
+    setErrorMessage(extractErrorMessage(err));
   }
 
   const sessions = useWorkbenchSessions(handleError);
@@ -82,7 +81,7 @@ function WorkbenchSessionSurface({
   ShellComponent,
   onClearError,
   onError,
-}: WorkbenchSessionSurfaceProps): ReactNode {
+}: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
@@ -146,11 +145,11 @@ function WorkbenchSessionSurface({
   );
 }
 
-function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): ReactNode {
+function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
   return <WorkbenchFrame {...props} header={<DefaultTitleStrip header={header} />} />;
 }
 
-function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): ReactNode {
+function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): React.ReactNode {
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 

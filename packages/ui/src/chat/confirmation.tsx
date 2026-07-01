@@ -1,11 +1,10 @@
 import { Button } from 'coss-ui/components/button';
 import { ShieldIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
-export type ConfirmationProps = ComponentProps<'div'>;
+export type ConfirmationProps = React.ComponentProps<'div'>;
 
-export function Confirmation({ className, ...props }: ConfirmationProps): ReactNode {
+export function Confirmation({ className, ...props }: ConfirmationProps): React.ReactNode {
   return (
     <div
       className={cn('my-1 rounded-xl border border-warning/40 bg-warning/5 p-3', className)}
@@ -14,7 +13,7 @@ export function Confirmation({ className, ...props }: ConfirmationProps): ReactN
   );
 }
 
-export type ConfirmationTitleProps = ComponentProps<'div'> & {
+export type ConfirmationTitleProps = React.ComponentProps<'div'> & {
   title: string;
   subject?: string;
 };
@@ -25,7 +24,7 @@ export function ConfirmationTitle({
   subject,
   children,
   ...props
-}: ConfirmationTitleProps): ReactNode {
+}: ConfirmationTitleProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -47,27 +46,30 @@ export function ConfirmationTitle({
   );
 }
 
-export type ConfirmationDescriptionProps = ComponentProps<'div'>;
+export type ConfirmationDescriptionProps = React.ComponentProps<'div'>;
 
 export function ConfirmationDescription({
   className,
   ...props
-}: ConfirmationDescriptionProps): ReactNode {
+}: ConfirmationDescriptionProps): React.ReactNode {
   return <div className={cn('text-[13px] text-muted-foreground', className)} {...props} />;
 }
 
-export type ConfirmationActionsProps = ComponentProps<'div'>;
+export type ConfirmationActionsProps = React.ComponentProps<'div'>;
 
-export function ConfirmationActions({ className, ...props }: ConfirmationActionsProps): ReactNode {
+export function ConfirmationActions({
+  className,
+  ...props
+}: ConfirmationActionsProps): React.ReactNode {
   return <div className={cn('flex flex-wrap gap-2', className)} {...props} />;
 }
 
-export type ConfirmationActionProps = ComponentProps<typeof Button>;
+export type ConfirmationActionProps = React.ComponentProps<typeof Button>;
 
 export function ConfirmationAction({
   size = 'sm',
   type = 'button',
   ...props
-}: ConfirmationActionProps): ReactNode {
+}: ConfirmationActionProps): React.ReactNode {
   return <Button size={size} type={type} {...props} />;
 }

@@ -1,13 +1,12 @@
 import { Button } from 'coss-ui/components/button';
 import { ArrowDownIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { useCallback } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import { cn } from '../lib/cn';
 
-export type ConversationProps = ComponentProps<typeof StickToBottom>;
+export type ConversationProps = React.ComponentProps<typeof StickToBottom>;
 
-export function Conversation({ className, ...props }: ConversationProps): ReactNode {
+export function Conversation({ className, ...props }: ConversationProps): React.ReactNode {
   return (
     <StickToBottom
       className={cn('relative h-full overflow-hidden', className)}
@@ -19,9 +18,12 @@ export function Conversation({ className, ...props }: ConversationProps): ReactN
   );
 }
 
-export type ConversationContentProps = ComponentProps<typeof StickToBottom.Content>;
+export type ConversationContentProps = React.ComponentProps<typeof StickToBottom.Content>;
 
-export function ConversationContent({ className, ...props }: ConversationContentProps): ReactNode {
+export function ConversationContent({
+  className,
+  ...props
+}: ConversationContentProps): React.ReactNode {
   return (
     <StickToBottom.Content
       className={cn('mx-auto flex max-w-3xl flex-col gap-6 px-7 py-6', className)}
@@ -30,10 +32,10 @@ export function ConversationContent({ className, ...props }: ConversationContent
   );
 }
 
-export type ConversationEmptyStateProps = ComponentProps<'div'> & {
+export type ConversationEmptyStateProps = React.ComponentProps<'div'> & {
   title?: string;
   description?: string;
-  icon?: ReactNode;
+  icon?: React.ReactNode;
 };
 
 export function ConversationEmptyState({
@@ -43,7 +45,7 @@ export function ConversationEmptyState({
   icon,
   children,
   ...props
-}: ConversationEmptyStateProps): ReactNode {
+}: ConversationEmptyStateProps): React.ReactNode {
   return (
     <div
       className={cn('flex h-full items-center justify-center p-8 text-center', className)}
@@ -62,12 +64,12 @@ export function ConversationEmptyState({
   );
 }
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
+export type ConversationScrollButtonProps = React.ComponentProps<typeof Button>;
 
 export function ConversationScrollButton({
   className,
   ...props
-}: ConversationScrollButtonProps): ReactNode {
+}: ConversationScrollButtonProps): React.ReactNode {
   const { isAtBottom, scrollToBottom } = useStickToBottomContext();
   const handleScroll = useCallback(() => {
     scrollToBottom();

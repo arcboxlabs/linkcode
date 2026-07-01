@@ -7,6 +7,7 @@ import type {
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { BaseAgentAdapter } from '../base';
 import { contentToText, toolKindFromName } from '../util';
 
@@ -61,9 +62,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     try {
       started = await mod.createOpencode();
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);
-      throw err instanceof Error ? err : new Error(detail);
+      throw new Error(detail, { cause: err });
     }
     this.client = started.client;
     this.closeServer = () => started.server.close();

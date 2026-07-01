@@ -1,8 +1,7 @@
 import { TitleStrip, WorkbenchFrame } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
-import type { ReactNode } from 'react';
 
-export function WebWorkbenchShell({ header, ...props }: WorkbenchShellProps): ReactNode {
+export function WebWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
   return (
     <WorkbenchFrame
       {...props}

@@ -1,5 +1,4 @@
 import type { ToolCall } from '@linkcode/schema';
-import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ContentBlockView } from './content-block-view';
@@ -8,7 +7,7 @@ import { DiffBlock } from './diff-block';
 import { TerminalBlock } from './terminal-block';
 import { Tool, ToolContent, ToolHeader, ToolJson, ToolSection } from './tool';
 
-export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): ReactNode {
+export function ToolCallItem({ toolCall }: { toolCall: ToolCall }): React.ReactNode {
   const t = useTranslations('workbench.tool');
   const [open, setOpen] = useState(false);
 

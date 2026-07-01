@@ -29,7 +29,7 @@ function createWindow(): BrowserWindow {
     icon,
     title: APP_NAME,
     titleBarStyle: 'hidden',
-    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 16, y: 16 } } : null),
+    ...(process.platform === 'darwin' && { trafficLightPosition: { x: 16, y: 16 } }),
     ...desktopBackdropOptions(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

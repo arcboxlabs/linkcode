@@ -6,7 +6,6 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { CheckIcon, CopyIcon, FileIcon, GitCommitIcon, MinusIcon, PlusIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { useCopyButton } from './use-copy-button';
 
@@ -30,7 +29,7 @@ export interface ChatCommitFile {
   deletions?: number;
 }
 
-export type CommitProps = ComponentProps<typeof Collapsible> & {
+export type CommitProps = React.ComponentProps<typeof Collapsible> & {
   commit: ChatCommit;
 };
 
@@ -40,7 +39,7 @@ export function Commit({
   defaultOpen = false,
   children,
   ...props
-}: CommitProps): ReactNode {
+}: CommitProps): React.ReactNode {
   return (
     <Collapsible
       className={cn(
@@ -62,7 +61,7 @@ export function Commit({
   );
 }
 
-export type CommitHeaderProps = ComponentProps<'div'> & {
+export type CommitHeaderProps = React.ComponentProps<'div'> & {
   commit: ChatCommit;
 };
 
@@ -71,7 +70,7 @@ export function CommitHeader({
   commit,
   children,
   ...props
-}: CommitHeaderProps): ReactNode {
+}: CommitHeaderProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -102,11 +101,11 @@ export function CommitHeader({
   );
 }
 
-export type CommitAvatarProps = ComponentProps<'span'> & {
+export type CommitAvatarProps = React.ComponentProps<'span'> & {
   commit: ChatCommit;
 };
 
-export function CommitAvatar({ className, commit, ...props }: CommitAvatarProps): ReactNode {
+export function CommitAvatar({ className, commit, ...props }: CommitAvatarProps): React.ReactNode {
   return (
     <span
       className={cn(
@@ -120,11 +119,11 @@ export function CommitAvatar({ className, commit, ...props }: CommitAvatarProps)
   );
 }
 
-export type CommitHashProps = ComponentProps<'span'> & {
+export type CommitHashProps = React.ComponentProps<'span'> & {
   hash: string;
 };
 
-export function CommitHash({ className, hash, ...props }: CommitHashProps): ReactNode {
+export function CommitHash({ className, hash, ...props }: CommitHashProps): React.ReactNode {
   return (
     <span className={cn('inline-flex items-center gap-1 font-mono', className)} {...props}>
       <GitCommitIcon className="size-3" />
@@ -133,7 +132,7 @@ export function CommitHash({ className, hash, ...props }: CommitHashProps): Reac
   );
 }
 
-export type CommitCopyButtonProps = ComponentProps<typeof Button> & {
+export type CommitCopyButtonProps = React.ComponentProps<typeof Button> & {
   hash: string;
   timeout?: number;
 };
@@ -144,7 +143,7 @@ export function CommitCopyButton({
   timeout = 1600,
   children,
   ...props
-}: CommitCopyButtonProps): ReactNode {
+}: CommitCopyButtonProps): React.ReactNode {
   const { copied, copyValue } = useCopyButton(hash, timeout);
 
   return (
@@ -166,17 +165,22 @@ export function CommitCopyButton({
   );
 }
 
-export type CommitContentProps = ComponentProps<typeof CollapsibleContent>;
+export type CommitContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function CommitContent({ className, ...props }: CommitContentProps): ReactNode {
+export function CommitContent({ className, ...props }: CommitContentProps): React.ReactNode {
   return <CollapsibleContent className={cn('border-t border-border p-2', className)} {...props} />;
 }
 
-export type CommitFilesProps = ComponentProps<'div'> & {
+export type CommitFilesProps = React.ComponentProps<'div'> & {
   files: readonly ChatCommitFile[];
 };
 
-export function CommitFiles({ className, files, children, ...props }: CommitFilesProps): ReactNode {
+export function CommitFiles({
+  className,
+  files,
+  children,
+  ...props
+}: CommitFilesProps): React.ReactNode {
   return (
     <div className={cn('space-y-1', className)} {...props}>
       {children ?? files.map((file) => <CommitFile key={file.id} file={file} />)}
@@ -184,11 +188,16 @@ export function CommitFiles({ className, files, children, ...props }: CommitFile
   );
 }
 
-export type CommitFileProps = ComponentProps<'div'> & {
+export type CommitFileProps = React.ComponentProps<'div'> & {
   file: ChatCommitFile;
 };
 
-export function CommitFile({ className, file, children, ...props }: CommitFileProps): ReactNode {
+export function CommitFile({
+  className,
+  file,
+  children,
+  ...props
+}: CommitFileProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -209,7 +218,7 @@ export function CommitFile({ className, file, children, ...props }: CommitFilePr
   );
 }
 
-export type CommitFileStatusProps = ComponentProps<typeof Badge> & {
+export type CommitFileStatusProps = React.ComponentProps<typeof Badge> & {
   status: ChatCommitFile['status'];
 };
 
@@ -218,7 +227,7 @@ export function CommitFileStatus({
   status,
   children,
   ...props
-}: CommitFileStatusProps): ReactNode {
+}: CommitFileStatusProps): React.ReactNode {
   return (
     <Badge
       className={cn('font-mono', className)}
@@ -231,7 +240,7 @@ export function CommitFileStatus({
   );
 }
 
-export type CommitFileChangesProps = ComponentProps<'div'> & {
+export type CommitFileChangesProps = React.ComponentProps<'div'> & {
   additions?: number;
   deletions?: number;
 };
@@ -241,7 +250,7 @@ export function CommitFileChanges({
   additions = 0,
   deletions = 0,
   ...props
-}: CommitFileChangesProps): ReactNode {
+}: CommitFileChangesProps): React.ReactNode {
   if (additions === 0 && deletions === 0) return null;
 
   return (
@@ -280,7 +289,7 @@ function commitStatusLabel(status: ChatCommitFile['status']): string {
 
 function commitStatusVariant(
   status: ChatCommitFile['status'],
-): ComponentProps<typeof Badge>['variant'] {
+): React.ComponentProps<typeof Badge>['variant'] {
   switch (status) {
     case 'added':
       return 'success';

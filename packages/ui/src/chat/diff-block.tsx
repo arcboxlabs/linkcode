@@ -1,6 +1,5 @@
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { FileTextIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 interface DiffRow {
@@ -66,7 +65,7 @@ export function DiffBlock({
   path: string;
   oldText?: string;
   newText: string;
-}): ReactNode {
+}): React.ReactNode {
   const rows = diffLines(oldText ?? '', newText);
   const additions = rows.filter((row) => row.type === 'add').length;
   const deletions = rows.filter((row) => row.type === 'del').length;

@@ -7,7 +7,6 @@ import type { PanelControl, PanelWindowType } from '@linkcode/ui';
 import { cn, FreePanel, PanelControlButton, PanelStubContent, PanelTabStrip } from '@linkcode/ui';
 import { Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import type { CSSProperties, ReactNode } from 'react';
 import type { ChromeSurface } from './panel-layout';
 
 type ChromeMotionAxis = 'x' | 'y';
@@ -41,13 +40,13 @@ export function PanelRegion({
   maximized: boolean;
   chromeVisible: boolean;
   chromeSurface: ChromeSurface;
-  contentStyle?: CSSProperties;
+  contentStyle?: React.CSSProperties;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
   onToggleMax: () => void;
   onClose: () => void;
-}): ReactNode {
+}): React.ReactNode {
   const activeType = panel.tabs.find((tab) => tab.id === panel.activeTabId)?.type ?? 'terminal';
   const chromePlacement = getPanelChromePlacement(side, chromeSurface);
   const content = (
@@ -137,8 +136,8 @@ function PanelContextualChromePortal({
   motionAxis: ChromeMotionAxis;
   className?: string;
   visible: boolean;
-  children: ReactNode;
-}): ReactNode {
+  children: React.ReactNode;
+}): React.ReactNode {
   const reducedMotion = useReducedMotion() ?? false;
   const hiddenMotion = getPanelChromeHiddenMotion(motionAxis);
   const visibleMotion = getPanelChromeVisibleMotion(motionAxis);
@@ -181,7 +180,7 @@ function PanelContextualTabs({
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <PanelTabStrip
       tabs={panel.tabs}
@@ -201,7 +200,7 @@ function PanelContextualControls({
 }: {
   maximized: boolean;
   onToggleMax: () => void;
-}): ReactNode {
+}): React.ReactNode {
   const controls: PanelControl[] = [
     {
       id: 'max',

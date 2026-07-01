@@ -10,6 +10,7 @@ import type {
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { HistoryService } from './history-service';
 
 interface Session {
@@ -43,9 +44,8 @@ export class Engine {
   async start(): Promise<void> {
     await this.transport.connect();
     this.transport.onMessage((msg) => {
-      this.handle(msg).catch(() => {
-        // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
-      });
+      // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
+      this.handle(msg).catch(noop);
     });
   }
 
@@ -197,7 +197,7 @@ export class Engine {
   }
 
   private sendFailure(replyTo: string, err: unknown): void {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = extractErrorMessage(err) ?? 'Unknown error';
     this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
   }
 

@@ -1,6 +1,5 @@
 import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { ContentBlockView } from './content-block-view';
 import { keyedItems, stableContentKey } from './content-keys';
@@ -40,7 +39,7 @@ export function ConversationView({
   respondingPermissions,
   pendingPermissions,
   onRespondPermission,
-}: ConversationViewProps): ReactNode {
+}: ConversationViewProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const tk = useTranslations('workbench.agentKind');
 

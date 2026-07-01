@@ -2,7 +2,6 @@ import { LinkCodeProvider } from '@linkcode/client-core';
 import type { Transport } from '@linkcode/transport';
 import { Button } from 'coss-ui/components/button';
 import type * as React from 'react';
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { DebugProvider } from './debug';
 import {
@@ -23,7 +22,7 @@ export interface WorkbenchProvidersProps extends React.PropsWithChildren {
    * `children` entirely (this is the connection gate). Defaults to the built-in
    * `ConnectionState` screen.
    */
-  fallback?: ReactNode;
+  fallback?: React.ReactNode;
 }
 
 /**
@@ -40,7 +39,7 @@ export function WorkbenchProviders({
   daemonUrl,
   children,
   fallback,
-}: WorkbenchProvidersProps): ReactNode {
+}: WorkbenchProvidersProps): React.ReactNode {
   return (
     <DebugProvider>
       <WorkbenchRuntimeProvider
@@ -53,12 +52,12 @@ export function WorkbenchProviders({
   );
 }
 
-function WorkbenchLinkCodeProvider({ children }: React.PropsWithChildren): ReactNode {
+function WorkbenchLinkCodeProvider({ children }: React.PropsWithChildren): React.ReactNode {
   const client = useWorkbenchSdkClient();
   return <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>;
 }
 
-export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): ReactNode {
+export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): React.ReactNode {
   const status = useWorkbenchRuntimeStatus();
   const retry = useWorkbenchRuntimeRetry();
   const t = useTranslations('workbench.connection');

@@ -1,5 +1,4 @@
 import { motion } from 'motion/react';
-import type { CSSProperties, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 export function Shimmer({
@@ -7,10 +6,10 @@ export function Shimmer({
   className,
   duration = 1.6,
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
   className?: string;
   duration?: number;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <motion.span
       animate={{ backgroundPosition: '0% center' }}
@@ -24,7 +23,7 @@ export function Shimmer({
           backgroundImage:
             'linear-gradient(90deg, transparent 35%, var(--color-background), transparent 65%), linear-gradient(var(--color-muted-foreground), var(--color-muted-foreground))',
           backgroundRepeat: 'no-repeat',
-        } satisfies CSSProperties
+        } satisfies React.CSSProperties
       }
       transition={{ duration, ease: 'linear', repeat: Number.POSITIVE_INFINITY }}
     >

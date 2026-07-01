@@ -9,8 +9,8 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/compon
 import { Button } from 'coss-ui/components/button';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useSingleton } from 'foxact/use-singleton';
 import { XIcon } from 'lucide-react';
-import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useRef, useState } from 'react';
 import { DesktopChrome } from './chrome/chrome';
 import type { DesktopChromeMetricsStyle } from './chrome/metrics';
@@ -39,7 +39,7 @@ import { useDesktopShellState } from './state/local/storage';
 
 type DesktopPlatform = 'darwin' | 'win32' | 'other';
 
-type DesktopShellStyle = CSSProperties &
+type DesktopShellStyle = React.CSSProperties &
   DesktopChromeMetricsStyle & {
     '--lc-sidebar-w': string;
     '--lc-right-w': string;
@@ -48,7 +48,7 @@ type DesktopShellStyle = CSSProperties &
 
 type DesktopShellPaneCssProperty = '--lc-sidebar-w' | '--lc-right-w' | '--lc-bottom-h';
 
-export function DesktopWorkbenchShell({ header, ...props }: WorkbenchShellProps): ReactNode {
+export function DesktopWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
   return <DesktopShell systemBridge={systemBridge} header={header} {...props} />;
 }
 
@@ -68,10 +68,12 @@ function DesktopShell({
   onStopTurn,
   onRespondPermission,
   onDismissError,
-}: WorkbenchShellProps & { systemBridge: SystemBridge }): ReactNode {
+}: WorkbenchShellProps & { systemBridge: SystemBridge }): React.ReactNode {
   const [shellState, setShellState] = useDesktopShellState();
   const shellRootRef = useRef<HTMLDivElement | null>(null);
-  const [shellStyle] = useState<DesktopShellStyle>(() => createDesktopShellStyle(shellState));
+  const { current: shellStyle } = useSingleton<DesktopShellStyle>(() =>
+    createDesktopShellStyle(shellState),
+  );
   const [desktopPlatform, setDesktopPlatform] = useState<DesktopPlatform>(() =>
     initialDesktopPlatform(),
   );
@@ -315,7 +317,7 @@ function DesktopShell({
   function renderPanel(
     side: PanelSide,
     options: { maximized: boolean; chromeVisible: boolean },
-  ): ReactNode {
+  ): React.ReactNode {
     const panel = side === 'right' ? rightPanel : bottomPanel;
     return (
       <PanelRegion
@@ -337,6 +339,19 @@ function DesktopShell({
       />
     );
   }
+
+  const workspacePanels = {
+    bottom: renderPanel('bottom', {
+      maximized: expandedPanel === 'bottom',
+      chromeVisible: bottomPaneVisible,
+    }),
+    bottomExpanded: renderPanel('bottom', { maximized: true, chromeVisible: false }),
+    right: renderPanel('right', {
+      maximized: expandedPanel === 'right',
+      chromeVisible: rightPaneVisible,
+    }),
+    rightExpanded: renderPanel('right', { maximized: true, chromeVisible: false }),
+  };
 
   return (
     <div
@@ -404,7 +419,7 @@ function DesktopShell({
           <Allotment.Pane minSize={workspaceMinSize} priority={LayoutPriority.High}>
             <DesktopWorkspace
               main={main}
-              renderPanel={renderPanel}
+              panels={workspacePanels}
               expandedPanel={expandedPanel}
               rightPanelOpen={rightPanel.open}
               bottomPanelOpen={bottomPanel.open}
@@ -436,7 +451,7 @@ function DesktopErrorBanner({
 }: {
   errorMessage?: string | null;
   onDismissError?: () => void;
-}): ReactNode {
+}): React.ReactNode {
   if (!errorMessage) return null;
 
   return (

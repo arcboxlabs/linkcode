@@ -13,16 +13,15 @@ import {
   CircleXIcon,
   PencilIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
-export type ToolProps = ComponentProps<typeof Collapsible>;
+export type ToolProps = React.ComponentProps<typeof Collapsible>;
 
-export function Tool({ className, ...props }: ToolProps): ReactNode {
+export function Tool({ className, ...props }: ToolProps): React.ReactNode {
   return <Collapsible className={cn('group w-full', className)} {...props} />;
 }
 
-export type ToolHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   title: string;
   badge?: string;
   status: ToolCall['status'];
@@ -40,7 +39,7 @@ export function ToolHeader({
   hasBody = false,
   open = false,
   ...props
-}: ToolHeaderProps): ReactNode {
+}: ToolHeaderProps): React.ReactNode {
   return (
     <CollapsibleTrigger
       className={cn(
@@ -71,7 +70,7 @@ export function ToolStatusIcon({
 }: {
   status: ToolCall['status'];
   kind: ToolCall['kind'];
-}): ReactNode {
+}): React.ReactNode {
   switch (status) {
     case 'pending':
       return <CircleIcon className="size-4 text-muted-foreground/60" />;
@@ -90,9 +89,9 @@ export function ToolStatusIcon({
   }
 }
 
-export type ToolContentProps = ComponentProps<typeof CollapsibleContent>;
+export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function ToolContent({ className, ...props }: ToolContentProps): ReactNode {
+export function ToolContent({ className, ...props }: ToolContentProps): React.ReactNode {
   return (
     <CollapsibleContent
       className={cn('mt-1 ml-1 space-y-2 border-l-2 border-border pl-3', className)}
@@ -101,11 +100,16 @@ export function ToolContent({ className, ...props }: ToolContentProps): ReactNod
   );
 }
 
-export type ToolSectionProps = ComponentProps<'div'> & {
+export type ToolSectionProps = React.ComponentProps<'div'> & {
   label?: string;
 };
 
-export function ToolSection({ className, label, children, ...props }: ToolSectionProps): ReactNode {
+export function ToolSection({
+  className,
+  label,
+  children,
+  ...props
+}: ToolSectionProps): React.ReactNode {
   return (
     <div className={className} {...props}>
       {label ? (
@@ -118,7 +122,7 @@ export function ToolSection({ className, label, children, ...props }: ToolSectio
   );
 }
 
-export function ToolJson({ value }: { value: unknown }): ReactNode {
+export function ToolJson({ value }: { value: unknown }): React.ReactNode {
   return (
     <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[12px]">
       {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}

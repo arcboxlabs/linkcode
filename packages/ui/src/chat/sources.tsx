@@ -5,7 +5,6 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { BookOpenIcon, ChevronRightIcon, ExternalLinkIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only source metadata, not yet wired to daemon/client schema.
@@ -16,10 +15,10 @@ export interface ChatSource {
   url?: string;
   label?: string;
   description?: string;
-  icon?: ReactNode;
+  icon?: React.ReactNode;
 }
 
-export type SourcesProps = ComponentProps<typeof Collapsible> & {
+export type SourcesProps = React.ComponentProps<typeof Collapsible> & {
   sources?: readonly ChatSource[];
   title?: string;
 };
@@ -31,7 +30,7 @@ export function Sources({
   title,
   children,
   ...props
-}: SourcesProps): ReactNode {
+}: SourcesProps): React.ReactNode {
   return (
     <Collapsible
       className={cn('my-1 w-full text-[13px] text-muted-foreground', className)}
@@ -52,7 +51,7 @@ export function Sources({
   );
 }
 
-export type SourcesTriggerProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type SourcesTriggerProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   count: number;
   title?: string;
 };
@@ -63,7 +62,7 @@ export function SourcesTrigger({
   title,
   children,
   ...props
-}: SourcesTriggerProps): ReactNode {
+}: SourcesTriggerProps): React.ReactNode {
   return (
     <CollapsibleTrigger
       className={cn(
@@ -86,9 +85,9 @@ export function SourcesTrigger({
   );
 }
 
-export type SourcesContentProps = ComponentProps<typeof CollapsibleContent>;
+export type SourcesContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function SourcesContent({ className, ...props }: SourcesContentProps): ReactNode {
+export function SourcesContent({ className, ...props }: SourcesContentProps): React.ReactNode {
   return (
     <CollapsibleContent
       className={cn('mt-1 flex max-w-full flex-col gap-1 border-l-2 border-border pl-3', className)}
@@ -97,11 +96,11 @@ export function SourcesContent({ className, ...props }: SourcesContentProps): Re
   );
 }
 
-export type SourceProps = ComponentProps<'div'> & {
+export type SourceProps = React.ComponentProps<'div'> & {
   source: ChatSource;
 };
 
-export function Source({ className, source, ...props }: SourceProps): ReactNode {
+export function Source({ className, source, ...props }: SourceProps): React.ReactNode {
   const content = (
     <>
       <span className="mt-0.5 shrink-0">

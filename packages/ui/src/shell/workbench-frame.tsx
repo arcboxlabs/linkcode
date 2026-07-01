@@ -2,7 +2,6 @@ import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
 import { XIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import type { ConversationViewModel } from '../chat';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
 import { WorkbenchConversationSurface } from './workbench-conversation-surface';
@@ -13,7 +12,7 @@ export interface WorkbenchFrameProps {
   conversation: ConversationViewModel;
   answeredPermissions: Set<string>;
   respondingPermissions: Set<string>;
-  header?: ReactNode;
+  header?: React.ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
@@ -39,7 +38,7 @@ export function WorkbenchFrame({
   onStopTurn,
   onRespondPermission,
   onDismissError,
-}: WorkbenchFrameProps): ReactNode {
+}: WorkbenchFrameProps): React.ReactNode {
   const active = sessions.find((s) => s.sessionId === activeId) ?? null;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';

@@ -4,7 +4,6 @@ import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import { subDays } from 'date-fns/subDays';
 import { BotIcon, ClockIcon, FilePlus2Icon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
@@ -13,7 +12,7 @@ export interface SessionSidebarProps {
   sessions: SessionInfo[];
   activeId: SessionId | null;
   topInsetClassName?: string;
-  footer?: ReactNode;
+  footer?: React.ReactNode;
   className?: string;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
@@ -40,7 +39,7 @@ export function SessionSidebar({
   onSelect,
   onStop,
   onCreate,
-}: SessionSidebarProps): ReactNode {
+}: SessionSidebarProps): React.ReactNode {
   const currentDayStart = useCurrentLocalDayStart();
   const groups = useMemo(
     () => groupSessions(sessions, currentDayStart),
@@ -88,7 +87,7 @@ export function SessionSidebar({
   );
 }
 
-function NewTaskMenu({ onCreate }: { onCreate: (kind: AgentKind) => void }): ReactNode {
+function NewTaskMenu({ onCreate }: { onCreate: (kind: AgentKind) => void }): React.ReactNode {
   const [open, setOpen] = useState(false);
 
   return (
@@ -131,12 +130,12 @@ function SidebarMenuButton({
   disabled,
   onClick,
 }: {
-  icon: ReactNode;
+  icon: React.ReactNode;
   label: string;
   shortcut?: string;
   disabled?: boolean;
   onClick?: () => void;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <button
       type="button"
@@ -154,10 +153,10 @@ function SidebarMenuButtonContent({
   label,
   shortcut,
 }: {
-  icon: ReactNode;
+  icon: React.ReactNode;
   label: string;
   shortcut?: string;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <>
       <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>
@@ -177,7 +176,7 @@ function SessionGroup({
   activeId: SessionId | null;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <section>
       <div className="flex h-6 items-center gap-[var(--lc-sidebar-gap,0.5rem)] px-[var(--lc-sidebar-edge,0.5rem)] text-muted-foreground text-xs">
@@ -209,7 +208,7 @@ export function CompactSessionRow({
   active: boolean;
   onSelect: () => void;
   onStop: () => void;
-}): ReactNode {
+}): React.ReactNode {
   const repo = repositoryLabel(session.cwd);
   const agent = AGENT_LABELS[session.kind];
   const title = `${agent} in ${repo}`;
@@ -289,7 +288,7 @@ function groupKey(timestamp: number, currentDayStart: number): SessionGroupKey {
 export function repositoryLabel(cwd: string): string {
   const trimmed = cwd.trim();
   if (!trimmed) return cwd;
-  if (/^[\\/]+$/.test(trimmed)) return trimmed.startsWith('\\') ? '\\' : '/';
+  if (/^[\\/]+$/.test(trimmed)) return trimmed[0] === '\\' ? '\\' : '/';
 
   const parts = trimmed.split(/[\\/]+/).filter(Boolean);
   const label = parts.at(-1);
@@ -337,7 +336,7 @@ export function DefaultHostFooter({
 }: {
   state?: string;
   latency?: string;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <div className="flex h-10 shrink-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-xs">
       <span className="size-2 rounded-full bg-success" />
@@ -349,7 +348,7 @@ export function DefaultHostFooter({
   );
 }
 
-export function EmptyHostFooter(): ReactNode {
+export function EmptyHostFooter(): React.ReactNode {
   return (
     <div className="flex h-10 shrink-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-muted-foreground text-xs">
       <BotIcon className="size-3.5" />

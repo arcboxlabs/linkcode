@@ -1,5 +1,4 @@
 import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   Confirmation,
@@ -38,7 +37,7 @@ export function PermissionCard({
   answered: boolean;
   responding: boolean;
   onRespond: (optionId: string) => void;
-}): ReactNode {
+}): React.ReactNode {
   const t = useTranslations('workbench.permission');
 
   return (

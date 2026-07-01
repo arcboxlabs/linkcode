@@ -17,6 +17,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 
 type EventCb = (event: AgentEvent) => void;
 interface Pending<T> {
@@ -307,5 +308,5 @@ function rejectFrom<T>(map: Map<string, Pending<T>>, id: string, err: Error): bo
 }
 
 function toError(err: unknown): Error {
-  return err instanceof Error ? err : new Error(String(err));
+  return new Error(extractErrorMessage(err) ?? 'Unknown error');
 }

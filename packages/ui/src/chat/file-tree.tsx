@@ -4,7 +4,6 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { ChevronRightIcon, FileIcon, FolderIcon, FolderOpenIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { cn } from '../lib/cn';
 
@@ -20,7 +19,7 @@ export interface ChatFileTreeNode {
   children?: ChatFileTreeNode[];
 }
 
-export type FileTreeProps = Omit<ComponentProps<'div'>, 'onSelect'> & {
+export type FileTreeProps = Omit<React.ComponentProps<'div'>, 'onSelect'> & {
   nodes?: readonly ChatFileTreeNode[];
   selectedId?: string;
   expandedIds?: ReadonlySet<string>;
@@ -39,7 +38,7 @@ export function FileTree({
   onExpandedChange,
   children,
   ...props
-}: FileTreeProps): ReactNode {
+}: FileTreeProps): React.ReactNode {
   const [internalExpandedIds, setInternalExpandedIds] = useState<Set<string>>(
     () => new Set(defaultExpandedIds),
   );
@@ -83,7 +82,7 @@ export function FileTree({
   );
 }
 
-export type FileTreeNodeProps = Omit<ComponentProps<'div'>, 'onSelect' | 'onToggle'> & {
+export type FileTreeNodeProps = Omit<React.ComponentProps<'div'>, 'onSelect' | 'onToggle'> & {
   node: ChatFileTreeNode;
   selectedId?: string;
   expandedIds?: ReadonlySet<string>;
@@ -99,7 +98,7 @@ export function FileTreeNode({
   onNodeSelect,
   onNodeToggle,
   ...props
-}: FileTreeNodeProps): ReactNode {
+}: FileTreeNodeProps): React.ReactNode {
   if (node.type === 'directory') {
     const isExpanded = expandedIds.has(node.id);
     return (

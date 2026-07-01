@@ -13,7 +13,6 @@ import {
   ListTodoIcon,
   MinusCircleIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only task item, not yet wired to daemon/client schema.
@@ -25,7 +24,7 @@ export interface ChatTaskItem {
   description?: string;
 }
 
-export type TaskProps = ComponentProps<typeof Collapsible> & {
+export type TaskProps = React.ComponentProps<typeof Collapsible> & {
   items?: readonly ChatTaskItem[];
   title?: string;
 };
@@ -37,7 +36,7 @@ export function Task({
   title = 'Tasks',
   children,
   ...props
-}: TaskProps): ReactNode {
+}: TaskProps): React.ReactNode {
   return (
     <Collapsible className={cn('my-1 text-[13px]', className)} defaultOpen={defaultOpen} {...props}>
       {children ?? (
@@ -54,7 +53,7 @@ export function Task({
   );
 }
 
-export type TaskTriggerProps = ComponentProps<typeof CollapsibleTrigger> & {
+export type TaskTriggerProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   title: string;
   count?: number;
 };
@@ -65,7 +64,7 @@ export function TaskTrigger({
   count,
   children,
   ...props
-}: TaskTriggerProps): ReactNode {
+}: TaskTriggerProps): React.ReactNode {
   return (
     <CollapsibleTrigger
       className={cn(
@@ -90,9 +89,9 @@ export function TaskTrigger({
   );
 }
 
-export type TaskContentProps = ComponentProps<typeof CollapsibleContent>;
+export type TaskContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function TaskContent({ className, ...props }: TaskContentProps): ReactNode {
+export function TaskContent({ className, ...props }: TaskContentProps): React.ReactNode {
   return (
     <CollapsibleContent
       className={cn('mt-1 space-y-1 border-l-2 border-border pl-3', className)}
@@ -101,11 +100,11 @@ export function TaskContent({ className, ...props }: TaskContentProps): ReactNod
   );
 }
 
-export type TaskItemProps = ComponentProps<'div'> & {
+export type TaskItemProps = React.ComponentProps<'div'> & {
   item: ChatTaskItem;
 };
 
-export function TaskItem({ className, item, children, ...props }: TaskItemProps): ReactNode {
+export function TaskItem({ className, item, children, ...props }: TaskItemProps): React.ReactNode {
   return (
     <div className={cn('flex min-w-0 items-start gap-2 py-0.5', className)} {...props}>
       <TaskStatusIcon status={item.status} />
@@ -127,7 +126,7 @@ export function TaskItem({ className, item, children, ...props }: TaskItemProps)
   );
 }
 
-function TaskStatusIcon({ status }: { status: ChatTaskItem['status'] }): ReactNode {
+function TaskStatusIcon({ status }: { status: ChatTaskItem['status'] }): React.ReactNode {
   const className = cn('mt-0.5 size-3.5 shrink-0', taskStatusClass(status));
 
   switch (status) {

@@ -5,7 +5,6 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { ChevronRightIcon } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 // TODO(linkcode-schema): Provisional UI-only schema endpoint model, not yet wired to daemon/client schema.
@@ -39,7 +38,7 @@ export interface ChatSchemaProperty {
   items?: ChatSchemaProperty;
 }
 
-export type SchemaDisplayProps = ComponentProps<'div'> & {
+export type SchemaDisplayProps = React.ComponentProps<'div'> & {
   endpoint: ChatSchemaEndpoint;
 };
 
@@ -48,7 +47,7 @@ export function SchemaDisplay({
   endpoint,
   children,
   ...props
-}: SchemaDisplayProps): ReactNode {
+}: SchemaDisplayProps): React.ReactNode {
   return (
     <div
       className={cn(
@@ -80,7 +79,7 @@ export function SchemaDisplay({
   );
 }
 
-export type SchemaDisplayHeaderProps = ComponentProps<'div'> & {
+export type SchemaDisplayHeaderProps = React.ComponentProps<'div'> & {
   endpoint: ChatSchemaEndpoint;
 };
 
@@ -89,7 +88,7 @@ export function SchemaDisplayHeader({
   endpoint,
   children,
   ...props
-}: SchemaDisplayHeaderProps): ReactNode {
+}: SchemaDisplayHeaderProps): React.ReactNode {
   return (
     <div
       className={cn('flex min-w-0 items-center gap-2 border-b border-border px-3 py-2', className)}
@@ -105,7 +104,7 @@ export function SchemaDisplayHeader({
   );
 }
 
-export type SchemaDisplayMethodProps = ComponentProps<typeof Badge> & {
+export type SchemaDisplayMethodProps = React.ComponentProps<typeof Badge> & {
   method: ChatSchemaEndpoint['method'];
 };
 
@@ -114,7 +113,7 @@ export function SchemaDisplayMethod({
   method,
   children,
   ...props
-}: SchemaDisplayMethodProps): ReactNode {
+}: SchemaDisplayMethodProps): React.ReactNode {
   return (
     <Badge className={cn('font-mono', className)} variant={methodVariant(method)} {...props}>
       {children ?? method}
@@ -122,7 +121,7 @@ export function SchemaDisplayMethod({
   );
 }
 
-export type SchemaDisplayPathProps = ComponentProps<'div'> & {
+export type SchemaDisplayPathProps = React.ComponentProps<'div'> & {
   path: string;
 };
 
@@ -131,7 +130,7 @@ export function SchemaDisplayPath({
   path,
   children,
   ...props
-}: SchemaDisplayPathProps): ReactNode {
+}: SchemaDisplayPathProps): React.ReactNode {
   return (
     <div className={cn('min-w-0 truncate font-mono text-foreground', className)} {...props}>
       {children ?? renderPath(path)}
@@ -139,12 +138,12 @@ export function SchemaDisplayPath({
   );
 }
 
-export type SchemaDisplayDescriptionProps = ComponentProps<'div'>;
+export type SchemaDisplayDescriptionProps = React.ComponentProps<'div'>;
 
 export function SchemaDisplayDescription({
   className,
   ...props
-}: SchemaDisplayDescriptionProps): ReactNode {
+}: SchemaDisplayDescriptionProps): React.ReactNode {
   return (
     <div
       className={cn('border-b border-border px-3 py-2 text-muted-foreground', className)}
@@ -153,13 +152,16 @@ export function SchemaDisplayDescription({
   );
 }
 
-export type SchemaDisplayBodyProps = ComponentProps<'div'>;
+export type SchemaDisplayBodyProps = React.ComponentProps<'div'>;
 
-export function SchemaDisplayBody({ className, ...props }: SchemaDisplayBodyProps): ReactNode {
+export function SchemaDisplayBody({
+  className,
+  ...props
+}: SchemaDisplayBodyProps): React.ReactNode {
   return <div className={cn('divide-y divide-border', className)} {...props} />;
 }
 
-export type SchemaDisplayParametersProps = ComponentProps<typeof Collapsible> & {
+export type SchemaDisplayParametersProps = React.ComponentProps<typeof Collapsible> & {
   parameters: readonly ChatSchemaParameter[];
 };
 
@@ -169,7 +171,7 @@ export function SchemaDisplayParameters({
   children,
   defaultOpen = true,
   ...props
-}: SchemaDisplayParametersProps): ReactNode {
+}: SchemaDisplayParametersProps): React.ReactNode {
   return (
     <Collapsible className={className} defaultOpen={defaultOpen} {...props}>
       {children ?? (
@@ -186,7 +188,7 @@ export function SchemaDisplayParameters({
   );
 }
 
-export type SchemaDisplayParameterProps = ComponentProps<'div'> & {
+export type SchemaDisplayParameterProps = React.ComponentProps<'div'> & {
   parameter: ChatSchemaParameter;
 };
 
@@ -195,7 +197,7 @@ export function SchemaDisplayParameter({
   parameter,
   children,
   ...props
-}: SchemaDisplayParameterProps): ReactNode {
+}: SchemaDisplayParameterProps): React.ReactNode {
   return (
     <div className={cn('px-8 py-2', className)} {...props}>
       {children ?? (
@@ -215,7 +217,7 @@ export function SchemaDisplayParameter({
   );
 }
 
-export type SchemaDisplayPropertiesProps = ComponentProps<typeof Collapsible> & {
+export type SchemaDisplayPropertiesProps = React.ComponentProps<typeof Collapsible> & {
   label: string;
   properties: readonly ChatSchemaProperty[];
 };
@@ -227,7 +229,7 @@ export function SchemaDisplayProperties({
   children,
   defaultOpen = true,
   ...props
-}: SchemaDisplayPropertiesProps): ReactNode {
+}: SchemaDisplayPropertiesProps): React.ReactNode {
   return (
     <Collapsible className={className} defaultOpen={defaultOpen} {...props}>
       {children ?? (
@@ -244,7 +246,7 @@ export function SchemaDisplayProperties({
   );
 }
 
-export type SchemaDisplayPropertyProps = ComponentProps<'div'> & {
+export type SchemaDisplayPropertyProps = React.ComponentProps<'div'> & {
   schemaProperty: ChatSchemaProperty;
   depth?: number;
 };
@@ -255,7 +257,7 @@ export function SchemaDisplayProperty({
   depth = 0,
   children,
   ...props
-}: SchemaDisplayPropertyProps): ReactNode {
+}: SchemaDisplayPropertyProps): React.ReactNode {
   const hasChildren = Boolean(schemaProperty.properties?.length || schemaProperty.items);
   const paddingLeft = `${2 + depth}rem`;
 
@@ -308,12 +310,12 @@ export function SchemaDisplayProperty({
   );
 }
 
-export type SchemaDisplayExampleProps = ComponentProps<'pre'>;
+export type SchemaDisplayExampleProps = React.ComponentProps<'pre'>;
 
 export function SchemaDisplayExample({
   className,
   ...props
-}: SchemaDisplayExampleProps): ReactNode {
+}: SchemaDisplayExampleProps): React.ReactNode {
   return (
     <pre
       className={cn('m-3 overflow-auto rounded-md bg-muted p-3 font-mono text-[12px]', className)}
@@ -328,7 +330,7 @@ function SchemaDisplaySectionTrigger({
 }: {
   label: string;
   count?: number;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted">
       <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
@@ -346,7 +348,7 @@ function SchemaPropertySummary({
   schemaProperty,
 }: {
   schemaProperty: ChatSchemaProperty;
-}): ReactNode {
+}): React.ReactNode {
   return (
     <>
       <span className="font-mono text-foreground">{schemaProperty.name}</span>
@@ -356,8 +358,8 @@ function SchemaPropertySummary({
   );
 }
 
-function renderPath(path: string): ReactNode {
-  const parts: ReactNode[] = [];
+function renderPath(path: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
   let cursor = 0;
 
   for (const match of path.matchAll(/\{[^}]+\}/g)) {
@@ -383,7 +385,7 @@ function renderPath(path: string): ReactNode {
 
 function methodVariant(
   method: ChatSchemaEndpoint['method'],
-): ComponentProps<typeof Badge>['variant'] {
+): React.ComponentProps<typeof Badge>['variant'] {
   switch (method) {
     case 'GET':
       return 'success';

@@ -1,5 +1,3 @@
-import type { CSSProperties } from 'react';
-
 export const DESKTOP_CHROME_METRICS = {
   height: 48,
   edgePadding: 16,
@@ -14,7 +12,7 @@ export const DESKTOP_CHROME_METRICS = {
 
 export const DESKTOP_CHROME_SPACER_CLASS = 'h-(--lc-chrome-h)';
 
-export type DesktopChromeMetricsStyle = CSSProperties & {
+export type DesktopChromeMetricsStyle = React.CSSProperties & {
   '--lc-chrome-h': string;
   '--lc-chrome-edge': string;
   '--lc-chrome-control-gap': string;
