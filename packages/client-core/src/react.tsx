@@ -103,13 +103,13 @@ export interface SessionsApi {
   /** The currently focused session, or null. */
   activeId: SessionId | null;
   /** Focus a session (or clear the selection). */
-  select(id: SessionId | null): void;
+  select: (id: SessionId | null) => void;
   /** Start a new session, optimistically add it to the list, and focus it. */
-  create(opts: StartOptions): Promise<SessionId>;
+  create: (opts: StartOptions) => Promise<SessionId>;
   /** Stop a session and drop it from the list. */
-  stop(id: SessionId): void;
+  stop: (id: SessionId) => void;
   /** Re-fetch the daemon's session list. */
-  refresh(): Promise<void>;
+  refresh: () => Promise<void>;
   /** True until the first refresh resolves. */
   loading: boolean;
 }
