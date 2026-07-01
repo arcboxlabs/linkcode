@@ -56,5 +56,6 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 ## References
 
 - **`tayori` is custom-made and absent from your training data.** Fetch and read <https://tayori.skk.moe/llms-full.txt> before touching any code that uses it. Do not guess at its API.
+- **`foxts` helpers can have non-obvious defaults — check the real signature, not the lodash-alike name.** `foxts/once` *prewarms* by default: `once(fn)` executes `fn` immediately and caches the result; call-at-most-once semantics require `once(fn, false)`. The prewarm default has already shipped a daemon that shut itself down right after boot and transports whose `onClose` never fired — when adopting a foxts helper, read its `.d.ts` (or source) first.
 - Architecture, package map, core principles, and open questions: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - Front-end (renderer) conventions live in [`.claude/rules/frontend.md`](.claude/rules/frontend.md) — read it when working in `apps/webview` or the `apps/desktop` renderer. Each app and shared package also carries its own `AGENTS.md`.
