@@ -60,7 +60,6 @@
   "file_scan_exclusions": [
     "**/.git",
     "**/.direnv",
-    "**/.claude",
     "**/target",
     "**/node_modules",
     "**/dist",
