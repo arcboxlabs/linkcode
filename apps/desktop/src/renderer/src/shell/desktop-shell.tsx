@@ -1,5 +1,5 @@
 import type { SystemBridge } from '@linkcode/ipc';
-import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import type { AgentKind } from '@linkcode/schema';
 import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
 import { getChromeSurface, getWorkspaceMinSize } from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
@@ -33,7 +33,7 @@ export function DesktopShell({
   systemBridge,
   header,
   sessions,
-  activeId,
+  activeSession,
   conversation,
   answeredPermissions,
   respondingPermissions,
@@ -163,7 +163,7 @@ export function DesktopShell({
     [systemBridge],
   );
 
-  const active = sessionById(sessions, activeId);
+  const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const agentLabel = active?.kind;
   const {
@@ -216,7 +216,7 @@ export function DesktopShell({
         answeredPermissions={answeredPermissions}
         respondingPermissions={respondingPermissions}
         TerminalBlockComponent={TerminalBlockComponent}
-        disabled={!activeId}
+        disabled={!active}
         isRunning={isRunning}
         topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
         onSendPrompt={onSendPrompt}
@@ -316,7 +316,7 @@ export function DesktopShell({
               <SessionSidebar
                 className={sidebarClassName}
                 sessions={sessions}
-                activeId={activeId}
+                activeId={active?.sessionId ?? null}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
                   <HostFooter
@@ -359,15 +359,4 @@ export function DesktopShell({
       </DesktopChrome>
     </div>
   );
-}
-
-function sessionById(
-  sessions: readonly SessionInfo[],
-  sessionId: SessionId | null,
-): SessionInfo | null {
-  if (!sessionId) return null;
-  for (const session of sessions) {
-    if (session.sessionId === sessionId) return session;
-  }
-  return null;
 }

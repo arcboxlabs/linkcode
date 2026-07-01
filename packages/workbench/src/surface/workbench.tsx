@@ -10,7 +10,7 @@ import { useMutation } from '../runtime/tayori';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import type { WorkbenchSessions } from './use-workbench-sessions';
-import { sessionById, useWorkbenchSessions } from './use-workbench-sessions';
+import { useWorkbenchSessions } from './use-workbench-sessions';
 
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
@@ -72,7 +72,7 @@ function WorkbenchSessionSurface({
   const modelMutation = useMutation(setModel, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
-  const active = sessionById(sessions.sessions, sessions.activeId);
+  const active = sessions.active;
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
@@ -116,7 +116,7 @@ function WorkbenchSessionSurface({
   return (
     <ShellComponent
       sessions={sessions.sessions}
-      activeId={sessions.activeId}
+      activeSession={active}
       conversation={conversation}
       answeredPermissions={answered}
       respondingPermissions={responding}

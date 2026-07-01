@@ -7,6 +7,8 @@ import { useData, useMutation } from '../runtime/tayori';
 
 export interface WorkbenchSessions {
   sessions: SessionInfo[];
+  /** The resolved active session — derived once here; consumers never re-derive it. */
+  active: SessionInfo | null;
   activeId: SessionId | null;
   select: (id: SessionId) => void;
   create: (opts: { kind: AgentKind; cwd: string }) => void;
@@ -32,14 +34,15 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
   }, [localSessions, remoteSessions, stoppedIds]);
 
-  const activeId = useMemo(() => {
-    if (selectedId && sessionById(sessions, selectedId)) {
-      return selectedId;
+  const active = useMemo(() => {
+    if (selectedId) {
+      const selected = sessionById(sessions, selectedId);
+      if (selected) return selected;
     }
 
-    const preferred = preferredActiveSession(sessions) ?? sessions.at(-1);
-    return preferred?.sessionId ?? null;
+    return preferredActiveSession(sessions) ?? sessions.at(-1) ?? null;
   }, [selectedId, sessions]);
+  const activeId = active?.sessionId ?? null;
 
   function create(opts: { kind: AgentKind; cwd: string }): void {
     void createMutation
@@ -76,6 +79,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   return {
     sessions,
+    active,
     activeId,
     select: setSelectedId,
     create,
@@ -83,7 +87,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   };
 }
 
-export function sessionById(
+function sessionById(
   sessions: readonly SessionInfo[],
   sessionId: SessionId | null,
 ): SessionInfo | null {

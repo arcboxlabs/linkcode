@@ -6,7 +6,8 @@ import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
 
 export interface ShellFrameProps {
   sessions: SessionInfo[];
-  activeId: SessionId | null;
+  /** Derived once by the workbench surface; shells consume it instead of re-deriving from the list. */
+  activeSession: SessionInfo | null;
   conversation: ConversationViewModel;
   answeredPermissions: Set<string>;
   respondingPermissions: Set<string>;
@@ -25,7 +26,7 @@ export interface ShellFrameProps {
 
 export function ShellFrame({
   sessions,
-  activeId,
+  activeSession,
   conversation,
   answeredPermissions,
   respondingPermissions,
@@ -41,7 +42,7 @@ export function ShellFrame({
   onDismissError,
   onModelChange,
 }: ShellFrameProps): React.ReactNode {
-  const active = sessionById(sessions, activeId);
+  const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';
 
@@ -50,7 +51,7 @@ export function ShellFrame({
       <div className="w-72 shrink-0">
         <SessionSidebar
           sessions={sessions}
-          activeId={activeId}
+          activeId={active?.sessionId ?? null}
           footer={<DefaultHostFooter />}
           onSelect={onSelectSession}
           onStop={onStopSession}
@@ -65,7 +66,7 @@ export function ShellFrame({
           conversation={conversation}
           agentKind={active?.kind}
           agentLabel={active ? active.kind : undefined}
-          disabled={!activeId}
+          disabled={!active}
           isRunning={isRunning}
           cwd={active?.cwd}
           answeredPermissions={answeredPermissions}
@@ -79,15 +80,4 @@ export function ShellFrame({
       </main>
     </div>
   );
-}
-
-function sessionById(
-  sessions: readonly SessionInfo[],
-  sessionId: SessionId | null,
-): SessionInfo | null {
-  if (!sessionId) return null;
-  for (const session of sessions) {
-    if (session.sessionId === sessionId) return session;
-  }
-  return null;
 }
