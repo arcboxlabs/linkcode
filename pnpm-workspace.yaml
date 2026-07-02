@@ -147,6 +147,7 @@ minimumReleaseAgeExclude:
   - ws@8.21.0
   - undici@8.5.0
   - linkify-it@5.0.1
+  - tayori@0.3.8
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x

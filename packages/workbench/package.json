@@ -24,7 +24,7 @@
     "foxact": "^0.3.7",
     "foxts": "^5.6.0",
     "swr": "catalog:",
-    "tayori": "^0.3.6",
+    "tayori": "^0.3.8",
     "use-intl": "catalog:",
     "zod": "catalog:"
   },
