@@ -21,6 +21,9 @@ import type { PtyBackend } from './pty-backend';
 import type { SessionStore } from './session-store';
 import { InMemorySessionStore } from './session-store';
 import { TerminalService } from './terminal-service';
+import { WorkspaceRegistry } from './workspace-registry';
+import type { WorkspaceStore } from './workspace-store';
+import { InMemoryWorkspaceStore } from './workspace-store';
 
 interface Session {
   adapter: AgentAdapter;
@@ -44,6 +47,7 @@ export class Engine {
   private readonly records = new Map<SessionId, SessionRecord>();
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
+  private readonly workspaces: WorkspaceRegistry;
   private seq = 0;
 
   constructor(
@@ -53,17 +57,20 @@ export class Engine {
     ptyBackend?: PtyBackend,
     private readonly sessionStore: SessionStore = new InMemorySessionStore(),
     private readonly git: GitService = new GitService(),
+    workspaceStore: WorkspaceStore = new InMemoryWorkspaceStore(),
   ) {
     this.history = new HistoryService(factory);
     this.terminals = ptyBackend
       ? new TerminalService(ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
+    this.workspaces = new WorkspaceRegistry(workspaceStore);
   }
 
   async start(): Promise<void> {
     for (const record of await this.sessionStore.load()) {
       this.records.set(record.sessionId, record);
     }
+    await this.workspaces.start();
     await this.transport.connect();
     this.transport.onMessage((msg) => {
       // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
@@ -76,7 +83,7 @@ export class Engine {
     switch (p.kind) {
       case 'session.start': {
         const opts = applyProviderDefaults(p.opts, this.providerStore.get());
-        await this.tryReply(p.clientReqId, () => {
+        await this.tryReply(p.clientReqId, async () => {
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -87,7 +94,8 @@ export class Engine {
             updatedAt: now,
             runs: [{ startedAt: now }],
           };
-          return this.startLiveSession(p.clientReqId, record, (adapter) => adapter.start(opts));
+          await this.startLiveSession(p.clientReqId, record, (adapter) => adapter.start(opts));
+          if (opts.cwd) this.workspaces.touch(opts.cwd);
         });
         break;
       }
@@ -209,7 +217,7 @@ export class Engine {
           { ...p.startOpts, kind: p.agentKind },
           this.providerStore.get(),
         );
-        await this.tryReply(p.clientReqId, () => {
+        await this.tryReply(p.clientReqId, async () => {
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -220,9 +228,10 @@ export class Engine {
             updatedAt: now,
             runs: [{ historyId: p.historyId, startedAt: now }],
           };
-          return this.startLiveSession(p.clientReqId, record, (adapter) =>
+          await this.startLiveSession(p.clientReqId, record, (adapter) =>
             this.history.resume(adapter, p.historyId, startOpts),
           );
+          if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
         });
         break;
       }
@@ -240,6 +249,42 @@ export class Engine {
         await this.tryReply(p.clientReqId, async () => {
           await this.providerStore.set(p.providers);
           this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'workspace.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'workspace.listed',
+            replyTo: p.clientReqId,
+            workspaces: this.workspaces.list(),
+          }),
+        );
+        break;
+      }
+      case 'workspace.register': {
+        await this.tryReply(p.clientReqId, () => {
+          const record = this.workspaces.register({ cwd: p.cwd, name: p.name });
+          this.transport.send(
+            createWireMessage({ kind: 'workspace.registered', replyTo: p.clientReqId, record }),
+          );
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'workspace.update': {
+        await this.tryReply(p.clientReqId, () => {
+          this.workspaces.update(p.workspaceId, p.name);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'workspace.archive': {
+        await this.tryReply(p.clientReqId, () => {
+          this.workspaces.archive(p.workspaceId);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
         });
         break;
       }

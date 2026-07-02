@@ -20,3 +20,4 @@ export * from './session';
 export * from './tool-call';
 export * from './usage';
 export * from './wire';
+export * from './workspace';

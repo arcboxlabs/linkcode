@@ -36,3 +36,16 @@ export const sessionRuns = sqliteTable(
   },
   (table) => [index('session_runs_session_id_idx').on(table.sessionId)],
 );
+
+/** Registered directories ("workspaces"); mirrors `WorkspaceRecord` from `@linkcode/schema`. */
+export const workspaces = sqliteTable(
+  'workspaces',
+  {
+    workspaceId: text('workspace_id').primaryKey(),
+    cwd: text('cwd').notNull().unique(),
+    name: text('name'),
+    createdAt: integer('created_at').notNull(),
+    lastUsedAt: integer('last_used_at').notNull(),
+  },
+  (table) => [index('workspaces_last_used_at_idx').on(table.lastUsedAt)],
+);

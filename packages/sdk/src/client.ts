@@ -14,6 +14,8 @@ import type {
   SessionInfo,
   SessionRecord,
   StartOptions,
+  WorkspaceId,
+  WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
@@ -150,6 +152,25 @@ export class LinkCodeSdkClient {
   /** Hosting-provider PR state for a directory's current branch. */
   getGitPullRequestStatus(cwd: string): RequestResult<GitPullRequestStatus> {
     return toResult(this.raw.getGitPullRequestStatus(cwd));
+  }
+
+  /** Every registered workspace (directory), most recently used first. */
+  listWorkspaces(): RequestResult<WorkspaceRecord[]> {
+    return toResult(this.raw.listWorkspaces());
+  }
+
+  /** Register a directory as a workspace; idempotent for an already-registered directory. */
+  registerWorkspace(cwd: string, name?: string): RequestResult<WorkspaceRecord> {
+    return toResult(this.raw.registerWorkspace(cwd, name));
+  }
+
+  updateWorkspace(workspaceId: WorkspaceId, name: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.updateWorkspace(workspaceId, name));
+  }
+
+  /** Drop a workspace from the registry; never touches the directory on disk. */
+  archiveWorkspace(workspaceId: WorkspaceId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.archiveWorkspace(workspaceId));
   }
 }
 

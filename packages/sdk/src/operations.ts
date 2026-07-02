@@ -13,6 +13,8 @@ import type {
   SessionInfo,
   SessionRecord,
   StartOptions,
+  WorkspaceId,
+  WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Options, RequestResult } from './client';
 import { resolveClient } from './client';
@@ -119,4 +121,29 @@ export function getGitPullRequestStatus(
   options: Options<{ cwd: string }>,
 ): RequestResult<GitPullRequestStatus> {
   return resolveClient(options).getGitPullRequestStatus(options.cwd);
+}
+
+/** Every registered workspace (directory), most recently used first. */
+export function listWorkspaces(options?: Options): RequestResult<WorkspaceRecord[]> {
+  return resolveClient(options).listWorkspaces();
+}
+
+/** Register a directory as a workspace; idempotent for an already-registered directory. */
+export function registerWorkspace(
+  options: Options<{ cwd: string; name?: string }>,
+): RequestResult<WorkspaceRecord> {
+  return resolveClient(options).registerWorkspace(options.cwd, options.name);
+}
+
+export function updateWorkspace(
+  options: Options<{ workspaceId: WorkspaceId; name: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).updateWorkspace(options.workspaceId, options.name);
+}
+
+/** Drop a workspace from the registry; never touches the directory on disk. */
+export function archiveWorkspace(
+  options: Options<{ workspaceId: WorkspaceId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).archiveWorkspace(options.workspaceId);
 }

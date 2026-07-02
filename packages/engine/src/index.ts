@@ -14,3 +14,5 @@ export * from './provider-config';
 export type * from './pty-backend';
 export * from './session-store';
 export * from './terminal-service';
+export * from './workspace-registry';
+export * from './workspace-store';

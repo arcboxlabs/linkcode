@@ -9,6 +9,10 @@ import { z } from 'zod';
 export const SessionIdSchema = z.string().min(1).brand<'SessionId'>();
 export type SessionId = z.infer<typeof SessionIdSchema>;
 
+/** Workspace ID: the identifier of a registered directory (see workspace.ts). */
+export const WorkspaceIdSchema = z.string().min(1).brand<'WorkspaceId'>();
+export type WorkspaceId = z.infer<typeof WorkspaceIdSchema>;
+
 /** Message / event ID: used for cross-endpoint deduplication and correlation. */
 export const MessageIdSchema = z.string().min(1).brand<'MessageId'>();
 export type MessageId = z.infer<typeof MessageIdSchema>;
