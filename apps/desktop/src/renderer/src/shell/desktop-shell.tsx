@@ -16,6 +16,7 @@ import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
+import { useDesktopSettingsStore } from '../settings/store';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
@@ -231,6 +232,10 @@ export function DesktopShell({
       window.addEventListener(
         'keydown',
         (event) => {
+          // `inert` on the hidden workbench doesn't stop window-level listeners, so Settings
+          // being open must be checked here at event time — not in the effect deps, or the
+          // listener would re-register on every open/close.
+          if (useDesktopSettingsStore.getState().settingsOpen) return;
           const modifier = isMac
             ? event.metaKey && !event.ctrlKey
             : event.ctrlKey && !event.metaKey;
