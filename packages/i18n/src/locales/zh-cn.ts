@@ -129,6 +129,10 @@ export const zhCN = {
       },
     },
     sidebar: {
+      projects: '项目',
+      chats: '对话',
+      newChat: '新建对话',
+      chatsEmptyHint: '还没有对话，点击「新建对话」开始。',
       unregisteredGroup: '未注册',
       emptyTitle: '暂无线程',
       stopThread: '停止线程',
