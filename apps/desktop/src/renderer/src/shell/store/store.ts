@@ -38,6 +38,8 @@ interface DesktopShellActions {
   closeTab: (id: string) => void;
   toggleMaxPanel: (side: PanelSide) => void;
   setActiveSection: (section: PanelSection) => void;
+  /** Opens the right panel (if closed) and switches it to `section` in one step. */
+  openRightPanelSection: (section: PanelSection) => void;
   addRightTerminalTab: () => void;
   closeRightTerminalTab: (id: string) => void;
   setActiveRightTerminalTab: (id: string) => void;
@@ -189,6 +191,13 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
           updateShellState((current) => ({
             ...current,
             rightPanel: { ...current.rightPanel, activeSection: section },
+          }));
+        },
+
+        openRightPanelSection(section) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: { ...current.rightPanel, open: true, activeSection: section },
           }));
         },
 

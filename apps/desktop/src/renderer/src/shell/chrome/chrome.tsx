@@ -37,6 +37,8 @@ export interface DesktopChromeProps {
   rightControls?: React.ReactNode;
   /** Override the main segment's default document-title area; `null` hides it. */
   titleContent?: React.ReactNode;
+  /** Rendered beside the default title (ignored when `titleContent` overrides the whole area). */
+  titleChip?: React.ReactNode;
 }
 
 export type DesktopChromeSegment = 'sidebar' | 'main' | 'right';
@@ -138,6 +140,7 @@ export function DesktopChrome({
   leftControls,
   rightControls,
   titleContent,
+  titleChip,
 }: DesktopChromeProps): React.ReactNode {
   const [portalTargets, setPortalTargets] = useState<ChromePortalTargetMap>({});
   const chromeRootRef = useRef<HTMLDivElement | null>(null);
@@ -172,6 +175,7 @@ export function DesktopChrome({
           activeExpandedPanel={activeExpandedPanel}
           hasNativeBackdrop={hasNativeBackdrop}
           titleContent={titleContent}
+          titleChip={titleChip}
           setPortalTarget={setPortalTarget}
         />
         <StableLeftChrome
@@ -211,12 +215,14 @@ function ChromeSegmentGrid({
   activeExpandedPanel,
   hasNativeBackdrop,
   titleContent,
+  titleChip,
   setPortalTarget,
 }: {
   header: WorkbenchShellHeader;
   activeExpandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
   titleContent?: React.ReactNode;
+  titleChip?: React.ReactNode;
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
   return (
@@ -247,7 +253,7 @@ function ChromeSegmentGrid({
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
           left: activeExpandedPanel ? null : titleContent === undefined ? (
-            <MainChromeTitle header={header} />
+            <MainChromeTitle header={header} chip={titleChip} />
           ) : (
             titleContent
           ),
@@ -389,11 +395,18 @@ function DefaultLeftChromeControls({
   );
 }
 
-function MainChromeTitle({ header }: { header: WorkbenchShellHeader }): React.ReactNode {
+function MainChromeTitle({
+  header,
+  chip,
+}: {
+  header: WorkbenchShellHeader;
+  chip?: React.ReactNode;
+}): React.ReactNode {
   return (
     <div className="pointer-events-none flex h-full max-w-[min(420px,100%)] min-w-0 px-2 items-center gap-(--lc-chrome-control-gap)">
       <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
+      {chip}
       <ShellIconButton label="More" disabled>
         <EllipsisIcon className="size-4" />
       </ShellIconButton>

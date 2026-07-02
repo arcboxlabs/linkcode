@@ -1,3 +1,4 @@
+import type { ThemePreference } from '@linkcode/ipc';
 import type { ChromeSurface, PanelSection } from '@linkcode/ui/shell/panels';
 import { PanelStubContent, SectionPanelRegion } from '@linkcode/ui/shell/panels';
 import { GitPanel } from '@linkcode/workbench';
@@ -16,6 +17,7 @@ import { getShellContentMotionStyle } from './use-animated-split';
 export function DesktopRightPanelRegion({
   panel,
   cwd,
+  themeType,
   maximized,
   chromeVisible,
   contentHidden,
@@ -31,6 +33,7 @@ export function DesktopRightPanelRegion({
 }: {
   panel: RightPanelState;
   cwd: string | undefined;
+  themeType: ThemePreference;
   maximized: boolean;
   chromeVisible: boolean;
   contentHidden: boolean;
@@ -55,7 +58,7 @@ export function DesktopRightPanelRegion({
       ChromePortal={DesktopChromePortal}
       contentStyle={getShellContentMotionStyle({ axis: 'x', phase, reducedMotion })}
       sectionContent={{
-        diff: <GitPanel cwd={cwd} />,
+        diff: <GitPanel cwd={cwd} themeType={themeType} />,
         browser: <PanelStubContent type="browser" />,
       }}
       terminalContentTargetRef={terminalContentTargetRef}
