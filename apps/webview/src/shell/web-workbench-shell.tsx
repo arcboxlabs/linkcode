@@ -4,7 +4,11 @@ import { Button } from 'coss-ui/components/button';
 import { SettingsIcon } from 'lucide-react';
 import { Link } from 'react-router';
 
-export function WebWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
+export function WebWorkbenchShell({
+  header,
+  pendingPermissionCount: _pendingPermissionCount,
+  ...props
+}: WorkbenchShellProps): React.ReactNode {
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 

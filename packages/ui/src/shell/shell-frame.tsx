@@ -1,49 +1,28 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
-import type { ConversationViewModel } from '../chat';
-import { ConversationSurface } from './conversation-surface';
-import { ErrorBanner } from './error-banner';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
 
 export interface ShellFrameProps {
   sessions: SessionInfo[];
   /** Derived once by the workbench surface; shells consume it instead of re-deriving from the list. */
   activeSession: SessionInfo | null;
-  conversation: ConversationViewModel;
-  answeredPermissions: Set<string>;
-  respondingPermissions: Set<string>;
   header?: React.ReactNode;
-  errorMessage?: string | null;
+  /** The session-scoped content (conversation + composer), owned and keyed by the workbench surface. */
+  main: React.ReactNode;
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
   onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
-  onSendPrompt: (text: string) => void;
-  onStopTurn: () => void;
-  onRespondPermission: (requestId: string, optionId: string) => void;
-  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
-  onDismissError?: () => void;
-  onModelChange?: (model: string) => Promise<void>;
 }
 
 export function ShellFrame({
   sessions,
   activeSession,
-  conversation,
-  answeredPermissions,
-  respondingPermissions,
   header,
-  errorMessage,
+  main,
   onSelectSession,
   onStopSession,
   onCreateSession,
-  onSendPrompt,
-  onStopTurn,
-  onRespondPermission,
-  TerminalBlockComponent,
-  onDismissError,
-  onModelChange,
 }: ShellFrameProps): React.ReactNode {
   const active = activeSession;
-  const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';
 
   return (
@@ -60,23 +39,7 @@ export function ShellFrame({
       </div>
       <main className="flex min-w-0 flex-1 flex-col">
         {header}
-        <ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />
-        <ConversationSurface
-          className="min-h-0 flex-1"
-          conversation={conversation}
-          agentKind={active?.kind}
-          agentLabel={active ? active.kind : undefined}
-          disabled={!active || active.status === 'stopped'}
-          isRunning={isRunning}
-          cwd={active?.cwd}
-          answeredPermissions={answeredPermissions}
-          respondingPermissions={respondingPermissions}
-          TerminalBlockComponent={TerminalBlockComponent}
-          onSendPrompt={onSendPrompt}
-          onStopTurn={onStopTurn}
-          onRespondPermission={onRespondPermission}
-          onModelChange={onModelChange}
-        />
+        <div className="min-h-0 flex-1">{main}</div>
       </main>
     </div>
   );

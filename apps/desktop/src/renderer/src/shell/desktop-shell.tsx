@@ -1,6 +1,6 @@
 import type { SystemBridge } from '@linkcode/ipc';
 import type { AgentKind } from '@linkcode/schema';
-import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
+import { HostFooter, SessionSidebar } from '@linkcode/ui';
 import { getChromeSurface, getWorkspaceMinSize } from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
@@ -35,19 +35,11 @@ export function DesktopShell({
   header,
   sessions,
   activeSession,
-  conversation,
-  answeredPermissions,
-  respondingPermissions,
-  errorMessage,
+  pendingPermissionCount,
+  main,
   onSelectSession,
   onStopSession,
   onCreateSession,
-  onSendPrompt,
-  onStopTurn,
-  onRespondPermission,
-  TerminalBlockComponent,
-  onDismissError,
-  onModelChange,
   onOpenSettings,
 }: WorkbenchShellProps & {
   systemBridge: SystemBridge;
@@ -143,8 +135,6 @@ export function DesktopShell({
   );
 
   const active = activeSession;
-  const isRunning = conversation.status === 'running' || conversation.status === 'starting';
-  const agentLabel = active?.kind;
   const {
     updateSidebarOpen,
     updateLayout,
@@ -184,27 +174,7 @@ export function DesktopShell({
     resetBottomPanelLayoutSize();
   }
 
-  const main = (
-    <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
-      <ConversationSurface
-        className="min-h-0 flex-1"
-        conversation={conversation}
-        agentKind={active?.kind}
-        agentLabel={agentLabel}
-        cwd={active?.cwd}
-        answeredPermissions={answeredPermissions}
-        respondingPermissions={respondingPermissions}
-        TerminalBlockComponent={TerminalBlockComponent}
-        disabled={!active || active.status === 'stopped'}
-        isRunning={isRunning}
-        topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
-        onSendPrompt={onSendPrompt}
-        onStopTurn={onStopTurn}
-        onRespondPermission={onRespondPermission}
-        onModelChange={onModelChange}
-      />
-    </main>
-  );
+  const workspaceMain = <main className="h-full min-h-0 min-w-0 bg-background">{main}</main>;
 
   // One renderer, two mount points: the docked instance (inside the Allotment,
   // owns the chrome tabs/controls) and the maximized overlay instance (chrome
@@ -323,7 +293,7 @@ export function DesktopShell({
                   <HostFooter
                     state={tConnection('connected')}
                     appVersion={appVersion}
-                    pendingPermissionCount={conversation.pendingPermissionIds.length}
+                    pendingPermissionCount={pendingPermissionCount}
                     onOpenSettings={onOpenSettings}
                   />
                 }
@@ -335,7 +305,7 @@ export function DesktopShell({
           </Allotment.Pane>
           <Allotment.Pane minSize={workspaceMinSize} priority={LayoutPriority.High}>
             <DesktopWorkspace
-              main={main}
+              main={workspaceMain}
               right={workspaceRight}
               bottom={workspaceBottom}
               rightAllotmentRef={rightAllotmentRef}
