@@ -12,6 +12,7 @@ describe('groupThreadsByWorkspace', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.workspace?.workspaceId).toBe('ws-1');
     expect(groups[0]?.sessions).toEqual([session]);
+    expect(groups[0]?.collapseKey).toBe('/repo/app');
   });
 
   it('sorts sessions within a group by createdAt descending', () => {
@@ -48,17 +49,19 @@ describe('groupThreadsByWorkspace', () => {
     expect(groups.map((g) => g.key)).toEqual(['ws-fresh', UNREGISTERED_THREAD_GROUP_KEY]);
     const fallback = groups.at(-1);
     expect(fallback?.workspace).toBeNull();
+    expect(fallback?.collapseKey).toBe(UNREGISTERED_THREAD_GROUP_KEY);
     expect(fallback?.sessions.map((s) => s.sessionId)).toEqual(['s-stray-1', 's-stray-2']);
   });
 
-  it('omits a registered workspace with no matching sessions', () => {
+  it('includes a registered workspace with no matching sessions, as an empty group', () => {
     const empty = createWorkspace('ws-empty', '/repo/empty', 1);
     const used = createWorkspace('ws-used', '/repo/used', 2);
     const session = createSession('s-1', '/repo/used', 100);
 
     const groups = groupThreadsByWorkspace([session], [empty, used]);
 
-    expect(groups.map((g) => g.key)).toEqual(['ws-used']);
+    expect(groups.map((g) => g.key)).toEqual(['ws-used', 'ws-empty']);
+    expect(groups.find((g) => g.key === 'ws-empty')?.sessions).toEqual([]);
   });
 });
 

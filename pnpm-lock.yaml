@@ -855,6 +855,9 @@ importers:
       '@linkcode/client-core':
         specifier: workspace:*
         version: link:../client-core
+      '@linkcode/common':
+        specifier: workspace:*
+        version: link:../common
       '@linkcode/i18n':
         specifier: workspace:*
         version: link:../i18n
@@ -891,6 +894,9 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
