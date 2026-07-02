@@ -40,7 +40,7 @@ export const en = {
       responding: 'Submitting…',
     },
     composer: {
-      placeholderDisconnected: 'Create or pick a session first',
+      placeholderDisconnected: 'Create or pick a thread first',
       send: 'Send',
       stop: 'Stop',
       commands: 'Commands',
@@ -74,8 +74,8 @@ export const en = {
       terminalInputLost: 'Connection interrupted — input may not have been delivered',
     },
     git: {
-      emptyTitle: 'No active session',
-      emptyHint: 'Select a session to see the git status of its working directory.',
+      emptyTitle: 'No active thread',
+      emptyHint: 'Select a thread to see the git status of its working directory.',
       notRepoTitle: 'Not a git repository',
       notRepoHint: 'The current working directory is not inside any git repository.',
       statusErrorTitle: 'Failed to read git status',

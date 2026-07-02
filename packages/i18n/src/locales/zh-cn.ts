@@ -38,7 +38,7 @@ export const zhCN = {
       responding: '正在提交…',
     },
     composer: {
-      placeholderDisconnected: '请先创建或选择会话',
+      placeholderDisconnected: '请先创建或选择线程',
       send: '发送',
       stop: '停止',
       commands: '命令',
@@ -72,8 +72,8 @@ export const zhCN = {
       terminalInputLost: '连接中断，输入可能未送达',
     },
     git: {
-      emptyTitle: '暂无活跃会话',
-      emptyHint: '选择一个会话后即可查看其工作目录的 Git 状态。',
+      emptyTitle: '暂无活跃线程',
+      emptyHint: '选择一个线程后即可查看其工作目录的 Git 状态。',
       notRepoTitle: '不是 Git 仓库',
       notRepoHint: '当前工作目录不在任何 Git 仓库中。',
       statusErrorTitle: '无法读取 Git 状态',

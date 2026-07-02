@@ -324,4 +324,5 @@ These are genuinely undecided. Do not invent answers — raise them first.
 | tayori            | The typed request wrapper the client data layer is built on, backed by the `sdk`.        |
 | coss-ui           | The desktop/webview UI primitive library (vendored from cal.com's COSS UI).              |
 | HeroUI            | The mobile UI library.                                                                    |
+| Thread (UI)       | The user-facing term for a Session. Product copy only — code and the wire protocol keep `Session`. |
 | ACP               | Agent Client Protocol — the shape the normalized `AgentEvent` contract is aligned with.  |
