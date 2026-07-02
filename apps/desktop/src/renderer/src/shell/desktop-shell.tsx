@@ -205,10 +205,11 @@ export function DesktopShell({
     resetBottomPanelSize: resetBottomPanelLayoutSize,
   } = shellState;
 
-  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel; Option+Cmd+B (Ctrl+Alt+B off-mac)
-  // the right side panel. Captured at the window so they win even while the terminal canvas holds
-  // focus; on mac the Ctrl variants stay with the shell (Ctrl+J is a real terminal keystroke
-  // there). Matched on `code` because Option rewrites `key` on mac (⌥B yields "∫").
+  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel, Cmd+B (Ctrl+B) the sidebar, and
+  // Option+Cmd+B (Ctrl+Alt+B) the right side panel. Captured at the window so they win even
+  // while the terminal canvas holds focus; on mac the Ctrl variants stay with the shell (Ctrl+J
+  // is a real terminal keystroke there). Matched on `code` because Option rewrites `key` on mac
+  // (⌥B yields "∫").
   useAbortableEffect(
     (signal) => {
       if (desktopPlatform === null) return;
@@ -220,21 +221,23 @@ export function DesktopShell({
             ? event.metaKey && !event.ctrlKey
             : event.ctrlKey && !event.metaKey;
           if (!modifier || event.shiftKey) return;
-          const side =
+          const toggle =
             event.code === 'KeyJ' && !event.altKey
-              ? 'bottom'
-              : event.code === 'KeyB' && event.altKey
-                ? 'right'
+              ? () => togglePanel('bottom')
+              : event.code === 'KeyB'
+                ? event.altKey
+                  ? () => togglePanel('right')
+                  : () => updateSidebarOpen((open) => !open)
                 : null;
-          if (side === null) return;
+          if (toggle === null) return;
           event.preventDefault();
           event.stopPropagation();
-          togglePanel(side);
+          toggle();
         },
         { capture: true, signal },
       );
     },
-    [desktopPlatform, togglePanel],
+    [desktopPlatform, togglePanel, updateSidebarOpen],
   );
 
   function createSession(kind: AgentKind): void {
@@ -430,6 +433,7 @@ export function DesktopShell({
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
+        sidebarShortcut={panelShortcuts.sidebar}
         rightPanelShortcut={panelShortcuts.right}
         bottomPanelShortcut={panelShortcuts.bottom}
         titleChip={
@@ -513,10 +517,11 @@ function createPanelContentHost(): HTMLDivElement {
 }
 
 function getPanelToggleShortcuts(platform: NodeJS.Platform | null): {
+  sidebar?: string;
   bottom?: string;
   right?: string;
 } {
   if (platform === null) return {};
-  if (platform === 'darwin') return { bottom: '⌘J', right: '⌥⌘B' };
-  return { bottom: 'Ctrl+J', right: 'Ctrl+Alt+B' };
+  if (platform === 'darwin') return { sidebar: '⌘B', bottom: '⌘J', right: '⌥⌘B' };
+  return { sidebar: 'Ctrl+B', bottom: 'Ctrl+J', right: 'Ctrl+Alt+B' };
 }
