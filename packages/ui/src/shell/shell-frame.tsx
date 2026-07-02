@@ -1,9 +1,16 @@
-import type { AgentKind, SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  AgentKind,
+  SessionId,
+  SessionInfo,
+  WorkspaceId,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
-import type { BranchStatusComponentType, ThreadGroupViewModel } from './threads-view';
+import type { BranchStatusComponentType } from './sidebar';
+import type { ThreadGroupViewModel } from './threads-view';
 
 export interface ShellFrameProps {
   threadGroups: ThreadGroupViewModel[];
@@ -20,6 +27,13 @@ export interface ShellFrameProps {
   onStopSession: (id: SessionId) => void;
   onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
   onImportSession?: (sessionId: SessionId) => void;
+  /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
+  onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
+  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
+  onToggleGroupCollapsed: (collapseKey: string) => void;
+  onTogglePreviewExpanded: (groupKey: string) => void;
+  onToggleImportHistory: (groupKey: string) => void;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
@@ -47,6 +61,12 @@ export function ShellFrame({
   onStopSession,
   onCreateSession,
   onImportSession,
+  onRegisterWorkspace,
+  onRenameWorkspace,
+  onArchiveWorkspace,
+  onToggleGroupCollapsed,
+  onTogglePreviewExpanded,
+  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -72,6 +92,12 @@ export function ShellFrame({
           onStop={onStopSession}
           onCreate={onCreateSession}
           onImportSession={onImportSession}
+          onRegisterWorkspace={onRegisterWorkspace}
+          onRenameWorkspace={onRenameWorkspace}
+          onArchiveWorkspace={onArchiveWorkspace}
+          onToggleGroupCollapsed={onToggleGroupCollapsed}
+          onTogglePreviewExpanded={onTogglePreviewExpanded}
+          onToggleImportHistory={onToggleImportHistory}
           BranchStatusComponent={BranchStatusComponent}
           HistoryComponent={HistoryComponent}
         />

@@ -1,56 +1,91 @@
-import type { SessionId, SessionInfo, SessionStatus, WorkspaceRecord } from '@linkcode/schema';
-import { XIcon } from 'lucide-react';
+import type {
+  AgentKind,
+  SessionId,
+  SessionInfo,
+  WorkspaceId,
+  WorkspaceRecord,
+} from '@linkcode/schema';
+import { Skeleton } from 'coss-ui/components/skeleton';
+import { createFixedArray } from 'foxact/create-fixed-array';
 import { useTranslations } from 'use-intl';
-import { cn } from '../lib/cn';
-import { AGENT_LABELS, AgentIcon } from './agent-icon';
-import { relativeTimeLabel } from './relative-time';
 import { repositoryLabel } from './repository-label';
+import type { BranchStatusComponentType } from './sidebar';
+import { AddWorkspaceRow, ThreadGroupHeader, ThreadRow } from './sidebar';
 
 /** One workspace's sessions, or the fallback bucket (`workspace: null`) for an unmatched `cwd`. */
 export interface ThreadGroupViewModel {
   key: string;
+  /** Identity `collapsed` is persisted against — see workbench's `ThreadGroup.collapseKey`. */
+  collapseKey: string;
   workspace: WorkspaceRecord | null;
+  /** Every session in the group, most recent first — the header's count reflects this length. */
   sessions: SessionInfo[];
+  /** The subset actually rendered, honoring the collapse and preview-truncation state below. */
+  visibleSessions: SessionInfo[];
+  /** Whether a Show more/Show less toggle should render. */
+  hasOverflow: boolean;
+  collapsed: boolean;
+  previewExpanded: boolean;
+  historyOpen: boolean;
 }
-
-export type BranchStatusComponentType = React.ComponentType<{ cwd: string; showDirty?: boolean }>;
-
-const STATUS_DOT_CLASS: Record<SessionStatus, string> = {
-  starting: 'bg-info',
-  idle: 'bg-muted-foreground/40',
-  running: 'bg-success',
-  'awaiting-input': 'bg-warning',
-  stopped: 'bg-muted-foreground/25',
-};
 
 export interface ThreadsViewProps {
   groups: ThreadGroupViewModel[];
+  workspacesLoading?: boolean;
   activeId: SessionId | null;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
+  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  onImportSession?: (sessionId: SessionId) => void;
+  onPickDirectory?: () => Promise<string | null>;
+  onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
+  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
+  onToggleGroupCollapsed: (collapseKey: string) => void;
+  onTogglePreviewExpanded: (groupKey: string) => void;
+  onToggleImportHistory: (groupKey: string) => void;
   BranchStatusComponent?: BranchStatusComponentType;
+  HistoryComponent?: React.ComponentType<{
+    cwd: string;
+    onImported: (sessionId: SessionId) => void;
+  }>;
 }
 
-/** Threads grouped by workspace — the sidebar's default view. */
+/** The sidebar's single flattened view: every workspace as its own collapsible group. */
 export function ThreadsView({
   groups,
+  workspacesLoading,
   activeId,
   onSelect,
   onStop,
+  onCreate,
+  onImportSession,
+  onPickDirectory,
+  onRegisterWorkspace,
+  onRenameWorkspace,
+  onArchiveWorkspace,
+  onToggleGroupCollapsed,
+  onTogglePreviewExpanded,
+  onToggleImportHistory,
   BranchStatusComponent,
+  HistoryComponent,
 }: ThreadsViewProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
 
-  if (groups.length === 0) {
-    return (
-      <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-6 text-center text-muted-foreground text-sm">
-        {t('emptyTitle')}
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
+      {groups.length === 0 && workspacesLoading && (
+        <div className="space-y-1">
+          {createFixedArray(3).map((i) => (
+            <Skeleton key={i} className="h-6 w-full rounded-md" />
+          ))}
+        </div>
+      )}
+      {groups.length === 0 && !workspacesLoading && (
+        <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-6 text-center text-muted-foreground text-sm">
+          {t('emptyTitle')}
+        </div>
+      )}
       {groups.map((group) => (
         <ThreadGroupSection
           key={group.key}
@@ -58,9 +93,21 @@ export function ThreadsView({
           activeId={activeId}
           onSelect={onSelect}
           onStop={onStop}
+          onCreate={onCreate}
+          onImportSession={onImportSession}
+          onRenameWorkspace={onRenameWorkspace}
+          onArchiveWorkspace={onArchiveWorkspace}
+          onToggleGroupCollapsed={onToggleGroupCollapsed}
+          onTogglePreviewExpanded={onTogglePreviewExpanded}
+          onToggleImportHistory={onToggleImportHistory}
           BranchStatusComponent={BranchStatusComponent}
+          HistoryComponent={HistoryComponent}
         />
       ))}
+      <AddWorkspaceRow
+        onPickDirectory={onPickDirectory}
+        onRegisterWorkspace={onRegisterWorkspace}
+      />
     </div>
   );
 }
@@ -70,97 +117,90 @@ function ThreadGroupSection({
   activeId,
   onSelect,
   onStop,
+  onCreate,
+  onImportSession,
+  onRenameWorkspace,
+  onArchiveWorkspace,
+  onToggleGroupCollapsed,
+  onTogglePreviewExpanded,
+  onToggleImportHistory,
   BranchStatusComponent,
+  HistoryComponent,
 }: {
   group: ThreadGroupViewModel;
   activeId: SessionId | null;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
+  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  onImportSession?: (sessionId: SessionId) => void;
+  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
+  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
+  onToggleGroupCollapsed: (collapseKey: string) => void;
+  onTogglePreviewExpanded: (groupKey: string) => void;
+  onToggleImportHistory: (groupKey: string) => void;
   BranchStatusComponent?: BranchStatusComponentType;
+  HistoryComponent?: React.ComponentType<{
+    cwd: string;
+    onImported: (sessionId: SessionId) => void;
+  }>;
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
-  const title = group.workspace
-    ? (group.workspace.name ?? repositoryLabel(group.workspace.cwd))
+  const { workspace } = group;
+  const title = workspace
+    ? (workspace.name ?? repositoryLabel(workspace.cwd))
     : t('unregisteredGroup');
 
   return (
     <section>
-      <div className="flex h-6 items-center gap-[var(--lc-sidebar-gap,0.5rem)] px-[var(--lc-sidebar-edge,0.5rem)] text-muted-foreground text-xs">
-        <span className="min-w-0 truncate font-medium">{title}</span>
-        {group.workspace && BranchStatusComponent && (
-          <BranchStatusComponent cwd={group.workspace.cwd} />
-        )}
-        <span className="ml-auto shrink-0 tabular-nums">{group.sessions.length}</span>
-      </div>
-      <div className="space-y-0.5">
-        {group.sessions.map((session) => (
-          <CompactSessionRow
-            key={session.sessionId}
-            active={session.sessionId === activeId}
-            session={session}
-            onSelect={() => onSelect(session.sessionId)}
-            onStop={() => onStop(session.sessionId)}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function CompactSessionRow({
-  session,
-  active,
-  onSelect,
-  onStop,
-}: {
-  session: SessionInfo;
-  active: boolean;
-  onSelect: () => void;
-  onStop: () => void;
-}): React.ReactNode {
-  const t = useTranslations('workbench.sidebar');
-  const agent = AGENT_LABELS[session.kind];
-  const title = session.title ?? `${agent} in ${repositoryLabel(session.cwd)}`;
-
-  return (
-    <div
-      className={cn(
-        'group relative rounded-md',
-        active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/70',
+      <ThreadGroupHeader
+        title={title}
+        workspace={workspace}
+        sessionCount={group.sessions.length}
+        collapsed={group.collapsed}
+        onToggleCollapsed={() => onToggleGroupCollapsed(group.collapseKey)}
+        onCreateThread={workspace ? (kind) => onCreate({ kind, cwd: workspace.cwd }) : undefined}
+        onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}
+        onArchive={workspace ? () => onArchiveWorkspace(workspace.workspaceId) : undefined}
+        historyOpen={group.historyOpen}
+        onToggleHistory={
+          workspace && HistoryComponent ? () => onToggleImportHistory(group.key) : undefined
+        }
+        BranchStatusComponent={BranchStatusComponent}
+      />
+      {group.visibleSessions.length > 0 && (
+        <div className="space-y-0.5">
+          {group.visibleSessions.map((session) => (
+            <ThreadRow
+              key={session.sessionId}
+              active={session.sessionId === activeId}
+              session={session}
+              onSelect={() => onSelect(session.sessionId)}
+              onStop={() => onStop(session.sessionId)}
+            />
+          ))}
+        </div>
       )}
-    >
-      {active && <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />}
-      <button
-        type="button"
-        className="flex w-full min-w-0 gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] py-1.5 pr-8 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onSelect}
-      >
-        <span className="relative mt-0.5 shrink-0">
-          <AgentIcon kind={session.kind} />
-          <span
-            aria-hidden
-            className={cn(
-              'absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar',
-              STATUS_DOT_CLASS[session.status],
-            )}
-          />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 font-medium text-sm leading-snug">{title}</span>
-        </span>
-        <span className="shrink-0 pt-0.5 text-muted-foreground text-xs tabular-nums">
-          {relativeTimeLabel(session.createdAt)}
-        </span>
-      </button>
-      <button
-        type="button"
-        aria-label={t('stopThread')}
-        title={t('stopThread')}
-        onClick={onStop}
-        className="-translate-y-1/2 absolute top-1/2 right-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 outline-none hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-      >
-        <XIcon className="size-3.5" />
-      </button>
-    </div>
+      {!group.collapsed && group.hasOverflow && (
+        <button
+          type="button"
+          onClick={() => onTogglePreviewExpanded(group.key)}
+          className="w-full rounded-md px-[var(--lc-sidebar-edge,0.5rem)] py-1 text-left text-muted-foreground text-xs outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {group.previewExpanded ? t('showLess') : t('showMore')}
+        </button>
+      )}
+      {!group.collapsed &&
+        group.historyOpen &&
+        workspace &&
+        HistoryComponent &&
+        onImportSession && (
+          <div className="pt-1">
+            <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
+              {t('importHistoryTitle')}
+            </div>
+            <HistoryComponent cwd={workspace.cwd} onImported={onImportSession} />
+          </div>
+        )}
+    </section>
   );
 }
