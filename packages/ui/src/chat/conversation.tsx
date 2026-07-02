@@ -33,7 +33,7 @@ export function ConversationContent({
 }: ConversationContentProps): React.ReactNode {
   return (
     <StickToBottom.Content
-      className={cn('mx-auto flex max-w-3xl flex-col gap-6 px-7 py-6', className)}
+      className={cn('mx-auto flex max-w-3xl flex-col gap-4 px-7 py-6', className)}
       {...props}
     />
   );

@@ -66,30 +66,23 @@ describe('groupTimeline', () => {
     const items = [tool('read'), tool('search'), tool('read')];
     const entries = groupTimeline(items);
 
-    expect(entries).toHaveLength(1);
-    const run = entries[0];
-    if (run.type !== 'activity') throw new Error('expected activity run');
-    expect(run.entries).toEqual([
+    expect(entries).toEqual([
       { type: 'group', id: `group-${items[0].id}`, bucket: 'explore', items },
     ]);
   });
 
   it('keeps a lone call as a single', () => {
     const items = [tool('execute')];
-    const entries = groupTimeline(items);
 
-    expect(entries).toEqual([
-      { type: 'activity', id: `run-${items[0].id}`, entries: [{ type: 'single', item: items[0] }] },
-    ]);
+    expect(groupTimeline(items)).toEqual([{ type: 'single', item: items[0] }]);
   });
 
   it('splits streaks when the bucket changes', () => {
     const items = [tool('read'), tool('search'), tool('execute'), tool('execute'), tool('edit')];
-    const [run] = groupTimeline(items);
+    const entries = groupTimeline(items);
 
-    if (run.type !== 'activity') throw new Error('expected activity run');
-    expect(run.entries.map((entry) => entry.type)).toEqual(['group', 'group', 'single']);
-    const [explore, command] = run.entries;
+    expect(entries.map((entry) => entry.type)).toEqual(['group', 'group', 'single']);
+    const [explore, command] = entries;
     if (explore.type !== 'group' || command.type !== 'group') throw new Error('expected groups');
     expect(explore.bucket).toBe('explore');
     expect(explore.items).toHaveLength(2);
@@ -97,28 +90,26 @@ describe('groupTimeline', () => {
     expect(command.items).toHaveLength(2);
   });
 
-  it('flushes the run on non-tool items', () => {
+  it('flushes streaks on non-tool items', () => {
     const first = tool('read');
+    const narration = message('assistant');
     const second = tool('read');
-    const entries = groupTimeline([first, message('assistant'), second]);
+    const entries = groupTimeline([first, narration, second]);
 
-    expect(entries.map((entry) => entry.type)).toEqual(['activity', 'item', 'activity']);
-    const [before, , after] = entries;
-    if (before.type !== 'activity' || after.type !== 'activity') throw new Error('expected runs');
-    expect(before.entries).toEqual([{ type: 'single', item: first }]);
-    expect(after.entries).toEqual([{ type: 'single', item: second }]);
+    expect(entries).toEqual([
+      { type: 'single', item: first },
+      { type: 'item', item: narration },
+      { type: 'single', item: second },
+    ]);
   });
 
-  it('keeps approval-gated calls out of groups but inside the run', () => {
+  it('keeps approval-gated calls out of groups', () => {
     const guarded = tool('edit');
     const items = [tool('edit'), guarded, tool('edit'), approvalFor(guarded.toolCall.toolCallId)];
     const entries = groupTimeline(items);
 
-    expect(entries.map((entry) => entry.type)).toEqual(['activity', 'item']);
-    const [run] = entries;
-    if (run.type !== 'activity') throw new Error('expected activity run');
-    expect(run.entries.map((entry) => entry.type)).toEqual(['single', 'single', 'single']);
-    expect(run.entries[1]).toEqual({ type: 'single', item: guarded });
+    expect(entries.map((entry) => entry.type)).toEqual(['single', 'single', 'single', 'item']);
+    expect(entries[1]).toEqual({ type: 'single', item: guarded });
   });
 
   it('keeps group ids stable while a streaming burst appends items', () => {
@@ -126,18 +117,12 @@ describe('groupTimeline', () => {
     const second = tool('execute');
     const third = tool('execute');
 
-    const before = groupTimeline([first, second]);
-    const after = groupTimeline([first, second, third]);
-    if (before[0].type !== 'activity' || after[0].type !== 'activity') {
-      throw new Error('expected activity runs');
-    }
-    const beforeGroup = before[0].entries[0];
-    const afterGroup = after[0].entries[0];
+    const [beforeGroup] = groupTimeline([first, second]);
+    const [afterGroup] = groupTimeline([first, second, third]);
     if (beforeGroup.type !== 'group' || afterGroup.type !== 'group') {
       throw new Error('expected groups');
     }
 
     expect(afterGroup.id).toBe(beforeGroup.id);
-    expect(after[0].id).toBe(before[0].id);
   });
 });

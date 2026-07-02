@@ -10,10 +10,10 @@ import { ChevronRightIcon, CircleCheckIcon, CircleXIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import type { ActivityEntry } from './activity-groups';
+import type { TimelineEntry } from './activity-groups';
 import { hasToolBody, ToolCallBody } from './tool-call-item';
 
-export type ActivityToolGroup = Extract<ActivityEntry, { type: 'group' }>;
+export type ActivityToolGroup = Extract<TimelineEntry, { type: 'group' }>;
 
 /** Collapsed audit summary for a burst of same-bucket tool calls ("Explored · 3", "Edited files · 2"). */
 export function ActivityGroup({

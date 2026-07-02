@@ -2,24 +2,20 @@ import type { ToolCall } from '@linkcode/schema';
 import type { ConversationItem } from './types';
 
 /**
- * Codex-style transcript grouping. A "run" is a maximal streak of consecutive tool items — any
- * other item kind (assistant text, reasoning, approval, error) is the flush boundary, mirroring
- * Codex's "flush on narration" rule. Within a run, consecutive calls of the same review bucket
- * collapse into a group; approval-gated calls stay standalone because they are interaction
- * points, and lone calls render as plain rows.
+ * Codex-style transcript grouping. Consecutive tool calls of the same review bucket collapse into
+ * a group; any other item kind (assistant text, reasoning, approval, error) is the flush boundary,
+ * mirroring Codex's "flush on narration" rule. Approval-gated calls stay standalone because they
+ * are interaction points, and lone calls render as plain rows.
  */
 
 export type ActivityBucket = 'explore' | 'command' | 'fetch' | 'think' | 'files' | 'other';
 
 export type ToolTimelineItem = Extract<ConversationItem, { kind: 'tool' }>;
 
-export type ActivityEntry =
-  | { type: 'single'; item: ToolTimelineItem }
-  | { type: 'group'; id: string; bucket: ActivityBucket; items: ToolTimelineItem[] };
-
 export type TimelineEntry =
   | { type: 'item'; item: ConversationItem }
-  | { type: 'activity'; id: string; entries: ActivityEntry[] };
+  | { type: 'single'; item: ToolTimelineItem }
+  | { type: 'group'; id: string; bucket: ActivityBucket; items: ToolTimelineItem[] };
 
 /** Buckets tool kinds by review affordance, so summaries read "Explored" / "Ran commands" / "Edited files". */
 export function activityBucket(kind: ToolCall['kind']): ActivityBucket {
@@ -50,36 +46,6 @@ export function groupTimeline(items: readonly ConversationItem[]): TimelineEntry
   }
 
   const entries: TimelineEntry[] = [];
-  let run: ToolTimelineItem[] = [];
-
-  const flushRun = (): void => {
-    if (run.length === 0) return;
-    entries.push({
-      type: 'activity',
-      id: `run-${run[0].id}`,
-      entries: partitionRun(run, approvalGated),
-    });
-    run = [];
-  };
-
-  for (const item of items) {
-    if (item.kind === 'tool') {
-      run.push(item);
-    } else {
-      flushRun();
-      entries.push({ type: 'item', item });
-    }
-  }
-  flushRun();
-
-  return entries;
-}
-
-function partitionRun(
-  run: readonly ToolTimelineItem[],
-  approvalGated: ReadonlySet<string>,
-): ActivityEntry[] {
-  const entries: ActivityEntry[] = [];
   let streak: ToolTimelineItem[] = [];
   let streakBucket: ActivityBucket | null = null;
 
@@ -95,7 +61,12 @@ function partitionRun(
     streakBucket = null;
   };
 
-  for (const item of run) {
+  for (const item of items) {
+    if (item.kind !== 'tool') {
+      flushStreak();
+      entries.push({ type: 'item', item });
+      continue;
+    }
     if (approvalGated.has(item.toolCall.toolCallId)) {
       flushStreak();
       entries.push({ type: 'single', item });

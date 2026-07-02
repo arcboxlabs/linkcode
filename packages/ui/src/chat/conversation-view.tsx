@@ -74,26 +74,22 @@ export function ConversationView({
     >
       <ConversationContent>
         {groupTimeline(items).map((entry) => {
-          if (entry.type === 'activity') {
-            // Consecutive action calls sit in one tight stack instead of the timeline's gap-6.
+          if (entry.type === 'group') {
             return (
-              <div key={entry.id} className="flex w-full flex-col gap-1">
-                {entry.entries.map((activity) =>
-                  activity.type === 'group' ? (
-                    <ActivityGroup
-                      key={activity.id}
-                      group={activity}
-                      TerminalBlockComponent={TerminalBlockComponent}
-                    />
-                  ) : (
-                    <ToolCallItem
-                      key={activity.item.id}
-                      toolCall={activity.item.toolCall}
-                      TerminalBlockComponent={TerminalBlockComponent}
-                    />
-                  ),
-                )}
-              </div>
+              <ActivityGroup
+                key={entry.id}
+                group={entry}
+                TerminalBlockComponent={TerminalBlockComponent}
+              />
+            );
+          }
+          if (entry.type === 'single') {
+            return (
+              <ToolCallItem
+                key={entry.item.id}
+                toolCall={entry.item.toolCall}
+                TerminalBlockComponent={TerminalBlockComponent}
+              />
             );
           }
           const item = entry.item;
