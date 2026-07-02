@@ -35,10 +35,11 @@ export class SocketIoTransport implements Transport {
       autoConnect: false,
     });
     this.socket = socket;
+    // foxts/once prewarms (runs the fn at creation) by default — pass false so close fires only on real disconnect.
     this.emitClosed = once(() => {
       this.inbound.clear();
       this.closed.emit();
-    });
+    }, false);
 
     socket.on(FRAME_EVENT, (raw: unknown) => {
       const parsed = parseWireMessage(raw);

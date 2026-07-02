@@ -22,10 +22,11 @@ export interface SocketIoServer extends TransportServer {
 class SocketIoServerConnection implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
+  // foxts/once prewarms (runs the fn at creation) by default — pass false so close fires only on real disconnect.
   private readonly emitClosed = once((): void => {
     this.inbound.clear();
     this.closed.emit();
-  });
+  }, false);
 
   constructor(private readonly socket: Socket) {
     socket.on(FRAME_EVENT, (raw: unknown) => {

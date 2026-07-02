@@ -27,10 +27,11 @@ const textDecoder = new TextDecoder();
 class WsServerConnection implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
+  // foxts/once prewarms (runs the fn at creation) by default — pass false so close fires only on real disconnect.
   private readonly emitClosed = once((): void => {
     this.inbound.clear();
     this.closed.emit();
-  });
+  }, false);
 
   constructor(private readonly ws: WebSocket) {
     ws.on('message', (data: RawData) => {
