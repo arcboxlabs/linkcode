@@ -48,8 +48,10 @@ const debugMiddleware: SWRMiddleware = (useSWRNext) =>
     const swr = useSWRNext(key, wrappedFetcher, config);
 
     if (isLoadingOverride) {
+      // Avoid spreading `swr`: SWRResponse fields are tracked getters, and spreading
+      // reads (subscribes to) all of them, defeating per-field re-render optimization.
       return {
-        ...swr,
+        mutate: swr.mutate,
         data: undefined,
         error: undefined,
         isLoading: true,
