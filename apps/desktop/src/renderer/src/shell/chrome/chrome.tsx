@@ -31,6 +31,9 @@ export interface DesktopChromeProps {
   onHideSidebar: () => void;
   onToggleRight: () => void;
   onToggleBottom: () => void;
+  /** Pre-formatted shortcut hints for the default panel toggles (e.g. "⌘J"). */
+  rightPanelShortcut?: string;
+  bottomPanelShortcut?: string;
   /** Override the stable left-rail controls (sidebar toggle + history); `null` hides them. */
   leftControls?: React.ReactNode;
   /** Override the stable right-rail controls (panel toggles); `null` hides them. */
@@ -137,6 +140,8 @@ export function DesktopChrome({
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
+  rightPanelShortcut,
+  bottomPanelShortcut,
   leftControls,
   rightControls,
   titleContent,
@@ -197,6 +202,8 @@ export function DesktopChrome({
             <DefaultRightChromeControls
               rightPanelOpen={rightPanelOpen}
               bottomPanelOpen={bottomPanelOpen}
+              rightPanelShortcut={rightPanelShortcut}
+              bottomPanelShortcut={bottomPanelShortcut}
               onToggleRight={onToggleRight}
               onToggleBottom={onToggleBottom}
             />
@@ -436,18 +443,23 @@ function StableRightChrome({
 function DefaultRightChromeControls({
   rightPanelOpen,
   bottomPanelOpen,
+  rightPanelShortcut,
+  bottomPanelShortcut,
   onToggleRight,
   onToggleBottom,
 }: {
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
+  rightPanelShortcut?: string;
+  bottomPanelShortcut?: string;
   onToggleRight: () => void;
   onToggleBottom: () => void;
 }): React.ReactNode {
   return (
     <>
       <ShellIconButton
-        label={bottomPanelOpen ? 'Close bottom panel' : 'Open bottom panel'}
+        label="Toggle bottom panel"
+        shortcut={bottomPanelShortcut}
         aria-pressed={bottomPanelOpen}
         className={bottomPanelOpen ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
         data-pressed={bottomPanelOpen ? '' : undefined}
@@ -456,7 +468,8 @@ function DefaultRightChromeControls({
         <PanelBottomIcon className="size-4" />
       </ShellIconButton>
       <ShellIconButton
-        label={rightPanelOpen ? 'Close right panel' : 'Open right panel'}
+        label="Toggle side panel"
+        shortcut={rightPanelShortcut}
         aria-pressed={rightPanelOpen}
         className={rightPanelOpen ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
         data-pressed={rightPanelOpen ? '' : undefined}

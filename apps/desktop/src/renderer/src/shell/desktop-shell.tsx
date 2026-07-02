@@ -153,6 +153,8 @@ export function DesktopShell({
 
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
+  // Hints mirror the window keydown bindings below; hidden until the platform is known.
+  const panelShortcuts = getPanelToggleShortcuts(desktopPlatform);
   const sidebarClassName = hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar';
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
@@ -203,9 +205,10 @@ export function DesktopShell({
     resetBottomPanelSize: resetBottomPanelLayoutSize,
   } = shellState;
 
-  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel. Captured at the window so it wins
-  // even while the terminal canvas holds focus; on mac the Ctrl variant stays with the shell
-  // (Ctrl+J is a real terminal keystroke there).
+  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel; Option+Cmd+B (Ctrl+Alt+B off-mac)
+  // the right side panel. Captured at the window so they win even while the terminal canvas holds
+  // focus; on mac the Ctrl variants stay with the shell (Ctrl+J is a real terminal keystroke
+  // there). Matched on `code` because Option rewrites `key` on mac (⌥B yields "∫").
   useAbortableEffect(
     (signal) => {
       if (desktopPlatform === null) return;
@@ -216,12 +219,17 @@ export function DesktopShell({
           const modifier = isMac
             ? event.metaKey && !event.ctrlKey
             : event.ctrlKey && !event.metaKey;
-          if (!modifier || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'j') {
-            return;
-          }
+          if (!modifier || event.shiftKey) return;
+          const side =
+            event.code === 'KeyJ' && !event.altKey
+              ? 'bottom'
+              : event.code === 'KeyB' && event.altKey
+                ? 'right'
+                : null;
+          if (side === null) return;
           event.preventDefault();
           event.stopPropagation();
-          togglePanel('bottom');
+          togglePanel(side);
         },
         { capture: true, signal },
       );
@@ -420,6 +428,8 @@ export function DesktopShell({
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
+        rightPanelShortcut={panelShortcuts.right}
+        bottomPanelShortcut={panelShortcuts.bottom}
         titleChip={
           <DiffStatChip cwd={active?.cwd} onOpenDiff={() => openRightPanelSection('diff')} />
         }
@@ -498,4 +508,13 @@ function createPanelContentHost(): HTMLDivElement {
   const host = document.createElement('div');
   host.className = 'absolute inset-0';
   return host;
+}
+
+function getPanelToggleShortcuts(platform: NodeJS.Platform | null): {
+  bottom?: string;
+  right?: string;
+} {
+  if (platform === null) return {};
+  if (platform === 'darwin') return { bottom: '⌘J', right: '⌥⌘B' };
+  return { bottom: 'Ctrl+J', right: 'Ctrl+Alt+B' };
 }
