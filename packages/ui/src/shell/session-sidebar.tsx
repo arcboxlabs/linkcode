@@ -40,11 +40,14 @@ export interface SessionSidebarProps {
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
   activeId: SessionId | null;
+  /** Threads pinned to the top of their group, in pin order. */
+  pinnedSessionIds: readonly SessionId[];
   topInsetClassName?: string;
   footer?: React.ReactNode;
   className?: string;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
+  onToggleSessionPinned: (id: SessionId) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   /** Called once a history entry finishes importing as a new thread. */
   onImportSession?: (sessionId: SessionId) => void;
@@ -71,11 +74,13 @@ export function SessionSidebar({
   workspaces,
   workspacesLoading,
   activeId,
+  pinnedSessionIds,
   topInsetClassName,
   footer,
   className,
   onSelect,
   onStop,
+  onToggleSessionPinned,
   onCreate,
   onImportSession,
   onPickDirectory,
@@ -113,8 +118,10 @@ export function SessionSidebar({
             groups={threadGroups}
             workspacesLoading={workspacesLoading}
             activeId={activeId}
+            pinnedSessionIds={pinnedSessionIds}
             onSelect={onSelect}
             onStop={onStop}
+            onToggleSessionPinned={onToggleSessionPinned}
             onCreate={onCreate}
             onImportSession={onImportSession}
             onPickDirectory={onPickDirectory}

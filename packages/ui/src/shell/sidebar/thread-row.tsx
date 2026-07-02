@@ -1,5 +1,5 @@
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
-import { XIcon } from 'lucide-react';
+import { PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { AGENT_LABELS, AgentIcon } from '../agent-icon';
@@ -14,15 +14,27 @@ const STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   stopped: 'bg-muted-foreground/25',
 };
 
+const ROW_ACTION_CLASS =
+  'flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
+
 export interface ThreadRowProps {
   session: SessionInfo;
   active: boolean;
+  pinned: boolean;
   onSelect: () => void;
   onStop: () => void;
+  onTogglePin: () => void;
 }
 
-/** One thread row: agent icon, single-line title, status dot. The relative time lives in a tooltip. */
-export function ThreadRow({ session, active, onSelect, onStop }: ThreadRowProps): React.ReactNode {
+/** One thread row: ghost agent icon, single-line title, status dot. The relative time lives in a tooltip. */
+export function ThreadRow({
+  session,
+  active,
+  pinned,
+  onSelect,
+  onStop,
+  onTogglePin,
+}: ThreadRowProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const agent = AGENT_LABELS[session.kind];
   const title = session.title ?? `${agent} in ${repositoryLabel(session.cwd)}`;
@@ -40,30 +52,44 @@ export function ThreadRow({ session, active, onSelect, onStop }: ThreadRowProps)
       <button
         type="button"
         title={relativeTimeLabel(session.createdAt)}
-        className="flex h-7 w-full min-w-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] pr-8 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-7 w-full min-w-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] pr-14 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onSelect}
       >
         <span className="relative shrink-0">
-          <AgentIcon kind={session.kind} />
+          <AgentIcon kind={session.kind} variant="ghost" className="text-muted-foreground" />
           <span
             aria-hidden
             className={cn(
-              'absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar',
+              'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar',
               STATUS_DOT_CLASS[session.status],
             )}
           />
         </span>
         <span className="min-w-0 flex-1 truncate font-medium text-sm">{title}</span>
       </button>
-      <button
-        type="button"
-        aria-label={t('stopThread')}
-        title={t('stopThread')}
-        onClick={onStop}
-        className="-translate-y-1/2 absolute top-1/2 right-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 outline-none hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-      >
-        <XIcon className="size-3.5" />
-      </button>
+      <div className="-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0.5">
+        <button
+          type="button"
+          aria-label={pinned ? t('unpinThread') : t('pinThread')}
+          title={pinned ? t('unpinThread') : t('pinThread')}
+          onClick={onTogglePin}
+          className={cn(
+            ROW_ACTION_CLASS,
+            pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          )}
+        >
+          <PinIcon className={cn('size-3.5', pinned && 'fill-current')} />
+        </button>
+        <button
+          type="button"
+          aria-label={t('stopThread')}
+          title={t('stopThread')}
+          onClick={onStop}
+          className={cn(ROW_ACTION_CLASS, 'opacity-0 group-hover:opacity-100')}
+        >
+          <XIcon className="size-3.5" />
+        </button>
+      </div>
     </div>
   );
 }

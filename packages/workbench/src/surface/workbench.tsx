@@ -22,6 +22,7 @@ import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { groupThreadsByWorkspace } from '../sidebar/group-threads';
+import { orderPinnedFirst, useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
 import { useWorkspaces } from '../workspace/hooks';
@@ -106,6 +107,8 @@ function WorkbenchSessionSurface({
   const archiveWorkspaceMutation = useMutation(archiveWorkspace);
   const collapsedKeys = useSidebarGroupCollapseStore((state) => state.collapsedKeys);
   const toggleGroupCollapsed = useSidebarGroupCollapseStore((state) => state.toggleCollapsed);
+  const pinnedSessionIds = useSidebarPinStore((state) => state.pinnedSessionIds);
+  const toggleSessionPinned = useSidebarPinStore((state) => state.togglePinned);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
@@ -114,18 +117,28 @@ function WorkbenchSessionSurface({
       const collapsed = collapsedKeys.includes(group.collapseKey);
       const previewExpanded = previewExpandedKeys.has(group.key);
       const historyOpen = historyOpenKeys.has(group.key);
-      const { sessions: visibleSessions, hasOverflow } = selectVisibleSessions(group.sessions, {
+      const ordered = orderPinnedFirst(group.sessions, pinnedSessionIds);
+      const { sessions: visibleSessions, hasOverflow } = selectVisibleSessions(ordered, {
         collapsed,
         expanded: previewExpanded,
         activeId: sessions.activeId,
       });
-      return { ...group, visibleSessions, hasOverflow, collapsed, previewExpanded, historyOpen };
+      return {
+        ...group,
+        sessions: ordered,
+        visibleSessions,
+        hasOverflow,
+        collapsed,
+        previewExpanded,
+        historyOpen,
+      };
     });
   }, [
     sessions.sessions,
     sessions.activeId,
     workspaces,
     collapsedKeys,
+    pinnedSessionIds,
     previewExpandedKeys,
     historyOpenKeys,
   ]);
@@ -226,8 +239,10 @@ function WorkbenchSessionSurface({
         usage: conversation.usage,
       }}
       errorMessage={errorMessage}
+      pinnedSessionIds={pinnedSessionIds}
       onSelectSession={sessions.select}
       onStopSession={sessions.stop}
+      onToggleSessionPinned={toggleSessionPinned}
       onCreateSession={sessions.create}
       onImportSession={handleImportedSession}
       onRegisterWorkspace={handleRegisterWorkspace}

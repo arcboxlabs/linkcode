@@ -17,8 +17,10 @@ export interface ChatsSectionProps {
   /** The group key `onTogglePreviewExpanded` is called with. */
   groupKey: string;
   activeId: SessionId | null;
+  pinnedSessionIds: readonly SessionId[];
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
+  onToggleSessionPinned: (id: SessionId) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
 }
@@ -36,8 +38,10 @@ export function ChatsSection({
   previewExpanded,
   groupKey,
   activeId,
+  pinnedSessionIds,
   onSelect,
   onStop,
+  onToggleSessionPinned,
   onCreate,
   onTogglePreviewExpanded,
 }: ChatsSectionProps): React.ReactNode {
@@ -76,9 +80,11 @@ export function ChatsSection({
             <ThreadRow
               key={session.sessionId}
               active={session.sessionId === activeId}
+              pinned={pinnedSessionIds.includes(session.sessionId)}
               session={session}
               onSelect={() => onSelect(session.sessionId)}
               onStop={() => onStop(session.sessionId)}
+              onTogglePin={() => onToggleSessionPinned(session.sessionId)}
             />
           ))}
         </div>

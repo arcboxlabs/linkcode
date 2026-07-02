@@ -23,8 +23,11 @@ export interface ShellFrameProps {
   respondingPermissions: Set<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
+  /** Threads pinned to the top of their sidebar group, in pin order. */
+  pinnedSessionIds: readonly SessionId[];
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
+  onToggleSessionPinned: (id: SessionId) => void;
   onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
   onImportSession?: (sessionId: SessionId) => void;
   /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
@@ -57,8 +60,10 @@ export function ShellFrame({
   respondingPermissions,
   header,
   errorMessage,
+  pinnedSessionIds,
   onSelectSession,
   onStopSession,
+  onToggleSessionPinned,
   onCreateSession,
   onImportSession,
   onRegisterWorkspace,
@@ -87,9 +92,11 @@ export function ShellFrame({
           workspaces={workspaces}
           workspacesLoading={workspacesLoading}
           activeId={active?.sessionId ?? null}
+          pinnedSessionIds={pinnedSessionIds}
           footer={<DefaultHostFooter />}
           onSelect={onSelectSession}
           onStop={onStopSession}
+          onToggleSessionPinned={onToggleSessionPinned}
           onCreate={onCreateSession}
           onImportSession={onImportSession}
           onRegisterWorkspace={onRegisterWorkspace}

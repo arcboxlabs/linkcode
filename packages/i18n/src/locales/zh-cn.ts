@@ -136,6 +136,8 @@ export const zhCN = {
       unregisteredGroup: '未注册',
       emptyTitle: '暂无线程',
       stopThread: '停止线程',
+      pinThread: '置顶线程',
+      unpinThread: '取消置顶',
       workspaceEmptyTitle: '暂无工作区',
       chooseWorkspaceTitle: '选择工作区',
       chooseDirectory: '选择目录…',

@@ -41,8 +41,11 @@ export interface ThreadsViewProps {
   groups: ThreadGroupViewModel[];
   workspacesLoading?: boolean;
   activeId: SessionId | null;
+  /** Threads pinned to the top of their group, in pin order. */
+  pinnedSessionIds: readonly SessionId[];
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
+  onToggleSessionPinned: (id: SessionId) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   onImportSession?: (sessionId: SessionId) => void;
   onPickDirectory?: () => Promise<string | null>;
@@ -64,8 +67,10 @@ export function ThreadsView({
   groups,
   workspacesLoading,
   activeId,
+  pinnedSessionIds,
   onSelect,
   onStop,
+  onToggleSessionPinned,
   onCreate,
   onImportSession,
   onPickDirectory,
@@ -109,8 +114,10 @@ export function ThreadsView({
             key={group.key}
             group={group}
             activeId={activeId}
+            pinnedSessionIds={pinnedSessionIds}
             onSelect={onSelect}
             onStop={onStop}
+            onToggleSessionPinned={onToggleSessionPinned}
             onCreate={onCreate}
             onImportSession={onImportSession}
             onRenameWorkspace={onRenameWorkspace}
@@ -135,8 +142,10 @@ export function ThreadsView({
         previewExpanded={chatGroup?.previewExpanded ?? false}
         groupKey={chatGroup?.key ?? 'chat'}
         activeId={activeId}
+        pinnedSessionIds={pinnedSessionIds}
         onSelect={onSelect}
         onStop={onStop}
+        onToggleSessionPinned={onToggleSessionPinned}
         onCreate={onCreate}
         onTogglePreviewExpanded={onTogglePreviewExpanded}
       />
@@ -147,8 +156,10 @@ export function ThreadsView({
 function ThreadGroupSection({
   group,
   activeId,
+  pinnedSessionIds,
   onSelect,
   onStop,
+  onToggleSessionPinned,
   onCreate,
   onImportSession,
   onRenameWorkspace,
@@ -161,8 +172,10 @@ function ThreadGroupSection({
 }: {
   group: ThreadGroupViewModel;
   activeId: SessionId | null;
+  pinnedSessionIds: readonly SessionId[];
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
+  onToggleSessionPinned: (id: SessionId) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   onImportSession?: (sessionId: SessionId) => void;
   onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
@@ -206,9 +219,11 @@ function ThreadGroupSection({
               <ThreadRow
                 key={session.sessionId}
                 active={session.sessionId === activeId}
+                pinned={pinnedSessionIds.includes(session.sessionId)}
                 session={session}
                 onSelect={() => onSelect(session.sessionId)}
                 onStop={() => onStop(session.sessionId)}
+                onTogglePin={() => onToggleSessionPinned(session.sessionId)}
               />
             ))}
           </div>

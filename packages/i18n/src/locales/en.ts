@@ -138,6 +138,8 @@ export const en = {
       unregisteredGroup: 'Unregistered',
       emptyTitle: 'No threads yet',
       stopThread: 'Stop thread',
+      pinThread: 'Pin thread',
+      unpinThread: 'Unpin thread',
       workspaceEmptyTitle: 'No workspaces yet',
       chooseWorkspaceTitle: 'Choose a workspace',
       chooseDirectory: 'Choose directory…',

@@ -33,7 +33,9 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   `GitOverview`.
 - `sidebar/` — the flattened thread-group sidebar's data layer: `groupThreadsByWorkspace` (grouping/
   sort) and `selectVisibleSessions` (per-group preview truncation, both unit-tested pure functions),
-  `useSidebarGroupCollapseStore` (the persisted, cwd-keyed collapse state), and the hook-backed
+  `useSidebarGroupCollapseStore` (the persisted, cwd-keyed collapse state),
+  `useSidebarPinStore` + `orderPinnedFirst` (persisted pinned threads and their group-top
+  ordering), and the hook-backed
   adapter components (`RuntimeBranchStatus`, `RuntimeWorkspaceHistory`) that give `packages/ui`'s
   `SessionSidebar` a per-group/per-row git-status or history subscription without it touching
   tayori. `surface/workbench.tsx` combines all of this into the `ThreadGroupViewModel[]` (grouping +

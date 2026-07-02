@@ -48,8 +48,10 @@ export function DesktopShell({
   answeredPermissions,
   respondingPermissions,
   errorMessage,
+  pinnedSessionIds,
   onSelectSession,
   onStopSession,
+  onToggleSessionPinned,
   onCreateSession,
   onImportSession,
   onRegisterWorkspace,
@@ -480,6 +482,7 @@ export function DesktopShell({
                 workspaces={workspaces}
                 workspacesLoading={workspacesLoading}
                 activeId={active?.sessionId ?? null}
+                pinnedSessionIds={pinnedSessionIds}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
                   <HostFooter
@@ -501,6 +504,7 @@ export function DesktopShell({
                 HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
                 onStop={onStopSession}
+                onToggleSessionPinned={onToggleSessionPinned}
                 onCreate={onCreateSession}
               />
             </div>

@@ -28,12 +28,29 @@ const AGENT_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeGlyph>> = {
 
 export function AgentIcon({
   kind,
+  variant = 'solid',
   className,
 }: {
   kind: AgentKind;
+  /** `ghost` drops the brand-chip box: bare glyph, color inherited from the surrounding text. */
+  variant?: 'solid' | 'ghost';
   className?: string;
 }): React.ReactNode {
   const Glyph = AGENT_GLYPHS[kind];
+
+  if (variant === 'ghost') {
+    return (
+      <span
+        className={cn(
+          'flex size-4 shrink-0 items-center justify-center font-semibold text-[0.625rem]',
+          className,
+        )}
+      >
+        {Glyph ? <Glyph aria-hidden className="size-4" /> : AGENT_INITIALS[kind]}
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(
