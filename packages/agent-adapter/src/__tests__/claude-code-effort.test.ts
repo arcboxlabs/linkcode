@@ -2,6 +2,7 @@ import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { asyncNoop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeCodeAdapter } from '../native/claude-code';
 
@@ -103,12 +104,6 @@ function setEffort(adapter: ClaudeCodeAdapter, effort: 'low' | 'high' | 'max' | 
   return adapter.send({ type: 'set-effort', effort });
 }
 
-function tick(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
 async function waitIdle(events: AgentEvent[]): Promise<void> {
   await vi.waitFor(() => {
     expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
@@ -138,7 +133,7 @@ describe('ClaudeCodeAdapter effort switching', () => {
       });
     });
     // The prompt must not enter the queue while the effort switch is still in flight.
-    await tick();
+    await wait(0);
     expect(queries[0].received).toHaveLength(0);
 
     resolveFlags?.();
