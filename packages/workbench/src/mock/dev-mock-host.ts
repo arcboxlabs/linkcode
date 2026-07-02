@@ -38,7 +38,11 @@ import {
   SHOWCASE_PERMISSION_OPTIONS,
   SHOWCASE_PERMISSION_TOOL_ID,
   SHOWCASE_PLAN,
+  SHOWCASE_SCRIPT_START_DELAY_MS,
+  SHOWCASE_SCRIPT_STEP_LATENCY_MS,
+  SHOWCASE_STREAM_CHUNK_LATENCY_MS,
   SHOWCASE_STREAM_REPLY,
+  SHOWCASE_STREAM_START_DELAY_MS,
   SHOWCASE_STREAM_THOUGHT_CONTENT,
   SHOWCASE_TERMINAL_EXIT_OUTPUT,
   SHOWCASE_TERMINAL_START_OUTPUT,
@@ -53,7 +57,6 @@ interface MockSession extends SessionInfo {
   epoch: number;
   showcase?: boolean;
   showcaseSeeded?: boolean;
-  showcaseStreaming?: boolean;
   terminalId?: string;
 }
 
@@ -88,13 +91,13 @@ export class DevMockHost {
     switch (p.kind) {
       case 'session.list':
         await wait(CONTROL_LATENCY_MS);
-        // Seed after the client is connected; LocalTransport drops frames with no listener.
-        this.startShowcase();
         this.send({
           kind: 'session.listed',
           replyTo: p.clientReqId,
           sessions: [...this.sessions.values()].map((session) => toSessionInfo(session)),
         });
+        // Start after the list reply so the UI can subscribe before scripted frames arrive.
+        this.startShowcase();
         break;
       case 'session.start':
         await wait(CONTROL_LATENCY_MS);
@@ -313,16 +316,22 @@ export class DevMockHost {
   private startShowcase(): void {
     for (const session of this.sessions.values()) {
       if (!session.showcase) continue;
-      this.emitShowcaseConversation(session);
-      void this.streamShowcaseReply(session);
+      if (session.showcaseSeeded) continue;
+      session.showcaseSeeded = true;
+      void this.runShowcase(session);
     }
   }
 
-  private emitShowcaseConversation(session: MockSession): void {
-    if (session.showcaseSeeded) return;
-    session.showcaseSeeded = true;
+  private async runShowcase(session: MockSession): Promise<void> {
     session.status = 'running';
+    const epoch = session.epoch;
+    await wait(SHOWCASE_SCRIPT_START_DELAY_MS);
+    if (!isRunningTurn(session, epoch)) return;
+    if (!(await this.emitShowcaseConversation(session, epoch))) return;
+    await this.streamShowcaseReply(session, epoch);
+  }
 
+  private async emitShowcaseConversation(session: MockSession, epoch: number): Promise<boolean> {
     const introId = this.nextMessageId('mock-showcase-intro');
     const resourceId = this.nextMessageId('mock-showcase-resource');
     const terminalId = session.terminalId ?? SHOWCASE_TERMINAL_ID;
@@ -332,64 +341,81 @@ export class DevMockHost {
       diff: SHOWCASE_PERMISSION_DIFF,
     });
 
-    this.emit(session.sessionId, { type: 'status', status: 'running' });
-    this.emit(session.sessionId, { type: 'current-mode-update', currentModeId: 'mock-showcase' });
-    this.emit(session.sessionId, { type: 'user-message', content: SHOWCASE_USER_CONTENT });
-    this.emit(session.sessionId, {
-      type: 'agent-thought-chunk',
-      messageId: this.nextMessageId('mock-showcase-thought'),
-      content: SHOWCASE_THOUGHT_CONTENT,
-    });
-    this.emit(session.sessionId, { type: 'plan', plan: SHOWCASE_PLAN });
-    this.emit(session.sessionId, {
-      type: 'agent-message-chunk',
-      messageId: introId,
-      content: SHOWCASE_INTRO_CONTENT,
-    });
-    this.emit(session.sessionId, {
-      type: 'agent-message-chunk',
-      messageId: introId,
-      content: SHOWCASE_ARCHITECTURE_LINK,
-    });
-    this.emit(session.sessionId, {
-      type: 'agent-message-chunk',
-      messageId: resourceId,
-      content: SHOWCASE_EMBEDDED_RESOURCE,
-    });
-    this.emit(session.sessionId, {
-      type: 'agent-message-chunk',
-      messageId: this.nextMessageId('mock-showcase-image'),
-      content: SHOWCASE_IMAGE,
-    });
-
-    for (const toolCall of createShowcaseToolSnapshots(terminalId)) {
-      this.emitToolSnapshot(session.sessionId, toolCall);
-    }
-    this.send({ kind: 'terminal.output', terminalId, data: SHOWCASE_TERMINAL_START_OUTPUT });
-    this.emit(session.sessionId, {
-      type: 'permission-request',
-      requestId: SHOWCASE_PERMISSION_ID,
-      toolCall: {
-        toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
-        title: 'Apply guarded edit',
-        kind: 'edit',
-        status: 'pending',
-        content: [SHOWCASE_PERMISSION_DIFF],
+    const script: AgentEvent[] = [
+      { type: 'status', status: 'running' },
+      { type: 'current-mode-update', currentModeId: 'mock-showcase' },
+      { type: 'user-message', content: SHOWCASE_USER_CONTENT },
+      {
+        type: 'agent-thought-chunk',
+        messageId: this.nextMessageId('mock-showcase-thought'),
+        content: SHOWCASE_THOUGHT_CONTENT,
       },
-      options: SHOWCASE_PERMISSION_OPTIONS,
-    });
-    this.emit(session.sessionId, SHOWCASE_ERROR_EVENT);
+      { type: 'plan', plan: SHOWCASE_PLAN },
+      {
+        type: 'agent-message-chunk',
+        messageId: introId,
+        content: SHOWCASE_INTRO_CONTENT,
+      },
+      {
+        type: 'agent-message-chunk',
+        messageId: introId,
+        content: SHOWCASE_ARCHITECTURE_LINK,
+      },
+      {
+        type: 'agent-message-chunk',
+        messageId: resourceId,
+        content: SHOWCASE_EMBEDDED_RESOURCE,
+      },
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-image'),
+        content: SHOWCASE_IMAGE,
+      },
+      ...createShowcaseToolSnapshots(terminalId).map(
+        (toolCall): AgentEvent => ({ type: 'tool-call', toolCall }),
+      ),
+    ];
+
+    for (const event of script) {
+      if (!(await waitForShowcaseStep(session, epoch))) return false;
+      this.emit(session.sessionId, event);
+    }
+    if (!(await waitForShowcaseStep(session, epoch))) return false;
+    this.send({ kind: 'terminal.output', terminalId, data: SHOWCASE_TERMINAL_START_OUTPUT });
+    if (
+      !(await this.emitShowcaseEvent(session, epoch, {
+        type: 'permission-request',
+        requestId: SHOWCASE_PERMISSION_ID,
+        toolCall: {
+          toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
+          title: 'Apply guarded edit',
+          kind: 'edit',
+          status: 'pending',
+          content: [SHOWCASE_PERMISSION_DIFF],
+        },
+        options: SHOWCASE_PERMISSION_OPTIONS,
+      }))
+    ) {
+      return false;
+    }
+    return this.emitShowcaseEvent(session, epoch, SHOWCASE_ERROR_EVENT);
   }
 
-  private async streamShowcaseReply(session: MockSession): Promise<void> {
-    if (session.showcaseStreaming) return;
-    session.showcaseStreaming = true;
+  private async emitShowcaseEvent(
+    session: MockSession,
+    epoch: number,
+    event: AgentEvent,
+  ): Promise<boolean> {
+    if (!(await waitForShowcaseStep(session, epoch))) return false;
+    this.emit(session.sessionId, event);
+    return true;
+  }
 
-    const epoch = session.epoch;
+  private async streamShowcaseReply(session: MockSession, epoch: number): Promise<void> {
     const terminalId = session.terminalId ?? SHOWCASE_TERMINAL_ID;
     const thoughtId = this.nextMessageId('mock-showcase-stream-thought');
     const messageId = this.nextMessageId('mock-showcase-stream');
-    await wait(500);
+    await wait(SHOWCASE_STREAM_START_DELAY_MS);
     if (!isRunningTurn(session, epoch)) return;
     this.emit(session.sessionId, {
       type: 'agent-thought-chunk',
@@ -398,7 +424,7 @@ export class DevMockHost {
     });
 
     for (const chunk of SHOWCASE_STREAM_REPLY.match(WORD_CHUNK_PATTERN) ?? []) {
-      await wait(CHUNK_LATENCY_MS);
+      await wait(SHOWCASE_STREAM_CHUNK_LATENCY_MS);
       if (!isRunningTurn(session, epoch)) return;
       this.emit(session.sessionId, {
         type: 'agent-message-chunk',
@@ -502,4 +528,9 @@ function toSessionInfo(session: MockSession): SessionInfo {
 
 function isRunningTurn(session: MockSession, epoch: number): boolean {
   return session.epoch === epoch && session.status === 'running';
+}
+
+async function waitForShowcaseStep(session: MockSession, epoch: number): Promise<boolean> {
+  await wait(SHOWCASE_SCRIPT_STEP_LATENCY_MS);
+  return isRunningTurn(session, epoch);
 }
