@@ -12,7 +12,7 @@ import type {
   StartOptions,
 } from '@linkcode/schema';
 
-export const HISTORY_CONVERSION_CACHE_VERSION = 1;
+export const HISTORY_CONVERSION_CACHE_VERSION = 2;
 
 export type HistoryListOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
