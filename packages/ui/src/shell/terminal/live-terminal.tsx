@@ -60,6 +60,32 @@ function decodeDataUri(uri: string): ArrayBuffer {
   return Uint8Array.from(binary, (ch) => ch.codePointAt(0) ?? 0).buffer;
 }
 
+// Every mounted LiveTerminal needs to re-theme on the same `.dark` class flip, but terminal tabs
+// stay mounted (visibility-toggled, not unmounted) while N tabs are open — so share a single
+// MutationObserver across all instances instead of one per terminal.
+const themeChangeListeners = new Set<() => void>();
+let themeChangeObserver: MutationObserver | null = null;
+
+function subscribeThemeChange(listener: () => void): () => void {
+  themeChangeListeners.add(listener);
+  if (!themeChangeObserver) {
+    themeChangeObserver = new MutationObserver(() => {
+      for (const fn of themeChangeListeners) fn();
+    });
+    themeChangeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+  }
+  return () => {
+    themeChangeListeners.delete(listener);
+    if (themeChangeListeners.size === 0) {
+      themeChangeObserver?.disconnect();
+      themeChangeObserver = null;
+    }
+  };
+}
+
 /**
  * Bridge a {@link TerminalSession} to restty's native PTY transport. This is load-bearing: with a
  * connected transport, restty sends keystrokes straight out through its key encoder and does NOT
@@ -174,15 +200,11 @@ export function LiveTerminal({
 
       // The terminal theme follows the app's `.dark` class, so re-apply whenever it flips
       // (light/dark mode change) — no need to tear down the terminal.
-      const modeObserver = new MutationObserver(() => applyTerminalTheme(restty, frame));
-      modeObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class'],
-      });
+      const unsubscribeThemeChange = subscribeThemeChange(() => applyTerminalTheme(restty, frame));
 
       return () => {
         cancelAnimationFrame(revealFrame);
-        modeObserver.disconnect();
+        unsubscribeThemeChange();
         restty.destroy();
       };
     },
