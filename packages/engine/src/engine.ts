@@ -153,17 +153,18 @@ export class Engine {
             this.records.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
-          const historyId = nullthrow(
-            latestHistoryId(record),
-            `Session has no provider history to resume: ${p.sessionId}`,
-          );
+          // A never-prompted session has no provider transcript to resume from (the adapter only
+          // mints one on the first prompt); waking it is a fresh start under the same Link Code id.
+          const historyId = latestHistoryId(record);
           const startOpts = applyProviderDefaults(
             { kind: record.kind, cwd: record.cwd },
             this.providerStore.get(),
           );
           record.runs.push({ historyId, startedAt: Date.now() });
           await this.startLiveSession(p.clientReqId, record, (adapter) =>
-            this.history.resume(adapter, historyId, startOpts),
+            historyId === undefined
+              ? adapter.start(startOpts)
+              : this.history.resume(adapter, historyId, startOpts),
           );
         });
         break;

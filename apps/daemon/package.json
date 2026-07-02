@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --import ./src/instrument.ts src/index.ts",
+    "dev:clean": "rm -f ~/.linkcode/daemon.db ~/.linkcode/runtime.json && pnpm run dev",
     "build": "tsup",
     "build:rust": "cargo build -p linkcode-pty --release",
     "bench:pty": "pnpm run build:rust && tsx src/pty/bench-throughput.mts",
