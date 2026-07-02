@@ -22,6 +22,7 @@
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@linkcode/schema": "workspace:*",
+    "@pierre/diffs": "^1.2.12",
     "ansi-to-react": "^6.2.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
