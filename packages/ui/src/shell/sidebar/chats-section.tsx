@@ -46,7 +46,7 @@ export function ChatsSection({
 
   return (
     <section>
-      <div className="flex h-8 items-center gap-1.5 px-[var(--lc-sidebar-edge,0.5rem)]">
+      <div className="flex h-7 items-center gap-1.5 px-[var(--lc-sidebar-edge,0.5rem)]">
         <span className="min-w-0 flex-1 truncate font-medium text-muted-foreground text-xs">
           {t('chats')}
         </span>

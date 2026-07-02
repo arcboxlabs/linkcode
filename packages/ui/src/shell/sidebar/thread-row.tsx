@@ -21,7 +21,7 @@ export interface ThreadRowProps {
   onStop: () => void;
 }
 
-/** One thread row: agent icon, title, status dot. The relative time lives in a tooltip, not inline. */
+/** One thread row: agent icon, single-line title, status dot. The relative time lives in a tooltip. */
 export function ThreadRow({ session, active, onSelect, onStop }: ThreadRowProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const agent = AGENT_LABELS[session.kind];
@@ -34,14 +34,16 @@ export function ThreadRow({ session, active, onSelect, onStop }: ThreadRowProps)
         active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/70',
       )}
     >
-      {active && <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />}
+      {active && (
+        <span className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-primary" />
+      )}
       <button
         type="button"
         title={relativeTimeLabel(session.createdAt)}
-        className="flex w-full min-w-0 gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] py-1.5 pr-8 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-7 w-full min-w-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] pr-8 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onSelect}
       >
-        <span className="relative mt-0.5 shrink-0">
+        <span className="relative shrink-0">
           <AgentIcon kind={session.kind} />
           <span
             aria-hidden
@@ -51,9 +53,7 @@ export function ThreadRow({ session, active, onSelect, onStop }: ThreadRowProps)
             )}
           />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 font-medium text-sm leading-snug">{title}</span>
-        </span>
+        <span className="min-w-0 flex-1 truncate font-medium text-sm">{title}</span>
       </button>
       <button
         type="button"
