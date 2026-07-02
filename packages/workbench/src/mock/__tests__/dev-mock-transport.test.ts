@@ -20,6 +20,19 @@ function toolCalls(events: readonly AgentEvent[]): ToolCall[] {
   return events.flatMap((event) => (event.type === 'tool-call' ? [event.toolCall] : []));
 }
 
+async function eventually<T>(
+  read: () => T | false | null | undefined,
+  timeoutMs = 5000,
+): Promise<T> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const value = read();
+    if (value) return value;
+    await wait(50);
+  }
+  throw new Error('timed out waiting for mock event');
+}
+
 describe('dev mock transport', () => {
   it('drives the current workbench data plane without a daemon', async () => {
     const client = await connectedClient();
@@ -79,23 +92,22 @@ describe('dev mock transport', () => {
     if (!showcase) throw new Error('showcase session not found');
 
     const events = collectEvents(client, showcase.sessionId);
-    const initialTools = toolCalls(events);
-    const terminalTool = initialTools.find((tool) =>
-      tool.content.some((content) => content.type === 'terminal'),
-    );
-    const terminalId = terminalTool?.content.find(
-      (content) => content.type === 'terminal',
-    )?.terminalId;
-    expect(terminalId).toBeTruthy();
+    const terminalId = await eventually(() => {
+      const terminalTool = toolCalls(events).find((tool) =>
+        tool.content.some((content) => content.type === 'terminal'),
+      );
+      return terminalTool?.content.find((content) => content.type === 'terminal')?.terminalId;
+    });
 
     let terminalOutput = '';
-    if (terminalId) {
-      client.subscribeTerminalOutput(terminalId, (data) => {
-        terminalOutput += data;
-      });
-    }
+    client.subscribeTerminalOutput(terminalId, (data) => {
+      terminalOutput += data;
+    });
 
-    await wait(1500);
+    await eventually(
+      () => events.some((event) => event.type === 'stop' && event.stopReason === 'end_turn'),
+      15000,
+    );
 
     expect(events.some((event) => event.type === 'user-message')).toBe(true);
     expect(events.some((event) => event.type === 'agent-thought-chunk')).toBe(true);
@@ -140,7 +152,31 @@ describe('dev mock transport', () => {
     ).toBe(true);
 
     client.dispose();
-  });
+  }, 20000);
+
+  it('does not resume the showcase stream inside a later user turn after cancel', async () => {
+    const client = await connectedClient();
+    const sessions = await client.listSessions();
+    const showcase = sessions.find((session) => session.title === 'Mocked streaming showcase');
+    if (!showcase) throw new Error('showcase session not found');
+
+    const events = collectEvents(client, showcase.sessionId);
+    await eventually(() => events.some((event) => event.type === 'user-message'));
+
+    await client.cancel(showcase.sessionId);
+    const prompt = 'word '.repeat(120).trim();
+    const pendingPrompt = client.promptText(showcase.sessionId, prompt);
+    await wait(1600);
+
+    const strayShowcaseChunks = events.filter(
+      (event) =>
+        event.type === 'agent-message-chunk' && event.messageId.startsWith('mock-showcase-stream'),
+    );
+    expect(strayShowcaseChunks).toHaveLength(0);
+
+    await expect(pendingPrompt).resolves.toEqual({ ok: true });
+    client.dispose();
+  }, 10000);
 
   it('cancels an in-flight prompt turn', async () => {
     const client = await connectedClient();

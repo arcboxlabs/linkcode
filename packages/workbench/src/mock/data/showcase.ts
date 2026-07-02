@@ -85,6 +85,11 @@ export const SHOWCASE_STREAM_THOUGHT_CONTENT = textBlock(
 export const SHOWCASE_STREAM_REPLY =
   'Streaming showcase complete: messages, reasoning, plans, tool bodies, diffs, terminal output, permissions, errors, and usage all came from the mock transport.';
 
+export const SHOWCASE_SCRIPT_START_DELAY_MS = 600;
+export const SHOWCASE_SCRIPT_STEP_LATENCY_MS = 180;
+export const SHOWCASE_STREAM_START_DELAY_MS = 1000;
+export const SHOWCASE_STREAM_CHUNK_LATENCY_MS = 220;
+
 export const SHOWCASE_TERMINAL_START_OUTPUT =
   '$ pnpm vitest run packages/workbench/src/mock\n✓ dev mock transport (4)\n';
 
