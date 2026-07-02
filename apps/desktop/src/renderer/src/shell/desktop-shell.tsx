@@ -6,9 +6,10 @@ import {
   PanelStubContent,
   PanelTabContentStack,
 } from '@linkcode/ui/shell/panels';
-import type { WorkbenchShellProps } from '@linkcode/workbench';
-import { TerminalPanel } from '@linkcode/workbench';
+import type { PaletteCommand, WorkbenchShellProps } from '@linkcode/workbench';
+import { TerminalPanel, useCommandPaletteStore } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
+import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -66,6 +67,7 @@ export function DesktopShell({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onOpenSearch,
   TerminalBlockComponent,
   BranchStatusComponent,
   HistoryComponent,
@@ -220,11 +222,11 @@ export function DesktopShell({
     resetBottomPanelSize: resetBottomPanelLayoutSize,
   } = shellState;
 
-  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel, Cmd+B (Ctrl+B) the sidebar, and
-  // Option+Cmd+B (Ctrl+Alt+B) the right side panel. Captured at the window so they win even
-  // while the terminal canvas holds focus; on mac the Ctrl variants stay with the shell (Ctrl+J
-  // is a real terminal keystroke there). Matched on `code` because Option rewrites `key` on mac
-  // (⌥B yields "∫").
+  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel, Cmd+B (Ctrl+B) the sidebar,
+  // Option+Cmd+B (Ctrl+Alt+B) the right side panel, and Cmd+K (Ctrl+K) the command palette.
+  // Captured at the window so they win even while the terminal canvas holds focus; on mac the
+  // Ctrl variants stay with the shell (Ctrl+J is a real terminal keystroke there). Matched on
+  // `code` because Option rewrites `key` on mac (⌥B yields "∫").
   useAbortableEffect(
     (signal) => {
       if (desktopPlatform === null) return;
@@ -247,7 +249,9 @@ export function DesktopShell({
                 ? event.altKey
                   ? () => togglePanel('right')
                   : () => updateSidebarOpen((open) => !open)
-                : null;
+                : event.code === 'KeyK' && !event.altKey
+                  ? () => useCommandPaletteStore.getState().toggle()
+                  : null;
           if (toggle === null) return;
           event.preventDefault();
           event.stopPropagation();
@@ -259,9 +263,75 @@ export function DesktopShell({
     [desktopPlatform, togglePanel, updateSidebarOpen],
   );
 
-  function pickDirectory(): Promise<string | null> {
-    return systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true });
-  }
+  const pickDirectory = useCallback(
+    () => systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true }),
+    [systemBridge],
+  );
+
+  const tPalette = useTranslations('workbench.palette');
+  // Desktop-owned palette entries: native folder pick, the Settings overlay, and the panel
+  // toggles. Registered into the shared palette store so the workbench-rendered palette lists
+  // them without desktop threading props through the surface.
+  useAbortableEffect(() => {
+    const shortcuts = getPanelToggleShortcuts(desktopPlatform);
+    const commands: PaletteCommand[] = [
+      {
+        id: 'desktop.open-folder',
+        label: tPalette('openFolder'),
+        keywords: ['folder', 'workspace'],
+        run() {
+          // The native picker only yields existing directories, so registration failing is a
+          // transport-level problem already surfaced by the data layer's error reporting.
+          void pickDirectory()
+            .then((picked) => (picked ? onRegisterWorkspace(picked) : null))
+            .catch(noop);
+        },
+      },
+      {
+        id: 'desktop.toggle-sidebar',
+        label: tPalette('toggleSidebar'),
+        shortcut: shortcuts.sidebar,
+        run() {
+          updateSidebarOpen((open) => !open);
+        },
+      },
+      {
+        id: 'desktop.toggle-bottom-panel',
+        label: tPalette('toggleBottomPanel'),
+        shortcut: shortcuts.bottom,
+        run() {
+          togglePanel('bottom');
+        },
+      },
+      {
+        id: 'desktop.toggle-right-panel',
+        label: tPalette('toggleRightPanel'),
+        shortcut: shortcuts.right,
+        run() {
+          togglePanel('right');
+        },
+      },
+    ];
+    if (onOpenSettings) {
+      commands.splice(1, 0, {
+        id: 'desktop.settings',
+        label: tPalette('openSettings'),
+        shortcut: shortcuts.settings,
+        run: onOpenSettings,
+      });
+    }
+    const { registerCommands, unregisterCommands } = useCommandPaletteStore.getState();
+    registerCommands('desktop', commands);
+    return () => unregisterCommands('desktop');
+  }, [
+    desktopPlatform,
+    tPalette,
+    pickDirectory,
+    onRegisterWorkspace,
+    onOpenSettings,
+    togglePanel,
+    updateSidebarOpen,
+  ]);
 
   function resetSidebarSize(): void {
     sidebarSplit.setPaneSize(DEFAULT_LAYOUT.sidebarW);
@@ -503,6 +573,8 @@ export function DesktopShell({
                 }
                 onImportSession={onImportSession}
                 onPickDirectory={pickDirectory}
+                onOpenSearch={onOpenSearch}
+                searchShortcut={panelShortcuts.palette}
                 onRegisterWorkspace={onRegisterWorkspace}
                 onRenameWorkspace={onRenameWorkspace}
                 onArchiveWorkspace={onArchiveWorkspace}
@@ -550,8 +622,18 @@ function getPanelToggleShortcuts(platform: NodeJS.Platform | null): {
   sidebar?: string;
   bottom?: string;
   right?: string;
+  palette?: string;
+  settings?: string;
 } {
   if (platform === null) return {};
-  if (platform === 'darwin') return { sidebar: '⌘B', bottom: '⌘J', right: '⌥⌘B' };
-  return { sidebar: 'Ctrl+B', bottom: 'Ctrl+J', right: 'Ctrl+Alt+B' };
+  if (platform === 'darwin') {
+    return { sidebar: '⌘B', bottom: '⌘J', right: '⌥⌘B', palette: '⌘K', settings: '⌘,' };
+  }
+  return {
+    sidebar: 'Ctrl+B',
+    bottom: 'Ctrl+J',
+    right: 'Ctrl+Alt+B',
+    palette: 'Ctrl+K',
+    settings: 'Ctrl+,',
+  };
 }
