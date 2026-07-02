@@ -1,4 +1,4 @@
-import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import type { AgentKind, SessionId, WorkspaceRecord } from '@linkcode/schema';
 import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
@@ -11,51 +11,63 @@ import {
   SelectValue,
 } from 'coss-ui/components/select';
 import { Separator } from 'coss-ui/components/separator';
-import { addDays } from 'date-fns/addDays';
-import { startOfDay } from 'date-fns/startOfDay';
-import { subDays } from 'date-fns/subDays';
+import { Tabs, TabsList, TabsTab } from 'coss-ui/components/tabs';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   BotIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   FilePlus2Icon,
+  FolderPlusIcon,
   SearchIcon,
   SettingsIcon,
   SparklesIcon,
-  XIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
+import { repositoryLabel } from './repository-label';
 import { ShellSidebar, shellSidebarItemClassName } from './shell-sidebar';
+import type { BranchStatusComponentType, ThreadGroupViewModel } from './threads-view';
+import { ThreadsView } from './threads-view';
+import { WorkspaceView } from './workspace-view';
+
+export { repositoryLabel } from './repository-label';
+export type { ThreadGroupViewModel } from './threads-view';
+
+type SidebarMode = 'threads' | 'workspace';
 
 export interface SessionSidebarProps {
-  sessions: SessionInfo[];
+  threadGroups: ThreadGroupViewModel[];
+  workspaces: WorkspaceRecord[];
+  workspacesLoading?: boolean;
   activeId: SessionId | null;
   topInsetClassName?: string;
   footer?: React.ReactNode;
   className?: string;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
-  onCreate: (kind: AgentKind) => void;
+  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  /** Called once a history entry finishes importing as a new thread. */
+  onImportSession?: (sessionId: SessionId) => void;
+  /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
+  onPickDirectory?: () => Promise<string | null>;
+  /** Registers a picked directory as a workspace; required alongside `onPickDirectory`. */
+  onRegisterWorkspace?: (cwd: string) => Promise<WorkspaceRecord>;
+  BranchStatusComponent?: BranchStatusComponentType;
+  HistoryComponent?: React.ComponentType<{
+    cwd: string;
+    onImported: (sessionId: SessionId) => void;
+  }>;
 }
-
-export type SessionGroupKey = 'today' | 'yesterday' | 'earlier';
-
-const GROUP_LABELS: Record<SessionGroupKey, string> = {
-  today: 'Today',
-  yesterday: 'Yesterday',
-  earlier: 'Earlier',
-};
 
 const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];
 
-const ROOT_PATH_RE = /^[\\/]+$/;
-const PATH_SEPARATOR_RE = /[\\/]+/;
-const WINDOWS_DRIVE_LABEL_RE = /^[a-z]:$/i;
-const WINDOWS_DRIVE_ROOT_RE = /^[a-z]:[\\/]*$/i;
-
 export function SessionSidebar({
-  sessions,
+  threadGroups,
+  workspaces,
+  workspacesLoading,
   activeId,
   topInsetClassName,
   footer,
@@ -63,12 +75,14 @@ export function SessionSidebar({
   onSelect,
   onStop,
   onCreate,
+  onImportSession,
+  onPickDirectory,
+  onRegisterWorkspace,
+  BranchStatusComponent,
+  HistoryComponent,
 }: SessionSidebarProps): React.ReactNode {
-  const currentDayStart = useCurrentLocalDayStart();
-  const groups = useMemo(
-    () => groupSessions(sessions, currentDayStart),
-    [currentDayStart, sessions],
-  );
+  const [mode, setMode] = useState<SidebarMode>('threads');
+  const t = useTranslations('workbench.sidebar');
 
   return (
     <ShellSidebar
@@ -79,29 +93,51 @@ export function SessionSidebar({
       footer={footer}
     >
       <div className="px-[var(--lc-sidebar-edge,0.5rem)]">
-        <NewTaskMenu onCreate={onCreate} />
+        <NewTaskMenu
+          workspaces={workspaces}
+          onCreate={onCreate}
+          onPickDirectory={onPickDirectory}
+          onRegisterWorkspace={onRegisterWorkspace}
+        />
         <SidebarMenuButton disabled icon={<SearchIcon />} label="Search" />
         <SidebarMenuButton disabled icon={<SparklesIcon />} label="Automation" />
       </div>
 
+      <div className="px-[var(--lc-sidebar-edge,0.5rem)] pt-1">
+        <Tabs value={mode} onValueChange={(value) => setMode(value as SidebarMode)}>
+          <TabsList variant="default" className="w-full">
+            <TabsTab value="threads" className="flex-1">
+              {t('threadsTab')}
+            </TabsTab>
+            <TabsTab value="workspace" className="flex-1">
+              {t('workspaceTab')}
+            </TabsTab>
+          </TabsList>
+        </Tabs>
+      </div>
+
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-[var(--lc-sidebar-edge,0.5rem)] pt-[var(--lc-sidebar-edge,0.5rem)] pb-[var(--lc-sidebar-edge,0.5rem)]">
-          {sessions.length === 0 ? (
-            <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-6 text-center text-muted-foreground text-sm">
-              No sessions yet
-            </div>
+          {mode === 'threads' ? (
+            <ThreadsView
+              groups={threadGroups}
+              activeId={activeId}
+              onSelect={onSelect}
+              onStop={onStop}
+              BranchStatusComponent={BranchStatusComponent}
+            />
           ) : (
-            <div className="space-y-3">
-              {groups.map((group) => (
-                <SessionGroup
-                  key={group.key}
-                  group={group}
-                  activeId={activeId}
-                  onSelect={onSelect}
-                  onStop={onStop}
-                />
-              ))}
-            </div>
+            <WorkspaceView
+              workspaces={workspaces}
+              workspacesLoading={workspacesLoading}
+              threadGroups={threadGroups}
+              activeId={activeId}
+              onSelect={onSelect}
+              onStop={onStop}
+              onImportSession={onImportSession}
+              BranchStatusComponent={BranchStatusComponent}
+              HistoryComponent={HistoryComponent}
+            />
           )}
         </div>
       </div>
@@ -109,37 +145,134 @@ export function SessionSidebar({
   );
 }
 
-function NewTaskMenu({ onCreate }: { onCreate: (kind: AgentKind) => void }): React.ReactNode {
+function NewTaskMenu({
+  workspaces,
+  onCreate,
+  onPickDirectory,
+  onRegisterWorkspace,
+}: {
+  workspaces: WorkspaceRecord[];
+  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  onPickDirectory?: () => Promise<string | null>;
+  onRegisterWorkspace?: (cwd: string) => Promise<WorkspaceRecord>;
+}): React.ReactNode {
+  const t = useTranslations('workbench.sidebar');
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<AgentKind | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const canChooseDirectory = onPickDirectory != null && onRegisterWorkspace != null;
+
+  function reset(): void {
+    setKind(null);
+    setPending(false);
+    setError(null);
+  }
+
+  function handleOpenChange(next: boolean): void {
+    setOpen(next);
+    if (!next) reset();
+  }
+
+  function chooseWorkspace(cwd: string): void {
+    if (!kind) return;
+    setOpen(false);
+    onCreate({ kind, cwd });
+    reset();
+  }
+
+  async function handleChooseDirectory(): Promise<void> {
+    if (!onPickDirectory || !onRegisterWorkspace) return;
+    setPending(true);
+    setError(null);
+    try {
+      const picked = await onPickDirectory();
+      if (!picked) return;
+      const workspace = await onRegisterWorkspace(picked);
+      chooseWorkspace(workspace.cwd);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger className={shellSidebarItemClassName}>
         <SidebarMenuButtonContent icon={<FilePlus2Icon />} label="New Task" />
       </PopoverTrigger>
       <PopoverPopup align="start" side="right" sideOffset={8} className="w-64 p-0">
-        <div className="p-1">
-          <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">New task</div>
-          {(Object.keys(AGENT_LABELS) as AgentKind[]).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => {
-                setOpen(false);
-                onCreate(kind);
-              }}
-            >
-              <AgentIcon kind={kind} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{AGENT_LABELS[kind]}</span>
-                <span className="block truncate text-muted-foreground text-xs">
-                  Choose a working folder
+        {kind === null ? (
+          <div className="p-1">
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">New task</div>
+            {(Object.keys(AGENT_LABELS) as AgentKind[]).map((agentKind) => (
+              <button
+                key={agentKind}
+                type="button"
+                className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setKind(agentKind)}
+              >
+                <AgentIcon kind={agentKind} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{AGENT_LABELS[agentKind]}</span>
+                  <span className="block truncate text-muted-foreground text-xs">
+                    Choose a working folder
+                  </span>
                 </span>
-              </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="p-1">
+            <button
+              type="button"
+              onClick={reset}
+              className="flex items-center gap-1 px-2 py-1.5 text-muted-foreground text-xs outline-none hover:text-foreground"
+            >
+              <ChevronLeftIcon className="size-3.5" />
+              {t('chooseWorkspaceTitle')}
             </button>
-          ))}
-        </div>
+            {workspaces.length === 0 && !canChooseDirectory && (
+              <div className="px-2 py-3 text-center text-muted-foreground text-xs">
+                {t('workspaceEmptyTitle')}
+              </div>
+            )}
+            {workspaces.map((workspace) => (
+              <button
+                key={workspace.workspaceId}
+                type="button"
+                className="flex w-full min-w-0 flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => chooseWorkspace(workspace.cwd)}
+              >
+                <span className="line-clamp-1 w-full text-sm">
+                  {workspace.name ?? repositoryLabel(workspace.cwd)}
+                </span>
+                <span className="line-clamp-1 w-full font-mono text-muted-foreground text-xs">
+                  {workspace.cwd}
+                </span>
+              </button>
+            ))}
+            {canChooseDirectory && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  void handleChooseDirectory();
+                }}
+                className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64"
+              >
+                <FolderPlusIcon className="size-4 text-muted-foreground" />
+                <span className="text-sm">{t('chooseDirectory')}</span>
+              </button>
+            )}
+            {error != null && (
+              <div className="px-2 py-1 text-destructive text-xs">
+                {t('registerWorkspaceError', { message: extractErrorMessage(error, false) ?? '' })}
+              </div>
+            )}
+          </div>
+        )}
       </PopoverPopup>
     </Popover>
   );
@@ -188,172 +321,6 @@ function SidebarMenuButtonContent({
   );
 }
 
-function SessionGroup({
-  group,
-  activeId,
-  onSelect,
-  onStop,
-}: {
-  group: SessionGroupData;
-  activeId: SessionId | null;
-  onSelect: (id: SessionId) => void;
-  onStop: (id: SessionId) => void;
-}): React.ReactNode {
-  return (
-    <section>
-      <div className="flex h-6 items-center gap-[var(--lc-sidebar-gap,0.5rem)] px-[var(--lc-sidebar-edge,0.5rem)] text-muted-foreground text-xs">
-        <span>{GROUP_LABELS[group.key]}</span>
-        <span className="tabular-nums">{group.sessions.length}</span>
-      </div>
-      <div className="space-y-0.5">
-        {group.sessions.map((session) => (
-          <CompactSessionRow
-            key={session.sessionId}
-            active={session.sessionId === activeId}
-            session={session}
-            onSelect={() => onSelect(session.sessionId)}
-            onStop={() => onStop(session.sessionId)}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function CompactSessionRow({
-  session,
-  active,
-  onSelect,
-  onStop,
-}: {
-  session: SessionInfo;
-  active: boolean;
-  onSelect: () => void;
-  onStop: () => void;
-}): React.ReactNode {
-  const repo = repositoryLabel(session.cwd);
-  const agent = AGENT_LABELS[session.kind];
-  const title = session.title ?? `${agent} in ${repo}`;
-
-  return (
-    <div
-      className={cn(
-        'group relative rounded-md',
-        active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/70',
-      )}
-    >
-      {active && <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />}
-      <button
-        type="button"
-        className="flex w-full min-w-0 gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] py-1.5 pr-8 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onSelect}
-      >
-        <AgentIcon kind={session.kind} className="mt-0.5" />
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 font-medium text-sm leading-snug">{title}</span>
-          <span className="mt-0.5 flex min-w-0 items-center gap-1 font-mono text-muted-foreground text-xs">
-            <span className="truncate">{repo}</span>
-            <span>/</span>
-            <span>local</span>
-          </span>
-        </span>
-        <span className="shrink-0 pt-0.5 text-muted-foreground text-xs tabular-nums">
-          {timeLabel(session.createdAt)}
-        </span>
-      </button>
-      <button
-        type="button"
-        aria-label="Stop session"
-        title="Stop session"
-        onClick={onStop}
-        className="-translate-y-1/2 absolute top-1/2 right-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 outline-none hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-      >
-        <XIcon className="size-3.5" />
-      </button>
-    </div>
-  );
-}
-
-export interface SessionGroupData {
-  key: SessionGroupKey;
-  sessions: SessionInfo[];
-}
-
-export function groupSessions(
-  sessions: readonly SessionInfo[],
-  currentDayStart = startOfDay(Date.now()).getTime(),
-): SessionGroupData[] {
-  const groups: Record<SessionGroupKey, SessionInfo[]> = {
-    today: [],
-    yesterday: [],
-    earlier: [],
-  };
-
-  for (const session of [...sessions].sort((a, b) => b.createdAt - a.createdAt)) {
-    groups[groupKey(session.createdAt, currentDayStart)].push(session);
-  }
-
-  return (['today', 'yesterday', 'earlier'] as const).reduce<SessionGroupData[]>((items, key) => {
-    if (groups[key].length > 0) items.push({ key, sessions: groups[key] });
-    return items;
-  }, []);
-}
-
-function groupKey(timestamp: number, currentDayStart: number): SessionGroupKey {
-  const startYesterday = subDays(currentDayStart, 1).getTime();
-
-  if (timestamp >= currentDayStart) return 'today';
-  if (timestamp >= startYesterday) return 'yesterday';
-  return 'earlier';
-}
-
-export function repositoryLabel(cwd: string): string {
-  const trimmed = cwd.trim();
-  if (!trimmed) return cwd;
-  if (ROOT_PATH_RE.test(trimmed)) return trimmed[0] === '\\' ? '\\' : '/';
-
-  const parts = trimmed.split(PATH_SEPARATOR_RE).filter(Boolean);
-  const label = parts.at(-1);
-  if (!label) return trimmed;
-  if (WINDOWS_DRIVE_LABEL_RE.test(label) && WINDOWS_DRIVE_ROOT_RE.test(trimmed)) {
-    return `${label}\\`;
-  }
-  return label;
-}
-
-function timeLabel(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(timestamp));
-}
-
-function useCurrentLocalDayStart(): number {
-  const [currentDayStart, setCurrentDayStart] = useState(() => startOfDay(Date.now()).getTime());
-
-  useEffect(() => {
-    let timeoutId: number | null = null;
-
-    const scheduleNextDay = (): void => {
-      timeoutId = window.setTimeout(
-        () => {
-          setCurrentDayStart(startOfDay(Date.now()).getTime());
-          scheduleNextDay();
-        },
-        Math.max(1, addDays(startOfDay(Date.now()), 1).getTime() - Date.now()),
-      );
-    };
-
-    scheduleNextDay();
-
-    return () => {
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  return currentDayStart;
-}
-
 export function DefaultHostFooter({
   state,
   latency,
@@ -385,6 +352,7 @@ export function HostFooter({
   pendingPermissionCount?: number;
   onOpenSettings?: () => void;
 }): React.ReactNode {
+  const t = useTranslations('workbench.sidebar');
   const pendingPermissionLabel =
     pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
 
@@ -434,7 +402,12 @@ export function HostFooter({
 
         <div className="flex items-center gap-2 pt-1">
           <Select defaultValue="arcbox" items={ORGS}>
-            <SelectTrigger disabled aria-label="Workspace" className="min-w-0 flex-1" size="sm">
+            <SelectTrigger
+              disabled
+              aria-label={t('organization')}
+              className="min-w-0 flex-1"
+              size="sm"
+            >
               <Avatar className="size-5 rounded-sm">
                 <AvatarFallback className="rounded-sm bg-primary text-primary-foreground">
                   A

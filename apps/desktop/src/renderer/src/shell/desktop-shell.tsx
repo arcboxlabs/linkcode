@@ -1,5 +1,4 @@
 import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
-import type { AgentKind } from '@linkcode/schema';
 import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
 import {
   getChromeSurface,
@@ -10,7 +9,6 @@ import {
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { TerminalPanel } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
-import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -42,7 +40,9 @@ import { useDesktopShellStore } from './store/store';
 export function DesktopShell({
   systemBridge,
   header,
-  sessions,
+  threadGroups,
+  workspaces,
+  workspacesLoading,
   activeSession,
   conversation,
   answeredPermissions,
@@ -51,10 +51,14 @@ export function DesktopShell({
   onSelectSession,
   onStopSession,
   onCreateSession,
+  onImportSession,
+  onRegisterWorkspace,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
   TerminalBlockComponent,
+  BranchStatusComponent,
+  HistoryComponent,
   onDismissError,
   onModelChange,
   onOpenSettings,
@@ -240,14 +244,8 @@ export function DesktopShell({
     [desktopPlatform, togglePanel, updateSidebarOpen],
   );
 
-  function createSession(kind: AgentKind): void {
-    void systemBridge.fs
-      .pickFile({ title: 'Choose working folder', directory: true })
-      .then((cwd) => {
-        if (!cwd) return;
-        onCreateSession({ kind, cwd });
-      })
-      .catch(noop);
+  function pickDirectory(): Promise<string | null> {
+    return systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true });
   }
 
   function resetSidebarSize(): void {
@@ -473,7 +471,9 @@ export function DesktopShell({
             <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
               <SessionSidebar
                 className={sidebarClassName}
-                sessions={sessions}
+                threadGroups={threadGroups}
+                workspaces={workspaces}
+                workspacesLoading={workspacesLoading}
                 activeId={active?.sessionId ?? null}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
@@ -484,9 +484,14 @@ export function DesktopShell({
                     onOpenSettings={onOpenSettings}
                   />
                 }
+                onImportSession={onImportSession}
+                onPickDirectory={pickDirectory}
+                onRegisterWorkspace={onRegisterWorkspace}
+                BranchStatusComponent={BranchStatusComponent}
+                HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
                 onStop={onStopSession}
-                onCreate={createSession}
+                onCreate={onCreateSession}
               />
             </div>
           </Allotment.Pane>

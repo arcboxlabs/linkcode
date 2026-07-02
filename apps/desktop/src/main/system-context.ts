@@ -3,9 +3,9 @@ import type { BrowserWindow } from 'electron';
 import { app, dialog } from 'electron';
 import { applyThemePreference } from './appearance';
 import { resolveDaemonUrl } from './daemon-discovery';
+import { ensureDefaultPickerDirectory } from './default-picker-directory';
 import { getSettings, setSettings } from './settings';
 import { checkForUpdates } from './updater';
-import { ensureDefaultWorkspace } from './workspace';
 
 /** Binds the system IPC capability contract to the real Electron implementation (system / UI only, PLAN §2.3). */
 export function systemContextFor(win: BrowserWindow): SystemContext {
@@ -23,7 +23,7 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
       async pickFile(opts) {
         const result = await dialog.showOpenDialog(win, {
           title: opts?.title,
-          defaultPath: opts?.directory ? await ensureDefaultWorkspace() : undefined,
+          defaultPath: opts?.directory ? await ensureDefaultPickerDirectory() : undefined,
           properties: [opts?.directory ? 'openDirectory' : 'openFile'],
         });
         if (result.canceled || result.filePaths.length === 0) return null;
