@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { WorkspaceStore } from '@linkcode/engine';
 import type { WorkspaceRecord } from '@linkcode/schema';
-import { WorkspaceRecordSchema } from '@linkcode/schema';
+import { WorkspaceRecordSchema, workspaceKind } from '@linkcode/schema';
 import Sqlite from 'better-sqlite3';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
@@ -51,6 +51,7 @@ function toRow(record: WorkspaceRecord): typeof workspaces.$inferInsert {
     workspaceId: record.workspaceId,
     cwd: record.cwd,
     name: record.name ?? null,
+    kind: workspaceKind(record),
     createdAt: record.createdAt,
     lastUsedAt: record.lastUsedAt,
   };
@@ -61,6 +62,7 @@ function toRecord(row: WorkspaceRow): WorkspaceRecord {
     workspaceId: row.workspaceId,
     cwd: row.cwd,
     name: row.name ?? undefined,
+    kind: row.kind,
     createdAt: row.createdAt,
     lastUsedAt: row.lastUsedAt,
   });
