@@ -102,6 +102,20 @@ class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
   }
 }
 
+/**
+ * Map a switchable effort onto Claude's flag-settings keys. `ultracode` is its own boolean key
+ * (xhigh plus standing dynamic-workflow orchestration), not an `effortLevel` value; a plain level
+ * clears it (`null` drops the key from the flag layer) so the session actually leaves ultracode
+ * instead of staying pinned at xhigh by the still-set flag. `max` never comes through here — it
+ * can't travel flag-settings at all (see `onSetEffort`).
+ */
+function effortFlagSettings(
+  effort: Exclude<EffortLevel, 'max'>,
+): Parameters<Query['applyFlagSettings']>[0] {
+  if (effort === 'ultracode') return { ultracode: true };
+  return { ultracode: null, effortLevel: effort };
+}
+
 /** Map Claude's stop reason to our ACP-aligned StopReason. */
 export function mapClaudeStop(reason: string | null): StopReason {
   switch (reason) {
@@ -255,7 +269,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.q = q;
     void this.consume(q);
     if (this.effort !== undefined && this.effort !== 'max') {
-      await q.applyFlagSettings({ effortLevel: this.effort });
+      await q.applyFlagSettings(effortFlagSettings(this.effort));
     }
   }
 
@@ -314,9 +328,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     await this.q.setModel(model);
   }
 
-  /** Effort switching has two channels. low–xhigh switch live via the flag-settings control request
-   * (`Query#applyFlagSettings({ effortLevel })`) — the same layer the CLI's `/effort` writes. `max`
-   * can't travel that channel (the key rejects it); its only way in is the `--effort` startup flag,
+  /** Effort switching has two channels. low–xhigh and `ultracode` switch live via the flag-settings
+   * control request (`Query#applyFlagSettings`) — the same layer the CLI's `/effort` writes; see
+   * `effortFlagSettings` for how each maps onto the `effortLevel` / `ultracode` keys. `max` can't
+   * travel that channel (the key rejects it); its only way in is the `--effort` startup flag,
    * which in turn outranks flag-settings for the process's whole lifetime. So any transition into
    * or out of `max` closes the live process and lets the next prompt rebuild the `Query` — resuming
    * the conversation in place via the session id sniffed off the last SDK message. */
@@ -325,7 +340,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.effort = effort;
     if (!this.q) return; // No process yet; onPrompt's Query creation applies it.
     if (effort !== 'max' && previous !== 'max') {
-      await this.q.applyFlagSettings({ effortLevel: effort });
+      await this.q.applyFlagSettings(effortFlagSettings(effort));
       return;
     }
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
