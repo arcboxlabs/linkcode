@@ -1,5 +1,5 @@
 import type { SessionInfo, WorkspaceRecord } from '@linkcode/schema';
-import { normalizeCwdKey } from '@linkcode/schema';
+import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 
 /** Sentinel key for the fallback group: sessions whose `cwd` matches no registered workspace. */
 export const UNREGISTERED_THREAD_GROUP_KEY = 'unregistered';
@@ -15,6 +15,11 @@ export interface ThreadGroup {
   /** The workspace this group belongs to; `null` for the unregistered fallback group. */
   workspace: WorkspaceRecord | null;
   sessions: SessionInfo[];
+  /**
+   * True for the daemon-owned chat workspace's group — the sidebar renders it as the flat
+   * "Chats" section instead of a collapsible Projects group.
+   */
+  isChat: boolean;
 }
 
 /**
@@ -23,7 +28,8 @@ export interface ThreadGroup {
  * `createdAt` descending. Sessions matching no workspace land in one fallback group, always last.
  * Every registered workspace produces a group, even with zero sessions — the flattened sidebar
  * renders one group per workspace, and an empty one still needs a header to rename/archive/start a
- * thread in.
+ * thread in. The chat workspace's group (see `workspaceKind`) is marked `isChat`; callers split it
+ * out into the sidebar's "Chats" section instead of rendering it among the Projects groups.
  */
 export function groupThreadsByWorkspace(
   sessions: readonly SessionInfo[],
@@ -53,6 +59,7 @@ export function groupThreadsByWorkspace(
       collapseKey: normalizeCwdKey(workspace.cwd),
       workspace,
       sessions: sortByCreatedAtDescending(sessionsByWorkspaceId.get(workspace.workspaceId) ?? []),
+      isChat: workspaceKind(workspace) === 'chat',
     }));
 
   if (unregistered.length > 0) {
@@ -61,6 +68,7 @@ export function groupThreadsByWorkspace(
       collapseKey: UNREGISTERED_THREAD_GROUP_KEY,
       workspace: null,
       sessions: sortByCreatedAtDescending(unregistered),
+      isChat: false,
     });
   }
 

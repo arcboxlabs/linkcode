@@ -131,6 +131,10 @@ export const en = {
       },
     },
     sidebar: {
+      projects: 'Projects',
+      chats: 'Chats',
+      newChat: 'New chat',
+      chatsEmptyHint: 'No chats yet — click "New chat" to start one.',
       unregisteredGroup: 'Unregistered',
       emptyTitle: 'No threads yet',
       stopThread: 'Stop thread',

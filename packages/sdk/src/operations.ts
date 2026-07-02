@@ -16,6 +16,7 @@ import type {
   SessionRecord,
   StartOptions,
   WorkspaceId,
+  WorkspaceKind,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Options, RequestResult } from './client';
@@ -139,9 +140,9 @@ export function listWorkspaces(options?: Options): RequestResult<WorkspaceRecord
 
 /** Register a directory as a workspace; idempotent for an already-registered directory. */
 export function registerWorkspace(
-  options: Options<{ cwd: string; name?: string }>,
+  options: Options<{ cwd: string; name?: string; kind?: WorkspaceKind }>,
 ): RequestResult<WorkspaceRecord> {
-  return resolveClient(options).registerWorkspace(options.cwd, options.name);
+  return resolveClient(options).registerWorkspace(options.cwd, options.name, options.kind);
 }
 
 export function updateWorkspace(

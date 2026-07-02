@@ -21,6 +21,7 @@ import type {
   WireMessage,
   WirePayload,
   WorkspaceId,
+  WorkspaceKind,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
@@ -427,12 +428,13 @@ export class LinkCodeClient {
   }
 
   /** Register a directory as a workspace; idempotent for an already-registered directory. */
-  registerWorkspace(cwd: string, name?: string): Promise<WorkspaceRecord> {
+  registerWorkspace(cwd: string, name?: string, kind?: WorkspaceKind): Promise<WorkspaceRecord> {
     return this.sendCorrelated(this.pendingWorkspaceRegisters, (clientReqId) => ({
       kind: 'workspace.register',
       clientReqId,
       cwd,
       name,
+      workspaceKind: kind,
     }));
   }
 

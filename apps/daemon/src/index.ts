@@ -4,7 +4,7 @@ import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { once } from 'foxts/once';
-import { databasePath, loadConfig } from './config';
+import { chatWorkspaceRoot, databasePath, loadConfig } from './config';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
 import {
@@ -53,6 +53,9 @@ async function main(): Promise<void> {
     createWorkspaceStore(databasePath()),
   );
   await engine.start();
+  // Runs before any listener binds, so `workspace.list` always includes the chat workspace by the
+  // time a client can connect.
+  await engine.ensureChatWorkspace(chatWorkspaceRoot());
 
   // Host terminals (panel shells) have no owner once every client is gone — a quit or crashed
   // app can never close its own. Reap them after a grace window; a reconnect within it reattaches

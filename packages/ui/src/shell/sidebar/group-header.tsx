@@ -105,7 +105,7 @@ export function ThreadGroupHeader({
   }
 
   return (
-    <div className="group relative flex h-7 items-center gap-1.5 rounded-md px-[var(--lc-sidebar-edge,0.5rem)]">
+    <div className="group relative flex h-8 items-center gap-1.5 rounded-md px-[var(--lc-sidebar-edge,0.5rem)]">
       {renaming ? (
         <input
           // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.

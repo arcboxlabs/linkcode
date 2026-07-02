@@ -44,6 +44,9 @@ export const workspaces = sqliteTable(
     workspaceId: text('workspace_id').primaryKey(),
     cwd: text('cwd').notNull().unique(),
     name: text('name'),
+    kind: text('kind', { enum: ['project', 'chat'] })
+      .notNull()
+      .default('project'),
     createdAt: integer('created_at').notNull(),
     lastUsedAt: integer('last_used_at').notNull(),
   },
