@@ -15,6 +15,20 @@ function diffLines(oldStr: string, newStr: string): DiffRow[] {
   const m = oldLines.length;
   const n = newLines.length;
 
+  // The LCS DP matrix is O(m*n) cells; a multi-thousand-line diff (e.g. 1000x1000)
+  // would allocate millions of entries on every render. Above ~250k cells, skip the
+  // alignment and fall back to a trivial diff (all old lines removed, all new lines added).
+  if (m * n > 250000) {
+    const rows: DiffRow[] = [];
+    for (let i = 0; i < m; i++) {
+      rows.push({ id: String(rows.length), type: 'del', text: oldLines[i] });
+    }
+    for (let j = 0; j < n; j++) {
+      rows.push({ id: String(rows.length), type: 'add', text: newLines[j] });
+    }
+    return rows;
+  }
+
   const lcs: number[][] = createFixedArray(m + 1).map(() => createFixedArray(n + 1).map(() => 0));
   for (let i = m - 1; i >= 0; i--) {
     for (let j = n - 1; j >= 0; j--) {
