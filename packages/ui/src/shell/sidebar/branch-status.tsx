@@ -10,6 +10,8 @@ export interface BranchStatusProps {
   className?: string;
 }
 
+export type BranchStatusComponentType = React.ComponentType<{ cwd: string; showDirty?: boolean }>;
+
 /** Compact branch name (+ optional dirty-file badge) for a sidebar group header or workspace row. */
 export function BranchStatus({
   status,
