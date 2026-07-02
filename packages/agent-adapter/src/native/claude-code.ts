@@ -239,7 +239,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const queue = new AsyncMessageQueue();
-    queue.push(message);
     this.inputQueue = queue;
     // One-time use: the persistent Query carries the conversation itself from here on, so a later
     // Query created after a crash must not resume from this same (by then stale) point again.
@@ -269,8 +268,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.q = q;
     void this.consume(q);
     if (this.effort !== undefined && this.effort !== 'max') {
-      await q.applyFlagSettings(effortFlagSettings(this.effort));
+      try {
+        await q.applyFlagSettings(effortFlagSettings(this.effort));
+      } catch (err) {
+        // A stored level the CLI rejects (ultracode without dynamic workflows enabled is the
+        // known case) must not fail the prompt or wedge every later one on the same rejection:
+        // drop it, report it on the session, and let the turn run at the CLI's default level.
+        this.effort = undefined;
+        this.emitError(extractErrorMessage(err) ?? 'claude-code: effort switch rejected');
+      }
     }
+    // Pushed only after the effort is applied, so the first turn cannot start at — or race the
+    // control request from — the CLI's default level.
+    queue.push(message);
   }
 
   /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
@@ -337,12 +347,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * the conversation in place via the session id sniffed off the last SDK message. */
   protected override async onSetEffort(effort: EffortLevel): Promise<void> {
     const previous = this.effort;
-    this.effort = effort;
-    if (!this.q) return; // No process yet; onPrompt's Query creation applies it.
-    if (effort !== 'max' && previous !== 'max') {
-      await this.q.applyFlagSettings(effortFlagSettings(effort));
+    // Re-picking the current level is a no-op — it must not restart a live `max` process.
+    if (effort === previous) return;
+    if (!this.q) {
+      this.effort = effort; // No process yet; onPrompt's Query creation applies it.
       return;
     }
+    if (effort !== 'max' && previous !== 'max') {
+      await this.q.applyFlagSettings(effortFlagSettings(effort));
+      // Committed only after the CLI accepted the switch: a rejected one (ultracode without
+      // dynamic workflows enabled) must not linger and get replayed onto a later rebuilt Query.
+      this.effort = effort;
+      return;
+    }
+    this.effort = effort;
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
     // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
     const q = this.q;
