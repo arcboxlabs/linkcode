@@ -1,4 +1,5 @@
-import { useConversation, useTerminalOutput } from '@linkcode/client-core';
+import type { Conversation } from '@linkcode/client-core';
+import { useTerminalOutput } from '@linkcode/client-core';
 import { cancelTurn, promptText, respondPermission, setModel } from '@linkcode/sdk';
 import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
@@ -9,6 +10,7 @@ import { useTranslations } from 'use-intl';
 import { useMutation } from '../runtime/tayori';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
+import { useSeededConversation } from './use-seeded-conversation';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
 
@@ -33,7 +35,7 @@ export function Workbench({
   }
 
   const sessions = useWorkbenchSessions(handleError);
-  const conversation = useConversation(sessions.activeId);
+  const conversation = useSeededConversation(sessions.active, handleError);
 
   return (
     <WorkbenchSessionSurface
@@ -50,7 +52,7 @@ export function Workbench({
 
 interface WorkbenchSessionSurfaceProps {
   sessions: WorkbenchSessions;
-  conversation: ReturnType<typeof useConversation>;
+  conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
   onClearError: () => void;
