@@ -51,8 +51,21 @@ async function main(): Promise<void> {
   );
   await engine.start();
 
+  // Host terminals (panel shells) have no owner once every client is gone — a quit or crashed
+  // app can never close its own. Reap them after a grace window; a reconnect within it reattaches
+  // to the same terminals untouched.
+  const HOST_TERMINAL_REAP_DELAY_MS = 60000;
+  let reapTimer: ReturnType<typeof setTimeout> | null = null;
+  const cancelReap = (): void => {
+    if (reapTimer !== null) {
+      clearTimeout(reapTimer);
+      reapTimer = null;
+    }
+  };
+
   const servers: TransportServer[] = [];
   const stopAll = async (): Promise<void> => {
+    cancelReap();
     await Promise.all(servers.map((server) => server.close()));
     hub.close();
     await engine.stop();
@@ -65,8 +78,15 @@ async function main(): Promise<void> {
       config.listeners.map(async (listener) => {
         const { server, url } = await listenWithPortHunt(listener, identity);
         server.onConnection((conn) => {
+          cancelReap();
           hub.addConnection(conn);
-          conn.onClose(() => hub.removeConnection(conn));
+          conn.onClose(() => {
+            hub.removeConnection(conn);
+            if (hub.size === 0) {
+              cancelReap();
+              reapTimer = setTimeout(() => engine.reapHostTerminals(), HOST_TERMINAL_REAP_DELAY_MS);
+            }
+          });
         });
         servers.push(server);
         console.log(`[linkcode/daemon] listening on ${url} (${listener.type})`);

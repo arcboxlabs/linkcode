@@ -91,6 +91,17 @@ export class TerminalService {
     }
   }
 
+  /**
+   * Reap every host-owned (session-less) terminal. Host terminals are opened by client panels,
+   * and a quit or crashed client can never close its own — the daemon calls this once no client
+   * remains to read them.
+   */
+  killHostTerminals(): void {
+    for (const entry of this.terminals.values()) {
+      if (entry.sessionId === undefined) entry.process.kill();
+    }
+  }
+
   /** Tear down all terminals and the backend (engine shutdown). */
   closeAll(): void {
     for (const entry of this.terminals.values()) {

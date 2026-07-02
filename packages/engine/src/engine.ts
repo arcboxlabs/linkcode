@@ -302,6 +302,11 @@ export class Engine {
     }
   }
 
+  /** Reap host-owned terminals once no client remains to read them — see {@link TerminalService.killHostTerminals}. */
+  reapHostTerminals(): void {
+    this.terminals?.killHostTerminals();
+  }
+
   async stop(): Promise<void> {
     await Promise.all(
       Array.from(this.sessions.values(), async (session) => {
