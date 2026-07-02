@@ -10,6 +10,7 @@ import type {
   AgentInput,
   AgentKind,
   ContentBlock,
+  EffortLevel,
   MessageId,
   PermissionOption,
   PermissionOutcome,
@@ -96,6 +97,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       case 'set-model':
         await this.onSetModel(input.model);
         return;
+      case 'set-effort':
+        await this.onSetEffort(input.effort);
+        return;
       case 'permission-response':
         this.resolvePending(input.requestId, input.outcome);
         break;
@@ -133,6 +137,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   /** Default: reject. Only adapters that can rebind the model on a live session override this. */
   protected onSetModel(_model: string): Promise<void> {
     return Promise.reject(new Error(`${this.kind}: model can only be set when starting a session`));
+  }
+  /** Default: reject. Only adapters that can rebind effort on a live session override this. */
+  protected onSetEffort(_effort: EffortLevel): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: changing effort is not supported`));
   }
   protected onStop(): Promise<void> {
     return Promise.resolve();

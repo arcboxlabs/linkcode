@@ -1,5 +1,6 @@
 import { useConversation, useTerminalOutput } from '@linkcode/client-core';
-import { cancelTurn, promptText, respondPermission, setModel } from '@linkcode/sdk';
+import type { EffortLevel } from '@linkcode/schema';
+import { cancelTurn, promptText, respondPermission, setEffort, setModel } from '@linkcode/sdk';
 import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
@@ -70,6 +71,7 @@ function WorkbenchSessionSurface({
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
   const modelMutation = useMutation(setModel, { onError });
+  const effortMutation = useMutation(setEffort, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
@@ -92,6 +94,13 @@ function WorkbenchSessionSurface({
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
     return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(noop);
+  }
+
+  function handleEffortChange(effort: EffortLevel): Promise<void> {
+    if (!sessions.activeId) return Promise.reject(new Error('No active session'));
+    onClearError();
+    // Same contract as handleModelChange: the composer awaits the rejection to keep the old pick.
+    return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
   }
 
   function handleRespond(requestId: string, optionId: string): void {
@@ -135,6 +144,7 @@ function WorkbenchSessionSurface({
       TerminalBlockComponent={RuntimeTerminalBlock}
       onDismissError={onClearError}
       onModelChange={handleModelChange}
+      onEffortChange={handleEffortChange}
     />
   );
 }

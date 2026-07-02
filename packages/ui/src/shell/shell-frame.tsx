@@ -1,4 +1,4 @@
-import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import type { AgentKind, EffortLevel, SessionId, SessionInfo } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
@@ -22,6 +22,7 @@ export interface ShellFrameProps {
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onDismissError?: () => void;
   onModelChange?: (model: string) => Promise<void>;
+  onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
 
 export function ShellFrame({
@@ -41,6 +42,7 @@ export function ShellFrame({
   TerminalBlockComponent,
   onDismissError,
   onModelChange,
+  onEffortChange,
 }: ShellFrameProps): React.ReactNode {
   const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -76,6 +78,7 @@ export function ShellFrame({
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
           onModelChange={onModelChange}
+          onEffortChange={onEffortChange}
         />
       </main>
     </div>

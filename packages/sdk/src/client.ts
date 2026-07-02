@@ -6,6 +6,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  EffortLevel,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -120,6 +121,10 @@ export class LinkCodeSdkClient {
 
   setModel(sessionId: SessionId, model: string): RequestResult<{ ok: true }> {
     return toResult(this.raw.setModel(sessionId, model));
+  }
+
+  setEffort(sessionId: SessionId, effort: EffortLevel): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setEffort(sessionId, effort));
   }
 
   respondPermission(

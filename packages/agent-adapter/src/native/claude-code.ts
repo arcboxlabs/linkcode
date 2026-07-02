@@ -19,6 +19,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentHistorySession,
   ContentBlock,
+  EffortLevel,
   MessageId,
   PermissionOption,
   StartOptions,
@@ -142,6 +143,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private resumeFrom: string | undefined;
   /** Suppresses `emitError` for the interrupt-induced stream failure `onCancel` triggers on purpose. */
   private cancelling = false;
+  /** Effort picked before the first prompt (no `Query` yet); read once at `Query` creation. */
+  private effort: EffortLevel | undefined;
   /** Current segment's ids, refreshed each turn and after every tool call so text / thinking emitted
    * before and after a tool render as separate bubbles instead of merging into one. */
   private messageId: MessageId = nextMessageId();
@@ -240,6 +243,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       options: {
         cwd: opts.cwd,
         model: opts.model,
+        effort: this.effort,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
         resume,
@@ -303,6 +307,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return;
     }
     await this.q.setModel(model);
+  }
+
+  /** Live effort switch via the flag-settings control channel (`Query#applyFlagSettings`) — the same
+   * layer the CLI's `/effort` writes; there is no dedicated `setEffort()`. That channel only accepts
+   * low|medium|high|xhigh, which is why `max` is absent from the schema's EffortLevel. Before the
+   * first prompt the `Query` doesn't exist yet; stash it for `onPrompt`'s Query creation instead. */
+  protected override async onSetEffort(effort: EffortLevel): Promise<void> {
+    this.effort = effort;
+    if (this.q) await this.q.applyFlagSettings({ effortLevel: effort });
   }
 
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {

@@ -8,6 +8,7 @@ import type {
   AgentInput,
   AgentKind,
   ContentBlock,
+  EffortLevel,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -291,6 +292,11 @@ export class LinkCodeClient {
   /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */
   setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
     return this.send(sessionId, { type: 'set-model', model });
+  }
+
+  /** Switch the session's reasoning-effort level, going forward. Same acceptance rule as setModel. */
+  setEffort(sessionId: SessionId, effort: EffortLevel): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'set-effort', effort });
   }
 
   /** Answer a pending permission-request. */

@@ -5,6 +5,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  EffortLevel,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -85,6 +86,12 @@ export function setModel(
   options: Options<{ sessionId: SessionId; model: string }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).setModel(options.sessionId, options.model);
+}
+
+export function setEffort(
+  options: Options<{ sessionId: SessionId; effort: EffortLevel }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).setEffort(options.sessionId, options.effort);
 }
 
 export function respondPermission(

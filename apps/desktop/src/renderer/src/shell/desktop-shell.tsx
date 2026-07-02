@@ -48,6 +48,7 @@ export function DesktopShell({
   TerminalBlockComponent,
   onDismissError,
   onModelChange,
+  onEffortChange,
   onOpenSettings,
 }: WorkbenchShellProps & {
   systemBridge: SystemBridge;
@@ -202,6 +203,7 @@ export function DesktopShell({
         onStopTurn={onStopTurn}
         onRespondPermission={onRespondPermission}
         onModelChange={onModelChange}
+        onEffortChange={onEffortChange}
       />
     </main>
   );
