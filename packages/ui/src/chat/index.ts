@@ -1,3 +1,5 @@
+export * from './activity-group';
+export * from './activity-groups';
 export * from './artifact';
 export * from './attachments';
 export * from './checkpoint';

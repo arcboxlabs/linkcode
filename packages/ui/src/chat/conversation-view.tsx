@@ -1,6 +1,8 @@
 import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
 import { useTranslations } from 'use-intl';
+import { ActivityGroup } from './activity-group';
+import { groupTimeline } from './activity-groups';
 import { ContentBlockView } from './content-block-view';
 import { keyedItems, stableContentKey } from './content-keys';
 import {
@@ -71,7 +73,30 @@ export function ConversationView({
       }}
     >
       <ConversationContent>
-        {items.map((item) => {
+        {groupTimeline(items).map((entry) => {
+          if (entry.type === 'activity') {
+            // Consecutive action calls sit in one tight stack instead of the timeline's gap-6.
+            return (
+              <div key={entry.id} className="flex w-full flex-col gap-1">
+                {entry.entries.map((activity) =>
+                  activity.type === 'group' ? (
+                    <ActivityGroup
+                      key={activity.id}
+                      group={activity}
+                      TerminalBlockComponent={TerminalBlockComponent}
+                    />
+                  ) : (
+                    <ToolCallItem
+                      key={activity.item.id}
+                      toolCall={activity.item.toolCall}
+                      TerminalBlockComponent={TerminalBlockComponent}
+                    />
+                  ),
+                )}
+              </div>
+            );
+          }
+          const item = entry.item;
           switch (item.kind) {
             case 'message':
               return (
@@ -86,14 +111,6 @@ export function ConversationView({
             case 'reasoning':
               return (
                 <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />
-              );
-            case 'tool':
-              return (
-                <ToolCallItem
-                  key={item.id}
-                  toolCall={item.toolCall}
-                  TerminalBlockComponent={TerminalBlockComponent}
-                />
               );
             case 'plan':
               return <PlanCard key={item.id} plan={item.plan} />;
