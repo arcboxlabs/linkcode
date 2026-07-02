@@ -1,8 +1,9 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import { listSessions, resumeSession, startSession, stopSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useData, useMutation } from '../runtime/tayori';
+import { useSessionSelectionStore } from './selection-store';
 
 export interface WorkbenchSessions {
   sessions: SessionInfo[];
@@ -26,7 +27,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const createMutation = useMutation(startSession, { onError });
   const stopMutation = useMutation(stopSession, { onError });
   const resumeMutation = useMutation(resumeSession, { onError });
-  const [selectedId, setSelectedId] = useState<SessionId | null>(null);
+  const selectedId = useSessionSelectionStore((state) => state.selectedId);
+  const setSelectedId = useSessionSelectionStore((state) => state.setSelectedId);
 
   const sessions = useMemo(
     () => [...(remoteSessions ?? [])].sort((a, b) => a.createdAt - b.createdAt),
