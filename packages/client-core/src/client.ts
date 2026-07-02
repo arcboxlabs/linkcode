@@ -8,6 +8,8 @@ import type {
   AgentInput,
   AgentKind,
   ContentBlock,
+  GitDiff,
+  GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
   PermissionOutcome,
@@ -86,6 +88,7 @@ export class LinkCodeClient {
   private readonly pendingConfigGets = new Map<string, Pending<ProvidersConfig>>();
   private readonly pendingGitStatuses = new Map<string, Pending<GitStatus>>();
   private readonly pendingGitPrStatuses = new Map<string, Pending<GitPullRequestStatus>>();
+  private readonly pendingGitDiffs = new Map<string, Pending<GitDiff>>();
   private readonly pendingWorkspaceLists = new Map<string, Pending<WorkspaceRecord[]>>();
   private readonly pendingWorkspaceRegisters = new Map<string, Pending<WorkspaceRecord>>();
   private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
@@ -156,6 +159,11 @@ export class LinkCodeClient {
       case 'git.pr_status.get.result': {
         this.pendingGitPrStatuses.get(p.replyTo)?.resolve(p.prStatus);
         this.pendingGitPrStatuses.delete(p.replyTo);
+        break;
+      }
+      case 'git.diff.get.result': {
+        this.pendingGitDiffs.get(p.replyTo)?.resolve(p.diff);
+        this.pendingGitDiffs.delete(p.replyTo);
         break;
       }
       case 'workspace.listed': {
@@ -377,6 +385,16 @@ export class LinkCodeClient {
     }));
   }
 
+  /** A unified-diff patch for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitDiff(cwd: string, mode: GitDiffMode): Promise<GitDiff> {
+    return this.sendCorrelated(this.pendingGitDiffs, (clientReqId) => ({
+      kind: 'git.diff.get',
+      clientReqId,
+      cwd,
+      mode,
+    }));
+  }
+
   /** Every registered workspace (directory), most recently used first. */
   listWorkspaces(): Promise<WorkspaceRecord[]> {
     return this.sendCorrelated(this.pendingWorkspaceLists, (clientReqId) => ({
@@ -518,6 +536,7 @@ export class LinkCodeClient {
       this.pendingConfigGets,
       this.pendingGitStatuses,
       this.pendingGitPrStatuses,
+      this.pendingGitDiffs,
       this.pendingWorkspaceLists,
       this.pendingWorkspaceRegisters,
       this.pendingAcks,
@@ -539,6 +558,7 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingConfigGets, replyTo, err)) return;
     if (rejectFrom(this.pendingGitStatuses, replyTo, err)) return;
     if (rejectFrom(this.pendingGitPrStatuses, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitDiffs, replyTo, err)) return;
     if (rejectFrom(this.pendingWorkspaceLists, replyTo, err)) return;
     if (rejectFrom(this.pendingWorkspaceRegisters, replyTo, err)) return;
     if (rejectFrom(this.pendingAcks, replyTo, err)) return;

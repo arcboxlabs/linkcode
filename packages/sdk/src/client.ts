@@ -6,6 +6,8 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  GitDiff,
+  GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
   PermissionOutcome,
@@ -152,6 +154,11 @@ export class LinkCodeSdkClient {
   /** Hosting-provider PR state for a directory's current branch. */
   getGitPullRequestStatus(cwd: string): RequestResult<GitPullRequestStatus> {
     return toResult(this.raw.getGitPullRequestStatus(cwd));
+  }
+
+  /** A unified-diff patch for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitDiff(cwd: string, mode: GitDiffMode): RequestResult<GitDiff> {
+    return toResult(this.raw.getGitDiff(cwd, mode));
   }
 
   /** Every registered workspace (directory), most recently used first. */

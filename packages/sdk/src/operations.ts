@@ -5,6 +5,8 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  GitDiff,
+  GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
   PermissionOutcome,
@@ -121,6 +123,13 @@ export function getGitPullRequestStatus(
   options: Options<{ cwd: string }>,
 ): RequestResult<GitPullRequestStatus> {
   return resolveClient(options).getGitPullRequestStatus(options.cwd);
+}
+
+/** A unified-diff patch for a directory (directory-backed: keyed by cwd, not by session). */
+export function getGitDiff(
+  options: Options<{ cwd: string; mode: GitDiffMode }>,
+): RequestResult<GitDiff> {
+  return resolveClient(options).getGitDiff(options.cwd, options.mode);
 }
 
 /** Every registered workspace (directory), most recently used first. */
