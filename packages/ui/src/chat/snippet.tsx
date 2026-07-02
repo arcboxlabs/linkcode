@@ -61,7 +61,6 @@ export type SnippetCopyButtonProps = React.ComponentProps<typeof Button> & {
 };
 
 export function SnippetCopyButton({
-  className,
   code,
   timeout = 1600,
   children,
@@ -72,15 +71,13 @@ export function SnippetCopyButton({
   return (
     <Button
       aria-label={copied ? 'Copied' : 'Copy'}
-      className={cn('size-6', className)}
       onClick={copyValue}
       size="icon-xs"
       type="button"
       variant="ghost"
       {...props}
     >
-      {children ??
-        (copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />)}
+      {children ?? (copied ? <CheckIcon /> : <CopyIcon />)}
     </Button>
   );
 }

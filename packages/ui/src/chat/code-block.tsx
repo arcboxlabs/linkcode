@@ -73,7 +73,6 @@ export function CodeBlockCopyButton({
   code,
   timeout = 1600,
   children,
-  className,
   ...props
 }: CodeBlockCopyButtonProps): React.ReactNode {
   const { copied, copyValue } = useCopyButton(code, timeout);
@@ -81,7 +80,6 @@ export function CodeBlockCopyButton({
   return (
     <Button
       aria-label={copied ? 'Copied' : 'Copy'}
-      className={cn('size-6', className)}
       onClick={copyValue}
       size="icon-xs"
       type="button"

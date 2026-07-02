@@ -1,7 +1,7 @@
 import { Button } from 'coss-ui/components/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { XIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { withTooltip } from './with-tooltip';
 
 // TODO(linkcode-schema): Provisional UI-only artifact metadata, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when generated artifacts are emitted by the data plane.
@@ -92,54 +92,31 @@ export type ArtifactActionProps = React.ComponentProps<typeof Button> & {
 };
 
 export function ArtifactAction({
-  className,
   tooltip,
   children,
   size = 'icon-xs',
   variant = 'ghost',
   ...props
 }: ArtifactActionProps): React.ReactNode {
-  const button = (
-    <Button
-      className={cn('size-7', className)}
-      size={size}
-      type="button"
-      variant={variant}
-      {...props}
-    >
+  return withTooltip(
+    <Button size={size} type="button" variant={variant} {...props}>
       {children}
-    </Button>
-  );
-
-  if (!tooltip) return button;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
+    </Button>,
+    tooltip,
   );
 }
 
 export type ArtifactCloseProps = React.ComponentProps<typeof Button>;
 
 export function ArtifactClose({
-  className,
   children,
   size = 'icon-xs',
   variant = 'ghost',
   ...props
 }: ArtifactCloseProps): React.ReactNode {
   return (
-    <Button
-      aria-label="Close artifact"
-      className={cn('size-7', className)}
-      size={size}
-      type="button"
-      variant={variant}
-      {...props}
-    >
-      {children ?? <XIcon className="size-3.5" />}
+    <Button aria-label="Close artifact" size={size} type="button" variant={variant} {...props}>
+      {children ?? <XIcon />}
     </Button>
   );
 }

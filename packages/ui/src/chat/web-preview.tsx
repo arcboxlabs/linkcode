@@ -4,10 +4,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { ChevronRightIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/cn';
+import { withTooltip } from './with-tooltip';
 
 const EMPTY_WEB_PREVIEW_LOGS: readonly ChatWebPreviewLog[] = [];
 
@@ -121,19 +121,11 @@ export function WebPreviewNavigationButton({
   variant = 'ghost',
   ...props
 }: WebPreviewNavigationButtonProps): React.ReactNode {
-  const button = (
+  return withTooltip(
     <Button size={size} type="button" variant={variant} {...props}>
       {children}
-    </Button>
-  );
-
-  if (!tooltip) return button;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
+    </Button>,
+    tooltip,
   );
 }
 
