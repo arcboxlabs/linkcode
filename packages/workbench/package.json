@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@linkcode/client-core": "workspace:*",
+    "@linkcode/common": "workspace:*",
     "@linkcode/i18n": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/sdk": "workspace:*",
@@ -26,7 +27,8 @@
     "swr": "catalog:",
     "tayori": "^0.3.8",
     "use-intl": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "zustand": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",

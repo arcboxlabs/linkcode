@@ -31,10 +31,13 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 - `git/` — daemon-backed git status/PR polling hooks (`useGitStatus`, `useGitPullRequestStatus`)
   and the Diff-section container (`GitPanel`) that assembles them for `packages/ui`'s
   `GitOverview`.
-- `sidebar/` — the Threads/Workspace sidebar's data layer: `groupThreadsByWorkspace` (the single,
-  unit-tested grouping/sort implementation), and the hook-backed adapter components
-  (`RuntimeBranchStatus`, `RuntimeWorkspaceHistory`) that give `packages/ui`'s `SessionSidebar` a
-  per-group/per-row git-status or history subscription without it touching tayori.
+- `sidebar/` — the flattened thread-group sidebar's data layer: `groupThreadsByWorkspace` (grouping/
+  sort) and `selectVisibleSessions` (per-group preview truncation, both unit-tested pure functions),
+  `useSidebarGroupCollapseStore` (the persisted, cwd-keyed collapse state), and the hook-backed
+  adapter components (`RuntimeBranchStatus`, `RuntimeWorkspaceHistory`) that give `packages/ui`'s
+  `SessionSidebar` a per-group/per-row git-status or history subscription without it touching
+  tayori. `surface/workbench.tsx` combines all of this into the `ThreadGroupViewModel[]` (grouping +
+  visibility + collapse/preview/history-open flags) that flows into the shell as plain props.
 
 The public API is the root barrel (`src/index.ts`) plus the `./tayori` subpath (pinned in
 `package.json` `exports`). Consumers never deep-import other paths — export new modules through the
