@@ -56,6 +56,11 @@ export function hqCredentialsPath(): string {
   return join(homedir(), '.linkcode', 'hq.json');
 }
 
+/** The device's Ed25519 private key (PKCS#8 PEM), next to config.json; written 0600. */
+export function deviceKeyPath(): string {
+  return join(homedir(), '.linkcode', 'device-key.pem');
+}
+
 /**
  * The daemon-owned chat root: a fixed directory the daemon ensures exists and registers as the
  * `chat`-kind workspace (see `WorkspaceRegistry.ensureChatWorkspace`) backing the sidebar's

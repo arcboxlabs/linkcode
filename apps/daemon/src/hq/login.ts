@@ -2,27 +2,32 @@ import { hostname } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
+  bindDevice,
   DEFAULT_HQ_URL,
   HqApiError,
   pollDeviceToken,
   registerDevice,
+  requestBindChallenge,
   requestDeviceCode,
   signOut,
 } from './api';
 import { clearHqCredentials, loadHqCredentials, saveHqCredentials } from './credentials';
+import type { DeviceKey } from './device-key';
+import { ensureDeviceKey } from './device-key';
 
 const log = (message: string): void => console.log(`[linkcode/daemon] ${message}`);
 
 /**
  * `linkcode-daemon login` — RFC 8628 device sign-in for the headless daemon:
- * print a short code, let the user approve it in any signed-in browser, poll
- * until authorized, then register this machine as a `daemon` device (whose id
- * becomes the tunnel host id) and persist the credentials.
+ * print a short code, let the user approve it in any signed-in browser, and
+ * poll until authorized.
  *
- * Signing in again registers a fresh device (a new session cannot prove it
- * owns the old device id yet — that needs the device-key work), so remote
- * clients re-discover the host under its new id; revoke stale devices from a
- * signed-in client.
+ * Device identity is stable across re-logins: the first login registers this
+ * machine as a `daemon` device (whose id becomes the tunnel host id) with the
+ * public half of the machine's device key; later logins prove possession of
+ * that key (challenge/bind) to re-attach the same device id, so remote
+ * clients keep finding the host where they left it. Only when the proof fails
+ * — device revoked, key file lost — does a fresh registration mint a new id.
  */
 export async function runLoginCommand(): Promise<void> {
   const baseUrl = process.env.LINKCODE_HQ_URL || DEFAULT_HQ_URL;
@@ -52,14 +57,49 @@ export async function runLoginCommand(): Promise<void> {
   }
   if (!sessionToken) throw new HqApiError('sign-in timed out — run login again');
 
-  const { deviceId } = await registerDevice(baseUrl, sessionToken, {
-    kind: 'daemon',
-    name: hostname(),
-    platform: `${process.platform}-${process.arch}`,
-  });
+  const key = ensureDeviceKey();
+  let deviceId = await tryRebind(baseUrl, sessionToken, key);
+  if (deviceId) {
+    log(`signed in to ${baseUrl}; kept device identity ${deviceId}`);
+  } else {
+    ({ deviceId } = await registerDevice(baseUrl, sessionToken, {
+      kind: 'daemon',
+      name: hostname(),
+      platform: `${process.platform}-${process.arch}`,
+      publicKey: key.publicKeyPem,
+      keyProtection: 'software',
+    }));
+    log(`signed in to ${baseUrl}; registered as device ${deviceId}`);
+  }
   saveHqCredentials({ baseUrl, sessionToken, deviceId });
-  log(`signed in to ${baseUrl}; registered as device ${deviceId}`);
   log('restart the daemon to bring the remote-access uplink online');
+}
+
+/**
+ * Re-attach a previously registered device id by proving possession of its
+ * key. Null (rather than a throw) hands unrecoverable cases — no prior
+ * sign-in, device revoked, key lost — to fresh registration.
+ */
+async function tryRebind(
+  baseUrl: string,
+  sessionToken: string,
+  key: DeviceKey,
+): Promise<string | null> {
+  const prior = loadHqCredentials();
+  if (prior?.baseUrl !== baseUrl) return null;
+  try {
+    const challenge = await requestBindChallenge(baseUrl, sessionToken, prior.deviceId);
+    await bindDevice(baseUrl, sessionToken, prior.deviceId, {
+      challenge,
+      signature: key.sign(challenge),
+    });
+    return prior.deviceId;
+  } catch (err) {
+    log(
+      `could not re-bind device ${prior.deviceId} (${extractErrorMessage(err)}); registering a fresh device`,
+    );
+    return null;
+  }
 }
 
 /** `linkcode-daemon logout` — revoke the HQ session and clear local state. */

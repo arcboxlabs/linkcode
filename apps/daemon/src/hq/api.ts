@@ -132,13 +132,50 @@ export async function fetchTunnelToken(baseUrl: string, sessionToken: string): P
 export async function registerDevice(
   baseUrl: string,
   sessionToken: string,
-  device: { kind: 'daemon'; name: string; platform?: string },
+  device: {
+    kind: 'daemon';
+    name: string;
+    platform?: string;
+    /** SPKI PEM; possession is proven on later re-logins via challenge/bind. */
+    publicKey?: string;
+    keyProtection?: 'hardware' | 'software';
+  },
 ): Promise<{ deviceId: string }> {
   const { status, body } = await hqJson(baseUrl, '/devices', { body: device, sessionToken });
   if (status === 200 && isRecord(body) && typeof body.id === 'string') {
     return { deviceId: body.id };
   }
   throw hqError('device registration failed', status);
+}
+
+/** Proof-of-possession challenge for re-binding this session to an existing device. */
+export async function requestBindChallenge(
+  baseUrl: string,
+  sessionToken: string,
+  deviceId: string,
+): Promise<string> {
+  const { status, body } = await hqJson(baseUrl, `/devices/${deviceId}/challenge`, {
+    body: {},
+    sessionToken,
+  });
+  if (status === 200 && isRecord(body) && typeof body.challenge === 'string') {
+    return body.challenge;
+  }
+  throw hqError('device challenge failed', status);
+}
+
+/** Present the signed challenge; on success the session is bound to the device. */
+export async function bindDevice(
+  baseUrl: string,
+  sessionToken: string,
+  deviceId: string,
+  proof: { challenge: string; signature: string },
+): Promise<void> {
+  const { status } = await hqJson(baseUrl, `/devices/${deviceId}/bind`, {
+    body: proof,
+    sessionToken,
+  });
+  if (status !== 200) throw hqError('device re-bind failed', status);
 }
 
 export async function signOut(baseUrl: string, sessionToken: string): Promise<void> {
