@@ -1,3 +1,4 @@
+import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
@@ -101,21 +102,17 @@ export function CommitHeader({
   );
 }
 
-export type CommitAvatarProps = React.ComponentProps<'span'> & {
+export type CommitAvatarProps = React.ComponentProps<typeof Avatar> & {
   commit: ChatCommit;
 };
 
-export function CommitAvatar({ className, commit, ...props }: CommitAvatarProps): React.ReactNode {
+export function CommitAvatar({ commit, ...props }: CommitAvatarProps): React.ReactNode {
   return (
-    <span
-      className={cn(
-        'flex size-8 shrink-0 items-center justify-center rounded-full bg-muted font-medium text-[12px]',
-        className,
-      )}
-      {...props}
-    >
-      {commit.authorInitials ?? <GitCommitIcon className="size-4 text-muted-foreground" />}
-    </span>
+    <Avatar {...props}>
+      <AvatarFallback>
+        {commit.authorInitials ?? <GitCommitIcon className="size-4 text-muted-foreground" />}
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -149,7 +146,7 @@ export function CommitCopyButton({
   return (
     <Button
       aria-label={copied ? 'Copied commit hash' : 'Copy commit hash'}
-      className={cn('size-6 shrink-0', className)}
+      className={cn('shrink-0', className)}
       onClick={(event) => {
         event.stopPropagation();
         copyValue();
@@ -159,8 +156,7 @@ export function CommitCopyButton({
       variant="ghost"
       {...props}
     >
-      {children ??
-        (copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />)}
+      {children ?? (copied ? <CheckIcon /> : <CopyIcon />)}
     </Button>
   );
 }

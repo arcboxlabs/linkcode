@@ -1,19 +1,15 @@
+import { Alert, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
 import { ShieldIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
-export type ConfirmationProps = React.ComponentProps<'div'>;
+export type ConfirmationProps = React.ComponentProps<typeof Alert>;
 
 export function Confirmation({ className, ...props }: ConfirmationProps): React.ReactNode {
-  return (
-    <div
-      className={cn('my-1 rounded-xl border border-warning/40 bg-warning/5 p-3', className)}
-      {...props}
-    />
-  );
+  return <Alert className={cn('my-1', className)} variant="warning" {...props} />;
 }
 
-export type ConfirmationTitleProps = React.ComponentProps<'div'> & {
+export type ConfirmationTitleProps = React.ComponentProps<typeof AlertTitle> & {
   title: string;
   subject?: string;
 };
@@ -26,33 +22,28 @@ export function ConfirmationTitle({
   ...props
 }: ConfirmationTitleProps): React.ReactNode {
   return (
-    <div
-      className={cn(
-        'mb-2 flex items-center gap-2 text-[13px] font-medium text-foreground',
-        className,
-      )}
-      {...props}
-    >
-      <ShieldIcon className="size-4 shrink-0 text-warning-foreground" />
-      {children ?? (
-        <>
-          {title}
-          {subject ? (
-            <span className="truncate font-normal text-muted-foreground">{subject}</span>
-          ) : null}
-        </>
-      )}
-    </div>
+    <>
+      <ShieldIcon />
+      <AlertTitle className={cn('flex min-w-0 items-center gap-2', className)} {...props}>
+        {children ?? (
+          <>
+            {title}
+            {subject ? (
+              <span className="truncate font-normal text-muted-foreground">{subject}</span>
+            ) : null}
+          </>
+        )}
+      </AlertTitle>
+    </>
   );
 }
 
-export type ConfirmationDescriptionProps = React.ComponentProps<'div'>;
+export type ConfirmationDescriptionProps = React.ComponentProps<typeof AlertDescription>;
 
 export function ConfirmationDescription({
-  className,
   ...props
 }: ConfirmationDescriptionProps): React.ReactNode {
-  return <div className={cn('text-[13px] text-muted-foreground', className)} {...props} />;
+  return <AlertDescription {...props} />;
 }
 
 export type ConfirmationActionsProps = React.ComponentProps<'div'>;
@@ -61,7 +52,8 @@ export function ConfirmationActions({
   className,
   ...props
 }: ConfirmationActionsProps): React.ReactNode {
-  return <div className={cn('flex flex-wrap gap-2', className)} {...props} />;
+  // col-start-2 keeps the actions aligned with the title text, past the Alert icon column.
+  return <div className={cn('col-start-2 mt-1.5 flex flex-wrap gap-2', className)} {...props} />;
 }
 
 export type ConfirmationActionProps = React.ComponentProps<typeof Button>;

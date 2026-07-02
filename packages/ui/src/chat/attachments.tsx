@@ -1,5 +1,6 @@
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
+import { Spinner } from 'coss-ui/components/spinner';
 import {
   AlertCircleIcon,
   FileArchiveIcon,
@@ -8,7 +9,6 @@ import {
   FileTextIcon,
   FolderIcon,
   GlobeIcon,
-  LoaderCircleIcon,
   XIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
@@ -198,7 +198,7 @@ export function AttachmentStatus({
         {...props}
       >
         {status === 'pending' ? (
-          <LoaderCircleIcon className="size-3 animate-spin" />
+          <Spinner className="size-3" />
         ) : (
           <AlertCircleIcon className="size-3" />
         )}
@@ -237,7 +237,6 @@ export function AttachmentRemove({
         attachmentVariant === 'grid' &&
           'absolute top-1 right-1 size-6 rounded-full bg-background/90',
         attachmentVariant === 'inline' && 'size-5',
-        attachmentVariant === 'list' && 'size-7',
         className,
       )}
       onClick={onRemove}

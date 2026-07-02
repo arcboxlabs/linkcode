@@ -1,4 +1,11 @@
 import { Button } from 'coss-ui/components/button';
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from 'coss-ui/components/empty';
 import { ArrowDownIcon } from 'lucide-react';
 import { useCallback } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
@@ -47,20 +54,15 @@ export function ConversationEmptyState({
   ...props
 }: ConversationEmptyStateProps): React.ReactNode {
   return (
-    <div
-      className={cn('flex h-full items-center justify-center p-8 text-center', className)}
-      {...props}
-    >
+    <Empty className={cn('h-full', className)} {...props}>
       {children ?? (
-        <div className="max-w-sm">
-          {icon ? (
-            <div className="mb-3 flex justify-center text-muted-foreground">{icon}</div>
-          ) : null}
-          {title ? <h2 className="font-medium text-foreground">{title}</h2> : null}
-          {description ? <p className="mt-1 text-muted-foreground text-sm">{description}</p> : null}
-        </div>
+        <EmptyHeader>
+          {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
+          {title ? <EmptyTitle>{title}</EmptyTitle> : null}
+          {description ? <EmptyDescription>{description}</EmptyDescription> : null}
+        </EmptyHeader>
       )}
-    </div>
+    </Empty>
   );
 }
 
