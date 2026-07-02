@@ -19,8 +19,8 @@ import {
   useSyncExternalStore,
 } from 'react';
 import type { LinkCodeClient, SequencedAgentEvent } from './client';
-import type { Conversation } from './conversation';
-import { buildConversation } from './conversation';
+import type { Conversation, ConversationSeed } from './conversation';
+import { createConversationStore } from './conversation-store';
 
 const ClientContext = createContext<LinkCodeClient | null>(null);
 
@@ -45,29 +45,6 @@ export function useLinkCodeClient(): LinkCodeClient {
 }
 
 const NO_SEQUENCED_EVENTS: readonly SequencedAgentEvent[] = [];
-
-/**
- * A session's normalized event stream, with connection-scoped receive seqs (see
- * `mergeSeededEvents`). The client's per-session buffer is the store: `useSyncExternalStore`
- * reads its cached immutable snapshot, so switching back to a session costs one array reference
- * instead of replaying the whole buffer through state.
- */
-export function useSequencedAgentEvents(
-  sessionId: SessionId | null,
-): readonly SequencedAgentEvent[] {
-  const client = useLinkCodeClient();
-  const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      if (!sessionId) return noop;
-      return client.subscribe(sessionId, onStoreChange);
-    },
-    [client, sessionId],
-  );
-  return useSyncExternalStore(subscribe, () =>
-    sessionId ? client.eventsSnapshot(sessionId) : NO_SEQUENCED_EVENTS,
-  );
-}
-
 const NO_EVENTS: AgentEvent[] = [];
 
 /**
@@ -76,9 +53,23 @@ const NO_EVENTS: AgentEvent[] = [];
  */
 const TERMINAL_OUTPUT_CAP = 200000;
 
-/** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
+/**
+ * Subscribe to a session's normalized event stream (push model). The client's per-session buffer
+ * is the store: `useSyncExternalStore` reads its cached immutable snapshot, so switching back to
+ * a session costs one array reference instead of replaying the whole buffer through state.
+ */
 export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
-  const sequenced = useSequencedAgentEvents(sessionId);
+  const client = useLinkCodeClient();
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!sessionId) return noop;
+      return client.subscribe(sessionId, onStoreChange);
+    },
+    [client, sessionId],
+  );
+  const sequenced = useSyncExternalStore(subscribe, () =>
+    sessionId ? client.eventsSnapshot(sessionId) : NO_SEQUENCED_EVENTS,
+  );
   return useMemo(
     () => (sequenced.length === 0 ? NO_EVENTS : sequenced.map(({ event }) => event)),
     [sequenced],
@@ -121,10 +112,22 @@ export function useSendInput(sessionId: SessionId | null): (input: AgentInput) =
   };
 }
 
-/** Subscribe to a session and project its event stream into the structured conversation view-model. */
-export function useConversation(sessionId: SessionId | null): Conversation {
-  const events = useAgentEvents(sessionId);
-  return useMemo(() => buildConversation(events), [events]);
+/**
+ * Subscribe to a session and project its event stream into the structured conversation view-model,
+ * optionally seeded with a transcript snapshot (see `ConversationSeed`). Incremental: each new
+ * event folds in O(delta) via the conversation store, and unchanged items keep their identity so
+ * memoized message components skip re-rendering during streaming.
+ */
+export function useConversation(
+  sessionId: SessionId | null,
+  seed?: ConversationSeed,
+): Conversation {
+  const client = useLinkCodeClient();
+  const store = useMemo(
+    () => createConversationStore(client, sessionId, seed),
+    [client, sessionId, seed],
+  );
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
 export interface SessionsApi {

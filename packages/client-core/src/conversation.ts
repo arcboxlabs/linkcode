@@ -10,7 +10,6 @@ import type {
   ToolCallContent,
   ToolCallUpdate,
 } from '@linkcode/schema';
-import type { SequencedAgentEvent } from './client';
 
 /**
  * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
@@ -77,36 +76,53 @@ export interface ConversationViewModel {
 
 export type Conversation = ConversationViewModel;
 
-/** Append a content block to a message item, concatenating consecutive text blocks for smooth streaming. */
-function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
+/** Append a content block, concatenating consecutive text blocks for smooth streaming. Pure:
+ * returns a fresh array so previously emitted snapshots never observe the append. */
+function appendBlock(blocks: readonly ContentBlock[], block: ContentBlock): ContentBlock[] {
   const last = blocks.at(-1);
   if (last?.type === 'text' && block.type === 'text') {
-    blocks[blocks.length - 1] = {
-      ...last,
-      text: last.text + block.text,
-      annotations: block.annotations ?? last.annotations,
-    };
-    return;
+    return [
+      ...blocks.slice(0, -1),
+      {
+        ...last,
+        text: last.text + block.text,
+        annotations: block.annotations ?? last.annotations,
+      },
+    ];
   }
-  blocks.push(block);
+  return [...blocks, block];
 }
 
-/** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */
-export function buildConversation(events: readonly AgentEvent[]): Conversation {
+export interface ConversationBuilder {
+  /** Fold one more event into the running state. */
+  advance(event: AgentEvent): void;
+  /** The current view-model. Cached between advances; every changed item is a fresh object
+   * (copy-on-write), so React memoization over items keeps working across snapshots. */
+  snapshot(): Conversation;
+}
+
+/**
+ * Incremental form of {@link buildConversation}: the same fold, but advanced one event at a time
+ * so a streaming delta costs O(delta) instead of re-reducing the whole history. Item updates are
+ * copy-on-write — previously returned snapshots are never mutated retroactively.
+ */
+export function createConversationBuilder(): ConversationBuilder {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
   // messageId → item index, so streaming chunks bucket into one item regardless of interleaving.
   const messageIndex = new Map<string, number>();
   const planIndexByTurn = new Map<ConversationTurnId, number>();
+  /** Asks in arrival order; each stays "pending" until its tool call reaches a terminal status. */
+  const approvals: Array<{ requestId: string; toolCallId: string }> = [];
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
-  const genId = (prefix: string): string => `${prefix}-${gen++}`;
-  const nextTurnId = (): string => genId('turn');
-
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
   let currentModeId: string | null = null;
   let stopReason: StopReason | null = null;
+  let cached: Conversation | null = null;
+
+  const genId = (prefix: string): string => `${prefix}-${gen++}`;
 
   // Bucket an agent message / thought chunk into its messageId-keyed item (creating it on first sight).
   const openAgentStream = (
@@ -118,7 +134,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     if (existing !== undefined) {
       const item = items[existing];
       if (item.kind === kind) {
-        appendBlock(item.blocks, block);
+        items[existing] = { ...item, blocks: appendBlock(item.blocks, block) };
         return;
       }
     }
@@ -143,11 +159,12 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     messageIndex.set(messageId, items.length - 1);
   };
 
-  for (const event of events) {
+  const advance = (event: AgentEvent): void => {
+    cached = null;
     switch (event.type) {
       case 'user-message': {
         // A complete, atomic message: opens a new turn and is pushed whole (never grouped/appended).
-        currentTurnId = nextTurnId();
+        currentTurnId = genId('turn');
         items.push({
           kind: 'message',
           id: event.messageId ?? genId('user-message'),
@@ -178,7 +195,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           toolIndex.set(event.toolCall.toolCallId, items.length - 1);
         } else {
           const item = items[existing];
-          if (item.kind === 'tool') item.toolCall = event.toolCall;
+          if (item.kind === 'tool') items[existing] = { ...item, toolCall: event.toolCall };
         }
         break;
       }
@@ -196,7 +213,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           break;
         }
         const item = items[planIndex];
-        if (item.kind === 'plan') item.plan = event.plan;
+        if (item.kind === 'plan') items[planIndex] = { ...item, plan: event.plan };
         break;
       }
 
@@ -233,65 +250,64 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           toolCall: event.toolCall,
           options: event.options,
         });
+        approvals.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
         break;
       default:
         break;
     }
-  }
-
-  // A permission ask is "pending" until its referenced tool call reaches a terminal status.
-  const pendingPermissionIds: string[] = [];
-  for (const item of items) {
-    if (item.kind !== 'approval') continue;
-    const toolItemIndex = toolIndex.get(item.toolCall.toolCallId);
-    const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
-    const settled =
-      toolItem?.kind === 'tool' &&
-      (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
-    if (!settled) pendingPermissionIds.push(item.requestId);
-  }
-
-  const isSessionStreaming = status === 'running' || status === 'starting';
-  if (isSessionStreaming) {
-    const last = items.at(-1);
-    if (last?.kind === 'reasoning' || (last?.kind === 'message' && last.role === 'assistant')) {
-      last.isStreaming = true;
-    }
-  }
-
-  return {
-    items,
-    status,
-    usage,
-    currentModeId,
-    stopReason,
-    pendingPermissionIds,
   };
+
+  const snapshot = (): Conversation => {
+    if (cached) return cached;
+
+    const out = [...items];
+    const isSessionStreaming = status === 'running' || status === 'starting';
+    if (isSessionStreaming) {
+      const last = out.at(-1);
+      if (last?.kind === 'reasoning' || (last?.kind === 'message' && last.role === 'assistant')) {
+        out[out.length - 1] = { ...last, isStreaming: true };
+      }
+    }
+
+    // A permission ask is "pending" until its referenced tool call reaches a terminal status.
+    const pendingPermissionIds: string[] = [];
+    for (const approval of approvals) {
+      const toolItemIndex = toolIndex.get(approval.toolCallId);
+      const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
+      const settled =
+        toolItem?.kind === 'tool' &&
+        (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
+      if (!settled) pendingPermissionIds.push(approval.requestId);
+    }
+
+    cached = {
+      items: out,
+      status,
+      usage,
+      currentModeId,
+      stopReason,
+      pendingPermissionIds,
+    };
+    return cached;
+  };
+
+  return { advance, snapshot };
+}
+
+/** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */
+export function buildConversation(events: readonly AgentEvent[]): Conversation {
+  const builder = createConversationBuilder();
+  for (const event of events) builder.advance(event);
+  return builder.snapshot();
 }
 
 /** A point-in-time transcript snapshot: past events read from provider history, plus the live
- * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). */
+ * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). The
+ * conversation store folds the seed first, then only the live events past the `uptoSeq` cut. */
 export interface ConversationSeed {
   events: AgentEvent[];
   /** The snapshot covers every live event with seq ≤ this; 0 = supersedes nothing. */
   uptoSeq: number;
-}
-
-/**
- * Prepend a transcript snapshot to the live event stream. The cut is ordered, not clocked: live
- * events received at or before the moment the snapshot resolved (seq ≤ uptoSeq) are contained in
- * it and dropped; only the tail received after the snapshot is appended.
- */
-export function mergeSeededEvents(
-  seed: ConversationSeed | undefined,
-  live: readonly SequencedAgentEvent[],
-): AgentEvent[] {
-  if (!seed) return live.map(({ event }) => event);
-  const merged = [...seed.events];
-  for (const { event, seq } of live) {
-    if (seq > seed.uptoSeq) merged.push(event);
-  }
-  return merged;
 }
 
 /** Extract a flat preview string from content blocks (used for list previews / titles). */

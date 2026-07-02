@@ -1,9 +1,5 @@
 import type { Conversation, ConversationSeed } from '@linkcode/client-core';
-import {
-  buildConversation,
-  mergeSeededEvents,
-  useSequencedAgentEvents,
-} from '@linkcode/client-core';
+import { useConversation } from '@linkcode/client-core';
 import type {
   AgentEvent,
   AgentHistoryId,
@@ -13,7 +9,6 @@ import type {
 } from '@linkcode/schema';
 import type { Options, RequestResult } from '@linkcode/sdk';
 import { resolveClient } from '@linkcode/sdk';
-import { useMemo } from 'react';
 import { useData } from '../runtime/tayori';
 import { loadPersistedSeed, persistSeed } from './seed-cache';
 
@@ -60,7 +55,6 @@ export function useSeededConversation(
   active: SessionInfo | null,
   onError: (err: unknown) => void,
 ): Conversation {
-  const liveEvents = useSequencedAgentEvents(active?.sessionId ?? null);
   const { data: seed } = useData(
     readConversationSeed,
     active?.historyId
@@ -77,5 +71,5 @@ export function useSeededConversation(
       keepPreviousData: false,
     },
   );
-  return useMemo(() => buildConversation(mergeSeededEvents(seed, liveEvents)), [seed, liveEvents]);
+  return useConversation(active?.sessionId ?? null, seed);
 }

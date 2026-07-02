@@ -4,4 +4,5 @@
  */
 export * from './client';
 export * from './conversation';
+export * from './conversation-store';
 export * from './react';

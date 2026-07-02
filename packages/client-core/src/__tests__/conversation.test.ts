@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildConversation,
   contentPreview,
-  mergeSeededEvents,
+  createConversationBuilder,
   toolCallDiffs,
 } from '../conversation';
 
@@ -233,34 +233,62 @@ describe('buildConversation', () => {
   });
 });
 
-describe('mergeSeededEvents', () => {
-  it('passes the live stream through when there is no seed', () => {
-    const events = mergeSeededEvents(undefined, [
-      { event: userText('hi'), seq: 1 },
-      { event: text('yo'), seq: 2 },
-    ]);
-    expect(events).toEqual([userText('hi'), text('yo')]);
+describe('createConversationBuilder', () => {
+  const scenario: AgentEvent[] = [
+    userText('do it'),
+    { type: 'status', status: 'running' },
+    text('working', 'a1'),
+    {
+      type: 'tool-call',
+      toolCall: { toolCallId: 't1', title: 'Run', kind: 'execute', status: 'pending', content: [] },
+    },
+    {
+      type: 'permission-request',
+      requestId: 'p1',
+      toolCall: { toolCallId: 't1', title: 'Run' },
+      options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+    },
+    {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 't1',
+        title: 'Run',
+        kind: 'execute',
+        status: 'completed',
+        content: [],
+      },
+    },
+    { type: 'plan', plan: { entries: [{ content: 'a', priority: 'high', status: 'pending' }] } },
+    text(' done', 'a1'),
+    { type: 'token-usage', usage: { inputTokens: 10, outputTokens: 5 } },
+    { type: 'stop', stopReason: 'end_turn' },
+  ];
+
+  it('advancing event-by-event equals a single fold', () => {
+    const builder = createConversationBuilder();
+    for (const event of scenario) builder.advance(event);
+    expect(builder.snapshot()).toEqual(buildConversation(scenario));
   });
 
-  it('drops live events at or before the snapshot cut and keeps the tail', () => {
-    const seed = { events: [userText('old prompt'), text('old reply')], uptoSeq: 2 };
-    const events = mergeSeededEvents(seed, [
-      { event: userText('duplicate of transcript'), seq: 1 },
-      { event: userText('boundary'), seq: 2 },
-      { event: userText('new prompt'), seq: 3 },
-      { event: text('new reply', 'm2'), seq: 4 },
-    ]);
-    expect(events).toEqual([
-      userText('old prompt'),
-      text('old reply'),
-      userText('new prompt'),
-      text('new reply', 'm2'),
-    ]);
+  it('returns the same snapshot object until the next advance', () => {
+    const builder = createConversationBuilder();
+    builder.advance(userText('hi'));
+    const first = builder.snapshot();
+    expect(builder.snapshot()).toBe(first);
+    builder.advance(text('yo'));
+    expect(builder.snapshot()).not.toBe(first);
   });
 
-  it('keeps the seed intact when there are no live events', () => {
-    const seed = { events: [userText('only history')], uptoSeq: 0 };
-    expect(mergeSeededEvents(seed, [])).toEqual([userText('only history')]);
+  it('never mutates previously returned snapshots (copy-on-write)', () => {
+    const builder = createConversationBuilder();
+    for (const event of scenario.slice(0, 5)) builder.advance(event);
+    const before = builder.snapshot();
+    const frozen = structuredClone(before);
+
+    for (const event of scenario.slice(5)) builder.advance(event);
+    builder.snapshot();
+    // The earlier snapshot still shows the pending tool call and the streaming message.
+    expect(before).toEqual(frozen);
   });
 });
 
