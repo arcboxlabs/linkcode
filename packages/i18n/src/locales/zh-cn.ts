@@ -64,6 +64,11 @@ export const zhCN = {
       closePanel: '关闭面板',
       stub: '{label} 占位',
       terminalStarting: '正在启动终端…',
+      terminalFailed: '终端启动失败',
+      terminalRetry: '重试',
+      terminalExited: '终端已退出（代码 {code}）',
+      terminalRestart: '重启',
+      terminalInputLost: '连接中断，输入可能未送达',
     },
     content: {
       audio: '[音频]',

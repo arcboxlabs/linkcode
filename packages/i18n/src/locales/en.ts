@@ -66,6 +66,11 @@ export const en = {
       closePanel: 'Close panel',
       stub: '{label} stub',
       terminalStarting: 'Starting terminal…',
+      terminalFailed: 'Terminal failed to start',
+      terminalRetry: 'Retry',
+      terminalExited: 'Terminal exited (code {code})',
+      terminalRestart: 'Restart',
+      terminalInputLost: 'Connection interrupted — input may not have been delivered',
     },
     content: {
       audio: '[audio]',
