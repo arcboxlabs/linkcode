@@ -251,6 +251,7 @@ export function DesktopShell({
 
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
+      <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
       <ConversationSurface
         className="min-h-0 flex-1"
         conversation={conversation}
