@@ -7,6 +7,7 @@ import type {
   SessionInfo,
   SessionRecord,
   WireMessage,
+  WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
@@ -76,6 +77,15 @@ export class Engine {
       // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
       this.handle(msg).catch(noop);
     });
+  }
+
+  /**
+   * Ensure the daemon-owned chat workspace exists at `cwd` — see
+   * {@link WorkspaceRegistry.ensureChatWorkspace}. Called once by the daemon at startup, before any
+   * client can connect.
+   */
+  ensureChatWorkspace(cwd: string): Promise<WorkspaceRecord> {
+    return this.workspaces.ensureChatWorkspace(cwd);
   }
 
   private async handle(msg: WireMessage): Promise<void> {
@@ -265,7 +275,11 @@ export class Engine {
       }
       case 'workspace.register': {
         await this.tryReply(p.clientReqId, async () => {
-          const record = await this.workspaces.register({ cwd: p.cwd, name: p.name });
+          const record = await this.workspaces.register({
+            cwd: p.cwd,
+            name: p.name,
+            kind: p.workspaceKind,
+          });
           this.transport.send(
             createWireMessage({ kind: 'workspace.registered', replyTo: p.clientReqId, record }),
           );

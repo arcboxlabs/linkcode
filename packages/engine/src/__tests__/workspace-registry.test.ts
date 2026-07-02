@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
@@ -154,6 +154,69 @@ describe('WorkspaceRegistry', () => {
     // The restored index still dedupes against the recovered key.
     const touchedAgain = await restored.register({ cwd: dir });
     expect(touchedAgain.workspaceId).toBe(restored.list()[0].workspaceId);
+  });
+});
+
+describe('WorkspaceRegistry chat workspace', () => {
+  it('ensureChatWorkspace() creates the directory and registers a fresh chat workspace', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = join(makeTempDir(), 'LinkCode');
+
+    const record = await registry.ensureChatWorkspace(chatDir);
+
+    expect(existsSync(chatDir)).toBe(true);
+    expect(record.kind).toBe('chat');
+    expect(registry.list()).toEqual([record]);
+  });
+
+  it('ensureChatWorkspace() is idempotent for an already-chat directory', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = makeTempDir();
+
+    const first = await registry.ensureChatWorkspace(chatDir);
+    const second = await registry.ensureChatWorkspace(chatDir);
+
+    expect(second).toEqual(first);
+    expect(registry.list()).toHaveLength(1);
+  });
+
+  it('ensureChatWorkspace() upgrades an existing project record to chat in place', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = makeTempDir();
+    const registered = await registry.register({ cwd: chatDir });
+    expect(registered.kind).toBe('project');
+
+    const upgraded = await registry.ensureChatWorkspace(chatDir);
+
+    expect(upgraded.workspaceId).toBe(registered.workspaceId);
+    expect(upgraded.kind).toBe('chat');
+    expect(registry.list()).toHaveLength(1);
+  });
+
+  it('touch() auto-registers the chat root as kind chat, and any other cwd as project', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = makeTempDir();
+    await registry.ensureChatWorkspace(chatDir);
+
+    expect(registry.touch(chatDir).kind).toBe('chat');
+    expect(registry.touch('/some/other/repo').kind).toBe('project');
+  });
+
+  it('archive() rejects the chat workspace', async () => {
+    const registry = new WorkspaceRegistry();
+    const chat = await registry.ensureChatWorkspace(makeTempDir());
+
+    expect(() => registry.archive(chat.workspaceId)).toThrow('Cannot archive the chat workspace');
+    expect(registry.list()).toEqual([chat]);
+  });
+
+  it('update() rejects renaming the chat workspace', async () => {
+    const registry = new WorkspaceRegistry();
+    const chat = await registry.ensureChatWorkspace(makeTempDir());
+
+    expect(() => registry.update(chat.workspaceId, 'Renamed')).toThrow(
+      'Cannot rename the chat workspace',
+    );
   });
 });
 
