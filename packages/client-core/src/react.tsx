@@ -8,7 +8,15 @@ import type {
 import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
 import type * as React from 'react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { LinkCodeClient } from './client';
 import type { Conversation } from './conversation';
 import { buildConversation } from './conversation';
@@ -35,26 +43,22 @@ export function useLinkCodeClient(): LinkCodeClient {
   );
 }
 
-/** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
-export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
+const NO_EVENTS: readonly AgentEvent[] = [];
+
+/**
+ * Subscribe to a session's normalized event stream. Reads the client's per-session buffer as an
+ * external store, so the first render of a session (mount or in-place id change) already sees the
+ * full buffered timeline — no blank frame while an effect replays it.
+ */
+export function useAgentEvents(sessionId: SessionId | null): readonly AgentEvent[] {
   const client = useLinkCodeClient();
-  const [state, setState] = useState<{ sessionId: SessionId | null; events: AgentEvent[] }>({
-    sessionId: null,
-    events: [],
-  });
-
-  useEffect(() => {
-    if (!sessionId) return;
-    return client.subscribe(sessionId, (event) => {
-      setState((prev) =>
-        prev.sessionId === sessionId
-          ? { sessionId, events: [...prev.events, event] }
-          : { sessionId, events: [event] },
-      );
-    });
-  }, [client, sessionId]);
-
-  return state.sessionId === sessionId ? state.events : [];
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => (sessionId ? client.subscribe(sessionId, onStoreChange) : noop),
+    [client, sessionId],
+  );
+  return useSyncExternalStore(subscribe, () =>
+    sessionId ? client.getEvents(sessionId) : NO_EVENTS,
+  );
 }
 
 /** Subscribe to a terminal's output, accumulating it into a string for read-only display. */

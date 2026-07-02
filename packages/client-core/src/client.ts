@@ -44,6 +44,9 @@ export type HistoryReadClientOptions = AgentHistoryReadOptions & {
 /** Cap on per-terminal output buffered before the first subscriber, so an unread PTY can't grow unbounded. */
 const TERMINAL_PREBUFFER_CAP = 128 * 1024;
 
+/** Stable empty snapshot for sessions with no buffered events yet. */
+const NO_EVENTS: readonly AgentEvent[] = [];
+
 /**
  * Trim buffered terminal output to the cap on a line boundary. Slicing raw would leave the buffer
  * starting mid-ANSI-escape (the head byte gone, the tail rendered as literal garbage); dropping the
@@ -72,8 +75,13 @@ function nextClientReqId(): string {
  */
 export class LinkCodeClient {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
-  /** Per-session event buffer so a re-subscribe (switching the active session back) can replay the timeline. */
-  private readonly events = new Map<SessionId, AgentEvent[]>();
+  /**
+   * Per-session event timeline: replaced (not mutated) on append so `getEvents` snapshots are
+   * referentially stable between events (safe for `useSyncExternalStore`). Retained across
+   * `stopSession` — the daemon does not replay history on resume, so this buffer is the only
+   * copy of a cold session's timeline.
+   */
+  private readonly events = new Map<SessionId, readonly AgentEvent[]>();
   private readonly pendingStarts = new Map<string, Pending<SessionId>>();
   private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
   private readonly pendingImports = new Map<string, Pending<SessionRecord>>();
@@ -151,8 +159,7 @@ export class LinkCodeClient {
       }
       case 'agent.event': {
         const buf = this.events.get(p.sessionId);
-        if (buf) buf.push(p.event);
-        else this.events.set(p.sessionId, [p.event]);
+        this.events.set(p.sessionId, buf ? [...buf, p.event] : [p.event]);
         const subs = this.subscribers.get(p.sessionId);
         if (subs) for (const cb of subs) cb(p.event);
         break;
@@ -303,15 +310,13 @@ export class LinkCodeClient {
   }
 
   stopSession(sessionId: SessionId): Promise<RequestAck> {
+    // Subscribers and the event buffer survive the stop: the session record stays listed (cold),
+    // and resuming keeps the same id — dropping either would mute or blank a still-rendered timeline.
     return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
       kind: 'session.stop',
       clientReqId,
       sessionId,
-    })).then((ack) => {
-      this.subscribers.delete(sessionId);
-      this.events.delete(sessionId);
-      return ack;
-    });
+    }));
   }
 
   /** Read the daemon-owned provider config (data plane). */
@@ -329,6 +334,11 @@ export class LinkCodeClient {
       clientReqId,
       providers,
     }));
+  }
+
+  /** Snapshot of a session's buffered timeline; the reference only changes when an event arrives. */
+  getEvents(sessionId: SessionId): readonly AgentEvent[] {
+    return this.events.get(sessionId) ?? NO_EVENTS;
   }
 
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
