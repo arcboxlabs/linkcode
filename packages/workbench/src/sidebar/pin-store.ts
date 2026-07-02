@@ -1,5 +1,5 @@
 import { zodPersist } from '@linkcode/common/zustand';
-import type { SessionId, SessionInfo } from '@linkcode/schema';
+import type { SessionId } from '@linkcode/schema';
 import { SessionIdSchema } from '@linkcode/schema';
 import { z } from 'zod';
 import { create } from 'zustand';
@@ -12,7 +12,7 @@ const PersistedPinnedThreadsSchema = z
 type PersistedPinnedThreads = z.infer<typeof PersistedPinnedThreadsSchema>;
 
 export interface SidebarPinState {
-  /** Session ids pinned to the top of their group, most recently pinned first. */
+  /** Session ids pinned to the top of their group — membership only; display order comes from `orderThreads`. */
   pinnedSessionIds: SessionId[];
   togglePinned: (id: SessionId) => void;
 }
@@ -39,19 +39,3 @@ export const useSidebarPinStore = create<SidebarPinState>()(
     },
   ),
 );
-
-/**
- * Stable partition: pinned sessions first, each side keeping the input's most-recent-first order.
- * Applied before preview truncation so pinned threads always land inside the preview window.
- */
-export function orderPinnedFirst(
-  sessions: readonly SessionInfo[],
-  pinnedIds: readonly SessionId[],
-): SessionInfo[] {
-  if (pinnedIds.length === 0) return [...sessions];
-  const pinned = new Set<SessionId>(pinnedIds);
-  return [
-    ...sessions.filter((session) => pinned.has(session.sessionId)),
-    ...sessions.filter((session) => !pinned.has(session.sessionId)),
-  ];
-}

@@ -22,7 +22,9 @@ import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { groupThreadsByWorkspace } from '../sidebar/group-threads';
-import { orderPinnedFirst, useSidebarPinStore } from '../sidebar/pin-store';
+import { useSidebarOrderStore } from '../sidebar/order-store';
+import { applyThreadDrag, orderGroups, orderThreads } from '../sidebar/ordering';
+import { useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
 import { useWorkspaces } from '../workspace/hooks';
@@ -109,15 +111,23 @@ function WorkbenchSessionSurface({
   const toggleGroupCollapsed = useSidebarGroupCollapseStore((state) => state.toggleCollapsed);
   const pinnedSessionIds = useSidebarPinStore((state) => state.pinnedSessionIds);
   const toggleSessionPinned = useSidebarPinStore((state) => state.togglePinned);
+  const groupOrder = useSidebarOrderStore((state) => state.groupOrder);
+  const threadOrder = useSidebarOrderStore((state) => state.threadOrder);
+  const setGroupOrder = useSidebarOrderStore((state) => state.setGroupOrder);
+  const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
     const groups = groupThreadsByWorkspace(sessions.sessions, workspaces ?? []);
-    return groups.map((group) => {
+    return orderGroups(groups, groupOrder).map((group) => {
       const collapsed = collapsedKeys.includes(group.collapseKey);
       const previewExpanded = previewExpandedKeys.has(group.key);
       const historyOpen = historyOpenKeys.has(group.key);
-      const ordered = orderPinnedFirst(group.sessions, pinnedSessionIds);
+      const ordered = orderThreads(
+        group.sessions,
+        pinnedSessionIds,
+        threadOrder[group.collapseKey] ?? [],
+      );
       const { sessions: visibleSessions, hasOverflow } = selectVisibleSessions(ordered, {
         collapsed,
         expanded: previewExpanded,
@@ -139,6 +149,8 @@ function WorkbenchSessionSurface({
     workspaces,
     collapsedKeys,
     pinnedSessionIds,
+    groupOrder,
+    threadOrder,
     previewExpandedKeys,
     historyOpenKeys,
   ]);
@@ -198,6 +210,28 @@ function WorkbenchSessionSurface({
     else addHistoryOpen(groupKey);
   }
 
+  function handleReorderGroups(orderedCollapseKeys: string[]): void {
+    setGroupOrder(orderedCollapseKeys);
+  }
+
+  function handleReorderThreads(
+    collapseKey: string,
+    activeId: SessionId,
+    overId: SessionId,
+    placement: 'before' | 'after',
+  ): void {
+    const group = threadGroups.find((candidate) => candidate.collapseKey === collapseKey);
+    if (!group) return;
+    const next = applyThreadDrag({
+      orderedIds: group.sessions.map((session) => session.sessionId),
+      pinnedIds: pinnedSessionIds,
+      activeId,
+      overId,
+      placement,
+    });
+    if (next) setThreadOrder(collapseKey, next);
+  }
+
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
   // group) — excluded from the picker every other workspace-selection flow (New Task, Add
   // workspace, per-group New thread) offers.
@@ -243,6 +277,8 @@ function WorkbenchSessionSurface({
       onSelectSession={sessions.select}
       onStopSession={sessions.stop}
       onToggleSessionPinned={toggleSessionPinned}
+      onReorderGroups={handleReorderGroups}
+      onReorderThreads={handleReorderThreads}
       onCreateSession={sessions.create}
       onImportSession={handleImportedSession}
       onRegisterWorkspace={handleRegisterWorkspace}

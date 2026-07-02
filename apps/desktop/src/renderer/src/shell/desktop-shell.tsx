@@ -52,6 +52,8 @@ export function DesktopShell({
   onSelectSession,
   onStopSession,
   onToggleSessionPinned,
+  onReorderGroups,
+  onReorderThreads,
   onCreateSession,
   onImportSession,
   onRegisterWorkspace,
@@ -505,6 +507,8 @@ export function DesktopShell({
                 onSelect={onSelectSession}
                 onStop={onStopSession}
                 onToggleSessionPinned={onToggleSessionPinned}
+                onReorderGroups={onReorderGroups}
+                onReorderThreads={onReorderThreads}
                 onCreate={onCreateSession}
               />
             </div>

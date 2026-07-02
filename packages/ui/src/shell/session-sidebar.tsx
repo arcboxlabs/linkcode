@@ -48,6 +48,15 @@ export interface SessionSidebarProps {
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
+  /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
+  onReorderGroups: (orderedCollapseKeys: string[]) => void;
+  /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
+  onReorderThreads: (
+    collapseKey: string,
+    activeId: SessionId,
+    overId: SessionId,
+    placement: 'before' | 'after',
+  ) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   /** Called once a history entry finishes importing as a new thread. */
   onImportSession?: (sessionId: SessionId) => void;
@@ -81,6 +90,8 @@ export function SessionSidebar({
   onSelect,
   onStop,
   onToggleSessionPinned,
+  onReorderGroups,
+  onReorderThreads,
   onCreate,
   onImportSession,
   onPickDirectory,
@@ -122,6 +133,8 @@ export function SessionSidebar({
             onSelect={onSelect}
             onStop={onStop}
             onToggleSessionPinned={onToggleSessionPinned}
+            onReorderGroups={onReorderGroups}
+            onReorderThreads={onReorderThreads}
             onCreate={onCreate}
             onImportSession={onImportSession}
             onPickDirectory={onPickDirectory}

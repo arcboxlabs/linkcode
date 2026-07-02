@@ -28,6 +28,15 @@ export interface ShellFrameProps {
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
+  /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
+  onReorderGroups: (orderedCollapseKeys: string[]) => void;
+  /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
+  onReorderThreads: (
+    collapseKey: string,
+    activeId: SessionId,
+    overId: SessionId,
+    placement: 'before' | 'after',
+  ) => void;
   onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
   onImportSession?: (sessionId: SessionId) => void;
   /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
@@ -64,6 +73,8 @@ export function ShellFrame({
   onSelectSession,
   onStopSession,
   onToggleSessionPinned,
+  onReorderGroups,
+  onReorderThreads,
   onCreateSession,
   onImportSession,
   onRegisterWorkspace,
@@ -97,6 +108,8 @@ export function ShellFrame({
           onSelect={onSelectSession}
           onStop={onStopSession}
           onToggleSessionPinned={onToggleSessionPinned}
+          onReorderGroups={onReorderGroups}
+          onReorderThreads={onReorderThreads}
           onCreate={onCreateSession}
           onImportSession={onImportSession}
           onRegisterWorkspace={onRegisterWorkspace}

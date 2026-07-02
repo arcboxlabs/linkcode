@@ -46,6 +46,15 @@ export interface ThreadsViewProps {
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
+  /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
+  onReorderGroups: (orderedCollapseKeys: string[]) => void;
+  /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
+  onReorderThreads: (
+    collapseKey: string,
+    activeId: SessionId,
+    overId: SessionId,
+    placement: 'before' | 'after',
+  ) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   onImportSession?: (sessionId: SessionId) => void;
   onPickDirectory?: () => Promise<string | null>;
