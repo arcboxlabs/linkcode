@@ -15,6 +15,7 @@ import type { Options, RequestResult } from '@linkcode/sdk';
 import { resolveClient } from '@linkcode/sdk';
 import { useMemo } from 'react';
 import { useData } from '../runtime/tayori';
+import { loadPersistedSeed, persistSeed } from './seed-cache';
 
 /** Upper bound on cursor pages one seed read follows, so a buggy cursor can't loop forever. */
 const MAX_SEED_PAGES = 20;
@@ -41,13 +42,19 @@ async function readConversationSeed(
     cursor = data.cursor;
     if (cursor === undefined) break;
   }
-  return { data: { events, uptoSeq: client.raw.eventSeq(options.sessionId) } };
+  const seed: ConversationSeed = { events, uptoSeq: client.raw.eventSeq(options.sessionId) };
+  // Persisted here, not in an onSuccess hook: the fetcher owns its params, so a session switch
+  // mid-flight can't file the snapshot under the newly active session's key.
+  persistSeed(options.agentKind, options.historyId, seed);
+  return { data: seed };
 }
 
 /**
  * The active session's conversation view-model, seeded from persisted provider history. The live
  * `agent.event` subscription only covers this connection, so a cold-resumed (or re-attached)
  * session replays its past from `history.read`; new live events append behind the snapshot.
+ * The last persisted snapshot serves as `fallbackData`, so reopening the app paints history
+ * immediately while the fresh read revalidates behind it.
  */
 export function useSeededConversation(
   active: SessionInfo | null,
@@ -59,7 +66,12 @@ export function useSeededConversation(
     active?.historyId
       ? { agentKind: active.kind, historyId: active.historyId, sessionId: active.sessionId }
       : null,
-    { onError },
+    {
+      onError,
+      fallbackData: active?.historyId
+        ? loadPersistedSeed(active.kind, active.historyId)
+        : undefined,
+    },
   );
   return useMemo(() => buildConversation(mergeSeededEvents(seed, liveEvents)), [seed, liveEvents]);
 }
