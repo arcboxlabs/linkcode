@@ -71,6 +71,10 @@ export function useSeededConversation(
       fallbackData: active?.historyId
         ? loadPersistedSeed(active.kind, active.historyId)
         : undefined,
+      // Opt out of the provider-wide keepPreviousData: on a session switch it would keep serving
+      // the previous session's transcript — forever, when the new session has no historyId yet
+      // (null key = no fetch to replace it). A conversation must never bleed across sessions.
+      keepPreviousData: false,
     },
   );
   return useMemo(() => buildConversation(mergeSeededEvents(seed, liveEvents)), [seed, liveEvents]);
