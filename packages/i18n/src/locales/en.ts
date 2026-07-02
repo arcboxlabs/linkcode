@@ -566,6 +566,19 @@ export const en = {
       savedHosts: 'Saved hosts',
       open: 'Open',
       remove: 'Remove',
+      viaTunnel: 'via LinkCode HQ',
+      hq: {
+        title: 'LinkCode HQ',
+        hint: 'Sign in to reach your machines from anywhere through the LinkCode tunnel.',
+        signIn: 'Sign in',
+        signedInAs: 'Signed in as {name}',
+        signOut: 'Sign out',
+        hosts: 'Online machines',
+        empty:
+          'No machines online. On the machine, run linkcode-daemon login once and keep the daemon running.',
+        error: 'Could not load your machines.',
+        refresh: 'Refresh',
+      },
     },
     sessions: {
       title: 'Sessions',
