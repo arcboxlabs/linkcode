@@ -1,5 +1,6 @@
 import type { ChildProcessByStdio } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -61,7 +62,9 @@ export class SidecarPtyBackend implements PtyBackend {
         rows: opts.rows,
         cmd: opts.shell ?? defaultShell(),
         args: [],
-        cwd: opts.cwd ?? process.cwd(),
+        // The daemon's own cwd is an implementation accident (wherever it was launched from) —
+        // an unspecified shell belongs in the user's home, like a fresh terminal app tab.
+        cwd: opts.cwd ?? homedir(),
         env: {},
       }),
     );

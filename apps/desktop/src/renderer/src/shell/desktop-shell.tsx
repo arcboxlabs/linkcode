@@ -254,6 +254,7 @@ export function DesktopShell({
         chromeSurface={chromeSurface}
         phase={side === 'right' ? rightSplit.phase : bottomSplit.phase}
         reducedMotion={side === 'right' ? rightSplit.reducedMotion : bottomSplit.reducedMotion}
+        terminalCwd={active?.cwd}
         onSelectTab={(id) => updatePanel(side, (current) => ({ ...current, activeTabId: id }))}
         onCloseTab={(id) => closeTab(side, id)}
         onAddWindow={(type) => addWindow(side, type)}

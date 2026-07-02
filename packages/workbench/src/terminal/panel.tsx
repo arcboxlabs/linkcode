@@ -18,9 +18,12 @@ const INPUT_LOST_BANNER_MS = 4000;
  */
 export function TerminalPanel({
   sessionKey,
+  cwd,
   suspended,
 }: {
   sessionKey: string;
+  /** Working directory for the shell, captured when the terminal first opens (host home if omitted). */
+  cwd?: string;
   /** Freeze the terminal's box while the host panel animates shut/open — see {@link LiveTerminal}. */
   suspended?: boolean;
 }): React.ReactNode {
@@ -30,7 +33,7 @@ export function TerminalPanel({
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      const lease = acquireTerminalSession(client, sessionKey, TERMINAL_INITIAL_SIZE);
+      const lease = acquireTerminalSession(client, sessionKey, { ...TERMINAL_INITIAL_SIZE, cwd });
       leaseRef.current = lease;
       const unsubscribe = lease.subscribe(onStoreChange);
       return () => {
@@ -39,7 +42,7 @@ export function TerminalPanel({
         if (leaseRef.current === lease) leaseRef.current = null;
       };
     },
-    [client, sessionKey],
+    [client, sessionKey, cwd],
   );
   const snapshot = useSyncExternalStore(subscribe, () => peekTerminalSnapshot(client, sessionKey));
 

@@ -16,6 +16,7 @@ export function DesktopPanelRegion({
   contentHidden,
   phase,
   reducedMotion,
+  terminalCwd,
   onSelectTab,
   onCloseTab,
   onAddWindow,
@@ -30,6 +31,8 @@ export function DesktopPanelRegion({
   contentHidden: boolean;
   phase: SplitPanePhase;
   reducedMotion: boolean;
+  /** Working directory for newly opened terminal tabs (the active session's cwd). */
+  terminalCwd?: string;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
@@ -52,7 +55,9 @@ export function DesktopPanelRegion({
         reducedMotion,
       })}
       panelContentByType={{
-        terminal: (tab) => <TerminalPanel sessionKey={tab.id} suspended={phase !== 'open'} />,
+        terminal: (tab) => (
+          <TerminalPanel sessionKey={tab.id} cwd={terminalCwd} suspended={phase !== 'open'} />
+        ),
       }}
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
