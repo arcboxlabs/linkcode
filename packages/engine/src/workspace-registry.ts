@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey } from '@linkcode/schema';
@@ -33,10 +34,13 @@ export class WorkspaceRegistry {
 
   /**
    * Explicitly register a directory. Idempotent: an already-known directory just gets its
-   * `lastUsedAt` freshened, returning the existing record.
+   * `lastUsedAt` freshened, returning the existing record. Rejects a `cwd` that isn't an existing
+   * directory — unlike {@link touch}, this is a client-driven call with no session to fall back on.
    */
-  register(opts: { cwd: string; name?: string }): WorkspaceRecord {
-    return this.upsert(opts.cwd, opts.name);
+  async register(opts: { cwd: string; name?: string }): Promise<WorkspaceRecord> {
+    const cwd = resolve(opts.cwd);
+    await this.assertDirectoryExists(cwd);
+    return this.upsert(cwd, opts.name);
   }
 
   /**
@@ -106,6 +110,18 @@ export class WorkspaceRegistry {
   private nextWorkspaceId(): WorkspaceId {
     this.seq += 1;
     return `ws-${Date.now().toString(36)}-${this.seq.toString(36)}` as WorkspaceId;
+  }
+
+  private async assertDirectoryExists(cwd: string): Promise<void> {
+    let stats: Awaited<ReturnType<typeof stat>>;
+    try {
+      stats = await stat(cwd);
+    } catch {
+      throw new Error(`Workspace directory does not exist: ${cwd}`);
+    }
+    if (!stats.isDirectory()) {
+      throw new Error(`Workspace path is not a directory: ${cwd}`);
+    }
   }
 }
 

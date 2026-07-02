@@ -264,12 +264,11 @@ export class Engine {
         break;
       }
       case 'workspace.register': {
-        await this.tryReply(p.clientReqId, () => {
-          const record = this.workspaces.register({ cwd: p.cwd, name: p.name });
+        await this.tryReply(p.clientReqId, async () => {
+          const record = await this.workspaces.register({ cwd: p.cwd, name: p.name });
           this.transport.send(
             createWireMessage({ kind: 'workspace.registered', replyTo: p.clientReqId, record }),
           );
-          return Promise.resolve();
         });
         break;
       }
