@@ -62,6 +62,10 @@ export interface SessionSidebarProps {
   onImportSession?: (sessionId: SessionId) => void;
   /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
   onPickDirectory?: () => Promise<string | null>;
+  /** Opens the command palette — the Search entry stays disabled without it. */
+  onOpenSearch?: () => void;
+  /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
+  searchShortcut?: string;
   /** Registers a directory as a workspace — the top "New Task" menu and the Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
   onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
@@ -95,6 +99,8 @@ export function SessionSidebar({
   onCreate,
   onImportSession,
   onPickDirectory,
+  onOpenSearch,
+  searchShortcut,
   onRegisterWorkspace,
   onRenameWorkspace,
   onArchiveWorkspace,
@@ -119,7 +125,13 @@ export function SessionSidebar({
           onPickDirectory={onPickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
         />
-        <SidebarMenuButton disabled icon={<SearchIcon />} label="Search" />
+        <SidebarMenuButton
+          disabled={!onOpenSearch}
+          icon={<SearchIcon />}
+          label="Search"
+          shortcut={searchShortcut}
+          onClick={onOpenSearch}
+        />
         <SidebarMenuButton disabled icon={<SparklesIcon />} label="Automation" />
       </div>
 

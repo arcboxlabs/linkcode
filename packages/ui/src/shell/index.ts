@@ -1,5 +1,7 @@
 export * from './agent-efforts';
+export * from './agent-icon';
 export * from './agent-models';
+export * from './command-palette';
 export * from './composer';
 export * from './conversation-surface';
 export * from './error-banner';

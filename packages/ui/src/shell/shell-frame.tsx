@@ -50,6 +50,10 @@ export interface ShellFrameProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
+  /** Opens the command palette — the sidebar Search entry stays disabled without it. */
+  onOpenSearch?: () => void;
+  /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
+  searchShortcut?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   BranchStatusComponent?: BranchStatusComponentType;
   HistoryComponent?: React.ComponentType<{
@@ -88,6 +92,8 @@ export function ShellFrame({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onOpenSearch,
+  searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
   HistoryComponent,
@@ -121,6 +127,8 @@ export function ShellFrame({
           onToggleGroupCollapsed={onToggleGroupCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           onToggleImportHistory={onToggleImportHistory}
+          onOpenSearch={onOpenSearch}
+          searchShortcut={searchShortcut}
           BranchStatusComponent={BranchStatusComponent}
           HistoryComponent={HistoryComponent}
         />

@@ -19,6 +19,8 @@ import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { WorkbenchCommandPalette } from '../palette/command-palette';
+import { openCommandPalette } from '../palette/store';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
@@ -37,6 +39,8 @@ import { useWorkbenchSessions } from './use-workbench-sessions';
 
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
+  /** Platform-formatted hint for the palette trigger (e.g. `⌘K`); apps own the label. */
+  paletteShortcut?: string;
 }
 
 /**
@@ -49,6 +53,7 @@ export interface WorkbenchProps {
  */
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
+  paletteShortcut,
 }: WorkbenchProps): React.ReactNode {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
@@ -64,14 +69,18 @@ export function Workbench({
   // column (the shells key their ConversationSurface), and the permission sets below survive
   // switches safely because adapter requestIds are globally unique.
   return (
-    <WorkbenchSessionSurface
-      sessions={sessions}
-      conversation={conversation}
-      errorMessage={errorMessage}
-      ShellComponent={ShellComponent}
-      onClearError={() => setErrorMessage(null)}
-      onError={handleError}
-    />
+    <>
+      <WorkbenchSessionSurface
+        sessions={sessions}
+        conversation={conversation}
+        errorMessage={errorMessage}
+        ShellComponent={ShellComponent}
+        paletteShortcut={paletteShortcut}
+        onClearError={() => setErrorMessage(null)}
+        onError={handleError}
+      />
+      <WorkbenchCommandPalette sessions={sessions} />
+    </>
   );
 }
 
@@ -80,6 +89,7 @@ interface WorkbenchSessionSurfaceProps {
   conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
+  paletteShortcut?: string;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -89,6 +99,7 @@ function WorkbenchSessionSurface({
   conversation,
   errorMessage,
   ShellComponent,
+  paletteShortcut,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
@@ -299,6 +310,8 @@ function WorkbenchSessionSurface({
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
+      onOpenSearch={openCommandPalette}
+      searchShortcut={paletteShortcut}
       TerminalBlockComponent={RuntimeTerminalBlock}
       BranchStatusComponent={RuntimeBranchStatus}
       HistoryComponent={RuntimeWorkspaceHistory}

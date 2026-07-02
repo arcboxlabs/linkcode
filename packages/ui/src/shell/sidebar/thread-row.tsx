@@ -7,7 +7,7 @@ import { AGENT_LABELS, AgentIcon } from '../agent-icon';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
 
-const STATUS_DOT_CLASS: Record<SessionStatus, string> = {
+export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   starting: 'bg-info',
   idle: 'bg-muted-foreground/40',
   running: 'bg-success',
@@ -79,7 +79,7 @@ export function ThreadRow({
             aria-hidden
             className={cn(
               'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar',
-              STATUS_DOT_CLASS[session.status],
+              SESSION_STATUS_DOT_CLASS[session.status],
             )}
           />
         </span>
