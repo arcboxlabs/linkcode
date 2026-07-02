@@ -169,6 +169,7 @@ describe('engine session persistence', () => {
       status: 'stopped',
       title: 'Fix the flaky test',
       cwd: '/repo',
+      historyId: 'native-1',
     });
   });
 

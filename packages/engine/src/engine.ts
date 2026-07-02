@@ -415,6 +415,7 @@ export class Engine {
       createdAt: record.createdAt,
       title: record.title,
       origin: record.origin,
+      historyId: latestHistoryId(record),
     };
   }
 

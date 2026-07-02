@@ -29,7 +29,7 @@ import { WorkspaceRecordSchema } from './workspace';
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 7 as const;
+export const WIRE_PROTOCOL_VERSION = 8 as const;
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
   forceRefresh: z.boolean().optional(),
