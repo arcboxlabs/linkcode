@@ -87,6 +87,7 @@ function createSession(sessionId: string, cwd: string, createdAt: number): Sessi
     cwd,
     status: 'idle',
     createdAt,
+    updatedAt: createdAt,
   };
 }
 

@@ -436,6 +436,7 @@ export class Engine {
       cwd: record.cwd,
       status: this.sessions.get(record.sessionId)?.status ?? 'stopped',
       createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
       title: record.title,
       origin: record.origin,
       historyId: latestHistoryId(record),

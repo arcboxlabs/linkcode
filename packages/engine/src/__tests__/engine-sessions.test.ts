@@ -171,6 +171,7 @@ describe('engine session persistence', () => {
       cwd: '/repo',
       historyId: 'native-1',
     });
+    expect(sessions[0].updatedAt).toBeTypeOf('number');
   });
 
   it('resumes a persisted session under the same id, appending a run', async () => {

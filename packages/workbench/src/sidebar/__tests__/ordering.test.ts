@@ -173,6 +173,7 @@ function createSession(sessionId: string, createdAt: number): SessionInfo {
     cwd: '/repo/app',
     status: 'idle',
     createdAt,
+    updatedAt: createdAt,
   };
 }
 

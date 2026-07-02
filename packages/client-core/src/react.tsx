@@ -184,12 +184,14 @@ export function useSessions(): SessionsApi {
   const create = useCallback(
     async (opts: StartOptions): Promise<SessionId> => {
       const id = await client.startSession(opts);
+      const now = Date.now();
       const optimistic: SessionInfo = {
         sessionId: id,
         kind: opts.kind,
         cwd: opts.cwd,
         status: 'starting',
-        createdAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       };
       setSessions((prev) => (prev.some((s) => s.sessionId === id) ? prev : [...prev, optimistic]));
       setActiveId(id);

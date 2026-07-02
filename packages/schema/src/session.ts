@@ -100,6 +100,8 @@ export const SessionInfoSchema = z.object({
   cwd: z.string(),
   status: SessionStatusSchema,
   createdAt: z.number().int().nonnegative(),
+  /** Last persisted activity (run start/stop, first prompt, provider linkage) — the recency ordering key. */
+  updatedAt: TimestampSchema,
   title: z.string().optional(),
   origin: SessionOriginSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */

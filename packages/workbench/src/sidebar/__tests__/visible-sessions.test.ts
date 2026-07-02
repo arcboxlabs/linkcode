@@ -130,5 +130,6 @@ function makeSessions(count: number): SessionInfo[] {
     cwd: '/repo',
     status: 'idle',
     createdAt: 1000 - index,
+    updatedAt: 1000 - index,
   }));
 }
