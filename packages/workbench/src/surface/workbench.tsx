@@ -37,9 +37,13 @@ export function Workbench({
   const sessions = useWorkbenchSessions(handleError);
   const conversation = useSeededConversation(sessions.active, handleError);
 
+  // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
+  // sidebar, panels, terminals), which must stay permanently mounted across session switches —
+  // remounting it flashes the entire window. Per-session UI reset happens at the conversation
+  // column (the shells key their ConversationSurface), and the permission sets below survive
+  // switches safely because adapter requestIds are globally unique.
   return (
     <WorkbenchSessionSurface
-      key={sessions.activeId ?? 'no-active-session'}
       sessions={sessions}
       conversation={conversation}
       errorMessage={errorMessage}

@@ -61,7 +61,9 @@ export function ShellFrame({
       <main className="flex min-w-0 flex-1 flex-col">
         {header}
         <ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />
+        {/* Keyed per session: switching resets the composer draft and scroll without touching the shell. */}
         <ConversationSurface
+          key={active?.sessionId ?? 'no-active-session'}
           className="min-h-0 flex-1"
           conversation={conversation}
           agentKind={active?.kind}

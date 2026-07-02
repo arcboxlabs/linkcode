@@ -265,7 +265,9 @@ export function DesktopShell({
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
       <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
+      {/* Keyed per session: switching resets the composer draft and scroll without touching the shell. */}
       <ConversationSurface
+        key={active?.sessionId ?? 'no-active-session'}
         className="min-h-0 flex-1"
         conversation={conversation}
         agentKind={active?.kind}
