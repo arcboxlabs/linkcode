@@ -15,7 +15,9 @@ function makeTempDir(): string {
 }
 
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8' });
+  // The fixture repos must not inherit the machine's commit signing (a locked
+  // signer would fail every `git commit` here).
+  return execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' });
 }
 
 function commit(cwd: string, message: string, ...extraArgs: string[]): void {
