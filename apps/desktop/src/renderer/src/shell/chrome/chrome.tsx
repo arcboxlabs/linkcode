@@ -31,7 +31,8 @@ export interface DesktopChromeProps {
   onHideSidebar: () => void;
   onToggleRight: () => void;
   onToggleBottom: () => void;
-  /** Pre-formatted shortcut hints for the default panel toggles (e.g. "⌘J"). */
+  /** Pre-formatted shortcut hints for the default sidebar/panel toggles (e.g. "⌘J"). */
+  sidebarShortcut?: string;
   rightPanelShortcut?: string;
   bottomPanelShortcut?: string;
   /** Override the stable left-rail controls (sidebar toggle + history); `null` hides them. */
@@ -140,6 +141,7 @@ export function DesktopChrome({
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
+  sidebarShortcut,
   rightPanelShortcut,
   bottomPanelShortcut,
   leftControls,
@@ -190,6 +192,7 @@ export function DesktopChrome({
           {leftControls === undefined ? (
             <DefaultLeftChromeControls
               sidebarOpen={sidebarOpen}
+              sidebarShortcut={sidebarShortcut}
               onShowSidebar={onShowSidebar}
               onHideSidebar={onHideSidebar}
             />
@@ -376,17 +379,20 @@ function StableLeftChrome({
 
 function DefaultLeftChromeControls({
   sidebarOpen,
+  sidebarShortcut,
   onShowSidebar,
   onHideSidebar,
 }: {
   sidebarOpen: boolean;
+  sidebarShortcut?: string;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
 }): React.ReactNode {
   return (
     <>
       <ShellIconButton
-        label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+        label="Toggle sidebar"
+        shortcut={sidebarShortcut}
         aria-pressed={sidebarOpen}
         onClick={sidebarOpen ? onHideSidebar : onShowSidebar}
       >

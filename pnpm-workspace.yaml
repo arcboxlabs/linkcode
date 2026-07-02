@@ -61,7 +61,7 @@ catalog:
 
   # Client data layer
   "@tanstack/react-query": ^5.62.7
-  swr: ^2.3.0
+  swr: ^2.4.1
   use-intl: ^4.13.0
   zustand: ^5.0.14
   lucide-react: ^1.18.0
@@ -82,14 +82,14 @@ catalog:
   electron-builder: ^26.15.3
 
   # Server / communication
-  ws: ^8.18.0
-  "@types/ws": ^8.5.13
-  socket.io: ^4.8.1
-  socket.io-client: ^4.8.1
+  ws: ^8.21.0
+  "@types/ws": ^8.18.1
+  socket.io: ^4.8.3
+  socket.io-client: ^4.8.3
 
   # Build / runtime tools
-  tsx: ^4.19.2
-  tsup: ^8.3.5
+  tsx: ^4.22.4
+  tsup: ^8.5.1
 
   # Testing
   vitest: ^4.1.9
@@ -142,3 +142,17 @@ minimumReleaseAgeExclude:
   - expo-modules-autolinking@56.0.17
   - expo-modules-core@56.0.18
   - expo@56.0.13
+  - uuid@11.1.1
+  - esbuild@0.28.1
+  - ws@8.21.0
+  - undici@8.5.0
+  - linkify-it@5.0.1
+
+overrides:
+  # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
+  # ends at 0.24.2 on npm — the fix actually shipped in 0.25.0.
+  esbuild@<=0.24.2: ^0.25.0
+  linkify-it@<=5.0.0: ^5.0.1
+  undici@>=8.0.0 <8.5.0: ^8.5.0
+  uuid@<11.1.1: ^11.1.1
+  ws@>=8.0.0 <8.21.0: ^8.21.0

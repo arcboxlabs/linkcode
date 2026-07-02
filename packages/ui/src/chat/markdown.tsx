@@ -1,16 +1,18 @@
-import type { Components } from 'react-markdown';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { cjk } from '@streamdown/cjk';
+import { code } from '@streamdown/code';
+import type { Components, PluginConfig } from 'streamdown';
+import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
-import { CodeBlock } from './code-block';
 
+// Typography overrides keep the chat-tuned look; fenced code blocks stay on
+// Streamdown's defaults for shiki highlighting and copy controls.
 const components: Components = {
   a: ({ className, children, node: _node, ...rest }) => (
     <a
+      {...rest}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
       target="_blank"
       rel="noreferrer"
-      {...rest}
     >
       {children}
     </a>
@@ -58,21 +60,14 @@ const components: Components = {
       {children}
     </blockquote>
   ),
-  pre: ({ children }) => children,
-  code({ className, children, node: _node, ...rest }) {
-    // Fenced blocks may carry no language class; treat multi-line content as a block too.
-    const text = reactNodeText(children);
-    const language = codeLanguageFromClassName(className);
-    const isBlock = Boolean(language) || text.includes('\n');
-    if (isBlock) {
-      return <CodeBlock code={trimTrailingMarkdownNewline(text)} language={language} />;
-    }
-    return (
-      <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]" {...rest}>
-        {children}
-      </code>
-    );
-  },
+  inlineCode: ({ className, children, node: _node, ...rest }) => (
+    <code
+      className={cn('rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]', className)}
+      {...rest}
+    >
+      {children}
+    </code>
+  ),
   table: ({ className, children, node: _node, ...rest }) => (
     <table className={cn('my-2 w-full border-collapse text-[13px]', className)} {...rest}>
       {children}
@@ -106,28 +101,7 @@ const components: Components = {
   ),
 };
 
-const LANGUAGE_CLASS_PREFIX = 'language-';
-
-function codeLanguageFromClassName(className: string | undefined): string | undefined {
-  if (!className) return undefined;
-  return className
-    .split(' ')
-    .find((name) => name.startsWith(LANGUAGE_CLASS_PREFIX))
-    ?.slice(LANGUAGE_CLASS_PREFIX.length);
-}
-
-function trimTrailingMarkdownNewline(value: string): string {
-  return value.endsWith('\n') ? value.slice(0, -1) : value;
-}
-
-function reactNodeText(value: React.ReactNode): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return String(value);
-  }
-  if (Array.isArray(value)) return value.map(reactNodeText).join('');
-  return '';
-}
+const plugins: PluginConfig = { cjk, code };
 
 export function Markdown({
   children,
@@ -137,10 +111,14 @@ export function Markdown({
   className?: string;
 }): React.ReactNode {
   return (
-    <div className={cn('break-words text-[14px] leading-relaxed', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
-      </ReactMarkdown>
-    </div>
+    <Streamdown
+      // space-y-0: block rhythm comes from the per-element my-* overrides above,
+      // matching the previous react-markdown renderer.
+      className={cn('space-y-0 break-words text-[14px] leading-relaxed', className)}
+      components={components}
+      plugins={plugins}
+    >
+      {children}
+    </Streamdown>
   );
 }
