@@ -32,17 +32,16 @@ export class WorkspaceRegistry {
   }
 
   /**
-   * Explicitly register a directory. `cwd` is resolved to an absolute path first — the wire
-   * boundary, since it may arrive as whatever the user typed or a client-relative path. Idempotent:
-   * an already-known directory just gets its `lastUsedAt` freshened, returning the existing record.
+   * Explicitly register a directory. Idempotent: an already-known directory just gets its
+   * `lastUsedAt` freshened, returning the existing record.
    */
   register(opts: { cwd: string; name?: string }): WorkspaceRecord {
-    return this.upsert(resolve(opts.cwd), opts.name);
+    return this.upsert(opts.cwd, opts.name);
   }
 
   /**
    * Ensure a directory a session just ran in is registered: freshen `lastUsedAt` if known, else
-   * create a new record. `cwd` here is already the session's resolved working directory.
+   * create a new record.
    */
   touch(cwd: string, name?: string): WorkspaceRecord {
     return this.upsert(cwd, name);
@@ -66,7 +65,13 @@ export class WorkspaceRegistry {
     void Promise.resolve(this.store.delete(workspaceId)).catch(noop);
   }
 
-  private upsert(cwd: string, name?: string): WorkspaceRecord {
+  /**
+   * Resolves `cwd` to an absolute path first — the wire boundary, since it may arrive as whatever
+   * the user typed, a client-relative path, or an already-resolved session cwd — so `register` and
+   * `touch` always dedupe against the same key for a given real directory.
+   */
+  private upsert(rawCwd: string, name?: string): WorkspaceRecord {
+    const cwd = resolve(rawCwd);
     const key = normalizeCwdKey(cwd);
     const existingId = this.byCwdKey.get(key);
     const now = Date.now();

@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey } from '@linkcode/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +29,15 @@ describe('WorkspaceRegistry', () => {
     const registry = new WorkspaceRegistry();
     const first = registry.register({ cwd: '/repo' });
     const second = registry.register({ cwd: '/repo/' });
+    expect(second.workspaceId).toBe(first.workspaceId);
+    expect(registry.list()).toHaveLength(1);
+  });
+
+  it('touch() resolves a relative cwd to the same record as an absolute register() cwd', () => {
+    const registry = new WorkspaceRegistry();
+    const absolute = resolve(process.cwd(), 'repo');
+    const first = registry.register({ cwd: absolute });
+    const second = registry.touch('repo');
     expect(second.workspaceId).toBe(first.workspaceId);
     expect(registry.list()).toHaveLength(1);
   });
