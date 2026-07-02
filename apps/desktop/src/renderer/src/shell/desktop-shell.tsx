@@ -41,7 +41,9 @@ import { useDesktopShellStore } from './store/store';
 export function DesktopShell({
   systemBridge,
   header,
-  sessions,
+  threadGroups,
+  workspaces,
+  workspacesLoading,
   activeSession,
   conversation,
   answeredPermissions,
@@ -50,10 +52,13 @@ export function DesktopShell({
   onSelectSession,
   onStopSession,
   onCreateSession,
+  onImportSession,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
   TerminalBlockComponent,
+  BranchStatusComponent,
+  HistoryComponent,
   onDismissError,
   onModelChange,
   onOpenSettings,
@@ -447,7 +452,9 @@ export function DesktopShell({
             <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
               <SessionSidebar
                 className={sidebarClassName}
-                sessions={sessions}
+                threadGroups={threadGroups}
+                workspaces={workspaces}
+                workspacesLoading={workspacesLoading}
                 activeId={active?.sessionId ?? null}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
@@ -458,6 +465,9 @@ export function DesktopShell({
                     onOpenSettings={onOpenSettings}
                   />
                 }
+                onImportSession={onImportSession}
+                BranchStatusComponent={BranchStatusComponent}
+                HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
                 onStop={onStopSession}
                 onCreate={createSession}
