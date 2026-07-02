@@ -6,7 +6,7 @@ import { useGitPullRequestStatus, useGitStatus } from './hooks';
  * directory. `cwd` is undefined when there is no active session.
  */
 export function GitPanel({ cwd }: { cwd: string | undefined }): React.ReactNode {
-  const { data: status, isLoading: statusLoading } = useGitStatus(cwd);
+  const { data: status, isLoading: statusLoading, error: statusError } = useGitStatus(cwd);
   const { data: pullRequest, isLoading: pullRequestLoading } = useGitPullRequestStatus(cwd);
 
   return (
@@ -14,6 +14,7 @@ export function GitPanel({ cwd }: { cwd: string | undefined }): React.ReactNode 
       cwd={cwd}
       status={status}
       statusLoading={statusLoading}
+      statusError={statusError}
       pullRequest={pullRequest}
       pullRequestLoading={pullRequestLoading}
       className="h-full"

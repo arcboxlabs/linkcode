@@ -1,5 +1,6 @@
 import type { GitPullRequestStatus, GitStatus } from '@linkcode/schema';
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from 'coss-ui/components/empty';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { GitBranchIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
@@ -11,6 +12,8 @@ export interface GitOverviewProps {
   cwd: string | undefined;
   status: GitStatus | undefined;
   statusLoading: boolean;
+  /** Set when the git status request itself failed (transport/daemon error), not a normal empty state. */
+  statusError: unknown;
   pullRequest: GitPullRequestStatus | undefined;
   pullRequestLoading: boolean;
   className?: string;
@@ -21,6 +24,7 @@ export function GitOverview({
   cwd,
   status,
   statusLoading,
+  statusError,
   pullRequest,
   pullRequestLoading,
   className,
@@ -38,8 +42,16 @@ export function GitOverview({
   }
 
   if (!status) {
-    return statusLoading ? (
-      <GitOverviewSkeleton className={className} />
+    if (statusLoading) return <GitOverviewSkeleton className={className} />;
+
+    return statusError ? (
+      <GitOverviewEmpty
+        className={className}
+        title={t('statusErrorTitle')}
+        description={t('statusErrorHint', {
+          message: extractErrorMessage(statusError, false) ?? t('statusErrorUnknown'),
+        })}
+      />
     ) : (
       <GitOverviewEmpty
         className={className}
