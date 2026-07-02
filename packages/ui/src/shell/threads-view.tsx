@@ -1,3 +1,7 @@
+import { move } from '@dnd-kit/helpers';
+import type { DragEndEvent } from '@dnd-kit/react';
+import { DragDropProvider } from '@dnd-kit/react';
+import { useSortable } from '@dnd-kit/react/sortable';
 import type {
   AgentKind,
   SessionId,
@@ -80,6 +84,8 @@ export function ThreadsView({
   onSelect,
   onStop,
   onToggleSessionPinned,
+  onReorderGroups,
+  onReorderThreads,
   onCreate,
   onImportSession,
   onPickDirectory,
@@ -100,70 +106,105 @@ export function ThreadsView({
     else projectGroups.push(group);
   }
 
+  // The optimistic reorder preview is the library's; state only changes here, on drop.
+  function handleDragEnd(event: DragEndEvent): void {
+    if (event.canceled) return;
+    const source = event.operation.source;
+    if (!source) return;
+
+    if (source.type === 'group') {
+      const keys = projectGroups.flatMap((group) =>
+        group.workspace === null ? [] : [group.collapseKey],
+      );
+      const reordered = move(keys, event);
+      if (reordered.some((key, index) => key !== keys[index])) onReorderGroups(reordered);
+      return;
+    }
+
+    if (source.type !== 'thread') return;
+    const groupKey: unknown = source.data.groupKey;
+    if (typeof groupKey !== 'string') return;
+    const group = groups.find((candidate) => candidate.collapseKey === groupKey);
+    if (!group) return;
+    const visibleIds = group.visibleSessions.map((session) => session.sessionId);
+    const reordered = move(visibleIds, event);
+    const activeId = source.id as SessionId;
+    const oldIndex = visibleIds.indexOf(activeId);
+    const newIndex = reordered.indexOf(activeId);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+    const overId = visibleIds[newIndex];
+    onReorderThreads(groupKey, activeId, overId, newIndex > oldIndex ? 'after' : 'before');
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
-          {t('projects')}
-        </div>
-        {projectGroups.length === 0 && workspacesLoading && (
-          <div className="space-y-1">
-            {createFixedArray(3).map((i) => (
-              <Skeleton key={i} className="h-6 w-full rounded-md" />
-            ))}
+    <DragDropProvider onDragEnd={handleDragEnd}>
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
+            {t('projects')}
           </div>
-        )}
-        {projectGroups.length === 0 && !workspacesLoading && (
-          <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-6 text-center text-muted-foreground text-sm">
-            {t('emptyTitle')}
-          </div>
-        )}
-        {projectGroups.map((group) => (
-          <ThreadGroupSection
-            key={group.key}
-            group={group}
-            activeId={activeId}
-            pinnedSessionIds={pinnedSessionIds}
-            onSelect={onSelect}
-            onStop={onStop}
-            onToggleSessionPinned={onToggleSessionPinned}
-            onCreate={onCreate}
-            onImportSession={onImportSession}
-            onRenameWorkspace={onRenameWorkspace}
-            onArchiveWorkspace={onArchiveWorkspace}
-            onToggleGroupCollapsed={onToggleGroupCollapsed}
-            onTogglePreviewExpanded={onTogglePreviewExpanded}
-            onToggleImportHistory={onToggleImportHistory}
-            BranchStatusComponent={BranchStatusComponent}
-            HistoryComponent={HistoryComponent}
+          {projectGroups.length === 0 && workspacesLoading && (
+            <div className="space-y-1">
+              {createFixedArray(3).map((i) => (
+                <Skeleton key={i} className="h-6 w-full rounded-md" />
+              ))}
+            </div>
+          )}
+          {projectGroups.length === 0 && !workspacesLoading && (
+            <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-6 text-center text-muted-foreground text-sm">
+              {t('emptyTitle')}
+            </div>
+          )}
+          {projectGroups.map((group, index) => (
+            <ThreadGroupSection
+              key={group.key}
+              group={group}
+              sortIndex={index}
+              activeId={activeId}
+              pinnedSessionIds={pinnedSessionIds}
+              onSelect={onSelect}
+              onStop={onStop}
+              onToggleSessionPinned={onToggleSessionPinned}
+              onCreate={onCreate}
+              onImportSession={onImportSession}
+              onRenameWorkspace={onRenameWorkspace}
+              onArchiveWorkspace={onArchiveWorkspace}
+              onToggleGroupCollapsed={onToggleGroupCollapsed}
+              onTogglePreviewExpanded={onTogglePreviewExpanded}
+              onToggleImportHistory={onToggleImportHistory}
+              BranchStatusComponent={BranchStatusComponent}
+              HistoryComponent={HistoryComponent}
+            />
+          ))}
+          <AddWorkspaceRow
+            onPickDirectory={onPickDirectory}
+            onRegisterWorkspace={onRegisterWorkspace}
           />
-        ))}
-        <AddWorkspaceRow
-          onPickDirectory={onPickDirectory}
-          onRegisterWorkspace={onRegisterWorkspace}
+        </div>
+
+        <ChatsSection
+          workspace={chatGroup?.workspace ?? null}
+          sessions={chatGroup?.visibleSessions ?? []}
+          hasOverflow={chatGroup?.hasOverflow ?? false}
+          previewExpanded={chatGroup?.previewExpanded ?? false}
+          groupKey={chatGroup?.key ?? 'chat'}
+          sortKey={chatGroup?.collapseKey ?? 'chat'}
+          activeId={activeId}
+          pinnedSessionIds={pinnedSessionIds}
+          onSelect={onSelect}
+          onStop={onStop}
+          onToggleSessionPinned={onToggleSessionPinned}
+          onCreate={onCreate}
+          onTogglePreviewExpanded={onTogglePreviewExpanded}
         />
       </div>
-
-      <ChatsSection
-        workspace={chatGroup?.workspace ?? null}
-        sessions={chatGroup?.visibleSessions ?? []}
-        hasOverflow={chatGroup?.hasOverflow ?? false}
-        previewExpanded={chatGroup?.previewExpanded ?? false}
-        groupKey={chatGroup?.key ?? 'chat'}
-        activeId={activeId}
-        pinnedSessionIds={pinnedSessionIds}
-        onSelect={onSelect}
-        onStop={onStop}
-        onToggleSessionPinned={onToggleSessionPinned}
-        onCreate={onCreate}
-        onTogglePreviewExpanded={onTogglePreviewExpanded}
-      />
-    </div>
+    </DragDropProvider>
   );
 }
 
 function ThreadGroupSection({
   group,
+  sortIndex,
   activeId,
   pinnedSessionIds,
   onSelect,
@@ -180,6 +221,8 @@ function ThreadGroupSection({
   HistoryComponent,
 }: {
   group: ThreadGroupViewModel;
+  /** The group's index among the rendered project groups — feeds the sortable. */
+  sortIndex: number;
   activeId: SessionId | null;
   pinnedSessionIds: readonly SessionId[];
   onSelect: (id: SessionId) => void;
@@ -203,10 +246,20 @@ function ThreadGroupSection({
   const title = workspace
     ? (workspace.name ?? repositoryLabel(workspace.cwd))
     : t('unregisteredGroup');
+  // The whole section is the sortable element; the header row is its drag handle. The
+  // unregistered fallback group is not sortable — it always renders last.
+  const { ref: sectionRef, handleRef } = useSortable({
+    id: group.collapseKey,
+    index: sortIndex,
+    type: 'group',
+    accept: 'group',
+    disabled: workspace === null,
+  });
 
   return (
-    <section>
+    <section ref={sectionRef}>
       <ThreadGroupHeader
+        dragHandleRef={workspace ? handleRef : undefined}
         title={title}
         workspace={workspace}
         sessionCount={group.sessions.length}
@@ -224,11 +277,13 @@ function ThreadGroupSection({
       <div className="pl-3">
         {group.visibleSessions.length > 0 && (
           <div className="space-y-0.5">
-            {group.visibleSessions.map((session) => (
+            {group.visibleSessions.map((session, index) => (
               <ThreadRow
                 key={session.sessionId}
                 active={session.sessionId === activeId}
                 pinned={pinnedSessionIds.includes(session.sessionId)}
+                sortIndex={index}
+                sortGroup={group.collapseKey}
                 session={session}
                 onSelect={() => onSelect(session.sessionId)}
                 onStop={() => onStop(session.sessionId)}

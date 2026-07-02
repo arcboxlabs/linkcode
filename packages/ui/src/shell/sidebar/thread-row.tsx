@@ -1,3 +1,4 @@
+import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
 import { PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
@@ -21,6 +22,10 @@ export interface ThreadRowProps {
   session: SessionInfo;
   active: boolean;
   pinned: boolean;
+  /** The row's index within its group's rendered (visible) list — feeds the sortable. */
+  sortIndex: number;
+  /** The group's `collapseKey` — scopes dragging to the row's own group. */
+  sortGroup: string;
   onSelect: () => void;
   onStop: () => void;
   onTogglePin: () => void;
@@ -31,6 +36,8 @@ export function ThreadRow({
   session,
   active,
   pinned,
+  sortIndex,
+  sortGroup,
   onSelect,
   onStop,
   onTogglePin,
@@ -38,9 +45,19 @@ export function ThreadRow({
   const t = useTranslations('workbench.sidebar');
   const agent = AGENT_LABELS[session.kind];
   const title = session.title ?? `${agent} in ${repositoryLabel(session.cwd)}`;
+  const { ref: sortableRef } = useSortable({
+    id: session.sessionId,
+    index: sortIndex,
+    group: sortGroup,
+    type: 'thread',
+    data: { groupKey: sortGroup },
+    // Threads never leave their group: the group derives from the session's cwd.
+    accept: (source) => source.type === 'thread' && source.data.groupKey === sortGroup,
+  });
 
   return (
     <div
+      ref={sortableRef}
       className={cn(
         'group relative rounded-md',
         active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/70',

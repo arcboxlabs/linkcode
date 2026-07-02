@@ -16,6 +16,8 @@ export interface ChatsSectionProps {
   previewExpanded: boolean;
   /** The group key `onTogglePreviewExpanded` is called with. */
   groupKey: string;
+  /** The chat group's `collapseKey` — scopes row dragging to this section. */
+  sortKey: string;
   activeId: SessionId | null;
   pinnedSessionIds: readonly SessionId[];
   onSelect: (id: SessionId) => void;
@@ -37,6 +39,7 @@ export function ChatsSection({
   hasOverflow,
   previewExpanded,
   groupKey,
+  sortKey,
   activeId,
   pinnedSessionIds,
   onSelect,
@@ -76,11 +79,13 @@ export function ChatsSection({
       </div>
       {sessions.length > 0 ? (
         <div className="space-y-0.5">
-          {sessions.map((session) => (
+          {sessions.map((session, index) => (
             <ThreadRow
               key={session.sessionId}
               active={session.sessionId === activeId}
               pinned={pinnedSessionIds.includes(session.sessionId)}
+              sortIndex={index}
+              sortGroup={sortKey}
               session={session}
               onSelect={() => onSelect(session.sessionId)}
               onStop={() => onStop(session.sessionId)}

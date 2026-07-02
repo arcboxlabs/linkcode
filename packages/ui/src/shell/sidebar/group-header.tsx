@@ -46,6 +46,8 @@ export interface ThreadGroupHeaderProps {
   historyOpen: boolean;
   onToggleHistory?: () => void;
   BranchStatusComponent?: BranchStatusComponentType;
+  /** Marks the header as its group's drag handle — the whole section moves by grabbing this row. */
+  dragHandleRef?: (element: Element | null) => void;
 }
 
 /** A group's header row: title + branch badge, collapse toggle, and hover-revealed actions. */
@@ -61,6 +63,7 @@ export function ThreadGroupHeader({
   historyOpen,
   onToggleHistory,
   BranchStatusComponent,
+  dragHandleRef,
 }: ThreadGroupHeaderProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const [renaming, setRenaming] = useState(false);
@@ -105,7 +108,10 @@ export function ThreadGroupHeader({
   }
 
   return (
-    <div className="group relative flex h-7 items-center gap-1.5 rounded-md px-[var(--lc-sidebar-edge,0.5rem)]">
+    <div
+      ref={dragHandleRef}
+      className="group relative flex h-7 items-center gap-1.5 rounded-md px-[var(--lc-sidebar-edge,0.5rem)]"
+    >
       {renaming ? (
         <input
           // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
