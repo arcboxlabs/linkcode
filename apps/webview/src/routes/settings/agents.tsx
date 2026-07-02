@@ -55,9 +55,7 @@ export function AgentsSettings(): React.ReactNode {
     formState: { isDirty },
   } = useForm<AgentFormValues>({ values: toForm(data) });
 
-  if (isLoading && !data) {
-    return <p className="text-muted-foreground text-sm">{t('unavailable')}</p>;
-  }
+  const firstLoadPending = isLoading && !data;
 
   return (
     <form
@@ -72,6 +70,9 @@ export function AgentsSettings(): React.ReactNode {
         <p className="text-muted-foreground text-xs">{t('hint')}</p>
       </div>
 
+      {/* Disabled is passed explicitly per control: base-ui's Fieldset only propagates
+          `disabled` through Field context, which a bare Controller-rendered Switch never
+          reads — a submit during first load would overwrite the saved config with defaults. */}
       {AGENT_KINDS.map((kind) => (
         <div key={kind} className="flex flex-col gap-3 rounded-lg border border-border p-4">
           <div className="flex items-center justify-between">
@@ -80,7 +81,11 @@ export function AgentsSettings(): React.ReactNode {
               control={control}
               name={`${kind}.enabled`}
               render={({ field }) => (
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                <Switch
+                  checked={field.value}
+                  disabled={firstLoadPending}
+                  onCheckedChange={field.onChange}
+                />
               )}
             />
           </div>
@@ -90,6 +95,7 @@ export function AgentsSettings(): React.ReactNode {
               className="w-full"
               spellCheck={false}
               autoComplete="off"
+              disabled={firstLoadPending}
               {...register(`${kind}.defaultModel`)}
             />
           </Field>
@@ -100,6 +106,7 @@ export function AgentsSettings(): React.ReactNode {
               className="w-full"
               autoComplete="off"
               placeholder={t('apiKeyPlaceholder')}
+              disabled={firstLoadPending}
               {...register(`${kind}.apiKey`)}
             />
           </Field>
@@ -107,7 +114,7 @@ export function AgentsSettings(): React.ReactNode {
       ))}
 
       <div>
-        <Button type="submit" size="sm" disabled={!isDirty || save.isMutating}>
+        <Button type="submit" size="sm" disabled={firstLoadPending || !isDirty || save.isMutating}>
           {t('save')}
         </Button>
       </div>
