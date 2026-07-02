@@ -12,5 +12,6 @@ export type { HistoryListProps } from './history-list';
 export { HistoryList } from './history-list';
 export type { ShowMoreToggleProps } from './show-more-toggle';
 export { ShowMoreToggle } from './show-more-toggle';
+export { SIDEBAR_SORTABLE_SENSORS } from './sortable-sensors';
 export type { ThreadRowProps } from './thread-row';
 export { ThreadRow } from './thread-row';

@@ -1,5 +1,5 @@
 import { move } from '@dnd-kit/helpers';
-import type { DragEndEvent } from '@dnd-kit/react';
+import type { DragEndEvent, DragOverEvent } from '@dnd-kit/react';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
 import type {
@@ -18,6 +18,7 @@ import {
   AddWorkspaceRow,
   ChatsSection,
   ShowMoreToggle,
+  SIDEBAR_SORTABLE_SENSORS,
   ThreadGroupHeader,
   ThreadRow,
 } from './sidebar';
@@ -106,6 +107,24 @@ export function ThreadsView({
     else projectGroups.push(group);
   }
 
+  // The optimistic preview must never cross the pin boundary: the drop would be clamped anyway
+  // (pin membership only changes via the pin button), and committing an order that disagrees
+  // with the plugin's DOM mutation leaves React reconciling against stale node positions.
+  // Preventing the dragover skips the preview for that target — the sortable checks
+  // `defaultPrevented` — so the DOM only ever moves where the drop can actually land.
+  function handleDragOver(event: DragOverEvent): void {
+    const source = event.operation.source;
+    const target = event.operation.target;
+    if (!source || !target || source.type !== 'thread') return;
+    if (target.type !== 'thread') {
+      event.preventDefault();
+      return;
+    }
+    const sourcePinned = pinnedSessionIds.includes(source.id as SessionId);
+    const targetPinned = pinnedSessionIds.includes(target.id as SessionId);
+    if (sourcePinned !== targetPinned) event.preventDefault();
+  }
+
   // The optimistic reorder preview is the library's; state only changes here, on drop.
   function handleDragEnd(event: DragEndEvent): void {
     if (event.canceled) return;
@@ -137,7 +156,11 @@ export function ThreadsView({
   }
 
   return (
-    <DragDropProvider onDragEnd={handleDragEnd}>
+    <DragDropProvider
+      sensors={SIDEBAR_SORTABLE_SENSORS}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
       <div className="space-y-4">
         <div className="space-y-3">
           <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
