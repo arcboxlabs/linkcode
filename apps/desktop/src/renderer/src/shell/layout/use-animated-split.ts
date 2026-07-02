@@ -55,11 +55,14 @@ export function useAnimatedSplit({
 
   const reducedMotion = useReducedMotion() ?? false;
 
-  // Plain useState with whole-object replacement — every change produces a new reference. A
-  // tracked-getter store (foxact useStateWithDeps) is referentially stable while mutating inside,
-  // which the React Compiler's memoization reads as "nothing changed": completion-driven phase
-  // updates (same `open`, new phase) would render from the stale memoized reconcile result and
-  // the phase would stay 'opening'/'closing' forever.
+  // Plain useState with whole-object replacement. The whole transition object feeds into
+  // reconcileTransition, so the React Compiler keys that memo on the object's IDENTITY — and a
+  // tracked-getter store (foxact useStateWithDeps) deliberately keeps one stable reference and
+  // mutates inside (it is not a snapshot). Completion-driven phase updates (same `open`, new
+  // phase) then rendered from the stale memoized reconcile result and the phase never left
+  // 'opening'/'closing'. Field-granular reads off a tracked store stay compiler-safe (the dep
+  // check re-reads through the getters); passing the whole object as a dependency is what breaks,
+  // and this version-counted, render-phase-adjusted machine wants snapshot semantics anyway.
   const [transition, setTransition] = useState<SplitTransitionState>(() => ({
     requestedOpen: open,
     phase: open ? 'open' : 'closed',
