@@ -116,6 +116,10 @@ export const en = {
         cli_not_authenticated: 'GitHub CLI not authenticated',
       },
     },
+    sidebar: {
+      historyEmptyTitle: 'No history to import',
+      historyEmptyHint: 'This workspace has no saved conversations yet.',
+    },
     content: {
       audio: '[audio]',
       resourceLink: '[resource: {name}]',

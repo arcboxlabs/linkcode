@@ -114,6 +114,10 @@ export const zhCN = {
         cli_not_authenticated: 'GitHub CLI 未登录',
       },
     },
+    sidebar: {
+      historyEmptyTitle: '没有可导入的历史记录',
+      historyEmptyHint: '该工作区还没有已保存的历史对话。',
+    },
     content: {
       audio: '[音频]',
       resourceLink: '[资源：{name}]',
