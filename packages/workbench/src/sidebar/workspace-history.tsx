@@ -34,9 +34,19 @@ function useWorkspaceHistory(cwd: string, onImported: (sessionId: SessionId) => 
       .finally(() => setImportingHistoryId(null));
   }
 
+  const isLoading = claudeCode.isLoading || codex.isLoading || opencode.isLoading || pi.isLoading;
+  const loadFailed =
+    entries.length === 0 &&
+    !isLoading &&
+    claudeCode.error != null &&
+    codex.error != null &&
+    opencode.error != null &&
+    pi.error != null;
+
   return {
     entries,
-    isLoading: claudeCode.isLoading || codex.isLoading || opencode.isLoading || pi.isLoading,
+    isLoading,
+    loadFailed,
     importingHistoryId,
     importError: importMutation.error,
     importEntry,
@@ -53,15 +63,14 @@ export function RuntimeWorkspaceHistory({
   cwd,
   onImported,
 }: RuntimeWorkspaceHistoryProps): React.ReactNode {
-  const { entries, isLoading, importingHistoryId, importError, importEntry } = useWorkspaceHistory(
-    cwd,
-    onImported,
-  );
+  const { entries, isLoading, loadFailed, importingHistoryId, importError, importEntry } =
+    useWorkspaceHistory(cwd, onImported);
 
   return (
     <HistoryList
       entries={entries}
       isLoading={isLoading}
+      loadFailed={loadFailed}
       importingHistoryId={importingHistoryId}
       importError={importError}
       onImport={importEntry}

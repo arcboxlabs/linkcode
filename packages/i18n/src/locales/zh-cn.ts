@@ -147,6 +147,7 @@ export const zhCN = {
       organization: '组织',
       historyEmptyTitle: '没有可导入的历史记录',
       historyEmptyHint: '该工作区还没有已保存的历史对话。',
+      historyLoadError: '历史记录加载失败，请稍后重试。',
       importError: '导入失败：{message}',
       newThread: '新建线程',
       groupActions: '工作区操作',

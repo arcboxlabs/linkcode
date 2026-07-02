@@ -149,6 +149,7 @@ export const en = {
       organization: 'Organization',
       historyEmptyTitle: 'No history to import',
       historyEmptyHint: 'This workspace has no saved conversations yet.',
+      historyLoadError: 'Failed to load history. Try again later.',
       importError: 'Failed to import: {message}',
       newThread: 'New thread',
       groupActions: 'Workspace actions',

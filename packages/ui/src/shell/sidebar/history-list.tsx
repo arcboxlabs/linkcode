@@ -15,6 +15,8 @@ export interface HistoryListProps {
   importingHistoryId?: string | null;
   /** Set when the most recent import attempt failed; rendered inline, never swallowed. */
   importError?: unknown;
+  /** Set when every agent kind's history fetch has failed and there is nothing to show. */
+  loadFailed?: boolean;
   onImport: (entry: AgentHistorySession) => void;
   className?: string;
 }
@@ -25,6 +27,7 @@ export function HistoryList({
   isLoading,
   importingHistoryId,
   importError,
+  loadFailed,
   onImport,
   className,
 }: HistoryListProps): React.ReactNode {
@@ -37,6 +40,14 @@ export function HistoryList({
           <Skeleton key={i} className="h-9 w-full rounded-md" />
         ))}
       </div>
+    );
+  }
+
+  if (entries.length === 0 && loadFailed) {
+    return (
+      <p className={cn('px-2 py-1 text-muted-foreground text-xs', className)}>
+        {t('historyLoadError')}
+      </p>
     );
   }
 
