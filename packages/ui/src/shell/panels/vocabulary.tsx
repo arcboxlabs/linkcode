@@ -2,13 +2,23 @@ import { FilesIcon, FileTextIcon, GlobeIcon, TerminalIcon } from 'lucide-react';
 
 export type PanelSide = 'right' | 'bottom';
 
-export const PANEL_WINDOW_TYPES = ['review', 'terminal', 'browser', 'files'] as const;
+export const PANEL_WINDOW_TYPES = ['diff', 'terminal', 'browser', 'files'] as const;
 
 export type PanelWindowType = (typeof PANEL_WINDOW_TYPES)[number];
+
+/** The right panel's three fixed sections — a subset of {@link PanelWindowType}. */
+export const PANEL_SECTIONS = ['diff', 'terminal', 'browser'] as const;
+
+export type PanelSection = (typeof PANEL_SECTIONS)[number];
 
 export interface PanelTab {
   id: string;
   type: PanelWindowType;
+}
+
+/** One instance tab within a section (e.g. one terminal); the section itself supplies the type. */
+export interface PanelSectionTab {
+  id: string;
 }
 
 export interface PanelControl {
@@ -21,7 +31,7 @@ export interface PanelControl {
 
 /** Window labels are translated at the render site (`workbench.panel.window.*`); only icons live here. */
 export const PANEL_WINDOW_ICONS: Record<PanelWindowType, React.ReactNode> = {
-  review: <FileTextIcon />,
+  diff: <FileTextIcon />,
   terminal: <TerminalIcon />,
   browser: <GlobeIcon />,
   files: <FilesIcon />,
