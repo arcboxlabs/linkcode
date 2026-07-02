@@ -1,4 +1,4 @@
-import type { SessionId } from '@linkcode/schema';
+import type { AgentEvent, SessionId } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { noop } from 'foxact/noop';
 import type { LinkCodeClient, SequencedAgentEvent } from './client';
@@ -22,12 +22,27 @@ const EMPTY_CONVERSATION: Conversation = {
 };
 
 /**
+ * Event types a provider-transcript read can reproduce — the only ones the `uptoSeq` cut may drop
+ * as "already in the snapshot". Everything else (permission asks, status, stop, errors, usage …)
+ * is ephemeral: it never appears in `history.read`, so cutting it would erase it outright — a
+ * pending permission-request would vanish from the timeline and strand the turn un-answerable
+ * (CODE-35).
+ */
+const SEEDABLE_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'user-message',
+  'agent-message-chunk',
+  'agent-thought-chunk',
+  'tool-call',
+]);
+
+/**
  * Project a session's conversation from a transcript seed plus the live event buffer. The seed is
- * folded once, then each `getSnapshot` lazily advances the builder by the newly received events
- * only (receive seq > the seed's `uptoSeq` cut) — O(delta) per event instead of re-reducing the
- * whole history. The lazy sync is idempotent and monotone, so repeated render-time calls
- * (StrictMode, interrupted renders) are safe, and the snapshot keeps a stable identity between
- * events — the `useSyncExternalStore` getSnapshot contract.
+ * folded once, then each `getSnapshot` lazily advances the builder by the not-yet-consumed events:
+ * seedable events inside the `uptoSeq` cut are skipped (the snapshot already contains them),
+ * ephemeral events always fold — O(delta) per event instead of re-reducing the whole history. The
+ * lazy sync is idempotent and monotone, so repeated render-time calls (StrictMode, interrupted
+ * renders) are safe, and the snapshot keeps a stable identity between events — the
+ * `useSyncExternalStore` getSnapshot contract.
  *
  * A store instance is bound to one (session, seed) pair; create a fresh one when either changes.
  */
@@ -41,8 +56,10 @@ export function createConversationStore(
   }
 
   const builder = createConversationBuilder();
+  const uptoSeq = seed?.uptoSeq ?? 0;
   let seeded = false;
-  let consumedSeq = seed?.uptoSeq ?? 0;
+  /** Highest receive seq already examined (not necessarily folded — seedable ones may be cut). */
+  let consumedSeq = 0;
 
   const sync = (): void => {
     if (!seeded) {
@@ -52,7 +69,8 @@ export function createConversationStore(
     if (client.eventSeq(sessionId) <= consumedSeq) return;
     const events = client.eventsSnapshot(sessionId);
     for (let i = firstIndexAfter(events, consumedSeq); i < events.length; i += 1) {
-      builder.advance(events[i].event);
+      const { event, seq } = events[i];
+      if (seq > uptoSeq || !SEEDABLE_EVENT_TYPES.has(event.type)) builder.advance(event);
     }
     // Snap to the counter even when the buffer lags it (cleared by a stop): those events are
     // gone from the buffer and covered by transcripts, so there is nothing left to consume.

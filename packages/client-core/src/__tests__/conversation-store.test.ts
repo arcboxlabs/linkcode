@@ -69,6 +69,47 @@ describe('createConversationStore', () => {
     close();
   });
 
+  // CODE-35: a transcript snapshot can never contain ephemeral events (permission asks, status,
+  // stop, errors) — a mid-turn seed read whose uptoSeq passes them must not erase them.
+  it('keeps ephemeral live events that fall inside the snapshot cut', async () => {
+    const { client, send, close } = await harness();
+    const announce: AgentEvent = {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 't1',
+        title: 'Bash',
+        kind: 'execute',
+        status: 'in_progress',
+        content: [],
+      },
+    };
+    const ask: AgentEvent = {
+      type: 'permission-request',
+      requestId: 'req-1',
+      toolCall: { toolCallId: 't1', title: 'Bash' },
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+    };
+    send(userText('run echo'));
+    send({ type: 'status', status: 'running' });
+    send(announce);
+    send(ask);
+    await tick();
+
+    // The snapshot (read mid-turn) already covers the prompt and the announce, never the ask.
+    const store = createConversationStore(client, sessionId, {
+      events: [userText('run echo'), announce],
+      uptoSeq: 4,
+    });
+    const conversation = store.getSnapshot();
+    expect(conversation.pendingPermissionIds).toEqual(['req-1']);
+    expect(conversation.items.some((i) => i.kind === 'approval')).toBe(true);
+    expect(conversation.status).toBe('running');
+    // No duplicates either: the seedable prompt/announce inside the cut fold only from the seed.
+    expect(conversation.items.filter((i) => i.kind === 'message')).toHaveLength(1);
+    expect(conversation.items.filter((i) => i.kind === 'tool')).toHaveLength(1);
+    close();
+  });
+
   it('projects live-only sessions without a seed', async () => {
     const { client, send, close } = await harness();
     const store = createConversationStore(client, sessionId);
