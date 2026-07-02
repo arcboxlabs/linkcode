@@ -2,6 +2,9 @@ import type {
   AgentEvent,
   AgentInput,
   ContentBlock,
+  GitDiff,
+  GitPullRequestStatus,
+  GitStatus,
   MessageId,
   PermissionOutcome,
   ProvidersConfig,
@@ -11,8 +14,10 @@ import type {
   ToolCall,
   WireMessage,
   WirePayload,
+  WorkspaceId,
+  WorkspaceRecord,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
@@ -66,12 +71,37 @@ interface PendingPermission {
   diff: Extract<ToolCall['content'][number], { type: 'diff' }>;
 }
 
+const MOCK_GIT_DIFF: GitDiff = {
+  patch:
+    "diff --git a/mock.ts b/mock.ts\nindex 0000000..1111111 100644\n--- a/mock.ts\n+++ b/mock.ts\n@@ -1 +1 @@\n-const mode = 'daemon';\n+const mode = 'mock';\n",
+  truncated: false,
+  stat: { files: 1, additions: 1, deletions: 1 },
+};
+
+const MOCK_PR_STATUS: GitPullRequestStatus = {
+  status: 'ok',
+  pullRequest: {
+    provider: 'github',
+    number: 42,
+    title: 'Mock host data-plane coverage',
+    url: 'https://github.com/linkcode/mock/pull/42',
+    state: 'open',
+    isDraft: false,
+    baseBranch: 'main',
+    headBranch: 'mock-host',
+    checks: 'passing',
+    reviewDecision: 'approved',
+  },
+};
+
 export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
+  private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private readonly permissions = new Map<string, PendingPermission>();
   private sessionSeq = 0;
   private messageSeq = 0;
+  private workspaceSeq = 0;
 
   constructor(private readonly transport: Transport) {}
 
@@ -82,7 +112,9 @@ export class DevMockHost {
     });
     const now = Date.now();
     for (const { ageMs, ...seed } of SEED_SESSIONS) {
-      this.addSession({ ...seed, createdAt: now - ageMs });
+      const createdAt = now - ageMs;
+      this.addSession({ ...seed, createdAt });
+      this.touchWorkspace(seed.cwd, createdAt);
     }
   }
 
@@ -123,6 +155,51 @@ export class DevMockHost {
         this.providers = structuredClone(p.providers);
         this.sendSuccess(p.clientReqId);
         break;
+      case 'workspace.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'workspace.listed',
+          replyTo: p.clientReqId,
+          workspaces: this.listWorkspaces(),
+        });
+        break;
+      case 'workspace.register':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'workspace.registered',
+          replyTo: p.clientReqId,
+          record: this.touchWorkspace(p.cwd, Date.now(), p.name),
+        });
+        break;
+      case 'workspace.update':
+        await wait(CONTROL_LATENCY_MS);
+        this.updateWorkspace(p.clientReqId, p.workspaceId, p.name);
+        break;
+      case 'workspace.archive':
+        await wait(CONTROL_LATENCY_MS);
+        this.archiveWorkspace(p.workspaceId);
+        this.sendSuccess(p.clientReqId);
+        break;
+      case 'git.status.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'git.status.get.result',
+          replyTo: p.clientReqId,
+          status: mockGitStatus(p.cwd),
+        });
+        break;
+      case 'git.pr_status.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'git.pr_status.get.result',
+          replyTo: p.clientReqId,
+          prStatus: MOCK_PR_STATUS,
+        });
+        break;
+      case 'git.diff.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({ kind: 'git.diff.get.result', replyTo: p.clientReqId, diff: MOCK_GIT_DIFF });
+        break;
       case 'session.import':
         this.sendFailure(p.clientReqId, 'Dev mock host does not support importing sessions yet.');
         break;
@@ -156,6 +233,42 @@ export class DevMockHost {
     };
     this.sessions.set(session.sessionId, session);
     return session;
+  }
+
+  private listWorkspaces(): WorkspaceRecord[] {
+    return [...this.workspaces.values()].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+  }
+
+  private touchWorkspace(cwd: string, now: number, name?: string): WorkspaceRecord {
+    const key = normalizeCwdKey(cwd);
+    for (const workspace of this.workspaces.values()) {
+      if (normalizeCwdKey(workspace.cwd) !== key) continue;
+      workspace.lastUsedAt = Math.max(workspace.lastUsedAt, now);
+      return workspace;
+    }
+    const workspace: WorkspaceRecord = {
+      workspaceId: this.nextWorkspaceId(),
+      cwd,
+      name: name ?? lastPathSegment(cwd),
+      createdAt: now,
+      lastUsedAt: now,
+    };
+    this.workspaces.set(workspace.workspaceId, workspace);
+    return workspace;
+  }
+
+  private updateWorkspace(replyTo: string, workspaceId: WorkspaceId, name: string): void {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      this.sendFailure(replyTo, `Unknown workspace: ${workspaceId}`);
+      return;
+    }
+    workspace.name = name;
+    this.sendSuccess(replyTo);
+  }
+
+  private archiveWorkspace(workspaceId: WorkspaceId): void {
+    this.workspaces.delete(workspaceId);
   }
 
   private startSession(
@@ -503,6 +616,11 @@ export class DevMockHost {
     this.messageSeq += 1;
     return `${prefix}-${Date.now().toString(36)}-${this.messageSeq.toString(36)}` as MessageId;
   }
+
+  private nextWorkspaceId(): WorkspaceId {
+    this.workspaceSeq += 1;
+    return `mock-ws-${Date.now().toString(36)}-${this.workspaceSeq.toString(36)}` as WorkspaceId;
+  }
 }
 
 function promptText(content: readonly ContentBlock[]): string {
@@ -533,4 +651,30 @@ function isRunningTurn(session: MockSession, epoch: number): boolean {
 async function waitForShowcaseStep(session: MockSession, epoch: number): Promise<boolean> {
   await wait(SHOWCASE_SCRIPT_STEP_LATENCY_MS);
   return isRunningTurn(session, epoch);
+}
+
+function mockGitStatus(cwd: string): GitStatus {
+  return {
+    isRepo: true,
+    repoRoot: cwd,
+    branch: 'mock-host',
+    dirtyFileCount: 1,
+    ahead: 1,
+    behind: 0,
+    remote: {
+      url: 'https://github.com/linkcode/mock.git',
+      identity: {
+        provider: 'github',
+        host: 'github.com',
+        owner: 'linkcode',
+        repo: 'mock',
+      },
+    },
+  };
+}
+
+const PATH_SEPARATORS_RE = /[/\\]+/;
+
+function lastPathSegment(cwd: string): string {
+  return cwd.split(PATH_SEPARATORS_RE).findLast((part) => part.length > 0) ?? cwd;
 }

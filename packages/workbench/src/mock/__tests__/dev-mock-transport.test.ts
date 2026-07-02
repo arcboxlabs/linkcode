@@ -83,6 +83,42 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('answers workspace and git calls mounted by the workbench shell', async () => {
+    const client = await connectedClient();
+
+    const workspaces = await client.listWorkspaces();
+    expect(workspaces.map((workspace) => workspace.cwd)).toEqual(
+      expect.arrayContaining(['/mock/linkcode', '/mock/platform']),
+    );
+
+    const workspace = await client.registerWorkspace('/mock/new', 'New Mock');
+    expect(workspace).toMatchObject({ cwd: '/mock/new', name: 'New Mock' });
+    await expect(client.updateWorkspace(workspace.workspaceId, 'Renamed Mock')).resolves.toEqual({
+      ok: true,
+    });
+    expect(
+      (await client.listWorkspaces()).find((item) => item.workspaceId === workspace.workspaceId),
+    ).toMatchObject({ name: 'Renamed Mock' });
+    await expect(client.archiveWorkspace(workspace.workspaceId)).resolves.toEqual({ ok: true });
+    expect(
+      (await client.listWorkspaces()).some((item) => item.workspaceId === workspace.workspaceId),
+    ).toBe(false);
+
+    await expect(client.getGitStatus('/mock/linkcode')).resolves.toMatchObject({
+      isRepo: true,
+      branch: 'mock-host',
+    });
+    await expect(client.getGitPullRequestStatus('/mock/linkcode')).resolves.toMatchObject({
+      status: 'ok',
+    });
+    await expect(client.getGitDiff('/mock/linkcode', 'uncommitted')).resolves.toMatchObject({
+      truncated: false,
+      stat: { files: 1, additions: 1, deletions: 1 },
+    });
+
+    client.dispose();
+  });
+
   it('seeds a rich streaming showcase conversation', async () => {
     const client = await connectedClient();
 
