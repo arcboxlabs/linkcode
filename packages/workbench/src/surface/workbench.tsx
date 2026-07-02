@@ -1,13 +1,16 @@
 import type { Conversation } from '@linkcode/client-core';
 import { useTerminalOutput } from '@linkcode/client-core';
-import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
+import type { SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import {
+  archiveWorkspace,
   cancelTurn,
   promptText,
   registerWorkspace,
   respondPermission,
   setModel,
+  updateWorkspace,
 } from '@linkcode/sdk';
+import type { ThreadGroupViewModel } from '@linkcode/ui';
 import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
@@ -16,7 +19,9 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
+import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { groupThreadsByWorkspace } from '../sidebar/group-threads';
+import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
 import { useWorkspaces } from '../workspace/hooks';
 import type { WorkbenchShellComponent } from './shell';
@@ -96,10 +101,33 @@ function WorkbenchSessionSurface({
     mutate: refreshWorkspaces,
   } = useWorkspaces();
   const registerWorkspaceMutation = useMutation(registerWorkspace);
-  const threadGroups = useMemo(
-    () => groupThreadsByWorkspace(sessions.sessions, workspaces ?? []),
-    [sessions.sessions, workspaces],
-  );
+  const updateWorkspaceMutation = useMutation(updateWorkspace);
+  const archiveWorkspaceMutation = useMutation(archiveWorkspace);
+  const collapsedKeys = useSidebarGroupCollapseStore((state) => state.collapsedKeys);
+  const toggleGroupCollapsed = useSidebarGroupCollapseStore((state) => state.toggleCollapsed);
+  const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
+  const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
+  const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
+    const groups = groupThreadsByWorkspace(sessions.sessions, workspaces ?? []);
+    return groups.map((group) => {
+      const collapsed = collapsedKeys.includes(group.collapseKey);
+      const previewExpanded = previewExpandedKeys.has(group.key);
+      const historyOpen = historyOpenKeys.has(group.key);
+      const { sessions: visibleSessions, hasOverflow } = selectVisibleSessions(group.sessions, {
+        collapsed,
+        expanded: previewExpanded,
+        activeId: sessions.activeId,
+      });
+      return { ...group, visibleSessions, hasOverflow, collapsed, previewExpanded, historyOpen };
+    });
+  }, [
+    sessions.sessions,
+    sessions.activeId,
+    workspaces,
+    collapsedKeys,
+    previewExpandedKeys,
+    historyOpenKeys,
+  ]);
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
@@ -131,6 +159,29 @@ function WorkbenchSessionSurface({
       void refreshWorkspaces();
       return workspace;
     });
+  }
+
+  function handleRenameWorkspace(workspaceId: WorkspaceId, name: string): Promise<void> {
+    // Let the rejection propagate: the group header awaits it to show an inline error.
+    return updateWorkspaceMutation.trigger({ workspaceId, name }).then(() => {
+      void refreshWorkspaces();
+    });
+  }
+
+  function handleArchiveWorkspace(workspaceId: WorkspaceId): Promise<void> {
+    return archiveWorkspaceMutation.trigger({ workspaceId }).then(() => {
+      void refreshWorkspaces();
+    });
+  }
+
+  function handleTogglePreviewExpanded(groupKey: string): void {
+    if (previewExpandedKeys.has(groupKey)) removePreviewExpanded(groupKey);
+    else addPreviewExpanded(groupKey);
+  }
+
+  function handleToggleImportHistory(groupKey: string): void {
+    if (historyOpenKeys.has(groupKey)) removeHistoryOpen(groupKey);
+    else addHistoryOpen(groupKey);
   }
 
   function handleRespond(requestId: string, optionId: string): void {
@@ -172,6 +223,11 @@ function WorkbenchSessionSurface({
       onCreateSession={sessions.create}
       onImportSession={handleImportedSession}
       onRegisterWorkspace={handleRegisterWorkspace}
+      onRenameWorkspace={handleRenameWorkspace}
+      onArchiveWorkspace={handleArchiveWorkspace}
+      onToggleGroupCollapsed={toggleGroupCollapsed}
+      onTogglePreviewExpanded={handleTogglePreviewExpanded}
+      onToggleImportHistory={handleToggleImportHistory}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}

@@ -53,6 +53,11 @@ export function DesktopShell({
   onCreateSession,
   onImportSession,
   onRegisterWorkspace,
+  onRenameWorkspace,
+  onArchiveWorkspace,
+  onToggleGroupCollapsed,
+  onTogglePreviewExpanded,
+  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -487,6 +492,11 @@ export function DesktopShell({
                 onImportSession={onImportSession}
                 onPickDirectory={pickDirectory}
                 onRegisterWorkspace={onRegisterWorkspace}
+                onRenameWorkspace={onRenameWorkspace}
+                onArchiveWorkspace={onArchiveWorkspace}
+                onToggleGroupCollapsed={onToggleGroupCollapsed}
+                onTogglePreviewExpanded={onTogglePreviewExpanded}
+                onToggleImportHistory={onToggleImportHistory}
                 BranchStatusComponent={BranchStatusComponent}
                 HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
