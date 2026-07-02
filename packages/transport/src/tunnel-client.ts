@@ -35,6 +35,12 @@ export interface TunnelClientOptions {
    * out, device revoked) and permanently closes the client.
    */
   getToken: () => Promise<string>;
+  /**
+   * Device-key signature over the access token (base64url). Hosts whose
+   * device registered a public key must supply it — the relay refuses the
+   * handshake otherwise, so a stolen token alone cannot impersonate a host.
+   */
+  signToken?: (accessToken: string) => string | Promise<string>;
   /** Inject a WebSocket implementation (for testing); defaults to the global WebSocket. */
   WebSocketImpl?: typeof WebSocket;
 }
@@ -173,6 +179,9 @@ export class TunnelClient {
     url.searchParams.set('access_token', token);
     url.searchParams.set('role', this.opts.role);
     url.searchParams.set('host', this.opts.hostId);
+    if (this.opts.signToken) {
+      url.searchParams.set('proof', await this.opts.signToken(token));
+    }
     if (this.opts.role === 'host' && this.opts.name) url.searchParams.set('name', this.opts.name);
     const Impl = this.opts.WebSocketImpl ?? Reflect.get(globalThis, 'WebSocket');
     if (!Impl) throw new Error('TunnelClient: no WebSocket implementation available');

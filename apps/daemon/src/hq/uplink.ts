@@ -5,6 +5,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import { fetchTunnelToken } from './api';
 import { loadHqCredentials } from './credentials';
+import { ensureDeviceKey } from './device-key';
 
 const log = (message: string): void => console.log(`[linkcode/daemon] ${message}`);
 
@@ -33,6 +34,7 @@ export function startHqUplink(hub: Hub): () => void {
     return noop;
   }
 
+  const key = ensureDeviceKey();
   let stopped = false;
   let active: TunnelTransport | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -44,6 +46,9 @@ export function startHqUplink(hub: Hub): () => void {
       hostId: credentials.deviceId,
       name: hostname(),
       getToken: () => fetchTunnelToken(credentials.baseUrl, credentials.sessionToken),
+      // Proof of possession: the relay requires keyed hosts to sign the very
+      // token they present, so a leaked token alone cannot host this device.
+      signToken: (accessToken) => key.sign(accessToken),
     });
     transport.onStateChange((state) => log(`cloud uplink ${state}`));
     try {
