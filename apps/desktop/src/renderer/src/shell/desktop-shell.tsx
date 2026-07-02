@@ -13,12 +13,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { DesktopChrome } from './chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import { DesktopPanelRegion } from './layout/panel-region';
+import { DesktopRightPanelRegion } from './layout/right-panel-region';
 import type { DesktopShellStyle } from './layout/shell-style';
 import { createDesktopShellStyle, setShellPaneCssSize } from './layout/shell-style';
 import { useAnimatedSplit } from './layout/use-animated-split';
 import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
-import type { PanelSide } from './store/model';
 import {
   DEFAULT_LAYOUT,
   getExpandedPanel,
@@ -68,6 +68,10 @@ export function DesktopShell({
       addWindow: state.addWindow,
       closeTab: state.closeTab,
       toggleMaxPanel: state.toggleMaxPanel,
+      setActiveSection: state.setActiveSection,
+      addRightTerminalTab: state.addRightTerminalTab,
+      closeRightTerminalTab: state.closeRightTerminalTab,
+      setActiveRightTerminalTab: state.setActiveRightTerminalTab,
       resetSidebarSize: state.resetSidebarSize,
       resetRightPanelSize: state.resetRightPanelSize,
       resetBottomPanelSize: state.resetBottomPanelSize,
@@ -154,6 +158,10 @@ export function DesktopShell({
     addWindow,
     closeTab,
     toggleMaxPanel,
+    setActiveSection,
+    addRightTerminalTab,
+    closeRightTerminalTab,
+    setActiveRightTerminalTab,
     resetSidebarSize: resetSidebarLayoutSize,
     resetRightPanelSize: resetRightPanelLayoutSize,
     resetBottomPanelSize: resetBottomPanelLayoutSize,
@@ -232,33 +240,56 @@ export function DesktopShell({
     </main>
   );
 
-  // One renderer, two mount points: the docked instance (inside the Allotment,
-  // owns the chrome tabs/controls) and the maximized overlay instance (chrome
-  // suppressed — the docked instance keeps owning the chrome so the two never
-  // portal duplicate tabs during the transition). Tab content mounts in exactly
-  // one of them (the overlay while expanded, via contentHidden), so stateful tabs
-  // like the terminal never run twice; the terminal session registry hands the
-  // PTY across the remount.
-  function renderPanel(
-    side: PanelSide,
-    options: { maximized: boolean; chromeVisible: boolean; contentHidden: boolean },
-  ): React.ReactNode {
-    const panel = side === 'right' ? rightPanel : bottomPanel;
+  // One renderer, two mount points per side: the docked instance (inside the Allotment, owns the
+  // chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
+  // instance keeps owning the chrome so the two never portal duplicate tabs during the
+  // transition). Tab content mounts in exactly one of them (the overlay while expanded, via
+  // contentHidden), so stateful tabs like the terminal never run twice; the terminal session
+  // registry hands the PTY across the remount.
+  function renderRightPanel(options: {
+    maximized: boolean;
+    chromeVisible: boolean;
+    contentHidden: boolean;
+  }): React.ReactNode {
     return (
-      <DesktopPanelRegion
-        side={side}
-        panel={panel}
+      <DesktopRightPanelRegion
+        panel={rightPanel}
+        cwd={active?.cwd}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={side === 'right' ? rightSplit.phase : bottomSplit.phase}
-        reducedMotion={side === 'right' ? rightSplit.reducedMotion : bottomSplit.reducedMotion}
-        onSelectTab={(id) => updatePanel(side, (current) => ({ ...current, activeTabId: id }))}
-        onCloseTab={(id) => closeTab(side, id)}
-        onAddWindow={(type) => addWindow(side, type)}
-        onToggleMax={() => toggleMaxPanel(side)}
-        onClose={() => closePanel(side)}
+        phase={rightSplit.phase}
+        reducedMotion={rightSplit.reducedMotion}
+        onSelectSection={setActiveSection}
+        onSelectTerminalTab={setActiveRightTerminalTab}
+        onCloseTerminalTab={closeRightTerminalTab}
+        onAddTerminalTab={addRightTerminalTab}
+        onToggleMax={() => toggleMaxPanel('right')}
+      />
+    );
+  }
+
+  function renderBottomPanel(options: {
+    maximized: boolean;
+    chromeVisible: boolean;
+    contentHidden: boolean;
+  }): React.ReactNode {
+    return (
+      <DesktopPanelRegion
+        side="bottom"
+        panel={bottomPanel}
+        maximized={options.maximized}
+        chromeVisible={options.chromeVisible}
+        contentHidden={options.contentHidden}
+        chromeSurface={chromeSurface}
+        phase={bottomSplit.phase}
+        reducedMotion={bottomSplit.reducedMotion}
+        onSelectTab={(id) => updatePanel((current) => ({ ...current, activeTabId: id }))}
+        onCloseTab={(id) => closeTab(id)}
+        onAddWindow={(type) => addWindow(type)}
+        onToggleMax={() => toggleMaxPanel('bottom')}
+        onClose={() => closePanel('bottom')}
       />
     );
   }
@@ -266,12 +297,12 @@ export function DesktopShell({
   const workspaceRight: WorkspaceSide = {
     split: rightSplit,
     open: rightPanel.open,
-    node: renderPanel('right', {
+    node: renderRightPanel({
       maximized: expandedPanel === 'right',
       chromeVisible: rightSplit.paneVisible,
       contentHidden: expandedPanel === 'right',
     }),
-    expandedNode: renderPanel('right', {
+    expandedNode: renderRightPanel({
       maximized: true,
       chromeVisible: false,
       contentHidden: false,
@@ -281,12 +312,12 @@ export function DesktopShell({
   const workspaceBottom: WorkspaceSide = {
     split: bottomSplit,
     open: bottomPanel.open,
-    node: renderPanel('bottom', {
+    node: renderBottomPanel({
       maximized: expandedPanel === 'bottom',
       chromeVisible: bottomSplit.paneVisible,
       contentHidden: expandedPanel === 'bottom',
     }),
-    expandedNode: renderPanel('bottom', {
+    expandedNode: renderBottomPanel({
       maximized: true,
       chromeVisible: false,
       contentHidden: false,
