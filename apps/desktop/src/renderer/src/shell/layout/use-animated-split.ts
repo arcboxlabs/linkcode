@@ -1,10 +1,9 @@
 import type { AllotmentHandle } from 'allotment';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import { useStateWithDeps } from 'foxact/use-state-with-deps';
 import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 export const SHELL_TRANSITION = {
   duration: 0.18,
@@ -56,13 +55,18 @@ export function useAnimatedSplit({
 
   const reducedMotion = useReducedMotion() ?? false;
 
-  const [transition, setTransition] = useStateWithDeps<SplitTransitionState>({
+  // Plain useState with whole-object replacement — every change produces a new reference. A
+  // tracked-getter store (foxact useStateWithDeps) is referentially stable while mutating inside,
+  // which the React Compiler's memoization reads as "nothing changed": completion-driven phase
+  // updates (same `open`, new phase) would render from the stale memoized reconcile result and
+  // the phase would stay 'opening'/'closing' forever.
+  const [transition, setTransition] = useState<SplitTransitionState>(() => ({
     requestedOpen: open,
     phase: open ? 'open' : 'closed',
     targetPaneSize: open ? Math.max(0, paneSize) : 0,
     shouldStartFromZero: false,
     version: 0,
-  });
+  }));
 
   // Derive the next transition from the latest `open` request during render — React's prescribed way
   // to adjust state when props change (it re-renders before paint, avoiding an effect round-trip).
@@ -135,9 +139,10 @@ export function useAnimatedSplit({
         applyPaneSize(targetPaneSize);
 
         setTransition((latest) => {
-          if (latest.version !== transitionVersion) return {};
+          if (latest.version !== transitionVersion) return latest;
 
           return {
+            ...latest,
             phase: completedPhase,
             shouldStartFromZero: false,
           };
