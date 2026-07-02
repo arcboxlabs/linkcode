@@ -1,6 +1,7 @@
-import type { GitPullRequestStatus, GitStatus } from '@linkcode/schema';
+import type { GitDiff, GitDiffMode, GitPullRequestStatus, GitStatus } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { TtlCache } from './cache';
+import { readGitDiff } from './diff';
 import { GhCliGitHubClient } from './github';
 import type { GitProviderClient } from './provider';
 import { readGitStatus } from './status';
@@ -9,6 +10,8 @@ import { readGitStatus } from './status';
 const STATUS_TTL_MS = 5000;
 /** Provider lookups hit the network and rate limits — cache them substantially longer. */
 const PR_STATUS_TTL_MS = 30000;
+/** A diff reads more of the tree than a status probe; still cheap enough to poll every few seconds. */
+const DIFF_TTL_MS = 10000;
 
 /**
  * GitService: read-only git and hosting-provider state for the directories agents work in. Sits
@@ -20,6 +23,7 @@ const PR_STATUS_TTL_MS = 30000;
 export class GitService {
   private readonly statusCache = new TtlCache<GitStatus>(STATUS_TTL_MS);
   private readonly prStatusCache = new TtlCache<GitPullRequestStatus>(PR_STATUS_TTL_MS);
+  private readonly diffCache = new TtlCache<GitDiff>(DIFF_TTL_MS);
   private readonly providers: ReadonlyMap<string, GitProviderClient>;
 
   constructor(providers: readonly GitProviderClient[] = [new GhCliGitHubClient()]) {
@@ -28,6 +32,11 @@ export class GitService {
 
   getStatus(cwd: string): Promise<GitStatus> {
     return this.statusCache.read(cwd, () => readGitStatus(cwd));
+  }
+
+  getDiff(cwd: string, mode: GitDiffMode): Promise<GitDiff> {
+    // "::" can't appear in a directory path's mode slot, so this can't collide across (cwd, mode) pairs.
+    return this.diffCache.read(`${cwd}::${mode}`, () => readGitDiff(cwd, mode));
   }
 
   getPullRequestStatus(cwd: string): Promise<GitPullRequestStatus> {
