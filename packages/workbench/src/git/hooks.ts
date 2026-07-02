@@ -7,8 +7,8 @@ import { useData } from '../runtime/tayori';
  * subprocess, per tick. A daemon-side watcher pushing `git.*.updated` events is a purely additive
  * upgrade that would replace the intervals.
  */
-const GIT_STATUS_REFRESH_MS = 10_000;
-const PR_STATUS_REFRESH_MS = 60_000;
+const GIT_STATUS_REFRESH_MS = 10000;
+const PR_STATUS_REFRESH_MS = 60000;
 
 /** Local git facts for a directory. Pass undefined to pause (e.g. no active session). */
 export function useGitStatus(cwd: string | undefined) {
