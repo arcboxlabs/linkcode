@@ -17,6 +17,7 @@ import type {
   SessionRecord,
   StartOptions,
   WorkspaceId,
+  WorkspaceKind,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -167,8 +168,12 @@ export class LinkCodeSdkClient {
   }
 
   /** Register a directory as a workspace; idempotent for an already-registered directory. */
-  registerWorkspace(cwd: string, name?: string): RequestResult<WorkspaceRecord> {
-    return toResult(this.raw.registerWorkspace(cwd, name));
+  registerWorkspace(
+    cwd: string,
+    name?: string,
+    kind?: WorkspaceKind,
+  ): RequestResult<WorkspaceRecord> {
+    return toResult(this.raw.registerWorkspace(cwd, name, kind));
   }
 
   updateWorkspace(workspaceId: WorkspaceId, name: string): RequestResult<{ ok: true }> {
