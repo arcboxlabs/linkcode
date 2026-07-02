@@ -7,6 +7,7 @@ import {
 import { AlertTriangleIcon, CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
+import { keyedItems } from './content-keys';
 import { useCopyButton } from './use-copy-button';
 
 // TODO(linkcode-schema): Provisional UI-only stack trace model, not yet wired to daemon/client schema.
@@ -157,9 +158,9 @@ export function StackTraceFrames({
       {visibleFrames.length === 0 ? (
         <div className="text-muted-foreground">No stack frames</div>
       ) : (
-        visibleFrames.map((frame) => (
+        keyedItems(visibleFrames, (frame) => frame.raw).map(({ key, item: frame }) => (
           <div
-            key={frame.raw}
+            key={key}
             className={cn(
               'min-w-0 truncate',
               frame.isInternal ? 'text-muted-foreground' : 'text-foreground',
@@ -225,7 +226,7 @@ export function StackTraceCopyButton({
   return (
     <Button
       aria-label={copied ? 'Copied stack trace' : 'Copy stack trace'}
-      className={cn('size-6 shrink-0', className)}
+      className={cn('shrink-0', className)}
       onClick={(event) => {
         event.stopPropagation();
         copyValue();
@@ -235,8 +236,7 @@ export function StackTraceCopyButton({
       variant="ghost"
       {...props}
     >
-      {children ??
-        (copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />)}
+      {children ?? (copied ? <CheckIcon /> : <CopyIcon />)}
     </Button>
   );
 }

@@ -27,7 +27,6 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   status: ToolCall['status'];
   kind: ToolCall['kind'];
   hasBody?: boolean;
-  open?: boolean;
 };
 
 export function ToolHeader({
@@ -37,7 +36,6 @@ export function ToolHeader({
   status,
   kind,
   hasBody = false,
-  open = false,
   ...props
 }: ToolHeaderProps): React.ReactNode {
   return (
@@ -53,12 +51,7 @@ export function ToolHeader({
       <span className="min-w-0 flex-1 truncate text-foreground">{title}</span>
       {badge ? <Badge variant="secondary">{badge}</Badge> : null}
       {hasBody ? (
-        <ChevronRightIcon
-          className={cn(
-            'size-3.5 shrink-0 text-muted-foreground transition-transform',
-            open && 'rotate-90',
-          )}
-        />
+        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />
       ) : null}
     </CollapsibleTrigger>
   );

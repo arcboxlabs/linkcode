@@ -1,5 +1,4 @@
 import type { ToolCall } from '@linkcode/schema';
-import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ContentBlockView } from './content-block-view';
 import { keyedItems, stableContentKey } from './content-keys';
@@ -15,7 +14,6 @@ export function ToolCallItem({
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
   const t = useTranslations('workbench.tool');
-  const [open, setOpen] = useState(false);
 
   const kindKey = `kind${toolCall.kind[0].toUpperCase()}${toolCall.kind.slice(1)}`;
   const hasBody = Boolean(
@@ -23,17 +21,16 @@ export function ToolCallItem({
   );
 
   return (
-    <Tool onOpenChange={setOpen} open={open}>
+    <Tool>
       <ToolHeader
         badge={t(kindKey)}
         hasBody={hasBody}
         kind={toolCall.kind}
-        open={open}
         status={toolCall.status}
         title={toolCall.title}
       />
 
-      {open && hasBody && (
+      {hasBody && (
         <ToolContent>
           {toolCall.rawInput !== undefined && (
             <ToolSection label={t('input')}>

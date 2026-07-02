@@ -158,19 +158,23 @@ export function FileTreeNode({
   return (
     <div
       className={cn(
-        'flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-muted',
+        'flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-muted',
         selectedId === node.id && 'bg-muted',
         className,
       )}
-      onClick={() => onNodeSelect?.(node)}
       aria-selected={selectedId === node.id}
       role="treeitem"
-      tabIndex={0}
       {...props}
     >
       <span className="size-4 shrink-0" />
-      <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="truncate">{node.name}</span>
+      <button
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        onClick={() => onNodeSelect?.(node)}
+        type="button"
+      >
+        <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate">{node.name}</span>
+      </button>
     </div>
   );
 }
