@@ -23,6 +23,7 @@ import type {
   PermissionOption,
   StartOptions,
   StopReason,
+  ToolCall,
   ToolCallContent,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
@@ -48,10 +49,6 @@ type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantMessage = Extract<SDKMessage, { type: 'assistant' }>['message'];
 type UserMessage = Extract<SDKMessage, { type: 'user' }>['message'];
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
-type ToolResultParam = Extract<
-  Exclude<UserMessage['content'], string>[number],
-  { type: 'tool_result' }
->;
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -200,11 +197,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       session: info
         ? mapClaudeHistorySession(info)
         : { historyId, kind: this.kind, title: historyId },
-      events: messages.slice(0, limit).reduce<AgentHistoryEvent[]>((events, message) => {
-        const event = mapClaudeHistoryEvent(historyId, message);
-        if (event) events.push(event);
-        return events;
-      }, []),
+      events: messages.slice(0, limit).flatMap(createClaudeHistoryEventMapper(historyId)),
       cursor: cursorFromFetched(offset, messages.length, limit),
     };
   }
@@ -425,14 +418,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 }
 
-/** Normalize a tool_result's payload (string or content blocks) into tool-call content. */
-function toolResultContent(content: ToolResultParam['content']): ToolCallContent[] {
-  if (content === undefined) return [];
+/** Normalize a tool_result's payload (string or content blocks) into tool-call content. Accepts
+ * `unknown` because it also runs over untyped transcript rows, not only live SDK messages. */
+function toolResultContent(content: unknown): ToolCallContent[] {
   if (typeof content === 'string') {
     return content.length > 0 ? [{ type: 'content', content: textBlock(content) }] : [];
   }
+  if (!Array.isArray(content)) return [];
   return content.reduce<ToolCallContent[]>((items, block) => {
-    if (block.type === 'text' && block.text.length > 0) {
+    if (
+      isRecord(block) &&
+      block.type === 'text' &&
+      typeof block.text === 'string' &&
+      block.text.length > 0
+    ) {
       items.push({ type: 'content', content: textBlock(block.text) });
     }
     return items;
@@ -455,10 +454,109 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
   };
 }
 
-function mapClaudeHistoryEvent(
+/**
+ * Stateful per-read mapper: correlates each `tool_use` announce with the `tool_result` that later
+ * settles it, replaying the same announce/settle full-snapshot pairs the live path emits — under
+ * the provider's `toolu_` ids, so a seeded timeline and live re-emits of the same call converge
+ * by id (`buildConversation` replaces tool calls by id) instead of duplicating.
+ */
+export function createClaudeHistoryEventMapper(
   historyId: AgentHistoryId,
-  message: SessionMessage,
-): AgentHistoryEvent | undefined {
-  if (message.type !== 'user' && message.type !== 'assistant') return undefined;
-  return textHistoryEvent(historyId, message.type, message.uuid, message.message);
+): (message: SessionMessage) => AgentHistoryEvent[] {
+  const announced = new Map<string, ToolCall>();
+
+  const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+    announced.set(toolCall.toolCallId, toolCall);
+    return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
+  };
+
+  return (message) => {
+    if (message.type !== 'user' && message.type !== 'assistant') return [];
+    const events: AgentHistoryEvent[] = [];
+    const blocks = messageContentBlocks(message.message);
+
+    if (message.type === 'assistant') {
+      const text = textHistoryEvent(historyId, 'assistant', message.uuid, message.message);
+      if (text) events.push(text);
+      for (const block of blocks) {
+        if (!isToolUseBlock(block)) continue;
+        events.push(
+          toolEvent({
+            toolCallId: block.id,
+            title: block.name,
+            kind: toolKindFromName(block.name),
+            status: 'in_progress',
+            content: [],
+            rawInput: block.input,
+          }),
+        );
+      }
+      return events;
+    }
+
+    const results = blocks.filter((block) => isToolResultBlock(block));
+    for (const block of results) {
+      const existing = announced.get(block.tool_use_id);
+      events.push(
+        toolEvent({
+          toolCallId: block.tool_use_id,
+          // The announce can sit beyond this read's page window; fall back to emitTool's
+          // first-sight defaults rather than dropping the settle.
+          title: existing?.title ?? block.tool_use_id,
+          kind: existing?.kind ?? 'other',
+          status: block.is_error === true ? 'failed' : 'completed',
+          content: toolResultContent(block.content),
+          rawInput: existing?.rawInput,
+          rawOutput: block.content,
+        }),
+      );
+    }
+    // Tool-result rows are synthetic user messages; only what remains after removing the
+    // tool_results is a prompt the user actually typed.
+    const promptValue =
+      results.length === 0 ? message.message : blocks.filter((block) => !isToolResultBlock(block));
+    const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue);
+    if (text) events.push(text);
+    return events;
+  };
+}
+
+interface ClaudeToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input?: unknown;
+}
+
+interface ClaudeToolResultBlock {
+  type: 'tool_result';
+  tool_use_id: string;
+  is_error?: unknown;
+  content?: unknown;
+}
+
+function messageContentBlocks(message: unknown): unknown[] {
+  if (!isRecord(message)) return [];
+  const content = message.content;
+  return Array.isArray(content) ? content : [];
+}
+
+function isToolUseBlock(block: unknown): block is ClaudeToolUseBlock {
+  return (
+    isRecord(block) &&
+    block.type === 'tool_use' &&
+    typeof block.id === 'string' &&
+    block.id.length > 0 &&
+    typeof block.name === 'string' &&
+    block.name.length > 0
+  );
+}
+
+function isToolResultBlock(block: unknown): block is ClaudeToolResultBlock {
+  return (
+    isRecord(block) &&
+    block.type === 'tool_result' &&
+    typeof block.tool_use_id === 'string' &&
+    block.tool_use_id.length > 0
+  );
 }

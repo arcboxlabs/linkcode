@@ -169,6 +169,7 @@ describe('engine session persistence', () => {
       status: 'stopped',
       title: 'Fix the flaky test',
       cwd: '/repo',
+      historyId: 'native-1',
     });
   });
 
@@ -222,8 +223,8 @@ describe('engine session persistence', () => {
     expect(listedSessions(sent, 'r2')[0].status).toBe('stopped');
   });
 
-  it('rejects resuming a session that has no provider linkage', async () => {
-    const { engine, sent, inject } = harness();
+  it('wakes a never-prompted session (no provider linkage) as a fresh start under the same id', async () => {
+    const { engine, sent, inject, adapters } = harness();
     await engine.start();
     await inject({
       kind: 'session.start',
@@ -234,8 +235,9 @@ describe('engine session persistence', () => {
     await inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
     await inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
 
-    const failed = sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r3');
-    if (failed?.kind !== 'request.failed') throw new Error('no request.failed reply');
-    expect(failed.message).toContain('no provider history');
+    expect(startedId(sent, 'r3')).toBe(sessionId);
+    const resumed = adapters.at(-1);
+    expect(resumed?.resumedFrom).toBeNull();
+    expect(resumed?.startedWith).toMatchObject({ kind: 'claude-code', cwd: '/repo' });
   });
 });

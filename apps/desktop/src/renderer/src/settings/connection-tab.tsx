@@ -4,14 +4,16 @@ import { Input } from 'coss-ui/components/input';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
-import { useDesktopAppConfig } from '../app-config-context';
+import { useDesktopSettingsStore } from './store';
 
 const daemonUrlSchema = z.url();
 
 export function ConnectionTab(): React.ReactNode {
   const t = useTranslations('settings.connection');
-  const { daemonUrl, setDaemonUrl } = useDesktopAppConfig();
-  const [value, setValue] = useState(daemonUrl);
+  const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
+  const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);
+  const setDaemonUrl = useDesktopSettingsStore((state) => state.setDaemonUrl);
+  const [value, setValue] = useState(daemonUrlOverride ?? '');
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -19,7 +21,13 @@ export function ConnectionTab(): React.ReactNode {
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        const parsed = daemonUrlSchema.safeParse(value.trim());
+        const trimmed = value.trim();
+        if (trimmed === '') {
+          setError(null);
+          setDaemonUrl(null);
+          return;
+        }
+        const parsed = daemonUrlSchema.safeParse(trimmed);
         if (!parsed.success) {
           setError(t('invalidUrl'));
           return;
@@ -37,6 +45,7 @@ export function ConnectionTab(): React.ReactNode {
         <Input
           className="w-full"
           value={value}
+          placeholder={daemonUrl}
           spellCheck={false}
           autoComplete="off"
           onChange={(event) => {
@@ -48,7 +57,7 @@ export function ConnectionTab(): React.ReactNode {
         {error ? <p className="text-destructive-foreground text-xs">{error}</p> : null}
       </Field>
       <div>
-        <Button type="submit" size="sm" disabled={value.trim() === daemonUrl}>
+        <Button type="submit" size="sm" disabled={value.trim() === (daemonUrlOverride ?? '')}>
           {t('save')}
         </Button>
       </div>

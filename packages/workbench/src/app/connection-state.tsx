@@ -1,3 +1,4 @@
+import { DAEMON_DEFAULT_URL } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { useTranslations } from 'use-intl';
 import { useWorkbenchRuntimeRetry, useWorkbenchRuntimeStatus } from '../runtime/provider';
@@ -18,7 +19,7 @@ export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): React.Re
           <div className="space-y-3">
             <p className="text-destructive-foreground text-sm">
               {t('error', {
-                url: daemonUrl ?? '127.0.0.1:4317',
+                url: daemonUrl ?? DAEMON_DEFAULT_URL,
                 command: common('daemonCommand'),
               })}
             </p>

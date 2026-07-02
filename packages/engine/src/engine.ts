@@ -13,6 +13,7 @@ import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
@@ -20,6 +21,9 @@ import type { PtyBackend } from './pty-backend';
 import type { SessionStore } from './session-store';
 import { InMemorySessionStore } from './session-store';
 import { TerminalService } from './terminal-service';
+import { WorkspaceRegistry } from './workspace-registry';
+import type { WorkspaceStore } from './workspace-store';
+import { InMemoryWorkspaceStore } from './workspace-store';
 
 interface Session {
   adapter: AgentAdapter;
@@ -43,6 +47,7 @@ export class Engine {
   private readonly records = new Map<SessionId, SessionRecord>();
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
+  private readonly workspaces: WorkspaceRegistry;
   private seq = 0;
 
   constructor(
@@ -51,17 +56,21 @@ export class Engine {
     private readonly providerStore: ProviderConfigStore = new InMemoryProviderConfigStore(),
     ptyBackend?: PtyBackend,
     private readonly sessionStore: SessionStore = new InMemorySessionStore(),
+    private readonly git: GitService = new GitService(),
+    workspaceStore: WorkspaceStore = new InMemoryWorkspaceStore(),
   ) {
     this.history = new HistoryService(factory);
     this.terminals = ptyBackend
       ? new TerminalService(ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
+    this.workspaces = new WorkspaceRegistry(workspaceStore);
   }
 
   async start(): Promise<void> {
     for (const record of await this.sessionStore.load()) {
       this.records.set(record.sessionId, record);
     }
+    await this.workspaces.start();
     await this.transport.connect();
     this.transport.onMessage((msg) => {
       // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
@@ -74,7 +83,7 @@ export class Engine {
     switch (p.kind) {
       case 'session.start': {
         const opts = applyProviderDefaults(p.opts, this.providerStore.get());
-        await this.tryReply(p.clientReqId, () => {
+        await this.tryReply(p.clientReqId, async () => {
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -85,7 +94,8 @@ export class Engine {
             updatedAt: now,
             runs: [{ startedAt: now }],
           };
-          return this.startLiveSession(p.clientReqId, record, (adapter) => adapter.start(opts));
+          await this.startLiveSession(p.clientReqId, record, (adapter) => adapter.start(opts));
+          if (opts.cwd) this.workspaces.touch(opts.cwd);
         });
         break;
       }
@@ -143,17 +153,18 @@ export class Engine {
             this.records.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
-          const historyId = nullthrow(
-            latestHistoryId(record),
-            `Session has no provider history to resume: ${p.sessionId}`,
-          );
+          // A never-prompted session has no provider transcript to resume from (the adapter only
+          // mints one on the first prompt); waking it is a fresh start under the same Link Code id.
+          const historyId = latestHistoryId(record);
           const startOpts = applyProviderDefaults(
             { kind: record.kind, cwd: record.cwd },
             this.providerStore.get(),
           );
           record.runs.push({ historyId, startedAt: Date.now() });
           await this.startLiveSession(p.clientReqId, record, (adapter) =>
-            this.history.resume(adapter, historyId, startOpts),
+            historyId === undefined
+              ? adapter.start(startOpts)
+              : this.history.resume(adapter, historyId, startOpts),
           );
         });
         break;
@@ -207,7 +218,7 @@ export class Engine {
           { ...p.startOpts, kind: p.agentKind },
           this.providerStore.get(),
         );
-        await this.tryReply(p.clientReqId, () => {
+        await this.tryReply(p.clientReqId, async () => {
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -218,9 +229,10 @@ export class Engine {
             updatedAt: now,
             runs: [{ historyId: p.historyId, startedAt: now }],
           };
-          return this.startLiveSession(p.clientReqId, record, (adapter) =>
+          await this.startLiveSession(p.clientReqId, record, (adapter) =>
             this.history.resume(adapter, p.historyId, startOpts),
           );
+          if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
         });
         break;
       }
@@ -238,6 +250,73 @@ export class Engine {
         await this.tryReply(p.clientReqId, async () => {
           await this.providerStore.set(p.providers);
           this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'workspace.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'workspace.listed',
+            replyTo: p.clientReqId,
+            workspaces: this.workspaces.list(),
+          }),
+        );
+        break;
+      }
+      case 'workspace.register': {
+        await this.tryReply(p.clientReqId, () => {
+          const record = this.workspaces.register({ cwd: p.cwd, name: p.name });
+          this.transport.send(
+            createWireMessage({ kind: 'workspace.registered', replyTo: p.clientReqId, record }),
+          );
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'workspace.update': {
+        await this.tryReply(p.clientReqId, () => {
+          this.workspaces.update(p.workspaceId, p.name);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'workspace.archive': {
+        await this.tryReply(p.clientReqId, () => {
+          this.workspaces.archive(p.workspaceId);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'git.status.get': {
+        await this.tryReply(p.clientReqId, async () => {
+          const status = await this.git.getStatus(p.cwd);
+          this.transport.send(
+            createWireMessage({ kind: 'git.status.get.result', replyTo: p.clientReqId, status }),
+          );
+        });
+        break;
+      }
+      case 'git.pr_status.get': {
+        await this.tryReply(p.clientReqId, async () => {
+          const prStatus = await this.git.getPullRequestStatus(p.cwd);
+          this.transport.send(
+            createWireMessage({
+              kind: 'git.pr_status.get.result',
+              replyTo: p.clientReqId,
+              prStatus,
+            }),
+          );
+        });
+        break;
+      }
+      case 'git.diff.get': {
+        await this.tryReply(p.clientReqId, async () => {
+          const diff = await this.git.getDiff(p.cwd, p.mode);
+          this.transport.send(
+            createWireMessage({ kind: 'git.diff.get.result', replyTo: p.clientReqId, diff }),
+          );
         });
         break;
       }
@@ -276,6 +355,11 @@ export class Engine {
       default:
         break;
     }
+  }
+
+  /** Reap host-owned terminals once no client remains to read them — see {@link TerminalService.killHostTerminals}. */
+  reapHostTerminals(): void {
+    this.terminals?.killHostTerminals();
   }
 
   async stop(): Promise<void> {
@@ -341,6 +425,7 @@ export class Engine {
       createdAt: record.createdAt,
       title: record.title,
       origin: record.origin,
+      historyId: latestHistoryId(record),
     };
   }
 

@@ -2,8 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
+import type { SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it } from 'vitest';
-import { mapClaudeStop } from '../native/claude-code';
+import { asHistoryId } from '../history-util';
+import { createClaudeHistoryEventMapper, mapClaudeStop } from '../native/claude-code';
 import { CodexAdapter, mapCodexStatus, mapCodexUsage } from '../native/codex';
 import { contentToText, toolKindFromName } from '../util';
 
@@ -27,6 +29,89 @@ describe('toolKindFromName', () => {
     expect(toolKindFromName('Grep')).toBe('search');
     expect(toolKindFromName('WebFetch')).toBe('fetch');
     expect(toolKindFromName('Mystery')).toBe('other');
+  });
+});
+
+function row(
+  type: 'user' | 'assistant',
+  uuid: string,
+  content: string | unknown[],
+): SessionMessage {
+  return {
+    type,
+    uuid,
+    session_id: 'h1',
+    parent_tool_use_id: null,
+    message: { content },
+  };
+}
+
+describe('createClaudeHistoryEventMapper', () => {
+  const historyId = asHistoryId('h1');
+
+  it('replays a tool call as announce and settle snapshots under the provider tool_use id', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const announce = map(
+      row('assistant', 'u1', [
+        { type: 'text', text: 'let me read that' },
+        { type: 'tool_use', id: 'toolu_1', name: 'Read', input: { file: 'a.ts' } },
+      ]),
+    );
+    expect(announce.map((e) => e.event.type)).toEqual(['agent-message-chunk', 'tool-call']);
+    expect(announce[1].itemId).toBe('toolu_1');
+    if (announce[1].event.type === 'tool-call') {
+      expect(announce[1].event.toolCall).toMatchObject({
+        toolCallId: 'toolu_1',
+        title: 'Read',
+        kind: 'read',
+        status: 'in_progress',
+        rawInput: { file: 'a.ts' },
+      });
+    }
+
+    const settle = map(
+      row('user', 'u2', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'file body' }]),
+    );
+    // The synthetic tool-result row settles the call; it must not render as a user message.
+    expect(settle.map((e) => e.event.type)).toEqual(['tool-call']);
+    if (settle[0].event.type === 'tool-call') {
+      expect(settle[0].event.toolCall).toMatchObject({
+        toolCallId: 'toolu_1',
+        title: 'Read',
+        kind: 'read',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'file body' } }],
+        rawInput: { file: 'a.ts' },
+      });
+    }
+  });
+
+  it('marks is_error results failed and tolerates a settle whose announce is outside the page', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const settle = map(
+      row('user', 'u1', [
+        { type: 'tool_result', tool_use_id: 'toolu_9', is_error: true, content: 'denied' },
+      ]),
+    );
+    expect(settle).toHaveLength(1);
+    if (settle[0].event.type === 'tool-call') {
+      expect(settle[0].event.toolCall).toMatchObject({
+        toolCallId: 'toolu_9',
+        title: 'toolu_9',
+        kind: 'other',
+        status: 'failed',
+      });
+    }
+  });
+
+  it('keeps plain user prompts and assistant text as message events', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const prompt = map(row('user', 'u1', 'fix the bug'));
+    expect(prompt.map((e) => e.event.type)).toEqual(['user-message']);
+    expect(prompt[0].event).toMatchObject({ messageId: 'u1' });
+
+    const reply = map(row('assistant', 'u2', [{ type: 'text', text: 'done' }]));
+    expect(reply.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
   });
 });
 

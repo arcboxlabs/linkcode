@@ -12,6 +12,8 @@ export interface WorkbenchSessions {
   select: (id: SessionId) => void;
   create: (opts: { kind: AgentKind; cwd: string }) => void;
   stop: (id: SessionId) => void;
+  /** Revalidate the session list — the cue for a mutation made outside this hook (e.g. an import). */
+  refresh: () => void;
 }
 
 /**
@@ -71,6 +73,10 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
       .catch(noop);
   }
 
+  function refresh(): void {
+    void mutate();
+  }
+
   return {
     sessions,
     active,
@@ -78,6 +84,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     select,
     create,
     stop,
+    refresh,
   };
 }
 

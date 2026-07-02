@@ -19,12 +19,13 @@ export type TransportServerOptions =
   | ({ type: 'socket.io' } & SocketIoServerOptions)
   | ({ type: 'ws' } & WsServerOptions);
 
-export function createTransportServer(opts: TransportServerOptions): TransportServer {
+/** Resolves once the listener is bound; rejects on bind failure (e.g. `EADDRINUSE`). */
+export function createTransportServer(opts: TransportServerOptions): Promise<TransportServer> {
   switch (opts.type) {
     case 'socket.io':
-      return createSocketIoServer({ port: opts.port, host: opts.host });
+      return createSocketIoServer({ port: opts.port, host: opts.host, identity: opts.identity });
     case 'ws':
-      return createWsServer({ port: opts.port, host: opts.host });
+      return createWsServer({ port: opts.port, host: opts.host, identity: opts.identity });
     default:
       return never(opts, 'transport server type');
   }

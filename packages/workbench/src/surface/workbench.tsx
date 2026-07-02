@@ -1,14 +1,27 @@
-import { useConversation, useTerminalOutput } from '@linkcode/client-core';
-import { cancelTurn, promptText, respondPermission, setModel } from '@linkcode/sdk';
+import type { Conversation } from '@linkcode/client-core';
+import { useTerminalOutput } from '@linkcode/client-core';
+import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
+import {
+  cancelTurn,
+  promptText,
+  registerWorkspace,
+  respondPermission,
+  setModel,
+} from '@linkcode/sdk';
 import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useMutation } from '../runtime/tayori';
+import { RuntimeBranchStatus } from '../sidebar/branch-status';
+import { groupThreadsByWorkspace } from '../sidebar/group-threads';
+import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
+import { useWorkspaces } from '../workspace/hooks';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
+import { useSeededConversation } from './use-seeded-conversation';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
 
@@ -33,11 +46,15 @@ export function Workbench({
   }
 
   const sessions = useWorkbenchSessions(handleError);
-  const conversation = useConversation(sessions.activeId);
+  const conversation = useSeededConversation(sessions.active, handleError);
 
+  // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
+  // sidebar, panels, terminals), which must stay permanently mounted across session switches —
+  // remounting it flashes the entire window. Per-session UI reset happens at the conversation
+  // column (the shells key their ConversationSurface), and the permission sets below survive
+  // switches safely because adapter requestIds are globally unique.
   return (
     <WorkbenchSessionSurface
-      key={sessions.activeId ?? 'no-active-session'}
       sessions={sessions}
       conversation={conversation}
       errorMessage={errorMessage}
@@ -50,7 +67,7 @@ export function Workbench({
 
 interface WorkbenchSessionSurfaceProps {
   sessions: WorkbenchSessions;
-  conversation: ReturnType<typeof useConversation>;
+  conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
   onClearError: () => void;
@@ -73,6 +90,16 @@ function WorkbenchSessionSurface({
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
+  const {
+    data: workspaces,
+    isLoading: workspacesLoading,
+    mutate: refreshWorkspaces,
+  } = useWorkspaces();
+  const registerWorkspaceMutation = useMutation(registerWorkspace);
+  const threadGroups = useMemo(
+    () => groupThreadsByWorkspace(sessions.sessions, workspaces ?? []),
+    [sessions.sessions, workspaces],
+  );
 
   function handleSend(text: string): void {
     if (!sessions.activeId) return;
@@ -92,6 +119,18 @@ function WorkbenchSessionSurface({
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
     return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(noop);
+  }
+
+  function handleImportedSession(sessionId: SessionId): void {
+    sessions.refresh();
+    sessions.select(sessionId);
+  }
+
+  function handleRegisterWorkspace(cwd: string): Promise<WorkspaceRecord> {
+    return registerWorkspaceMutation.trigger({ cwd }).then((workspace) => {
+      void refreshWorkspaces();
+      return workspace;
+    });
   }
 
   function handleRespond(requestId: string, optionId: string): void {
@@ -115,7 +154,9 @@ function WorkbenchSessionSurface({
 
   return (
     <ShellComponent
-      sessions={sessions.sessions}
+      threadGroups={threadGroups}
+      workspaces={workspaces ?? []}
+      workspacesLoading={workspacesLoading}
       activeSession={active}
       conversation={conversation}
       answeredPermissions={answered}
@@ -129,10 +170,14 @@ function WorkbenchSessionSurface({
       onSelectSession={sessions.select}
       onStopSession={sessions.stop}
       onCreateSession={sessions.create}
+      onImportSession={handleImportedSession}
+      onRegisterWorkspace={handleRegisterWorkspace}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
       TerminalBlockComponent={RuntimeTerminalBlock}
+      BranchStatusComponent={RuntimeBranchStatus}
+      HistoryComponent={RuntimeWorkspaceHistory}
       onDismissError={onClearError}
       onModelChange={handleModelChange}
     />

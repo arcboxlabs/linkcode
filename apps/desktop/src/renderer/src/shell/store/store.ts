@@ -1,5 +1,5 @@
 import { zodPersist } from '@linkcode/common/zustand';
-import type { PanelWindowType } from '@linkcode/ui/shell/panels';
+import type { PanelSection, PanelWindowType } from '@linkcode/ui/shell/panels';
 import { clamp } from 'foxts/clamp';
 import { create } from 'zustand';
 import type {
@@ -10,30 +10,39 @@ import type {
   PersistedDesktopShellState,
 } from './model';
 import {
+  closeRightTerminalTabState,
   createDefaultDesktopShellState,
+  createRightTerminalTab,
   createTab,
   DEFAULT_LAYOUT,
   DESKTOP_SHELL_STORAGE_KEY,
-  defaultWindowFor,
   getExpandedPanel,
-  getPanelFromShellState,
   normalizeLayout,
   PersistedDesktopShellStateSchema,
   pushExpandedPanel,
   removeExpandedPanel,
   serializeDesktopShellState,
-  setPanelInShellState,
 } from './model';
+
+/** The bottom panel's window type when it needs to seed a first tab. */
+const DEFAULT_BOTTOM_WINDOW_TYPE: PanelWindowType = 'terminal';
 
 interface DesktopShellActions {
   updateSidebarOpen: (updater: boolean | ((current: boolean) => boolean)) => void;
   updateLayout: (updater: (current: LayoutState) => LayoutState) => void;
-  updatePanel: (side: PanelSide, updater: (panel: PanelState) => PanelState) => void;
+  /** Bottom panel only — the right panel's tabs live under its terminal section instead. */
+  updatePanel: (updater: (panel: PanelState) => PanelState) => void;
   togglePanel: (side: PanelSide) => void;
   closePanel: (side: PanelSide) => void;
-  addWindow: (side: PanelSide, type: PanelWindowType) => void;
-  closeTab: (side: PanelSide, id: string) => void;
+  addWindow: (type: PanelWindowType) => void;
+  closeTab: (id: string) => void;
   toggleMaxPanel: (side: PanelSide) => void;
+  setActiveSection: (section: PanelSection) => void;
+  /** Opens the right panel (if closed) and switches it to `section` in one step. */
+  openRightPanelSection: (section: PanelSection) => void;
+  addRightTerminalTab: () => void;
+  closeRightTerminalTab: (id: string) => void;
+  setActiveRightTerminalTab: (id: string) => void;
   resetSidebarSize: () => void;
   resetRightPanelSize: () => void;
   resetBottomPanelSize: () => void;
@@ -66,77 +75,97 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
           }));
         },
 
-        updatePanel(side, updater) {
-          updateShellState((current) =>
-            setPanelInShellState(current, side, updater(getPanelFromShellState(current, side))),
-          );
+        updatePanel(updater) {
+          updateShellState((current) => ({
+            ...current,
+            bottomPanel: updater(current.bottomPanel),
+          }));
         },
 
         togglePanel(side) {
           updateShellState((current) => {
-            const panel = getPanelFromShellState(current, side);
-            const open = !panel.open;
-            const tabs = panel.tabs.length > 0 ? panel.tabs : [createTab(defaultWindowFor(side))];
-            const nextPanel = {
-              ...panel,
-              open,
-              tabs,
-              activeTabId: open ? (panel.activeTabId ?? tabs[0].id) : panel.activeTabId,
-            };
-            return setPanelInShellState(
-              {
+            if (side === 'right') {
+              const open = !current.rightPanel.open;
+              return {
                 ...current,
                 expansionStack: open
                   ? current.expansionStack
                   : removeExpandedPanel(current.expansionStack, side),
+                rightPanel: { ...current.rightPanel, open },
+              };
+            }
+
+            const panel = current.bottomPanel;
+            const open = !panel.open;
+            const tabs =
+              panel.tabs.length > 0 ? panel.tabs : [createTab(DEFAULT_BOTTOM_WINDOW_TYPE)];
+            return {
+              ...current,
+              expansionStack: open
+                ? current.expansionStack
+                : removeExpandedPanel(current.expansionStack, side),
+              bottomPanel: {
+                ...panel,
+                open,
+                tabs,
+                activeTabId: open ? (panel.activeTabId ?? tabs[0].id) : panel.activeTabId,
               },
-              side,
-              nextPanel,
-            );
+            };
           });
         },
 
         closePanel(side) {
-          updateShellState((current) =>
-            setPanelInShellState(
-              { ...current, expansionStack: removeExpandedPanel(current.expansionStack, side) },
-              side,
-              { ...getPanelFromShellState(current, side), open: false },
-            ),
-          );
-        },
-
-        addWindow(side, type) {
-          const tab = createTab(type);
           updateShellState((current) => {
-            const panel = getPanelFromShellState(current, side);
-            return setPanelInShellState(current, side, {
-              ...panel,
-              open: true,
-              tabs: [...panel.tabs, tab],
-              activeTabId: tab.id,
-            });
+            const expansionStack = removeExpandedPanel(current.expansionStack, side);
+            if (side === 'right') {
+              return {
+                ...current,
+                expansionStack,
+                rightPanel: { ...current.rightPanel, open: false },
+              };
+            }
+            return {
+              ...current,
+              expansionStack,
+              bottomPanel: { ...current.bottomPanel, open: false },
+            };
           });
         },
 
-        closeTab(side, id) {
+        addWindow(type) {
+          const tab = createTab(type);
+          updateShellState((current) => ({
+            ...current,
+            bottomPanel: {
+              ...current.bottomPanel,
+              open: true,
+              tabs: [...current.bottomPanel.tabs, tab],
+              activeTabId: tab.id,
+            },
+          }));
+        },
+
+        closeTab(id) {
           updateShellState((current) => {
-            const panel = getPanelFromShellState(current, side);
+            const panel = current.bottomPanel;
             const index = panel.tabs.findIndex((tab) => tab.id === id);
             const tabs = panel.tabs.filter((tab) => tab.id !== id);
             if (tabs.length === 0) {
-              return setPanelInShellState(
-                { ...current, expansionStack: removeExpandedPanel(current.expansionStack, side) },
-                side,
-                { ...panel, open: false, tabs, activeTabId: null },
-              );
+              return {
+                ...current,
+                expansionStack: removeExpandedPanel(current.expansionStack, 'bottom'),
+                bottomPanel: { ...panel, open: false, tabs, activeTabId: null },
+              };
             }
             const fallback = tabs[clamp(index, 0, tabs.length - 1)];
-            return setPanelInShellState(current, side, {
-              ...panel,
-              tabs,
-              activeTabId: panel.activeTabId === id ? fallback.id : panel.activeTabId,
-            });
+            return {
+              ...current,
+              bottomPanel: {
+                ...panel,
+                tabs,
+                activeTabId: panel.activeTabId === id ? fallback.id : panel.activeTabId,
+              },
+            };
           });
         },
 
@@ -158,6 +187,54 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
           });
         },
 
+        setActiveSection(section) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: { ...current.rightPanel, activeSection: section },
+          }));
+        },
+
+        openRightPanelSection(section) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: { ...current.rightPanel, open: true, activeSection: section },
+          }));
+        },
+
+        addRightTerminalTab() {
+          const tab = createRightTerminalTab();
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              terminal: {
+                tabs: [...current.rightPanel.terminal.tabs, tab],
+                activeTabId: tab.id,
+              },
+            },
+          }));
+        },
+
+        closeRightTerminalTab(id) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              terminal: closeRightTerminalTabState(current.rightPanel.terminal, id),
+            },
+          }));
+        },
+
+        setActiveRightTerminalTab(id) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              terminal: { ...current.rightPanel.terminal, activeTabId: id },
+            },
+          }));
+        },
+
         resetSidebarSize() {
           get().updateLayout((current) => ({ ...current, sidebarW: DEFAULT_LAYOUT.sidebarW }));
         },
@@ -173,7 +250,7 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
     },
     {
       name: DESKTOP_SHELL_STORAGE_KEY,
-      version: 1,
+      version: 2,
       schema: PersistedDesktopShellStateSchema,
       partialize: serializeDesktopShellState,
     },

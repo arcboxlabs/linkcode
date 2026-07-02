@@ -1,34 +1,8 @@
-import type { SessionInfo } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { groupSessions, repositoryLabel } from '../shell/session-sidebar';
+import { relativeTimeLabel } from '../shell/relative-time';
+import { repositoryLabel } from '../shell/repository-label';
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-const FIXTURE_DAY_START = localDayStartFromEpochDay(10000);
-
-describe('session sidebar helpers', () => {
-  it('groups sessions relative to the supplied local day', () => {
-    const sessions = [
-      createSession('today', FIXTURE_DAY_START + 10 * HOUR_MS),
-      createSession('yesterday', FIXTURE_DAY_START - DAY_MS + 10 * HOUR_MS),
-      createSession('earlier', FIXTURE_DAY_START - DAY_MS - HOUR_MS),
-    ];
-
-    expect(groupSessions(sessions, FIXTURE_DAY_START).map((group) => group.key)).toEqual([
-      'today',
-      'yesterday',
-      'earlier',
-    ]);
-  });
-
-  it('rolls today into yesterday when the local day changes', () => {
-    const nextDayStart = FIXTURE_DAY_START + DAY_MS;
-    const session = createSession('rolling', FIXTURE_DAY_START + 8 * HOUR_MS);
-
-    expect(groupSessions([session], FIXTURE_DAY_START)[0]?.key).toBe('today');
-    expect(groupSessions([session], nextDayStart)[0]?.key).toBe('yesterday');
-  });
-
+describe('repositoryLabel', () => {
   it('uses the final path segment for POSIX and Windows repository labels', () => {
     const backslash = String.fromCodePoint(92);
     const windowsAppPath = ['C:', 'repo', 'app'].join(backslash);
@@ -46,17 +20,26 @@ describe('session sidebar helpers', () => {
   });
 });
 
-function createSession(sessionId: string, createdAt: number): SessionInfo {
-  return {
-    sessionId: sessionId as SessionInfo['sessionId'],
-    kind: 'codex',
-    cwd: '/workspace/sample-repo',
-    status: 'idle',
-    createdAt,
-  };
-}
+describe('relativeTimeLabel', () => {
+  const now = new Date(2024, 0, 15, 12, 0, 0).getTime();
 
-function localDayStartFromEpochDay(day: number): number {
-  const date = new Date(day * DAY_MS + 12 * HOUR_MS);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
+  it('formats sub-minute differences in seconds', () => {
+    expect(relativeTimeLabel(now - 30 * 1000, now, 'en-US')).toBe('30 seconds ago');
+  });
+
+  it('formats sub-hour differences in minutes', () => {
+    expect(relativeTimeLabel(now - 5 * 60 * 1000, now, 'en-US')).toBe('5 minutes ago');
+  });
+
+  it('formats sub-day differences in hours', () => {
+    expect(relativeTimeLabel(now - 3 * 60 * 60 * 1000, now, 'en-US')).toBe('3 hours ago');
+  });
+
+  it('formats sub-week differences in days', () => {
+    expect(relativeTimeLabel(now - 2 * 24 * 60 * 60 * 1000, now, 'en-US')).toBe('2 days ago');
+  });
+
+  it('formats week-or-older differences in weeks', () => {
+    expect(relativeTimeLabel(now - 14 * 24 * 60 * 60 * 1000, now, 'en-US')).toBe('2 weeks ago');
+  });
+});

@@ -5,12 +5,18 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  GitDiff,
+  GitDiffMode,
+  GitPullRequestStatus,
+  GitStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
   SessionInfo,
   SessionRecord,
   StartOptions,
+  WorkspaceId,
+  WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Options, RequestResult } from './client';
 import { resolveClient } from './client';
@@ -105,4 +111,48 @@ export function setProviderConfig(
   options: Options<{ providers: ProvidersConfig }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).setProviderConfig(options.providers);
+}
+
+/** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
+export function getGitStatus(options: Options<{ cwd: string }>): RequestResult<GitStatus> {
+  return resolveClient(options).getGitStatus(options.cwd);
+}
+
+/** Hosting-provider PR state for a directory's current branch. */
+export function getGitPullRequestStatus(
+  options: Options<{ cwd: string }>,
+): RequestResult<GitPullRequestStatus> {
+  return resolveClient(options).getGitPullRequestStatus(options.cwd);
+}
+
+/** A unified-diff patch for a directory (directory-backed: keyed by cwd, not by session). */
+export function getGitDiff(
+  options: Options<{ cwd: string; mode: GitDiffMode }>,
+): RequestResult<GitDiff> {
+  return resolveClient(options).getGitDiff(options.cwd, options.mode);
+}
+
+/** Every registered workspace (directory), most recently used first. */
+export function listWorkspaces(options?: Options): RequestResult<WorkspaceRecord[]> {
+  return resolveClient(options).listWorkspaces();
+}
+
+/** Register a directory as a workspace; idempotent for an already-registered directory. */
+export function registerWorkspace(
+  options: Options<{ cwd: string; name?: string }>,
+): RequestResult<WorkspaceRecord> {
+  return resolveClient(options).registerWorkspace(options.cwd, options.name);
+}
+
+export function updateWorkspace(
+  options: Options<{ workspaceId: WorkspaceId; name: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).updateWorkspace(options.workspaceId, options.name);
+}
+
+/** Drop a workspace from the registry; never touches the directory on disk. */
+export function archiveWorkspace(
+  options: Options<{ workspaceId: WorkspaceId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).archiveWorkspace(options.workspaceId);
 }

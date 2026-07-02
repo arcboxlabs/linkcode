@@ -1,5 +1,6 @@
 import ibmPlexMonoWoff2 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2?inline';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useRef } from 'react';
 import { createRestty } from 'restty';
 import type { PtyTransport } from 'restty/internal';
@@ -102,20 +103,49 @@ function createSessionPtyTransport(session: TerminalSession): PtyTransport {
  * Interactive terminal rendered by restty (native API), fed from a {@link TerminalSession}.
  * Presentation-only: it owns no connection logic. `session` must be stable per terminal (memoize it)
  * or the effect will tear the terminal down and re-create it on every render.
+ *
+ * `suspended` freezes the terminal's box at its current pixel size (an ancestor with
+ * `overflow-hidden` clips it). Set it while a host panel animates shut/open: restty's
+ * ResizeObserver never sees the transient sizes, so no PTY resizes reach the shell — each one
+ * would make it redraw the prompt, stacking a blank prompt line per toggle.
  */
 export function LiveTerminal({
   session,
+  suspended = false,
   className,
 }: {
   session: TerminalSession;
+  suspended?: boolean;
   className?: string;
 }): React.ReactNode {
+  const frameRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Layout effect so the freeze lands before the panel's first shrink frame paints. Freeze only
+  // when the terminal's content box has real extent: a collapsed mount (panel never opened yet)
+  // measures 0 there — pinning that would trap restty at birth size — while the frame itself
+  // still reports its padding, so the content box is the reliable signal.
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const container = containerRef.current;
+    if (!frame || !container) return;
+    if (suspended) {
+      const content = container.getBoundingClientRect();
+      if (content.width === 0 || content.height === 0) return;
+      const rect = frame.getBoundingClientRect();
+      frame.style.width = `${rect.width}px`;
+      frame.style.height = `${rect.height}px`;
+    } else {
+      frame.style.removeProperty('width');
+      frame.style.removeProperty('height');
+    }
+  }, [suspended]);
 
   useAbortableEffect(
     (signal) => {
+      const frame = frameRef.current;
       const container = containerRef.current;
-      if (!container) return;
+      if (!frame || !container) return;
 
       let revealFrame = 0;
       const restty = createRestty({
@@ -130,12 +160,12 @@ export function LiveTerminal({
           callbacks: {
             onBackend() {
               if (signal.aborted) return;
-              applyTerminalTheme(restty);
+              applyTerminalTheme(restty, frame);
               restty.connectPty('session://terminal');
               // Reveal only once a themed frame can be painted, so the default black frames restty
               // draws while the WASM core boots are never shown.
               revealFrame = requestAnimationFrame(() => {
-                container.style.opacity = '1';
+                frame.style.opacity = '1';
               });
             },
           },
@@ -144,7 +174,7 @@ export function LiveTerminal({
 
       // The terminal theme follows the app's `.dark` class, so re-apply whenever it flips
       // (light/dark mode change) — no need to tear down the terminal.
-      const modeObserver = new MutationObserver(() => applyTerminalTheme(restty));
+      const modeObserver = new MutationObserver(() => applyTerminalTheme(restty, frame));
       modeObserver.observe(document.documentElement, {
         attributes: true,
         attributeFilter: ['class'],
@@ -159,10 +189,11 @@ export function LiveTerminal({
     [session],
   );
 
+  // Padding lives on the frame, never on the restty root: restty sizes its canvas from the root's
+  // clientWidth/clientHeight, which include padding, so a padded root would overflow into the inset.
   return (
-    <div
-      ref={containerRef}
-      className={cn('opacity-0 transition-opacity duration-150', className)}
-    />
+    <div ref={frameRef} className={cn('p-2 opacity-0 transition-opacity duration-150', className)}>
+      <div ref={containerRef} className="size-full" />
+    </div>
   );
 }

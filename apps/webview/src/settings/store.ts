@@ -1,11 +1,12 @@
 import { zodPersist } from '@linkcode/common/zustand';
+import { DAEMON_DEFAULT_URL } from '@linkcode/schema';
 import { z } from 'zod';
 import { create } from 'zustand';
 
 export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark']);
 export type ThemePreference = z.infer<typeof ThemePreferenceSchema>;
 
-export const DEFAULT_DAEMON_URL = 'http://127.0.0.1:4317';
+export const DEFAULT_DAEMON_URL = DAEMON_DEFAULT_URL;
 
 /** Persisted subset — every field optional so partial/stale storage merges over the defaults. */
 const PersistedSettingsSchema = z

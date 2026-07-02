@@ -8,8 +8,16 @@ import type {
 import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
 import type * as React from 'react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { LinkCodeClient } from './client';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import type { LinkCodeClient, SequencedAgentEvent } from './client';
 import type { Conversation } from './conversation';
 import { buildConversation } from './conversation';
 
@@ -35,26 +43,39 @@ export function useLinkCodeClient(): LinkCodeClient {
   );
 }
 
+const NO_SEQUENCED_EVENTS: readonly SequencedAgentEvent[] = [];
+
+/**
+ * A session's normalized event stream, with connection-scoped receive seqs (see
+ * `mergeSeededEvents`). The client's per-session buffer is the store: `useSyncExternalStore`
+ * reads its cached immutable snapshot, so switching back to a session costs one array reference
+ * instead of replaying the whole buffer through state.
+ */
+export function useSequencedAgentEvents(
+  sessionId: SessionId | null,
+): readonly SequencedAgentEvent[] {
+  const client = useLinkCodeClient();
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!sessionId) return noop;
+      return client.subscribe(sessionId, onStoreChange);
+    },
+    [client, sessionId],
+  );
+  return useSyncExternalStore(subscribe, () =>
+    sessionId ? client.eventsSnapshot(sessionId) : NO_SEQUENCED_EVENTS,
+  );
+}
+
+const NO_EVENTS: AgentEvent[] = [];
+
 /** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
 export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
-  const client = useLinkCodeClient();
-  const [state, setState] = useState<{ sessionId: SessionId | null; events: AgentEvent[] }>({
-    sessionId: null,
-    events: [],
-  });
-
-  useEffect(() => {
-    if (!sessionId) return;
-    return client.subscribe(sessionId, (event) => {
-      setState((prev) =>
-        prev.sessionId === sessionId
-          ? { sessionId, events: [...prev.events, event] }
-          : { sessionId, events: [event] },
-      );
-    });
-  }, [client, sessionId]);
-
-  return state.sessionId === sessionId ? state.events : [];
+  const sequenced = useSequencedAgentEvents(sessionId);
+  return useMemo(
+    () => (sequenced.length === 0 ? NO_EVENTS : sequenced.map(({ event }) => event)),
+    [sequenced],
+  );
 }
 
 /** Subscribe to a terminal's output, accumulating it into a string for read-only display. */

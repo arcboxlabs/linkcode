@@ -25,6 +25,10 @@ export interface SystemContext {
     get(): DesktopSettings;
     set(patch: DesktopSettingsPatch): DesktopSettings;
   };
+  daemon: {
+    /** Effective daemon endpoint: explicit setting, else runtime-file discovery, else default. */
+    resolveUrl(): string;
+  };
 }
 
 export const PickFileOptionsSchema = z.object({
@@ -46,8 +50,8 @@ export const DesktopSettingsSchema = z.object({
   theme: ThemePreferenceSchema.default('system'),
   /** Locale override; `null` follows the OS (navigator.languages). */
   locale: z.string().nullable().default(null),
-  /** Daemon endpoint the renderer connects to over transport. */
-  daemonUrl: z.url().default('http://127.0.0.1:4317'),
+  /** Explicit daemon endpoint override; `null` discovers the local daemon (runtime file, then default port). */
+  daemonUrl: z.url().nullable().default(null),
 });
 export type DesktopSettings = z.infer<typeof DesktopSettingsSchema>;
 
@@ -58,7 +62,7 @@ export type DesktopSettings = z.infer<typeof DesktopSettingsSchema>;
 export const DesktopSettingsPatchSchema = z.object({
   theme: ThemePreferenceSchema.optional(),
   locale: z.string().nullable().optional(),
-  daemonUrl: z.url().optional(),
+  daemonUrl: z.url().nullable().optional(),
 });
 export type DesktopSettingsPatch = z.infer<typeof DesktopSettingsPatchSchema>;
 
