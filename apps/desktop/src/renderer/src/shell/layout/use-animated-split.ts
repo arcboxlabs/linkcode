@@ -129,29 +129,40 @@ export function useAnimatedSplit({
 
       applyPaneSize(startSize);
 
+      const finish = (): void => {
+        if (signal.aborted) return;
+
+        applyPaneSize(targetPaneSize);
+
+        setTransition((latest) => {
+          if (latest.version !== transitionVersion) return {};
+
+          return {
+            phase: completedPhase,
+            shouldStartFromZero: false,
+          };
+        });
+      };
+
       const controls = animate(startSize, targetPaneSize, {
         duration: SHELL_TRANSITION.duration,
         ease: SHELL_TRANSITION.ease,
         onUpdate(latest) {
           if (!signal.aborted) applyPaneSize(latest);
         },
-        onComplete() {
-          if (signal.aborted) return;
-
-          applyPaneSize(targetPaneSize);
-
-          setTransition((latest) => {
-            if (latest.version !== transitionVersion) return {};
-
-            return {
-              phase: completedPhase,
-              shouldStartFromZero: false,
-            };
-          });
-        },
+        onComplete: finish,
       });
 
+      // The animation runs on rAF, which Chromium throttles to a standstill in occluded windows —
+      // onComplete would then never fire and the phase would stay 'opening'/'closing' forever.
+      // Force completion once the duration has passed; after a real completion this is a no-op.
+      const fallback = setTimeout(() => {
+        controls.stop();
+        finish();
+      }, SHELL_TRANSITION.durationMs + 100);
+
       return () => {
+        clearTimeout(fallback);
         controls.stop();
       };
     },
