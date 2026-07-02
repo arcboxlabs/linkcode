@@ -4,8 +4,8 @@ import { PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { AGENT_LABELS, AgentIcon } from '../agent-icon';
-import { relativeTimeLabel } from '../relative-time';
 import { repositoryLabel } from '../repository-label';
+import { useRelativeTimeLabel } from '../use-relative-time-label';
 
 const STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   starting: 'bg-info',
@@ -45,6 +45,7 @@ export function ThreadRow({
   const t = useTranslations('workbench.sidebar');
   const agent = AGENT_LABELS[session.kind];
   const title = session.title ?? `${agent} in ${repositoryLabel(session.cwd)}`;
+  const createdAtLabel = useRelativeTimeLabel(session.createdAt);
   const { ref: sortableRef } = useSortable({
     id: session.sessionId,
     index: sortIndex,
@@ -68,7 +69,7 @@ export function ThreadRow({
       )}
       <button
         type="button"
-        title={relativeTimeLabel(session.createdAt)}
+        title={createdAtLabel}
         className="flex h-7 w-full min-w-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] pr-14 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onSelect}
       >
