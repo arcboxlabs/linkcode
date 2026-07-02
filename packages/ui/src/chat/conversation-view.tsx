@@ -125,7 +125,7 @@ export function ConversationView({
           }
         })}
         {isThinking && (
-          <div className="flex items-center gap-2 py-1 text-muted-foreground text-[13px]">
+          <div className="flex items-center gap-2 py-1 text-muted-foreground text-sm">
             <Spinner className="size-3.5" />
             <span>{t('thinking')}</span>
           </div>

@@ -69,7 +69,7 @@ const components: Components = {
     </code>
   ),
   table: ({ className, children, node: _node, ...rest }) => (
-    <table className={cn('my-2 w-full border-collapse text-[13px]', className)} {...rest}>
+    <table className={cn('my-2 w-full border-collapse text-sm', className)} {...rest}>
       {children}
     </table>
   ),
@@ -114,7 +114,7 @@ export function Markdown({
     <Streamdown
       // space-y-0: block rhythm comes from the per-element my-* overrides above,
       // matching the previous react-markdown renderer.
-      className={cn('space-y-0 break-words text-[14px] leading-relaxed', className)}
+      className={cn('space-y-0 break-words text-sm leading-relaxed', className)}
       components={components}
       plugins={plugins}
     >

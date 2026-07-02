@@ -29,7 +29,7 @@ export function TestResults({
   return (
     <div
       className={cn(
-        'my-2 overflow-hidden rounded-lg border border-border bg-card text-[13px]',
+        'my-2 overflow-hidden rounded-lg border border-border bg-card text-sm',
         className,
       )}
       {...props}
@@ -101,13 +101,13 @@ export function TestResult({
       <div className="min-w-0 flex-1">
         <div className="truncate text-foreground">{children ?? result.name}</div>
         {result.message ? (
-          <div className="mt-1 rounded-md bg-muted p-2 font-mono text-[12px] text-muted-foreground">
+          <div className="mt-1 rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">
             {result.message}
           </div>
         ) : null}
       </div>
       {typeof result.durationMs === 'number' ? (
-        <span className="shrink-0 text-[12px] text-muted-foreground">
+        <span className="shrink-0 text-xs text-muted-foreground">
           {formatDuration(result.durationMs)}
         </span>
       ) : null}

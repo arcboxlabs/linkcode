@@ -74,7 +74,7 @@ export function ReasoningTrigger({
   return (
     <CollapsibleTrigger
       className={cn(
-        'flex w-full items-center gap-2 py-0.5 text-left text-[13px] hover:text-foreground',
+        'flex w-full items-center gap-2 py-0.5 text-left text-sm hover:text-foreground',
         className,
       )}
       {...props}
@@ -100,7 +100,7 @@ export type ReasoningContentProps = React.ComponentProps<typeof CollapsibleConte
 export function ReasoningContent({ className, ...props }: ReasoningContentProps): React.ReactNode {
   return (
     <CollapsibleContent
-      className={cn('mt-1 border-l-2 border-border pl-3 text-[13px] italic opacity-90', className)}
+      className={cn('mt-1 border-l-2 border-border pl-3 text-sm italic opacity-90', className)}
       {...props}
     />
   );

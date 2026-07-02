@@ -72,7 +72,7 @@ export function DiffBlock({
 
   return (
     <div className="my-1 overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-[12px]">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-xs">
         <FileTextIcon className="size-3.5 text-muted-foreground" />
         <span className="truncate font-mono text-muted-foreground">{path}</span>
         <span className="ml-auto flex gap-1.5">
@@ -80,7 +80,7 @@ export function DiffBlock({
           <span className="text-destructive-foreground">-{deletions}</span>
         </span>
       </div>
-      <div className="overflow-x-auto font-mono text-[12.5px] leading-relaxed">
+      <div className="overflow-x-auto font-mono text-xs leading-relaxed">
         {rows.map((row) => (
           <div
             key={row.id}

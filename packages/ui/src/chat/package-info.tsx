@@ -32,7 +32,7 @@ export function PackageInfo({
 }: PackageInfoProps): React.ReactNode {
   return (
     <div
-      className={cn('my-2 rounded-lg border border-border bg-card p-3 text-[13px]', className)}
+      className={cn('my-2 rounded-lg border border-border bg-card p-3 text-sm', className)}
       {...props}
     >
       {children ?? (
@@ -113,7 +113,7 @@ export function PackageInfoVersion({
   return (
     <div
       className={cn(
-        'mt-1 flex min-w-0 items-center gap-2 font-mono text-[12px] text-muted-foreground',
+        'mt-1 flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground',
         className,
       )}
       {...props}
@@ -181,7 +181,7 @@ export function PackageInfoDependencies({
     <div className={cn('mt-3 border-t border-border pt-3', className)} {...props}>
       {children ?? (
         <>
-          <div className="mb-2 text-[11px] uppercase text-muted-foreground">Dependencies</div>
+          <div className="mb-2 text-xs uppercase text-muted-foreground">Dependencies</div>
           <div className="space-y-1">
             {dependencies.map((dependency) => (
               <PackageInfoDependency key={dependency.id} dependency={dependency} />
@@ -205,10 +205,7 @@ export function PackageInfoDependency({
 }: PackageInfoDependencyProps): React.ReactNode {
   return (
     <div
-      className={cn(
-        'flex min-w-0 items-center justify-between gap-3 font-mono text-[12px]',
-        className,
-      )}
+      className={cn('flex min-w-0 items-center justify-between gap-3 font-mono text-xs', className)}
       {...props}
     >
       {children ?? (

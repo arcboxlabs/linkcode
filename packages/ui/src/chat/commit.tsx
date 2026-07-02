@@ -44,7 +44,7 @@ export function Commit({
   return (
     <Collapsible
       className={cn(
-        'my-2 overflow-hidden rounded-lg border border-border bg-card text-[13px]',
+        'my-2 overflow-hidden rounded-lg border border-border bg-card text-sm',
         className,
       )}
       defaultOpen={defaultOpen}
@@ -86,7 +86,7 @@ export function CommitHeader({
             <CommitAvatar commit={commit} />
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium text-foreground">{commit.message}</div>
-              <div className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 <CommitHash hash={commit.hash} />
                 {commit.authorName ? <span className="truncate">{commit.authorName}</span> : null}
                 {commit.createdAt ? (
@@ -206,7 +206,7 @@ export function CommitFile({
         <>
           <CommitFileStatus status={file.status} />
           <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{file.path}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
           <CommitFileChanges additions={file.additions} deletions={file.deletions} />
         </>
       )}
@@ -250,10 +250,7 @@ export function CommitFileChanges({
   if (additions === 0 && deletions === 0) return null;
 
   return (
-    <div
-      className={cn('flex shrink-0 items-center gap-1 font-mono text-[12px]', className)}
-      {...props}
-    >
+    <div className={cn('flex shrink-0 items-center gap-1 font-mono text-xs', className)} {...props}>
       {additions > 0 ? (
         <span className="inline-flex items-center text-success-foreground">
           <PlusIcon className="size-3" />

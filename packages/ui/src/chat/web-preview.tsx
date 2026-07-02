@@ -144,7 +144,7 @@ export function WebPreviewUrl({
       <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <input
         className={cn(
-          'min-w-0 flex-1 bg-transparent font-mono text-[12px] text-foreground outline-none placeholder:text-muted-foreground/72',
+          'min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/72',
           className,
         )}
         onKeyDown={(event) => {
@@ -189,7 +189,7 @@ export function WebPreviewConsole({
 }: WebPreviewConsoleProps): React.ReactNode {
   return (
     <Collapsible
-      className={cn('border-t border-border bg-muted/30 text-[12px]', className)}
+      className={cn('border-t border-border bg-muted/30 text-xs', className)}
       defaultOpen={defaultOpen}
       {...props}
     >

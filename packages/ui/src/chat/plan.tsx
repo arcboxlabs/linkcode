@@ -37,7 +37,7 @@ export function PlanHeader({
   return (
     <CollapsibleTrigger
       className={cn(
-        'group flex w-full items-center gap-2 text-left text-[13px] font-medium',
+        'group flex w-full items-center gap-2 text-left text-sm font-medium',
         className,
       )}
       {...props}
@@ -72,7 +72,7 @@ export function PlanItem({
   ...props
 }: PlanItemProps): React.ReactNode {
   return (
-    <div className={cn('flex items-start gap-2 py-0.5 text-[13px]', className)} {...props}>
+    <div className={cn('flex items-start gap-2 py-0.5 text-sm', className)} {...props}>
       <PlanItemIcon status={status} />
       <span
         className={cn('flex-1', status === 'completed' && 'text-muted-foreground line-through')}

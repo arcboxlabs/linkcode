@@ -33,7 +33,7 @@ export function Sources({
 }: SourcesProps): React.ReactNode {
   return (
     <Collapsible
-      className={cn('my-1 w-full text-[13px] text-muted-foreground', className)}
+      className={cn('my-1 w-full text-sm text-muted-foreground', className)}
       defaultOpen={defaultOpen}
       {...props}
     >

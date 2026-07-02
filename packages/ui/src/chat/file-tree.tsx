@@ -61,7 +61,7 @@ export function FileTree({
   return (
     <div
       className={cn(
-        'my-2 rounded-lg border border-border bg-card p-2 font-mono text-[12px]',
+        'my-2 rounded-lg border border-border bg-card p-2 font-mono text-xs',
         className,
       )}
       role="tree"

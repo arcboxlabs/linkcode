@@ -40,7 +40,7 @@ export function Queue({
 }: QueueProps): React.ReactNode {
   return (
     <div
-      className={cn('my-1 rounded-xl border border-border bg-card p-3 text-[13px]', className)}
+      className={cn('my-1 rounded-xl border border-border bg-card p-3 text-sm', className)}
       {...props}
     >
       {children ?? (
@@ -158,7 +158,7 @@ export function QueueItem({
           {children ?? item.title}
         </div>
         {item.description ? (
-          <div className="line-clamp-2 text-[12px] text-muted-foreground">{item.description}</div>
+          <div className="line-clamp-2 text-xs text-muted-foreground">{item.description}</div>
         ) : null}
       </div>
       <Badge className="shrink-0" size="sm" variant={queueBadgeVariant(item.status)}>

@@ -87,7 +87,7 @@ export function InlineCitationContent({
 }: InlineCitationContentProps): React.ReactNode {
   return (
     <PopoverPopup align="start" className={cn('w-72 p-0', className)} side="top" {...props}>
-      <div className="space-y-2 p-3 text-[13px]">
+      <div className="space-y-2 p-3 text-sm">
         {children ?? <InlineCitationSource citation={citation} />}
       </div>
     </PopoverPopup>

@@ -41,7 +41,7 @@ export function ToolHeader({
   return (
     <CollapsibleTrigger
       className={cn(
-        'group/header flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-[13px] hover:bg-muted disabled:cursor-default disabled:hover:bg-transparent',
+        'group/header flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-muted disabled:cursor-default disabled:hover:bg-transparent',
         className,
       )}
       disabled={!hasBody}
@@ -106,9 +106,7 @@ export function ToolSection({
   return (
     <div className={className} {...props}>
       {label ? (
-        <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-          {label}
-        </div>
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
       ) : null}
       {children}
     </div>
@@ -117,7 +115,7 @@ export function ToolSection({
 
 export function ToolJson({ value }: { value: unknown }): React.ReactNode {
   return (
-    <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[12px]">
+    <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">
       {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
     </pre>
   );
