@@ -4,13 +4,15 @@ import { Input } from 'coss-ui/components/input';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
-import { useDesktopAppConfig } from '../app-config-context';
+import { useDesktopSettingsStore } from './store';
 
 const daemonUrlSchema = z.url();
 
 export function ConnectionTab(): React.ReactNode {
   const t = useTranslations('settings.connection');
-  const { daemonUrl, daemonUrlOverride, setDaemonUrl } = useDesktopAppConfig();
+  const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
+  const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);
+  const setDaemonUrl = useDesktopSettingsStore((state) => state.setDaemonUrl);
   const [value, setValue] = useState(daemonUrlOverride ?? '');
   const [error, setError] = useState<string | null>(null);
 

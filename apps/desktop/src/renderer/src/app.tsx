@@ -1,21 +1,14 @@
 import { SocketIoTransport } from '@linkcode/transport';
 import { Workbench, WorkbenchAppProviders, WorkbenchProviders } from '@linkcode/workbench';
 import { useSingleton } from 'foxact/use-singleton';
-import { DesktopAppConfigProvider } from './app-config';
-import { useDesktopAppConfig } from './app-config-context';
 import { SettingsView } from './settings/settings-view';
+import { useDesktopSettingsStore } from './settings/store';
 import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
 
 export function DesktopApp(): React.ReactNode {
-  return (
-    <DesktopAppConfigProvider>
-      <AppContent />
-    </DesktopAppConfigProvider>
-  );
-}
-
-function AppContent(): React.ReactNode {
-  const { daemonUrl, localeOverride, settingsOpen } = useDesktopAppConfig();
+  const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
+  const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
+  const settingsOpen = useDesktopSettingsStore((state) => state.settingsOpen);
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>

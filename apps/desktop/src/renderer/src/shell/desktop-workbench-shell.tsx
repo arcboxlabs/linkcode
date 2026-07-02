@@ -1,10 +1,10 @@
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { systemBridge } from '@renderer/ipc';
-import { useDesktopAppConfig } from '../app-config-context';
+import { useDesktopSettingsStore } from '../settings/store';
 import { DesktopShell } from './desktop-shell';
 
 export function DesktopWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
-  const { openSettings } = useDesktopAppConfig();
+  const openSettings = useDesktopSettingsStore((state) => state.openSettings);
   return (
     <DesktopShell
       systemBridge={systemBridge}
