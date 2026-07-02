@@ -1,7 +1,6 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { useTranslations } from 'use-intl';
 import { ContentBlockView } from './content-block-view';
-import { keyedItems, stableContentKey } from './content-keys';
 import { contentPreview } from './content-preview';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from './reasoning';
 
@@ -19,8 +18,9 @@ export function ThoughtBlock({
     <Reasoning isStreaming={isStreaming}>
       <ReasoningTrigger label={t('thought')} preview={preview} />
       <ReasoningContent>
-        {keyedItems(blocks, stableContentKey).map(({ key, item }) => (
-          <ContentBlockView key={key} block={item} />
+        {blocks.map((block, index) => (
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: index+type is a stable position key across token-by-token re-renders
+          <ContentBlockView key={`${index}:${block.type}`} block={block} />
         ))}
       </ReasoningContent>
     </Reasoning>

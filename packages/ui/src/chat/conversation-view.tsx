@@ -2,7 +2,6 @@ import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
 import { useTranslations } from 'use-intl';
 import { ContentBlockView } from './content-block-view';
-import { keyedItems, stableContentKey } from './content-keys';
 import {
   Conversation,
   ConversationContent,
@@ -77,8 +76,9 @@ export function ConversationView({
               return (
                 <Message key={item.id} from={item.role}>
                   <MessageContent className={item.role === 'assistant' ? 'space-y-1' : undefined}>
-                    {keyedItems(item.blocks, stableContentKey).map(({ key, item: block }) => (
-                      <ContentBlockView key={key} block={block} />
+                    {item.blocks.map((block, index) => (
+                      // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: appendBlock only pushes or extends the last block, so index+type is a stable position key across token-by-token re-renders
+                      <ContentBlockView key={`${index}:${block.type}`} block={block} />
                     ))}
                   </MessageContent>
                 </Message>

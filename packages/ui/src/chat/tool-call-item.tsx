@@ -2,7 +2,6 @@ import type { ToolCall } from '@linkcode/schema';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ContentBlockView } from './content-block-view';
-import { keyedItems, stableContentKey } from './content-keys';
 import { DiffBlock } from './diff-block';
 import { TerminalBlock } from './terminal-block';
 import { Tool, ToolContent, ToolHeader, ToolJson, ToolSection } from './tool';
@@ -41,7 +40,9 @@ export function ToolCallItem({
             </ToolSection>
           )}
 
-          {keyedItems(toolCall.content, stableContentKey).map(({ key, item: c }) => {
+          {toolCall.content.map((c, index) => {
+            // tool content is regenerated in stable order, never reordered: index+type is a stable position key
+            const key = `${index}:${c.type}`;
             if (c.type === 'content') {
               return <ContentBlockView key={key} block={c.content} />;
             }
