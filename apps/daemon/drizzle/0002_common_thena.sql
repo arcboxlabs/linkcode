@@ -1,0 +1,1 @@
+ALTER TABLE `workspaces` ADD `kind` text DEFAULT 'project' NOT NULL;

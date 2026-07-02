@@ -48,11 +48,20 @@ export function DesktopShell({
   answeredPermissions,
   respondingPermissions,
   errorMessage,
+  pinnedSessionIds,
   onSelectSession,
   onStopSession,
+  onToggleSessionPinned,
+  onReorderGroups,
+  onReorderThreads,
   onCreateSession,
   onImportSession,
   onRegisterWorkspace,
+  onRenameWorkspace,
+  onArchiveWorkspace,
+  onToggleGroupCollapsed,
+  onTogglePreviewExpanded,
+  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -477,6 +486,7 @@ export function DesktopShell({
                 workspaces={workspaces}
                 workspacesLoading={workspacesLoading}
                 activeId={active?.sessionId ?? null}
+                pinnedSessionIds={pinnedSessionIds}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
                   <HostFooter
@@ -489,10 +499,18 @@ export function DesktopShell({
                 onImportSession={onImportSession}
                 onPickDirectory={pickDirectory}
                 onRegisterWorkspace={onRegisterWorkspace}
+                onRenameWorkspace={onRenameWorkspace}
+                onArchiveWorkspace={onArchiveWorkspace}
+                onToggleGroupCollapsed={onToggleGroupCollapsed}
+                onTogglePreviewExpanded={onTogglePreviewExpanded}
+                onToggleImportHistory={onToggleImportHistory}
                 BranchStatusComponent={BranchStatusComponent}
                 HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
                 onStop={onStopSession}
+                onToggleSessionPinned={onToggleSessionPinned}
+                onReorderGroups={onReorderGroups}
+                onReorderThreads={onReorderThreads}
                 onCreate={onCreateSession}
               />
             </div>

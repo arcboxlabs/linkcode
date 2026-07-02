@@ -46,6 +46,17 @@ export function runtimeFilePath(): string {
   return join(homedir(), ...DAEMON_RUNTIME_FILE_SEGMENTS);
 }
 
+/**
+ * The daemon-owned chat root: a fixed directory the daemon ensures exists and registers as the
+ * `chat`-kind workspace (see `WorkspaceRegistry.ensureChatWorkspace`) backing the sidebar's
+ * "Chats" section. Coincides in value with desktop's picker default folder
+ * (`ensureDefaultPickerDirectory`) but is owned independently — this is a system-plane invariant
+ * the daemon enforces regardless of which client, if any, is connected.
+ */
+export function chatWorkspaceRoot(): string {
+  return join(homedir(), 'LinkCode');
+}
+
 export function loadConfig(): DaemonConfig {
   let file: ConfigFile = {};
   try {

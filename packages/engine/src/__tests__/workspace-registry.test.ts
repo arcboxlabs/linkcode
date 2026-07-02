@@ -1,7 +1,9 @@
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey } from '@linkcode/schema';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceRegistry } from '../workspace-registry';
 import { InMemoryWorkspaceStore } from '../workspace-store';
 
@@ -16,6 +18,20 @@ function makeRecord(value: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
   };
 }
 
+// register() now stats its cwd, so tests exercising it need a real directory — touch() has no such
+// requirement and keeps using arbitrary paths.
+const tempRoots: string[] = [];
+
+function makeTempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'linkcode-workspace-registry-test-'));
+  tempRoots.push(dir);
+  return dir;
+}
+
+afterAll(() => {
+  for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true });
+});
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(1000);
@@ -25,21 +41,49 @@ afterEach(() => {
 });
 
 describe('WorkspaceRegistry', () => {
-  it('register() is idempotent across a trailing separator', () => {
+  it('register() is idempotent across a trailing separator', async () => {
     const registry = new WorkspaceRegistry();
-    const first = registry.register({ cwd: '/repo' });
-    const second = registry.register({ cwd: '/repo/' });
+    const dir = makeTempDir();
+    const first = await registry.register({ cwd: dir });
+    const second = await registry.register({ cwd: `${dir}/` });
     expect(second.workspaceId).toBe(first.workspaceId);
     expect(registry.list()).toHaveLength(1);
   });
 
-  it('touch() resolves a relative cwd to the same record as an absolute register() cwd', () => {
+  it('register() rejects a cwd that does not exist', async () => {
     const registry = new WorkspaceRegistry();
-    const absolute = resolve(process.cwd(), 'repo');
-    const first = registry.register({ cwd: absolute });
-    const second = registry.touch('repo');
-    expect(second.workspaceId).toBe(first.workspaceId);
-    expect(registry.list()).toHaveLength(1);
+    const missing = join(makeTempDir(), 'does-not-exist');
+    await expect(registry.register({ cwd: missing })).rejects.toThrow(
+      'Workspace directory does not exist',
+    );
+    expect(registry.list()).toHaveLength(0);
+  });
+
+  it('register() rejects a cwd that is not a directory', async () => {
+    const registry = new WorkspaceRegistry();
+    const file = join(makeTempDir(), 'file.txt');
+    writeFileSync(file, '');
+    await expect(registry.register({ cwd: file })).rejects.toThrow(
+      'Workspace path is not a directory',
+    );
+    expect(registry.list()).toHaveLength(0);
+  });
+
+  it('touch() resolves a relative cwd to the same record as an absolute register() cwd', async () => {
+    const registry = new WorkspaceRegistry();
+    const root = makeTempDir();
+    mkdirSync(join(root, 'repo'));
+    const originalCwd = process.cwd();
+    process.chdir(root);
+    try {
+      const absolute = resolve(process.cwd(), 'repo');
+      const first = await registry.register({ cwd: absolute });
+      const second = registry.touch('repo');
+      expect(second.workspaceId).toBe(first.workspaceId);
+      expect(registry.list()).toHaveLength(1);
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 
   it('touch() auto-registers an unknown cwd and freshens lastUsedAt monotonically for a known one', () => {
@@ -97,18 +141,82 @@ describe('WorkspaceRegistry', () => {
   });
 
   it('start() restores the index from the injected store', async () => {
+    const dir = makeTempDir();
     const store = new InMemoryWorkspaceStore();
     const seed = new WorkspaceRegistry(store);
-    seed.touch('/repo');
+    seed.touch(dir);
 
     const restored = new WorkspaceRegistry(store);
     await restored.start();
     expect(restored.list()).toHaveLength(1);
-    expect(restored.list()[0].cwd).toBe('/repo');
+    expect(restored.list()[0].cwd).toBe(dir);
 
     // The restored index still dedupes against the recovered key.
-    const touchedAgain = restored.register({ cwd: '/repo' });
+    const touchedAgain = await restored.register({ cwd: dir });
     expect(touchedAgain.workspaceId).toBe(restored.list()[0].workspaceId);
+  });
+});
+
+describe('WorkspaceRegistry chat workspace', () => {
+  it('ensureChatWorkspace() creates the directory and registers a fresh chat workspace', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = join(makeTempDir(), 'LinkCode');
+
+    const record = await registry.ensureChatWorkspace(chatDir);
+
+    expect(existsSync(chatDir)).toBe(true);
+    expect(record.kind).toBe('chat');
+    expect(registry.list()).toEqual([record]);
+  });
+
+  it('ensureChatWorkspace() is idempotent for an already-chat directory', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = makeTempDir();
+
+    const first = await registry.ensureChatWorkspace(chatDir);
+    const second = await registry.ensureChatWorkspace(chatDir);
+
+    expect(second).toEqual(first);
+    expect(registry.list()).toHaveLength(1);
+  });
+
+  it('ensureChatWorkspace() upgrades an existing project record to chat in place', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = makeTempDir();
+    const registered = await registry.register({ cwd: chatDir });
+    expect(registered.kind).toBe('project');
+
+    const upgraded = await registry.ensureChatWorkspace(chatDir);
+
+    expect(upgraded.workspaceId).toBe(registered.workspaceId);
+    expect(upgraded.kind).toBe('chat');
+    expect(registry.list()).toHaveLength(1);
+  });
+
+  it('touch() auto-registers the chat root as kind chat, and any other cwd as project', async () => {
+    const registry = new WorkspaceRegistry();
+    const chatDir = makeTempDir();
+    await registry.ensureChatWorkspace(chatDir);
+
+    expect(registry.touch(chatDir).kind).toBe('chat');
+    expect(registry.touch('/some/other/repo').kind).toBe('project');
+  });
+
+  it('archive() rejects the chat workspace', async () => {
+    const registry = new WorkspaceRegistry();
+    const chat = await registry.ensureChatWorkspace(makeTempDir());
+
+    expect(() => registry.archive(chat.workspaceId)).toThrow('Cannot archive the chat workspace');
+    expect(registry.list()).toEqual([chat]);
+  });
+
+  it('update() rejects renaming the chat workspace', async () => {
+    const registry = new WorkspaceRegistry();
+    const chat = await registry.ensureChatWorkspace(makeTempDir());
+
+    expect(() => registry.update(chat.workspaceId, 'Renamed')).toThrow(
+      'Cannot rename the chat workspace',
+    );
   });
 });
 

@@ -1,4 +1,4 @@
-import type { SessionInfo, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type { SessionInfo, WorkspaceId, WorkspaceKind, WorkspaceRecord } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { groupThreadsByWorkspace, UNREGISTERED_THREAD_GROUP_KEY } from '../group-threads';
 
@@ -12,6 +12,7 @@ describe('groupThreadsByWorkspace', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.workspace?.workspaceId).toBe('ws-1');
     expect(groups[0]?.sessions).toEqual([session]);
+    expect(groups[0]?.collapseKey).toBe('/repo/app');
   });
 
   it('sorts sessions within a group by createdAt descending', () => {
@@ -48,17 +49,34 @@ describe('groupThreadsByWorkspace', () => {
     expect(groups.map((g) => g.key)).toEqual(['ws-fresh', UNREGISTERED_THREAD_GROUP_KEY]);
     const fallback = groups.at(-1);
     expect(fallback?.workspace).toBeNull();
+    expect(fallback?.collapseKey).toBe(UNREGISTERED_THREAD_GROUP_KEY);
     expect(fallback?.sessions.map((s) => s.sessionId)).toEqual(['s-stray-1', 's-stray-2']);
   });
 
-  it('omits a registered workspace with no matching sessions', () => {
+  it('includes a registered workspace with no matching sessions, as an empty group', () => {
     const empty = createWorkspace('ws-empty', '/repo/empty', 1);
     const used = createWorkspace('ws-used', '/repo/used', 2);
     const session = createSession('s-1', '/repo/used', 100);
 
     const groups = groupThreadsByWorkspace([session], [empty, used]);
 
-    expect(groups.map((g) => g.key)).toEqual(['ws-used']);
+    expect(groups.map((g) => g.key)).toEqual(['ws-used', 'ws-empty']);
+    expect(groups.find((g) => g.key === 'ws-empty')?.sessions).toEqual([]);
+  });
+
+  it('marks the chat-kind workspace group isChat, and every other group (incl. unregistered) false', () => {
+    const project = createWorkspace('ws-project', '/repo/app', 1);
+    const chat = createWorkspace('ws-chat', '/home/LinkCode', 2, 'chat');
+    const strayCwd = '/tmp/scratch';
+
+    const groups = groupThreadsByWorkspace(
+      [createSession('s-stray', strayCwd, 10)],
+      [project, chat],
+    );
+
+    expect(groups.find((g) => g.key === 'ws-chat')?.isChat).toBe(true);
+    expect(groups.find((g) => g.key === 'ws-project')?.isChat).toBe(false);
+    expect(groups.find((g) => g.key === UNREGISTERED_THREAD_GROUP_KEY)?.isChat).toBe(false);
   });
 });
 
@@ -72,10 +90,16 @@ function createSession(sessionId: string, cwd: string, createdAt: number): Sessi
   };
 }
 
-function createWorkspace(workspaceId: string, cwd: string, lastUsedAt: number): WorkspaceRecord {
+function createWorkspace(
+  workspaceId: string,
+  cwd: string,
+  lastUsedAt: number,
+  kind?: WorkspaceKind,
+): WorkspaceRecord {
   return {
     workspaceId: workspaceId as WorkspaceId,
     cwd,
+    kind,
     createdAt: 0,
     lastUsedAt,
   };

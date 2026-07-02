@@ -1,4 +1,4 @@
-import type { AgentKind, SessionId, WorkspaceRecord } from '@linkcode/schema';
+import type { AgentKind, SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from 'coss-ui/components/select';
 import { Separator } from 'coss-ui/components/separator';
-import { Tabs, TabsList, TabsTab } from 'coss-ui/components/tabs';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   BotIcon,
@@ -26,35 +25,50 @@ import {
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import { AGENT_LABELS, AgentIcon } from './agent-icon';
 import { repositoryLabel } from './repository-label';
 import { ShellSidebar, shellSidebarItemClassName } from './shell-sidebar';
-import type { BranchStatusComponentType, ThreadGroupViewModel } from './threads-view';
+import type { BranchStatusComponentType } from './sidebar';
+import { AgentKindList } from './sidebar';
+import type { ThreadGroupViewModel } from './threads-view';
 import { ThreadsView } from './threads-view';
-import { WorkspaceView } from './workspace-view';
 
 export { repositoryLabel } from './repository-label';
 export type { ThreadGroupViewModel } from './threads-view';
-
-type SidebarMode = 'threads' | 'workspace';
 
 export interface SessionSidebarProps {
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
   activeId: SessionId | null;
+  /** Threads pinned to the top of their group, in pin order. */
+  pinnedSessionIds: readonly SessionId[];
   topInsetClassName?: string;
   footer?: React.ReactNode;
   className?: string;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
+  onToggleSessionPinned: (id: SessionId) => void;
+  /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
+  onReorderGroups: (orderedCollapseKeys: string[]) => void;
+  /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
+  onReorderThreads: (
+    collapseKey: string,
+    activeId: SessionId,
+    overId: SessionId,
+    placement: 'before' | 'after',
+  ) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   /** Called once a history entry finishes importing as a new thread. */
   onImportSession?: (sessionId: SessionId) => void;
   /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
   onPickDirectory?: () => Promise<string | null>;
-  /** Registers a picked directory as a workspace; required alongside `onPickDirectory`. */
-  onRegisterWorkspace?: (cwd: string) => Promise<WorkspaceRecord>;
+  /** Registers a directory as a workspace — the top "New Task" menu and the Add workspace row. */
+  onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
+  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
+  onToggleGroupCollapsed: (collapseKey: string) => void;
+  onTogglePreviewExpanded: (groupKey: string) => void;
+  onToggleImportHistory: (groupKey: string) => void;
   BranchStatusComponent?: BranchStatusComponentType;
   HistoryComponent?: React.ComponentType<{
     cwd: string;
@@ -69,21 +83,27 @@ export function SessionSidebar({
   workspaces,
   workspacesLoading,
   activeId,
+  pinnedSessionIds,
   topInsetClassName,
   footer,
   className,
   onSelect,
   onStop,
+  onToggleSessionPinned,
+  onReorderGroups,
+  onReorderThreads,
   onCreate,
   onImportSession,
   onPickDirectory,
   onRegisterWorkspace,
+  onRenameWorkspace,
+  onArchiveWorkspace,
+  onToggleGroupCollapsed,
+  onTogglePreviewExpanded,
+  onToggleImportHistory,
   BranchStatusComponent,
   HistoryComponent,
 }: SessionSidebarProps): React.ReactNode {
-  const [mode, setMode] = useState<SidebarMode>('threads');
-  const t = useTranslations('workbench.sidebar');
-
   return (
     <ShellSidebar
       className={className}
@@ -92,7 +112,7 @@ export function SessionSidebar({
       }
       footer={footer}
     >
-      <div className="px-[var(--lc-sidebar-edge,0.5rem)]">
+      <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1">
         <NewTaskMenu
           workspaces={workspaces}
           onCreate={onCreate}
@@ -103,42 +123,30 @@ export function SessionSidebar({
         <SidebarMenuButton disabled icon={<SparklesIcon />} label="Automation" />
       </div>
 
-      <div className="px-[var(--lc-sidebar-edge,0.5rem)] pt-1">
-        <Tabs value={mode} onValueChange={(value) => setMode(value as SidebarMode)}>
-          <TabsList variant="default" className="w-full">
-            <TabsTab value="threads" className="flex-1">
-              {t('threadsTab')}
-            </TabsTab>
-            <TabsTab value="workspace" className="flex-1">
-              {t('workspaceTab')}
-            </TabsTab>
-          </TabsList>
-        </Tabs>
-      </div>
-
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-[var(--lc-sidebar-edge,0.5rem)] pt-[var(--lc-sidebar-edge,0.5rem)] pb-[var(--lc-sidebar-edge,0.5rem)]">
-          {mode === 'threads' ? (
-            <ThreadsView
-              groups={threadGroups}
-              activeId={activeId}
-              onSelect={onSelect}
-              onStop={onStop}
-              BranchStatusComponent={BranchStatusComponent}
-            />
-          ) : (
-            <WorkspaceView
-              workspaces={workspaces}
-              workspacesLoading={workspacesLoading}
-              threadGroups={threadGroups}
-              activeId={activeId}
-              onSelect={onSelect}
-              onStop={onStop}
-              onImportSession={onImportSession}
-              BranchStatusComponent={BranchStatusComponent}
-              HistoryComponent={HistoryComponent}
-            />
-          )}
+          <ThreadsView
+            groups={threadGroups}
+            workspacesLoading={workspacesLoading}
+            activeId={activeId}
+            pinnedSessionIds={pinnedSessionIds}
+            onSelect={onSelect}
+            onStop={onStop}
+            onToggleSessionPinned={onToggleSessionPinned}
+            onReorderGroups={onReorderGroups}
+            onReorderThreads={onReorderThreads}
+            onCreate={onCreate}
+            onImportSession={onImportSession}
+            onPickDirectory={onPickDirectory}
+            onRegisterWorkspace={onRegisterWorkspace}
+            onRenameWorkspace={onRenameWorkspace}
+            onArchiveWorkspace={onArchiveWorkspace}
+            onToggleGroupCollapsed={onToggleGroupCollapsed}
+            onTogglePreviewExpanded={onTogglePreviewExpanded}
+            onToggleImportHistory={onToggleImportHistory}
+            BranchStatusComponent={BranchStatusComponent}
+            HistoryComponent={HistoryComponent}
+          />
         </div>
       </div>
     </ShellSidebar>
@@ -154,14 +162,14 @@ function NewTaskMenu({
   workspaces: WorkspaceRecord[];
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   onPickDirectory?: () => Promise<string | null>;
-  onRegisterWorkspace?: (cwd: string) => Promise<WorkspaceRecord>;
+  onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<AgentKind | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const canChooseDirectory = onPickDirectory != null && onRegisterWorkspace != null;
+  const canChooseDirectory = onPickDirectory != null;
 
   function reset(): void {
     setKind(null);
@@ -182,7 +190,7 @@ function NewTaskMenu({
   }
 
   async function handleChooseDirectory(): Promise<void> {
-    if (!onPickDirectory || !onRegisterWorkspace) return;
+    if (!onPickDirectory) return;
     setPending(true);
     setError(null);
     try {
@@ -206,22 +214,7 @@ function NewTaskMenu({
         {kind === null ? (
           <div className="p-1">
             <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">New task</div>
-            {(Object.keys(AGENT_LABELS) as AgentKind[]).map((agentKind) => (
-              <button
-                key={agentKind}
-                type="button"
-                className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => setKind(agentKind)}
-              >
-                <AgentIcon kind={agentKind} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{AGENT_LABELS[agentKind]}</span>
-                  <span className="block truncate text-muted-foreground text-xs">
-                    Choose a working folder
-                  </span>
-                </span>
-              </button>
-            ))}
+            <AgentKindList onPick={setKind} hint="Choose a working folder" />
           </div>
         ) : (
           <div className="p-1">

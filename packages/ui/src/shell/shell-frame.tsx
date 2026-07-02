@@ -3,13 +3,15 @@ import type {
   EffortLevel,
   SessionId,
   SessionInfo,
+  WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
-import type { BranchStatusComponentType, ThreadGroupViewModel } from './threads-view';
+import type { BranchStatusComponentType } from './sidebar';
+import type { ThreadGroupViewModel } from './threads-view';
 
 export interface ShellFrameProps {
   threadGroups: ThreadGroupViewModel[];
@@ -22,10 +24,29 @@ export interface ShellFrameProps {
   respondingPermissions: Set<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
+  /** Threads pinned to the top of their sidebar group, in pin order. */
+  pinnedSessionIds: readonly SessionId[];
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
+  onToggleSessionPinned: (id: SessionId) => void;
+  /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
+  onReorderGroups: (orderedCollapseKeys: string[]) => void;
+  /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
+  onReorderThreads: (
+    collapseKey: string,
+    activeId: SessionId,
+    overId: SessionId,
+    placement: 'before' | 'after',
+  ) => void;
   onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
   onImportSession?: (sessionId: SessionId) => void;
+  /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
+  onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
+  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
+  onToggleGroupCollapsed: (collapseKey: string) => void;
+  onTogglePreviewExpanded: (groupKey: string) => void;
+  onToggleImportHistory: (groupKey: string) => void;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
@@ -50,10 +71,20 @@ export function ShellFrame({
   respondingPermissions,
   header,
   errorMessage,
+  pinnedSessionIds,
   onSelectSession,
   onStopSession,
+  onToggleSessionPinned,
+  onReorderGroups,
+  onReorderThreads,
   onCreateSession,
   onImportSession,
+  onRegisterWorkspace,
+  onRenameWorkspace,
+  onArchiveWorkspace,
+  onToggleGroupCollapsed,
+  onTogglePreviewExpanded,
+  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -75,11 +106,21 @@ export function ShellFrame({
           workspaces={workspaces}
           workspacesLoading={workspacesLoading}
           activeId={active?.sessionId ?? null}
+          pinnedSessionIds={pinnedSessionIds}
           footer={<DefaultHostFooter />}
           onSelect={onSelectSession}
           onStop={onStopSession}
+          onToggleSessionPinned={onToggleSessionPinned}
+          onReorderGroups={onReorderGroups}
+          onReorderThreads={onReorderThreads}
           onCreate={onCreateSession}
           onImportSession={onImportSession}
+          onRegisterWorkspace={onRegisterWorkspace}
+          onRenameWorkspace={onRenameWorkspace}
+          onArchiveWorkspace={onArchiveWorkspace}
+          onToggleGroupCollapsed={onToggleGroupCollapsed}
+          onTogglePreviewExpanded={onTogglePreviewExpanded}
+          onToggleImportHistory={onToggleImportHistory}
           BranchStatusComponent={BranchStatusComponent}
           HistoryComponent={HistoryComponent}
         />

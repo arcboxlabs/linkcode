@@ -17,7 +17,7 @@ import {
 } from './history';
 import { ProvidersConfigSchema } from './provider-config';
 import { SessionInfoSchema, SessionRecordSchema } from './session';
-import { WorkspaceRecordSchema } from './workspace';
+import { WorkspaceKindSchema, WorkspaceRecordSchema } from './workspace';
 
 /**
  * Wire protocol: the envelope actually transmitted by the transport layer (PLAN §6).
@@ -152,6 +152,8 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
     clientReqId: z.string().min(1),
     cwd: z.string().min(1),
     name: z.string().min(1).optional(),
+    /** Omitted by every current call site (the daemon defaults to `'project'`); see workspace.ts. */
+    workspaceKind: WorkspaceKindSchema.optional(),
   }),
   z.object({
     kind: z.literal('workspace.registered'),
