@@ -44,9 +44,10 @@ export const StartOptionsSchema = z.object({
 });
 export type StartOptions = z.infer<typeof StartOptionsSchema>;
 
-/** Reasoning-effort levels. `max` is deliberately absent: the live-switch channel adapters use
- * (Claude's flag-settings layer) only accepts these four, so the contract stays switchable. */
-export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh']);
+/** Reasoning-effort levels. low–xhigh switch live via the adapters' settings channel; `max` cannot
+ * (Claude only accepts it at process startup), so adapters honor it by restarting the underlying
+ * process with the new effort and resuming the conversation in place under the same session. */
+export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
 /** Input sent up to the agent, normalized into discrete actions. */
