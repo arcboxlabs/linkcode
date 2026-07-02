@@ -78,8 +78,12 @@ export function createTableRender<
 ): TableRender<TData, TSort, TSizing> {
   const { sort, columnSizing } = features ?? {};
 
+  const sizingHeadersById = columnSizing
+    ? new Map(columnSizing.headers.map((h) => [h.id, h]))
+    : undefined;
+
   const columns = table.columns.map((column) => {
-    const sizingHeader = columnSizing?.headers.find((h) => h.id === column.id);
+    const sizingHeader = sizingHeadersById?.get(column.id);
 
     return {
       key: column.id,
