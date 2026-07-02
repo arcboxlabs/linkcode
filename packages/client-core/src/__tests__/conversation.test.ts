@@ -262,6 +262,46 @@ describe('mergeSeededEvents', () => {
     const seed = { events: [userText('only history')], uptoSeq: 0 };
     expect(mergeSeededEvents(seed, [])).toEqual([userText('only history')]);
   });
+
+  // CODE-35: a transcript snapshot can never contain ephemeral events (permission asks, status,
+  // stop, errors) — a mid-turn seed read whose uptoSeq passes them must not erase them.
+  it('keeps ephemeral live events that fall inside the snapshot cut', () => {
+    const announce: AgentEvent = {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 't1',
+        title: 'Bash',
+        kind: 'execute',
+        status: 'in_progress',
+        content: [],
+      },
+    };
+    const ask: AgentEvent = {
+      type: 'permission-request',
+      requestId: 'req-1',
+      toolCall: { toolCallId: 't1', title: 'Bash' },
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+    };
+    // The snapshot (read mid-turn) already covers the prompt and the announce, never the ask.
+    const seed = { events: [userText('run echo'), announce], uptoSeq: 4 };
+    const events = mergeSeededEvents(seed, [
+      { event: userText('run echo'), seq: 1 },
+      { event: { type: 'status', status: 'running' }, seq: 2 },
+      { event: announce, seq: 3 },
+      { event: ask, seq: 4 },
+    ]);
+    expect(events).toEqual([
+      userText('run echo'),
+      announce,
+      { type: 'status', status: 'running' },
+      ask,
+    ]);
+
+    const c = buildConversation(events);
+    expect(c.pendingPermissionIds).toEqual(['req-1']);
+    expect(c.items.some((i) => i.kind === 'approval')).toBe(true);
+    expect(c.status).toBe('running');
+  });
 });
 
 describe('contentPreview', () => {

@@ -282,6 +282,19 @@ export interface ConversationSeed {
  * events received at or before the moment the snapshot resolved (seq ≤ uptoSeq) are contained in
  * it and dropped; only the tail received after the snapshot is appended.
  */
+/**
+ * Event types a provider-transcript read can reproduce — the only ones the `uptoSeq` cut may drop
+ * as "already in the snapshot". Everything else (permission asks, status, stop, errors, usage …)
+ * is ephemeral: it never appears in `history.read`, so cutting it would erase it outright — a
+ * pending permission-request would vanish from the timeline and strand the turn un-answerable.
+ */
+const SEEDABLE_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'user-message',
+  'agent-message-chunk',
+  'agent-thought-chunk',
+  'tool-call',
+]);
+
 export function mergeSeededEvents(
   seed: ConversationSeed | undefined,
   live: readonly SequencedAgentEvent[],
@@ -289,7 +302,7 @@ export function mergeSeededEvents(
   if (!seed) return live.map(({ event }) => event);
   const merged = [...seed.events];
   for (const { event, seq } of live) {
-    if (seq > seed.uptoSeq) merged.push(event);
+    if (seq > seed.uptoSeq || !SEEDABLE_EVENT_TYPES.has(event.type)) merged.push(event);
   }
   return merged;
 }
