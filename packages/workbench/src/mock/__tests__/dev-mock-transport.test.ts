@@ -104,17 +104,98 @@ describe('dev mock transport', () => {
       (await client.listWorkspaces()).some((item) => item.workspaceId === workspace.workspaceId),
     ).toBe(false);
 
+    // Starting a session registers its directory as a workspace, like the engine's touch().
+    await client.startSession({ kind: 'codex', cwd: '/mock/fresh' });
+    expect((await client.listWorkspaces()).map((item) => item.cwd)).toContain('/mock/fresh');
+
+    // Git fixtures vary by cwd: dirty repo with a troubled PR, clean repo without one, non-repo.
     await expect(client.getGitStatus('/mock/linkcode')).resolves.toMatchObject({
       isRepo: true,
       branch: 'mock-host',
+      dirtyFileCount: 3,
     });
     await expect(client.getGitPullRequestStatus('/mock/linkcode')).resolves.toMatchObject({
       status: 'ok',
+      pullRequest: { checks: 'failing', reviewDecision: 'changes_requested' },
     });
     await expect(client.getGitDiff('/mock/linkcode', 'uncommitted')).resolves.toMatchObject({
       truncated: false,
       stat: { files: 1, additions: 1, deletions: 1 },
     });
+    await expect(client.getGitStatus('/mock/platform')).resolves.toMatchObject({
+      isRepo: true,
+      dirtyFileCount: 0,
+    });
+    await expect(client.getGitPullRequestStatus('/mock/platform')).resolves.toEqual({
+      status: 'ok',
+      pullRequest: null,
+    });
+    await expect(client.getGitStatus('/mock/scratch')).resolves.toEqual({ isRepo: false });
+    await expect(client.getGitPullRequestStatus('/mock/scratch')).resolves.toEqual({
+      status: 'unavailable',
+      reason: 'not_git_repo',
+    });
+
+    client.dispose();
+  }, 15000);
+
+  it('lists canned provider history and imports it as a cold session', async () => {
+    const client = await connectedClient();
+
+    const linkcode = await client.listHistory('claude-code', { cwd: '/mock/linkcode' });
+    expect(linkcode.sessions.length).toBeGreaterThan(0);
+    expect(
+      linkcode.sessions.every(
+        (entry) => entry.kind === 'claude-code' && entry.cwd === '/mock/linkcode',
+      ),
+    ).toBe(true);
+
+    const platform = await client.listHistory('claude-code', { cwd: '/mock/platform' });
+    expect(platform.sessions.every((entry) => entry.cwd === '/mock/platform')).toBe(true);
+
+    const entry = linkcode.sessions[0];
+    const record = await client.importSession('claude-code', entry.historyId);
+    expect(record).toMatchObject({
+      kind: 'claude-code',
+      cwd: '/mock/linkcode',
+      origin: { type: 'imported', historyId: entry.historyId },
+      runs: [],
+    });
+
+    // Imported sessions are cold: listed as stopped, resumable, then promptable.
+    const imported = (await client.listSessions()).find(
+      (session) => session.sessionId === record.sessionId,
+    );
+    expect(imported).toMatchObject({ status: 'stopped', title: entry.title });
+    await expect(client.resumeSession(record.sessionId)).resolves.toBe(record.sessionId);
+
+    await expect(client.importSession('codex', entry.historyId)).rejects.toThrow(
+      'Unknown history session',
+    );
+
+    client.dispose();
+  });
+
+  it('opens an echo terminal', async () => {
+    const client = await connectedClient();
+
+    const terminalId = await client.openTerminal({ cols: 80, rows: 24, cwd: '/mock/linkcode' });
+    let output = '';
+    client.subscribeTerminalOutput(terminalId, (data) => {
+      output += data;
+    });
+    let exitCode: number | null | undefined;
+    client.subscribeTerminalExit(terminalId, (code) => {
+      exitCode = code;
+    });
+
+    client.terminalInput(terminalId, 'ls\r');
+    await eventually(() => output.includes('ls'));
+    expect(output).toContain('mock echo terminal');
+
+    client.closeTerminal(terminalId);
+    await eventually(() => exitCode !== undefined);
+    expect(exitCode).toBe(0);
 
     client.dispose();
   });

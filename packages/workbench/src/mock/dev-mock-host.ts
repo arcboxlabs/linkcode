@@ -1,10 +1,10 @@
 import type {
   AgentEvent,
+  AgentHistoryId,
+  AgentHistorySession,
   AgentInput,
+  AgentKind,
   ContentBlock,
-  GitDiff,
-  GitPullRequestStatus,
-  GitStatus,
   MessageId,
   PermissionOutcome,
   ProvidersConfig,
@@ -21,6 +21,8 @@ import { normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
+import { gitFixtureFor } from './data/git';
+import { SEED_HISTORY } from './data/history';
 import {
   CHUNK_LATENCY_MS,
   CONTROL_LATENCY_MS,
@@ -71,37 +73,17 @@ interface PendingPermission {
   diff: Extract<ToolCall['content'][number], { type: 'diff' }>;
 }
 
-const MOCK_GIT_DIFF: GitDiff = {
-  patch:
-    "diff --git a/mock.ts b/mock.ts\nindex 0000000..1111111 100644\n--- a/mock.ts\n+++ b/mock.ts\n@@ -1 +1 @@\n-const mode = 'daemon';\n+const mode = 'mock';\n",
-  truncated: false,
-  stat: { files: 1, additions: 1, deletions: 1 },
-};
-
-const MOCK_PR_STATUS: GitPullRequestStatus = {
-  status: 'ok',
-  pullRequest: {
-    provider: 'github',
-    number: 42,
-    title: 'Mock host data-plane coverage',
-    url: 'https://github.com/linkcode/mock/pull/42',
-    state: 'open',
-    isDraft: false,
-    baseBranch: 'main',
-    headBranch: 'mock-host',
-    checks: 'passing',
-    reviewDecision: 'approved',
-  },
-};
-
 export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private readonly permissions = new Map<string, PendingPermission>();
+  private history: AgentHistorySession[] = [];
+  private readonly terminals = new Set<string>();
   private sessionSeq = 0;
   private messageSeq = 0;
   private workspaceSeq = 0;
+  private terminalSeq = 0;
 
   constructor(private readonly transport: Transport) {}
 
@@ -116,6 +98,11 @@ export class DevMockHost {
       this.addSession({ ...seed, createdAt });
       this.touchWorkspace(seed.cwd, createdAt);
     }
+    this.history = SEED_HISTORY.map(({ ageMs, ...entry }) => ({
+      ...entry,
+      createdAt: now - ageMs,
+      updatedAt: now - ageMs,
+    }));
   }
 
   private async handle(msg: WireMessage): Promise<void> {
@@ -185,7 +172,7 @@ export class DevMockHost {
         this.send({
           kind: 'git.status.get.result',
           replyTo: p.clientReqId,
-          status: mockGitStatus(p.cwd),
+          status: gitFixtureFor(p.cwd).status,
         });
         break;
       case 'git.pr_status.get':
@@ -193,24 +180,52 @@ export class DevMockHost {
         this.send({
           kind: 'git.pr_status.get.result',
           replyTo: p.clientReqId,
-          prStatus: MOCK_PR_STATUS,
+          prStatus: gitFixtureFor(p.cwd).prStatus,
         });
         break;
       case 'git.diff.get':
         await wait(CONTROL_LATENCY_MS);
-        this.send({ kind: 'git.diff.get.result', replyTo: p.clientReqId, diff: MOCK_GIT_DIFF });
+        this.send({
+          kind: 'git.diff.get.result',
+          replyTo: p.clientReqId,
+          diff: gitFixtureFor(p.cwd).diff,
+        });
         break;
       case 'session.import':
-        this.sendFailure(p.clientReqId, 'Dev mock host does not support importing sessions yet.');
+        await wait(CONTROL_LATENCY_MS);
+        this.importSession(p.clientReqId, p.agentKind, p.historyId);
         break;
       case 'history.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'history.listed',
+          replyTo: p.clientReqId,
+          result: { sessions: this.listHistory(p.agentKind, p.opts?.cwd) },
+        });
+        break;
       case 'history.read':
       case 'history.resume':
         // Fail loudly for unmocked surfaces so correlated SDK calls reject instead of hanging forever.
         this.sendFailure(p.clientReqId, 'Dev mock host does not support history yet.');
         break;
       case 'terminal.open':
-        this.sendFailure(p.clientReqId, 'Dev mock host does not support terminals yet.');
+        await wait(CONTROL_LATENCY_MS);
+        this.openTerminal(p.clientReqId, p.opts.cwd);
+        break;
+      case 'terminal.input':
+        // Echo PTY: no shell behind it, keystrokes come straight back; Enter draws a fresh prompt.
+        if (this.terminals.has(p.terminalId)) {
+          this.send({
+            kind: 'terminal.output',
+            terminalId: p.terminalId,
+            data: p.data.replaceAll('\r', '\r\n$ '),
+          });
+        }
+        break;
+      case 'terminal.close':
+        if (this.terminals.delete(p.terminalId)) {
+          this.send({ kind: 'terminal.exit', terminalId: p.terminalId, exitCode: 0 });
+        }
         break;
       case 'ping':
         this.send({ kind: 'pong' });
@@ -223,12 +238,14 @@ export class DevMockHost {
   private addSession(
     init: Omit<MockSession, 'sessionId' | 'origin' | 'epoch' | 'status'> & {
       status: SessionStatus;
+      origin?: SessionInfo['origin'];
     },
   ): MockSession {
+    const { origin, ...rest } = init;
     const session: MockSession = {
-      ...init,
+      ...rest,
       sessionId: this.nextSessionId(),
-      origin: { type: 'created' },
+      origin: origin ?? { type: 'created' },
       epoch: 0,
     };
     this.sessions.set(session.sessionId, session);
@@ -277,12 +294,71 @@ export class DevMockHost {
     cwd: string,
     model: string | undefined,
   ): void {
-    const session = this.addSession({ kind, cwd, status: 'idle', createdAt: Date.now(), model });
+    const now = Date.now();
+    const session = this.addSession({ kind, cwd, status: 'idle', createdAt: now, model });
+    // Parity with the engine: starting a session registers/freshens its directory's workspace.
+    this.touchWorkspace(cwd, now);
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
+  }
+
+  private listHistory(agentKind: AgentKind, cwd: string | undefined): AgentHistorySession[] {
+    const cwdKey = cwd === undefined ? null : normalizeCwdKey(cwd);
+    return this.history.filter(
+      (entry) =>
+        entry.kind === agentKind &&
+        (cwdKey === null || (entry.cwd !== undefined && normalizeCwdKey(entry.cwd) === cwdKey)),
+    );
+  }
+
+  /** Mint a cold (stopped, resumable) session from a canned history entry, like the engine's import. */
+  private importSession(replyTo: string, agentKind: AgentKind, historyId: AgentHistoryId): void {
+    const entry = this.history.find(
+      (item) => item.kind === agentKind && item.historyId === historyId,
+    );
+    if (!entry) {
+      this.sendFailure(replyTo, `Unknown history session: ${historyId}`);
+      return;
+    }
+    const now = Date.now();
+    const origin = { type: 'imported', historyId, importedAt: now } as const;
+    const session = this.addSession({
+      kind: entry.kind,
+      cwd: entry.cwd ?? '/mock/imported',
+      title: entry.title,
+      status: 'stopped',
+      createdAt: entry.createdAt ?? now,
+      origin,
+    });
+    this.send({
+      kind: 'session.imported',
+      replyTo,
+      record: {
+        sessionId: session.sessionId,
+        kind: session.kind,
+        cwd: session.cwd,
+        title: session.title,
+        origin,
+        createdAt: session.createdAt,
+        updatedAt: now,
+        runs: [],
+      },
+    });
+  }
+
+  private openTerminal(replyTo: string, cwd: string | undefined): void {
+    this.terminalSeq += 1;
+    const terminalId = `mock-term-${Date.now().toString(36)}-${this.terminalSeq.toString(36)}`;
+    this.terminals.add(terminalId);
+    this.send({ kind: 'terminal.opened', replyTo, terminalId });
+    this.send({
+      kind: 'terminal.output',
+      terminalId,
+      data: `mock echo terminal — no shell attached (cwd: ${cwd ?? '/'})\r\n$ `,
+    });
   }
 
   private resumeSession(replyTo: string, sessionId: SessionId): void {
@@ -651,26 +727,6 @@ function isRunningTurn(session: MockSession, epoch: number): boolean {
 async function waitForShowcaseStep(session: MockSession, epoch: number): Promise<boolean> {
   await wait(SHOWCASE_SCRIPT_STEP_LATENCY_MS);
   return isRunningTurn(session, epoch);
-}
-
-function mockGitStatus(cwd: string): GitStatus {
-  return {
-    isRepo: true,
-    repoRoot: cwd,
-    branch: 'mock-host',
-    dirtyFileCount: 1,
-    ahead: 1,
-    behind: 0,
-    remote: {
-      url: 'https://github.com/linkcode/mock.git',
-      identity: {
-        provider: 'github',
-        host: 'github.com',
-        owner: 'linkcode',
-        repo: 'mock',
-      },
-    },
-  };
 }
 
 const PATH_SEPARATORS_RE = /[/\\]+/;

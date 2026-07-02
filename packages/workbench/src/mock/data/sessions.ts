@@ -45,4 +45,11 @@ export const SEED_SESSIONS: SeedSession[] = [
     status: 'stopped',
     ageMs: 26 * 3_600_000,
   },
+  {
+    kind: 'opencode',
+    cwd: '/mock/scratch',
+    title: 'Prototype without git',
+    status: 'idle',
+    ageMs: 72 * 3_600_000,
+  },
 ];
