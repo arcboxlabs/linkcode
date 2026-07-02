@@ -27,13 +27,17 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
-/** An event paired with the time this client first received it (client clock, ms). */
-export interface TimedAgentEvent {
+/**
+ * An event paired with its connection-scoped receive sequence number: the Nth `agent.event` this
+ * client received for its session (1-based, monotone for the lifetime of the connection). A
+ * transcript snapshot taken when the counter read N supersedes exactly the events with seq ≤ N.
+ */
+export interface SequencedAgentEvent {
   event: AgentEvent;
-  at: number;
+  seq: number;
 }
 
-type EventCb = (event: AgentEvent, at: number) => void;
+type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
@@ -85,7 +89,11 @@ function nextClientReqId(): string {
 export class LinkCodeClient {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
   /** Per-session event buffer so a re-subscribe (switching the active session back) can replay the timeline. */
-  private readonly events = new Map<SessionId, TimedAgentEvent[]>();
+  private readonly events = new Map<SessionId, SequencedAgentEvent[]>();
+  /** Per-session receive counters. Deliberately NOT cleared with the buffer on `stopSession`: a
+   * stop→resume in the same connection must keep seq monotone, or a seed's `uptoSeq` sampled
+   * before the stop would swallow the resumed session's fresh events. */
+  private readonly eventSeqs = new Map<SessionId, number>();
   private readonly pendingStarts = new Map<string, Pending<SessionId>>();
   private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
   private readonly pendingImports = new Map<string, Pending<SessionRecord>>();
@@ -192,12 +200,14 @@ export class LinkCodeClient {
         break;
       }
       case 'agent.event': {
-        const timed: TimedAgentEvent = { event: p.event, at: Date.now() };
+        const seq = (this.eventSeqs.get(p.sessionId) ?? 0) + 1;
+        this.eventSeqs.set(p.sessionId, seq);
+        const sequenced: SequencedAgentEvent = { event: p.event, seq };
         const buf = this.events.get(p.sessionId);
-        if (buf) buf.push(timed);
-        else this.events.set(p.sessionId, [timed]);
+        if (buf) buf.push(sequenced);
+        else this.events.set(p.sessionId, [sequenced]);
         const subs = this.subscribers.get(p.sessionId);
-        if (subs) for (const cb of subs) cb(timed.event, timed.at);
+        if (subs) for (const cb of subs) cb(sequenced.event, sequenced.seq);
         break;
       }
       case 'terminal.opened': {
@@ -445,11 +455,20 @@ export class LinkCodeClient {
       this.subscribers.set(sessionId, set);
     }
     set.add(cb);
-    // Replay any buffered events (with their original receive times) so a late subscriber sees the
-    // full timeline, not a blank pane.
+    // Replay any buffered events (with their original sequence numbers) so a late subscriber sees
+    // the full timeline, not a blank pane.
     const buf = this.events.get(sessionId);
-    if (buf) for (const { event, at } of buf) cb(event, at);
+    if (buf) for (const { event, seq } of buf) cb(event, seq);
     return () => set.delete(cb);
+  }
+
+  /**
+   * The receive counter for a session: how many `agent.event`s this client has seen for it on this
+   * connection. Sampled right after a transcript read resolves, it becomes that snapshot's
+   * `uptoSeq` — the ordered cut "everything at or before this is already in the snapshot".
+   */
+  eventSeq(sessionId: SessionId): number {
+    return this.eventSeqs.get(sessionId) ?? 0;
   }
 
   openTerminal(opts: {
@@ -526,6 +545,7 @@ export class LinkCodeClient {
     this.failAllPending(new Error('client disposed'));
     this.subscribers.clear();
     this.events.clear();
+    this.eventSeqs.clear();
     this.terminalOutputSubs.clear();
     this.terminalExitSubs.clear();
     this.terminalErrorSubs.clear();

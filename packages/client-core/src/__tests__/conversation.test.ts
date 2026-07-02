@@ -236,19 +236,19 @@ describe('buildConversation', () => {
 describe('mergeSeededEvents', () => {
   it('passes the live stream through when there is no seed', () => {
     const events = mergeSeededEvents(undefined, [
-      { event: userText('hi'), at: 100 },
-      { event: text('yo'), at: 200 },
+      { event: userText('hi'), seq: 1 },
+      { event: text('yo'), seq: 2 },
     ]);
     expect(events).toEqual([userText('hi'), text('yo')]);
   });
 
-  it('drops live events that arrived at or before the snapshot and keeps the tail', () => {
-    const seed = { events: [userText('old prompt'), text('old reply')], seededAt: 1000 };
+  it('drops live events at or before the snapshot cut and keeps the tail', () => {
+    const seed = { events: [userText('old prompt'), text('old reply')], uptoSeq: 2 };
     const events = mergeSeededEvents(seed, [
-      { event: userText('duplicate of transcript'), at: 900 },
-      { event: userText('boundary'), at: 1000 },
-      { event: userText('new prompt'), at: 1001 },
-      { event: text('new reply', 'm2'), at: 1002 },
+      { event: userText('duplicate of transcript'), seq: 1 },
+      { event: userText('boundary'), seq: 2 },
+      { event: userText('new prompt'), seq: 3 },
+      { event: text('new reply', 'm2'), seq: 4 },
     ]);
     expect(events).toEqual([
       userText('old prompt'),
@@ -259,7 +259,7 @@ describe('mergeSeededEvents', () => {
   });
 
   it('keeps the seed intact when there are no live events', () => {
-    const seed = { events: [userText('only history')], seededAt: 5 };
+    const seed = { events: [userText('only history')], uptoSeq: 0 };
     expect(mergeSeededEvents(seed, [])).toEqual([userText('only history')]);
   });
 });

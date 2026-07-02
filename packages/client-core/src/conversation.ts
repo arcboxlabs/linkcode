@@ -10,7 +10,7 @@ import type {
   ToolCallContent,
   ToolCallUpdate,
 } from '@linkcode/schema';
-import type { TimedAgentEvent } from './client';
+import type { SequencedAgentEvent } from './client';
 
 /**
  * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
@@ -269,26 +269,27 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   };
 }
 
-/** A point-in-time transcript snapshot: past events read from provider history, stamped with when
- * the read resolved (client clock, ms). */
+/** A point-in-time transcript snapshot: past events read from provider history, plus the live
+ * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). */
 export interface ConversationSeed {
   events: AgentEvent[];
-  seededAt: number;
+  /** The snapshot covers every live event with seq ≤ this; 0 = supersedes nothing. */
+  uptoSeq: number;
 }
 
 /**
- * Prepend a transcript snapshot to the live event stream. Dedup is a simple time window: a live
- * event that arrived at or before the moment the snapshot resolved is assumed to be contained in
- * it and dropped; only the tail that arrived after the snapshot is appended.
+ * Prepend a transcript snapshot to the live event stream. The cut is ordered, not clocked: live
+ * events received at or before the moment the snapshot resolved (seq ≤ uptoSeq) are contained in
+ * it and dropped; only the tail received after the snapshot is appended.
  */
 export function mergeSeededEvents(
   seed: ConversationSeed | undefined,
-  live: readonly TimedAgentEvent[],
+  live: readonly SequencedAgentEvent[],
 ): AgentEvent[] {
   if (!seed) return live.map(({ event }) => event);
   const merged = [...seed.events];
-  for (const { event, at } of live) {
-    if (at > seed.seededAt) merged.push(event);
+  for (const { event, seq } of live) {
+    if (seq > seed.uptoSeq) merged.push(event);
   }
   return merged;
 }
