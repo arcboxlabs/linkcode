@@ -48,6 +48,7 @@ export const en = {
       noCommands: 'No commands available',
       noMentions: 'No matches',
       modelDefault: 'Default',
+      effortDefault: 'Effort',
     },
     mode: {
       label: 'Mode',

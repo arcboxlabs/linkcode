@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  EffortLevel,
   SessionId,
   SessionInfo,
   WorkspaceId,
@@ -57,6 +58,7 @@ export interface ShellFrameProps {
   }>;
   onDismissError?: () => void;
   onModelChange?: (model: string) => Promise<void>;
+  onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
 
 export function ShellFrame({
@@ -91,6 +93,7 @@ export function ShellFrame({
   HistoryComponent,
   onDismissError,
   onModelChange,
+  onEffortChange,
 }: ShellFrameProps): React.ReactNode {
   const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -142,6 +145,7 @@ export function ShellFrame({
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
           onModelChange={onModelChange}
+          onEffortChange={onEffortChange}
         />
       </main>
     </div>

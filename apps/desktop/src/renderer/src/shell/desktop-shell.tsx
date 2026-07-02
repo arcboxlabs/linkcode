@@ -70,6 +70,7 @@ export function DesktopShell({
   HistoryComponent,
   onDismissError,
   onModelChange,
+  onEffortChange,
   onOpenSettings,
   themeType,
 }: WorkbenchShellProps & {
@@ -293,6 +294,7 @@ export function DesktopShell({
         onStopTurn={onStopTurn}
         onRespondPermission={onRespondPermission}
         onModelChange={onModelChange}
+        onEffortChange={onEffortChange}
       />
     </main>
   );

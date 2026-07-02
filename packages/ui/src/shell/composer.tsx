@@ -1,8 +1,8 @@
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, EffortLevel } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { clamp } from 'foxts/clamp';
-import { AtSignIcon, ChevronDownIcon, PlusIcon, SparklesIcon } from 'lucide-react';
+import { AtSignIcon, ChevronDownIcon, GaugeIcon, PlusIcon, SparklesIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -13,6 +13,7 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { cn } from '../lib/cn';
+import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
@@ -40,6 +41,8 @@ export interface ComposerProps {
   /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
    * the pick once this resolves — it stays on the previous model if the switch is rejected. */
   onModelChange?: (model: string) => Promise<void>;
+  /** Called when the user picks a reasoning-effort level; same confirm-then-reflect contract. */
+  onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
 
 interface MenuState {
@@ -77,12 +80,15 @@ export function Composer({
   onSend,
   onStop,
   onModelChange,
+  onEffortChange,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [effortMenuOpen, setEffortMenuOpen] = useState(false);
+  const [selectedEffortId, setSelectedEffortId] = useState<EffortLevel | null>(null);
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
@@ -187,6 +193,8 @@ export function Composer({
   const placeholderAgent = agentLabel ?? 'agent';
   const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
   const selectedModel = modelOptions?.find((option) => option.id === selectedModelId);
+  const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
+  const selectedEffort = effortOptions?.find((option) => option.id === selectedEffortId);
 
   async function selectModel(modelId: string): Promise<void> {
     setModelMenuOpen(false);
@@ -195,6 +203,17 @@ export function Composer({
       // Only reflect the pick once the switch is confirmed — otherwise the picker would show a
       // model that isn't actually the one the session is running.
       setSelectedModelId(modelId);
+    } catch {
+      // The workbench's error banner already reports the failure; nothing else to do here.
+    }
+  }
+
+  async function selectEffort(effort: EffortLevel): Promise<void> {
+    setEffortMenuOpen(false);
+    try {
+      await onEffortChange?.(effort);
+      // Confirm-then-reflect, same as selectModel.
+      setSelectedEffortId(effort);
     } catch {
       // The workbench's error banner already reports the failure; nothing else to do here.
     }
@@ -263,6 +282,27 @@ export function Composer({
                         type="button"
                         className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
                         onClick={() => selectModel(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </PopoverPopup>
+                </Popover>
+              )}
+              {effortOptions && effortOptions.length > 0 && (
+                <Popover open={effortMenuOpen} onOpenChange={setEffortMenuOpen}>
+                  <PopoverTrigger className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-accent sm:flex">
+                    <GaugeIcon className="size-3.5 text-muted-foreground" />
+                    <span className="font-mono">{selectedEffort?.label ?? t('effortDefault')}</span>
+                    <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+                  </PopoverTrigger>
+                  <PopoverPopup align="end" side="top" sideOffset={8} className="w-40 p-1">
+                    {effortOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => selectEffort(option.id)}
                       >
                         {option.label}
                       </button>

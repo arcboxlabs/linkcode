@@ -1,6 +1,6 @@
 import type { Conversation } from '@linkcode/client-core';
 import { useTerminalOutput } from '@linkcode/client-core';
-import type { SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type { EffortLevel, SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
@@ -8,6 +8,7 @@ import {
   promptText,
   registerWorkspace,
   respondPermission,
+  setEffort,
   setModel,
   updateWorkspace,
 } from '@linkcode/sdk';
@@ -96,6 +97,7 @@ function WorkbenchSessionSurface({
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
   const modelMutation = useMutation(setModel, { onError });
+  const effortMutation = useMutation(setEffort, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
@@ -173,6 +175,13 @@ function WorkbenchSessionSurface({
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
     return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(noop);
+  }
+
+  function handleEffortChange(effort: EffortLevel): Promise<void> {
+    if (!sessions.activeId) return Promise.reject(new Error('No active session'));
+    onClearError();
+    // Same contract as handleModelChange: the composer awaits the rejection to keep the old pick.
+    return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
   }
 
   function handleImportedSession(sessionId: SessionId): void {
@@ -295,6 +304,7 @@ function WorkbenchSessionSurface({
       HistoryComponent={RuntimeWorkspaceHistory}
       onDismissError={onClearError}
       onModelChange={handleModelChange}
+      onEffortChange={handleEffortChange}
     />
   );
 }

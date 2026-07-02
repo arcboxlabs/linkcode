@@ -46,6 +46,7 @@ export const zhCN = {
       noCommands: '没有可用命令',
       noMentions: '没有匹配项',
       modelDefault: '默认',
+      effortDefault: '推理强度',
     },
     mode: {
       label: '模式',

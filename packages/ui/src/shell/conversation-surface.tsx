@@ -1,4 +1,4 @@
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, EffortLevel } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import { ConversationView } from '../chat';
 import { cn } from '../lib/cn';
@@ -21,6 +21,7 @@ export interface ConversationSurfaceProps {
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
   onModelChange?: (model: string) => Promise<void>;
+  onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
 
 export function ConversationSurface({
@@ -40,6 +41,7 @@ export function ConversationSurface({
   onStopTurn,
   onRespondPermission,
   onModelChange,
+  onEffortChange,
 }: ConversationSurfaceProps): React.ReactNode {
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
@@ -65,6 +67,7 @@ export function ConversationSurface({
         onSend={onSendPrompt}
         onStop={onStopTurn}
         onModelChange={onModelChange}
+        onEffortChange={onEffortChange}
       />
     </div>
   );

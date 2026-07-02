@@ -44,6 +44,14 @@ export const StartOptionsSchema = z.object({
 });
 export type StartOptions = z.infer<typeof StartOptionsSchema>;
 
+/** Reasoning-effort levels. low–xhigh switch live via the adapters' settings channel; `max` cannot
+ * (Claude only accepts it at process startup), so adapters honor it by restarting the underlying
+ * process with the new effort and resuming the conversation in place under the same session.
+ * `ultracode` is claude-code's xhigh-plus-standing-orchestration mode — modeled as a level because
+ * that's how Claude's own effort menu presents it; it switches live like the plain levels. */
+export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
+export type EffortLevel = z.infer<typeof EffortLevelSchema>;
+
 /** Input sent up to the agent, normalized into discrete actions. */
 export const AgentInputSchema = z.discriminatedUnion('type', [
   /** A user prompt as one or more content blocks (text / image / resource …). */
@@ -55,6 +63,9 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
   /** Switch the model for the session, going forward (vendor-specific id). Only adapters that
    * support changing the model on an already-running session accept this; others reject it. */
   z.object({ type: z.literal('set-model'), model: z.string().min(1) }),
+  /** Switch the reasoning-effort level for the session, going forward. Same acceptance rule as
+   * `set-model`: only adapters that can rebind effort on a live session accept this. */
+  z.object({ type: z.literal('set-effort'), effort: EffortLevelSchema }),
   /** The user's decision for a pending permission-request (correlated by requestId). */
   z.object({
     type: z.literal('permission-response'),

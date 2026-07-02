@@ -19,6 +19,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentHistorySession,
   ContentBlock,
+  EffortLevel,
   MessageId,
   PermissionOption,
   StartOptions,
@@ -101,6 +102,20 @@ class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
   }
 }
 
+/**
+ * Map a switchable effort onto Claude's flag-settings keys. `ultracode` is its own boolean key
+ * (xhigh plus standing dynamic-workflow orchestration), not an `effortLevel` value; a plain level
+ * clears it (`null` drops the key from the flag layer) so the session actually leaves ultracode
+ * instead of staying pinned at xhigh by the still-set flag. `max` never comes through here — it
+ * can't travel flag-settings at all (see `onSetEffort`).
+ */
+function effortFlagSettings(
+  effort: Exclude<EffortLevel, 'max'>,
+): Parameters<Query['applyFlagSettings']>[0] {
+  if (effort === 'ultracode') return { ultracode: true };
+  return { ultracode: null, effortLevel: effort };
+}
+
 /** Map Claude's stop reason to our ACP-aligned StopReason. */
 export function mapClaudeStop(reason: string | null): StopReason {
   switch (reason) {
@@ -139,6 +154,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private resumeFrom: string | undefined;
   /** Suppresses `emitError` for the interrupt-induced stream failure `onCancel` triggers on purpose. */
   private cancelling = false;
+  /** The effort the session should run at; applied at `Query` creation and on live switches. */
+  private effort: EffortLevel | undefined;
+  /** Provider session id sniffed off the last SDK message — the resume point when an effort
+   * transition into/out of `max` forces a process restart (see `onSetEffort`). */
+  private lastSessionRef: string | undefined;
   /** Current segment's ids, refreshed each turn and after every tool call so text / thinking emitted
    * before and after a tool render as separate bubbles instead of merging into one. */
   private messageId: MessageId = nextMessageId();
@@ -228,11 +248,17 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The SDK has no apiKey option; the key reaches the subprocess via `env`. Because `env` *replaces*
     // the subprocess environment entirely, spread `env` so PATH/HOME and other inherited vars survive.
     const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
-    this.q = query({
+    const q = query({
       prompt: queue,
       options: {
         cwd: opts.cwd,
         model: opts.model,
+        // `options.effort` becomes the CLI's `--effort` flag, which outranks the flag-settings
+        // layer for the process's whole lifetime — passing it would pin the level and turn every
+        // later applyFlagSettings switch into a silent no-op. Only `max` goes in here (the
+        // flag-settings key rejects it, so the startup flag is its only way in); the other levels
+        // apply through the switchable channel right after creation.
+        effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
         resume,
@@ -240,7 +266,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         ...(apiKey && { env: { ...env, ANTHROPIC_API_KEY: apiKey } }),
       },
     });
-    void this.consume(this.q);
+    this.q = q;
+    void this.consume(q);
+    if (this.effort !== undefined && this.effort !== 'max') {
+      await q.applyFlagSettings(effortFlagSettings(this.effort));
+    }
   }
 
   /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
@@ -298,6 +328,34 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     await this.q.setModel(model);
   }
 
+  /** Effort switching has two channels. low–xhigh and `ultracode` switch live via the flag-settings
+   * control request (`Query#applyFlagSettings`) — the same layer the CLI's `/effort` writes; see
+   * `effortFlagSettings` for how each maps onto the `effortLevel` / `ultracode` keys. `max` can't
+   * travel that channel (the key rejects it); its only way in is the `--effort` startup flag,
+   * which in turn outranks flag-settings for the process's whole lifetime. So any transition into
+   * or out of `max` closes the live process and lets the next prompt rebuild the `Query` — resuming
+   * the conversation in place via the session id sniffed off the last SDK message. */
+  protected override async onSetEffort(effort: EffortLevel): Promise<void> {
+    const previous = this.effort;
+    this.effort = effort;
+    if (!this.q) return; // No process yet; onPrompt's Query creation applies it.
+    if (effort !== 'max' && previous !== 'max') {
+      await this.q.applyFlagSettings(effortFlagSettings(effort));
+      return;
+    }
+    // Detach before closing so a prompt racing the async consume() unwind creates the new Query
+    // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
+    const q = this.q;
+    const queue = this.inputQueue;
+    this.q = null;
+    this.inputQueue = null;
+    // If the process died before any message carried a session id there is nothing to resume;
+    // the rebuilt Query then simply starts fresh, keeping the same Link Code session.
+    this.resumeFrom = this.lastSessionRef;
+    q.close();
+    queue?.close();
+  }
+
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {
     const outcome = await this.requestPermission(
       {
@@ -319,6 +377,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // Every SDK message carries the CLI's session id — the provider-local history id this live run
     // writes to. Sniffed before the replay guard so a resumed session binds immediately.
     if (typeof msg.session_id === 'string' && msg.session_id.length > 0) {
+      this.lastSessionRef = msg.session_id;
       this.emitSessionRef(asHistoryId(msg.session_id));
     }
     // A history-resumed session (see resumeFrom) replays prior turns as `isReplay` frames (historical
