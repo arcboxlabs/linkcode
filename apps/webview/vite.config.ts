@@ -19,7 +19,13 @@ export default defineConfig({
       customCollections: ExternalPackageIconLoader('@proj-airi/lobe-icons'),
     }),
   ],
-  resolve: { alias: { '@webview': resolve(import.meta.dirname, 'src') } },
+  resolve: {
+    alias: { '@webview': resolve(import.meta.dirname, 'src') },
+    // pnpm's hoisted layout can nest a second react under a dep whose peer resolved to another
+    // version (e.g. use-intl(react@19.2.3) via Expo) — pin every import to the root copy, like
+    // the desktop renderer's electron.vite.config already does.
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+  },
   server: { port: 5173 },
   // Workspace packages are exported as TS source and transpiled on the fly by Vite/esbuild, so no prebundling is needed.
   optimizeDeps: {
