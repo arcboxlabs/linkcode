@@ -7,4 +7,7 @@ export * from './local';
 export * from './preview-routes';
 export * from './socket-io';
 export * from './transport';
+export * from './tunnel';
+export * from './tunnel-client';
+export * from './tunnel-protocol';
 export * from './ws';
