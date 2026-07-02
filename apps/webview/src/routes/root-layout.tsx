@@ -1,5 +1,8 @@
-import { SocketIoTransport } from '@linkcode/transport';
-import { WorkbenchAppProviders, WorkbenchProviders } from '@linkcode/workbench';
+import {
+  createDaemonTransport,
+  WorkbenchAppProviders,
+  WorkbenchProviders,
+} from '@linkcode/workbench';
 import { useSettingsStore } from '@webview/settings/store';
 import { useSingleton } from 'foxact/use-singleton';
 import { Outlet } from 'react-router';
@@ -26,7 +29,7 @@ function DaemonConnection({
   daemonUrl,
   children,
 }: React.PropsWithChildren<{ daemonUrl: string }>): React.ReactNode {
-  const { current: transport } = useSingleton(() => new SocketIoTransport({ url: daemonUrl }));
+  const { current: transport } = useSingleton(() => createDaemonTransport(daemonUrl));
   return (
     <WorkbenchProviders transport={transport} daemonUrl={daemonUrl}>
       {children}

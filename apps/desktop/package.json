@@ -7,6 +7,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:mock": "electron-vite dev --mode mock",
     "build": "electron-vite build",
     "package": "pnpm run build && electron-builder --dir -c.mac.identity=null",
     "dist": "pnpm run build && electron-builder",
