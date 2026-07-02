@@ -4,9 +4,16 @@ export type {
   PanelChromePosition,
   PanelChromeSegment,
 } from './chrome-portal';
+export { PanelStubContent } from './free-panel';
 export { getChromeSurface, getWorkspaceMinSize } from './panel-layout';
 export type { PanelStateLike } from './panel-region';
 export { PanelRegion } from './panel-region';
+export type {
+  SectionPanelRegionProps,
+  SectionPanelState,
+  SectionTerminalTabContent,
+} from './section-panel';
+export { SectionPanelRegion } from './section-panel';
 export type {
   PanelControl,
   PanelSection,
