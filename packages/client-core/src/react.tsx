@@ -7,6 +7,7 @@ import type {
 } from '@linkcode/schema';
 import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
+import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import type * as React from 'react';
 import {
   createContext,
@@ -69,6 +70,12 @@ export function useSequencedAgentEvents(
 
 const NO_EVENTS: AgentEvent[] = [];
 
+/**
+ * Cap on retained terminal output, in characters. This is a read-only display buffer, so
+ * unbounded agent output would otherwise grow memory and per-chunk re-render cost without limit.
+ */
+const TERMINAL_OUTPUT_CAP = 200000;
+
 /** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
 export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   const sequenced = useSequencedAgentEvents(sessionId);
@@ -89,11 +96,13 @@ export function useTerminalOutput(terminalId: string | null): string {
   useEffect(() => {
     if (!terminalId) return;
     return client.subscribeTerminalOutput(terminalId, (data) => {
-      setState((prev) =>
-        prev.id === terminalId
-          ? { id: terminalId, output: prev.output + data }
-          : { id: terminalId, output: data },
-      );
+      setState((prev) => {
+        const output = prev.id === terminalId ? prev.output + data : data;
+        return {
+          id: terminalId,
+          output: output.length > TERMINAL_OUTPUT_CAP ? output.slice(-TERMINAL_OUTPUT_CAP) : output,
+        };
+      });
     });
   }, [client, terminalId]);
 
@@ -158,21 +167,16 @@ export function useSessions(): SessionsApi {
     setLoading(false);
   }, [client]);
 
-  useEffect(() => {
-    client
-      .listSessions()
-      .then((list) => {
-        setSessions((local) => {
-          const byId = new Map<SessionId, SessionInfo>();
-          for (const s of list) byId.set(s.sessionId, s);
-          // Keep optimistic locals the snapshot doesn't know about yet.
-          for (const s of local) if (!byId.has(s.sessionId)) byId.set(s.sessionId, s);
-          return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+  useAbortableEffect(
+    (signal) => {
+      refresh()
+        .catch(noop)
+        .finally(() => {
+          if (!signal.aborted) setLoading(false);
         });
-      })
-      .catch(noop)
-      .finally(() => setLoading(false));
-  }, [client]);
+    },
+    [refresh],
+  );
 
   const create = useCallback(
     async (opts: StartOptions): Promise<SessionId> => {
