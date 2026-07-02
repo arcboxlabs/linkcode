@@ -8,7 +8,7 @@ import { getShellContentMotionStyle } from './use-animated-split';
 
 /**
  * Desktop panel chrome/frame. Tab content is NOT rendered here: the shell owns it and portals a
- * `PanelTabContents` into the box this region reports via `contentTargetRef`, so stateful tabs
+ * `PanelTabContentStack` into the box this region reports via `contentTargetRef`, so stateful tabs
  * (terminals) survive the docked ↔ maximized instance handoff without remounting.
  */
 export function DesktopPanelRegion({

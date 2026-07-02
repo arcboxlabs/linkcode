@@ -28,6 +28,9 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
   session registry that owns PTY lifetime across remounts, and the transport-backed
   `TerminalSession`.
+- `git/` — daemon-backed git status/PR polling hooks (`useGitStatus`, `useGitPullRequestStatus`)
+  and the Diff-section container (`GitPanel`) that assembles them for `packages/ui`'s
+  `GitOverview`.
 
 The public API is the root barrel (`src/index.ts`) plus the `./tayori` subpath (pinned in
 `package.json` `exports`). Consumers never deep-import other paths — export new modules through the

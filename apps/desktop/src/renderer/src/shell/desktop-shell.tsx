@@ -1,7 +1,12 @@
 import type { SystemBridge } from '@linkcode/ipc';
 import type { AgentKind } from '@linkcode/schema';
 import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
-import { getChromeSurface, getWorkspaceMinSize, PanelTabContents } from '@linkcode/ui/shell/panels';
+import {
+  getChromeSurface,
+  getWorkspaceMinSize,
+  PanelStubContent,
+  PanelTabContentStack,
+} from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { TerminalPanel } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
@@ -16,12 +21,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { DesktopChrome } from './chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import { DesktopPanelRegion } from './layout/panel-region';
+import { DesktopRightPanelRegion } from './layout/right-panel-region';
 import type { DesktopShellStyle } from './layout/shell-style';
 import { createDesktopShellStyle, setShellPaneCssSize } from './layout/shell-style';
 import { useAnimatedSplit } from './layout/use-animated-split';
 import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
-import type { PanelSide } from './store/model';
 import {
   DEFAULT_LAYOUT,
   getExpandedPanel,
@@ -71,6 +76,10 @@ export function DesktopShell({
       addWindow: state.addWindow,
       closeTab: state.closeTab,
       toggleMaxPanel: state.toggleMaxPanel,
+      setActiveSection: state.setActiveSection,
+      addRightTerminalTab: state.addRightTerminalTab,
+      closeRightTerminalTab: state.closeRightTerminalTab,
+      setActiveRightTerminalTab: state.setActiveRightTerminalTab,
       resetSidebarSize: state.resetSidebarSize,
       resetRightPanelSize: state.resetRightPanelSize,
       resetBottomPanelSize: state.resetBottomPanelSize,
@@ -180,6 +189,10 @@ export function DesktopShell({
     addWindow,
     closeTab,
     toggleMaxPanel,
+    setActiveSection,
+    addRightTerminalTab,
+    closeRightTerminalTab,
+    setActiveRightTerminalTab,
     resetSidebarSize: resetSidebarLayoutSize,
     resetRightPanelSize: resetRightPanelLayoutSize,
     resetBottomPanelSize: resetBottomPanelLayoutSize,
@@ -258,68 +271,112 @@ export function DesktopShell({
     </main>
   );
 
-  // One renderer, two mount points: the docked instance (inside the Allotment,
-  // owns the chrome tabs/controls) and the maximized overlay instance (chrome
-  // suppressed — the docked instance keeps owning the chrome so the two never
-  // portal duplicate tabs during the transition). Tab content mounts in exactly
-  // one of them (the overlay while expanded, via contentHidden), so stateful tabs
-  // like the terminal never run twice; the terminal session registry hands the
-  // PTY across the remount.
-  function renderPanel(
-    side: PanelSide,
-    options: { maximized: boolean; chromeVisible: boolean; contentHidden: boolean },
-  ): React.ReactNode {
-    const panel = side === 'right' ? rightPanel : bottomPanel;
+  // One renderer, two mount points per side: the docked instance (inside the Allotment, owns the
+  // chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
+  // instance keeps owning the chrome so the two never portal duplicate tabs during the
+  // transition). Tab content mounts in exactly one of them (the overlay while expanded, via
+  // contentHidden), so stateful tabs like the terminal never run twice; the terminal session
+  // registry hands the PTY across the remount.
+  function renderRightPanel(options: {
+    maximized: boolean;
+    chromeVisible: boolean;
+    contentHidden: boolean;
+  }): React.ReactNode {
     return (
-      <DesktopPanelRegion
-        side={side}
-        panel={panel}
+      <DesktopRightPanelRegion
+        panel={rightPanel}
+        cwd={active?.cwd}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={side === 'right' ? rightSplit.phase : bottomSplit.phase}
-        reducedMotion={side === 'right' ? rightSplit.reducedMotion : bottomSplit.reducedMotion}
-        contentTargetRef={side === 'right' ? setRightContentTarget : setBottomContentTarget}
-        onSelectTab={(id) => updatePanel(side, (current) => ({ ...current, activeTabId: id }))}
-        onCloseTab={(id) => closeTab(side, id)}
-        onAddWindow={(type) => addWindow(side, type)}
-        onToggleMax={() => toggleMaxPanel(side)}
-        onClose={() => closePanel(side)}
+        phase={rightSplit.phase}
+        reducedMotion={rightSplit.reducedMotion}
+        terminalContentTargetRef={setRightContentTarget}
+        onSelectSection={setActiveSection}
+        onSelectTerminalTab={setActiveRightTerminalTab}
+        onCloseTerminalTab={closeRightTerminalTab}
+        onAddTerminalTab={addRightTerminalTab}
+        onToggleMax={() => toggleMaxPanel('right')}
       />
     );
   }
 
-  // The shell owns tab content and portals it into whichever region instance (docked or
-  // maximized overlay) currently shows content — `contentHidden` guarantees exactly one target
-  // exists at a time — so a terminal keeps its live renderer across the handoff. Content mounts
-  // lazily on the panel's first open: no shell is spawned for a panel never shown.
-  function renderPanelContents(side: PanelSide, host: HTMLDivElement): React.ReactNode {
-    const panel = side === 'right' ? rightPanel : bottomPanel;
-    const phase = side === 'right' ? rightSplit.phase : bottomSplit.phase;
-    return createPortal(
-      <PanelTabContents
-        tabs={panel.tabs}
-        activeTabId={panel.activeTabId}
-        contentByType={{
-          terminal: (tab) => (
-            <TerminalPanel sessionKey={tab.id} cwd={active?.cwd} suspended={phase !== 'open'} />
-          ),
-        }}
-      />,
-      host,
+  function renderBottomPanel(options: {
+    maximized: boolean;
+    chromeVisible: boolean;
+    contentHidden: boolean;
+  }): React.ReactNode {
+    return (
+      <DesktopPanelRegion
+        side="bottom"
+        panel={bottomPanel}
+        maximized={options.maximized}
+        chromeVisible={options.chromeVisible}
+        contentHidden={options.contentHidden}
+        chromeSurface={chromeSurface}
+        phase={bottomSplit.phase}
+        reducedMotion={bottomSplit.reducedMotion}
+        contentTargetRef={setBottomContentTarget}
+        onSelectTab={(id) => updatePanel((current) => ({ ...current, activeTabId: id }))}
+        onCloseTab={(id) => closeTab(id)}
+        onAddWindow={(type) => addWindow(type)}
+        onToggleMax={() => toggleMaxPanel('bottom')}
+        onClose={() => closePanel('bottom')}
+      />
     );
+  }
+
+  // The shell owns the right panel's Terminal-section PTY stack and portals it into whichever
+  // region instance (docked or maximized overlay) currently shows content — `contentHidden`
+  // guarantees exactly one target exists at a time — so a terminal keeps its live renderer across
+  // the handoff. Content mounts lazily on the panel's first open: no shell is spawned for a panel
+  // never shown. Diff/Browser section content is stateless (SWR-backed) and stays inline in
+  // `DesktopRightPanelRegion`, so only the Terminal stack needs this treatment.
+  function renderRightPanelContents(host: HTMLDivElement): React.ReactNode {
+    const activeIsTerminal = rightPanel.activeSection === 'terminal';
+    const items = rightPanel.terminal.tabs.map((tab) => ({
+      id: tab.id,
+      active: activeIsTerminal && tab.id === rightPanel.terminal.activeTabId,
+      node: (
+        <TerminalPanel
+          sessionKey={tab.id}
+          cwd={active?.cwd}
+          suspended={rightSplit.phase !== 'open'}
+        />
+      ),
+    }));
+    return createPortal(<PanelTabContentStack items={items} />, host);
+  }
+
+  // Same portal treatment for the bottom panel's flat tab strip.
+  function renderBottomPanelContents(host: HTMLDivElement): React.ReactNode {
+    const items = bottomPanel.tabs.map((tab) => ({
+      id: tab.id,
+      active: tab.id === bottomPanel.activeTabId,
+      node:
+        tab.type === 'terminal' ? (
+          <TerminalPanel
+            sessionKey={tab.id}
+            cwd={active?.cwd}
+            suspended={bottomSplit.phase !== 'open'}
+          />
+        ) : (
+          <PanelStubContent type={tab.type} />
+        ),
+    }));
+    return createPortal(<PanelTabContentStack items={items} />, host);
   }
 
   const workspaceRight: WorkspaceSide = {
     split: rightSplit,
     open: rightPanel.open,
-    node: renderPanel('right', {
+    node: renderRightPanel({
       maximized: expandedPanel === 'right',
       chromeVisible: rightSplit.paneVisible,
       contentHidden: expandedPanel === 'right',
     }),
-    expandedNode: renderPanel('right', {
+    expandedNode: renderRightPanel({
       maximized: true,
       chromeVisible: false,
       contentHidden: false,
@@ -329,12 +386,12 @@ export function DesktopShell({
   const workspaceBottom: WorkspaceSide = {
     split: bottomSplit,
     open: bottomPanel.open,
-    node: renderPanel('bottom', {
+    node: renderBottomPanel({
       maximized: expandedPanel === 'bottom',
       chromeVisible: bottomSplit.paneVisible,
       contentHidden: expandedPanel === 'bottom',
     }),
-    expandedNode: renderPanel('bottom', {
+    expandedNode: renderBottomPanel({
       maximized: true,
       chromeVisible: false,
       contentHidden: false,
@@ -421,8 +478,8 @@ export function DesktopShell({
           </Allotment.Pane>
         </Allotment>
       </DesktopChrome>
-      {rightContentMounted && renderPanelContents('right', rightContentHost)}
-      {bottomContentMounted && renderPanelContents('bottom', bottomContentHost)}
+      {rightContentMounted && renderRightPanelContents(rightContentHost)}
+      {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}
     </div>
   );
 }
