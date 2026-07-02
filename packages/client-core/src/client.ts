@@ -25,7 +25,13 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
-type EventCb = (event: AgentEvent) => void;
+/** An event paired with the time this client first received it (client clock, ms). */
+export interface TimedAgentEvent {
+  event: AgentEvent;
+  at: number;
+}
+
+type EventCb = (event: AgentEvent, at: number) => void;
 type TerminalOutputCb = (data: string) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
@@ -77,7 +83,7 @@ function nextClientReqId(): string {
 export class LinkCodeClient {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
   /** Per-session event buffer so a re-subscribe (switching the active session back) can replay the timeline. */
-  private readonly events = new Map<SessionId, AgentEvent[]>();
+  private readonly events = new Map<SessionId, TimedAgentEvent[]>();
   private readonly pendingStarts = new Map<string, Pending<SessionId>>();
   private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
   private readonly pendingImports = new Map<string, Pending<SessionRecord>>();
@@ -178,11 +184,12 @@ export class LinkCodeClient {
         break;
       }
       case 'agent.event': {
+        const timed: TimedAgentEvent = { event: p.event, at: Date.now() };
         const buf = this.events.get(p.sessionId);
-        if (buf) buf.push(p.event);
-        else this.events.set(p.sessionId, [p.event]);
+        if (buf) buf.push(timed);
+        else this.events.set(p.sessionId, [timed]);
         const subs = this.subscribers.get(p.sessionId);
-        if (subs) for (const cb of subs) cb(p.event);
+        if (subs) for (const cb of subs) cb(timed.event, timed.at);
         break;
       }
       case 'terminal.opened': {
@@ -420,9 +427,10 @@ export class LinkCodeClient {
       this.subscribers.set(sessionId, set);
     }
     set.add(cb);
-    // Replay any buffered events so a late subscriber sees the full timeline, not a blank pane.
+    // Replay any buffered events (with their original receive times) so a late subscriber sees the
+    // full timeline, not a blank pane.
     const buf = this.events.get(sessionId);
-    if (buf) for (const event of buf) cb(event);
+    if (buf) for (const { event, at } of buf) cb(event, at);
     return () => set.delete(cb);
   }
 

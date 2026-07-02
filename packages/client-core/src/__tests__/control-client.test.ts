@@ -1,6 +1,7 @@
-import type { PermissionOutcome, SessionId, WirePayload } from '@linkcode/schema';
+import type { AgentEvent, PermissionOutcome, SessionId, WirePayload } from '@linkcode/schema';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
+import type { TimedAgentEvent } from '../client';
 import { LinkCodeClient } from '../client';
 
 const sessionId = 'sess-control' as SessionId;
@@ -48,6 +49,39 @@ describe('LinkCodeClient control API', () => {
     await expect(client.respondPermission(sessionId, 'perm-1', outcome)).rejects.toThrow(
       'permission request is no longer pending',
     );
+
+    client.dispose();
+    serverTransport.close();
+  });
+});
+
+describe('LinkCodeClient event buffer', () => {
+  it('replays buffered events to a late subscriber with their original receive times', async () => {
+    const [clientTransport, serverTransport] = createLocalTransportPair();
+    const client = new LinkCodeClient(clientTransport);
+    await client.connect();
+    await serverTransport.connect();
+
+    const event: AgentEvent = { type: 'user-message', content: [{ type: 'text', text: 'hi' }] };
+    serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+
+    const seen: TimedAgentEvent[] = [];
+    client.subscribe(sessionId, (e, at) => seen.push({ event: e, at }));
+    expect(seen).toHaveLength(1);
+    expect(seen[0].event).toEqual(event);
+    const receivedAt = seen[0].at;
+    expect(receivedAt).toBeLessThanOrEqual(Date.now());
+
+    // A second subscriber sees the same receive time, not the replay time.
+    const replayed: TimedAgentEvent[] = [];
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+    client.subscribe(sessionId, (e, at) => replayed.push({ event: e, at }));
+    expect(replayed[0].at).toBe(receivedAt);
 
     client.dispose();
     serverTransport.close();

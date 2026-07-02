@@ -10,6 +10,7 @@ import type {
   ToolCallContent,
   ToolCallUpdate,
 } from '@linkcode/schema';
+import type { TimedAgentEvent } from './client';
 
 /**
  * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
@@ -266,6 +267,30 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     stopReason,
     pendingPermissionIds,
   };
+}
+
+/** A point-in-time transcript snapshot: past events read from provider history, stamped with when
+ * the read resolved (client clock, ms). */
+export interface ConversationSeed {
+  events: AgentEvent[];
+  seededAt: number;
+}
+
+/**
+ * Prepend a transcript snapshot to the live event stream. Dedup is a simple time window: a live
+ * event that arrived at or before the moment the snapshot resolved is assumed to be contained in
+ * it and dropped; only the tail that arrived after the snapshot is appended.
+ */
+export function mergeSeededEvents(
+  seed: ConversationSeed | undefined,
+  live: readonly TimedAgentEvent[],
+): AgentEvent[] {
+  if (!seed) return live.map(({ event }) => event);
+  const merged = [...seed.events];
+  for (const { event, at } of live) {
+    if (at > seed.seededAt) merged.push(event);
+  }
+  return merged;
 }
 
 /** Extract a flat preview string from content blocks (used for list previews / titles). */

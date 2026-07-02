@@ -9,7 +9,7 @@ import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
 import type * as React from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { LinkCodeClient } from './client';
+import type { LinkCodeClient, TimedAgentEvent } from './client';
 import type { Conversation } from './conversation';
 import { buildConversation } from './conversation';
 
@@ -35,26 +35,38 @@ export function useLinkCodeClient(): LinkCodeClient {
   );
 }
 
-/** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
-export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
+/**
+ * Subscribe to a session's normalized event stream, accumulating it into a list (push model).
+ * Each entry keeps the client receive time so consumers can align the stream against a
+ * point-in-time transcript snapshot (see `mergeSeededEvents`).
+ */
+export function useTimedAgentEvents(sessionId: SessionId | null): TimedAgentEvent[] {
   const client = useLinkCodeClient();
-  const [state, setState] = useState<{ sessionId: SessionId | null; events: AgentEvent[] }>({
+  const [state, setState] = useState<{ sessionId: SessionId | null; events: TimedAgentEvent[] }>({
     sessionId: null,
     events: [],
   });
 
   useEffect(() => {
     if (!sessionId) return;
-    return client.subscribe(sessionId, (event) => {
+    return client.subscribe(sessionId, (event, at) => {
       setState((prev) =>
         prev.sessionId === sessionId
-          ? { sessionId, events: [...prev.events, event] }
-          : { sessionId, events: [event] },
+          ? { sessionId, events: [...prev.events, { event, at }] }
+          : { sessionId, events: [{ event, at }] },
       );
     });
   }, [client, sessionId]);
 
   return state.sessionId === sessionId ? state.events : [];
+}
+
+const NO_EVENTS: AgentEvent[] = [];
+
+/** Subscribe to a session's normalized event stream, accumulating it into a list (push model). */
+export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
+  const timed = useTimedAgentEvents(sessionId);
+  return useMemo(() => (timed.length === 0 ? NO_EVENTS : timed.map(({ event }) => event)), [timed]);
 }
 
 /** Subscribe to a terminal's output, accumulating it into a string for read-only display. */
