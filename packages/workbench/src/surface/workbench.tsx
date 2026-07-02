@@ -1,6 +1,12 @@
 import { useConversation, useTerminalOutput } from '@linkcode/client-core';
-import type { SessionId } from '@linkcode/schema';
-import { cancelTurn, promptText, respondPermission, setModel } from '@linkcode/sdk';
+import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
+import {
+  cancelTurn,
+  promptText,
+  registerWorkspace,
+  respondPermission,
+  setModel,
+} from '@linkcode/sdk';
 import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
@@ -78,7 +84,12 @@ function WorkbenchSessionSurface({
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
-  const { data: workspaces, isLoading: workspacesLoading } = useWorkspaces();
+  const {
+    data: workspaces,
+    isLoading: workspacesLoading,
+    mutate: refreshWorkspaces,
+  } = useWorkspaces();
+  const registerWorkspaceMutation = useMutation(registerWorkspace);
   const threadGroups = useMemo(
     () => groupThreadsByWorkspace(sessions.sessions, workspaces ?? []),
     [sessions.sessions, workspaces],
@@ -109,6 +120,13 @@ function WorkbenchSessionSurface({
     sessions.select(sessionId);
   }
 
+  function handleRegisterWorkspace(cwd: string): Promise<WorkspaceRecord> {
+    return registerWorkspaceMutation.trigger({ cwd }).then((workspace) => {
+      void refreshWorkspaces();
+      return workspace;
+    });
+  }
+
   function handleRespond(requestId: string, optionId: string): void {
     if (!sessions.activeId) return;
     onClearError();
@@ -130,7 +148,6 @@ function WorkbenchSessionSurface({
 
   return (
     <ShellComponent
-      sessions={sessions.sessions}
       threadGroups={threadGroups}
       workspaces={workspaces ?? []}
       workspacesLoading={workspacesLoading}
@@ -148,6 +165,7 @@ function WorkbenchSessionSurface({
       onStopSession={sessions.stop}
       onCreateSession={sessions.create}
       onImportSession={handleImportedSession}
+      onRegisterWorkspace={handleRegisterWorkspace}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}

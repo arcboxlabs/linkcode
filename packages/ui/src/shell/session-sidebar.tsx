@@ -12,10 +12,13 @@ import {
 } from 'coss-ui/components/select';
 import { Separator } from 'coss-ui/components/separator';
 import { Tabs, TabsList, TabsTab } from 'coss-ui/components/tabs';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   BotIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   FilePlus2Icon,
+  FolderPlusIcon,
   SearchIcon,
   SettingsIcon,
   SparklesIcon,
@@ -24,6 +27,7 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
+import { repositoryLabel } from './repository-label';
 import { ShellSidebar, shellSidebarItemClassName } from './shell-sidebar';
 import type { BranchStatusComponentType, ThreadGroupViewModel } from './threads-view';
 import { ThreadsView } from './threads-view';
@@ -44,9 +48,13 @@ export interface SessionSidebarProps {
   className?: string;
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
-  onCreate: (kind: AgentKind) => void;
+  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   /** Called once a history entry finishes importing as a new thread. */
   onImportSession?: (sessionId: SessionId) => void;
+  /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
+  onPickDirectory?: () => Promise<string | null>;
+  /** Registers a picked directory as a workspace; required alongside `onPickDirectory`. */
+  onRegisterWorkspace?: (cwd: string) => Promise<WorkspaceRecord>;
   BranchStatusComponent?: BranchStatusComponentType;
   HistoryComponent?: React.ComponentType<{
     cwd: string;
@@ -68,6 +76,8 @@ export function SessionSidebar({
   onStop,
   onCreate,
   onImportSession,
+  onPickDirectory,
+  onRegisterWorkspace,
   BranchStatusComponent,
   HistoryComponent,
 }: SessionSidebarProps): React.ReactNode {
@@ -83,7 +93,12 @@ export function SessionSidebar({
       footer={footer}
     >
       <div className="px-[var(--lc-sidebar-edge,0.5rem)]">
-        <NewTaskMenu onCreate={onCreate} />
+        <NewTaskMenu
+          workspaces={workspaces}
+          onCreate={onCreate}
+          onPickDirectory={onPickDirectory}
+          onRegisterWorkspace={onRegisterWorkspace}
+        />
         <SidebarMenuButton disabled icon={<SearchIcon />} label="Search" />
         <SidebarMenuButton disabled icon={<SparklesIcon />} label="Automation" />
       </div>
@@ -130,37 +145,134 @@ export function SessionSidebar({
   );
 }
 
-function NewTaskMenu({ onCreate }: { onCreate: (kind: AgentKind) => void }): React.ReactNode {
+function NewTaskMenu({
+  workspaces,
+  onCreate,
+  onPickDirectory,
+  onRegisterWorkspace,
+}: {
+  workspaces: WorkspaceRecord[];
+  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  onPickDirectory?: () => Promise<string | null>;
+  onRegisterWorkspace?: (cwd: string) => Promise<WorkspaceRecord>;
+}): React.ReactNode {
+  const t = useTranslations('workbench.sidebar');
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<AgentKind | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const canChooseDirectory = onPickDirectory != null && onRegisterWorkspace != null;
+
+  function reset(): void {
+    setKind(null);
+    setPending(false);
+    setError(null);
+  }
+
+  function handleOpenChange(next: boolean): void {
+    setOpen(next);
+    if (!next) reset();
+  }
+
+  function chooseWorkspace(cwd: string): void {
+    if (!kind) return;
+    setOpen(false);
+    onCreate({ kind, cwd });
+    reset();
+  }
+
+  async function handleChooseDirectory(): Promise<void> {
+    if (!onPickDirectory || !onRegisterWorkspace) return;
+    setPending(true);
+    setError(null);
+    try {
+      const picked = await onPickDirectory();
+      if (!picked) return;
+      const workspace = await onRegisterWorkspace(picked);
+      chooseWorkspace(workspace.cwd);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger className={shellSidebarItemClassName}>
         <SidebarMenuButtonContent icon={<FilePlus2Icon />} label="New Task" />
       </PopoverTrigger>
       <PopoverPopup align="start" side="right" sideOffset={8} className="w-64 p-0">
-        <div className="p-1">
-          <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">New task</div>
-          {(Object.keys(AGENT_LABELS) as AgentKind[]).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => {
-                setOpen(false);
-                onCreate(kind);
-              }}
-            >
-              <AgentIcon kind={kind} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{AGENT_LABELS[kind]}</span>
-                <span className="block truncate text-muted-foreground text-xs">
-                  Choose a working folder
+        {kind === null ? (
+          <div className="p-1">
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">New task</div>
+            {(Object.keys(AGENT_LABELS) as AgentKind[]).map((agentKind) => (
+              <button
+                key={agentKind}
+                type="button"
+                className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setKind(agentKind)}
+              >
+                <AgentIcon kind={agentKind} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{AGENT_LABELS[agentKind]}</span>
+                  <span className="block truncate text-muted-foreground text-xs">
+                    Choose a working folder
+                  </span>
                 </span>
-              </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="p-1">
+            <button
+              type="button"
+              onClick={reset}
+              className="flex items-center gap-1 px-2 py-1.5 text-muted-foreground text-xs outline-none hover:text-foreground"
+            >
+              <ChevronLeftIcon className="size-3.5" />
+              {t('chooseWorkspaceTitle')}
             </button>
-          ))}
-        </div>
+            {workspaces.length === 0 && !canChooseDirectory && (
+              <div className="px-2 py-3 text-center text-muted-foreground text-xs">
+                {t('workspaceEmptyTitle')}
+              </div>
+            )}
+            {workspaces.map((workspace) => (
+              <button
+                key={workspace.workspaceId}
+                type="button"
+                className="flex w-full min-w-0 flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => chooseWorkspace(workspace.cwd)}
+              >
+                <span className="line-clamp-1 w-full text-sm">
+                  {workspace.name ?? repositoryLabel(workspace.cwd)}
+                </span>
+                <span className="line-clamp-1 w-full font-mono text-muted-foreground text-xs">
+                  {workspace.cwd}
+                </span>
+              </button>
+            ))}
+            {canChooseDirectory && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  void handleChooseDirectory();
+                }}
+                className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64"
+              >
+                <FolderPlusIcon className="size-4 text-muted-foreground" />
+                <span className="text-sm">{t('chooseDirectory')}</span>
+              </button>
+            )}
+            {error != null && (
+              <div className="px-2 py-1 text-destructive text-xs">
+                {t('registerWorkspaceError', { message: extractErrorMessage(error, false) ?? '' })}
+              </div>
+            )}
+          </div>
+        )}
       </PopoverPopup>
     </Popover>
   );

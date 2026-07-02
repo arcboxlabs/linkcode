@@ -6,7 +6,6 @@ import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
 import type { BranchStatusComponentType, ThreadGroupViewModel } from './threads-view';
 
 export interface ShellFrameProps {
-  sessions: SessionInfo[];
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
@@ -35,7 +34,6 @@ export interface ShellFrameProps {
 }
 
 export function ShellFrame({
-  sessions,
   threadGroups,
   workspaces,
   workspacesLoading,
@@ -60,7 +58,6 @@ export function ShellFrame({
 }: ShellFrameProps): React.ReactNode {
   const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
-  const fallbackCwd = active?.cwd ?? sessions.at(0)?.cwd ?? '/';
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
@@ -73,7 +70,7 @@ export function ShellFrame({
           footer={<DefaultHostFooter />}
           onSelect={onSelectSession}
           onStop={onStopSession}
-          onCreate={(kind) => onCreateSession({ kind, cwd: fallbackCwd })}
+          onCreate={onCreateSession}
           onImportSession={onImportSession}
           BranchStatusComponent={BranchStatusComponent}
           HistoryComponent={HistoryComponent}

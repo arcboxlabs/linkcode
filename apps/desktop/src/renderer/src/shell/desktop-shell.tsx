@@ -1,5 +1,4 @@
 import type { SystemBridge } from '@linkcode/ipc';
-import type { AgentKind } from '@linkcode/schema';
 import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
 import {
   getChromeSurface,
@@ -10,7 +9,6 @@ import {
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { TerminalPanel } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
-import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -53,6 +51,7 @@ export function DesktopShell({
   onStopSession,
   onCreateSession,
   onImportSession,
+  onRegisterWorkspace,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -229,14 +228,8 @@ export function DesktopShell({
     [desktopPlatform, togglePanel],
   );
 
-  function createSession(kind: AgentKind): void {
-    void systemBridge.fs
-      .pickFile({ title: 'Choose working folder', directory: true })
-      .then((cwd) => {
-        if (!cwd) return;
-        onCreateSession({ kind, cwd });
-      })
-      .catch(noop);
+  function pickDirectory(): Promise<string | null> {
+    return systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true });
   }
 
   function resetSidebarSize(): void {
@@ -466,11 +459,13 @@ export function DesktopShell({
                   />
                 }
                 onImportSession={onImportSession}
+                onPickDirectory={pickDirectory}
+                onRegisterWorkspace={onRegisterWorkspace}
                 BranchStatusComponent={BranchStatusComponent}
                 HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
                 onStop={onStopSession}
-                onCreate={createSession}
+                onCreate={onCreateSession}
               />
             </div>
           </Allotment.Pane>
