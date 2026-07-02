@@ -51,6 +51,11 @@ export function runtimeFilePath(): string {
   return daemonRuntimeFilePath();
 }
 
+/** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
+export function hqCredentialsPath(): string {
+  return join(homedir(), '.linkcode', 'hq.json');
+}
+
 /**
  * The daemon-owned chat root: a fixed directory the daemon ensures exists and registers as the
  * `chat`-kind workspace (see `WorkspaceRegistry.ensureChatWorkspace`) backing the sidebar's
