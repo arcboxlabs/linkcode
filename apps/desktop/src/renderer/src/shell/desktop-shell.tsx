@@ -1,13 +1,16 @@
 import type { SystemBridge } from '@linkcode/ipc';
 import type { AgentKind } from '@linkcode/schema';
 import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
-import { getChromeSurface, getWorkspaceMinSize } from '@linkcode/ui/shell/panels';
+import { getChromeSurface, getWorkspaceMinSize, PanelTabContents } from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
+import { TerminalPanel } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { DesktopChrome } from './chrome/chrome';
@@ -79,6 +82,22 @@ export function DesktopShell({
   );
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const [appVersion, setAppVersion] = useState('');
+  // Content boxes reported by the active panel-region instances (docked or maximized overlay).
+  const [rightContentTarget, setRightContentTarget] = useState<HTMLDivElement | null>(null);
+  const [bottomContentTarget, setBottomContentTarget] = useState<HTMLDivElement | null>(null);
+  // Persistent portal hosts. The portal CONTAINER must never change — React keys a portal by its
+  // container, so portaling into the reported target directly would remount the whole subtree on
+  // every docked↔maximized handoff. Instead each side portals into one stable host div, and a
+  // layout effect moves that div between targets — a same-document DOM move, which preserves the
+  // React tree and the terminal's canvas.
+  const { current: rightContentHost } = useSingleton(() => createPanelContentHost());
+  const { current: bottomContentHost } = useSingleton(() => createPanelContentHost());
+  useLayoutEffect(() => {
+    if (rightContentTarget !== null) rightContentTarget.append(rightContentHost);
+  }, [rightContentTarget, rightContentHost]);
+  useLayoutEffect(() => {
+    if (bottomContentTarget !== null) bottomContentTarget.append(bottomContentHost);
+  }, [bottomContentTarget, bottomContentHost]);
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
   const syncSidebarPaneSize = useCallback((size: number): void => {
@@ -112,6 +131,13 @@ export function DesktopShell({
     paneSize: layout.bottomH,
     onPaneSizeChange: syncBottomPaneSize,
   });
+  // Tab content mounts lazily on the panel's first settled open, so no shell is spawned for a
+  // panel that is never shown. Latched during render — React's prescribed state adjustment.
+  const [rightContentMounted, setRightContentMounted] = useState(false);
+  if (rightSplit.phase === 'open' && !rightContentMounted) setRightContentMounted(true);
+  const [bottomContentMounted, setBottomContentMounted] = useState(false);
+  if (bottomSplit.phase === 'open' && !bottomContentMounted) setBottomContentMounted(true);
+
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
   const sidebarClassName = hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar';
@@ -254,13 +280,34 @@ export function DesktopShell({
         chromeSurface={chromeSurface}
         phase={side === 'right' ? rightSplit.phase : bottomSplit.phase}
         reducedMotion={side === 'right' ? rightSplit.reducedMotion : bottomSplit.reducedMotion}
-        terminalCwd={active?.cwd}
+        contentTargetRef={side === 'right' ? setRightContentTarget : setBottomContentTarget}
         onSelectTab={(id) => updatePanel(side, (current) => ({ ...current, activeTabId: id }))}
         onCloseTab={(id) => closeTab(side, id)}
         onAddWindow={(type) => addWindow(side, type)}
         onToggleMax={() => toggleMaxPanel(side)}
         onClose={() => closePanel(side)}
       />
+    );
+  }
+
+  // The shell owns tab content and portals it into whichever region instance (docked or
+  // maximized overlay) currently shows content — `contentHidden` guarantees exactly one target
+  // exists at a time — so a terminal keeps its live renderer across the handoff. Content mounts
+  // lazily on the panel's first open: no shell is spawned for a panel never shown.
+  function renderPanelContents(side: PanelSide, host: HTMLDivElement): React.ReactNode {
+    const panel = side === 'right' ? rightPanel : bottomPanel;
+    const phase = side === 'right' ? rightSplit.phase : bottomSplit.phase;
+    return createPortal(
+      <PanelTabContents
+        tabs={panel.tabs}
+        activeTabId={panel.activeTabId}
+        contentByType={{
+          terminal: (tab) => (
+            <TerminalPanel sessionKey={tab.id} cwd={active?.cwd} suspended={phase !== 'open'} />
+          ),
+        }}
+      />,
+      host,
     );
   }
 
@@ -374,6 +421,14 @@ export function DesktopShell({
           </Allotment.Pane>
         </Allotment>
       </DesktopChrome>
+      {rightContentMounted && renderPanelContents('right', rightContentHost)}
+      {bottomContentMounted && renderPanelContents('bottom', bottomContentHost)}
     </div>
   );
+}
+
+function createPanelContentHost(): HTMLDivElement {
+  const host = document.createElement('div');
+  host.className = 'absolute inset-0';
+  return host;
 }

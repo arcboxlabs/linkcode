@@ -3,7 +3,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { PanelControlButton } from '../shell-control';
-import { FreePanel, PanelStubContent } from './free-panel';
+import { FreePanel } from './free-panel';
+import { PanelTabContents } from './panel-tab-contents';
 import { PanelTabStrip } from './tab-strip';
 import type { PanelControl, PanelSide, PanelTab, PanelWindowType } from './vocabulary';
 
@@ -42,9 +43,6 @@ const PANEL_CHROME_TRANSITION = {
   duration: 0.18,
   ease: [0.2, 0, 0, 1] as [number, number, number, number],
 };
-// Inactive tabs keep their layout box (so restty's ResizeObserver never sees a 0×0 container) but
-// paint nothing — cheaper and safer than display:none, which would churn the PTY size on every switch.
-const HIDDEN_TAB_STYLE: React.CSSProperties = { visibility: 'hidden' };
 
 export function PanelRegion({
   side,
@@ -56,6 +54,7 @@ export function PanelRegion({
   ChromePortal,
   chromeSpacerClassName,
   contentStyle,
+  contentTargetRef,
   panelContentByType,
   onSelectTab,
   onCloseTab,
@@ -77,6 +76,13 @@ export function PanelRegion({
   ChromePortal?: React.ComponentType<PanelChromePortalProps>;
   chromeSpacerClassName?: string;
   contentStyle?: React.CSSProperties;
+  /**
+   * External-content mode: the region renders only an empty content box and reports it here; the
+   * host portals a {@link PanelTabContents} into it. Content then survives moving between panel
+   * instances (docked ↔ maximized) instead of remounting with each one. Wins over
+   * `panelContentByType`.
+   */
+  contentTargetRef?: (element: HTMLDivElement | null) => void;
   panelContentByType?: Partial<Record<PanelWindowType, (tab: PanelTab) => React.ReactNode>>;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
@@ -86,25 +92,15 @@ export function PanelRegion({
 }): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const chromePlacement = getPanelChromePlacement(side, chromeSurface);
-  // Render every tab and toggle visibility instead of resolving a single node by type: two tabs of
-  // the same type (e.g. two terminals) each keep their own mounted instance and live session, so
-  // switching actually swaps what's shown.
   const content = contentHidden ? null : (
-    <div className="relative h-full min-h-0" style={contentStyle}>
-      {panel.tabs.map((tab) => {
-        const active = tab.id === panel.activeTabId;
-        return (
-          <div
-            key={tab.id}
-            className="absolute inset-0"
-            style={active ? undefined : HIDDEN_TAB_STYLE}
-            aria-hidden={!active}
-            inert={!active}
-          >
-            {panelContentByType?.[tab.type]?.(tab) ?? <PanelStubContent type={tab.type} />}
-          </div>
-        );
-      })}
+    <div ref={contentTargetRef} className="relative h-full min-h-0" style={contentStyle}>
+      {contentTargetRef === undefined && (
+        <PanelTabContents
+          tabs={panel.tabs}
+          activeTabId={panel.activeTabId}
+          contentByType={panelContentByType}
+        />
+      )}
     </div>
   );
 
