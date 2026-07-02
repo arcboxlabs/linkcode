@@ -1,6 +1,7 @@
 import type { Conversation } from '@linkcode/client-core';
 import { useTerminalOutput } from '@linkcode/client-core';
 import type { SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import { workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
   cancelTurn,
@@ -184,6 +185,13 @@ function WorkbenchSessionSurface({
     else addHistoryOpen(groupKey);
   }
 
+  // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
+  // group) — excluded from the picker every other workspace-selection flow (New Task, Add
+  // workspace, per-group New thread) offers.
+  const projectWorkspaces = (workspaces ?? []).filter(
+    (workspace) => workspaceKind(workspace) !== 'chat',
+  );
+
   function handleRespond(requestId: string, optionId: string): void {
     if (!sessions.activeId) return;
     onClearError();
@@ -206,7 +214,7 @@ function WorkbenchSessionSurface({
   return (
     <ShellComponent
       threadGroups={threadGroups}
-      workspaces={workspaces ?? []}
+      workspaces={projectWorkspaces}
       workspacesLoading={workspacesLoading}
       activeSession={active}
       conversation={conversation}
