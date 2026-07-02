@@ -46,6 +46,28 @@ export const GitStatusSchema = z.discriminatedUnion('isRepo', [
 ]);
 export type GitStatus = z.infer<typeof GitStatusSchema>;
 
+/** Which base a diff is computed against. `base` compares HEAD against the merge-base with the
+ * remote's default branch; `uncommitted` compares the working tree (tracked + untracked) against HEAD. */
+export const GitDiffModeSchema = z.enum(['uncommitted', 'base']);
+export type GitDiffMode = z.infer<typeof GitDiffModeSchema>;
+
+/** Line-count summary derived from the patch text itself, not from a separate `git diff --stat` call. */
+export const GitDiffStatSchema = z.object({
+  files: z.number().int().nonnegative(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+});
+export type GitDiffStat = z.infer<typeof GitDiffStatSchema>;
+
+/** A unified-diff patch for a directory, capped in size — `truncated` marks a cut made at a file
+ * boundary (never mid-file) to stay under the cap. */
+export const GitDiffSchema = z.object({
+  patch: z.string(),
+  truncated: z.boolean(),
+  stat: GitDiffStatSchema,
+});
+export type GitDiff = z.infer<typeof GitDiffSchema>;
+
 /**
  * Why the provider layer cannot answer for a directory. These are expected product states — clients
  * hide the surface or show a setup hint (e.g. "run `gh auth login`") — not errors.
