@@ -8,7 +8,7 @@ import {
   TimestampSchema,
   WorkspaceIdSchema,
 } from './common';
-import { GitPullRequestStatusSchema, GitStatusSchema } from './git';
+import { GitDiffModeSchema, GitDiffSchema, GitPullRequestStatusSchema, GitStatusSchema } from './git';
 import {
   AgentHistoryListOptionsSchema,
   AgentHistoryListResultSchema,
@@ -190,6 +190,17 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
     kind: z.literal('git.pr_status.get.result'),
     replyTo: z.string().min(1),
     prStatus: GitPullRequestStatusSchema,
+  }),
+  z.object({
+    kind: z.literal('git.diff.get'),
+    clientReqId: z.string().min(1),
+    cwd: z.string().min(1),
+    mode: GitDiffModeSchema,
+  }),
+  z.object({
+    kind: z.literal('git.diff.get.result'),
+    replyTo: z.string().min(1),
+    diff: GitDiffSchema,
   }),
 
   // ── Data plane ──

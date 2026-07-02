@@ -1,4 +1,4 @@
-import type { SystemBridge } from '@linkcode/ipc';
+import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
 import type { AgentKind } from '@linkcode/schema';
 import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
 import {
@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { DesktopChrome } from './chrome/chrome';
+import { DiffStatChip } from './chrome/diff-stat-chip';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import { DesktopPanelRegion } from './layout/panel-region';
 import { DesktopRightPanelRegion } from './layout/right-panel-region';
@@ -57,9 +58,11 @@ export function DesktopShell({
   onDismissError,
   onModelChange,
   onOpenSettings,
+  themeType,
 }: WorkbenchShellProps & {
   systemBridge: SystemBridge;
   onOpenSettings?: () => void;
+  themeType: ThemePreference;
 }): React.ReactNode {
   const shellState = useDesktopShellStore(
     useShallow((state) => ({
@@ -77,6 +80,7 @@ export function DesktopShell({
       closeTab: state.closeTab,
       toggleMaxPanel: state.toggleMaxPanel,
       setActiveSection: state.setActiveSection,
+      openRightPanelSection: state.openRightPanelSection,
       addRightTerminalTab: state.addRightTerminalTab,
       closeRightTerminalTab: state.closeRightTerminalTab,
       setActiveRightTerminalTab: state.setActiveRightTerminalTab,
@@ -190,6 +194,7 @@ export function DesktopShell({
     closeTab,
     toggleMaxPanel,
     setActiveSection,
+    openRightPanelSection,
     addRightTerminalTab,
     closeRightTerminalTab,
     setActiveRightTerminalTab,
@@ -287,6 +292,7 @@ export function DesktopShell({
       <DesktopRightPanelRegion
         panel={rightPanel}
         cwd={active?.cwd}
+        themeType={themeType}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
@@ -414,6 +420,9 @@ export function DesktopShell({
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
+        titleChip={
+          <DiffStatChip cwd={active?.cwd} onOpenDiff={() => openRightPanelSection('diff')} />
+        }
         onShowSidebar={() => updateSidebarOpen(true)}
         onHideSidebar={() => updateSidebarOpen(false)}
         onToggleRight={() => togglePanel('right')}

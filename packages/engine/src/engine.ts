@@ -310,6 +310,15 @@ export class Engine {
         });
         break;
       }
+      case 'git.diff.get': {
+        await this.tryReply(p.clientReqId, async () => {
+          const diff = await this.git.getDiff(p.cwd, p.mode);
+          this.transport.send(
+            createWireMessage({ kind: 'git.diff.get.result', replyTo: p.clientReqId, diff }),
+          );
+        });
+        break;
+      }
       case 'session.attach':
       case 'session.detach': {
         // Multi-device attach is implicit: events are broadcast to all clients. These are accepted as
