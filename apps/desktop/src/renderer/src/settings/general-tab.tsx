@@ -9,11 +9,14 @@ import {
   SelectValue,
 } from 'coss-ui/components/select';
 import { useTranslations } from 'use-intl';
-import { useDesktopAppConfig } from '../app-config-context';
+import { useDesktopSettingsStore } from './store';
 
 export function GeneralTab(): React.ReactNode {
   const t = useTranslations('settings.general');
-  const { theme, setTheme, localeOverride, setLocaleOverride } = useDesktopAppConfig();
+  const theme = useDesktopSettingsStore((state) => state.theme);
+  const setTheme = useDesktopSettingsStore((state) => state.setTheme);
+  const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
+  const setLocaleOverride = useDesktopSettingsStore((state) => state.setLocaleOverride);
 
   const languageItems = [
     { value: 'auto', label: t('languageAuto') },

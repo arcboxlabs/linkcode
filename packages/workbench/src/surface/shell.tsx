@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@linkcode/schema';
+import type { TokenUsage, WorkspaceRecord } from '@linkcode/schema';
 import type { ShellFrameProps } from '@linkcode/ui';
 import { ShellFrame, TitleStrip } from '@linkcode/ui';
 
@@ -11,6 +11,11 @@ export interface WorkbenchShellHeader {
 /** The contract between the workbench surface and an app-provided shell (e.g. desktop's). */
 export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
+  /**
+   * Registers a directory as a workspace. Shared by every shell; only a desktop shell that also
+   * has a native directory picker (`onPickDirectory` on `SessionSidebar`) ever calls it.
+   */
+  onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
 }
 
 export type WorkbenchShellComponent = (props: WorkbenchShellProps) => React.ReactNode;

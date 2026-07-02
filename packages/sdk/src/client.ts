@@ -7,12 +7,18 @@ import type {
   AgentInput,
   AgentKind,
   EffortLevel,
+  GitDiff,
+  GitDiffMode,
+  GitPullRequestStatus,
+  GitStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
   SessionInfo,
   SessionRecord,
   StartOptions,
+  WorkspaceId,
+  WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
@@ -143,6 +149,40 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned provider config (data plane). */
   setProviderConfig(providers: ProvidersConfig): RequestResult<{ ok: true }> {
     return toResult(this.raw.setProviderConfig(providers));
+  }
+
+  /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitStatus(cwd: string): RequestResult<GitStatus> {
+    return toResult(this.raw.getGitStatus(cwd));
+  }
+
+  /** Hosting-provider PR state for a directory's current branch. */
+  getGitPullRequestStatus(cwd: string): RequestResult<GitPullRequestStatus> {
+    return toResult(this.raw.getGitPullRequestStatus(cwd));
+  }
+
+  /** A unified-diff patch for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitDiff(cwd: string, mode: GitDiffMode): RequestResult<GitDiff> {
+    return toResult(this.raw.getGitDiff(cwd, mode));
+  }
+
+  /** Every registered workspace (directory), most recently used first. */
+  listWorkspaces(): RequestResult<WorkspaceRecord[]> {
+    return toResult(this.raw.listWorkspaces());
+  }
+
+  /** Register a directory as a workspace; idempotent for an already-registered directory. */
+  registerWorkspace(cwd: string, name?: string): RequestResult<WorkspaceRecord> {
+    return toResult(this.raw.registerWorkspace(cwd, name));
+  }
+
+  updateWorkspace(workspaceId: WorkspaceId, name: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.updateWorkspace(workspaceId, name));
+  }
+
+  /** Drop a workspace from the registry; never touches the directory on disk. */
+  archiveWorkspace(workspaceId: WorkspaceId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.archiveWorkspace(workspaceId));
   }
 }
 

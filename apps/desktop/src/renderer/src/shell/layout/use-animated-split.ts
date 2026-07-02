@@ -1,10 +1,9 @@
 import type { AllotmentHandle } from 'allotment';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import { useStateWithDeps } from 'foxact/use-state-with-deps';
 import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 export const SHELL_TRANSITION = {
   duration: 0.18,
@@ -56,13 +55,21 @@ export function useAnimatedSplit({
 
   const reducedMotion = useReducedMotion() ?? false;
 
-  const [transition, setTransition] = useStateWithDeps<SplitTransitionState>({
+  // Plain useState with whole-object replacement. The whole transition object feeds into
+  // reconcileTransition, so the React Compiler keys that memo on the object's IDENTITY — and a
+  // tracked-getter store (foxact useStateWithDeps) deliberately keeps one stable reference and
+  // mutates inside (it is not a snapshot). Completion-driven phase updates (same `open`, new
+  // phase) then rendered from the stale memoized reconcile result and the phase never left
+  // 'opening'/'closing'. Field-granular reads off a tracked store stay compiler-safe (the dep
+  // check re-reads through the getters); passing the whole object as a dependency is what breaks,
+  // and this version-counted, render-phase-adjusted machine wants snapshot semantics anyway.
+  const [transition, setTransition] = useState<SplitTransitionState>(() => ({
     requestedOpen: open,
     phase: open ? 'open' : 'closed',
     targetPaneSize: open ? Math.max(0, paneSize) : 0,
     shouldStartFromZero: false,
     version: 0,
-  });
+  }));
 
   // Derive the next transition from the latest `open` request during render — React's prescribed way
   // to adjust state when props change (it re-renders before paint, avoiding an effect round-trip).
@@ -129,29 +136,41 @@ export function useAnimatedSplit({
 
       applyPaneSize(startSize);
 
+      const finish = (): void => {
+        if (signal.aborted) return;
+
+        applyPaneSize(targetPaneSize);
+
+        setTransition((latest) => {
+          if (latest.version !== transitionVersion) return latest;
+
+          return {
+            ...latest,
+            phase: completedPhase,
+            shouldStartFromZero: false,
+          };
+        });
+      };
+
       const controls = animate(startSize, targetPaneSize, {
         duration: SHELL_TRANSITION.duration,
         ease: SHELL_TRANSITION.ease,
         onUpdate(latest) {
           if (!signal.aborted) applyPaneSize(latest);
         },
-        onComplete() {
-          if (signal.aborted) return;
-
-          applyPaneSize(targetPaneSize);
-
-          setTransition((latest) => {
-            if (latest.version !== transitionVersion) return {};
-
-            return {
-              phase: completedPhase,
-              shouldStartFromZero: false,
-            };
-          });
-        },
+        onComplete: finish,
       });
 
+      // The animation runs on rAF, which Chromium throttles to a standstill in occluded windows —
+      // onComplete would then never fire and the phase would stay 'opening'/'closing' forever.
+      // Force completion once the duration has passed; after a real completion this is a no-op.
+      const fallback = setTimeout(() => {
+        controls.stop();
+        finish();
+      }, SHELL_TRANSITION.durationMs + 100);
+
       return () => {
+        clearTimeout(fallback);
         controls.stop();
       };
     },

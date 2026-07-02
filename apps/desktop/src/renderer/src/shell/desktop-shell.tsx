@@ -1,24 +1,31 @@
-import type { SystemBridge } from '@linkcode/ipc';
-import type { AgentKind } from '@linkcode/schema';
+import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
 import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
-import { getChromeSurface, getWorkspaceMinSize } from '@linkcode/ui/shell/panels';
+import {
+  getChromeSurface,
+  getWorkspaceMinSize,
+  PanelStubContent,
+  PanelTabContentStack,
+} from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
+import { TerminalPanel } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
-import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { DesktopChrome } from './chrome/chrome';
+import { DiffStatChip } from './chrome/diff-stat-chip';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
 import { DesktopPanelRegion } from './layout/panel-region';
+import { DesktopRightPanelRegion } from './layout/right-panel-region';
 import type { DesktopShellStyle } from './layout/shell-style';
 import { createDesktopShellStyle, setShellPaneCssSize } from './layout/shell-style';
 import { useAnimatedSplit } from './layout/use-animated-split';
 import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
-import type { PanelSide } from './store/model';
 import {
   DEFAULT_LAYOUT,
   getExpandedPanel,
@@ -33,7 +40,9 @@ import { useDesktopShellStore } from './store/store';
 export function DesktopShell({
   systemBridge,
   header,
-  sessions,
+  threadGroups,
+  workspaces,
+  workspacesLoading,
   activeSession,
   conversation,
   answeredPermissions,
@@ -42,17 +51,23 @@ export function DesktopShell({
   onSelectSession,
   onStopSession,
   onCreateSession,
+  onImportSession,
+  onRegisterWorkspace,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
   TerminalBlockComponent,
+  BranchStatusComponent,
+  HistoryComponent,
   onDismissError,
   onModelChange,
   onEffortChange,
   onOpenSettings,
+  themeType,
 }: WorkbenchShellProps & {
   systemBridge: SystemBridge;
   onOpenSettings?: () => void;
+  themeType: ThemePreference;
 }): React.ReactNode {
   const shellState = useDesktopShellStore(
     useShallow((state) => ({
@@ -69,6 +84,11 @@ export function DesktopShell({
       addWindow: state.addWindow,
       closeTab: state.closeTab,
       toggleMaxPanel: state.toggleMaxPanel,
+      setActiveSection: state.setActiveSection,
+      openRightPanelSection: state.openRightPanelSection,
+      addRightTerminalTab: state.addRightTerminalTab,
+      closeRightTerminalTab: state.closeRightTerminalTab,
+      setActiveRightTerminalTab: state.setActiveRightTerminalTab,
       resetSidebarSize: state.resetSidebarSize,
       resetRightPanelSize: state.resetRightPanelSize,
       resetBottomPanelSize: state.resetBottomPanelSize,
@@ -80,6 +100,22 @@ export function DesktopShell({
   );
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const [appVersion, setAppVersion] = useState('');
+  // Content boxes reported by the active panel-region instances (docked or maximized overlay).
+  const [rightContentTarget, setRightContentTarget] = useState<HTMLDivElement | null>(null);
+  const [bottomContentTarget, setBottomContentTarget] = useState<HTMLDivElement | null>(null);
+  // Persistent portal hosts. The portal CONTAINER must never change — React keys a portal by its
+  // container, so portaling into the reported target directly would remount the whole subtree on
+  // every docked↔maximized handoff. Instead each side portals into one stable host div, and a
+  // layout effect moves that div between targets — a same-document DOM move, which preserves the
+  // React tree and the terminal's canvas.
+  const { current: rightContentHost } = useSingleton(() => createPanelContentHost());
+  const { current: bottomContentHost } = useSingleton(() => createPanelContentHost());
+  useLayoutEffect(() => {
+    if (rightContentTarget !== null) rightContentTarget.append(rightContentHost);
+  }, [rightContentTarget, rightContentHost]);
+  useLayoutEffect(() => {
+    if (bottomContentTarget !== null) bottomContentTarget.append(bottomContentHost);
+  }, [bottomContentTarget, bottomContentHost]);
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
   const syncSidebarPaneSize = useCallback((size: number): void => {
@@ -113,8 +149,17 @@ export function DesktopShell({
     paneSize: layout.bottomH,
     onPaneSizeChange: syncBottomPaneSize,
   });
+  // Tab content mounts lazily on the panel's first settled open, so no shell is spawned for a
+  // panel that is never shown. Latched during render — React's prescribed state adjustment.
+  const [rightContentMounted, setRightContentMounted] = useState(false);
+  if (rightSplit.phase === 'open' && !rightContentMounted) setRightContentMounted(true);
+  const [bottomContentMounted, setBottomContentMounted] = useState(false);
+  if (bottomSplit.phase === 'open' && !bottomContentMounted) setBottomContentMounted(true);
+
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
+  // Hints mirror the window keydown bindings below; hidden until the platform is known.
+  const panelShortcuts = getPanelToggleShortcuts(desktopPlatform);
   const sidebarClassName = hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar';
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
@@ -155,19 +200,53 @@ export function DesktopShell({
     addWindow,
     closeTab,
     toggleMaxPanel,
+    setActiveSection,
+    openRightPanelSection,
+    addRightTerminalTab,
+    closeRightTerminalTab,
+    setActiveRightTerminalTab,
     resetSidebarSize: resetSidebarLayoutSize,
     resetRightPanelSize: resetRightPanelLayoutSize,
     resetBottomPanelSize: resetBottomPanelLayoutSize,
   } = shellState;
 
-  function createSession(kind: AgentKind): void {
-    void systemBridge.fs
-      .pickFile({ title: 'Choose working folder', directory: true })
-      .then((cwd) => {
-        if (!cwd) return;
-        onCreateSession({ kind, cwd });
-      })
-      .catch(noop);
+  // Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel, Cmd+B (Ctrl+B) the sidebar, and
+  // Option+Cmd+B (Ctrl+Alt+B) the right side panel. Captured at the window so they win even
+  // while the terminal canvas holds focus; on mac the Ctrl variants stay with the shell (Ctrl+J
+  // is a real terminal keystroke there). Matched on `code` because Option rewrites `key` on mac
+  // (⌥B yields "∫").
+  useAbortableEffect(
+    (signal) => {
+      if (desktopPlatform === null) return;
+      const isMac = desktopPlatform === 'darwin';
+      window.addEventListener(
+        'keydown',
+        (event) => {
+          const modifier = isMac
+            ? event.metaKey && !event.ctrlKey
+            : event.ctrlKey && !event.metaKey;
+          if (!modifier || event.shiftKey) return;
+          const toggle =
+            event.code === 'KeyJ' && !event.altKey
+              ? () => togglePanel('bottom')
+              : event.code === 'KeyB'
+                ? event.altKey
+                  ? () => togglePanel('right')
+                  : () => updateSidebarOpen((open) => !open)
+                : null;
+          if (toggle === null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          toggle();
+        },
+        { capture: true, signal },
+      );
+    },
+    [desktopPlatform, togglePanel, updateSidebarOpen],
+  );
+
+  function pickDirectory(): Promise<string | null> {
+    return systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true });
   }
 
   function resetSidebarSize(): void {
@@ -187,7 +266,10 @@ export function DesktopShell({
 
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
+      <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
+      {/* Keyed per session: switching resets the composer draft and scroll without touching the shell. */}
       <ConversationSurface
+        key={active?.sessionId ?? 'no-active-session'}
         className="min-h-0 flex-1"
         conversation={conversation}
         agentKind={active?.kind}
@@ -208,46 +290,113 @@ export function DesktopShell({
     </main>
   );
 
-  // One renderer, two mount points: the docked instance (inside the Allotment,
-  // owns the chrome tabs/controls) and the maximized overlay instance (chrome
-  // suppressed — the docked instance keeps owning the chrome so the two never
-  // portal duplicate tabs during the transition). Tab content mounts in exactly
-  // one of them (the overlay while expanded, via contentHidden), so stateful tabs
-  // like the terminal never run twice; the terminal session registry hands the
-  // PTY across the remount.
-  function renderPanel(
-    side: PanelSide,
-    options: { maximized: boolean; chromeVisible: boolean; contentHidden: boolean },
-  ): React.ReactNode {
-    const panel = side === 'right' ? rightPanel : bottomPanel;
+  // One renderer, two mount points per side: the docked instance (inside the Allotment, owns the
+  // chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
+  // instance keeps owning the chrome so the two never portal duplicate tabs during the
+  // transition). Tab content mounts in exactly one of them (the overlay while expanded, via
+  // contentHidden), so stateful tabs like the terminal never run twice; the terminal session
+  // registry hands the PTY across the remount.
+  function renderRightPanel(options: {
+    maximized: boolean;
+    chromeVisible: boolean;
+    contentHidden: boolean;
+  }): React.ReactNode {
     return (
-      <DesktopPanelRegion
-        side={side}
-        panel={panel}
+      <DesktopRightPanelRegion
+        panel={rightPanel}
+        cwd={active?.cwd}
+        themeType={themeType}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={side === 'right' ? rightSplit.phase : bottomSplit.phase}
-        reducedMotion={side === 'right' ? rightSplit.reducedMotion : bottomSplit.reducedMotion}
-        onSelectTab={(id) => updatePanel(side, (current) => ({ ...current, activeTabId: id }))}
-        onCloseTab={(id) => closeTab(side, id)}
-        onAddWindow={(type) => addWindow(side, type)}
-        onToggleMax={() => toggleMaxPanel(side)}
-        onClose={() => closePanel(side)}
+        phase={rightSplit.phase}
+        reducedMotion={rightSplit.reducedMotion}
+        terminalContentTargetRef={setRightContentTarget}
+        onSelectSection={setActiveSection}
+        onSelectTerminalTab={setActiveRightTerminalTab}
+        onCloseTerminalTab={closeRightTerminalTab}
+        onAddTerminalTab={addRightTerminalTab}
+        onToggleMax={() => toggleMaxPanel('right')}
       />
     );
+  }
+
+  function renderBottomPanel(options: {
+    maximized: boolean;
+    chromeVisible: boolean;
+    contentHidden: boolean;
+  }): React.ReactNode {
+    return (
+      <DesktopPanelRegion
+        side="bottom"
+        panel={bottomPanel}
+        maximized={options.maximized}
+        chromeVisible={options.chromeVisible}
+        contentHidden={options.contentHidden}
+        chromeSurface={chromeSurface}
+        phase={bottomSplit.phase}
+        reducedMotion={bottomSplit.reducedMotion}
+        contentTargetRef={setBottomContentTarget}
+        onSelectTab={(id) => updatePanel((current) => ({ ...current, activeTabId: id }))}
+        onCloseTab={(id) => closeTab(id)}
+        onAddWindow={(type) => addWindow(type)}
+        onToggleMax={() => toggleMaxPanel('bottom')}
+        onClose={() => closePanel('bottom')}
+      />
+    );
+  }
+
+  // The shell owns the right panel's Terminal-section PTY stack and portals it into whichever
+  // region instance (docked or maximized overlay) currently shows content — `contentHidden`
+  // guarantees exactly one target exists at a time — so a terminal keeps its live renderer across
+  // the handoff. Content mounts lazily on the panel's first open: no shell is spawned for a panel
+  // never shown. Diff/Browser section content is stateless (SWR-backed) and stays inline in
+  // `DesktopRightPanelRegion`, so only the Terminal stack needs this treatment.
+  function renderRightPanelContents(host: HTMLDivElement): React.ReactNode {
+    const activeIsTerminal = rightPanel.activeSection === 'terminal';
+    const items = rightPanel.terminal.tabs.map((tab) => ({
+      id: tab.id,
+      active: activeIsTerminal && tab.id === rightPanel.terminal.activeTabId,
+      node: (
+        <TerminalPanel
+          sessionKey={tab.id}
+          cwd={active?.cwd}
+          suspended={rightSplit.phase !== 'open'}
+        />
+      ),
+    }));
+    return createPortal(<PanelTabContentStack items={items} />, host);
+  }
+
+  // Same portal treatment for the bottom panel's flat tab strip.
+  function renderBottomPanelContents(host: HTMLDivElement): React.ReactNode {
+    const items = bottomPanel.tabs.map((tab) => ({
+      id: tab.id,
+      active: tab.id === bottomPanel.activeTabId,
+      node:
+        tab.type === 'terminal' ? (
+          <TerminalPanel
+            sessionKey={tab.id}
+            cwd={active?.cwd}
+            suspended={bottomSplit.phase !== 'open'}
+          />
+        ) : (
+          <PanelStubContent type={tab.type} />
+        ),
+    }));
+    return createPortal(<PanelTabContentStack items={items} />, host);
   }
 
   const workspaceRight: WorkspaceSide = {
     split: rightSplit,
     open: rightPanel.open,
-    node: renderPanel('right', {
+    node: renderRightPanel({
       maximized: expandedPanel === 'right',
       chromeVisible: rightSplit.paneVisible,
       contentHidden: expandedPanel === 'right',
     }),
-    expandedNode: renderPanel('right', {
+    expandedNode: renderRightPanel({
       maximized: true,
       chromeVisible: false,
       contentHidden: false,
@@ -257,12 +406,12 @@ export function DesktopShell({
   const workspaceBottom: WorkspaceSide = {
     split: bottomSplit,
     open: bottomPanel.open,
-    node: renderPanel('bottom', {
+    node: renderBottomPanel({
       maximized: expandedPanel === 'bottom',
       chromeVisible: bottomSplit.paneVisible,
       contentHidden: expandedPanel === 'bottom',
     }),
-    expandedNode: renderPanel('bottom', {
+    expandedNode: renderBottomPanel({
       maximized: true,
       chromeVisible: false,
       contentHidden: false,
@@ -284,6 +433,12 @@ export function DesktopShell({
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
+        sidebarShortcut={panelShortcuts.sidebar}
+        rightPanelShortcut={panelShortcuts.right}
+        bottomPanelShortcut={panelShortcuts.bottom}
+        titleChip={
+          <DiffStatChip cwd={active?.cwd} onOpenDiff={() => openRightPanelSection('diff')} />
+        }
         onShowSidebar={() => updateSidebarOpen(true)}
         onHideSidebar={() => updateSidebarOpen(false)}
         onToggleRight={() => togglePanel('right')}
@@ -318,7 +473,9 @@ export function DesktopShell({
             <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
               <SessionSidebar
                 className={sidebarClassName}
-                sessions={sessions}
+                threadGroups={threadGroups}
+                workspaces={workspaces}
+                workspacesLoading={workspacesLoading}
                 activeId={active?.sessionId ?? null}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
@@ -329,9 +486,14 @@ export function DesktopShell({
                     onOpenSettings={onOpenSettings}
                   />
                 }
+                onImportSession={onImportSession}
+                onPickDirectory={pickDirectory}
+                onRegisterWorkspace={onRegisterWorkspace}
+                BranchStatusComponent={BranchStatusComponent}
+                HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
                 onStop={onStopSession}
-                onCreate={createSession}
+                onCreate={onCreateSession}
               />
             </div>
           </Allotment.Pane>
@@ -349,6 +511,24 @@ export function DesktopShell({
           </Allotment.Pane>
         </Allotment>
       </DesktopChrome>
+      {rightContentMounted && renderRightPanelContents(rightContentHost)}
+      {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}
     </div>
   );
+}
+
+function createPanelContentHost(): HTMLDivElement {
+  const host = document.createElement('div');
+  host.className = 'absolute inset-0';
+  return host;
+}
+
+function getPanelToggleShortcuts(platform: NodeJS.Platform | null): {
+  sidebar?: string;
+  bottom?: string;
+  right?: string;
+} {
+  if (platform === null) return {};
+  if (platform === 'darwin') return { sidebar: '⌘B', bottom: '⌘J', right: '⌥⌘B' };
+  return { sidebar: 'Ctrl+B', bottom: 'Ctrl+J', right: 'Ctrl+Alt+B' };
 }

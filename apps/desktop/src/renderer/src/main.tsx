@@ -2,6 +2,8 @@ import { init as sentryInit } from '@sentry/electron/renderer';
 import { init as reactInit } from '@sentry/react';
 import { createRoot } from 'react-dom/client';
 import { DesktopApp } from './app';
+import { systemBridge } from './ipc';
+import { useDesktopSettingsStore } from './settings/store';
 import { installAdaptiveTheme } from './theme';
 import 'allotment/dist/style.css';
 import './index.css';
@@ -15,5 +17,11 @@ if (!el) throw new Error('#root not found');
 
 const uninstallAdaptiveTheme = installAdaptiveTheme();
 if (import.meta.hot) import.meta.hot.dispose(uninstallAdaptiveTheme);
+
+// Menubar / Cmd+, opens Settings even while the daemon is unreachable.
+const unsubscribeOpenSettings = systemBridge.app.onOpenSettings(() => {
+  useDesktopSettingsStore.getState().openSettings();
+});
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeOpenSettings);
 
 createRoot(el).render(<DesktopApp />);

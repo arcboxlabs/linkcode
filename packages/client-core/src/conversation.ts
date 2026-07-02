@@ -10,6 +10,7 @@ import type {
   ToolCallContent,
   ToolCallUpdate,
 } from '@linkcode/schema';
+import type { SequencedAgentEvent } from './client';
 
 /**
  * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
@@ -266,6 +267,31 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     stopReason,
     pendingPermissionIds,
   };
+}
+
+/** A point-in-time transcript snapshot: past events read from provider history, plus the live
+ * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). */
+export interface ConversationSeed {
+  events: AgentEvent[];
+  /** The snapshot covers every live event with seq ≤ this; 0 = supersedes nothing. */
+  uptoSeq: number;
+}
+
+/**
+ * Prepend a transcript snapshot to the live event stream. The cut is ordered, not clocked: live
+ * events received at or before the moment the snapshot resolved (seq ≤ uptoSeq) are contained in
+ * it and dropped; only the tail received after the snapshot is appended.
+ */
+export function mergeSeededEvents(
+  seed: ConversationSeed | undefined,
+  live: readonly SequencedAgentEvent[],
+): AgentEvent[] {
+  if (!seed) return live.map(({ event }) => event);
+  const merged = [...seed.events];
+  for (const { event, seq } of live) {
+    if (seq > seed.uptoSeq) merged.push(event);
+  }
+  return merged;
 }
 
 /** Extract a flat preview string from content blocks (used for list previews / titles). */

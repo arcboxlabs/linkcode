@@ -2,7 +2,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ProvidersConfig } from '@linkcode/schema';
-import { ProvidersConfigSchema } from '@linkcode/schema';
+import {
+  DAEMON_DEFAULT_PORT,
+  DAEMON_RUNTIME_FILE_SEGMENTS,
+  ProvidersConfigSchema,
+} from '@linkcode/schema';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 
 /**
@@ -18,7 +22,7 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
 }
 
-const DEFAULT_PORT = 4317;
+const DEFAULT_PORT = DAEMON_DEFAULT_PORT;
 const DEFAULT_HOST = '127.0.0.1';
 
 interface ConfigFile {
@@ -35,6 +39,11 @@ function configPath(): string {
 /** The daemon's SQLite database (session registry), next to config.json. */
 export function databasePath(): string {
   return join(homedir(), '.linkcode', 'daemon.db');
+}
+
+/** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
+export function runtimeFilePath(): string {
+  return join(homedir(), ...DAEMON_RUNTIME_FILE_SEGMENTS);
 }
 
 export function loadConfig(): DaemonConfig {

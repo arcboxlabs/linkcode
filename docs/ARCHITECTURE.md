@@ -96,6 +96,13 @@ connects to. The `Engine` is the host proper — it owns session lifecycle and a
 orchestration. Clients are thin: they render the normalized conversation and send
 normalized input back.
 
+Listeners bind at the configured port (default `19523`, ascii `LC`) and hunt upward
+past foreign occupants. Every listener answers `GET /linkcode` with the daemon's
+identity, which enforces one daemon per machine: a second instance detects the first
+and exits. The actually-bound endpoints are advertised in `~/.linkcode/runtime.json`
+(removed on shutdown) so local clients — desktop main in particular — can discover
+the endpoint instead of hard-coding it.
+
 ## Data plane vs system plane
 
 Two channels run side by side and never overlap:
@@ -194,6 +201,9 @@ The payload is a discriminated union keyed by `kind` (`session.start` / `session
 `session.list` / `session.listed`, `history.list` / `history.listed`, `agent.event`, and
 so on). Local direct connections and remote tunnels share the identical format, and both
 ends validate with zod at the trust boundary — before sending and after receiving.
+Any change to the payload union bumps `WIRE_PROTOCOL_VERSION`; the version is a validated
+literal, so a stale peer rejects every message — after a bump, restart the daemon and all
+clients together.
 
 ## Key contracts
 
@@ -314,4 +324,5 @@ These are genuinely undecided. Do not invent answers — raise them first.
 | tayori            | The typed request wrapper the client data layer is built on, backed by the `sdk`.        |
 | coss-ui           | The desktop/webview UI primitive library (vendored from cal.com's COSS UI).              |
 | HeroUI            | The mobile UI library.                                                                    |
+| Thread (UI)       | The user-facing term for a Session. Product copy only — code and the wire protocol keep `Session`. |
 | ACP               | Agent Client Protocol — the shape the normalized `AgentEvent` contract is aligned with.  |

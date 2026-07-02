@@ -1,6 +1,13 @@
-import type { PanelSide, PanelTab, PanelWindowType } from '@linkcode/ui/shell/panels';
-import { PANEL_WINDOW_TYPES } from '@linkcode/ui/shell/panels';
+import type {
+  PanelSection,
+  PanelSectionTab,
+  PanelSide,
+  PanelTab,
+  PanelWindowType,
+} from '@linkcode/ui/shell/panels';
+import { PANEL_SECTIONS, PANEL_WINDOW_TYPES } from '@linkcode/ui/shell/panels';
 import { clamp } from 'foxts/clamp';
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { z } from 'zod';
 
 export type { PanelSide } from '@linkcode/ui/shell/panels';
@@ -10,6 +17,19 @@ export interface PanelState {
   open: boolean;
   tabs: PanelTab[];
   activeTabId: string | null;
+}
+
+/** The right panel's terminal section: its own sub-tab strip of PTY instances. */
+export interface RightPanelTerminalState {
+  tabs: PanelSectionTab[];
+  activeTabId: string | null;
+}
+
+/** The right panel: fixed Diff/Terminal/Browser sections, with per-instance sub-tabs for Terminal. */
+export interface RightPanelState {
+  open: boolean;
+  activeSection: PanelSection;
+  terminal: RightPanelTerminalState;
 }
 
 export interface LayoutState {
@@ -22,17 +42,24 @@ export interface DesktopShellState {
   sidebarOpen: boolean;
   layout: LayoutState;
   expansionStack: PanelSide[];
-  rightPanel: PanelState;
+  rightPanel: RightPanelState;
   bottomPanel: PanelState;
 }
 
 export interface PersistedDesktopShellState {
-  version: 1;
+  version: 2;
   sidebarOpen: boolean;
   layout: LayoutState;
   expansionStack: PanelSide[];
-  rightPanel: PersistedPanelState;
+  rightPanel: PersistedRightPanelState;
   bottomPanel: PersistedPanelState;
+}
+
+export interface PersistedRightPanelState {
+  open: boolean;
+  activeSection: PanelSection;
+  terminalTabCount: number;
+  activeTerminalTabIndex: number;
 }
 
 export interface PersistedPanelState {
@@ -41,7 +68,7 @@ export interface PersistedPanelState {
   activeTabIndex: number;
 }
 
-export const DESKTOP_SHELL_STORAGE_KEY = 'linkcode.desktop.shell-state:v1';
+export const DESKTOP_SHELL_STORAGE_KEY = 'linkcode.desktop.shell-state:v2';
 
 export const SIDEBAR_MIN_SIZE = 240;
 export const SIDEBAR_MAX_SIZE = 520;
@@ -62,9 +89,16 @@ export const PANEL_EXPANSION_TARGET: Record<PanelSide, PanelExpansionTarget> = {
   bottom: 'workbench',
 };
 
+/** The bottom panel's window type when it needs to seed a first tab. */
+const DEFAULT_BOTTOM_WINDOW_TYPE: PanelWindowType = 'terminal';
+
+/** Defensive cap on the terminal tab count restored from persisted state. */
+const MAX_PERSISTED_RIGHT_TERMINAL_TABS = 20;
+
 let tabSequence = 0;
 
 const PanelSideSchema = z.enum(['right', 'bottom']);
+const PanelSectionSchema = z.enum(PANEL_SECTIONS);
 const PanelWindowTypeSchema = z.enum(PANEL_WINDOW_TYPES);
 const FiniteNumberSchema = z.number();
 
@@ -92,8 +126,16 @@ export function createDefaultDesktopShellState(): DesktopShellState {
     sidebarOpen: true,
     layout: DEFAULT_LAYOUT,
     expansionStack: [],
-    rightPanel: createPanelState(false, 'review'),
-    bottomPanel: createPanelState(false, 'terminal'),
+    rightPanel: createDefaultRightPanelState(),
+    bottomPanel: createPanelState(false, DEFAULT_BOTTOM_WINDOW_TYPE),
+  };
+}
+
+export function createDefaultRightPanelState(): RightPanelState {
+  return {
+    open: false,
+    activeSection: 'diff',
+    terminal: { tabs: [], activeTabId: null },
   };
 }
 
@@ -111,21 +153,26 @@ export function createTab(type: PanelWindowType): PanelTab {
   return { id: `${type}-${tabSequence}`, type };
 }
 
-export function defaultWindowFor(side: PanelSide): PanelWindowType {
-  return side === 'right' ? 'review' : 'terminal';
+/** Prefixed so ids never collide with the bottom panel's tabs, which share the same PTY registry. */
+export function createRightTerminalTab(): PanelSectionTab {
+  tabSequence += 1;
+  return { id: `right-terminal-${tabSequence}` };
 }
 
-export function getPanelFromShellState(state: DesktopShellState, side: PanelSide): PanelState {
-  return side === 'right' ? state.rightPanel : state.bottomPanel;
-}
+/** Removes a right-panel terminal tab, falling back the active tab to a neighbor if it was the one closed. */
+export function closeRightTerminalTabState(
+  terminal: RightPanelTerminalState,
+  id: string,
+): RightPanelTerminalState {
+  const { tabs, activeTabId } = terminal;
+  const index = tabs.findIndex((tab) => tab.id === id);
+  if (index === -1) return terminal;
 
-export function setPanelInShellState(
-  state: DesktopShellState,
-  side: PanelSide,
-  panel: PanelState,
-): DesktopShellState {
-  if (side === 'right') return { ...state, rightPanel: panel };
-  return { ...state, bottomPanel: panel };
+  const nextTabs = tabs.filter((tab) => tab.id !== id);
+  const nextActiveId =
+    activeTabId === id ? (nextTabs[clamp(index, 0, nextTabs.length - 1)]?.id ?? null) : activeTabId;
+
+  return { tabs: nextTabs, activeTabId: nextActiveId };
 }
 
 export function pushExpandedPanel(stack: PanelSide[], side: PanelSide): PanelSide[] {
@@ -138,7 +185,7 @@ export function removeExpandedPanel(stack: PanelSide[], side: PanelSide): PanelS
 
 export function normalizeExpansionStack(
   value: PanelSide[],
-  rightPanel: PanelState,
+  rightPanel: RightPanelState,
   bottomPanel: PanelState,
 ): PanelSide[] {
   return value.reduce<PanelSide[]>((stack, side) => {
@@ -189,7 +236,7 @@ export function parsePersistedDesktopShellState(value: unknown): DesktopShellSta
 
 export function serializeDesktopShellState(state: DesktopShellState): PersistedDesktopShellState {
   return {
-    version: 1,
+    version: 2,
     sidebarOpen: state.sidebarOpen,
     layout: normalizeLayout(state.layout),
     expansionStack: normalizeExpansionStack(
@@ -197,19 +244,19 @@ export function serializeDesktopShellState(state: DesktopShellState): PersistedD
       state.rightPanel,
       state.bottomPanel,
     ),
-    rightPanel: serializePanel(state.rightPanel),
+    rightPanel: serializeRightPanel(state.rightPanel),
     bottomPanel: serializePanel(state.bottomPanel),
   };
 }
 
 function createPersistedShellStateSchema(): z.ZodType<DesktopShellState> {
   const fallback = createDefaultDesktopShellState();
-  const rightPanelSchema = createPersistedPanelSchema('review', false);
-  const bottomPanelSchema = createPersistedPanelSchema('terminal', false);
+  const rightPanelSchema = createPersistedRightPanelSchema();
+  const bottomPanelSchema = createPersistedPanelSchema(DEFAULT_BOTTOM_WINDOW_TYPE, false);
 
   return z
     .object({
-      version: z.literal(1),
+      version: z.literal(2),
       sidebarOpen: z.boolean().catch(fallback.sidebarOpen),
       layout: PersistedLayoutSchema,
       expansionStack: PersistedExpansionStackSchema,
@@ -265,6 +312,51 @@ function createPersistedPanelSchema(
     });
 }
 
+function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
+  const fallback = createDefaultRightPanelState();
+
+  return z
+    .object({
+      open: z.boolean().catch(fallback.open),
+      activeSection: PanelSectionSchema.catch(fallback.activeSection),
+      terminalTabCount: FiniteNumberSchema.int().nonnegative().catch(0),
+      activeTerminalTabIndex: FiniteNumberSchema.int().catch(0),
+    })
+    .catch({
+      open: fallback.open,
+      activeSection: fallback.activeSection,
+      terminalTabCount: 0,
+      activeTerminalTabIndex: 0,
+    })
+    .transform(({ open, activeSection, terminalTabCount, activeTerminalTabIndex }) => {
+      const tabCount = clamp(terminalTabCount, 0, MAX_PERSISTED_RIGHT_TERMINAL_TABS);
+      const tabs = createFixedArray(tabCount).map(() => createRightTerminalTab());
+      const activeIndex = tabs.length > 0 ? clamp(activeTerminalTabIndex, 0, tabs.length - 1) : 0;
+
+      return {
+        open,
+        activeSection,
+        terminal: {
+          tabs,
+          activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
+        },
+      };
+    });
+}
+
+function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
+  return {
+    open: panel.open,
+    activeSection: panel.activeSection,
+    terminalTabCount: panel.terminal.tabs.length,
+    activeTerminalTabIndex: clamp(
+      panel.terminal.tabs.findIndex((tab) => tab.id === panel.terminal.activeTabId),
+      0,
+      Math.max(0, panel.terminal.tabs.length - 1),
+    ),
+  };
+}
+
 function serializePanel(panel: PanelState): PersistedPanelState {
   return {
     open: panel.open,
@@ -279,9 +371,9 @@ function serializePanel(panel: PanelState): PersistedPanelState {
 
 function isPanelOpen(
   side: PanelSide,
-  rightPanel: PanelState,
+  rightPanel: RightPanelState,
   bottomPanel: PanelState,
-): side is PanelSide {
+): boolean {
   if (side === 'right') return rightPanel.open;
   return bottomPanel.open;
 }

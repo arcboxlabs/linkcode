@@ -1,12 +1,16 @@
 import type { ChromeSurface, PanelWindowType } from '@linkcode/ui/shell/panels';
 import { PanelRegion } from '@linkcode/ui/shell/panels';
-import { TerminalPanel } from '@linkcode/workbench';
 import { DesktopChromePortal } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
 import type { PanelSide, PanelState } from '../store/model';
 import type { SplitPanePhase } from './use-animated-split';
 import { getShellContentMotionStyle } from './use-animated-split';
 
+/**
+ * Desktop panel chrome/frame. Tab content is NOT rendered here: the shell owns it and portals a
+ * `PanelTabContentStack` into the box this region reports via `contentTargetRef`, so stateful tabs
+ * (terminals) survive the docked ↔ maximized instance handoff without remounting.
+ */
 export function DesktopPanelRegion({
   side,
   panel,
@@ -16,6 +20,7 @@ export function DesktopPanelRegion({
   contentHidden,
   phase,
   reducedMotion,
+  contentTargetRef,
   onSelectTab,
   onCloseTab,
   onAddWindow,
@@ -30,6 +35,7 @@ export function DesktopPanelRegion({
   contentHidden: boolean;
   phase: SplitPanePhase;
   reducedMotion: boolean;
+  contentTargetRef: (element: HTMLDivElement | null) => void;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddWindow: (type: PanelWindowType) => void;
@@ -51,7 +57,7 @@ export function DesktopPanelRegion({
         phase,
         reducedMotion,
       })}
-      panelContentByType={{ terminal: (tab) => <TerminalPanel sessionKey={tab.id} /> }}
+      contentTargetRef={contentTargetRef}
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
       onAddWindow={onAddWindow}

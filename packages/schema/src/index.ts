@@ -10,6 +10,8 @@
 export * from './agent';
 export * from './common';
 export * from './content';
+export * from './daemon-runtime';
+export * from './git';
 export * from './history';
 export * from './permission';
 export * from './plan';
@@ -18,3 +20,4 @@ export * from './session';
 export * from './tool-call';
 export * from './usage';
 export * from './wire';
+export * from './workspace';

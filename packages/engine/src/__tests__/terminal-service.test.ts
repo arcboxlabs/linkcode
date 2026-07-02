@@ -129,6 +129,23 @@ describe('TerminalService', () => {
     expect(exits).toEqual([{ kind: 'terminal.exit', terminalId: idA, exitCode: 0 }]);
   });
 
+  it('killHostTerminals reaps only session-less terminals', async () => {
+    const { transport, sent } = recordingTransport();
+    const backend = new FakePtyBackend();
+    const service = new TerminalService(backend, transport);
+
+    await service.open('req-host', opts);
+    await service.open('req-agent', { ...opts, sessionId: 's1' as SessionId });
+    const hostId = openedId(sent, 'req-host');
+
+    service.killHostTerminals();
+
+    expect(backend.opened[0].killed).toBe(true);
+    expect(backend.opened[1].killed).toBe(false);
+    const exits = sent.filter((p) => p.kind === 'terminal.exit');
+    expect(exits).toEqual([{ kind: 'terminal.exit', terminalId: hostId, exitCode: 0 }]);
+  });
+
   it('closeAll kills every terminal and shuts the backend down silently', async () => {
     const { transport, sent } = recordingTransport();
     const backend = new FakePtyBackend();

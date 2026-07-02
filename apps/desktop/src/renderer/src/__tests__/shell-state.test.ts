@@ -1,8 +1,11 @@
-import type { DesktopShellState } from '@renderer/shell/store/model';
+import type { DesktopShellState, RightPanelState } from '@renderer/shell/store/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
+  closeRightTerminalTabState,
+  createDefaultRightPanelState,
   createPanelState,
+  createRightTerminalTab,
   DEFAULT_LAYOUT,
   parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
@@ -14,26 +17,52 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('desktop shell state persistence', () => {
-  it('requires the persisted version marker', () => {
+  it('falls back to defaults when the version marker is missing', () => {
     const state = parsePersistedDesktopShellState({
       sidebarOpen: false,
-      rightPanel: { open: true, tabs: ['browser'], activeTabIndex: 0 },
+      rightPanel: {
+        open: true,
+        activeSection: 'terminal',
+        terminalTabCount: 2,
+        activeTerminalTabIndex: 1,
+      },
       bottomPanel: { open: true, tabs: ['files'], activeTabIndex: 0 },
     });
 
     expect(state.sidebarOpen).toBe(true);
     expect(state.expansionStack).toEqual([]);
-    expect(panelTypes(state.rightPanel)).toEqual(['review']);
+    expect(state.rightPanel).toEqual(createDefaultRightPanelState());
+    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
+  });
+
+  it('falls back to defaults for a stale v1 payload instead of migrating it', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 1,
+      sidebarOpen: false,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: { open: true, tabs: ['review'], activeTabIndex: 0 },
+      bottomPanel: { open: true, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+
+    expect(state.sidebarOpen).toBe(true);
+    expect(state.expansionStack).toEqual([]);
+    expect(state.rightPanel).toEqual(createDefaultRightPanelState());
     expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
   });
 
   it('clamps latest layout values', () => {
     const state = parsePersistedDesktopShellState({
-      version: 1,
+      version: 2,
       sidebarOpen: true,
       layout: { sidebarW: 10, rightW: 10000, bottomH: 1 },
       expansionStack: [],
-      rightPanel: { open: false, tabs: ['review'], activeTabIndex: 0 },
+      rightPanel: {
+        open: false,
+        activeSection: 'diff',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
       bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
     });
 
@@ -44,9 +73,9 @@ describe('desktop shell state persistence', () => {
     });
   });
 
-  it('rejects invalid panel tabs and falls back when none remain', () => {
+  it('rejects invalid bottom tabs and falls back when none remain', () => {
     const state = parsePersistedDesktopShellState({
-      version: 1,
+      version: 2,
       sidebarOpen: true,
       layout: {
         sidebarW: SIDEBAR_MAX_SIZE,
@@ -54,36 +83,88 @@ describe('desktop shell state persistence', () => {
         bottomH: BOTTOM_PANEL_MAX_SIZE,
       },
       expansionStack: [],
-      rightPanel: { open: true, tabs: ['review', 'invalid', 'browser'], activeTabIndex: 9 },
+      rightPanel: {
+        open: false,
+        activeSection: 'diff',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
       bottomPanel: { open: true, tabs: ['invalid'], activeTabIndex: 0 },
     });
 
-    expect(panelTypes(state.rightPanel)).toEqual(['review', 'browser']);
-    expect(activePanelType(state, 'rightPanel')).toBe('browser');
     expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
-    expect(activePanelType(state, 'bottomPanel')).toBe('terminal');
+    expect(activeBottomPanelType(state)).toBe('terminal');
   });
 
-  it('clamps active indexes below bounds', () => {
+  it('restores the right panel section and terminal tab count, clamping the active index', () => {
     const state = parsePersistedDesktopShellState({
-      version: 1,
+      version: 2,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
-      rightPanel: { open: true, tabs: ['files', 'browser'], activeTabIndex: -4 },
+      rightPanel: {
+        open: true,
+        activeSection: 'terminal',
+        terminalTabCount: 3,
+        activeTerminalTabIndex: 99,
+      },
       bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
     });
 
-    expect(activePanelType(state, 'rightPanel')).toBe('files');
+    expect(state.rightPanel.open).toBe(true);
+    expect(state.rightPanel.activeSection).toBe('terminal');
+    expect(state.rightPanel.terminal.tabs).toHaveLength(3);
+    expect(state.rightPanel.terminal.activeTabId).toBe(state.rightPanel.terminal.tabs[2].id);
+  });
+
+  it('rejects an invalid right panel section and falls back to diff', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 2,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'invalid',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+
+    expect(state.rightPanel.activeSection).toBe('diff');
+  });
+
+  it('caps a corrupted terminal tab count', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 2,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'terminal',
+        terminalTabCount: 999,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+
+    expect(state.rightPanel.terminal.tabs.length).toBeLessThanOrEqual(20);
   });
 
   it('filters expansion stack to open panels', () => {
     const state = parsePersistedDesktopShellState({
-      version: 1,
+      version: 2,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: ['right', 'bottom', 'bottom', 'invalid'],
-      rightPanel: { open: false, tabs: ['review'], activeTabIndex: 0 },
+      rightPanel: {
+        open: false,
+        activeSection: 'diff',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
       bottomPanel: { open: true, tabs: ['terminal'], activeTabIndex: 0 },
     });
 
@@ -91,11 +172,19 @@ describe('desktop shell state persistence', () => {
   });
 
   it('round trips the latest serialized shape', () => {
+    const rightPanel: RightPanelState = {
+      open: true,
+      activeSection: 'browser',
+      terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
+    };
     const source: DesktopShellState = {
       sidebarOpen: false,
       layout: { sidebarW: 300, rightW: 500, bottomH: 260 },
       expansionStack: ['right', 'bottom'],
-      rightPanel: createPanelState(true, 'browser'),
+      rightPanel: {
+        ...rightPanel,
+        terminal: { ...rightPanel.terminal, activeTabId: rightPanel.terminal.tabs[1].id },
+      },
       bottomPanel: createPanelState(true, 'files'),
     };
 
@@ -104,19 +193,59 @@ describe('desktop shell state persistence', () => {
     expect(parsed.sidebarOpen).toBe(false);
     expect(parsed.layout).toEqual(source.layout);
     expect(parsed.expansionStack).toEqual(['right', 'bottom']);
-    expect(panelTypes(parsed.rightPanel)).toEqual(['browser']);
+    expect(parsed.rightPanel.activeSection).toBe('browser');
+    expect(parsed.rightPanel.terminal.tabs).toHaveLength(2);
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
   });
 });
 
-function panelTypes(panel: DesktopShellState['rightPanel']): string[] {
+describe('closeRightTerminalTabState', () => {
+  it('falls back the active tab to the neighbor that slides into its slot', () => {
+    const a = createRightTerminalTab();
+    const b = createRightTerminalTab();
+    const c = createRightTerminalTab();
+    const terminal = { tabs: [a, b, c], activeTabId: b.id };
+
+    const next = closeRightTerminalTabState(terminal, b.id);
+
+    expect(next.tabs.map((tab) => tab.id)).toEqual([a.id, c.id]);
+    expect(next.activeTabId).toBe(c.id);
+  });
+
+  it('keeps the active tab untouched when closing an inactive tab', () => {
+    const a = createRightTerminalTab();
+    const b = createRightTerminalTab();
+    const terminal = { tabs: [a, b], activeTabId: a.id };
+
+    const next = closeRightTerminalTabState(terminal, b.id);
+
+    expect(next.tabs.map((tab) => tab.id)).toEqual([a.id]);
+    expect(next.activeTabId).toBe(a.id);
+  });
+
+  it('clears the active tab id once the last tab is closed', () => {
+    const a = createRightTerminalTab();
+    const terminal = { tabs: [a], activeTabId: a.id };
+
+    const next = closeRightTerminalTabState(terminal, a.id);
+
+    expect(next.tabs).toEqual([]);
+    expect(next.activeTabId).toBeNull();
+  });
+
+  it('is a no-op when the tab is not found', () => {
+    const a = createRightTerminalTab();
+    const terminal = { tabs: [a], activeTabId: a.id };
+
+    expect(closeRightTerminalTabState(terminal, 'missing')).toBe(terminal);
+  });
+});
+
+function panelTypes(panel: DesktopShellState['bottomPanel']): string[] {
   return panel.tabs.map((tab) => tab.type);
 }
 
-function activePanelType(
-  state: DesktopShellState,
-  side: 'rightPanel' | 'bottomPanel',
-): string | undefined {
-  const panel = state[side];
+function activeBottomPanelType(state: DesktopShellState): string | undefined {
+  const panel = state.bottomPanel;
   return panel.tabs.find((tab) => tab.id === panel.activeTabId)?.type;
 }

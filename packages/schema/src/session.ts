@@ -102,5 +102,7 @@ export const SessionInfoSchema = z.object({
   createdAt: z.number().int().nonnegative(),
   title: z.string().optional(),
   origin: SessionOriginSchema.optional(),
+  /** Latest run's provider-local history id — the transcript to read this session's past from. */
+  historyId: AgentHistoryIdSchema.optional(),
 });
 export type SessionInfo = z.infer<typeof SessionInfoSchema>;

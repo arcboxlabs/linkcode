@@ -1,7 +1,12 @@
 import type { AgentEvent, MessageId } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
-import { buildConversation, contentPreview, toolCallDiffs } from '../conversation';
+import {
+  buildConversation,
+  contentPreview,
+  mergeSeededEvents,
+  toolCallDiffs,
+} from '../conversation';
 
 function text(t: string, messageId = 'm1'): AgentEvent {
   return {
@@ -225,6 +230,37 @@ describe('buildConversation', () => {
     expect(c.items.filter((i) => i.kind === 'error')).toHaveLength(1);
     const error = c.items.find((i) => i.kind === 'error');
     expect(error?.turnId).toBeNull();
+  });
+});
+
+describe('mergeSeededEvents', () => {
+  it('passes the live stream through when there is no seed', () => {
+    const events = mergeSeededEvents(undefined, [
+      { event: userText('hi'), seq: 1 },
+      { event: text('yo'), seq: 2 },
+    ]);
+    expect(events).toEqual([userText('hi'), text('yo')]);
+  });
+
+  it('drops live events at or before the snapshot cut and keeps the tail', () => {
+    const seed = { events: [userText('old prompt'), text('old reply')], uptoSeq: 2 };
+    const events = mergeSeededEvents(seed, [
+      { event: userText('duplicate of transcript'), seq: 1 },
+      { event: userText('boundary'), seq: 2 },
+      { event: userText('new prompt'), seq: 3 },
+      { event: text('new reply', 'm2'), seq: 4 },
+    ]);
+    expect(events).toEqual([
+      userText('old prompt'),
+      text('old reply'),
+      userText('new prompt'),
+      text('new reply', 'm2'),
+    ]);
+  });
+
+  it('keeps the seed intact when there are no live events', () => {
+    const seed = { events: [userText('only history')], uptoSeq: 0 };
+    expect(mergeSeededEvents(seed, [])).toEqual([userText('only history')]);
   });
 });
 

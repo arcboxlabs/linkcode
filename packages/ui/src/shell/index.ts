@@ -7,3 +7,4 @@ export * from './session-sidebar';
 export * from './shell-control';
 export * from './shell-frame';
 export * from './shell-sidebar';
+export * from './sidebar';

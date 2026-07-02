@@ -9,6 +9,10 @@ import type {
   AgentKind,
   ContentBlock,
   EffortLevel,
+  GitDiff,
+  GitDiffMode,
+  GitPullRequestStatus,
+  GitStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -17,12 +21,24 @@ import type {
   StartOptions,
   WireMessage,
   WirePayload,
+  WorkspaceId,
+  WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
-type EventCb = (event: AgentEvent) => void;
+/**
+ * An event paired with its connection-scoped receive sequence number: the Nth `agent.event` this
+ * client received for its session (1-based, monotone for the lifetime of the connection). A
+ * transcript snapshot taken when the counter read N supersedes exactly the events with seq ≤ N.
+ */
+export interface SequencedAgentEvent {
+  event: AgentEvent;
+  seq: number;
+}
+
+type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
@@ -44,6 +60,8 @@ export type HistoryReadClientOptions = AgentHistoryReadOptions & {
 
 /** Cap on per-terminal output buffered before the first subscriber, so an unread PTY can't grow unbounded. */
 const TERMINAL_PREBUFFER_CAP = 128 * 1024;
+
+const EMPTY_EVENTS: readonly SequencedAgentEvent[] = [];
 
 /**
  * Trim buffered terminal output to the cap on a line boundary. Slicing raw would leave the buffer
@@ -74,13 +92,24 @@ function nextClientReqId(): string {
 export class LinkCodeClient {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
   /** Per-session event buffer so a re-subscribe (switching the active session back) can replay the timeline. */
-  private readonly events = new Map<SessionId, AgentEvent[]>();
+  private readonly events = new Map<SessionId, SequencedAgentEvent[]>();
+  /** Cached immutable copies of {@link events}, invalidated per event — `getSnapshot` sources. */
+  private readonly eventSnapshots = new Map<SessionId, readonly SequencedAgentEvent[]>();
+  /** Per-session receive counters. Deliberately NOT cleared with the buffer on `stopSession`: a
+   * stop→resume in the same connection must keep seq monotone, or a seed's `uptoSeq` sampled
+   * before the stop would swallow the resumed session's fresh events. */
+  private readonly eventSeqs = new Map<SessionId, number>();
   private readonly pendingStarts = new Map<string, Pending<SessionId>>();
   private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
   private readonly pendingImports = new Map<string, Pending<SessionRecord>>();
   private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
   private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
   private readonly pendingConfigGets = new Map<string, Pending<ProvidersConfig>>();
+  private readonly pendingGitStatuses = new Map<string, Pending<GitStatus>>();
+  private readonly pendingGitPrStatuses = new Map<string, Pending<GitPullRequestStatus>>();
+  private readonly pendingGitDiffs = new Map<string, Pending<GitDiff>>();
+  private readonly pendingWorkspaceLists = new Map<string, Pending<WorkspaceRecord[]>>();
+  private readonly pendingWorkspaceRegisters = new Map<string, Pending<WorkspaceRecord>>();
   private readonly pendingAcks = new Map<string, Pending<RequestAck>>();
   private readonly pendingTerminalOpens = new Map<string, Pending<string>>();
   private readonly terminalOutputSubs = new Map<string, Set<TerminalOutputCb>>();
@@ -141,6 +170,31 @@ export class LinkCodeClient {
         this.pendingConfigGets.delete(p.replyTo);
         break;
       }
+      case 'git.status.get.result': {
+        this.pendingGitStatuses.get(p.replyTo)?.resolve(p.status);
+        this.pendingGitStatuses.delete(p.replyTo);
+        break;
+      }
+      case 'git.pr_status.get.result': {
+        this.pendingGitPrStatuses.get(p.replyTo)?.resolve(p.prStatus);
+        this.pendingGitPrStatuses.delete(p.replyTo);
+        break;
+      }
+      case 'git.diff.get.result': {
+        this.pendingGitDiffs.get(p.replyTo)?.resolve(p.diff);
+        this.pendingGitDiffs.delete(p.replyTo);
+        break;
+      }
+      case 'workspace.listed': {
+        this.pendingWorkspaceLists.get(p.replyTo)?.resolve(p.workspaces);
+        this.pendingWorkspaceLists.delete(p.replyTo);
+        break;
+      }
+      case 'workspace.registered': {
+        this.pendingWorkspaceRegisters.get(p.replyTo)?.resolve(p.record);
+        this.pendingWorkspaceRegisters.delete(p.replyTo);
+        break;
+      }
       case 'request.failed': {
         this.rejectPending(p.replyTo, p.message, p.code);
         break;
@@ -151,11 +205,15 @@ export class LinkCodeClient {
         break;
       }
       case 'agent.event': {
+        const seq = (this.eventSeqs.get(p.sessionId) ?? 0) + 1;
+        this.eventSeqs.set(p.sessionId, seq);
+        const sequenced: SequencedAgentEvent = { event: p.event, seq };
         const buf = this.events.get(p.sessionId);
-        if (buf) buf.push(p.event);
-        else this.events.set(p.sessionId, [p.event]);
+        if (buf) buf.push(sequenced);
+        else this.events.set(p.sessionId, [sequenced]);
+        this.eventSnapshots.delete(p.sessionId);
         const subs = this.subscribers.get(p.sessionId);
-        if (subs) for (const cb of subs) cb(p.event);
+        if (subs) for (const cb of subs) cb(sequenced.event, sequenced.seq);
         break;
       }
       case 'terminal.opened': {
@@ -316,6 +374,7 @@ export class LinkCodeClient {
     })).then((ack) => {
       this.subscribers.delete(sessionId);
       this.events.delete(sessionId);
+      this.eventSnapshots.delete(sessionId);
       return ack;
     });
   }
@@ -337,6 +396,70 @@ export class LinkCodeClient {
     }));
   }
 
+  /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitStatus(cwd: string): Promise<GitStatus> {
+    return this.sendCorrelated(this.pendingGitStatuses, (clientReqId) => ({
+      kind: 'git.status.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** Hosting-provider PR state for a directory's current branch. */
+  getGitPullRequestStatus(cwd: string): Promise<GitPullRequestStatus> {
+    return this.sendCorrelated(this.pendingGitPrStatuses, (clientReqId) => ({
+      kind: 'git.pr_status.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** A unified-diff patch for a directory (directory-backed: keyed by cwd, not by session). */
+  getGitDiff(cwd: string, mode: GitDiffMode): Promise<GitDiff> {
+    return this.sendCorrelated(this.pendingGitDiffs, (clientReqId) => ({
+      kind: 'git.diff.get',
+      clientReqId,
+      cwd,
+      mode,
+    }));
+  }
+
+  /** Every registered workspace (directory), most recently used first. */
+  listWorkspaces(): Promise<WorkspaceRecord[]> {
+    return this.sendCorrelated(this.pendingWorkspaceLists, (clientReqId) => ({
+      kind: 'workspace.list',
+      clientReqId,
+    }));
+  }
+
+  /** Register a directory as a workspace; idempotent for an already-registered directory. */
+  registerWorkspace(cwd: string, name?: string): Promise<WorkspaceRecord> {
+    return this.sendCorrelated(this.pendingWorkspaceRegisters, (clientReqId) => ({
+      kind: 'workspace.register',
+      clientReqId,
+      cwd,
+      name,
+    }));
+  }
+
+  updateWorkspace(workspaceId: WorkspaceId, name: string): Promise<RequestAck> {
+    return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
+      kind: 'workspace.update',
+      clientReqId,
+      workspaceId,
+      name,
+    }));
+  }
+
+  /** Drop a workspace from the registry; never touches the directory on disk. */
+  archiveWorkspace(workspaceId: WorkspaceId): Promise<RequestAck> {
+    return this.sendCorrelated(this.pendingAcks, (clientReqId) => ({
+      kind: 'workspace.archive',
+      clientReqId,
+      workspaceId,
+    }));
+  }
+
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
     let set = this.subscribers.get(sessionId);
     if (!set) {
@@ -344,10 +467,34 @@ export class LinkCodeClient {
       this.subscribers.set(sessionId, set);
     }
     set.add(cb);
-    // Replay any buffered events so a late subscriber sees the full timeline, not a blank pane.
+    // Replay any buffered events (with their original sequence numbers) so a late subscriber sees
+    // the full timeline, not a blank pane.
     const buf = this.events.get(sessionId);
-    if (buf) for (const event of buf) cb(event);
+    if (buf) for (const { event, seq } of buf) cb(event, seq);
     return () => set.delete(cb);
+  }
+
+  /**
+   * The receive counter for a session: how many `agent.event`s this client has seen for it on this
+   * connection. Sampled right after a transcript read resolves, it becomes that snapshot's
+   * `uptoSeq` — the ordered cut "everything at or before this is already in the snapshot".
+   */
+  eventSeq(sessionId: SessionId): number {
+    return this.eventSeqs.get(sessionId) ?? 0;
+  }
+
+  /**
+   * Immutable snapshot of a session's buffered events, cached until the next event arrives.
+   * Stable identity between changes makes it a valid `useSyncExternalStore` getSnapshot source.
+   */
+  eventsSnapshot(sessionId: SessionId): readonly SequencedAgentEvent[] {
+    const cached = this.eventSnapshots.get(sessionId);
+    if (cached) return cached;
+    const buf = this.events.get(sessionId);
+    if (!buf || buf.length === 0) return EMPTY_EVENTS;
+    const snapshot: readonly SequencedAgentEvent[] = [...buf];
+    this.eventSnapshots.set(sessionId, snapshot);
+    return snapshot;
   }
 
   openTerminal(opts: {
@@ -424,6 +571,8 @@ export class LinkCodeClient {
     this.failAllPending(new Error('client disposed'));
     this.subscribers.clear();
     this.events.clear();
+    this.eventSnapshots.clear();
+    this.eventSeqs.clear();
     this.terminalOutputSubs.clear();
     this.terminalExitSubs.clear();
     this.terminalErrorSubs.clear();
@@ -440,6 +589,11 @@ export class LinkCodeClient {
       this.pendingHistoryLists,
       this.pendingHistoryReads,
       this.pendingConfigGets,
+      this.pendingGitStatuses,
+      this.pendingGitPrStatuses,
+      this.pendingGitDiffs,
+      this.pendingWorkspaceLists,
+      this.pendingWorkspaceRegisters,
       this.pendingAcks,
       this.pendingTerminalOpens,
     ]) {
@@ -457,6 +611,11 @@ export class LinkCodeClient {
     if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
     if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
     if (rejectFrom(this.pendingConfigGets, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitStatuses, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitPrStatuses, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitDiffs, replyTo, err)) return;
+    if (rejectFrom(this.pendingWorkspaceLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingWorkspaceRegisters, replyTo, err)) return;
     if (rejectFrom(this.pendingAcks, replyTo, err)) return;
     rejectFrom(this.pendingTerminalOpens, replyTo, err);
   }

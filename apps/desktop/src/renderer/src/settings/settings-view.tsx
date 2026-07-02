@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useDesktopAppConfig } from '../app-config-context';
 import { systemBridge } from '../ipc';
 import { DesktopChrome } from '../shell/chrome/chrome';
 import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from '../shell/chrome/metrics';
@@ -22,6 +21,7 @@ import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
+import { useDesktopSettingsStore } from './store';
 
 type SettingsCategory = 'general' | 'connection' | 'about' | 'agents';
 
@@ -38,7 +38,7 @@ const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
  */
 export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
-  const { closeSettings } = useDesktopAppConfig();
+  const closeSettings = useDesktopSettingsStore((state) => state.closeSettings);
   const [category, setCategory] = useState<SettingsCategory>('general');
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
