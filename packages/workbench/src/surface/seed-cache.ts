@@ -87,8 +87,10 @@ export function loadPersistedSeed(
     const raw = storage.getItem(key);
     if (raw !== null) {
       const parsed = PersistedSeedSchema.safeParse(JSON.parse(raw));
+      // A stale/corrupt entry is only *recorded* as a miss — this runs during render (it feeds
+      // `fallbackData`), which must stay pure, so no removeItem here. The next persist overwrites
+      // the entry, and LRU eviction bounds whatever never gets overwritten.
       if (parsed.success) seed = { events: parsed.data.events, uptoSeq: 0 };
-      else storage.removeItem(key);
     }
   } catch {
     // Unreadable storage or corrupt JSON both degrade to a cache miss.

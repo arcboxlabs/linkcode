@@ -84,6 +84,37 @@ describe('LinkCodeClient event buffer', () => {
     serverTransport.close();
   });
 
+  it('serves a stable events snapshot between changes and a fresh one per event', async () => {
+    const [clientTransport, serverTransport] = createLocalTransportPair();
+    const client = new LinkCodeClient(clientTransport);
+    await client.connect();
+    await serverTransport.connect();
+
+    expect(client.eventsSnapshot(sessionId)).toBe(client.eventsSnapshot(sessionId));
+    expect(client.eventsSnapshot(sessionId)).toEqual([]);
+
+    const event: AgentEvent = { type: 'status', status: 'running' };
+    serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+
+    const snapshot = client.eventsSnapshot(sessionId);
+    expect(snapshot).toEqual([{ event, seq: 1 }]);
+    // Identity is stable until the next event — the useSyncExternalStore contract.
+    expect(client.eventsSnapshot(sessionId)).toBe(snapshot);
+
+    serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+    expect(client.eventsSnapshot(sessionId)).not.toBe(snapshot);
+    expect(client.eventsSnapshot(sessionId)).toHaveLength(2);
+
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('keeps the seq counter monotone across a stop that clears the buffer', async () => {
     const [clientTransport, serverTransport] = createLocalTransportPair();
     const client = new LinkCodeClient(clientTransport);

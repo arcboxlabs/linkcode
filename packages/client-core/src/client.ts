@@ -60,6 +60,8 @@ export type HistoryReadClientOptions = AgentHistoryReadOptions & {
 /** Cap on per-terminal output buffered before the first subscriber, so an unread PTY can't grow unbounded. */
 const TERMINAL_PREBUFFER_CAP = 128 * 1024;
 
+const EMPTY_EVENTS: readonly SequencedAgentEvent[] = [];
+
 /**
  * Trim buffered terminal output to the cap on a line boundary. Slicing raw would leave the buffer
  * starting mid-ANSI-escape (the head byte gone, the tail rendered as literal garbage); dropping the
@@ -90,6 +92,8 @@ export class LinkCodeClient {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
   /** Per-session event buffer so a re-subscribe (switching the active session back) can replay the timeline. */
   private readonly events = new Map<SessionId, SequencedAgentEvent[]>();
+  /** Cached immutable copies of {@link events}, invalidated per event — `getSnapshot` sources. */
+  private readonly eventSnapshots = new Map<SessionId, readonly SequencedAgentEvent[]>();
   /** Per-session receive counters. Deliberately NOT cleared with the buffer on `stopSession`: a
    * stop→resume in the same connection must keep seq monotone, or a seed's `uptoSeq` sampled
    * before the stop would swallow the resumed session's fresh events. */
@@ -206,6 +210,7 @@ export class LinkCodeClient {
         const buf = this.events.get(p.sessionId);
         if (buf) buf.push(sequenced);
         else this.events.set(p.sessionId, [sequenced]);
+        this.eventSnapshots.delete(p.sessionId);
         const subs = this.subscribers.get(p.sessionId);
         if (subs) for (const cb of subs) cb(sequenced.event, sequenced.seq);
         break;
@@ -363,6 +368,7 @@ export class LinkCodeClient {
     })).then((ack) => {
       this.subscribers.delete(sessionId);
       this.events.delete(sessionId);
+      this.eventSnapshots.delete(sessionId);
       return ack;
     });
   }
@@ -471,6 +477,20 @@ export class LinkCodeClient {
     return this.eventSeqs.get(sessionId) ?? 0;
   }
 
+  /**
+   * Immutable snapshot of a session's buffered events, cached until the next event arrives.
+   * Stable identity between changes makes it a valid `useSyncExternalStore` getSnapshot source.
+   */
+  eventsSnapshot(sessionId: SessionId): readonly SequencedAgentEvent[] {
+    const cached = this.eventSnapshots.get(sessionId);
+    if (cached) return cached;
+    const buf = this.events.get(sessionId);
+    if (!buf || buf.length === 0) return EMPTY_EVENTS;
+    const snapshot: readonly SequencedAgentEvent[] = [...buf];
+    this.eventSnapshots.set(sessionId, snapshot);
+    return snapshot;
+  }
+
   openTerminal(opts: {
     cols: number;
     rows: number;
@@ -545,6 +565,7 @@ export class LinkCodeClient {
     this.failAllPending(new Error('client disposed'));
     this.subscribers.clear();
     this.events.clear();
+    this.eventSnapshots.clear();
     this.eventSeqs.clear();
     this.terminalOutputSubs.clear();
     this.terminalExitSubs.clear();

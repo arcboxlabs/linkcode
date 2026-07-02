@@ -8,7 +8,15 @@ import type {
 import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
 import type * as React from 'react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { LinkCodeClient, SequencedAgentEvent } from './client';
 import type { Conversation } from './conversation';
 import { buildConversation } from './conversation';
@@ -35,33 +43,28 @@ export function useLinkCodeClient(): LinkCodeClient {
   );
 }
 
+const NO_SEQUENCED_EVENTS: readonly SequencedAgentEvent[] = [];
+
 /**
- * Subscribe to a session's normalized event stream, accumulating it into a list (push model).
- * Each entry keeps its connection-scoped receive seq so consumers can align the stream against a
- * point-in-time transcript snapshot (see `mergeSeededEvents`).
+ * A session's normalized event stream, with connection-scoped receive seqs (see
+ * `mergeSeededEvents`). The client's per-session buffer is the store: `useSyncExternalStore`
+ * reads its cached immutable snapshot, so switching back to a session costs one array reference
+ * instead of replaying the whole buffer through state.
  */
-export function useSequencedAgentEvents(sessionId: SessionId | null): SequencedAgentEvent[] {
+export function useSequencedAgentEvents(
+  sessionId: SessionId | null,
+): readonly SequencedAgentEvent[] {
   const client = useLinkCodeClient();
-  const [state, setState] = useState<{
-    sessionId: SessionId | null;
-    events: SequencedAgentEvent[];
-  }>({
-    sessionId: null,
-    events: [],
-  });
-
-  useEffect(() => {
-    if (!sessionId) return;
-    return client.subscribe(sessionId, (event, seq) => {
-      setState((prev) =>
-        prev.sessionId === sessionId
-          ? { sessionId, events: [...prev.events, { event, seq }] }
-          : { sessionId, events: [{ event, seq }] },
-      );
-    });
-  }, [client, sessionId]);
-
-  return state.sessionId === sessionId ? state.events : [];
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!sessionId) return noop;
+      return client.subscribe(sessionId, onStoreChange);
+    },
+    [client, sessionId],
+  );
+  return useSyncExternalStore(subscribe, () =>
+    sessionId ? client.eventsSnapshot(sessionId) : NO_SEQUENCED_EVENTS,
+  );
 }
 
 const NO_EVENTS: AgentEvent[] = [];

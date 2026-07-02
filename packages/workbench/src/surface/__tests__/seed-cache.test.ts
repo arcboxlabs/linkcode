@@ -49,8 +49,14 @@ describe('seed cache', () => {
       JSON.stringify({ v: WIRE_PROTOCOL_VERSION - 1, events: [userText('old')] }),
     );
     expect(loadPersistedSeed(kind, historyId('stale'), storage)).toBeUndefined();
-    // The stale entry is dropped so it never gets re-parsed.
-    expect(storage.map.has(`linkcode.seed.${kind}.stale`)).toBe(false);
+    // Loading runs during render, so the stale entry stays put (purity); the memoized miss
+    // prevents re-parsing, and a later persist simply overwrites it.
+    expect(storage.map.has(`linkcode.seed.${kind}.stale`)).toBe(true);
+    persistSeed(kind, historyId('stale'), { events: [userText('fresh')], uptoSeq: 0 }, storage);
+    expect(loadPersistedSeed(kind, historyId('stale'), storage)).toEqual({
+      events: [userText('fresh')],
+      uptoSeq: 0,
+    });
   });
 
   it('misses on unparseable JSON without throwing', () => {
