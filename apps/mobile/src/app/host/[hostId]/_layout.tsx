@@ -29,7 +29,7 @@ function HostConnection({ host }: { host: HostProfile }): React.ReactNode {
     return (
       <HostConnectionState
         status={status}
-        url={'url' in host ? host.url : `${host.name} · LinkCode HQ`}
+        url={'url' in host ? host.url : `${host.name} · LinkCode Cloud`}
         onRetry={retry}
       />
     );

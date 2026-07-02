@@ -29,7 +29,7 @@ const CONNECT_RETRY_MS = 30000;
 export function startHqUplink(hub: Hub): () => void {
   const credentials = loadHqCredentials();
   if (!credentials) {
-    log('HQ uplink off — run `linkcode-daemon login` to enable remote access');
+    log('cloud uplink off — run `linkcode-daemon login` to enable remote access');
     return noop;
   }
 
@@ -45,13 +45,13 @@ export function startHqUplink(hub: Hub): () => void {
       name: hostname(),
       getToken: () => fetchTunnelToken(credentials.baseUrl, credentials.sessionToken),
     });
-    transport.onStateChange((state) => log(`HQ uplink ${state}`));
+    transport.onStateChange((state) => log(`cloud uplink ${state}`));
     try {
       await transport.connect();
     } catch (err) {
       if (stopped) return;
       log(
-        `HQ uplink connect failed (${extractErrorMessage(err)}); retrying in ${CONNECT_RETRY_MS / 1000}s`,
+        `cloud uplink connect failed (${extractErrorMessage(err)}); retrying in ${CONNECT_RETRY_MS / 1000}s`,
       );
       retryTimer = setTimeout(() => {
         void attempt();
@@ -68,7 +68,7 @@ export function startHqUplink(hub: Hub): () => void {
       hub.removeConnection(transport);
       active = null;
       if (!stopped) {
-        log('HQ uplink stopped — sign in again and restart the daemon to restore remote access');
+        log('cloud uplink stopped — sign in again and restart the daemon to restore remote access');
       }
     });
   };

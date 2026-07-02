@@ -566,10 +566,10 @@ export const en = {
       savedHosts: 'Saved hosts',
       open: 'Open',
       remove: 'Remove',
-      viaTunnel: 'via LinkCode HQ',
+      viaTunnel: 'via LinkCode Cloud',
       hq: {
-        title: 'LinkCode HQ',
-        hint: 'Sign in to reach your machines from anywhere through the LinkCode tunnel.',
+        title: 'LinkCode Cloud',
+        hint: 'Sign in to reach your machines from anywhere through LinkCode Cloud.',
         signIn: 'Sign in',
         signedInAs: 'Signed in as {name}',
         signOut: 'Sign out',

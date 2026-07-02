@@ -556,10 +556,10 @@ export const zhCN = {
       savedHosts: '已保存的 host',
       open: '打开',
       remove: '移除',
-      viaTunnel: '经由 LinkCode HQ',
+      viaTunnel: '经由 LinkCode Cloud',
       hq: {
-        title: 'LinkCode HQ',
-        hint: '登录后即可通过 LinkCode 隧道随时随地连接你的机器。',
+        title: 'LinkCode Cloud',
+        hint: '登录后即可通过 LinkCode Cloud 随时随地连接你的机器。',
         signIn: '登录',
         signedInAs: '已登录:{name}',
         signOut: '退出登录',
