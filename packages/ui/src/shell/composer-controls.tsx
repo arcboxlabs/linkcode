@@ -128,6 +128,7 @@ export function ApprovalPolicyMenu({
   onSelect: (policyId: string) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
+  if (policies.length === 0) return null;
   const active = optionById(policies, activePolicyId) ?? policies[0];
 
   return (
