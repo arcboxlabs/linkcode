@@ -134,6 +134,10 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.setEffort(sessionId, effort));
   }
 
+  setApprovalPolicy(sessionId: SessionId, policyId: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setApprovalPolicy(sessionId, policyId));
+  }
+
   respondPermission(
     sessionId: SessionId,
     requestId: string,

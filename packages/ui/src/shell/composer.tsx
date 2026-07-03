@@ -14,7 +14,6 @@ import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { ApprovalPolicyOption } from './approval-policy';
-import { STUB_APPROVAL_POLICIES } from './approval-policy';
 import {
   ApprovalPolicyMenu,
   ComposerPlusMenu,
@@ -46,17 +45,18 @@ export interface ComposerProps {
   /** Agent-advertised workflow modes (plan / goal / … — see session-modes.ts). Defaults to the
    * stub list until the backend emits the advertised set. */
   availableModes?: SessionMode[];
-  /** Approval policy options — the permission/safety axis (see approval-policy.ts). Defaults to
-   * the stub list until agents advertise their own. */
+  /** Agent-advertised approval policies — the permission/safety axis (see approval-policy.ts).
+   * Empty (the default) hides the picker; adapters without policies never advertise any. */
   approvalPolicies?: ApprovalPolicyOption[];
+  /** Active policy id, reflected from the session's `approval-policy-update` event. */
+  activePolicyId?: string | null;
   onSend: (text: string) => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
   onModeChange?: (modeId: string) => Promise<void>;
-  /** TODO(backend): the policy selection lives in composer-local state with no wire effect until
-   * the daemon exposes the approval-policy axis (see approval-policy.ts); this callback then
-   * sends the switch and the selection reflects back from session state. */
+  /** Sends the policy switch (`set-approval-policy`); the active policy is reflected from the
+   * session's `approval-policy-update` event, not locally — a rejected switch never moves it. */
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
    * the pick once this resolves — it stays on the previous model if the switch is rejected. */
@@ -68,6 +68,9 @@ export interface ComposerProps {
   selectableProviders?: AgentKind[];
   onProviderChange?: (provider: AgentKind) => Promise<void>;
 }
+
+/** Stable empty default: no advertised policies hides the picker. */
+const NO_APPROVAL_POLICIES: ApprovalPolicyOption[] = [];
 
 interface MenuState {
   query: string;
@@ -102,7 +105,8 @@ export function Composer({
   mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
   availableModes = STUB_SESSION_MODES,
-  approvalPolicies = STUB_APPROVAL_POLICIES,
+  approvalPolicies = NO_APPROVAL_POLICIES,
+  activePolicyId = null,
   onSend,
   onStop,
   onModeChange,
@@ -235,12 +239,9 @@ export function Composer({
     void onModeChange?.(target).catch(noop);
   }
 
-  // TODO(backend): local optimistic state only — replace with server-reflected session state once
-  // the daemon exposes the approval-policy axis; a rejected switch should then keep the old pick.
-  const [activePolicyId, setActivePolicyId] = useState<string | null>(null);
-
   function selectPolicy(policyId: string): void {
-    setActivePolicyId(policyId);
+    // No local reflection: the pick comes back via approval-policy-update, so a rejected switch
+    // (reported through the error banner) simply never moves the picker.
     void onApprovalPolicyChange?.(policyId).catch(noop);
   }
 

@@ -23,6 +23,7 @@ export interface ConversationSurfaceProps {
   onModeChange?: (modeId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
+  onApprovalPolicyChange?: (policyId: string) => Promise<void>;
 }
 
 export function ConversationSurface({
@@ -44,7 +45,16 @@ export function ConversationSurface({
   onModeChange,
   onModelChange,
   onEffortChange,
+  onApprovalPolicyChange,
 }: ConversationSurfaceProps): React.ReactNode {
+  // The approval-policy axis rides the conversation view-model; the schema state maps onto the
+  // composer's view-model options here so the chat layer stays schema-typed end to end.
+  const approvalPolicies =
+    conversation.approvalPolicy?.availablePolicies.map((policy) => ({
+      id: policy.policyId,
+      name: policy.name,
+      description: policy.description,
+    })) ?? [];
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
       {topContent}
@@ -60,20 +70,22 @@ export function ConversationSurface({
           onRespondPermission={onRespondPermission}
         />
       </div>
-      {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) and the
-          approval-policy state/handler (approval-policy.ts) once the daemon exposes them; the
-          composer stubs both lists today. */}
+      {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) once the daemon
+          emits it; the composer stubs that list today. */}
       <Composer
         agentLabel={agentLabel}
         agentKind={agentKind}
         disabled={disabled}
         isRunning={isRunning}
         currentModeId={conversation.currentModeId}
+        approvalPolicies={approvalPolicies}
+        activePolicyId={conversation.approvalPolicy?.currentPolicyId ?? null}
         onSend={onSendPrompt}
         onStop={onStopTurn}
         onModeChange={onModeChange}
         onModelChange={onModelChange}
         onEffortChange={onEffortChange}
+        onApprovalPolicyChange={onApprovalPolicyChange}
       />
     </div>
   );

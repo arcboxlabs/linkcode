@@ -4,6 +4,7 @@ import type {
   AgentHistorySession,
   AgentInput,
   AgentKind,
+  ApprovalPolicy,
   ContentBlock,
   MessageId,
   PermissionOutcome,
@@ -68,6 +69,36 @@ interface MockSession extends SessionInfo {
   showcase?: boolean;
   showcaseSeeded?: boolean;
   terminalId?: string;
+  policyId?: string;
+}
+
+/** Parity with the claude-code adapter's advertised approval-policy catalog. */
+const MOCK_APPROVAL_POLICIES: ApprovalPolicy[] = [
+  {
+    policyId: 'default',
+    name: 'Ask for approval',
+    description: 'Always ask before editing files and running commands.',
+  },
+  {
+    policyId: 'acceptEdits',
+    name: 'Approve for me',
+    description: 'Only ask for actions detected as potentially unsafe.',
+  },
+  {
+    policyId: 'bypassPermissions',
+    name: 'Full access',
+    description: 'Unrestricted access to files and commands in this workspace.',
+  },
+];
+
+function approvalPolicyEvent(policyId: string | undefined): AgentEvent {
+  return {
+    type: 'approval-policy-update',
+    state: {
+      availablePolicies: MOCK_APPROVAL_POLICIES,
+      currentPolicyId: policyId ?? 'default',
+    },
+  };
 }
 
 interface PendingPermission {
@@ -304,6 +335,7 @@ export class DevMockHost {
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
+    this.emit(sessionId, approvalPolicyEvent(session.policyId));
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
@@ -428,6 +460,15 @@ export class DevMockHost {
         break;
       case 'set-mode':
         this.emit(sessionId, { type: 'current-mode-update', currentModeId: input.modeId });
+        this.sendSuccess(replyTo);
+        break;
+      case 'set-approval-policy':
+        if (!MOCK_APPROVAL_POLICIES.some((policy) => policy.policyId === input.policyId)) {
+          this.sendFailure(replyTo, `Unknown approval policy: ${input.policyId}`);
+          break;
+        }
+        session.policyId = input.policyId;
+        this.emit(sessionId, approvalPolicyEvent(session.policyId));
         this.sendSuccess(replyTo);
         break;
       case 'permission-response':

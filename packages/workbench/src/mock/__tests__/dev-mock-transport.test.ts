@@ -347,4 +347,30 @@ describe('dev mock transport', () => {
 
     client.dispose();
   });
+
+  it('round-trips an approval-policy switch and rejects unknown policies', async () => {
+    const client = await connectedClient();
+    const sessionId = await client.startSession({ kind: 'claude-code', cwd: '/mock/repo' });
+    const events = collectEvents(client, sessionId);
+
+    await client.setApprovalPolicy(sessionId, 'acceptEdits');
+    const update = await eventually(() =>
+      events.find(
+        (event) =>
+          event.type === 'approval-policy-update' && event.state.currentPolicyId === 'acceptEdits',
+      ),
+    );
+    if (update.type !== 'approval-policy-update') throw new Error('unreachable');
+    expect(update.state.availablePolicies.map((policy) => policy.policyId)).toEqual([
+      'default',
+      'acceptEdits',
+      'bypassPermissions',
+    ]);
+
+    await expect(client.setApprovalPolicy(sessionId, 'nope')).rejects.toThrow(
+      'Unknown approval policy',
+    );
+
+    client.dispose();
+  });
 });

@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  ApprovalPolicyState,
   ContentBlock,
   PermissionOption,
   PermissionOutcome,
@@ -69,6 +70,9 @@ export interface ConversationViewModel {
   usage: TokenUsage | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
+  /** The approval-policy axis (advertised catalog + active pick), from `approval-policy-update`;
+   * null until the adapter advertises — adapters without policies never do. */
+  approvalPolicy: ApprovalPolicyState | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -112,6 +116,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
   let currentModeId: string | null = null;
+  let approvalPolicy: ApprovalPolicyState | null = null;
   let stopReason: StopReason | null = null;
 
   // Bucket an agent message / thought chunk into its messageId-keyed item (creating it on first sight).
@@ -209,6 +214,9 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
       case 'current-mode-update':
         currentModeId = event.currentModeId;
         break;
+      case 'approval-policy-update':
+        approvalPolicy = event.state;
+        break;
       case 'status':
         status = event.status;
         break;
@@ -275,6 +283,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     status,
     usage,
     currentModeId,
+    approvalPolicy,
     stopReason,
     pendingPermissionIds,
   };

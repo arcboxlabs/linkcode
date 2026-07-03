@@ -9,6 +9,7 @@ import {
   registerWorkspace,
   respondPermission,
   sendInput,
+  setApprovalPolicy,
   setEffort,
   setModel,
   updateWorkspace,
@@ -101,6 +102,7 @@ function WorkbenchSessionSurface({
   const effortMutation = useMutation(setEffort, { onError });
   // Workflow-mode switches ride the generic input op; the mode reflects via current-mode-update.
   const modeMutation = useMutation(sendInput, { onError });
+  const approvalPolicyMutation = useMutation(setApprovalPolicy, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
@@ -195,6 +197,14 @@ function WorkbenchSessionSurface({
     onClearError();
     // Same contract as handleModelChange: the composer awaits the rejection to keep the old pick.
     return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
+  }
+
+  function handleApprovalPolicyChange(policyId: string): Promise<void> {
+    if (!sessions.activeId) return Promise.reject(new Error('No active session'));
+    onClearError();
+    // Like handleModeChange: the active pick only ever comes back via approval-policy-update, so
+    // a rejected switch simply never moves the picker; failures surface in the error banner.
+    return approvalPolicyMutation.trigger({ sessionId: sessions.activeId, policyId }).then(noop);
   }
 
   function handleImportedSession(sessionId: SessionId): void {
@@ -319,6 +329,7 @@ function WorkbenchSessionSurface({
       onModeChange={handleModeChange}
       onModelChange={handleModelChange}
       onEffortChange={handleEffortChange}
+      onApprovalPolicyChange={handleApprovalPolicyChange}
     />
   );
 }

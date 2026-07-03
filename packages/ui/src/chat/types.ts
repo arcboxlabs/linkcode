@@ -1,4 +1,5 @@
 import type {
+  ApprovalPolicyState,
   ContentBlock,
   PermissionOption,
   PermissionOutcome,
@@ -59,6 +60,9 @@ export interface ConversationViewModel {
   usage: TokenUsage | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
+  /** The approval-policy axis (advertised catalog + active pick), from `approval-policy-update`;
+   * null until the adapter advertises — adapters without policies never do. */
+  approvalPolicy: ApprovalPolicyState | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /** Permission requests still awaiting a decision. */

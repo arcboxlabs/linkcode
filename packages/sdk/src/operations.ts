@@ -101,6 +101,12 @@ export function setEffort(
   return resolveClient(options).setEffort(options.sessionId, options.effort);
 }
 
+export function setApprovalPolicy(
+  options: Options<{ sessionId: SessionId; policyId: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).setApprovalPolicy(options.sessionId, options.policyId);
+}
+
 export function respondPermission(
   options: Options<{ sessionId: SessionId; requestId: string; outcome: PermissionOutcome }>,
 ): RequestResult<{ ok: true }> {

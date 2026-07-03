@@ -267,6 +267,24 @@ describe('buildConversation', () => {
     expect(c.pendingPermissionIds).toEqual([]);
   });
 
+  it('folds approval-policy-update into the latest advertised state', () => {
+    expect(buildConversation([]).approvalPolicy).toBeNull();
+
+    const state = {
+      availablePolicies: [{ policyId: 'default', name: 'Ask for approval' }],
+      currentPolicyId: 'default',
+    };
+    const c = buildConversation([
+      { type: 'approval-policy-update', state },
+      {
+        type: 'approval-policy-update',
+        state: { ...state, currentPolicyId: 'acceptEdits' },
+      },
+    ]);
+    expect(c.approvalPolicy?.currentPolicyId).toBe('acceptEdits');
+    expect(c.approvalPolicy?.availablePolicies).toHaveLength(1);
+  });
+
   it('captures lifecycle state (status / usage / mode / stop / error)', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },

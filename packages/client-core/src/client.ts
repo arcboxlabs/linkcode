@@ -358,6 +358,12 @@ export class LinkCodeClient {
     return this.send(sessionId, { type: 'set-effort', effort });
   }
 
+  /** Switch the approval policy. Rejects unless the adapter advertises policies; the active pick
+   * reflects back via the `approval-policy-update` event, never locally. */
+  setApprovalPolicy(sessionId: SessionId, policyId: string): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'set-approval-policy', policyId });
+  }
+
   /** Answer a pending permission-request. */
   respondPermission(
     sessionId: SessionId,
