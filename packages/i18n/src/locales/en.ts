@@ -51,6 +51,9 @@ export const en = {
       page: '{current} of {total}',
       previous: 'Previous permission request',
       next: 'Next permission request',
+      file: 'File',
+      command: 'Command',
+      url: 'URL',
     },
     composer: {
       placeholderDisconnected: 'Create or pick a thread first',

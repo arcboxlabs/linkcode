@@ -42,7 +42,7 @@ export function ConversationPromptDock({
   return (
     <div className="shrink-0 px-4 py-2">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
-        {plan ? <PlanPromptRow plan={plan} /> : null}
+        {/* Permission asks block the agent, so they outrank the plan when both are pinned. */}
         {pendingPermissions.length > 0 ? (
           <PermissionPrompt
             items={pendingPermissions}
@@ -50,6 +50,7 @@ export function ConversationPromptDock({
             onRespondPermission={onRespondPermission}
           />
         ) : null}
+        {plan ? <PlanPromptRow plan={plan} /> : null}
       </div>
     </div>
   );

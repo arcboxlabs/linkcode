@@ -49,6 +49,9 @@ export const zhCN = {
       page: '{current} / {total}',
       previous: '上一个权限请求',
       next: '下一个权限请求',
+      file: '文件',
+      command: '命令',
+      url: 'URL',
     },
     composer: {
       placeholderDisconnected: '请先创建或选择线程',
