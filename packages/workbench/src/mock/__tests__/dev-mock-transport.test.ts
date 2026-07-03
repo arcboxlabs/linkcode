@@ -221,6 +221,24 @@ describe('dev mock transport', () => {
       terminalOutput += data;
     });
 
+    // The turn stays in flight until the permission ask is answered, mirroring a live agent.
+    const permission = await eventually(
+      () => events.find((event) => event.type === 'permission-request'),
+      15000,
+    );
+    if (permission.type !== 'permission-request') throw new Error('permission request not found');
+    await expect(
+      client.respondPermission(showcase.sessionId, permission.requestId, {
+        outcome: 'selected',
+        optionId: 'allow_once',
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(
+      toolCalls(events).some(
+        (tool) => tool.toolCallId === permission.toolCall.toolCallId && tool.status === 'completed',
+      ),
+    ).toBe(true);
+
     await eventually(
       () => events.some((event) => event.type === 'stop' && event.stopReason === 'end_turn'),
       15000,
@@ -253,20 +271,6 @@ describe('dev mock transport', () => {
     );
     expect(streamChunks.length).toBeGreaterThan(1);
     expect(new Set(streamChunks.map((chunk) => chunk.messageId)).size).toBe(1);
-
-    const permission = events.find((event) => event.type === 'permission-request');
-    if (permission?.type !== 'permission-request') throw new Error('permission request not found');
-    await expect(
-      client.respondPermission(showcase.sessionId, permission.requestId, {
-        outcome: 'selected',
-        optionId: 'allow_once',
-      }),
-    ).resolves.toEqual({ ok: true });
-    expect(
-      toolCalls(events).some(
-        (tool) => tool.toolCallId === permission.toolCall.toolCallId && tool.status === 'completed',
-      ),
-    ).toBe(true);
 
     client.dispose();
   }, 20000);

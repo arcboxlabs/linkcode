@@ -654,9 +654,23 @@ export class DevMockHost {
       type: 'token-usage',
       usage: { inputTokens: 148, outputTokens: 96, totalCostUsd: 0 },
     });
+    // A real agent turn stays in flight while a permission ask awaits its reply. Poll instead of
+    // coordinating with respondPermission so the turn lifecycle stays in this one method.
+    while (this.hasPendingPermission(session.sessionId)) {
+      // eslint-disable-next-line no-await-in-loop -- deliberate poll while awaiting the permission reply.
+      await wait(200);
+      if (!isRunningTurn(session, epoch)) return;
+    }
     this.emit(session.sessionId, { type: 'stop', stopReason: 'end_turn' });
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
+  }
+
+  private hasPendingPermission(sessionId: SessionId): boolean {
+    for (const pending of this.permissions.values()) {
+      if (pending.sessionId === sessionId) return true;
+    }
+    return false;
   }
 
   private respondPermission(
