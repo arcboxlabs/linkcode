@@ -28,19 +28,17 @@ export function TurnDiffSummary({
 
   return (
     <div className="my-1 rounded-xl border border-border bg-card text-sm">
-      <div className="flex items-center gap-3 px-3 py-2">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <FileDiffIcon className="size-4 text-muted-foreground" />
-        </div>
-        <div className="min-w-0 flex-1">
+      <div className="flex items-center px-3 py-2 gap-1">
+        <div className="min-w-0 flex flex-1 gap-2 items-center">
+          <FileDiffIcon className="size-3.5 text-muted-foreground" />
           <div className="font-medium">{t('title', { count: edits.files.length })}</div>
           <DiffStat additions={edits.additions} deletions={edits.deletions} />
         </div>
-        <Button disabled={!onUndo} size="xs" type="button" variant="ghost" onClick={onUndo}>
-          {t('undo')}
+        <Button disabled={!onUndo} type="button" variant="ghost" onClick={onUndo}>
           <Undo2Icon />
+          {t('undo')}
         </Button>
-        <Button disabled={!onReview} size="xs" type="button" variant="outline" onClick={onReview}>
+        <Button disabled={!onReview} type="button" variant="outline" onClick={onReview}>
           {t('review')}
         </Button>
       </div>
@@ -55,7 +53,7 @@ export function TurnDiffSummary({
                 <FileRow key={file.path} file={file} />
               ))}
             </CollapsibleContent>
-            <CollapsibleTrigger className="flex items-center gap-1 py-1 text-muted-foreground text-xs hover:text-foreground">
+            <CollapsibleTrigger className="flex items-center gap-1 py-1 text-muted-foreground text-sm hover:text-foreground">
               <span className="group-data-[panel-open]:hidden">
                 {t('showMore', { count: overflowFiles.length })}
               </span>
@@ -74,7 +72,7 @@ function FileRow({ file }: { file: TurnFileEdit }): React.ReactNode {
 
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="min-w-0 flex-1 truncate font-mono text-xs">
+      <span className="min-w-0 flex-1 truncate font-mono text-sm text-ellipsis">
         <span className="text-muted-foreground">{file.path.slice(0, basenameStart)}</span>
         <span className="text-foreground">{file.path.slice(basenameStart)}</span>
       </span>
@@ -91,7 +89,7 @@ function DiffStat({
   deletions: number;
 }): React.ReactNode {
   return (
-    <div className="flex shrink-0 items-center gap-1 font-mono text-xs">
+    <div className="flex shrink-0 items-center gap-1 font-mono text-sm">
       <span className="text-success-foreground">+{additions}</span>
       <span className="text-destructive-foreground">-{deletions}</span>
     </div>

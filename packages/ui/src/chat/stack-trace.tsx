@@ -101,7 +101,7 @@ export function StackTraceHeader({
       {children ?? (
         <>
           <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-left">
-            <AlertTriangleIcon className="size-4 shrink-0 text-destructive-foreground" />
+            <AlertTriangleIcon className="size-3.5 shrink-0 text-destructive-foreground" />
             <span className="min-w-0 flex-1 truncate">
               <span className="font-semibold text-destructive-foreground">
                 {stackTrace.title ?? parsed.errorType ?? 'Error'}

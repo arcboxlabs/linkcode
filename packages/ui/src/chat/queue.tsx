@@ -92,7 +92,7 @@ export function QueueSectionTrigger({
     >
       {children ?? (
         <>
-          <ListOrderedIcon className="size-4 text-muted-foreground" />
+          <ListOrderedIcon className="size-3.5 text-muted-foreground" />
           <span className="min-w-0 flex-1">{label}</span>
           {typeof count === 'number' ? (
             <Badge size="sm" variant="secondary">

@@ -128,7 +128,7 @@ function summarizeTests(results: readonly ChatTestResult[]): TestSummary {
 }
 
 function TestStatusIcon({ status }: { status: ChatTestResult['status'] }): React.ReactNode {
-  const className = cn('mt-0.5 size-4 shrink-0', testStatusClass(status));
+  const className = cn('mt-0.5 size-3.5 shrink-0', testStatusClass(status));
 
   switch (status) {
     case 'passed':

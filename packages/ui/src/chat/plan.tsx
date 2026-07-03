@@ -44,7 +44,7 @@ export function PlanHeader({
     >
       {children ?? (
         <>
-          <ListTodoIcon className="size-4 text-muted-foreground" />
+          <ListTodoIcon className="3.5 text-muted-foreground" />
           <span className="min-w-0 flex-1">{title}</span>
           <ChevronRightIcon className="size-3.5 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
         </>
@@ -72,7 +72,7 @@ export function PlanItem({
   ...props
 }: PlanItemProps): React.ReactNode {
   return (
-    <div className={cn('flex items-start gap-2 py-0.5 text-sm', className)} {...props}>
+    <div className={cn('flex items-center gap-2 py-0.5 text-sm', className)} {...props}>
       <PlanItemIcon status={status} />
       <span
         className={cn('flex-1', status === 'completed' && 'text-muted-foreground line-through')}
@@ -86,12 +86,12 @@ export function PlanItem({
 function PlanItemIcon({ status }: { status: PlanItemStatus }): React.ReactNode {
   switch (status) {
     case 'pending':
-      return <CircleIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />;
+      return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground/60" />;
     case 'in_progress':
-      return <CircleDashedIcon className="mt-0.5 size-3.5 shrink-0 text-warning-foreground" />;
+      return <CircleDashedIcon className="size-3.5 shrink-0 text-warning-foreground" />;
     case 'completed':
-      return <CircleCheckIcon className="mt-0.5 size-3.5 shrink-0 text-success-foreground" />;
+      return <CircleCheckIcon className="size-3.5 shrink-0 text-success-foreground" />;
     default:
-      return <CircleIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />;
+      return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground/60" />;
   }
 }

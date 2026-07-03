@@ -94,9 +94,9 @@ function ActivityStatusIcon({
   running: boolean;
   failed: boolean;
 }): React.ReactNode {
-  if (running) return <Spinner className="size-4 text-foreground" />;
-  if (failed) return <CircleXIcon className="size-4 text-destructive-foreground" />;
-  return <CircleCheckIcon className="size-4 text-success-foreground" />;
+  if (running) return <Spinner className="3.5 text-foreground" />;
+  if (failed) return <CircleXIcon className="size-3.5 text-destructive-foreground" />;
+  return <CircleCheckIcon className="size-3.5 text-success-foreground" />;
 }
 
 /** One call inside an expanded group: a bare title row — no icons; failures read via color. */

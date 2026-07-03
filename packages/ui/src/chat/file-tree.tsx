@@ -115,7 +115,7 @@ export function FileTreeNode({
               selectedId === node.id && 'bg-muted',
             )}
           >
-            <CollapsibleTrigger className="flex size-4 shrink-0 items-center justify-center">
+            <CollapsibleTrigger className="flex size-3.5 shrink-0 items-center justify-center">
               <ChevronRightIcon
                 className={cn(
                   'size-3.5 text-muted-foreground transition-transform',
@@ -166,7 +166,7 @@ export function FileTreeNode({
       role="treeitem"
       {...props}
     >
-      <span className="size-4 shrink-0" />
+      <span className="size-3.5 shrink-0" />
       <button
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         onClick={() => onNodeSelect?.(node)}

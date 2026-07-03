@@ -70,19 +70,19 @@ export function ToolStatusIcon({
 }): React.ReactNode {
   switch (status) {
     case 'pending':
-      return <CircleIcon className="size-4 text-muted-foreground/60" />;
+      return <CircleIcon className="size-3.5 text-muted-foreground/60" />;
     case 'in_progress':
-      return <Spinner className="size-4 text-foreground" />;
+      return <Spinner className="size-3.5 text-foreground" />;
     case 'completed':
       return kind === 'edit' || kind === 'delete' ? (
-        <PencilIcon className="size-4 text-foreground" />
+        <PencilIcon className="size-3.5 text-foreground" />
       ) : (
-        <CircleCheckIcon className="size-4 text-success-foreground" />
+        <CircleCheckIcon className="size-3.5 text-success-foreground" />
       );
     case 'failed':
-      return <CircleXIcon className="size-4 text-destructive-foreground" />;
+      return <CircleXIcon className="size-3.5 text-destructive-foreground" />;
     default:
-      return <CircleIcon className="size-4 text-muted-foreground/60" />;
+      return <CircleIcon className="size-3.5 text-muted-foreground/60" />;
   }
 }
 

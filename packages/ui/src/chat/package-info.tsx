@@ -92,7 +92,7 @@ export function PackageInfoName({
       )}
       {...props}
     >
-      <PackageIcon className="size-4 shrink-0 text-muted-foreground" />
+      <PackageIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="truncate">{children}</span>
     </div>
   );

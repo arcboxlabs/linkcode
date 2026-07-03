@@ -58,7 +58,7 @@ export function Checkpoint({
 export type CheckpointIconProps = React.ComponentProps<typeof BookmarkIcon>;
 
 export function CheckpointIcon({ className, ...props }: CheckpointIconProps): React.ReactNode {
-  return <BookmarkIcon className={cn('size-4 shrink-0', className)} {...props} />;
+  return <BookmarkIcon className={cn('size-3.5 shrink-0', className)} {...props} />;
 }
 
 export type CheckpointTriggerProps = React.ComponentProps<typeof Button> & {

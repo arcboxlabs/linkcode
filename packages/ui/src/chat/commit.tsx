@@ -110,7 +110,7 @@ export function CommitAvatar({ commit, ...props }: CommitAvatarProps): React.Rea
   return (
     <Avatar {...props}>
       <AvatarFallback>
-        {commit.authorInitials ?? <GitCommitIcon className="size-4 text-muted-foreground" />}
+        {commit.authorInitials ?? <GitCommitIcon className="size-3.5 text-muted-foreground" />}
       </AvatarFallback>
     </Avatar>
   );
