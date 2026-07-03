@@ -60,8 +60,9 @@ export function ConversationSurface({
           onRespondPermission={onRespondPermission}
         />
       </div>
-      {/* TODO(linkcode-schema): pass `availableModes` from the conversation view-model once the
-          backend emits the agent's SessionModeState; the composer falls back to a stub list. */}
+      {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) and the
+          approval-policy state/handler (approval-policy.ts) once the daemon exposes them; the
+          composer stubs both lists today. */}
       <Composer
         agentLabel={agentLabel}
         agentKind={agentKind}

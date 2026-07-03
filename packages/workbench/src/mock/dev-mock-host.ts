@@ -542,8 +542,7 @@ export class DevMockHost {
 
     const script: AgentEvent[] = [
       { type: 'status', status: 'running' },
-      // Matches a stub policy id (packages/ui session-modes-stub) so the composer picker starts aligned.
-      { type: 'current-mode-update', currentModeId: 'acceptEdits' },
+      { type: 'current-mode-update', currentModeId: 'mock-showcase' },
       { type: 'user-message', content: SHOWCASE_USER_CONTENT },
       {
         type: 'agent-thought-chunk',

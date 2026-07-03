@@ -1,93 +1,35 @@
 import type { SessionMode } from '@linkcode/schema';
-import { noop } from 'foxact/noop';
-import { useState } from 'react';
 
 /**
- * Two different product concepts share the agent's single session-mode channel:
+ * Workflow modes — provider-specific behaviors the agent advertises as `SessionMode`s (claude-code
+ * has plan, codex has plan and goal, …) with at most one active at a time (`currentModeId`). They
+ * ride the existing wire: switching sends the `set-mode` input and the active mode reflects back
+ * via the `current-mode-update` event.
  *
- * - **Approval policy** — the standing permission posture: how the agent's actions get approved
- *   (ask every time / auto-approve safe actions / full access). Picking one is a lasting choice.
- * - **Plan mode** — a work-phase toggle: the agent researches and proposes a plan instead of
- *   acting. Turning it off returns to normal execution under the previous approval policy.
+ * This axis is about HOW the agent works (propose a plan first / drive toward a goal); it is NOT
+ * the approval policy, which is the separate permission/safety axis — see approval-policy.ts.
  *
- * Agents advertise both as `SessionMode`s with exactly one active at a time (`currentModeId`), so
- * this hook demultiplexes the shared channel: the mode with id `plan` becomes the plan toggle,
- * every other mode a policy option, and the last active policy is remembered so leaving plan
- * restores it. Mode changes are fire-and-forget — the active mode is only ever reflected back
- * from the session's `current-mode-update` event, never assumed locally.
+ * TODO(backend): the advertised mode list (`SessionModeState.availableModes`) is not emitted to
+ * clients yet — only `current-mode-update` is. Emit it (names/descriptions come from the agent,
+ * per provider) so `STUB_SESSION_MODES` below can be deleted. Approval-policy-flavored ids
+ * (default / acceptEdits / bypassPermissions) must not appear on this channel once the policy
+ * axis lands; adapters map them onto the policy concept instead.
  */
 
-const PLAN_MODE_ID = 'plan';
+// TODO(backend): replace with the agent-advertised mode list from `SessionModeState`.
+export const STUB_SESSION_MODES: SessionMode[] = [
+  {
+    modeId: 'plan',
+    name: 'Plan',
+    description: 'Research and propose a plan before making changes.',
+  },
+  {
+    modeId: 'goal',
+    name: 'Goal',
+    description: 'Set a goal the agent will keep working towards.',
+  },
+];
 
-export interface ApprovalPolicyControl {
-  /** The postures the agent offers (every advertised mode except `plan`). */
-  options: SessionMode[];
-  /** The posture in effect — while plan mode is on, the one leaving plan will restore. */
-  active: SessionMode;
-  select: (modeId: string) => void;
-}
-
-export interface PlanModeControl {
-  mode: SessionMode;
-  active: boolean;
-  toggle: () => void;
-}
-
-export function useSessionModeControls(
-  currentModeId: string | null,
-  availableModes: readonly SessionMode[],
-  onModeChange: ((modeId: string) => Promise<void>) | undefined,
-): { policy: ApprovalPolicyControl | null; plan: PlanModeControl | null } {
-  // Render-phase adjustment (react.dev: "adjusting state when a prop changes") — the update is
-  // self-limiting because the condition compares against the state being set. The useEffect
-  // version is both slower (extra committed render) and rejected by react-no-use-effect-watching.
-  const [lastPolicyId, setLastPolicyId] = useState<string | null>(null);
-  if (currentModeId && currentModeId !== PLAN_MODE_ID && currentModeId !== lastPolicyId) {
-    setLastPolicyId(currentModeId);
-  }
-
-  // Without a change handler neither concept is actionable; callers fall back to read-only UI.
-  if (!onModeChange) return { policy: null, plan: null };
-
-  let advertisedPlan: SessionMode | null = null;
-  const options: SessionMode[] = [];
-  for (const mode of availableModes) {
-    if (mode.modeId === PLAN_MODE_ID) advertisedPlan = mode;
-    else options.push(mode);
-  }
-  const planMode = advertisedPlan;
-
-  const select = (modeId: string): void => {
-    // Failures surface via the workbench error banner; the mode simply stays where it was.
-    void onModeChange(modeId).catch(noop);
-  };
-
-  const planActive = currentModeId === PLAN_MODE_ID;
-  const activePolicyId = planActive ? lastPolicyId : currentModeId;
-
-  const policy: ApprovalPolicyControl | null =
-    options.length > 0
-      ? { options, active: modeById(options, activePolicyId) ?? options[0], select }
-      : null;
-
-  const plan: PlanModeControl | null = planMode
-    ? {
-        mode: planMode,
-        active: planActive,
-        toggle() {
-          const target = planActive ? (activePolicyId ?? options[0]?.modeId) : planMode.modeId;
-          if (target) select(target);
-        },
-      }
-    : null;
-
-  return { policy, plan };
-}
-
-// Linear lookup: agents advertise a handful of modes at most.
-function modeById(modes: readonly SessionMode[], modeId: string | null): SessionMode | undefined {
-  for (const mode of modes) {
-    if (mode.modeId === modeId) return mode;
-  }
-  return undefined;
-}
+/** Toggling the active mode off targets the agent's normal mode. TODO(backend): confirm how the
+ * contract represents "no special mode"; agents conventionally advertise it as `default`. */
+export const DEFAULT_MODE_ID = 'default';
