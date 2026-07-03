@@ -423,6 +423,9 @@ export class DevMockHost {
         session.model = input.model;
         this.sendSuccess(replyTo);
         break;
+      case 'set-effort':
+        this.sendSuccess(replyTo);
+        break;
       case 'set-mode':
         this.emit(sessionId, { type: 'current-mode-update', currentModeId: input.modeId });
         this.sendSuccess(replyTo);
@@ -538,7 +541,8 @@ export class DevMockHost {
 
     const script: AgentEvent[] = [
       { type: 'status', status: 'running' },
-      { type: 'current-mode-update', currentModeId: 'mock-showcase' },
+      // Matches a stub policy id (packages/ui session-modes-stub) so the composer picker starts aligned.
+      { type: 'current-mode-update', currentModeId: 'acceptEdits' },
       { type: 'user-message', content: SHOWCASE_USER_CONTENT },
       {
         type: 'agent-thought-chunk',

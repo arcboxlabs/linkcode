@@ -1,8 +1,7 @@
-import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
-import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import { noop } from 'foxact/noop';
 import { clamp } from 'foxts/clamp';
-import { AtSignIcon, ChevronDownIcon, GaugeIcon, PlusIcon, SparklesIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -15,6 +14,16 @@ import {
 import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
+import {
+  ApprovalPolicyMenu,
+  ComposerPlusMenu,
+  ModelSelectorMenu,
+  PlanModeChip,
+} from './composer-controls';
+import { STUB_SESSION_MODES } from './session-modes-stub';
+
+/** The conventional agent mode id treated as the plan toggle (claude-code, codex alike). */
+const PLAN_MODE_ID = 'plan';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
 export interface MentionItem {
@@ -34,15 +43,26 @@ export interface ComposerProps {
   isRunning: boolean;
   /** Entries for the `@` menu (default: none). */
   mentionItems?: MentionItem[];
-  /** Active session mode id, shown as a read-only badge when set. */
+  /** Active session mode id, from the conversation view-model. */
   currentModeId: string | null;
+  /** Agent-advertised session modes. Non-plan modes render as the approval-policy picker and the
+   * `plan` mode as the plus-menu toggle. Defaults to the stub list until the backend emits the
+   * real SessionModeState (see session-modes-stub.ts). */
+  availableModes?: SessionMode[];
   onSend: (text: string) => void;
   onStop: () => void;
+  /** Called when the user picks a mode (approval policy or plan toggle). The active mode is
+   * reflected from the session's `current-mode-update` event, not locally. */
+  onModeChange?: (modeId: string) => Promise<void>;
   /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
    * the pick once this resolves — it stays on the previous model if the switch is rejected. */
   onModelChange?: (model: string) => Promise<void>;
   /** Called when the user picks a reasoning-effort level; same confirm-then-reflect contract. */
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
+  /** Providers offered for selection (planned for the unified new-session composer). Absent or
+   * empty means the provider is fixed — the trigger then hides the provider glyph and submenu. */
+  selectableProviders?: AgentKind[];
+  onProviderChange?: (provider: AgentKind) => Promise<void>;
 }
 
 interface MenuState {
@@ -77,17 +97,19 @@ export function Composer({
   isRunning,
   mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
+  availableModes = STUB_SESSION_MODES,
   onSend,
   onStop,
+  onModeChange,
   onModelChange,
   onEffortChange,
+  selectableProviders,
+  onProviderChange,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-  const [effortMenuOpen, setEffortMenuOpen] = useState(false);
   const [selectedEffortId, setSelectedEffortId] = useState<EffortLevel | null>(null);
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
@@ -192,12 +214,43 @@ export function Composer({
 
   const placeholderAgent = agentLabel ?? 'agent';
   const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
-  const selectedModel = modelOptions?.find((option) => option.id === selectedModelId);
   const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
-  const selectedEffort = effortOptions?.find((option) => option.id === selectedEffortId);
+
+  const planMode = availableModes.find((mode) => mode.modeId === PLAN_MODE_ID) ?? null;
+  const policyModes = availableModes.filter((mode) => mode.modeId !== PLAN_MODE_ID);
+  const planActive = currentModeId === PLAN_MODE_ID;
+  // Remember the last non-plan mode so toggling plan off can restore it (derive-from-props pattern).
+  const [lastPolicyId, setLastPolicyId] = useState<string | null>(null);
+  if (currentModeId && currentModeId !== PLAN_MODE_ID && currentModeId !== lastPolicyId) {
+    setLastPolicyId(currentModeId);
+  }
+  const activePolicyId = planActive ? lastPolicyId : currentModeId;
+
+  function selectMode(modeId: string): void {
+    // The active mode reflects back from the session's current-mode-update event; failures land in
+    // the workbench error banner, so a rejected switch simply leaves the previous mode selected.
+    void onModeChange?.(modeId).catch(noop);
+  }
+
+  function togglePlan(): void {
+    if (!planMode) return;
+    const target = planActive ? (lastPolicyId ?? policyModes[0]?.modeId) : planMode.modeId;
+    if (target) selectMode(target);
+  }
+
+  function insertMentionTrigger(): void {
+    const pos = textareaRef.current?.selectionStart ?? value.length;
+    const before = value.slice(0, pos);
+    const insert = `${before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : ''}@`;
+    const next = `${before}${insert}${value.slice(pos)}`;
+    const nextCaret = pos + insert.length;
+    setValue(next);
+    setCaret(nextCaret);
+    setDismissedStart(null);
+    pendingCaretRef.current = nextCaret;
+  }
 
   async function selectModel(modelId: string): Promise<void> {
-    setModelMenuOpen(false);
     try {
       await onModelChange?.(modelId);
       // Only reflect the pick once the switch is confirmed — otherwise the picker would show a
@@ -209,7 +262,6 @@ export function Composer({
   }
 
   async function selectEffort(effort: EffortLevel): Promise<void> {
-    setEffortMenuOpen(false);
     try {
       await onEffortChange?.(effort);
       // Confirm-then-reflect, same as selectModel.
@@ -254,66 +306,55 @@ export function Composer({
             />
             <PromptInputFooter>
               <PromptInputTools>
-                <button
-                  type="button"
-                  aria-label="Attach"
-                  title="Attach"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  <PlusIcon className="size-4" />
-                </button>
-                {currentModeId && (
-                  <Badge variant="secondary">
-                    {tw('mode.label')}: {currentModeId}
-                  </Badge>
+                <ComposerPlusMenu
+                  disabled={disabled}
+                  finalFocus={textareaRef}
+                  planActive={planActive}
+                  planMode={planMode}
+                  onInsertMention={insertMentionTrigger}
+                  onTogglePlan={onModeChange ? togglePlan : undefined}
+                />
+                {policyModes.length > 0 && onModeChange ? (
+                  <ApprovalPolicyMenu
+                    activePolicyId={activePolicyId}
+                    agentLabel={placeholderAgent}
+                    disabled={disabled}
+                    policyModes={policyModes}
+                    onSelect={selectMode}
+                  />
+                ) : (
+                  currentModeId && (
+                    <Badge variant="secondary">
+                      {tw('mode.label')}: {currentModeId}
+                    </Badge>
+                  )
                 )}
+                {planActive && planMode ? (
+                  <PlanModeChip planMode={planMode} onToggle={togglePlan} />
+                ) : null}
               </PromptInputTools>
-              {modelOptions && modelOptions.length > 0 && (
-                <Popover open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
-                  <PopoverTrigger className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-accent sm:flex">
-                    <SparklesIcon className="size-3.5 text-muted-foreground" />
-                    <span className="font-mono">{selectedModel?.label ?? t('modelDefault')}</span>
-                    <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-                  </PopoverTrigger>
-                  <PopoverPopup align="end" side="top" sideOffset={8} className="w-56 p-1">
-                    {modelOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => selectModel(option.id)}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </PopoverPopup>
-                </Popover>
-              )}
-              {effortOptions && effortOptions.length > 0 && (
-                <Popover open={effortMenuOpen} onOpenChange={setEffortMenuOpen}>
-                  <PopoverTrigger className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-accent sm:flex">
-                    <GaugeIcon className="size-3.5 text-muted-foreground" />
-                    <span className="font-mono">{selectedEffort?.label ?? t('effortDefault')}</span>
-                    <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-                  </PopoverTrigger>
-                  <PopoverPopup align="end" side="top" sideOffset={8} className="w-40 p-1">
-                    {effortOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => selectEffort(option.id)}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </PopoverPopup>
-                </Popover>
-              )}
-              <span className="hidden items-center gap-1 text-muted-foreground text-xs lg:flex">
-                <AtSignIcon className="size-3" />
-                {t('mentions')}
-              </span>
+              <ModelSelectorMenu
+                disabled={disabled}
+                effortOptions={effortOptions}
+                modelOptions={modelOptions}
+                provider={agentKind}
+                selectableProviders={selectableProviders}
+                selectedEffortId={selectedEffortId}
+                selectedModelId={selectedModelId}
+                onSelectEffort={(effort) => {
+                  void selectEffort(effort);
+                }}
+                onSelectModel={(model) => {
+                  void selectModel(model);
+                }}
+                onSelectProvider={
+                  onProviderChange
+                    ? (provider) => {
+                        void onProviderChange(provider).catch(noop);
+                      }
+                    : undefined
+                }
+              />
               <PromptInputSubmit
                 aria-label={isRunning ? t('stop') : t('send')}
                 disabled={!isRunning && (disabled || value.trim().length === 0)}

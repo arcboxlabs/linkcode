@@ -47,6 +47,11 @@ export const zhCN = {
       noMentions: '没有匹配项',
       modelDefault: '默认',
       effortDefault: '推理强度',
+      add: '添加',
+      attach: '文件与文件夹',
+      approvalTitle: '如何审批 {agent} 的操作？',
+      reasoning: '推理',
+      provider: '提供方',
     },
     mode: {
       label: '模式',

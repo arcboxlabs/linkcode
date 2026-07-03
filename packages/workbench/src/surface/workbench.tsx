@@ -8,6 +8,7 @@ import {
   promptText,
   registerWorkspace,
   respondPermission,
+  sendInput,
   setEffort,
   setModel,
   updateWorkspace,
@@ -98,6 +99,8 @@ function WorkbenchSessionSurface({
   const permissionMutation = useMutation(respondPermission, { onError });
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
+  // set-mode rides the generic input op; the mode reflects back via current-mode-update.
+  const modeMutation = useMutation(sendInput, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
@@ -167,6 +170,15 @@ function WorkbenchSessionSurface({
     if (!sessions.activeId) return;
     onClearError();
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
+  }
+
+  function handleModeChange(modeId: string): Promise<void> {
+    if (!sessions.activeId) return Promise.reject(new Error('No active session'));
+    onClearError();
+    // Same contract as handleModelChange: the composer awaits rejections to keep the old pick.
+    return modeMutation
+      .trigger({ sessionId: sessions.activeId, input: { type: 'set-mode', modeId } })
+      .then(noop);
   }
 
   function handleModelChange(model: string): Promise<void> {
@@ -303,6 +315,7 @@ function WorkbenchSessionSurface({
       BranchStatusComponent={RuntimeBranchStatus}
       HistoryComponent={RuntimeWorkspaceHistory}
       onDismissError={onClearError}
+      onModeChange={handleModeChange}
       onModelChange={handleModelChange}
       onEffortChange={handleEffortChange}
     />

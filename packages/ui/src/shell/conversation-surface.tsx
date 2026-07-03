@@ -20,6 +20,7 @@ export interface ConversationSurfaceProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
+  onModeChange?: (modeId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
@@ -40,6 +41,7 @@ export function ConversationSurface({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onModeChange,
   onModelChange,
   onEffortChange,
 }: ConversationSurfaceProps): React.ReactNode {
@@ -58,6 +60,8 @@ export function ConversationSurface({
           onRespondPermission={onRespondPermission}
         />
       </div>
+      {/* TODO(linkcode-schema): pass `availableModes` from the conversation view-model once the
+          backend emits the agent's SessionModeState; the composer falls back to a stub list. */}
       <Composer
         agentLabel={agentLabel}
         agentKind={agentKind}
@@ -66,6 +70,7 @@ export function ConversationSurface({
         currentModeId={conversation.currentModeId}
         onSend={onSendPrompt}
         onStop={onStopTurn}
+        onModeChange={onModeChange}
         onModelChange={onModelChange}
         onEffortChange={onEffortChange}
       />
