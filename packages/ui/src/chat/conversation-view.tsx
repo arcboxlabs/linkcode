@@ -1,7 +1,9 @@
 import type { AgentKind, PermissionOption } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
+import { Fragment } from 'react';
 import { useTranslations } from 'use-intl';
 import { ActivityGroup } from './activity-group';
+import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
 import { ContentBlockView } from './content-block-view';
 import { keyedItems, stableContentKey } from './content-keys';
@@ -20,6 +22,8 @@ import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
+import { TurnDiffSummary } from './turn-diff-summary';
+import { splitTurnSegments, turnFileEdits } from './turn-edits';
 import type { ConversationViewModel } from './types';
 
 export interface ConversationViewProps {
@@ -62,6 +66,72 @@ export function ConversationView({
   const snapshottedToolIds = new Set(
     items.flatMap((item) => (item.kind === 'tool' ? [item.toolCall.toolCallId] : [])),
   );
+  const segments = splitTurnSegments(conversationFlowItems(items));
+
+  const renderEntry = (entry: TimelineEntry): React.ReactNode => {
+    if (entry.type === 'group') {
+      return (
+        <ActivityGroup
+          key={entry.id}
+          group={entry}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+    if (entry.type === 'single') {
+      return (
+        <ToolCallItem
+          key={entry.item.id}
+          declined={declined.has(entry.item.toolCall.toolCallId)}
+          toolCall={entry.item.toolCall}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+    const item = entry.item;
+    switch (item.kind) {
+      case 'message':
+        return (
+          <Message key={item.id} from={item.role}>
+            <MessageContent className={item.role === 'assistant' ? 'space-y-1' : undefined}>
+              {keyedItems(item.blocks, stableContentKey).map(({ key, item: block }) => (
+                <ContentBlockView key={key} block={block} />
+              ))}
+            </MessageContent>
+          </Message>
+        );
+      case 'reasoning':
+        return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />;
+      case 'approval':
+        // Accepted / pending asks leave no receipt — the tool row (or the dock card) is the
+        // record. A decline only materializes here when the agent never snapshotted the call.
+        if (
+          !declined.has(item.toolCall.toolCallId) ||
+          snapshottedToolIds.has(item.toolCall.toolCallId)
+        ) {
+          return null;
+        }
+        return (
+          <ToolCallItem
+            key={item.id}
+            declined
+            toolCall={declinedToolCall(item.toolCall)}
+            TerminalBlockComponent={TerminalBlockComponent}
+          />
+        );
+      case 'error':
+        return (
+          <ErrorMessage
+            key={item.id}
+            message={item.message}
+            code={item.code}
+            recoverable={item.recoverable}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <Conversation
@@ -73,71 +143,16 @@ export function ConversationView({
       }}
     >
       <ConversationContent>
-        {groupTimeline(conversationFlowItems(items)).map((entry) => {
-          if (entry.type === 'group') {
-            return (
-              <ActivityGroup
-                key={entry.id}
-                group={entry}
-                TerminalBlockComponent={TerminalBlockComponent}
-              />
-            );
-          }
-          if (entry.type === 'single') {
-            return (
-              <ToolCallItem
-                key={entry.item.id}
-                declined={declined.has(entry.item.toolCall.toolCallId)}
-                toolCall={entry.item.toolCall}
-                TerminalBlockComponent={TerminalBlockComponent}
-              />
-            );
-          }
-          const item = entry.item;
-          switch (item.kind) {
-            case 'message':
-              return (
-                <Message key={item.id} from={item.role}>
-                  <MessageContent className={item.role === 'assistant' ? 'space-y-1' : undefined}>
-                    {keyedItems(item.blocks, stableContentKey).map(({ key, item: block }) => (
-                      <ContentBlockView key={key} block={block} />
-                    ))}
-                  </MessageContent>
-                </Message>
-              );
-            case 'reasoning':
-              return (
-                <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />
-              );
-            case 'approval':
-              // Accepted / pending asks leave no receipt — the tool row (or the dock card) is the
-              // record. A decline only materializes here when the agent never snapshotted the call.
-              if (
-                !declined.has(item.toolCall.toolCallId) ||
-                snapshottedToolIds.has(item.toolCall.toolCallId)
-              ) {
-                return null;
-              }
-              return (
-                <ToolCallItem
-                  key={item.id}
-                  declined
-                  toolCall={declinedToolCall(item.toolCall)}
-                  TerminalBlockComponent={TerminalBlockComponent}
-                />
-              );
-            case 'error':
-              return (
-                <ErrorMessage
-                  key={item.id}
-                  message={item.message}
-                  code={item.code}
-                  recoverable={item.recoverable}
-                />
-              );
-            default:
-              return null;
-          }
+        {segments.map((segment, index) => {
+          // One rollup per agent turn, once it has settled — the in-flight turn shows none.
+          const ended = index < segments.length - 1 || !isThinking;
+          const edits = ended ? turnFileEdits(segment.items) : null;
+          return (
+            <Fragment key={segment.turnId ?? 'lead-in'}>
+              {groupTimeline(segment.items).map((entry) => renderEntry(entry))}
+              {edits ? <TurnDiffSummary edits={edits} /> : null}
+            </Fragment>
+          );
         })}
         {isThinking && (
           <div className="flex items-center gap-2 py-1 text-muted-foreground text-sm">

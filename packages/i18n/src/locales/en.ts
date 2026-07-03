@@ -40,6 +40,13 @@ export const en = {
       other: 'Used tools',
       failed: '{count} failed',
     },
+    diffSummary: {
+      title: 'Edited {count, plural, one {# file} other {# files}}',
+      undo: 'Undo',
+      review: 'Review',
+      showMore: 'Show {count, plural, one {# more file} other {# more files}}',
+      showLess: 'Show less',
+    },
     plan: {
       title: 'Plan',
       progress: '{current}/{total}',

@@ -38,6 +38,13 @@ export const zhCN = {
       other: '工具调用',
       failed: '{count} 失败',
     },
+    diffSummary: {
+      title: '编辑了 {count} 个文件',
+      undo: '撤销',
+      review: '审阅',
+      showMore: '显示其余 {count} 个文件',
+      showLess: '收起',
+    },
     plan: {
       title: '计划',
       progress: '{current}/{total}',
