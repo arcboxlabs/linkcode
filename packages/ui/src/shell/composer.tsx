@@ -330,7 +330,11 @@ export function Composer({
                   />
                 ) : null}
                 {activeMode && onModeChange ? (
-                  <SessionModeChip mode={activeMode} onToggle={() => toggleMode(activeMode)} />
+                  <SessionModeChip
+                    disabled={disabled}
+                    mode={activeMode}
+                    onToggle={() => toggleMode(activeMode)}
+                  />
                 ) : null}
               </PromptInputTools>
               <ModelSelectorMenu
