@@ -99,7 +99,7 @@ function WorkbenchSessionSurface({
   const permissionMutation = useMutation(respondPermission, { onError });
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  // set-mode rides the generic input op; the mode reflects back via current-mode-update.
+  // Workflow-mode switches ride the generic input op; the mode reflects via current-mode-update.
   const modeMutation = useMutation(sendInput, { onError });
   const [answered, addAnswered] = useSet<string>();
   const [responding, addResponding, removeResponding] = useSet<string>();

@@ -1,5 +1,4 @@
 import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
 import { noop } from 'foxact/noop';
 import { clamp } from 'foxts/clamp';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -14,14 +13,15 @@ import {
 import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
+import type { ApprovalPolicyOption } from './approval-policy';
+import { STUB_APPROVAL_POLICIES } from './approval-policy';
 import {
   ApprovalPolicyMenu,
   ComposerPlusMenu,
   ModelSelectorMenu,
-  PlanModeChip,
+  SessionModeChip,
 } from './composer-controls';
-import { useSessionModeControls } from './session-modes';
-import { STUB_SESSION_MODES } from './session-modes-stub';
+import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
 export interface MentionItem {
@@ -41,17 +41,23 @@ export interface ComposerProps {
   isRunning: boolean;
   /** Entries for the `@` menu (default: none). */
   mentionItems?: MentionItem[];
-  /** Active session mode id, from the conversation view-model. */
+  /** Active workflow mode id, reflected from the session's `current-mode-update` event. */
   currentModeId: string | null;
-  /** Agent-advertised session modes. Non-plan modes render as the approval-policy picker and the
-   * `plan` mode as the plus-menu toggle. Defaults to the stub list until the backend emits the
-   * real SessionModeState (see session-modes-stub.ts). */
+  /** Agent-advertised workflow modes (plan / goal / … — see session-modes.ts). Defaults to the
+   * stub list until the backend emits the advertised set. */
   availableModes?: SessionMode[];
+  /** Approval policy options — the permission/safety axis (see approval-policy.ts). Defaults to
+   * the stub list until agents advertise their own. */
+  approvalPolicies?: ApprovalPolicyOption[];
   onSend: (text: string) => void;
   onStop: () => void;
-  /** Called when the user picks a mode (approval policy or plan toggle). The active mode is
-   * reflected from the session's `current-mode-update` event, not locally. */
+  /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
+   * `current-mode-update` event, not locally. */
   onModeChange?: (modeId: string) => Promise<void>;
+  /** TODO(backend): the policy selection lives in composer-local state with no wire effect until
+   * the daemon exposes the approval-policy axis (see approval-policy.ts); this callback then
+   * sends the switch and the selection reflects back from session state. */
+  onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
    * the pick once this resolves — it stays on the previous model if the switch is rejected. */
   onModelChange?: (model: string) => Promise<void>;
@@ -96,16 +102,17 @@ export function Composer({
   mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
   availableModes = STUB_SESSION_MODES,
+  approvalPolicies = STUB_APPROVAL_POLICIES,
   onSend,
   onStop,
   onModeChange,
+  onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
   selectableProviders,
   onProviderChange,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const tw = useTranslations('workbench');
   const [value, setValue] = useState('');
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedEffortId, setSelectedEffortId] = useState<EffortLevel | null>(null);
@@ -214,9 +221,28 @@ export function Composer({
   const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
   const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
 
-  // Approval policy and plan mode are distinct concepts multiplexed over one agent mode channel;
-  // the hook demultiplexes them (see session-modes.ts).
-  const { policy, plan } = useSessionModeControls(currentModeId, availableModes, onModeChange);
+  // Workflow modes and approval policy are two orthogonal axes (see session-modes.ts and
+  // approval-policy.ts). The active mode is server-reflected; failures land in the error banner,
+  // so a rejected switch simply leaves the previous mode active.
+  let matchedMode: SessionMode | null = null;
+  for (const mode of availableModes) {
+    if (mode.modeId === currentModeId) matchedMode = mode;
+  }
+  const activeMode = matchedMode;
+
+  function toggleMode(mode: SessionMode): void {
+    const target = currentModeId === mode.modeId ? DEFAULT_MODE_ID : mode.modeId;
+    void onModeChange?.(target).catch(noop);
+  }
+
+  // TODO(backend): local optimistic state only — replace with server-reflected session state once
+  // the daemon exposes the approval-policy axis; a rejected switch should then keep the old pick.
+  const [activePolicyId, setActivePolicyId] = useState<string | null>(null);
+
+  function selectPolicy(policyId: string): void {
+    setActivePolicyId(policyId);
+    void onApprovalPolicyChange?.(policyId).catch(noop);
+  }
 
   function insertMentionTrigger(): void {
     const pos = textareaRef.current?.selectionStart ?? value.length;
@@ -287,25 +313,25 @@ export function Composer({
             <PromptInputFooter>
               <PromptInputTools>
                 <ComposerPlusMenu
+                  currentModeId={currentModeId}
                   disabled={disabled}
                   finalFocus={textareaRef}
-                  plan={plan}
+                  modes={availableModes}
                   onInsertMention={insertMentionTrigger}
+                  onToggleMode={onModeChange ? toggleMode : undefined}
                 />
-                {policy ? (
+                {approvalPolicies.length > 0 ? (
                   <ApprovalPolicyMenu
+                    activePolicyId={activePolicyId}
                     agentLabel={placeholderAgent}
                     disabled={disabled}
-                    policy={policy}
+                    policies={approvalPolicies}
+                    onSelect={selectPolicy}
                   />
-                ) : (
-                  currentModeId && (
-                    <Badge variant="secondary">
-                      {tw('mode.label')}: {currentModeId}
-                    </Badge>
-                  )
-                )}
-                {plan?.active ? <PlanModeChip plan={plan} /> : null}
+                ) : null}
+                {activeMode && onModeChange ? (
+                  <SessionModeChip mode={activeMode} onToggle={() => toggleMode(activeMode)} />
+                ) : null}
               </PromptInputTools>
               <ModelSelectorMenu
                 disabled={disabled}

@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -23,14 +23,16 @@ import {
   PaperclipIcon,
   PlusIcon,
   ShieldIcon,
+  SlidersHorizontalIcon,
+  TargetIcon,
 } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import type { EffortOption } from './agent-efforts';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
 import type { ModelOption } from './agent-models';
-import type { ApprovalPolicyControl, PlanModeControl } from './session-modes';
+import type { ApprovalPolicyOption } from './approval-policy';
 
-// Linear lookup: the model/effort lists are a handful of entries at most.
+// Linear lookup: the policy/model/effort lists are a handful of entries at most.
 function optionById<T extends { id: string }>(
   options: readonly T[] | undefined,
   id: string | null,
@@ -41,16 +43,20 @@ function optionById<T extends { id: string }>(
   return undefined;
 }
 
-/** The `+` menu gathering the composer's secondary operations (attach, mention, plan toggle). */
+/** The `+` menu gathering the composer's secondary operations (attach, mention, mode toggles). */
 export function ComposerPlusMenu({
   disabled,
-  plan,
+  modes,
+  currentModeId,
+  onToggleMode,
   onInsertMention,
   finalFocus,
 }: {
   disabled: boolean;
-  /** The plan work-phase toggle; null when the agent doesn't advertise it (or modes are read-only). */
-  plan: PlanModeControl | null;
+  /** Agent-advertised workflow modes (plan / goal / … — see session-modes.ts), one active at most. */
+  modes: SessionMode[];
+  currentModeId: string | null;
+  onToggleMode?: (mode: SessionMode) => void;
   onInsertMention: () => void;
   /** Where focus lands after the menu closes — the composer textarea. */
   finalFocus: React.RefObject<HTMLTextAreaElement | null>;
@@ -82,17 +88,24 @@ export function ComposerPlusMenu({
           <AtSignIcon />
           {t('mentions')}
         </MenuItem>
-        {plan ? (
+        {modes.length > 0 && onToggleMode ? (
           <>
             <MenuSeparator />
-            <MenuCheckboxItem checked={plan.active} closeOnClick onCheckedChange={plan.toggle}>
-              <span className="flex min-w-0 flex-col">
-                <span>{plan.mode.name}</span>
-                {plan.mode.description ? (
-                  <span className="text-muted-foreground text-xs">{plan.mode.description}</span>
-                ) : null}
-              </span>
-            </MenuCheckboxItem>
+            {modes.map((mode) => (
+              <MenuCheckboxItem
+                key={mode.modeId}
+                checked={currentModeId === mode.modeId}
+                closeOnClick
+                onCheckedChange={() => onToggleMode(mode)}
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span>{mode.name}</span>
+                  {mode.description ? (
+                    <span className="text-muted-foreground text-xs">{mode.description}</span>
+                  ) : null}
+                </span>
+              </MenuCheckboxItem>
+            ))}
           </>
         ) : null}
       </MenuPopup>
@@ -100,17 +113,22 @@ export function ComposerPlusMenu({
   );
 }
 
-/** Codex-style approval policy picker: the agent's permission postures as a described radio list. */
+/** The approval-policy picker — the permission/safety axis (see approval-policy.ts). */
 export function ApprovalPolicyMenu({
   agentLabel,
   disabled,
-  policy,
+  policies,
+  activePolicyId,
+  onSelect,
 }: {
   agentLabel: string;
   disabled: boolean;
-  policy: ApprovalPolicyControl;
+  policies: ApprovalPolicyOption[];
+  activePolicyId: string | null;
+  onSelect: (policyId: string) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
+  const active = optionById(policies, activePolicyId) ?? policies[0];
 
   return (
     <Menu>
@@ -121,22 +139,19 @@ export function ApprovalPolicyMenu({
         }
       >
         <ShieldIcon />
-        {policy.active.name}
+        {active.name}
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
           <MenuGroupLabel>{t('approvalTitle', { agent: agentLabel })}</MenuGroupLabel>
-          <MenuRadioGroup
-            value={policy.active.modeId}
-            onValueChange={(value) => policy.select(String(value))}
-          >
-            {policy.options.map((mode) => (
-              <MenuRadioItem key={mode.modeId} className="py-1.5" closeOnClick value={mode.modeId}>
+          <MenuRadioGroup value={active.id} onValueChange={(value) => onSelect(String(value))}>
+            {policies.map((policy) => (
+              <MenuRadioItem key={policy.id} className="py-1.5" closeOnClick value={policy.id}>
                 <span className="flex min-w-0 flex-col">
-                  <span>{mode.name}</span>
-                  {mode.description ? (
-                    <span className="text-muted-foreground text-xs">{mode.description}</span>
+                  <span>{policy.name}</span>
+                  {policy.description ? (
+                    <span className="text-muted-foreground text-xs">{policy.description}</span>
                   ) : null}
                 </span>
               </MenuRadioItem>
@@ -148,20 +163,34 @@ export function ApprovalPolicyMenu({
   );
 }
 
-/** The `☰ Plan` chip shown while plan mode is on; clicking it restores the last approval policy. */
-export function PlanModeChip({ plan }: { plan: PlanModeControl }): React.ReactNode {
+// Known workflow-mode glyphs; unknown provider modes fall back to a generic one.
+const MODE_CHIP_ICONS: Record<string, typeof ListTodoIcon> = {
+  plan: ListTodoIcon,
+  goal: TargetIcon,
+};
+
+/** The chip shown while a workflow mode is active; clicking it toggles the mode off. */
+export function SessionModeChip({
+  mode,
+  onToggle,
+}: {
+  mode: SessionMode;
+  onToggle: () => void;
+}): React.ReactNode {
+  const Icon = MODE_CHIP_ICONS[mode.modeId] ?? SlidersHorizontalIcon;
+
   return (
     <>
       <Separator className="h-4" orientation="vertical" />
       <Button
         className="text-muted-foreground"
-        onClick={plan.toggle}
+        onClick={onToggle}
         size="sm"
         type="button"
         variant="ghost"
       >
-        <ListTodoIcon />
-        {plan.mode.name}
+        <Icon />
+        {mode.name}
       </Button>
     </>
   );
