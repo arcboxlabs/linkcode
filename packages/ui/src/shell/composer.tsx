@@ -216,8 +216,13 @@ export function Composer({
   const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
   const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
 
-  const planMode = availableModes.find((mode) => mode.modeId === PLAN_MODE_ID) ?? null;
-  const policyModes = availableModes.filter((mode) => mode.modeId !== PLAN_MODE_ID);
+  // One pass: split the advertised modes into the plan toggle and the policy radio list.
+  let planMode: SessionMode | null = null;
+  const policyModes: SessionMode[] = [];
+  for (const mode of availableModes) {
+    if (mode.modeId === PLAN_MODE_ID) planMode = mode;
+    else policyModes.push(mode);
+  }
   const planActive = currentModeId === PLAN_MODE_ID;
   // Remember the last non-plan mode so toggling plan off can restore it (derive-from-props pattern).
   const [lastPolicyId, setLastPolicyId] = useState<string | null>(null);

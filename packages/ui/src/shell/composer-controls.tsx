@@ -29,6 +29,24 @@ import type { EffortOption } from './agent-efforts';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
 import type { ModelOption } from './agent-models';
 
+// Linear lookups: the mode/model/effort lists are a handful of entries at most.
+function modeById(modes: readonly SessionMode[], modeId: string | null): SessionMode | undefined {
+  for (const mode of modes) {
+    if (mode.modeId === modeId) return mode;
+  }
+  return undefined;
+}
+
+function optionById<T extends { id: string }>(
+  options: readonly T[] | undefined,
+  id: string | null,
+): T | undefined {
+  for (const option of options ?? []) {
+    if (option.id === id) return option;
+  }
+  return undefined;
+}
+
 /** The `+` menu gathering the composer's secondary operations (attach, mention, plan toggle). */
 export function ComposerPlusMenu({
   disabled,
@@ -106,7 +124,7 @@ export function ApprovalPolicyMenu({
   onSelect: (modeId: string) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const active = policyModes.find((mode) => mode.modeId === activePolicyId) ?? policyModes[0];
+  const active = modeById(policyModes, activePolicyId) ?? policyModes[0];
 
   return (
     <Menu>
@@ -117,16 +135,13 @@ export function ApprovalPolicyMenu({
         }
       >
         <ShieldIcon />
-        {active?.name}
+        {active.name}
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
           <MenuGroupLabel>{t('approvalTitle', { agent: agentLabel })}</MenuGroupLabel>
-          <MenuRadioGroup
-            value={active?.modeId ?? ''}
-            onValueChange={(value) => onSelect(String(value))}
-          >
+          <MenuRadioGroup value={active.modeId} onValueChange={(value) => onSelect(String(value))}>
             {policyModes.map((mode) => (
               <MenuRadioItem key={mode.modeId} className="py-1.5" closeOnClick value={mode.modeId}>
                 <span className="flex min-w-0 flex-col">
@@ -195,8 +210,8 @@ export function ModelSelectorMenu({
   onSelectProvider?: (provider: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const selectedModel = modelOptions?.find((option) => option.id === selectedModelId);
-  const selectedEffort = effortOptions?.find((option) => option.id === selectedEffortId);
+  const selectedModel = optionById(modelOptions, selectedModelId);
+  const selectedEffort = optionById(effortOptions, selectedEffortId);
   const providers = selectableProviders ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
   const hasModels = Boolean(modelOptions?.length);
