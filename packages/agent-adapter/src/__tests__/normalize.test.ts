@@ -2,10 +2,15 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
-import type { SessionMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { AgentEvent } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
-import { createClaudeHistoryEventMapper, mapClaudeStop } from '../native/claude-code';
+import {
+  ClaudeCodeAdapter,
+  createClaudeHistoryEventMapper,
+  mapClaudeStop,
+} from '../native/claude-code';
 import { CodexAdapter, mapCodexStatus, mapCodexUsage } from '../native/codex';
 import { contentToText, toolKindFromName } from '../util';
 
@@ -104,6 +109,29 @@ describe('createClaudeHistoryEventMapper', () => {
     }
   });
 
+  it('parses an Edit announce into diff content and keeps it ahead of the settle text', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const input = { file_path: 'src/a.ts', old_string: 'a', new_string: 'b' };
+    const announce = map(
+      row('assistant', 'u1', [{ type: 'tool_use', id: 'toolu_1', name: 'Edit', input }]),
+    );
+    if (announce[0].event.type === 'tool-call') {
+      expect(announce[0].event.toolCall.content).toEqual([
+        { type: 'diff', path: 'src/a.ts', oldText: 'a', newText: 'b' },
+      ]);
+    }
+
+    const settle = map(
+      row('user', 'u2', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'updated' }]),
+    );
+    if (settle[0].event.type === 'tool-call') {
+      expect(settle[0].event.toolCall.content).toEqual([
+        { type: 'diff', path: 'src/a.ts', oldText: 'a', newText: 'b' },
+        { type: 'content', content: { type: 'text', text: 'updated' } },
+      ]);
+    }
+  });
+
   it('keeps plain user prompts and assistant text as message events', () => {
     const map = createClaudeHistoryEventMapper(historyId);
     const prompt = map(row('user', 'u1', 'fix the bug'));
@@ -112,6 +140,101 @@ describe('createClaudeHistoryEventMapper', () => {
 
     const reply = map(row('assistant', 'u2', [{ type: 'text', text: 'done' }]));
     expect(reply.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+  });
+});
+
+class TestClaude extends ClaudeCodeAdapter {
+  feed(value: object): void {
+    this.handleMessage(value as SDKMessage);
+  }
+}
+
+function toolSnapshots(events: AgentEvent[]) {
+  return events.filter(
+    (e): e is Extract<AgentEvent, { type: 'tool-call' }> => e.type === 'tool-call',
+  );
+}
+
+describe('ClaudeCodeAdapter Edit diff normalization', () => {
+  it('announces the Edit diff and keeps it through the settle', () => {
+    const adapter = new TestClaude();
+    const seen: AgentEvent[] = [];
+    adapter.onEvent((e) => seen.push(e));
+
+    adapter.feed({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'Edit',
+            input: { file_path: 'src/a.ts', old_string: 'a', new_string: 'b' },
+          },
+        ],
+      },
+    });
+    adapter.feed({
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'updated' }] },
+    });
+
+    const diff = { type: 'diff', path: 'src/a.ts', oldText: 'a', newText: 'b' };
+    const tools = toolSnapshots(seen);
+    expect(tools).toHaveLength(2);
+    expect(tools[0].toolCall.content).toEqual([diff]);
+    expect(tools[1].toolCall.status).toBe('completed');
+    expect(tools[1].toolCall.content).toEqual([
+      diff,
+      { type: 'content', content: { type: 'text', text: 'updated' } },
+    ]);
+  });
+
+  it('parses a Write announce into a whole-file diff without oldText', () => {
+    const adapter = new TestClaude();
+    const seen: AgentEvent[] = [];
+    adapter.onEvent((e) => seen.push(e));
+
+    adapter.feed({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'Write',
+            input: { file_path: 'src/new.ts', content: 'export const a = 1;\n' },
+          },
+        ],
+      },
+    });
+
+    const tools = toolSnapshots(seen);
+    expect(tools).toHaveLength(1);
+    expect(tools[0].toolCall.content).toEqual([
+      { type: 'diff', path: 'src/new.ts', newText: 'export const a = 1;\n' },
+    ]);
+  });
+
+  it('leaves non-Edit tools and malformed Edit inputs as raw passthrough', () => {
+    const adapter = new TestClaude();
+    const seen: AgentEvent[] = [];
+    adapter.onEvent((e) => seen.push(e));
+
+    adapter.feed({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'src/a.ts' } },
+          { type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: 'src/a.ts' } },
+        ],
+      },
+    });
+
+    const tools = toolSnapshots(seen);
+    expect(tools).toHaveLength(2);
+    expect(tools[0].toolCall.content).toEqual([]);
+    expect(tools[1].toolCall.content).toEqual([]);
   });
 });
 
