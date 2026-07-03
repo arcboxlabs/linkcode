@@ -103,83 +103,162 @@ export const SHOWCASE_PERMISSION_DENIED_CONTENT = textBlock(
   'Permission denied; mock edit skipped.',
 );
 
-export function createShowcaseToolSnapshots(terminalId = SHOWCASE_TERMINAL_ID): ToolCall[] {
-  return [
-    {
-      toolCallId: 'mock-tool-read',
-      title: 'Read architecture notes',
-      kind: 'read',
-      status: 'completed',
-      locations: [{ path: 'docs/ARCHITECTURE.md', line: 1 }],
-      content: [
-        {
-          type: 'content',
-          content: textBlock('Read the architecture sections for data-plane boundaries.'),
+export const SHOWCASE_EXPLORE_NARRATION = textBlock(
+  'The renderer sources are mapped; patching the conversation surfaces next.',
+);
+
+export const SHOWCASE_FILES_NARRATION = textBlock(
+  'Renderer patches are in; running the focused checks to confirm nothing regressed.',
+);
+
+export const SHOWCASE_COMMANDS_NARRATION = textBlock(
+  'Typecheck flagged a stale preview import, so a last pass double-checks the preview and coverage.',
+);
+
+export interface ShowcaseToolBursts {
+  /** Contiguous read/search calls — renders as an "Explored" group. */
+  explore: ToolCall[];
+  /** Contiguous edit/delete calls with diffs — renders as an "Edited files" group with summed +/-. */
+  files: ToolCall[];
+  /** Contiguous execute calls (one failed) — renders as a "Ran commands" group. */
+  commands: ToolCall[];
+  /** Trailing singletons: failed fetch, think, and the permission-gated edit. */
+  wrapUp: ToolCall[];
+}
+
+export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): ShowcaseToolBursts {
+  return {
+    explore: [
+      {
+        toolCallId: 'mock-tool-read',
+        title: 'Read architecture notes',
+        kind: 'read',
+        status: 'completed',
+        locations: [{ path: 'docs/ARCHITECTURE.md', line: 1 }],
+        content: [
+          {
+            type: 'content',
+            content: textBlock('Read the architecture sections for data-plane boundaries.'),
+          },
+        ],
+        rawInput: { path: 'docs/ARCHITECTURE.md' },
+      },
+      {
+        toolCallId: 'mock-tool-search',
+        title: 'Search chat renderers',
+        kind: 'search',
+        status: 'completed',
+        content: [],
+        rawInput: { query: 'permission-request|tool-call|plan' },
+        rawOutput: {
+          matches: [
+            'packages/ui/src/chat/conversation-view.tsx',
+            'packages/client-core/src/conversation.ts',
+          ],
         },
-      ],
-      rawInput: { path: 'docs/ARCHITECTURE.md' },
-    },
-    {
-      toolCallId: 'mock-tool-search',
-      title: 'Search chat renderers',
-      kind: 'search',
-      status: 'completed',
-      content: [],
-      rawInput: { query: 'permission-request|tool-call|plan' },
-      rawOutput: {
-        matches: [
-          'packages/ui/src/chat/conversation-view.tsx',
-          'packages/client-core/src/conversation.ts',
+      },
+    ],
+    files: [
+      {
+        toolCallId: 'mock-tool-edit-diff',
+        title: 'Preview renderer patch',
+        kind: 'edit',
+        status: 'completed',
+        content: [
+          {
+            type: 'diff',
+            path: 'packages/ui/src/chat/conversation-view.tsx',
+            oldText: 'case "tool": return null;\n',
+            newText: 'case "tool": return <ToolCallItem toolCall={item.toolCall} />;\n',
+          },
         ],
       },
-    },
-    {
-      toolCallId: 'mock-tool-edit-diff',
-      title: 'Preview renderer patch',
-      kind: 'edit',
-      status: 'completed',
-      content: [
-        {
-          type: 'diff',
-          path: 'packages/ui/src/chat/conversation-view.tsx',
-          oldText: 'case "tool": return null;\n',
-          newText: 'case "tool": return <ToolCallItem toolCall={item.toolCall} />;\n',
-        },
-      ],
-    },
-    {
-      toolCallId: 'mock-tool-execute',
-      title: 'Run focused mock test',
-      kind: 'execute',
-      status: 'completed',
-      content: [{ type: 'terminal', terminalId }],
-      rawInput: { command: 'pnpm vitest run packages/workbench/src/mock' },
-    },
-    {
-      toolCallId: 'mock-tool-fetch',
-      title: 'Fetch unavailable preview',
-      kind: 'fetch',
-      status: 'failed',
-      content: [],
-      rawInput: { url: 'https://mock.invalid/preview' },
-      rawOutput: { status: 503, message: 'Mocked fetch failure for error-state coverage' },
-    },
-    {
-      toolCallId: 'mock-tool-think',
-      title: 'Summarize coverage',
-      kind: 'think',
-      status: 'completed',
-      content: [
-        { type: 'content', content: textBlock('Covered all currently schema-backed chat items.') },
-      ],
-    },
-    {
-      toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
-      title: 'Apply guarded edit',
-      kind: 'edit',
-      status: 'pending',
-      content: [SHOWCASE_PERMISSION_DIFF],
-      rawInput: { path: SHOWCASE_PERMISSION_DIFF.path },
-    },
-  ];
+      {
+        toolCallId: 'mock-tool-edit-markdown',
+        title: 'Patch markdown styles',
+        kind: 'edit',
+        status: 'completed',
+        content: [
+          {
+            type: 'diff',
+            path: 'packages/ui/src/chat/markdown.tsx',
+            oldText: "const tone = 'chat';\n",
+            newText: "const tone = 'coss';\nconst scale = 'text-sm';\n",
+          },
+        ],
+      },
+      {
+        toolCallId: 'mock-tool-delete-legacy',
+        title: 'Retire legacy timeline row',
+        kind: 'delete',
+        status: 'completed',
+        content: [
+          {
+            type: 'diff',
+            path: 'packages/ui/src/chat/legacy-row.tsx',
+            oldText: 'export function LegacyRow() {\n  return null;\n}\n',
+            newText: '',
+          },
+        ],
+      },
+    ],
+    commands: [
+      {
+        toolCallId: 'mock-tool-execute',
+        title: 'Run focused mock test',
+        kind: 'execute',
+        status: 'completed',
+        content: [{ type: 'terminal', terminalId }],
+        rawInput: { command: 'pnpm vitest run packages/workbench/src/mock' },
+      },
+      {
+        toolCallId: 'mock-tool-execute-lint',
+        title: 'Run lint',
+        kind: 'execute',
+        status: 'completed',
+        content: [],
+        rawInput: { command: 'pnpm lint' },
+      },
+      {
+        toolCallId: 'mock-tool-execute-typecheck',
+        title: 'Run typecheck',
+        kind: 'execute',
+        status: 'failed',
+        content: [],
+        rawInput: { command: 'pnpm typecheck' },
+        rawOutput: { exitCode: 1, message: 'stale preview import' },
+      },
+    ],
+    wrapUp: [
+      {
+        toolCallId: 'mock-tool-fetch',
+        title: 'Fetch unavailable preview',
+        kind: 'fetch',
+        status: 'failed',
+        content: [],
+        rawInput: { url: 'https://mock.invalid/preview' },
+        rawOutput: { status: 503, message: 'Mocked fetch failure for error-state coverage' },
+      },
+      {
+        toolCallId: 'mock-tool-think',
+        title: 'Summarize coverage',
+        kind: 'think',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('Covered all currently schema-backed chat items.'),
+          },
+        ],
+      },
+      {
+        toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
+        title: 'Apply guarded edit',
+        kind: 'edit',
+        status: 'pending',
+        content: [SHOWCASE_PERMISSION_DIFF],
+        rawInput: { path: SHOWCASE_PERMISSION_DIFF.path },
+      },
+    ],
+  };
 }

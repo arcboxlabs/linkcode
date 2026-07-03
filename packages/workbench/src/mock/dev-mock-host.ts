@@ -32,10 +32,13 @@ import {
 } from './data/prompt';
 import { SEED_SESSIONS, SHOWCASE_TERMINAL_ID } from './data/sessions';
 import {
-  createShowcaseToolSnapshots,
+  createShowcaseToolBursts,
   SHOWCASE_ARCHITECTURE_LINK,
+  SHOWCASE_COMMANDS_NARRATION,
   SHOWCASE_EMBEDDED_RESOURCE,
   SHOWCASE_ERROR_EVENT,
+  SHOWCASE_EXPLORE_NARRATION,
+  SHOWCASE_FILES_NARRATION,
   SHOWCASE_IMAGE,
   SHOWCASE_INTRO_CONTENT,
   SHOWCASE_PERMISSION_DENIED_CONTENT,
@@ -524,6 +527,9 @@ export class DevMockHost {
     const introId = this.nextMessageId('mock-showcase-intro');
     const resourceId = this.nextMessageId('mock-showcase-resource');
     const terminalId = session.terminalId ?? SHOWCASE_TERMINAL_ID;
+    const bursts = createShowcaseToolBursts(terminalId);
+    const toolEvents = (toolCalls: readonly ToolCall[]): AgentEvent[] =>
+      toolCalls.map((toolCall) => ({ type: 'tool-call', toolCall }));
     this.permissions.set(SHOWCASE_PERMISSION_ID, {
       sessionId: session.sessionId,
       toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
@@ -560,9 +566,25 @@ export class DevMockHost {
         messageId: this.nextMessageId('mock-showcase-image'),
         content: SHOWCASE_IMAGE,
       },
-      ...createShowcaseToolSnapshots(terminalId).map(
-        (toolCall): AgentEvent => ({ type: 'tool-call', toolCall }),
-      ),
+      ...toolEvents(bursts.explore),
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-explore-note'),
+        content: SHOWCASE_EXPLORE_NARRATION,
+      },
+      ...toolEvents(bursts.files),
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-files-note'),
+        content: SHOWCASE_FILES_NARRATION,
+      },
+      ...toolEvents(bursts.commands),
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-commands-note'),
+        content: SHOWCASE_COMMANDS_NARRATION,
+      },
+      ...toolEvents(bursts.wrapUp),
     ];
 
     for (const event of script) {
