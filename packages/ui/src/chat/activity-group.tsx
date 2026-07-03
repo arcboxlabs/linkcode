@@ -6,11 +6,19 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
-import { ChevronRightIcon, CircleCheckIcon, CircleXIcon } from 'lucide-react';
+import {
+  BrainIcon,
+  ChevronRightIcon,
+  GlobeIcon,
+  PencilIcon,
+  SearchIcon,
+  TerminalIcon,
+  WrenchIcon,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import type { TimelineEntry } from './activity-groups';
+import type { ActivityBucket, TimelineEntry } from './activity-groups';
 import { diffStats } from './diff-block';
 import { hasToolBody, ToolCallBody } from './tool-call-item';
 
@@ -39,7 +47,7 @@ export function ActivityGroup({
   return (
     <Collapsible className="w-full" onOpenChange={setManualOpen} open={open}>
       <CollapsibleTrigger className="group flex w-full items-center gap-2 py-1 text-left text-sm">
-        <ActivityStatusIcon failed={failedCount > 0} running={hasRunning} />
+        <ActivityBucketIcon bucket={group.bucket} running={hasRunning} />
         <span className="shrink-0 text-foreground">{t(group.bucket)}</span>
         <Badge size="sm" variant="secondary">
           {group.items.length}
@@ -87,16 +95,26 @@ function sumGroupDiffStats(group: ActivityToolGroup): { additions: number; delet
   return { additions, deletions };
 }
 
-function ActivityStatusIcon({
+const BUCKET_ICONS: Record<ActivityBucket, React.ComponentType<{ className?: string }>> = {
+  explore: SearchIcon,
+  command: TerminalIcon,
+  fetch: GlobeIcon,
+  think: BrainIcon,
+  files: PencilIcon,
+  other: WrenchIcon,
+};
+
+/** The bucket glyph, spinner while a call runs. Failures read via the "N failed" badge, not a cross. */
+function ActivityBucketIcon({
+  bucket,
   running,
-  failed,
 }: {
+  bucket: ActivityBucket;
   running: boolean;
-  failed: boolean;
 }): React.ReactNode {
-  if (running) return <Spinner className="3.5 text-foreground" />;
-  if (failed) return <CircleXIcon className="size-3.5 text-destructive-foreground" />;
-  return <CircleCheckIcon className="size-3.5 text-success-foreground" />;
+  if (running) return <Spinner className="size-3.5 text-foreground" />;
+  const BucketIcon = BUCKET_ICONS[bucket];
+  return <BucketIcon className="size-3.5 text-muted-foreground" />;
 }
 
 /** One call inside an expanded group: a bare title row — no icons; failures read via color. */

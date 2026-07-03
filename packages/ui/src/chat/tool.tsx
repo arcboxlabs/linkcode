@@ -7,11 +7,17 @@ import {
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
 import {
+  BrainIcon,
   ChevronRightIcon,
-  CircleCheckIcon,
-  CircleIcon,
-  CircleXIcon,
+  FileOutputIcon,
+  FileTextIcon,
+  GlobeIcon,
   PencilIcon,
+  SearchIcon,
+  ShieldIcon,
+  TerminalIcon,
+  Trash2Icon,
+  WrenchIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 
@@ -28,6 +34,10 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   declinedBadge?: string;
   status: ToolCall['status'];
   kind: ToolCall['kind'];
+  /** The call's gating permission is still awaiting an answer (shows the shield glyph). */
+  awaitingApproval?: boolean;
+  /** Custom glyph for plugin / MCP / custom tool calls; replaces the kind icon. */
+  icon?: React.ReactNode;
   hasBody?: boolean;
 };
 
@@ -38,6 +48,8 @@ export function ToolHeader({
   declinedBadge,
   status,
   kind,
+  awaitingApproval = false,
+  icon,
   hasBody = false,
   ...props
 }: ToolHeaderProps): React.ReactNode {
@@ -50,7 +62,7 @@ export function ToolHeader({
       disabled={!hasBody}
       {...props}
     >
-      <ToolStatusIcon kind={kind} status={status} />
+      <ToolIcon awaitingApproval={awaitingApproval} icon={icon} kind={kind} status={status} />
       <span className="min-w-0 flex-1 truncate text-foreground">{title}</span>
       {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
       {badge ? <Badge variant="secondary">{badge}</Badge> : null}
@@ -61,29 +73,49 @@ export function ToolHeader({
   );
 }
 
-export function ToolStatusIcon({
+export const TOOL_KIND_ICONS: Record<
+  ToolCall['kind'],
+  React.ComponentType<{ className?: string }>
+> = {
+  read: FileTextIcon,
+  edit: PencilIcon,
+  delete: Trash2Icon,
+  move: FileOutputIcon,
+  search: SearchIcon,
+  execute: TerminalIcon,
+  think: BrainIcon,
+  fetch: GlobeIcon,
+  other: WrenchIcon,
+};
+
+/**
+ * A call's glyph names what it does, not how it went: the kind icon (or a custom `icon` for
+ * plugin / MCP / custom tools), with the spinner while running and the shield while its
+ * permission ask is open. Failure reads via color, never a cross.
+ */
+export function ToolIcon({
   status,
   kind,
+  awaitingApproval = false,
+  icon,
 }: {
   status: ToolCall['status'];
   kind: ToolCall['kind'];
+  awaitingApproval?: boolean;
+  icon?: React.ReactNode;
 }): React.ReactNode {
-  switch (status) {
-    case 'pending':
-      return <CircleIcon className="size-3.5 text-muted-foreground/60" />;
-    case 'in_progress':
-      return <Spinner className="size-3.5 text-foreground" />;
-    case 'completed':
-      return kind === 'edit' || kind === 'delete' ? (
-        <PencilIcon className="size-3.5 text-foreground" />
-      ) : (
-        <CircleCheckIcon className="size-3.5 text-success-foreground" />
-      );
-    case 'failed':
-      return <CircleXIcon className="size-3.5 text-destructive-foreground" />;
-    default:
-      return <CircleIcon className="size-3.5 text-muted-foreground/60" />;
-  }
+  if (awaitingApproval) return <ShieldIcon className="size-3.5 text-warning-foreground" />;
+  if (status === 'in_progress') return <Spinner className="size-3.5 text-foreground" />;
+  if (icon) return icon;
+  const KindIcon = TOOL_KIND_ICONS[kind];
+  return (
+    <KindIcon
+      className={cn(
+        'size-3.5',
+        status === 'failed' ? 'text-destructive-foreground' : 'text-muted-foreground',
+      )}
+    />
+  );
 }
 
 export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent>;

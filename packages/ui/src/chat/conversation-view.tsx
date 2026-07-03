@@ -17,6 +17,7 @@ import {
   conversationFlowItems,
   declinedToolCall,
   declinedToolCallIds,
+  selectPendingPermissionItems,
 } from './conversation-prompts';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
@@ -66,6 +67,12 @@ export function ConversationView({
   const snapshottedToolIds = new Set(
     items.flatMap((item) => (item.kind === 'tool' ? [item.toolCall.toolCallId] : [])),
   );
+  // Gated calls whose ask is still open (not answered in this client) carry the shield glyph.
+  const awaitingApproval = new Set(
+    selectPendingPermissionItems(conversation).flatMap((item) =>
+      permissionDecisions.has(item.requestId) ? [] : [item.toolCall.toolCallId],
+    ),
+  );
   const segments = splitTurnSegments(conversationFlowItems(items));
 
   const renderEntry = (entry: TimelineEntry): React.ReactNode => {
@@ -82,6 +89,7 @@ export function ConversationView({
       return (
         <ToolCallItem
           key={entry.item.id}
+          awaitingApproval={awaitingApproval.has(entry.item.toolCall.toolCallId)}
           declined={declined.has(entry.item.toolCall.toolCallId)}
           toolCall={entry.item.toolCall}
           TerminalBlockComponent={TerminalBlockComponent}

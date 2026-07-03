@@ -55,11 +55,17 @@ export function ToolCallBody({
 export function ToolCallItem({
   toolCall,
   declined = false,
+  awaitingApproval = false,
+  icon,
   TerminalBlockComponent,
 }: {
   toolCall: ToolCall;
   /** The user declined this call's gating permission (shown instead of a separate receipt row). */
   declined?: boolean;
+  /** The call's gating permission is still awaiting an answer. */
+  awaitingApproval?: boolean;
+  /** Custom glyph for plugin / MCP / custom tool calls. */
+  icon?: React.ReactNode;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
   const t = useTranslations('workbench.tool');
@@ -71,9 +77,11 @@ export function ToolCallItem({
   return (
     <Tool>
       <ToolHeader
+        awaitingApproval={awaitingApproval}
         badge={t(kindKey)}
         declinedBadge={declined ? tp('declined') : undefined}
         hasBody={hasBody}
+        icon={icon}
         kind={toolCall.kind}
         status={toolCall.status}
         title={toolCall.title}
