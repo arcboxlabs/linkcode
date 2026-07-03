@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { TimelineEntry } from './activity-groups';
+import { diffStats } from './diff-block';
 import { hasToolBody, ToolCallBody } from './tool-call-item';
 
 export type ActivityToolGroup = Extract<TimelineEntry, { type: 'group' }>;
@@ -29,6 +30,7 @@ export function ActivityGroup({
     (count, item) => count + (item.toolCall.status === 'failed' ? 1 : 0),
     0,
   );
+  const diffTotals = group.bucket === 'files' ? sumGroupDiffStats(group) : null;
 
   // Forced open while a call is in flight (Codex's active cell); the user's toggle takes over after.
   const [manualOpen, setManualOpen] = useState(false);
@@ -47,6 +49,12 @@ export function ActivityGroup({
             {t('failed', { count: failedCount })}
           </Badge>
         ) : null}
+        {diffTotals && diffTotals.additions + diffTotals.deletions > 0 ? (
+          <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
+            <span className="text-success-foreground">+{diffTotals.additions}</span>
+            <span className="text-destructive-foreground">-{diffTotals.deletions}</span>
+          </span>
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
           {open ? '' : group.items.map((item) => item.toolCall.title).join(', ')}
         </span>
@@ -63,6 +71,20 @@ export function ActivityGroup({
       </CollapsibleContent>
     </Collapsible>
   );
+}
+
+function sumGroupDiffStats(group: ActivityToolGroup): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const item of group.items) {
+    for (const content of item.toolCall.content) {
+      if (content.type !== 'diff') continue;
+      const stats = diffStats(content.oldText, content.newText);
+      additions += stats.additions;
+      deletions += stats.deletions;
+    }
+  }
+  return { additions, deletions };
 }
 
 function ActivityStatusIcon({

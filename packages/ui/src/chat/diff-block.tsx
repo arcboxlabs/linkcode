@@ -57,6 +57,18 @@ function diffLines(oldStr: string, newStr: string): DiffRow[] {
   return rows;
 }
 
+/** Line-level add/delete counts for a diff, shared with group headers that sum across files. */
+export function diffStats(
+  oldText: string | undefined,
+  newText: string,
+): { additions: number; deletions: number } {
+  const rows = diffLines(oldText ?? '', newText);
+  return {
+    additions: rows.filter((row) => row.type === 'add').length,
+    deletions: rows.filter((row) => row.type === 'del').length,
+  };
+}
+
 export function DiffBlock({
   path,
   oldText,
