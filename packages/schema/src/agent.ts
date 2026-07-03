@@ -135,6 +135,14 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     toolCall: ToolCallUpdateSchema,
     options: z.array(PermissionOptionSchema),
   }),
+  /** Settlement of a permission-request: the user's pick, or `cancelled` when the turn ended with
+   * the ask still open. Part of the event stream so every client — and a conversation rebuilt from
+   * history — sees the ask as answered without deriving it from the referenced tool call's fate. */
+  z.object({
+    type: z.literal('permission-resolved'),
+    requestId: z.string().min(1),
+    outcome: PermissionOutcomeSchema,
+  }),
 ]);
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
 

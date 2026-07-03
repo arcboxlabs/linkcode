@@ -232,18 +232,24 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     const resolve = this.pending.get(requestId);
     if (resolve) {
       this.pending.delete(requestId);
+      // Event before resolve: the settlement must precede anything the unblocked awaiter emits.
+      this.emit({ type: 'permission-resolved', requestId, outcome });
       resolve(outcome);
     }
   }
 
   /**
    * Liveness sweep on cancel / stop / abnormal turn end: resolve every still-pending permission ask with
-   * `cancelled` (a clean deny that unblocks the agent's awaiting callback) and force every non-terminal
-   * tool call to `failed`. Together these guarantee no tool stays `in_progress` and no agent hangs awaiting
-   * a permission reply. Idempotent — a no-op on a clean turn where everything is already settled.
+   * `cancelled` (a clean deny that unblocks the agent's awaiting callback, mirrored as a
+   * `permission-resolved` event) and force every non-terminal tool call to `failed`. Together these
+   * guarantee no tool stays `in_progress` and no agent hangs awaiting a permission reply. Idempotent —
+   * a no-op on a clean turn where everything is already settled.
    */
   protected teardown(): void {
-    for (const resolve of this.pending.values()) resolve({ outcome: 'cancelled' });
+    for (const [requestId, resolve] of this.pending) {
+      this.emit({ type: 'permission-resolved', requestId, outcome: { outcome: 'cancelled' } });
+      resolve({ outcome: 'cancelled' });
+    }
     this.pending.clear();
     for (const toolCall of this.toolCalls.values()) {
       if (toolCall.status === 'completed' || toolCall.status === 'failed') continue;

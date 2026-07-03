@@ -101,9 +101,44 @@ describe('BaseAgentAdapter teardown', () => {
   it('on cancel: resolves a pending permission ask with cancelled (no hang/leak)', async () => {
     const a = new TestAdapter();
     const pending = a.ask();
-    expect(a.seen.some((e) => e.type === 'permission-request')).toBe(true);
+    const request = a.seen.find((e) => e.type === 'permission-request');
+    expect(request?.type).toBe('permission-request');
 
     await a.send({ type: 'cancel' });
     await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
+    expect(a.seen).toContainEqual({
+      type: 'permission-resolved',
+      requestId: request?.type === 'permission-request' ? request.requestId : '',
+      outcome: { outcome: 'cancelled' },
+    });
+  });
+});
+
+describe('BaseAgentAdapter permission round-trip', () => {
+  it('a permission-response settles the ask and emits permission-resolved with the outcome', async () => {
+    const a = new TestAdapter();
+    const pending = a.ask();
+    const request = a.seen.find((e) => e.type === 'permission-request');
+    if (request?.type !== 'permission-request') throw new Error('permission request not emitted');
+
+    const outcome = { outcome: 'selected', optionId: 'ok' } as const;
+    await a.send({ type: 'permission-response', requestId: request.requestId, outcome });
+    await expect(pending).resolves.toEqual(outcome);
+    expect(a.seen).toContainEqual({
+      type: 'permission-resolved',
+      requestId: request.requestId,
+      outcome,
+    });
+  });
+
+  it('an unknown or already-settled requestId emits nothing', async () => {
+    const a = new TestAdapter();
+    const before = a.seen.length;
+    await a.send({
+      type: 'permission-response',
+      requestId: 'nope',
+      outcome: { outcome: 'selected', optionId: 'ok' },
+    });
+    expect(a.seen.length).toBe(before);
   });
 });
