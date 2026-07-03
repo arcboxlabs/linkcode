@@ -41,7 +41,7 @@ export function ToolHeader({
   return (
     <CollapsibleTrigger
       className={cn(
-        'group/header flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-muted disabled:cursor-default disabled:hover:bg-transparent',
+        'group/header flex w-full items-center gap-2 py-1 text-left text-sm disabled:cursor-default',
         className,
       )}
       disabled={!hasBody}
@@ -87,7 +87,7 @@ export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent>;
 export function ToolContent({ className, ...props }: ToolContentProps): React.ReactNode {
   return (
     <CollapsibleContent
-      className={cn('mt-1 ml-1 space-y-2 border-l-2 border-border pl-3', className)}
+      className={cn('mt-1 space-y-2 border-l-2 border-border pl-3', className)}
       {...props}
     />
   );

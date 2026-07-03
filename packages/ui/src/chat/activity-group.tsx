@@ -38,7 +38,7 @@ export function ActivityGroup({
 
   return (
     <Collapsible className="w-full" onOpenChange={setManualOpen} open={open}>
-      <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-muted">
+      <CollapsibleTrigger className="group flex w-full items-center gap-2 py-1 text-left text-sm">
         <ActivityStatusIcon failed={failedCount > 0} running={hasRunning} />
         <span className="shrink-0 text-foreground">{t(group.bucket)}</span>
         <Badge size="sm" variant="secondary">
@@ -60,7 +60,7 @@ export function ActivityGroup({
         </span>
         <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 ml-1 space-y-0.5 border-l-2 border-border pl-3">
+      <CollapsibleContent className="mt-1 space-y-0.5 border-l-2 border-border pl-3">
         {group.items.map((item) => (
           <ActivityGroupRow
             key={item.id}
@@ -108,7 +108,7 @@ function ActivityGroupRow({
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
   const titleClassName = cn(
-    'truncate px-1.5 py-0.5 text-left text-sm',
+    'truncate py-0.5 text-left text-sm',
     toolCall.status === 'failed' ? 'text-destructive-foreground' : 'text-muted-foreground',
   );
 
@@ -118,12 +118,7 @@ function ActivityGroupRow({
 
   return (
     <Collapsible>
-      <CollapsibleTrigger
-        className={cn(
-          titleClassName,
-          'block w-full rounded-md hover:bg-muted hover:text-foreground',
-        )}
-      >
+      <CollapsibleTrigger className={cn(titleClassName, 'block w-full hover:text-foreground')}>
         {toolCall.title}
       </CollapsibleTrigger>
       <CollapsibleContent className="my-1 space-y-2 pl-1.5">
