@@ -171,9 +171,11 @@ const MODE_CHIP_ICONS: Record<string, typeof ListTodoIcon> = {
 
 /** The chip shown while a workflow mode is active; clicking it toggles the mode off. */
 export function SessionModeChip({
+  disabled,
   mode,
   onToggle,
 }: {
+  disabled: boolean;
   mode: SessionMode;
   onToggle: () => void;
 }): React.ReactNode {
@@ -184,6 +186,7 @@ export function SessionModeChip({
       <Separator className="h-4" orientation="vertical" />
       <Button
         className="text-muted-foreground"
+        disabled={disabled}
         onClick={onToggle}
         size="sm"
         type="button"
