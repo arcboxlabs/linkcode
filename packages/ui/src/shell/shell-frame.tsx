@@ -1,6 +1,7 @@
 import type {
   AgentKind,
   EffortLevel,
+  PermissionOption,
   SessionId,
   SessionInfo,
   WorkspaceId,
@@ -20,8 +21,8 @@ export interface ShellFrameProps {
   /** Derived once by the workbench surface; shells consume it instead of re-deriving from the list. */
   activeSession: SessionInfo | null;
   conversation: ConversationViewModel;
-  answeredPermissions: Set<string>;
-  respondingPermissions: Set<string>;
+  permissionDecisions: ReadonlyMap<string, PermissionOption>;
+  respondingPermissions: ReadonlySet<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
   /** Threads pinned to the top of their sidebar group, in pin order. */
@@ -49,7 +50,7 @@ export interface ShellFrameProps {
   onToggleImportHistory: (groupKey: string) => void;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
-  onRespondPermission: (requestId: string, optionId: string) => void;
+  onRespondPermission: (requestId: string, option: PermissionOption) => void;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   BranchStatusComponent?: BranchStatusComponentType;
   HistoryComponent?: React.ComponentType<{
@@ -68,7 +69,7 @@ export function ShellFrame({
   workspacesLoading,
   activeSession,
   conversation,
-  answeredPermissions,
+  permissionDecisions,
   respondingPermissions,
   header,
   errorMessage,
@@ -140,7 +141,7 @@ export function ShellFrame({
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           cwd={active?.cwd}
-          answeredPermissions={answeredPermissions}
+          permissionDecisions={permissionDecisions}
           respondingPermissions={respondingPermissions}
           TerminalBlockComponent={TerminalBlockComponent}
           onSendPrompt={onSendPrompt}

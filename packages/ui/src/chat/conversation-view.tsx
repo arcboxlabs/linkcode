@@ -1,4 +1,4 @@
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, PermissionOption } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
 import { useTranslations } from 'use-intl';
 import { ActivityGroup } from './activity-group';
@@ -11,10 +11,13 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from './conversation';
+import {
+  conversationFlowItems,
+  declinedToolCall,
+  declinedToolCallIds,
+} from './conversation-prompts';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
-import { PermissionCard } from './permission-card';
-import { PlanCard } from './plan-card';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
 import type { ConversationViewModel } from './types';
@@ -23,14 +26,9 @@ export interface ConversationViewProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   cwd?: string;
-  /** requestIds the user already answered in this client. */
-  answeredPermissions: Set<string>;
-  /** requestIds currently being sent to the daemon. */
-  respondingPermissions: Set<string>;
-  /** requestIds still awaiting a decision (from the normalizer); others are treated as resolved. */
-  pendingPermissions: Set<string>;
+  /** requestIds and selected options answered in this client. */
+  permissionDecisions: ReadonlyMap<string, PermissionOption>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
-  onRespondPermission: (requestId: string, optionId: string) => void;
 }
 
 /** The centered message stream — the main reading surface. Auto-follows only while pinned to the bottom. */
@@ -38,11 +36,8 @@ export function ConversationView({
   conversation,
   agentKind,
   cwd,
-  answeredPermissions,
-  respondingPermissions,
-  pendingPermissions,
+  permissionDecisions,
   TerminalBlockComponent,
-  onRespondPermission,
 }: ConversationViewProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const tk = useTranslations('workbench.agentKind');
@@ -62,6 +57,11 @@ export function ConversationView({
   }
 
   const isThinking = conversation.status === 'running' || conversation.status === 'starting';
+  // Permission asks live above the composer; the flow only marks declines, on the gated tool row.
+  const declined = declinedToolCallIds(items, permissionDecisions);
+  const snapshottedToolIds = new Set(
+    items.flatMap((item) => (item.kind === 'tool' ? [item.toolCall.toolCallId] : [])),
+  );
 
   return (
     <Conversation
@@ -73,7 +73,7 @@ export function ConversationView({
       }}
     >
       <ConversationContent>
-        {groupTimeline(items).map((entry) => {
+        {groupTimeline(conversationFlowItems(items)).map((entry) => {
           if (entry.type === 'group') {
             return (
               <ActivityGroup
@@ -87,6 +87,7 @@ export function ConversationView({
             return (
               <ToolCallItem
                 key={entry.item.id}
+                declined={declined.has(entry.item.toolCall.toolCallId)}
                 toolCall={entry.item.toolCall}
                 TerminalBlockComponent={TerminalBlockComponent}
               />
@@ -108,20 +109,21 @@ export function ConversationView({
               return (
                 <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />
               );
-            case 'plan':
-              return <PlanCard key={item.id} plan={item.plan} />;
             case 'approval':
+              // Accepted / pending asks leave no receipt — the tool row (or the dock card) is the
+              // record. A decline only materializes here when the agent never snapshotted the call.
+              if (
+                !declined.has(item.toolCall.toolCallId) ||
+                snapshottedToolIds.has(item.toolCall.toolCallId)
+              ) {
+                return null;
+              }
               return (
-                <PermissionCard
+                <ToolCallItem
                   key={item.id}
-                  toolCall={item.toolCall}
-                  options={item.options}
-                  answered={
-                    answeredPermissions.has(item.requestId) ||
-                    !pendingPermissions.has(item.requestId)
-                  }
-                  responding={respondingPermissions.has(item.requestId)}
-                  onRespond={(optionId) => onRespondPermission(item.requestId, optionId)}
+                  declined
+                  toolCall={declinedToolCall(item.toolCall)}
+                  TerminalBlockComponent={TerminalBlockComponent}
                 />
               );
             case 'error':

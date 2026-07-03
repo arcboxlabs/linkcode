@@ -45,7 +45,7 @@ export function DesktopShell({
   workspacesLoading,
   activeSession,
   conversation,
-  answeredPermissions,
+  permissionDecisions,
   respondingPermissions,
   errorMessage,
   pinnedSessionIds,
@@ -284,7 +284,7 @@ export function DesktopShell({
         agentKind={active?.kind}
         agentLabel={agentLabel}
         cwd={active?.cwd}
-        answeredPermissions={answeredPermissions}
+        permissionDecisions={permissionDecisions}
         respondingPermissions={respondingPermissions}
         TerminalBlockComponent={TerminalBlockComponent}
         disabled={!active || active.status === 'stopped'}

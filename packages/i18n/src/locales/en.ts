@@ -42,11 +42,15 @@ export const en = {
     },
     plan: {
       title: 'Plan',
+      progress: '{current}/{total}',
     },
     permission: {
       title: 'Permission request',
-      answered: 'Handled',
       responding: 'Submitting…',
+      declined: 'Declined',
+      page: '{current} of {total}',
+      previous: 'Previous permission request',
+      next: 'Next permission request',
     },
     composer: {
       placeholderDisconnected: 'Create or pick a thread first',

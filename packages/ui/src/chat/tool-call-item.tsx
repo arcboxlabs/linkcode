@@ -54,12 +54,16 @@ export function ToolCallBody({
 
 export function ToolCallItem({
   toolCall,
+  declined = false,
   TerminalBlockComponent,
 }: {
   toolCall: ToolCall;
+  /** The user declined this call's gating permission (shown instead of a separate receipt row). */
+  declined?: boolean;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
   const t = useTranslations('workbench.tool');
+  const tp = useTranslations('workbench.permission');
 
   const kindKey = `kind${toolCall.kind[0].toUpperCase()}${toolCall.kind.slice(1)}`;
   const hasBody = hasToolBody(toolCall);
@@ -68,6 +72,7 @@ export function ToolCallItem({
     <Tool>
       <ToolHeader
         badge={t(kindKey)}
+        declinedBadge={declined ? tp('declined') : undefined}
         hasBody={hasBody}
         kind={toolCall.kind}
         status={toolCall.status}

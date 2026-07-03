@@ -24,6 +24,8 @@ export function Tool({ className, ...props }: ToolProps): React.ReactNode {
 export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   title: string;
   badge?: string;
+  /** Localized marker for a call whose gating permission the user declined. */
+  declinedBadge?: string;
   status: ToolCall['status'];
   kind: ToolCall['kind'];
   hasBody?: boolean;
@@ -33,6 +35,7 @@ export function ToolHeader({
   className,
   title,
   badge,
+  declinedBadge,
   status,
   kind,
   hasBody = false,
@@ -49,6 +52,7 @@ export function ToolHeader({
     >
       <ToolStatusIcon kind={kind} status={status} />
       <span className="min-w-0 flex-1 truncate text-foreground">{title}</span>
+      {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
       {badge ? <Badge variant="secondary">{badge}</Badge> : null}
       {hasBody ? (
         <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />

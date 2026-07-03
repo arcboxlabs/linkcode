@@ -19,7 +19,6 @@ export * from './message';
 export * from './package-info';
 export * from './permission-card';
 export * from './plan';
-export * from './plan-card';
 export * from './prompt-input';
 export * from './queue';
 export * from './reasoning';

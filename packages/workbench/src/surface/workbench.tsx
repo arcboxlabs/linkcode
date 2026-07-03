@@ -1,6 +1,12 @@
 import type { Conversation } from '@linkcode/client-core';
 import { useTerminalOutput } from '@linkcode/client-core';
-import type { EffortLevel, SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  EffortLevel,
+  PermissionOption,
+  SessionId,
+  WorkspaceId,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import { workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
@@ -62,7 +68,7 @@ export function Workbench({
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
   // sidebar, panels, terminals), which must stay permanently mounted across session switches —
   // remounting it flashes the entire window. Per-session UI reset happens at the conversation
-  // column (the shells key their ConversationSurface), and the permission sets below survive
+  // column (the shells key their ConversationSurface), and the permission state below survives
   // switches safely because adapter requestIds are globally unique.
   return (
     <WorkbenchSessionSurface
@@ -101,7 +107,9 @@ function WorkbenchSessionSurface({
   const effortMutation = useMutation(setEffort, { onError });
   // Workflow-mode switches ride the generic input op; the mode reflects via current-mode-update.
   const modeMutation = useMutation(sendInput, { onError });
-  const [answered, addAnswered] = useSet<string>();
+  const [permissionDecisions, setPermissionDecisions] = useState(
+    () => new Map<string, PermissionOption>(),
+  );
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
   const {
@@ -261,7 +269,7 @@ function WorkbenchSessionSurface({
     (workspace) => workspaceKind(workspace) !== 'chat',
   );
 
-  function handleRespond(requestId: string, optionId: string): void {
+  function handleRespond(requestId: string, option: PermissionOption): void {
     if (!sessions.activeId) return;
     onClearError();
     addResponding(requestId);
@@ -269,10 +277,10 @@ function WorkbenchSessionSurface({
       .trigger({
         sessionId: sessions.activeId,
         requestId,
-        outcome: { outcome: 'selected', optionId },
+        outcome: { outcome: 'selected', optionId: option.optionId },
       })
       .then(() => {
-        addAnswered(requestId);
+        setPermissionDecisions((previous) => new Map(previous).set(requestId, option));
       })
       .catch(noop)
       .finally(() => {
@@ -287,7 +295,7 @@ function WorkbenchSessionSurface({
       workspacesLoading={workspacesLoading}
       activeSession={active}
       conversation={conversation}
-      answeredPermissions={answered}
+      permissionDecisions={permissionDecisions}
       respondingPermissions={responding}
       header={{
         title: active ? tk(active.kind) : 'Link Code',

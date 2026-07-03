@@ -1,4 +1,5 @@
 import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
+import { AlertAction } from 'coss-ui/components/alert';
 import { useTranslations } from 'use-intl';
 import {
   Confirmation,
@@ -26,26 +27,28 @@ function variantFor(kind: PermissionOption['kind']): ButtonVariant {
 }
 
 export function PermissionCard({
+  className,
   toolCall,
   options,
-  answered,
   responding,
+  pager,
   onRespond,
 }: {
+  className?: string;
   toolCall: ToolCallUpdate;
   options: PermissionOption[];
-  answered: boolean;
   responding: boolean;
-  onRespond: (optionId: string) => void;
+  /** Rendered in the card's top-right action slot (e.g. a multi-request pager). */
+  pager?: React.ReactNode;
+  onRespond: (option: PermissionOption) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.permission');
 
   return (
-    <Confirmation>
+    <Confirmation className={className}>
       <ConfirmationTitle title={t('title')} subject={toolCall.title ?? toolCall.toolCallId} />
-      {answered ? (
-        <ConfirmationDescription>{t('answered')}</ConfirmationDescription>
-      ) : responding ? (
+      {pager ? <AlertAction>{pager}</AlertAction> : null}
+      {responding ? (
         <ConfirmationDescription>{t('responding')}</ConfirmationDescription>
       ) : (
         <ConfirmationActions>
@@ -54,7 +57,7 @@ export function PermissionCard({
               key={o.optionId}
               size="sm"
               variant={variantFor(o.kind)}
-              onClick={() => onRespond(o.optionId)}
+              onClick={() => onRespond(o)}
             >
               {o.name}
             </ConfirmationAction>

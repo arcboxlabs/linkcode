@@ -40,11 +40,15 @@ export const zhCN = {
     },
     plan: {
       title: '计划',
+      progress: '{current}/{total}',
     },
     permission: {
       title: '权限请求',
-      answered: '已处理',
       responding: '正在提交…',
+      declined: '已拒绝',
+      page: '{current} / {total}',
+      previous: '上一个权限请求',
+      next: '下一个权限请求',
     },
     composer: {
       placeholderDisconnected: '请先创建或选择线程',
