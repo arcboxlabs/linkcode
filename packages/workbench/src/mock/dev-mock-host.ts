@@ -665,6 +665,8 @@ export class DevMockHost {
       return;
     }
     this.permissions.delete(requestId);
+    // Mirror the real adapter: the explicit settlement event is what clears the ask's pending state.
+    this.emit(sessionId, { type: 'permission-resolved', requestId, outcome });
     const allowed = outcome.outcome === 'selected' && outcome.optionId.startsWith('allow');
     this.emitToolSnapshot(sessionId, {
       toolCallId: pending.toolCallId,
