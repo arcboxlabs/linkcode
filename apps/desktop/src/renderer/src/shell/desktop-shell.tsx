@@ -71,6 +71,7 @@ export function DesktopShell({
   onDismissError,
   onModelChange,
   onEffortChange,
+  onApprovalPolicyChange,
   onOpenSettings,
   themeType,
 }: WorkbenchShellProps & {
@@ -295,6 +296,7 @@ export function DesktopShell({
         onRespondPermission={onRespondPermission}
         onModelChange={onModelChange}
         onEffortChange={onEffortChange}
+        onApprovalPolicyChange={onApprovalPolicyChange}
       />
     </main>
   );

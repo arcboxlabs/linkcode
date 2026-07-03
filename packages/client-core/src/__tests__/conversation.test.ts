@@ -332,6 +332,30 @@ describe('mergeSeededEvents', () => {
     const seed = { events: [userText('only history')], uptoSeq: 0 };
     expect(mergeSeededEvents(seed, [])).toEqual([userText('only history')]);
   });
+
+  it('carries pre-cut session-state events across the cut (mode / approval policy)', () => {
+    const policy: AgentEvent = {
+      type: 'approval-policy-update',
+      state: {
+        availablePolicies: [{ policyId: 'default', name: 'Ask for approval' }],
+        currentPolicyId: 'default',
+      },
+    };
+    const mode: AgentEvent = { type: 'current-mode-update', currentModeId: 'plan' };
+    const seed = { events: [userText('history')], uptoSeq: 3 };
+    const events = mergeSeededEvents(seed, [
+      { event: mode, seq: 1 },
+      { event: policy, seq: 2 },
+      { event: userText('contained in transcript'), seq: 3 },
+    ]);
+    // The state events survive (a provider-history seed can never contain them); the ordinary
+    // pre-cut event is still dropped as covered by the snapshot.
+    expect(events).toEqual([mode, policy, userText('history')]);
+
+    const folded = buildConversation(events);
+    expect(folded.approvalPolicy?.currentPolicyId).toBe('default');
+    expect(folded.currentModeId).toBe('plan');
+  });
 });
 
 describe('contentPreview', () => {

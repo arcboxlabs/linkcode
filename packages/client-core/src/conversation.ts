@@ -307,11 +307,19 @@ export function mergeSeededEvents(
   live: readonly SequencedAgentEvent[],
 ): AgentEvent[] {
   if (!seed) return live.map(({ event }) => event);
-  const merged = [...seed.events];
+  // Session-state events (active mode / approval policy) are adapter-synthesized and never part
+  // of a provider-history snapshot, so the ordered cut would silently drop the session's state:
+  // carry the latest of each across it. Newer ones in the tail still win (last-wins fold).
+  const carried = new Map<AgentEvent['type'], AgentEvent>();
+  const tail: AgentEvent[] = [];
   for (const { event, seq } of live) {
-    if (seq > seed.uptoSeq) merged.push(event);
+    if (seq > seed.uptoSeq) {
+      tail.push(event);
+    } else if (event.type === 'current-mode-update' || event.type === 'approval-policy-update') {
+      carried.set(event.type, event);
+    }
   }
-  return merged;
+  return [...carried.values(), ...seed.events, ...tail];
 }
 
 /** Extract a flat preview string from content blocks (used for list previews / titles). */

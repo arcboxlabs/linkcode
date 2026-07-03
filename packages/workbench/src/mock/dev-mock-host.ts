@@ -409,6 +409,9 @@ export class DevMockHost {
     }
     session.status = 'idle';
     this.emit(sessionId, { type: 'status', status: 'idle' });
+    // Parity with startSession: the client wipes its event buffer on stop, so a resumed session
+    // must re-advertise or the picker state is lost.
+    this.emit(sessionId, approvalPolicyEvent(session.policyId));
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
 
