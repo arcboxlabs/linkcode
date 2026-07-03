@@ -146,6 +146,12 @@ export const zhCN = {
     sidebar: {
       unregisteredGroup: '未注册',
       emptyTitle: '暂无线程',
+      projects: '项目',
+      chats: '聊天',
+      newChat: '新聊天',
+      chatsEmptyHint: '暂无聊天',
+      pinThread: '置顶线程',
+      unpinThread: '取消置顶',
       stopThread: '停止线程',
       workspaceEmptyTitle: '暂无工作区',
       chooseWorkspaceTitle: '选择工作区',

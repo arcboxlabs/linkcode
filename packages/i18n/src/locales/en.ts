@@ -148,6 +148,12 @@ export const en = {
     sidebar: {
       unregisteredGroup: 'Unregistered',
       emptyTitle: 'No threads yet',
+      projects: 'Projects',
+      chats: 'Chats',
+      newChat: 'New chat',
+      chatsEmptyHint: 'No chats yet',
+      pinThread: 'Pin thread',
+      unpinThread: 'Unpin thread',
       stopThread: 'Stop thread',
       workspaceEmptyTitle: 'No workspaces yet',
       chooseWorkspaceTitle: 'Choose a workspace',
