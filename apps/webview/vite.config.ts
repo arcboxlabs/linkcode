@@ -19,7 +19,12 @@ export default defineConfig({
       customCollections: ExternalPackageIconLoader('@proj-airi/lobe-icons'),
     }),
   ],
-  resolve: { alias: { '@webview': resolve(import.meta.dirname, 'src') } },
+  resolve: {
+    alias: { '@webview': resolve(import.meta.dirname, 'src') },
+    // apps/mobile pins Expo's react (19.2.3), so the hoisted install nests a second react under
+    // shared deps like use-intl; force every react import onto the renderer's own copy.
+    dedupe: ['react', 'react-dom'],
+  },
   server: { port: 5173 },
   // Workspace packages are exported as TS source and transpiled on the fly by Vite/esbuild, so no prebundling is needed.
   optimizeDeps: {
