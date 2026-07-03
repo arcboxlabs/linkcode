@@ -45,7 +45,7 @@ export const en = {
       undo: 'Undo',
       review: 'Review',
       showMore: 'Show {count, plural, one {# more file} other {# more files}}',
-      showLess: 'Show less',
+      showLess: 'Collapse files',
     },
     plan: {
       title: 'Plan',

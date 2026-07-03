@@ -42,7 +42,7 @@ export function TurnDiffSummary({
           {t('review')}
         </Button>
       </div>
-      <Collapsible className="group border-border border-t px-3 py-1">
+      <Collapsible className="border-border border-t px-3 py-1">
         {visibleFiles.map((file) => (
           <FileRow key={file.path} file={file} />
         ))}
@@ -53,7 +53,7 @@ export function TurnDiffSummary({
                 <FileRow key={file.path} file={file} />
               ))}
             </CollapsibleContent>
-            <CollapsibleTrigger className="flex items-center gap-1 py-1 text-muted-foreground text-sm hover:text-foreground">
+            <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-muted-foreground text-sm hover:text-foreground">
               <span className="group-data-[panel-open]:hidden">
                 {t('showMore', { count: overflowFiles.length })}
               </span>
