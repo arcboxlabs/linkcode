@@ -157,6 +157,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
+  /** Diff content parsed off an Edit/Write announce, keyed by tool_use id. Re-attached at settle
+   * because `emitTool`'s merge replaces `content` wholesale — the result text must not wipe the
+   * diff. */
+  private readonly pendingEditDiffs = new Map<string, ToolCallContent[]>();
 
   protected async onStart(): Promise<void> {
     // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
@@ -367,6 +371,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     queue?.close();
   }
 
+  /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs. */
+  protected override teardown(): void {
+    this.pendingEditDiffs.clear();
+    super.teardown();
+  }
+
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {
     const outcome = await this.requestPermission(
       {
@@ -424,12 +434,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     let calledTool = false;
     for (const block of message.content) {
       if (block.type === 'tool_use') {
+        const diff = editDiffContent(block.name, block.input);
+        if (diff) this.pendingEditDiffs.set(block.id, diff);
         // Announce the tool the moment Claude requests it; the matching tool_result settles it.
         this.emitTool({
           toolCallId: block.id,
           title: block.name,
           kind: toolKindFromName(block.name),
           status: 'in_progress',
+          content: diff,
           rawInput: block.input,
         });
         calledTool = true;
@@ -450,10 +463,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (typeof content === 'string') return;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
+      const diff = this.pendingEditDiffs.get(block.tool_use_id) ?? [];
+      this.pendingEditDiffs.delete(block.tool_use_id);
       this.emitTool({
         toolCallId: block.tool_use_id,
         status: block.is_error === true ? 'failed' : 'completed',
-        content: toolResultContent(block.content),
+        content: [...diff, ...toolResultContent(block.content)],
         rawOutput: block.content,
       });
     }
@@ -483,6 +498,31 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.teardown();
     this.emitStatus('idle');
   }
+}
+
+/**
+ * Claude's file-mutation tools carry the exact patch in their input — Edit as `file_path` /
+ * `old_string` / `new_string`, Write as `file_path` / `content` (a whole-file write, so no
+ * oldText: the UI renders it as all-added lines). Surface it as structured diff content so the
+ * UI renders a diff instead of the raw input JSON. Returns undefined for every other tool
+ * (including NotebookEdit, whose input has no old cell source to diff against) and for a
+ * malformed input.
+ */
+function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | undefined {
+  if (!isRecord(input)) return undefined;
+  if (toolName === 'Edit') {
+    const { file_path: path, old_string: oldText, new_string: newText } = input;
+    if (typeof path !== 'string' || typeof oldText !== 'string' || typeof newText !== 'string') {
+      return undefined;
+    }
+    return [{ type: 'diff', path, oldText, newText }];
+  }
+  if (toolName === 'Write') {
+    const { file_path: path, content: newText } = input;
+    if (typeof path !== 'string' || typeof newText !== 'string') return undefined;
+    return [{ type: 'diff', path, newText }];
+  }
+  return undefined;
 }
 
 /** Normalize a tool_result's payload (string or content blocks) into tool-call content. Accepts
@@ -553,7 +593,7 @@ export function createClaudeHistoryEventMapper(
             title: block.name,
             kind: toolKindFromName(block.name),
             status: 'in_progress',
-            content: [],
+            content: editDiffContent(block.name, block.input) ?? [],
             rawInput: block.input,
           }),
         );
@@ -572,7 +612,8 @@ export function createClaudeHistoryEventMapper(
           title: existing?.title ?? block.tool_use_id,
           kind: existing?.kind ?? 'other',
           status: block.is_error === true ? 'failed' : 'completed',
-          content: toolResultContent(block.content),
+          // Announce-time content is the Edit diff (or empty); keep it ahead of the result text.
+          content: [...(existing?.content ?? []), ...toolResultContent(block.content)],
           rawInput: existing?.rawInput,
           rawOutput: block.content,
         }),
