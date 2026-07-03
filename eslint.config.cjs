@@ -53,7 +53,8 @@ module.exports = require('eslint-config-sukka').sukka(
         'apps/*/vite.config.ts',
         'apps/*/tsup.config.ts',
         'apps/desktop/electron.vite.config.ts',
-        'packages/agent-adapter/src/__tests__/*.test.ts',
+        // agent-adapter tests are included by that package's tsconfig like every other package's;
+        // listing them here too would breach typescript-eslint's 8-file default-project cap.
         'vitest.config.ts',
       ],
     },
