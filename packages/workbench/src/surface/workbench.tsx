@@ -175,7 +175,8 @@ function WorkbenchSessionSurface({
   function handleModeChange(modeId: string): Promise<void> {
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
-    // Same contract as handleModelChange: the composer awaits rejections to keep the old pick.
+    // Unlike model/effort, the composer doesn't await this to reflect the pick locally: the active
+    // mode only ever comes back via current-mode-update, and failures surface in the error banner.
     return modeMutation
       .trigger({ sessionId: sessions.activeId, input: { type: 'set-mode', modeId } })
       .then(noop);

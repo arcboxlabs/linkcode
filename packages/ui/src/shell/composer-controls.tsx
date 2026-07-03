@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
+import type { AgentKind, EffortLevel } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -28,15 +28,9 @@ import { useTranslations } from 'use-intl';
 import type { EffortOption } from './agent-efforts';
 import { AGENT_LABELS, AgentIcon } from './agent-icon';
 import type { ModelOption } from './agent-models';
+import type { ApprovalPolicyControl, PlanModeControl } from './session-modes';
 
-// Linear lookups: the mode/model/effort lists are a handful of entries at most.
-function modeById(modes: readonly SessionMode[], modeId: string | null): SessionMode | undefined {
-  for (const mode of modes) {
-    if (mode.modeId === modeId) return mode;
-  }
-  return undefined;
-}
-
+// Linear lookup: the model/effort lists are a handful of entries at most.
 function optionById<T extends { id: string }>(
   options: readonly T[] | undefined,
   id: string | null,
@@ -50,16 +44,13 @@ function optionById<T extends { id: string }>(
 /** The `+` menu gathering the composer's secondary operations (attach, mention, plan toggle). */
 export function ComposerPlusMenu({
   disabled,
-  planMode,
-  planActive,
-  onTogglePlan,
+  plan,
   onInsertMention,
   finalFocus,
 }: {
   disabled: boolean;
-  planMode: SessionMode | null;
-  planActive: boolean;
-  onTogglePlan?: () => void;
+  /** The plan work-phase toggle; null when the agent doesn't advertise it (or modes are read-only). */
+  plan: PlanModeControl | null;
   onInsertMention: () => void;
   /** Where focus lands after the menu closes — the composer textarea. */
   finalFocus: React.RefObject<HTMLTextAreaElement | null>;
@@ -91,14 +82,14 @@ export function ComposerPlusMenu({
           <AtSignIcon />
           {t('mentions')}
         </MenuItem>
-        {planMode && onTogglePlan ? (
+        {plan ? (
           <>
             <MenuSeparator />
-            <MenuCheckboxItem checked={planActive} closeOnClick onCheckedChange={onTogglePlan}>
+            <MenuCheckboxItem checked={plan.active} closeOnClick onCheckedChange={plan.toggle}>
               <span className="flex min-w-0 flex-col">
-                <span>{planMode.name}</span>
-                {planMode.description ? (
-                  <span className="text-muted-foreground text-xs">{planMode.description}</span>
+                <span>{plan.mode.name}</span>
+                {plan.mode.description ? (
+                  <span className="text-muted-foreground text-xs">{plan.mode.description}</span>
                 ) : null}
               </span>
             </MenuCheckboxItem>
@@ -109,22 +100,17 @@ export function ComposerPlusMenu({
   );
 }
 
-/** Codex-style approval policy picker: agent-advertised non-plan modes as a described radio list. */
+/** Codex-style approval policy picker: the agent's permission postures as a described radio list. */
 export function ApprovalPolicyMenu({
   agentLabel,
   disabled,
-  policyModes,
-  activePolicyId,
-  onSelect,
+  policy,
 }: {
   agentLabel: string;
   disabled: boolean;
-  policyModes: SessionMode[];
-  activePolicyId: string | null;
-  onSelect: (modeId: string) => void;
+  policy: ApprovalPolicyControl;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const active = modeById(policyModes, activePolicyId) ?? policyModes[0];
 
   return (
     <Menu>
@@ -135,14 +121,17 @@ export function ApprovalPolicyMenu({
         }
       >
         <ShieldIcon />
-        {active.name}
+        {policy.active.name}
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
           <MenuGroupLabel>{t('approvalTitle', { agent: agentLabel })}</MenuGroupLabel>
-          <MenuRadioGroup value={active.modeId} onValueChange={(value) => onSelect(String(value))}>
-            {policyModes.map((mode) => (
+          <MenuRadioGroup
+            value={policy.active.modeId}
+            onValueChange={(value) => policy.select(String(value))}
+          >
+            {policy.options.map((mode) => (
               <MenuRadioItem key={mode.modeId} className="py-1.5" closeOnClick value={mode.modeId}>
                 <span className="flex min-w-0 flex-col">
                   <span>{mode.name}</span>
@@ -159,26 +148,20 @@ export function ApprovalPolicyMenu({
   );
 }
 
-/** The `☰ Plan` chip shown while plan mode is on; clicking it drops back to the last policy mode. */
-export function PlanModeChip({
-  planMode,
-  onToggle,
-}: {
-  planMode: SessionMode;
-  onToggle: () => void;
-}): React.ReactNode {
+/** The `☰ Plan` chip shown while plan mode is on; clicking it restores the last approval policy. */
+export function PlanModeChip({ plan }: { plan: PlanModeControl }): React.ReactNode {
   return (
     <>
       <Separator className="h-4" orientation="vertical" />
       <Button
         className="text-muted-foreground"
-        onClick={onToggle}
+        onClick={plan.toggle}
         size="sm"
         type="button"
         variant="ghost"
       >
         <ListTodoIcon />
-        {planMode.name}
+        {plan.mode.name}
       </Button>
     </>
   );

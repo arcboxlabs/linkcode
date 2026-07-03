@@ -20,10 +20,8 @@ import {
   ModelSelectorMenu,
   PlanModeChip,
 } from './composer-controls';
+import { useSessionModeControls } from './session-modes';
 import { STUB_SESSION_MODES } from './session-modes-stub';
-
-/** The conventional agent mode id treated as the plan toggle (claude-code, codex alike). */
-const PLAN_MODE_ID = 'plan';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
 export interface MentionItem {
@@ -216,32 +214,9 @@ export function Composer({
   const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
   const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
 
-  // One pass: split the advertised modes into the plan toggle and the policy radio list.
-  let planMode: SessionMode | null = null;
-  const policyModes: SessionMode[] = [];
-  for (const mode of availableModes) {
-    if (mode.modeId === PLAN_MODE_ID) planMode = mode;
-    else policyModes.push(mode);
-  }
-  const planActive = currentModeId === PLAN_MODE_ID;
-  // Remember the last non-plan mode so toggling plan off can restore it (derive-from-props pattern).
-  const [lastPolicyId, setLastPolicyId] = useState<string | null>(null);
-  if (currentModeId && currentModeId !== PLAN_MODE_ID && currentModeId !== lastPolicyId) {
-    setLastPolicyId(currentModeId);
-  }
-  const activePolicyId = planActive ? lastPolicyId : currentModeId;
-
-  function selectMode(modeId: string): void {
-    // The active mode reflects back from the session's current-mode-update event; failures land in
-    // the workbench error banner, so a rejected switch simply leaves the previous mode selected.
-    void onModeChange?.(modeId).catch(noop);
-  }
-
-  function togglePlan(): void {
-    if (!planMode) return;
-    const target = planActive ? (lastPolicyId ?? policyModes[0]?.modeId) : planMode.modeId;
-    if (target) selectMode(target);
-  }
+  // Approval policy and plan mode are distinct concepts multiplexed over one agent mode channel;
+  // the hook demultiplexes them (see session-modes.ts).
+  const { policy, plan } = useSessionModeControls(currentModeId, availableModes, onModeChange);
 
   function insertMentionTrigger(): void {
     const pos = textareaRef.current?.selectionStart ?? value.length;
@@ -314,18 +289,14 @@ export function Composer({
                 <ComposerPlusMenu
                   disabled={disabled}
                   finalFocus={textareaRef}
-                  planActive={planActive}
-                  planMode={planMode}
+                  plan={plan}
                   onInsertMention={insertMentionTrigger}
-                  onTogglePlan={onModeChange ? togglePlan : undefined}
                 />
-                {policyModes.length > 0 && onModeChange ? (
+                {policy ? (
                   <ApprovalPolicyMenu
-                    activePolicyId={activePolicyId}
                     agentLabel={placeholderAgent}
                     disabled={disabled}
-                    policyModes={policyModes}
-                    onSelect={selectMode}
+                    policy={policy}
                   />
                 ) : (
                   currentModeId && (
@@ -334,9 +305,7 @@ export function Composer({
                     </Badge>
                   )
                 )}
-                {planActive && planMode && onModeChange ? (
-                  <PlanModeChip planMode={planMode} onToggle={togglePlan} />
-                ) : null}
+                {plan?.active ? <PlanModeChip plan={plan} /> : null}
               </PromptInputTools>
               <ModelSelectorMenu
                 disabled={disabled}
