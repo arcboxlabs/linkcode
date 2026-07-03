@@ -227,10 +227,12 @@ export function ModelSelectorMenu({
         {providers.length > 0 && provider ? (
           <AgentIcon className="text-muted-foreground" kind={provider} variant="ghost" />
         ) : null}
-        {selectedModel?.label ?? t('modelDefault')}
-        <span className="font-normal text-muted-foreground">
-          {selectedEffort?.label ?? t('effortDefault')}
-        </span>
+        {hasModels ? (selectedModel?.label ?? t('modelDefault')) : null}
+        {hasEfforts ? (
+          <span className="font-normal text-muted-foreground">
+            {selectedEffort?.label ?? t('effortDefault')}
+          </span>
+        ) : null}
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>

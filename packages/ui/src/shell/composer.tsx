@@ -334,7 +334,7 @@ export function Composer({
                     </Badge>
                   )
                 )}
-                {planActive && planMode ? (
+                {planActive && planMode && onModeChange ? (
                   <PlanModeChip planMode={planMode} onToggle={togglePlan} />
                 ) : null}
               </PromptInputTools>
