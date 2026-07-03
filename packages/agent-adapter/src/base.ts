@@ -232,9 +232,11 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     const resolve = this.pending.get(requestId);
     if (resolve) {
       this.pending.delete(requestId);
-      // Event before resolve: the settlement must precede anything the unblocked awaiter emits.
-      this.emit({ type: 'permission-resolved', requestId, outcome });
+      // Resolve before emitting, so a throwing listener can't orphan the ask into a permanent hang.
+      // The settlement event still precedes anything the unblocked awaiter emits: the awaiter's
+      // continuation is a microtask, while this emit is synchronous.
       resolve(outcome);
+      this.emit({ type: 'permission-resolved', requestId, outcome });
     }
   }
 
@@ -246,11 +248,15 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
    * a no-op on a clean turn where everything is already settled.
    */
   protected teardown(): void {
-    for (const [requestId, resolve] of this.pending) {
-      this.emit({ type: 'permission-resolved', requestId, outcome: { outcome: 'cancelled' } });
-      resolve({ outcome: 'cancelled' });
-    }
+    // Two passes: every resolver runs before the first (fallible) listener emit, so a throwing
+    // listener can never leave a later ask unresolved — the no-hang guarantee holds regardless of
+    // what's attached to `onEvent`.
+    const swept = [...this.pending];
     this.pending.clear();
+    for (const [, resolve] of swept) resolve({ outcome: 'cancelled' });
+    for (const [requestId] of swept) {
+      this.emit({ type: 'permission-resolved', requestId, outcome: { outcome: 'cancelled' } });
+    }
     for (const toolCall of this.toolCalls.values()) {
       if (toolCall.status === 'completed' || toolCall.status === 'failed') continue;
       this.emitTool({ toolCallId: toolCall.toolCallId, status: 'failed' });

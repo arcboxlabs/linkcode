@@ -102,15 +102,28 @@ describe('BaseAgentAdapter teardown', () => {
     const a = new TestAdapter();
     const pending = a.ask();
     const request = a.seen.find((e) => e.type === 'permission-request');
-    expect(request?.type).toBe('permission-request');
+    if (request?.type !== 'permission-request') throw new Error('permission request not emitted');
 
     await a.send({ type: 'cancel' });
     await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
     expect(a.seen).toContainEqual({
       type: 'permission-resolved',
-      requestId: request?.type === 'permission-request' ? request.requestId : '',
+      requestId: request.requestId,
       outcome: { outcome: 'cancelled' },
     });
+  });
+
+  it('on cancel: sweeps a pending ask and an in-progress tool together', async () => {
+    const a = new TestAdapter();
+    a.tool({ toolCallId: 't1', title: 'Run', kind: 'execute', status: 'in_progress' });
+    const pending = a.ask();
+
+    await a.send({ type: 'cancel' });
+    await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
+    expect(a.seen.some((e) => e.type === 'permission-resolved')).toBe(true);
+    expect(
+      toolEvents(a).some((e) => e.toolCall.toolCallId === 't1' && e.toolCall.status === 'failed'),
+    ).toBe(true);
   });
 });
 
@@ -129,6 +142,14 @@ describe('BaseAgentAdapter permission round-trip', () => {
       requestId: request.requestId,
       outcome,
     });
+
+    // A second response for the already-settled ask must be a silent no-op.
+    await a.send({
+      type: 'permission-response',
+      requestId: request.requestId,
+      outcome: { outcome: 'cancelled' },
+    });
+    expect(a.seen.filter((e) => e.type === 'permission-resolved')).toHaveLength(1);
   });
 
   it('an unknown or already-settled requestId emits nothing', async () => {

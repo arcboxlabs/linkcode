@@ -176,7 +176,7 @@ describe('buildConversation', () => {
     expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
   });
 
-  it('tracks a permission as pending until its tool call settles', () => {
+  it('tracks a permission as pending until a permission-resolved event settles it', () => {
     const base: AgentEvent[] = [
       userText('run'),
       {
@@ -199,7 +199,8 @@ describe('buildConversation', () => {
     expect(buildConversation(base).pendingPermissionIds).toEqual(['p1']);
     expect(buildConversation(base).items.some((i) => i.kind === 'approval')).toBe(true);
 
-    const settled = buildConversation([
+    // The tool call settling on its own does NOT settle the ask — only the explicit event does.
+    const toolSettledOnly = buildConversation([
       ...base,
       {
         type: 'tool-call',
@@ -210,6 +211,16 @@ describe('buildConversation', () => {
           status: 'completed',
           content: [],
         },
+      },
+    ]);
+    expect(toolSettledOnly.pendingPermissionIds).toEqual(['p1']);
+
+    const settled = buildConversation([
+      ...base,
+      {
+        type: 'permission-resolved',
+        requestId: 'p1',
+        outcome: { outcome: 'selected', optionId: 'ok' },
       },
     ]);
     expect(settled.pendingPermissionIds).toEqual([]);

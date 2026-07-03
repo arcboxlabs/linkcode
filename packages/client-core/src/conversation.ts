@@ -72,9 +72,8 @@ export interface ConversationViewModel {
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
-   * requestIds of permission asks that are still open — i.e. not explicitly settled by a
-   * `permission-resolved` event and (for histories predating that event) whose referenced tool call
-   * hasn't reached a terminal status. The UI additionally hides ones the user already answered in
+   * requestIds of permission asks that are still open — i.e. not yet settled by a
+   * `permission-resolved` event. The UI additionally hides ones the user already answered in
    * this client.
    */
   pendingPermissionIds: string[];
@@ -254,19 +253,13 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     }
   }
 
-  // A permission ask is "pending" until a `permission-resolved` settles it. The referenced tool
-  // call reaching a terminal status also settles it — the fallback for histories recorded before
-  // the resolved event existed.
+  // A permission ask is "pending" until a `permission-resolved` event settles it. Every settlement
+  // path in the adapter emits one (user response, cancel/stop sweep), so an unsettled ask staying
+  // visible is correct: it was genuinely never answered.
   const pendingPermissionIds: string[] = [];
-  for (const item of items) {
-    if (item.kind !== 'approval') continue;
-    if (item.resolution) continue;
-    const toolItemIndex = toolIndex.get(item.toolCall.toolCallId);
-    const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
-    const settled =
-      toolItem?.kind === 'tool' &&
-      (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
-    if (!settled) pendingPermissionIds.push(item.requestId);
+  for (const index of approvalIndex.values()) {
+    const item = items[index];
+    if (item.kind === 'approval' && !item.resolution) pendingPermissionIds.push(item.requestId);
   }
 
   const isSessionStreaming = status === 'running' || status === 'starting';

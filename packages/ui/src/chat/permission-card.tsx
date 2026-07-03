@@ -10,14 +10,15 @@ import {
 
 type ButtonVariant = 'default' | 'secondary' | 'outline' | 'destructive-outline';
 
-/** The display name of the option a `selected` resolution picked, if it is still known. */
+/** The display name of the option a `selected` resolution picked, if a usable one is known
+ * (the schema allows an empty option name — treat it as unknown so the label can fall back). */
 function pickedOptionName(
   options: PermissionOption[],
   resolution: PermissionOutcome | undefined,
 ): string | undefined {
   if (resolution?.outcome !== 'selected') return undefined;
   for (const option of options) {
-    if (option.optionId === resolution.optionId) return option.name;
+    if (option.optionId === resolution.optionId) return option.name || undefined;
   }
   return undefined;
 }
@@ -63,6 +64,7 @@ export function PermissionCard({
       <Confirmation className="flex items-center justify-between gap-2 border-border bg-muted/30 p-2">
         <ConfirmationTitle
           className="mb-0 min-w-0"
+          iconClassName="text-muted-foreground"
           title={t('title')}
           subject={toolCall.title ?? toolCall.toolCallId}
         />

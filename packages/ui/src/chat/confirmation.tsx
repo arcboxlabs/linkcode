@@ -16,10 +16,12 @@ export function Confirmation({ className, ...props }: ConfirmationProps): React.
 export type ConfirmationTitleProps = React.ComponentProps<'div'> & {
   title: string;
   subject?: string;
+  iconClassName?: string;
 };
 
 export function ConfirmationTitle({
   className,
+  iconClassName,
   title,
   subject,
   children,
@@ -33,7 +35,7 @@ export function ConfirmationTitle({
       )}
       {...props}
     >
-      <ShieldIcon className="size-4 shrink-0 text-warning-foreground" />
+      <ShieldIcon className={cn('size-4 shrink-0 text-warning-foreground', iconClassName)} />
       {children ?? (
         <>
           {title}
