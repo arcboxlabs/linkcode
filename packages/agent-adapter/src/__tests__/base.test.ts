@@ -152,6 +152,13 @@ describe('BaseAgentAdapter permission round-trip', () => {
     expect(a.seen.filter((e) => e.type === 'permission-resolved')).toHaveLength(1);
   });
 
+  it('set-approval-policy rejects by default (no adapter-advertised policies)', async () => {
+    const a = new TestAdapter();
+    await expect(a.send({ type: 'set-approval-policy', policyId: 'default' })).rejects.toThrow(
+      'approval policies are not supported',
+    );
+  });
+
   it('an unknown or already-settled requestId emits nothing', async () => {
     const a = new TestAdapter();
     const before = a.seen.length;

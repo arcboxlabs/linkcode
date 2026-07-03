@@ -10,6 +10,8 @@ import { ContentBlockSchema } from './content';
 import { PermissionOptionSchema, PermissionOutcomeSchema } from './permission';
 import { PlanSchema } from './plan';
 import {
+  ApprovalPolicyIdSchema,
+  ApprovalPolicyStateSchema,
   McpServerSchema,
   SessionModeIdSchema,
   SessionStatusSchema,
@@ -66,6 +68,9 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
   /** Switch the reasoning-effort level for the session, going forward. Same acceptance rule as
    * `set-model`: only adapters that can rebind effort on a live session accept this. */
   z.object({ type: z.literal('set-effort'), effort: EffortLevelSchema }),
+  /** Switch the approval policy — the permission/safety axis, deliberately not a `set-mode`
+   * value. Only adapters that advertise policies (via `approval-policy-update`) accept this. */
+  z.object({ type: z.literal('set-approval-policy'), policyId: ApprovalPolicyIdSchema }),
   /** The user's decision for a pending permission-request (correlated by requestId). */
   z.object({
     type: z.literal('permission-response'),
@@ -112,6 +117,10 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // ── Planning / meta ──
   z.object({ type: z.literal('plan'), plan: PlanSchema }),
   z.object({ type: z.literal('current-mode-update'), currentModeId: SessionModeIdSchema }),
+  /** The approval-policy axis: the advertised per-agent catalog plus the active pick. Emitted at
+   * session start and after every accepted switch, so live clients and replayed histories always
+   * hold both the options and the current value. Adapters without policies never emit it. */
+  z.object({ type: z.literal('approval-policy-update'), state: ApprovalPolicyStateSchema }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),

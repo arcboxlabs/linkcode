@@ -1,6 +1,7 @@
 import { env } from 'node:process';
 import type {
   CanUseTool,
+  PermissionMode,
   PermissionResult,
   Query,
   SDKMessage,
@@ -18,6 +19,8 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentHistorySession,
+  ApprovalPolicy,
+  ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
   MessageId,
@@ -56,6 +59,34 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ];
+
+/** The SDK permission modes offered as approval policies. `plan` belongs to the workflow-mode
+ * axis; `dontAsk` (headless) and `auto` (Anthropic-API-gated classifier) are deliberately absent. */
+type ApprovalPolicyMode = Extract<PermissionMode, 'default' | 'acceptEdits' | 'bypassPermissions'>;
+
+/** The advertised catalog. Ids double as the SDK `PermissionMode` values they map onto, so the
+ * policy → SDK translation is the identity. */
+const APPROVAL_POLICIES: readonly ApprovalPolicy[] = [
+  {
+    policyId: 'default',
+    name: 'Ask for approval',
+    description: 'Always ask before editing files and running commands.',
+  },
+  {
+    policyId: 'acceptEdits',
+    name: 'Approve for me',
+    description: 'Only ask for actions detected as potentially unsafe.',
+  },
+  {
+    policyId: 'bypassPermissions',
+    name: 'Full access',
+    description: 'Unrestricted access to files and commands in this workspace.',
+  },
+];
+
+function isApprovalPolicyMode(policyId: string): policyId is ApprovalPolicyMode {
+  return APPROVAL_POLICIES.some((policy) => policy.policyId === policyId);
+}
 
 /**
  * The `prompt` fed to a streaming-input `query()`: an `AsyncIterable<SDKUserMessage>` that stays open
@@ -156,6 +187,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private cancelling = false;
   /** The effort the session should run at; applied at `Query` creation and on live switches. */
   private effort: EffortLevel | undefined;
+  /** The active approval policy; applied at `Query` creation and on live switches, and re-synced
+   * from the CLI's init handshake (the CLI's own report is the source of truth). */
+  private policyId: ApprovalPolicyMode = 'default';
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
@@ -170,6 +204,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    // Advertise the policy catalog up front so the picker renders before the first turn.
+    this.emitApprovalPolicy(this.approvalPolicyState());
+  }
+
+  private approvalPolicyState(): ApprovalPolicyState {
+    return { availablePolicies: [...APPROVAL_POLICIES], currentPolicyId: this.policyId };
   }
 
   override async resumeHistory(
@@ -260,6 +300,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
+        // The approval policy maps 1:1 onto the SDK's permission mode. The bypass launch
+        // capability is granted on every spawn: the SDK requires it at launch for a later live
+        // switch to 'bypassPermissions', and Queries rebuild mid-session (the max-effort
+        // transition), which would otherwise strand the switch.
+        permissionMode: this.policyId,
+        allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
         ...(apiKey && { env: { ...env, ANTHROPIC_API_KEY: apiKey } }),
@@ -374,6 +420,21 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     queue?.close();
   }
 
+  protected override async onSetApprovalPolicy(policyId: string): Promise<void> {
+    if (!isApprovalPolicyMode(policyId)) {
+      throw new Error(`claude-code: unknown approval policy '${policyId}'`);
+    }
+    if (policyId === this.policyId) return;
+    if (this.q) {
+      // Committed only after the CLI accepted the switch (mirrors onSetEffort): a rejected one
+      // must not linger and get replayed onto a later rebuilt Query.
+      await this.q.setPermissionMode(policyId);
+    }
+    // No process yet: onPrompt's Query creation applies it via `permissionMode`.
+    this.policyId = policyId;
+    this.emitApprovalPolicy(this.approvalPolicyState());
+  }
+
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {
     const outcome = await this.requestPermission(
       {
@@ -414,6 +475,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         break;
       case 'result':
         this.handleResult(msg);
+        break;
+      case 'system':
+        // The init handshake reports the CLI's effective permission mode — the source of truth.
+        // Adopt it on drift (e.g. a rebuilt/resumed Query) so the advertised policy never lies;
+        // non-catalog modes (plan/dontAsk/auto) are never set by this adapter and are ignored.
+        if (
+          msg.subtype === 'init' &&
+          isApprovalPolicyMode(msg.permissionMode) &&
+          msg.permissionMode !== this.policyId
+        ) {
+          this.policyId = msg.permissionMode;
+          this.emitApprovalPolicy(this.approvalPolicyState());
+        }
         break;
       default:
         break;

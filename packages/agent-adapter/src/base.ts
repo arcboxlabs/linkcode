@@ -9,6 +9,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
+  ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
   MessageId,
@@ -100,6 +101,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       case 'set-effort':
         await this.onSetEffort(input.effort);
         return;
+      case 'set-approval-policy':
+        await this.onSetApprovalPolicy(input.policyId);
+        return;
       case 'permission-response':
         this.resolvePending(input.requestId, input.outcome);
         break;
@@ -141,6 +145,11 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   /** Default: reject. Only adapters that can rebind effort on a live session override this. */
   protected onSetEffort(_effort: EffortLevel): Promise<void> {
     return Promise.reject(new Error(`${this.kind}: changing effort is not supported`));
+  }
+  /** Default: reject. Only adapters that advertise approval policies override this — a loud
+   * failure keeps the client's picker on the old selection instead of faking success. */
+  protected onSetApprovalPolicy(_policyId: string): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: approval policies are not supported`));
   }
   protected onStop(): Promise<void> {
     return Promise.resolve();
@@ -209,6 +218,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected emitUsage(usage: TokenUsage): void {
     this.emit({ type: 'token-usage', usage });
+  }
+  protected emitApprovalPolicy(state: ApprovalPolicyState): void {
+    this.emit({ type: 'approval-policy-update', state });
   }
   protected emitStop(stopReason: StopReason): void {
     this.emit({ type: 'stop', stopReason });
