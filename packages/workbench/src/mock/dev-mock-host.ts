@@ -485,6 +485,7 @@ export class DevMockHost {
     const messageId = this.nextMessageId('mock-message');
     const reply = `${MOCK_REPLY}\n\nModel: ${session.model ?? 'mock-default'}\nYou said: ${text || '(empty prompt)'}`;
     for (const chunk of reply.match(WORD_CHUNK_PATTERN) ?? []) {
+      // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
       if (await cancelledAfter(CHUNK_LATENCY_MS)) {
         this.sendSuccess(replyTo);
         return;
@@ -592,6 +593,7 @@ export class DevMockHost {
     ];
 
     for (const event of script) {
+      // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       if (!(await waitForShowcaseStep(session, epoch))) return false;
       this.emit(session.sessionId, event);
     }
@@ -639,6 +641,7 @@ export class DevMockHost {
     });
 
     for (const chunk of SHOWCASE_STREAM_REPLY.match(WORD_CHUNK_PATTERN) ?? []) {
+      // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
       await wait(SHOWCASE_STREAM_CHUNK_LATENCY_MS);
       if (!isRunningTurn(session, epoch)) return;
       this.emit(session.sessionId, {

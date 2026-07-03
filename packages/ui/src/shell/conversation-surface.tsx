@@ -1,6 +1,6 @@
 import type { AgentKind, EffortLevel } from '@linkcode/schema';
-import type { ConversationViewModel } from '../chat';
-import { ConversationView } from '../chat';
+import { ConversationView } from '../chat/conversation-view';
+import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
 import { Composer } from './composer';
 
