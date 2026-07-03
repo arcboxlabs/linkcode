@@ -215,6 +215,47 @@ describe('buildConversation', () => {
     expect(settled.pendingPermissionIds).toEqual([]);
   });
 
+  it('a permission-resolved event settles the ask even while its tool call is still running', () => {
+    const c = buildConversation([
+      userText('run'),
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'Run',
+          kind: 'execute',
+          status: 'in_progress',
+          content: [],
+        },
+      },
+      {
+        type: 'permission-request',
+        requestId: 'p1',
+        toolCall: { toolCallId: 't1', title: 'Run' },
+        options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+      },
+      {
+        type: 'permission-resolved',
+        requestId: 'p1',
+        outcome: { outcome: 'selected', optionId: 'ok' },
+      },
+    ]);
+    expect(c.pendingPermissionIds).toEqual([]);
+    const approval = c.items.find((i) => i.kind === 'approval');
+    expect(approval?.kind === 'approval' && approval.resolution).toEqual({
+      outcome: 'selected',
+      optionId: 'ok',
+    });
+  });
+
+  it('ignores a permission-resolved event with no matching ask', () => {
+    const c = buildConversation([
+      { type: 'permission-resolved', requestId: 'ghost', outcome: { outcome: 'cancelled' } },
+    ]);
+    expect(c.items).toEqual([]);
+    expect(c.pendingPermissionIds).toEqual([]);
+  });
+
   it('captures lifecycle state (status / usage / mode / stop / error)', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },

@@ -37,6 +37,7 @@ export const en = {
     permission: {
       title: 'Permission request',
       answered: 'Handled',
+      cancelled: 'Cancelled',
       responding: 'Submitting…',
     },
     composer: {

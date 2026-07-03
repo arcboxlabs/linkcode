@@ -2,6 +2,7 @@ import type {
   AgentEvent,
   ContentBlock,
   PermissionOption,
+  PermissionOutcome,
   Plan,
   SessionStatus,
   StopReason,
@@ -47,6 +48,8 @@ export type ConversationItem =
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
+      /** How the ask settled (from `permission-resolved`); absent while it is still open. */
+      resolution?: PermissionOutcome;
     }
   | {
       kind: 'error';
@@ -69,8 +72,10 @@ export interface ConversationViewModel {
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
-   * requestIds of permission asks that are still open — i.e. their referenced tool call hasn't reached a
-   * terminal status. The UI additionally hides ones the user already answered in this client.
+   * requestIds of permission asks that are still open — i.e. not explicitly settled by a
+   * `permission-resolved` event and (for histories predating that event) whose referenced tool call
+   * hasn't reached a terminal status. The UI additionally hides ones the user already answered in
+   * this client.
    */
   pendingPermissionIds: string[];
 }
@@ -95,6 +100,8 @@ function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
 export function buildConversation(events: readonly AgentEvent[]): Conversation {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
+  // requestId → approval item index, so a later `permission-resolved` can settle its ask.
+  const approvalIndex = new Map<string, number>();
   // messageId → item index, so streaming chunks bucket into one item regardless of interleaving.
   const messageIndex = new Map<string, number>();
   const planIndexByTurn = new Map<ConversationTurnId, number>();
@@ -233,16 +240,27 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           toolCall: event.toolCall,
           options: event.options,
         });
+        approvalIndex.set(event.requestId, items.length - 1);
         break;
+
+      case 'permission-resolved': {
+        const index = approvalIndex.get(event.requestId);
+        const item = index === undefined ? undefined : items[index];
+        if (item?.kind === 'approval') item.resolution = event.outcome;
+        break;
+      }
       default:
         break;
     }
   }
 
-  // A permission ask is "pending" until its referenced tool call reaches a terminal status.
+  // A permission ask is "pending" until a `permission-resolved` settles it. The referenced tool
+  // call reaching a terminal status also settles it — the fallback for histories recorded before
+  // the resolved event existed.
   const pendingPermissionIds: string[] = [];
   for (const item of items) {
     if (item.kind !== 'approval') continue;
+    if (item.resolution) continue;
     const toolItemIndex = toolIndex.get(item.toolCall.toolCallId);
     const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
     const settled =

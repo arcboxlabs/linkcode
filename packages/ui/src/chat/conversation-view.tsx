@@ -103,6 +103,7 @@ export function ConversationView({
                   key={item.id}
                   toolCall={item.toolCall}
                   options={item.options}
+                  resolution={item.resolution}
                   answered={
                     answeredPermissions.has(item.requestId) ||
                     !pendingPermissions.has(item.requestId)

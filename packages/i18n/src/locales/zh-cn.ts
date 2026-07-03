@@ -35,6 +35,7 @@ export const zhCN = {
     permission: {
       title: '权限请求',
       answered: '已处理',
+      cancelled: '已取消',
       responding: '正在提交…',
     },
     composer: {

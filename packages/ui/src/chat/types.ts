@@ -1,6 +1,7 @@
 import type {
   ContentBlock,
   PermissionOption,
+  PermissionOutcome,
   Plan,
   SessionStatus,
   StopReason,
@@ -37,6 +38,8 @@ export type ConversationItem =
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
+      /** How the ask settled (from `permission-resolved`); absent while it is still open. */
+      resolution?: PermissionOutcome;
     }
   | {
       kind: 'error';
