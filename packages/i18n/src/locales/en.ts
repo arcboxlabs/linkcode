@@ -49,6 +49,11 @@ export const en = {
       noMentions: 'No matches',
       modelDefault: 'Default',
       effortDefault: 'Effort',
+      add: 'Add',
+      attach: 'Files and folders',
+      approvalTitle: 'How should {agent} actions be approved?',
+      reasoning: 'Reasoning',
+      provider: 'Provider',
     },
     mode: {
       label: 'Mode',
