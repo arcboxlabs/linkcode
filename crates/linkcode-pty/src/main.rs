@@ -58,8 +58,14 @@ fn main() {
                 Err(err) => {
                     eprintln!("invalid OPEN frame: {err}");
                     // Fail only this terminal (recover its id if we can); never kill the whole host.
-                    if let Ok(id) = serde_json::from_slice::<TerminalIdOnly>(&body) {
-                        mux.reject_open(&id.terminal_id, &err.to_string());
+                    match serde_json::from_slice::<TerminalIdOnly>(&body) {
+                        Ok(id) => mux.reject_open(&id.terminal_id, &err.to_string()),
+                        // No terminalId to reply ERROR against: the daemon's pending open for
+                        // this frame can never be resolved and will hang until its own timeout,
+                        // if any (see PROTOCOL.md). Surfacing this is the best we can do here.
+                        Err(_) => eprintln!(
+                            "OPEN frame has no recoverable terminalId; the daemon's pending open for it will hang"
+                        ),
                     }
                 }
             },
