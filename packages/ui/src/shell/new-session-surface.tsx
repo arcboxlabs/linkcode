@@ -37,6 +37,8 @@ export interface NewSessionDraft {
 export interface NewSessionSubmission {
   kind: AgentKind;
   cwd: string;
+  /** The picked workspace backing `cwd` — lets the caller persist it as the next draft's default. */
+  workspaceId: WorkspaceId;
   model?: string;
   modeId?: SessionModeId;
   prompt: string;
@@ -97,6 +99,7 @@ export function NewSessionSurface({
     onSubmit({
       kind: provider,
       cwd: selected.cwd,
+      workspaceId: selected.workspaceId,
       model: validModel,
       modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
       prompt: text,

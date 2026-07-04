@@ -1,7 +1,5 @@
 export type { AddWorkspaceRowProps } from './add-workspace-row';
 export { AddWorkspaceRow } from './add-workspace-row';
-export type { AgentKindListProps } from './agent-kind-list';
-export { AgentKindList } from './agent-kind-list';
 export type { BranchStatusComponentType, BranchStatusProps } from './branch-status';
 export { BranchStatus } from './branch-status';
 export type { ChatsSectionProps } from './chats-section';

@@ -195,8 +195,6 @@ export const en = {
       pinThread: 'Pin thread',
       unpinThread: 'Unpin thread',
       closeThread: 'Close thread',
-      workspaceEmptyTitle: 'No workspaces yet',
-      chooseWorkspaceTitle: 'Choose a workspace',
       chooseDirectory: 'Choose directory…',
       registerWorkspaceError: 'Failed to add workspace: {message}',
       importHistoryTitle: 'Import history',

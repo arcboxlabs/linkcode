@@ -1,4 +1,4 @@
-import type { AgentKind, SessionId, WorkspaceId } from '@linkcode/schema';
+import type { SessionId, WorkspaceId } from '@linkcode/schema';
 import type { BranchStatusComponentType } from './branch-status';
 
 /**
@@ -11,7 +11,8 @@ export interface ThreadGroupActions {
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
   onClose: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  /** Opens the new-session page, optionally preselecting a workspace (group "+", Chats "+"). */
+  onStartDraft: (workspaceId?: WorkspaceId) => void;
   /** Called once a history entry finishes importing as a new thread. */
   onImportSession?: (sessionId: SessionId) => void;
   onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;

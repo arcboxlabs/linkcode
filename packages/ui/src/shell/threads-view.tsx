@@ -66,7 +66,7 @@ export function ThreadsView({
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
-  onCreate,
+  onStartDraft,
   onImportSession,
   onPickDirectory,
   onRegisterWorkspace,
@@ -167,7 +167,7 @@ export function ThreadsView({
               onSelect={onSelect}
               onClose={onClose}
               onToggleSessionPinned={onToggleSessionPinned}
-              onCreate={onCreate}
+              onStartDraft={onStartDraft}
               onImportSession={onImportSession}
               onRenameWorkspace={onRenameWorkspace}
               onArchiveWorkspace={onArchiveWorkspace}
@@ -197,7 +197,7 @@ export function ThreadsView({
           onSelect={onSelect}
           onClose={onClose}
           onToggleSessionPinned={onToggleSessionPinned}
-          onCreate={onCreate}
+          onStartDraft={onStartDraft}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
         />
       </div>
@@ -213,7 +213,7 @@ function ThreadGroupSection({
   onSelect,
   onClose,
   onToggleSessionPinned,
-  onCreate,
+  onStartDraft,
   onImportSession,
   onRenameWorkspace,
   onArchiveWorkspace,
@@ -252,7 +252,7 @@ function ThreadGroupSection({
         sessionCount={group.sessions.length}
         collapsed={group.collapsed}
         onToggleCollapsed={() => onToggleGroupCollapsed(group.collapseKey)}
-        onCreateThread={workspace ? (kind) => onCreate({ kind, cwd: workspace.cwd }) : undefined}
+        onNewThread={workspace ? () => onStartDraft(workspace.workspaceId) : undefined}
         onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}
         onArchive={workspace ? () => onArchiveWorkspace(workspace.workspaceId) : undefined}
         historyOpen={group.historyOpen}

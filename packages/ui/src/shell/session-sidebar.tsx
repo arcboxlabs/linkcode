@@ -1,4 +1,4 @@
-import type { AgentKind, SessionId, WorkspaceRecord } from '@linkcode/schema';
+import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
 import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
@@ -11,24 +11,18 @@ import {
   SelectValue,
 } from 'coss-ui/components/select';
 import { Separator } from 'coss-ui/components/separator';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   BotIcon,
   ChevronDownIcon,
-  ChevronLeftIcon,
   FilePlus2Icon,
-  FolderPlusIcon,
   SearchIcon,
   SettingsIcon,
   SparklesIcon,
 } from 'lucide-react';
-import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import { repositoryLabel } from './repository-label';
 import { ShellSidebar, shellSidebarItemClassName } from './shell-sidebar';
 import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
-import { AgentKindList } from './sidebar';
 import type { ThreadGroupViewModel } from './threads-view';
 import { ThreadsView } from './threads-view';
 
@@ -37,7 +31,6 @@ export type { ThreadGroupViewModel } from './threads-view';
 
 export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupState {
   threadGroups: ThreadGroupViewModel[];
-  workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
   /** First load of the session list — the "Chats" section shows a skeleton, not the empty hint. */
   sessionsLoading?: boolean;
@@ -53,13 +46,13 @@ export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupStat
     overId: SessionId,
     placement: 'before' | 'after',
   ) => void;
-  /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
+  /** Opens the native directory picker; desktop only — omit to keep the manual path field only. */
   onPickDirectory?: () => Promise<string | null>;
   /** Opens the command palette — the Search entry stays disabled without it. */
   onOpenSearch?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
-  /** Registers a directory as a workspace — the top "New Task" menu and the Add workspace row. */
+  /** Registers a directory as a workspace — the Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
 }
 
@@ -67,7 +60,6 @@ const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];
 
 export function SessionSidebar({
   threadGroups,
-  workspaces,
   workspacesLoading,
   sessionsLoading,
   activeId,
@@ -80,7 +72,7 @@ export function SessionSidebar({
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
-  onCreate,
+  onStartDraft,
   onImportSession,
   onPickDirectory,
   onOpenSearch,
@@ -103,11 +95,10 @@ export function SessionSidebar({
       footer={footer}
     >
       <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1">
-        <NewTaskMenu
-          workspaces={workspaces}
-          onCreate={onCreate}
-          onPickDirectory={onPickDirectory}
-          onRegisterWorkspace={onRegisterWorkspace}
+        <SidebarMenuButton
+          icon={<FilePlus2Icon />}
+          label="New Task"
+          onClick={() => onStartDraft()}
         />
         <SidebarMenuButton
           disabled={!onOpenSearch}
@@ -132,7 +123,7 @@ export function SessionSidebar({
             onToggleSessionPinned={onToggleSessionPinned}
             onReorderGroups={onReorderGroups}
             onReorderThreads={onReorderThreads}
-            onCreate={onCreate}
+            onStartDraft={onStartDraft}
             onImportSession={onImportSession}
             onPickDirectory={onPickDirectory}
             onRegisterWorkspace={onRegisterWorkspace}
@@ -147,124 +138,6 @@ export function SessionSidebar({
         </div>
       </div>
     </ShellSidebar>
-  );
-}
-
-function NewTaskMenu({
-  workspaces,
-  onCreate,
-  onPickDirectory,
-  onRegisterWorkspace,
-}: {
-  workspaces: WorkspaceRecord[];
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
-  onPickDirectory?: () => Promise<string | null>;
-  onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
-}): React.ReactNode {
-  const t = useTranslations('workbench.sidebar');
-  const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<AgentKind | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-  const canChooseDirectory = onPickDirectory != null;
-
-  function reset(): void {
-    setKind(null);
-    setPending(false);
-    setError(null);
-  }
-
-  function handleOpenChange(next: boolean): void {
-    setOpen(next);
-    if (!next) reset();
-  }
-
-  function chooseWorkspace(cwd: string): void {
-    if (!kind) return;
-    setOpen(false);
-    onCreate({ kind, cwd });
-    reset();
-  }
-
-  async function handleChooseDirectory(): Promise<void> {
-    if (!onPickDirectory) return;
-    setPending(true);
-    setError(null);
-    try {
-      const picked = await onPickDirectory();
-      if (!picked) return;
-      const workspace = await onRegisterWorkspace(picked);
-      chooseWorkspace(workspace.cwd);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger className={shellSidebarItemClassName}>
-        <SidebarMenuButtonContent icon={<FilePlus2Icon />} label="New Task" />
-      </PopoverTrigger>
-      <PopoverPopup align="start" side="right" sideOffset={8} className="w-64 p-0">
-        {kind === null ? (
-          <div className="p-1">
-            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">New task</div>
-            <AgentKindList onPick={setKind} hint="Choose a working folder" />
-          </div>
-        ) : (
-          <div className="p-1">
-            <button
-              type="button"
-              onClick={reset}
-              className="flex items-center gap-1 px-2 py-1.5 text-muted-foreground text-xs outline-none hover:text-foreground"
-            >
-              <ChevronLeftIcon className="size-3.5" />
-              {t('chooseWorkspaceTitle')}
-            </button>
-            {workspaces.length === 0 && !canChooseDirectory && (
-              <div className="px-2 py-3 text-center text-muted-foreground text-xs">
-                {t('workspaceEmptyTitle')}
-              </div>
-            )}
-            {workspaces.map((workspace) => (
-              <button
-                key={workspace.workspaceId}
-                type="button"
-                className="flex w-full min-w-0 flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => chooseWorkspace(workspace.cwd)}
-              >
-                <span className="line-clamp-1 w-full text-sm">
-                  {workspace.name ?? repositoryLabel(workspace.cwd)}
-                </span>
-                <span className="line-clamp-1 w-full font-mono text-muted-foreground text-xs">
-                  {workspace.cwd}
-                </span>
-              </button>
-            ))}
-            {canChooseDirectory && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => {
-                  void handleChooseDirectory();
-                }}
-                className="flex min-h-10 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64"
-              >
-                <FolderPlusIcon className="size-4 text-muted-foreground" />
-                <span className="text-sm">{t('chooseDirectory')}</span>
-              </button>
-            )}
-            {error != null && (
-              <div className="px-2 py-1 text-destructive text-xs">
-                {t('registerWorkspaceError', { message: extractErrorMessage(error, false) ?? '' })}
-              </div>
-            )}
-          </div>
-        )}
-      </PopoverPopup>
-    </Popover>
   );
 }
 
