@@ -46,7 +46,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/schema/src/wire.ts"],
+      "includes": ["packages/schema/src/wire.ts", "packages/schema/src/terminal.ts"],
       "formatter": { "enabled": false }
     },
     {
