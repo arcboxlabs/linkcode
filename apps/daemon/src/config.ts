@@ -1,13 +1,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { daemonRuntimeFilePath } from '@linkcode/common/node';
 import type { ProvidersConfig } from '@linkcode/schema';
-import {
-  AgentKindSchema,
-  DAEMON_DEFAULT_PORT,
-  DAEMON_RUNTIME_FILE_SEGMENTS,
-  ProviderConfigSchema,
-} from '@linkcode/schema';
+import { AgentKindSchema, DAEMON_DEFAULT_PORT, ProviderConfigSchema } from '@linkcode/schema';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 
 /**
@@ -44,7 +40,7 @@ export function databasePath(): string {
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
 export function runtimeFilePath(): string {
-  return join(homedir(), ...DAEMON_RUNTIME_FILE_SEGMENTS);
+  return daemonRuntimeFilePath();
 }
 
 /**

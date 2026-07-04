@@ -13,6 +13,7 @@
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
+    "@linkcode/schema": "workspace:*",
     "zod": "catalog:",
     "zustand": "catalog:"
   },
