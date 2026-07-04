@@ -6,12 +6,18 @@ import {
   MenuPopup,
   MenuTrigger,
 } from 'coss-ui/components/menu';
-import { PlusIcon, XIcon } from 'lucide-react';
+import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { PanelControlButton, ShellIconButton } from '../shell-control';
+import { PanelTabCloseButton } from './panel-tab-close-button';
 import type { PanelControl, PanelTab, PanelWindowType } from './vocabulary';
-import { PANEL_WINDOW_ICONS, PANEL_WINDOW_TYPES } from './vocabulary';
+import {
+  PANEL_TAB_ACTIVE_CLASSNAME,
+  PANEL_TAB_INACTIVE_CLASSNAME,
+  PANEL_WINDOW_ICONS,
+  PANEL_WINDOW_TYPES,
+} from './vocabulary';
 
 export interface PanelTabStripProps {
   tabs: PanelTab[];
@@ -117,9 +123,7 @@ function PanelTabButton({
     <div
       className={cn(
         'group flex h-7 max-w-44 shrink-0 items-center overflow-hidden rounded-md border text-xs [-webkit-app-region:no-drag]',
-        active
-          ? 'border-border bg-card font-semibold text-foreground shadow-xs'
-          : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+        active ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
       )}
     >
       <button
@@ -130,18 +134,7 @@ function PanelTabButton({
         <span className="shrink-0 [&_svg]:size-3.5">{PANEL_WINDOW_ICONS[tab.type]}</span>
         <span className="min-w-0 truncate">{label}</span>
       </button>
-      <button
-        type="button"
-        aria-label={closeLabel}
-        title={closeLabel}
-        className="mr-1 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-50 outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
-      >
-        <XIcon className="size-3" />
-      </button>
+      <PanelTabCloseButton label={closeLabel} onClick={onClose} />
     </div>
   );
 }

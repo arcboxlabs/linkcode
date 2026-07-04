@@ -36,3 +36,9 @@ export const PANEL_WINDOW_ICONS: Record<PanelWindowType, React.ReactNode> = {
   browser: <GlobeIcon />,
   files: <FilesIcon />,
 };
+
+/** Shared tab recipe: the active/inactive halves of every panel tab button's className. */
+export const PANEL_TAB_ACTIVE_CLASSNAME =
+  'border-border bg-card font-semibold text-foreground shadow-xs';
+export const PANEL_TAB_INACTIVE_CLASSNAME =
+  'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground';
