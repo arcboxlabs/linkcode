@@ -3,7 +3,7 @@ import { Badge } from 'coss-ui/components/badge';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { GitBranchIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { cn } from '../../lib/cn';
+import { GitCardShell } from './git-card-shell';
 
 type RepoGitStatus = Extract<GitStatus, { isRepo: true }>;
 
@@ -17,9 +17,7 @@ export function GitBranchSummary({
   const t = useTranslations('workbench.git');
 
   return (
-    <div
-      className={cn('flex flex-col gap-2 rounded-lg border border-border bg-card p-3', className)}
-    >
+    <GitCardShell className={className}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 truncate font-medium">{status.branch ?? t('detachedHead')}</span>
@@ -42,17 +40,15 @@ export function GitBranchSummary({
           ? `${status.remote.identity.owner}/${status.remote.identity.repo}`
           : t('noRemote')}
       </div>
-    </div>
+    </GitCardShell>
   );
 }
 
 export function GitBranchSummarySkeleton({ className }: { className?: string }): React.ReactNode {
   return (
-    <div
-      className={cn('flex flex-col gap-2 rounded-lg border border-border bg-card p-3', className)}
-    >
+    <GitCardShell className={className}>
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-3 w-24" />
-    </div>
+    </GitCardShell>
   );
 }

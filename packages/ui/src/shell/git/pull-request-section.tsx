@@ -7,6 +7,7 @@ import { Badge } from 'coss-ui/components/badge';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
+import { GitCardShell } from './git-card-shell';
 
 export function GitPullRequestSection({
   pullRequest,
@@ -54,9 +55,7 @@ function GitPullRequestCard({
   const tReviewDecision = useTranslations('workbench.git.reviewDecision');
 
   return (
-    <div
-      className={cn('flex flex-col gap-2 rounded-lg border border-border bg-card p-3', className)}
-    >
+    <GitCardShell className={className}>
       <div className="flex items-start gap-2">
         <a
           href={pullRequest.url}
@@ -75,7 +74,7 @@ function GitPullRequestCard({
         <span>{tChecksState(pullRequest.checks)}</span>
         <span>{tReviewDecision(pullRequest.reviewDecision)}</span>
       </div>
-    </div>
+    </GitCardShell>
   );
 }
 
@@ -138,11 +137,9 @@ function GitNoPullRequestNotice({ className }: { className?: string }): React.Re
 
 function GitPullRequestSectionSkeleton({ className }: { className?: string }): React.ReactNode {
   return (
-    <div
-      className={cn('flex flex-col gap-2 rounded-lg border border-border bg-card p-3', className)}
-    >
+    <GitCardShell className={className}>
       <Skeleton className="h-4 w-48" />
       <Skeleton className="h-3 w-32" />
-    </div>
+    </GitCardShell>
   );
 }
