@@ -1,7 +1,8 @@
 import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
 import { noop } from 'foxact/noop';
+import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { clamp } from 'foxts/clamp';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   PromptInput,
@@ -155,7 +156,11 @@ export function Composer({
     if (!computeMenu(nextValue, nextCaret)) setDismissedStart(null);
   }
 
-  useEffect(() => {
+  // Layout effect (not a passive one) so the caret lands before paint — a mention insertion
+  // must never flash the old caret position for a frame. Deliberately no dependency array: it
+  // checks the pendingCaretRef command imperatively on every render rather than reacting to a
+  // dependency, so it fires exactly once per render that actually set the ref.
+  useLayoutEffect(() => {
     if (pendingCaretRef.current !== null && textareaRef.current) {
       const pos = pendingCaretRef.current;
       textareaRef.current.focus();
