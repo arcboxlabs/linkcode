@@ -3,6 +3,7 @@ export * from './agent-models';
 export * from './composer';
 export * from './conversation-surface';
 export * from './error-banner';
+export * from './new-session-surface';
 export * from './session-sidebar';
 export * from './shell-control';
 export * from './shell-frame';
