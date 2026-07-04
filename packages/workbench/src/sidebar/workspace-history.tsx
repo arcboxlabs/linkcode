@@ -18,12 +18,10 @@ function useWorkspaceHistory(cwd: string, onImported: (sessionId: SessionId) => 
   const importMutation = useMutation(importSession);
   const [importingHistoryId, setImportingHistoryId] = useState<string | null>(null);
 
-  const entries = [
-    ...(claudeCode.data?.sessions ?? []),
-    ...(codex.data?.sessions ?? []),
-    ...(opencode.data?.sessions ?? []),
-    ...(pi.data?.sessions ?? []),
-  ].sort((a, b) => (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0));
+  const results = [claudeCode, codex, opencode, pi];
+  const entries = results
+    .flatMap((result) => result.data?.sessions ?? [])
+    .sort((a, b) => (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0));
 
   function importEntry(entry: AgentHistorySession): void {
     setImportingHistoryId(entry.historyId);
@@ -34,14 +32,9 @@ function useWorkspaceHistory(cwd: string, onImported: (sessionId: SessionId) => 
       .finally(() => setImportingHistoryId(null));
   }
 
-  const isLoading = claudeCode.isLoading || codex.isLoading || opencode.isLoading || pi.isLoading;
+  const isLoading = results.some((result) => result.isLoading);
   const loadFailed =
-    entries.length === 0 &&
-    !isLoading &&
-    claudeCode.error != null &&
-    codex.error != null &&
-    opencode.error != null &&
-    pi.error != null;
+    entries.length === 0 && !isLoading && results.every((result) => result.error != null);
 
   return {
     entries,
