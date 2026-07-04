@@ -318,4 +318,16 @@ export const en = {
       back: 'Back',
     },
   },
+  dataTable: {
+    clearSorting: 'Clear sorting',
+    sortDescending: 'Sort descending',
+    sortAscending: 'Sort ascending',
+  },
+  pagination: {
+    perPage: 'per page',
+    viewing: 'Viewing',
+    of: 'of',
+    selectPageSize: 'Select page size',
+    selectResultRange: 'Select result range',
+  },
 } as const satisfies LocaleMessages;
