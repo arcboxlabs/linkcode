@@ -1,4 +1,4 @@
-import type { AgentKind, SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type { AgentKind, SessionId, WorkspaceRecord } from '@linkcode/schema';
 import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
@@ -27,7 +27,7 @@ import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from './repository-label';
 import { ShellSidebar, shellSidebarItemClassName } from './shell-sidebar';
-import type { BranchStatusComponentType } from './sidebar';
+import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
 import { AgentKindList } from './sidebar';
 import type { ThreadGroupViewModel } from './threads-view';
 import { ThreadsView } from './threads-view';
@@ -35,19 +35,13 @@ import { ThreadsView } from './threads-view';
 export { repositoryLabel } from './repository-label';
 export type { ThreadGroupViewModel } from './threads-view';
 
-export interface SessionSidebarProps {
+export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupState {
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
-  activeId: SessionId | null;
-  /** Threads pinned to the top of their group, in pin order. */
-  pinnedSessionIds: readonly SessionId[];
   topInsetClassName?: string;
   footer?: React.ReactNode;
   className?: string;
-  onSelect: (id: SessionId) => void;
-  onStop: (id: SessionId) => void;
-  onToggleSessionPinned: (id: SessionId) => void;
   /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
   onReorderGroups: (orderedCollapseKeys: string[]) => void;
   /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
@@ -57,9 +51,6 @@ export interface SessionSidebarProps {
     overId: SessionId,
     placement: 'before' | 'after',
   ) => void;
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
-  /** Called once a history entry finishes importing as a new thread. */
-  onImportSession?: (sessionId: SessionId) => void;
   /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
   onPickDirectory?: () => Promise<string | null>;
   /** Opens the command palette — the Search entry stays disabled without it. */
@@ -68,16 +59,6 @@ export interface SessionSidebarProps {
   searchShortcut?: string;
   /** Registers a directory as a workspace — the top "New Task" menu and the Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
-  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
-  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
-  onToggleGroupCollapsed: (collapseKey: string) => void;
-  onTogglePreviewExpanded: (groupKey: string) => void;
-  onToggleImportHistory: (groupKey: string) => void;
-  BranchStatusComponent?: BranchStatusComponentType;
-  HistoryComponent?: React.ComponentType<{
-    cwd: string;
-    onImported: (sessionId: SessionId) => void;
-  }>;
 }
 
 const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];

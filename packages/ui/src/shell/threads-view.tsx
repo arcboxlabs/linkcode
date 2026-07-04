@@ -2,18 +2,12 @@ import { move } from '@dnd-kit/helpers';
 import type { DragEndEvent, DragOverEvent } from '@dnd-kit/react';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
-import type {
-  AgentKind,
-  SessionId,
-  SessionInfo,
-  WorkspaceId,
-  WorkspaceRecord,
-} from '@linkcode/schema';
+import type { SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { useTranslations } from 'use-intl';
 import { repositoryLabel } from './repository-label';
-import type { BranchStatusComponentType } from './sidebar';
+import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
 import {
   AddWorkspaceRow,
   ChatsSection,
@@ -42,15 +36,9 @@ export interface ThreadGroupViewModel {
   isChat: boolean;
 }
 
-export interface ThreadsViewProps {
+export interface ThreadsViewProps extends ThreadGroupActions, ThreadGroupState {
   groups: ThreadGroupViewModel[];
   workspacesLoading?: boolean;
-  activeId: SessionId | null;
-  /** Threads pinned to the top of their group, in pin order. */
-  pinnedSessionIds: readonly SessionId[];
-  onSelect: (id: SessionId) => void;
-  onStop: (id: SessionId) => void;
-  onToggleSessionPinned: (id: SessionId) => void;
   /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
   onReorderGroups: (orderedCollapseKeys: string[]) => void;
   /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
@@ -60,20 +48,8 @@ export interface ThreadsViewProps {
     overId: SessionId,
     placement: 'before' | 'after',
   ) => void;
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
-  onImportSession?: (sessionId: SessionId) => void;
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
-  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
-  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
-  onToggleGroupCollapsed: (collapseKey: string) => void;
-  onTogglePreviewExpanded: (groupKey: string) => void;
-  onToggleImportHistory: (groupKey: string) => void;
-  BranchStatusComponent?: BranchStatusComponentType;
-  HistoryComponent?: React.ComponentType<{
-    cwd: string;
-    onImported: (sessionId: SessionId) => void;
-  }>;
 }
 
 /** The sidebar's two sections: "Projects" (the grouped tree) and the flat "Chats" list. */
@@ -242,28 +218,12 @@ function ThreadGroupSection({
   onToggleImportHistory,
   BranchStatusComponent,
   HistoryComponent,
-}: {
-  group: ThreadGroupViewModel;
-  /** The group's index among the rendered project groups — feeds the sortable. */
-  sortIndex: number;
-  activeId: SessionId | null;
-  pinnedSessionIds: readonly SessionId[];
-  onSelect: (id: SessionId) => void;
-  onStop: (id: SessionId) => void;
-  onToggleSessionPinned: (id: SessionId) => void;
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
-  onImportSession?: (sessionId: SessionId) => void;
-  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
-  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
-  onToggleGroupCollapsed: (collapseKey: string) => void;
-  onTogglePreviewExpanded: (groupKey: string) => void;
-  onToggleImportHistory: (groupKey: string) => void;
-  BranchStatusComponent?: BranchStatusComponentType;
-  HistoryComponent?: React.ComponentType<{
-    cwd: string;
-    onImported: (sessionId: SessionId) => void;
-  }>;
-}): React.ReactNode {
+}: ThreadGroupActions &
+  ThreadGroupState & {
+    group: ThreadGroupViewModel;
+    /** The group's index among the rendered project groups — feeds the sortable. */
+    sortIndex: number;
+  }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const { workspace } = group;
   const title = workspace
