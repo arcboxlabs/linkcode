@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceKind, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
-import { noop } from 'foxts/noop';
 import type { WorkspaceStore } from './workspace-store';
 import { InMemoryWorkspaceStore } from './workspace-store';
 
@@ -113,7 +112,9 @@ export class WorkspaceRegistry {
     this.byCwdKey.delete(normalizeCwdKey(record.cwd));
     // Same stance as persist(): best-effort. The in-memory index is already gone either way, and
     // it — not the store — is the source of truth for a running daemon.
-    void Promise.resolve(this.store.delete(workspaceId)).catch(noop);
+    void Promise.resolve(this.store.delete(workspaceId)).catch((err: unknown) => {
+      console.error(`Failed to delete workspace record ${workspaceId}:`, err);
+    });
   }
 
   /**
@@ -151,9 +152,11 @@ export class WorkspaceRegistry {
     this.byCwdKey.set(normalizeCwdKey(record.cwd), record.workspaceId);
   }
 
-  /** Persistence failure is a best-effort noop, same stance as the Engine's session persistence. */
+  /** Persistence failure is best-effort (logged, not surfaced), same stance as the Engine's session persistence. */
   private persist(record: WorkspaceRecord): void {
-    void Promise.resolve(this.store.save(record)).catch(noop);
+    void Promise.resolve(this.store.save(record)).catch((err: unknown) => {
+      console.error(`Failed to persist workspace record ${record.workspaceId}:`, err);
+    });
   }
 
   private nextWorkspaceId(): WorkspaceId {

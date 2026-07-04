@@ -74,8 +74,11 @@ export class Engine {
     await this.workspaces.start();
     await this.transport.connect();
     this.transport.onMessage((msg) => {
-      // TODO: Error reporting (pending confirmation of the Server realtime / perm model, PLAN §10.7).
-      this.handle(msg).catch(noop);
+      // Per-request failures already reply over the wire via tryReply; this is the last-resort
+      // backstop for anything that throws before or outside that path (e.g. a malformed payload).
+      this.handle(msg).catch((err: unknown) => {
+        console.error('Unhandled error while processing message:', err);
+      });
     });
   }
 
@@ -92,8 +95,8 @@ export class Engine {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start': {
-        const opts = applyProviderDefaults(p.opts, this.providerStore.get());
         await this.tryReply(p.clientReqId, async () => {
+          const opts = applyProviderDefaults(p.opts, this.providerStore.get());
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -115,8 +118,10 @@ export class Engine {
             this.sessions.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
+          await session.adapter.send(p.input);
           // Echo the user's prompt into the broadcast stream so every attached client (and any
-          // reconnect) sees the full conversation; ordered before the adapter's reply events.
+          // reconnect) sees the full conversation; ordered after the adapter accepted it — a
+          // rejected send must not leave a "ghost" user message client-side.
           if (p.input.type === 'prompt') {
             this.transport.send(
               createWireMessage({
@@ -127,7 +132,6 @@ export class Engine {
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
           }
-          await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -224,11 +228,11 @@ export class Engine {
         break;
       }
       case 'history.resume': {
-        const startOpts = applyProviderDefaults(
-          { ...p.startOpts, kind: p.agentKind },
-          this.providerStore.get(),
-        );
         await this.tryReply(p.clientReqId, async () => {
+          const startOpts = applyProviderDefaults(
+            { ...p.startOpts, kind: p.agentKind },
+            this.providerStore.get(),
+          );
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -406,16 +410,25 @@ export class Engine {
     const adapter = this.factory(record.kind);
     const session: Session = { adapter, unsub: noop, status: 'starting' };
     session.unsub = adapter.onEvent((event) => {
-      if (event.type === 'status') {
-        session.status = event.status;
-        if (event.status === 'stopped') this.sealCurrentRun(sessionId);
-      } else if (event.type === 'session-ref') {
-        this.bindSessionRef(sessionId, event.historyId);
+      // The adapter invokes this synchronously; an uncaught throw here would bubble out of
+      // whatever triggered the event (the adapter's own internals, in most cases) instead of
+      // staying contained to this session.
+      try {
+        if (event.type === 'status') {
+          session.status = event.status;
+          if (event.status === 'stopped') this.sealCurrentRun(sessionId);
+        } else if (event.type === 'session-ref') {
+          this.bindSessionRef(sessionId, event.historyId);
+        }
+        this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+      } catch (err) {
+        console.error(`Error handling adapter event for session ${sessionId}:`, err);
       }
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
     });
     this.sessions.set(sessionId, session);
     this.records.set(sessionId, record);
+    // persistRecord() never throws (see its doc) — a disk failure here logs and moves on rather
+    // than failing this request or leaving the session registered without a caller-visible error.
     this.persistRecord(record);
     try {
       await startAdapter(adapter);
@@ -469,10 +482,28 @@ export class Engine {
     this.persistRecord(record);
   }
 
+  /**
+   * Persist best-effort: `this.records` (in-memory) is the source of truth for a running daemon,
+   * so a persistence failure is logged, not surfaced to the caller — it must never fail the
+   * request that triggered it (e.g. `session.start`) or unwind a session that is already live.
+   * `sessionStore.save` may throw synchronously (the daemon's drizzle/better-sqlite3 store) or
+   * reject asynchronously; both are caught and logged here.
+   */
   private persistRecord(record: SessionRecord): void {
     record.updatedAt = Date.now();
-    // TODO: Error reporting (same stance as handle(): pending the Server realtime / perm model).
-    void this.sessionStore.save(record).catch(noop);
+    void this.persistRecordSafely(record);
+  }
+
+  /**
+   * `await` inside `try` catches both a synchronous throw (the daemon's drizzle/better-sqlite3
+   * store) and an async rejection with the same catch block, so this never rejects.
+   */
+  private async persistRecordSafely(record: SessionRecord): Promise<void> {
+    try {
+      await this.sessionStore.save(record);
+    } catch (err) {
+      console.error(`Failed to persist session record ${record.sessionId}:`, err);
+    }
   }
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
