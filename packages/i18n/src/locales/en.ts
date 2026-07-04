@@ -5,6 +5,7 @@ export const en = {
     daemonCommand: 'pnpm --filter @linkcode/daemon dev',
   },
   workbench: {
+    pageTitle: 'Workbench',
     connection: {
       connected: 'Connected',
       connecting: 'Connecting to the daemon…',
