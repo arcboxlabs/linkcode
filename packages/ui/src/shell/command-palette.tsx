@@ -141,7 +141,7 @@ function PaletteThreadRow({
         <span
           aria-hidden
           className={cn(
-            'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-popover',
+            'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-popover in-data-highlighted:ring-accent',
             SESSION_STATUS_DOT_CLASS[thread.status],
           )}
         />
