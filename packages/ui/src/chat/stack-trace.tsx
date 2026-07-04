@@ -1,13 +1,13 @@
-import { Button } from 'coss-ui/components/button';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
-import { AlertTriangleIcon, CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react';
+import { AlertTriangleIcon, ChevronRightIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
-import { useCopyButton } from './use-copy-button';
+import type { CopyIconButtonProps } from './copy-icon-button';
+import { CopyIconButton } from './copy-icon-button';
 
 // TODO(linkcode-schema): Provisional UI-only stack trace model, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when test/tool outputs expose structured stack traces.
@@ -208,36 +208,27 @@ export function StackTraceRaw({ className, trace, ...props }: StackTraceRawProps
   );
 }
 
-export type StackTraceCopyButtonProps = React.ComponentProps<typeof Button> & {
+export type StackTraceCopyButtonProps = Omit<
+  CopyIconButtonProps,
+  'value' | 'label' | 'stopPropagation' | 'iconClassName'
+> & {
   trace: string;
-  timeout?: number;
 };
 
 export function StackTraceCopyButton({
   className,
   trace,
-  timeout = 1600,
-  children,
   ...props
 }: StackTraceCopyButtonProps): React.ReactNode {
-  const { copied, copyValue } = useCopyButton(trace, timeout);
-
   return (
-    <Button
-      aria-label={copied ? 'Copied stack trace' : 'Copy stack trace'}
-      className={cn('size-6 shrink-0', className)}
-      onClick={(event) => {
-        event.stopPropagation();
-        copyValue();
-      }}
-      size="icon-xs"
-      type="button"
-      variant="ghost"
+    <CopyIconButton
+      className={cn('shrink-0', className)}
+      iconClassName="size-3.5"
+      label="stack trace"
+      stopPropagation
+      value={trace}
       {...props}
-    >
-      {children ??
-        (copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />)}
-    </Button>
+    />
   );
 }
 
