@@ -148,6 +148,8 @@ minimumReleaseAgeExclude:
   - undici@8.5.0
   - linkify-it@5.0.1
   - tayori@0.3.8
+  - '@arcboxlabs/deviceid-darwin-arm64@0.1.0'
+  - '@arcboxlabs/deviceid@0.1.0'
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
