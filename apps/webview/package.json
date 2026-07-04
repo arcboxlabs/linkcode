@@ -35,7 +35,6 @@
     "react-router": "catalog:",
     "use-intl": "catalog:",
     "zod": "catalog:",
-    "zod-validation-error": "^5.0.0",
     "zustand": "catalog:"
   },
   "devDependencies": {

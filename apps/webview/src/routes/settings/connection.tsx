@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { rhfErrorsToFormErrors } from '@webview/lib/form';
+import { rhfErrorsToFormErrors } from '@linkcode/workbench';
 import { useSettingsStore } from '@webview/settings/store';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from 'coss-ui/components/field';
