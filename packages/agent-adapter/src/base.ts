@@ -65,6 +65,8 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
    * thinking emitted before and after a tool render as separate bubbles instead of merging into one. */
   protected messageId: MessageId = nextMessageId();
   protected thoughtId: MessageId = nextMessageId();
+  /** Per-item cursor for turning a provider's cumulative item text into deltas — see `streamDelta`. */
+  private readonly textDeltaLen = new Map<string, number>();
 
   async start(opts: StartOptions): Promise<void> {
     this.opts = opts;
@@ -174,6 +176,20 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected emitThought(text: string, messageId: MessageId): void {
     if (text.length === 0) return;
     this.emit({ type: 'agent-thought-chunk', messageId, content: textBlock(text) });
+  }
+
+  /**
+   * Convert a provider's cumulative per-item text into an incremental chunk, keyed by `id` (e.g. an
+   * item/part id), and emit it as assistant text or thought depending on `kind`. For providers (Codex,
+   * OpenCode) that report the whole text seen so far on every update rather than the new slice alone.
+   */
+  protected streamDelta(id: string, fullText: string, kind: 'message' | 'thought'): void {
+    const prev = this.textDeltaLen.get(id) ?? 0;
+    if (fullText.length <= prev) return;
+    const delta = fullText.slice(prev);
+    this.textDeltaLen.set(id, fullText.length);
+    if (kind === 'message') this.emitAssistantText(delta, id as MessageId);
+    else this.emitThought(delta, id as MessageId);
   }
 
   /**
