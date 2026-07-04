@@ -232,7 +232,7 @@ export function resolveSidecarPath(): string {
   return '';
 }
 
-function binaryName(): string {
+export function binaryName(): string {
   return process.platform === 'win32' ? 'linkcode-pty.exe' : 'linkcode-pty';
 }
 

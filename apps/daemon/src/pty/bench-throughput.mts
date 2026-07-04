@@ -3,25 +3,15 @@
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import type { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-
-const OPEN = 0x01;
-const OPENED = 0x81;
-const OUTPUT = 0x82;
-const EXIT = 0x83;
-const ERROR = 0x84;
+import { ERROR, EXIT, FrameDecoder, OPEN, OPENED, OUTPUT, writeFrame } from './codec';
+import { binaryName } from './sidecar';
 
 const BYTES = readPositiveInteger('LINKCODE_PTY_BENCH_BYTES', 8 * 1024 * 1024);
 const RUNS = readPositiveInteger('LINKCODE_PTY_BENCH_RUNS', 5);
 const WARMUP_RUNS = readPositiveInteger('LINKCODE_PTY_BENCH_WARMUP_RUNS', 1);
 const COLS = 120;
 const ROWS = 32;
-
-interface Frame {
-  type: number;
-  body: Buffer;
-}
 
 interface NodePtyProcess {
   onData(cb: (data: string) => void): { dispose(): void };
@@ -41,23 +31,6 @@ interface NodePtyModule {
       env: NodeJS.ProcessEnv;
     },
   ): NodePtyProcess;
-}
-
-class FrameDecoder {
-  private carry: Buffer = Buffer.alloc(0);
-
-  feed(chunk: Buffer): Frame[] {
-    this.carry = this.carry.length === 0 ? chunk : Buffer.concat([this.carry, chunk]);
-    const frames: Frame[] = [];
-    while (this.carry.length >= 5) {
-      const total = this.carry.readUInt32LE(0);
-      if (this.carry.length < 4 + total) break;
-      frames.push({ type: this.carry[4], body: Buffer.from(this.carry.subarray(5, 4 + total)) });
-      this.carry = this.carry.subarray(4 + total);
-    }
-    this.carry = Buffer.from(this.carry);
-    return frames;
-  }
 }
 
 async function main(): Promise<void> {
@@ -132,15 +105,21 @@ async function runLinkCodePty(
       const finished = new Promise<number>((resolve, reject) => {
         pending.set(terminalId, { resolve, reject });
       });
-      writeJsonFrame(child.stdin, OPEN, {
-        terminalId,
-        cols: COLS,
-        rows: ROWS,
-        cmd: process.execPath,
-        args: ['-e', workload],
-        cwd,
-        env: {},
-      });
+      writeFrame(
+        child.stdin,
+        OPEN,
+        Buffer.from(
+          JSON.stringify({
+            terminalId,
+            cols: COLS,
+            rows: ROWS,
+            cmd: process.execPath,
+            args: ['-e', workload],
+            cwd,
+            env: {},
+          }),
+        ),
+      );
       const elapsed = (await finished) - started;
       if (run >= 0) results.push(elapsed);
     }
@@ -186,14 +165,6 @@ while (remaining > 0) {
 }`;
 }
 
-function writeJsonFrame(sink: Writable, type: number, value: unknown): void {
-  const body = Buffer.from(JSON.stringify(value));
-  const header = Buffer.allocUnsafe(5);
-  header.writeUInt32LE(body.length + 1, 0);
-  header[4] = type;
-  sink.write(Buffer.concat([header, body]));
-}
-
 async function loadNodePty(): Promise<NodePtyModule | null> {
   try {
     const packageName = 'node-pty';
@@ -223,10 +194,6 @@ function readPositiveInteger(name: string, fallback: number): number {
 
 function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
-}
-
-function binaryName(): string {
-  return process.platform === 'win32' ? 'linkcode-pty.exe' : 'linkcode-pty';
 }
 
 function discardData(data: string): void {
