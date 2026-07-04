@@ -61,6 +61,7 @@ export interface ShellFrameProps {
     onImported: (sessionId: SessionId) => void;
   }>;
   onDismissError?: () => void;
+  onModeChange?: (modeId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
@@ -98,6 +99,7 @@ export function ShellFrame({
   BranchStatusComponent,
   HistoryComponent,
   onDismissError,
+  onModeChange,
   onModelChange,
   onEffortChange,
 }: ShellFrameProps): React.ReactNode {
@@ -152,6 +154,7 @@ export function ShellFrame({
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
+          onModeChange={onModeChange}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}
         />

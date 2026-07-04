@@ -1,6 +1,6 @@
 import type { AgentKind, EffortLevel } from '@linkcode/schema';
-import type { ConversationViewModel } from '../chat';
-import { ConversationView } from '../chat';
+import { ConversationView } from '../chat/conversation-view';
+import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
 import { Composer } from './composer';
 
@@ -20,6 +20,7 @@ export interface ConversationSurfaceProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
+  onModeChange?: (modeId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
@@ -40,6 +41,7 @@ export function ConversationSurface({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onModeChange,
   onModelChange,
   onEffortChange,
 }: ConversationSurfaceProps): React.ReactNode {
@@ -58,6 +60,9 @@ export function ConversationSurface({
           onRespondPermission={onRespondPermission}
         />
       </div>
+      {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) and the
+          approval-policy state/handler (approval-policy.ts) once the daemon exposes them; the
+          composer stubs both lists today. */}
       <Composer
         agentLabel={agentLabel}
         agentKind={agentKind}
@@ -66,6 +71,7 @@ export function ConversationSurface({
         currentModeId={conversation.currentModeId}
         onSend={onSendPrompt}
         onStop={onStopTurn}
+        onModeChange={onModeChange}
         onModelChange={onModelChange}
         onEffortChange={onEffortChange}
       />
