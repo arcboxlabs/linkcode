@@ -5,7 +5,12 @@ import { getPanelChromePlacement, PanelContextualChromePortal } from './chrome-p
 import { PanelContextualControls } from './panel-controls';
 import { SectionTerminalTabStrip } from './section-terminal-tabs';
 import type { PanelSection, PanelSectionTab } from './vocabulary';
-import { PANEL_SECTIONS, PANEL_WINDOW_ICONS } from './vocabulary';
+import {
+  PANEL_SECTIONS,
+  PANEL_TAB_ACTIVE_CLASSNAME,
+  PANEL_TAB_INACTIVE_CLASSNAME,
+  PANEL_WINDOW_ICONS,
+} from './vocabulary';
 
 export interface SectionPanelState {
   open: boolean;
@@ -145,9 +150,7 @@ function SectionTabStrip({
           aria-pressed={section === activeSection}
           className={cn(
             'flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring',
-            section === activeSection
-              ? 'border-border bg-card font-semibold text-foreground shadow-xs'
-              : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+            section === activeSection ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
           )}
           onClick={() => onSelectSection(section)}
         >
