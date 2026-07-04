@@ -14,10 +14,11 @@ import type {
 import type { Unsubscribe } from '@linkcode/transport';
 
 /**
- * AgentAdapter: the unified adapter interface for integrating each coding agent (PLAN §4.2 / §6).
- * One adapter per agent, hiding their differences from the upper layers; no per-SDK branching scattered
- * across the upper layers (PLAN §2.5). Implementations normalize their native events into the zod
- * `AgentEvent` contract (ACP-aligned), and accept the normalized `AgentInput`.
+ * AgentAdapter: the unified adapter interface for integrating each coding agent
+ * (docs/ARCHITECTURE.md#key-contracts). One adapter per agent, hiding their differences from the
+ * upper layers; no per-SDK branching scattered across the upper layers (interface-first,
+ * docs/ARCHITECTURE.md#core-principles). Implementations normalize their native events into the
+ * zod `AgentEvent` contract (ACP-aligned), and accept the normalized `AgentInput`.
  */
 export interface AgentAdapter {
   readonly kind: AgentKind;

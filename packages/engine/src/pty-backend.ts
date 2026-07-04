@@ -1,7 +1,7 @@
 import type { Unsubscribe } from '@linkcode/transport';
 
 /**
- * Host-side PTY boundary (interface-first, PLAN §2.5). The daemon injects a concrete implementation
+ * Host-side PTY boundary (interface-first, docs/ARCHITECTURE.md#core-principles). The daemon injects a concrete implementation
  * (a Rust sidecar); the engine itself carries no native PTY dependency and stays testable against a
  * fake backend. This is the only seam where terminal I/O touches the OS — everything above it (the
  * `TerminalService`, the wire contract) is platform-agnostic.

@@ -13,11 +13,12 @@ export interface WsTransportOptions {
 }
 
 /**
- * WsTransport: remote implementation via a Server tunnel (PLAN §4.4).
+ * WsTransport: remote implementation via a Server tunnel (docs/ARCHITECTURE.md#packages--repo-layout).
  * Reuses the global WebSocket (available in browsers / RN / Node ≥ 22).
  *
- * ❓ Whether serialization details, reconnection, heartbeats, and authentication belong in this layer is still TBD (PLAN §10.6) —
- *    for now this provides only a minimal usable implementation; keep-alive merely passes ping/pong through, with no automatic reconnection.
+ * ❓ Whether serialization details, reconnection, heartbeats, and authentication belong in this layer
+ *    is still TBD (see docs/ARCHITECTURE.md#open-questions) — for now this provides only a minimal
+ *    usable implementation; keep-alive merely passes ping/pong through, with no automatic reconnection.
  */
 export class WsTransport implements Transport {
   private readonly inbound = new Listeners<WireMessage>();

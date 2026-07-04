@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 /**
- * System IPC carries only system / UI capabilities and never carries business data (PLAN §2.3 / §4.5).
+ * System IPC carries only system / UI capabilities and never carries business data
+ * (docs/ARCHITECTURE.md#core-principles, #packages--repo-layout).
  * SystemContext is the injection point for the implementation of these capabilities: the Electron main
  * process provides the real implementation, while the shared contract stays business-free.
  */

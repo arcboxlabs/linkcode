@@ -9,7 +9,7 @@ import { Listeners } from './transport';
  * Outbound (`send`) is **broadcast** to every connected client, so all devices attached to the daemon see
  * the same `agent.event` stream (multi-device view). Inbound from any client is merged into one stream for
  * the Host. Per-client routing of replies is handled by correlation ids in the schema (`replyTo`,
- * `requestId`) — the Hub itself stays connection-agnostic (PLAN §2.6).
+ * `requestId`) — the Hub itself stays connection-agnostic (docs/ARCHITECTURE.md#transport--wire-protocol).
  */
 export class Hub implements Transport {
   private readonly conns = new Set<Transport>();

@@ -5,7 +5,7 @@ import { DesktopSettingsSchema } from '@linkcode/ipc';
 import { app } from 'electron';
 
 /**
- * System-plane desktop settings store (PLAN §2.3): theme / locale / daemon endpoint, persisted as
+ * System-plane desktop settings store (docs/ARCHITECTURE.md#core-principles): theme / locale / daemon endpoint, persisted as
  * JSON under `userData`. Read once into memory at first access; every write re-validates the merged
  * result and persists it. Carries no business data — provider config lives in the daemon (data plane).
  */

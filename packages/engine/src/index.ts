@@ -1,5 +1,6 @@
 /**
- * @linkcode/engine — the local core engine (PLAN §4.1): the "host" that runs the agents.
+ * @linkcode/engine — the local core engine (docs/ARCHITECTURE.md#packages--repo-layout): the "host"
+ * that runs the agents.
  *
  * Manages agent sessions and routes normalized events between the agent adapters (`@linkcode/agent-adapter`) and
  * the client over a transport. The adapter layer lives in its own package; re-exported here for

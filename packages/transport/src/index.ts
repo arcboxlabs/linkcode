@@ -1,5 +1,5 @@
 /**
- * @linkcode/transport — the communication protocol layer (PLAN §4.4).
+ * @linkcode/transport — the communication protocol layer (docs/ARCHITECTURE.md#packages--repo-layout).
  * Local, WebSocket, and Socket.IO implementations share the same Transport abstraction and WireMessage format.
  */
 
