@@ -1,10 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
-import { noop } from 'foxts/noop';
-import { once } from 'foxts/once';
-import type { Transport, Unsubscribe } from './transport';
-import { Listeners } from './transport';
+import { WireConnection } from './transport';
 
 export interface WsTransportOptions {
   url: string;
@@ -20,16 +17,14 @@ export interface WsTransportOptions {
  *    is still TBD (see docs/ARCHITECTURE.md#open-questions) — for now this provides only a minimal
  *    usable implementation; keep-alive merely passes ping/pong through, with no automatic reconnection.
  */
-export class WsTransport implements Transport {
-  private readonly inbound = new Listeners<WireMessage>();
-  private readonly closed = new Listeners<void>();
+export class WsTransport extends WireConnection {
   private ws: WebSocket | null = null;
-  /** Armed once per connection in connect(); closing before the first connect is a no-op. */
-  private emitClosed: () => void = noop;
 
-  constructor(private readonly opts: WsTransportOptions) {}
+  constructor(private readonly opts: WsTransportOptions) {
+    super('WsTransport');
+  }
 
-  connect(): Promise<void> {
+  override connect(): Promise<void> {
     const Impl = nullthrow(
       this.opts.WebSocketImpl ?? getGlobalWebSocket(),
       'WsTransport: no WebSocket implementation available',
@@ -37,11 +32,7 @@ export class WsTransport implements Transport {
 
     const ws = new Impl(this.opts.url);
     this.ws = ws;
-    // foxts `once` prewarms (executes) by default; `false` defers it to the first real close.
-    this.emitClosed = once(() => {
-      this.inbound.clear();
-      this.closed.emit();
-    }, false);
+    this.armClosedListener();
 
     ws.addEventListener('message', (ev: MessageEvent) => {
       let raw: unknown;
@@ -64,23 +55,11 @@ export class WsTransport implements Transport {
     });
   }
 
-  send(msg: WireMessage): void {
+  protected sendBytes(msg: WireMessage): void {
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       throw new Error('WsTransport: socket not open');
     }
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`WsTransport: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.ws.send(JSON.stringify(parsed.data));
-  }
-
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
-    return this.inbound.add(cb);
-  }
-
-  onClose(cb: () => void): Unsubscribe {
-    return this.closed.add(cb);
+    this.ws.send(JSON.stringify(msg));
   }
 
   close(): void {

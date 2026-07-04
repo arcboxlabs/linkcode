@@ -1,11 +1,8 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { noop } from 'foxts/noop';
-import { once } from 'foxts/once';
 import type { ManagerOptions, Socket, SocketOptions } from 'socket.io-client';
 import { io } from 'socket.io-client';
-import type { Transport, Unsubscribe } from './transport';
-import { Listeners } from './transport';
+import { WireConnection } from './transport';
 
 const FRAME_EVENT = 'frame';
 
@@ -20,26 +17,20 @@ export interface SocketIoTransportOptions {
  * Socket.IO stays a product-level carrier here: business semantics are still carried as schema-validated
  * WireMessage frames, so upper layers do not depend on Socket.IO event names.
  */
-export class SocketIoTransport implements Transport {
-  private readonly inbound = new Listeners<WireMessage>();
-  private readonly closed = new Listeners<void>();
+export class SocketIoTransport extends WireConnection {
   private socket: Socket | null = null;
-  /** Armed once per connection in connect(); closing before the first connect is a no-op. */
-  private emitClosed: () => void = noop;
 
-  constructor(private readonly opts: SocketIoTransportOptions) {}
+  constructor(private readonly opts: SocketIoTransportOptions) {
+    super('SocketIoTransport');
+  }
 
-  connect(): Promise<void> {
+  override connect(): Promise<void> {
     const socket = io(this.opts.url, {
       ...this.opts.options,
       autoConnect: false,
     });
     this.socket = socket;
-    // foxts `once` prewarms (executes) by default; `false` defers it to the first real close.
-    this.emitClosed = once(() => {
-      this.inbound.clear();
-      this.closed.emit();
-    }, false);
+    this.armClosedListener();
 
     socket.on(FRAME_EVENT, (raw: unknown) => {
       const parsed = parseWireMessage(raw);
@@ -55,23 +46,11 @@ export class SocketIoTransport implements Transport {
     });
   }
 
-  send(msg: WireMessage): void {
+  protected sendBytes(msg: WireMessage): void {
     if (!this.socket?.connected) {
       throw new Error('SocketIoTransport: socket not connected');
     }
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`SocketIoTransport: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.socket.emit(FRAME_EVENT, parsed.data);
-  }
-
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
-    return this.inbound.add(cb);
-  }
-
-  onClose(cb: () => void): Unsubscribe {
-    return this.closed.add(cb);
+    this.socket.emit(FRAME_EVENT, msg);
   }
 
   close(): void {
