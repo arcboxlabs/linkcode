@@ -16,7 +16,7 @@ export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
 };
 
 const ROW_ACTION_CLASS =
-  'flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
+  'flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
 
 export interface ThreadRowProps {
   session: SessionInfo;
@@ -78,7 +78,7 @@ export function ThreadRow({
           <span
             aria-hidden
             className={cn(
-              'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar',
+              'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar transition-colors',
               SESSION_STATUS_DOT_CLASS[session.status],
             )}
           />
