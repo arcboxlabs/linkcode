@@ -17,6 +17,24 @@ import {
 import { createSessionStore } from './session-store';
 import { createWorkspaceStore } from './workspace-store';
 
+// An uncaught exception means the stack unwound through code that never expected to fail there —
+// the process's state (which sessions are live, what's mid-write) is no longer trustworthy, so it
+// must die loudly rather than keep serving clients from an unknown state.
+process.on('uncaughtException', (err) => {
+  console.error('[linkcode/daemon] uncaught exception:', err);
+  process.exit(1);
+});
+
+// Unlike an uncaught exception, a rejected promise with no handler is usually scoped to whatever
+// async operation produced it (e.g. one session's adapter call) — the rest of the daemon's state
+// stays coherent, so this logs rather than exits. Every fire-and-forget path this ticket touched
+// (session persistence, the adapter event pipe, message handling) already attaches its own
+// `.catch`/try-catch; a rejection surfacing here means one of those was missed and needs fixing,
+// not that the daemon must go down immediately.
+process.on('unhandledRejection', (reason) => {
+  console.error('[linkcode/daemon] unhandled rejection:', reason);
+});
+
 /**
  * Link Code daemon — the standalone local host process.
  *
@@ -116,6 +134,8 @@ async function main(): Promise<void> {
       try {
         removeRuntimeFile();
         await stopAll();
+      } catch (err) {
+        console.error('[linkcode/daemon] error during shutdown:', err);
       } finally {
         process.exit(0);
       }

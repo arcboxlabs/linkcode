@@ -46,12 +46,8 @@ export class Hub implements Transport {
   /** Broadcast to every attached client; one failing connection never blocks the others. */
   send(msg: WireMessage): void {
     for (const conn of this.conns) {
-      try {
-        // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
-        void Promise.resolve(conn.send(msg)).catch(noop);
-      } catch {
-        // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
-      }
+      // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
+      bestEffort(() => conn.send(msg));
     }
   }
 
@@ -66,12 +62,21 @@ export class Hub implements Transport {
   close(): void {
     for (const conn of this.conns) {
       // Closing is best-effort during daemon shutdown.
-      void Promise.resolve(conn.close()).catch(noop);
+      bestEffort(() => conn.close());
     }
     for (const unsub of this.unsubs.values()) unsub();
     this.conns.clear();
     this.unsubs.clear();
     this.inbound.clear();
     this.closed.emit();
+  }
+}
+
+/** Run an operation that may throw synchronously or reject asynchronously, swallowing either. */
+function bestEffort(fn: () => void | Promise<void>): void {
+  try {
+    void Promise.resolve(fn()).catch(noop);
+  } catch {
+    // Best-effort: the caller doesn't need to know.
   }
 }
