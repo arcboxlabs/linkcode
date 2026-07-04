@@ -3,17 +3,21 @@ import type {
   EffortLevel,
   SessionId,
   SessionInfo,
-  WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
-import type { BranchStatusComponentType } from './sidebar';
+import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
 import type { ThreadGroupViewModel } from './threads-view';
 
-export interface ShellFrameProps {
+/** Session/group action field names this shell exposes under its own naming (`onSelectSession`, etc). */
+type RenamedThreadGroupActions = 'onSelect' | 'onStop' | 'onCreate';
+
+export interface ShellFrameProps
+  extends Pick<ThreadGroupActions, Exclude<keyof ThreadGroupActions, RenamedThreadGroupActions>>,
+    Pick<ThreadGroupState, 'pinnedSessionIds'> {
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
@@ -24,11 +28,8 @@ export interface ShellFrameProps {
   respondingPermissions: Set<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
-  /** Threads pinned to the top of their sidebar group, in pin order. */
-  pinnedSessionIds: readonly SessionId[];
   onSelectSession: (id: SessionId) => void;
   onStopSession: (id: SessionId) => void;
-  onToggleSessionPinned: (id: SessionId) => void;
   /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
   onReorderGroups: (orderedCollapseKeys: string[]) => void;
   /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
@@ -39,14 +40,8 @@ export interface ShellFrameProps {
     placement: 'before' | 'after',
   ) => void;
   onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
-  onImportSession?: (sessionId: SessionId) => void;
   /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
-  onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
-  onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
-  onToggleGroupCollapsed: (collapseKey: string) => void;
-  onTogglePreviewExpanded: (groupKey: string) => void;
-  onToggleImportHistory: (groupKey: string) => void;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, optionId: string) => void;
@@ -55,11 +50,6 @@ export interface ShellFrameProps {
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
-  BranchStatusComponent?: BranchStatusComponentType;
-  HistoryComponent?: React.ComponentType<{
-    cwd: string;
-    onImported: (sessionId: SessionId) => void;
-  }>;
   onDismissError?: () => void;
   onModeChange?: (modeId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
