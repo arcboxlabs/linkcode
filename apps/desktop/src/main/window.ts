@@ -1,7 +1,8 @@
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { UPDATER_STATUS_CHANNEL } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
-import { BrowserWindow, ipcMain, nativeTheme } from 'electron';
+import { BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 // electron-vite resolves `?asset` to a runtime file path. Used as the Win/Linux window icon in dev
 // (packaged builds get the real icon from the bundle). macOS uses a separate Dock image set at bootstrap.
@@ -64,8 +65,47 @@ function createWindow(): BrowserWindow {
     });
   });
 
+  // Agent-authored content (e.g. markdown links in chat) can render `<a target="_blank">` to
+  // untrusted URLs. Without a handler Electron opens a new window that inherits the preload —
+  // deny every popup and hand http(s) targets to the OS browser instead.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isHttpUrl(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Same untrusted-link surface via in-page navigation (no target="_blank"): only allow the
+  // renderer to navigate within itself (the dev server origin or the packaged entry file).
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isSelfNavigation(url)) return;
+    event.preventDefault();
+    if (isHttpUrl(url)) void shell.openExternal(url);
+  });
+
   void loadRenderer(win);
   return win;
+}
+
+function isHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** Mirrors {@link loadRenderer}'s allowed targets: the dev server origin, or the packaged entry file. */
+function isSelfNavigation(url: string): boolean {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return false;
+  }
+  const devUrl = process.env.ELECTRON_RENDERER_URL;
+  if (devUrl) return target.origin === new URL(devUrl).origin;
+  const entry = pathToFileURL(join(__dirname, '../renderer/index.html'));
+  return target.protocol === 'file:' && target.pathname === entry.pathname;
 }
 
 async function loadRenderer(win: BrowserWindow): Promise<void> {
