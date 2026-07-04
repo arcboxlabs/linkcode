@@ -10,6 +10,8 @@ export interface WorkbenchSessions {
   /** The resolved active session — derived once here; consumers never re-derive it. */
   active: SessionInfo | null;
   activeId: SessionId | null;
+  /** First load of the session list — the cue for the sidebar to show a skeleton, not an empty state. */
+  isLoading: boolean;
   select: (id: SessionId) => void;
   create: (opts: { kind: AgentKind; cwd: string }) => void;
   stop: (id: SessionId) => void;
@@ -23,7 +25,7 @@ export interface WorkbenchSessions {
  * bookkeeping; mutations just revalidate. Selecting a cold session resumes it in place (same id).
  */
 export function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSessions {
-  const { data: remoteSessions, mutate } = useData(listSessions, {});
+  const { data: remoteSessions, isLoading, mutate } = useData(listSessions, {});
   const createMutation = useMutation(startSession, { onError });
   const stopMutation = useMutation(stopSession, { onError });
   const resumeMutation = useMutation(resumeSession, { onError });
@@ -83,6 +85,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     sessions,
     active,
     activeId,
+    isLoading,
     select,
     create,
     stop,

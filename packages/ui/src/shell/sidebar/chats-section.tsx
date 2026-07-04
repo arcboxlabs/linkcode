@@ -1,5 +1,7 @@
 import type { AgentKind, SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import { Skeleton } from 'coss-ui/components/skeleton';
+import { createFixedArray } from 'foxact/create-fixed-array';
 import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -12,6 +14,8 @@ export interface ChatsSectionProps {
   workspace: WorkspaceRecord | null;
   /** The subset of the chat workspace's sessions to render, honoring preview truncation. */
   sessions: SessionInfo[];
+  /** First load of the session list — renders a row-shaped skeleton instead of the empty hint. */
+  isLoading?: boolean;
   hasOverflow: boolean;
   previewExpanded: boolean;
   /** The group key `onTogglePreviewExpanded` is called with. */
@@ -36,6 +40,7 @@ export interface ChatsSectionProps {
 export function ChatsSection({
   workspace,
   sessions,
+  isLoading,
   hasOverflow,
   previewExpanded,
   groupKey,
@@ -91,6 +96,12 @@ export function ChatsSection({
               onStop={() => onStop(session.sessionId)}
               onTogglePin={() => onToggleSessionPinned(session.sessionId)}
             />
+          ))}
+        </div>
+      ) : isLoading ? (
+        <div className="space-y-0.5">
+          {createFixedArray(3).map((i) => (
+            <Skeleton key={i} className="h-7 w-full rounded-md" />
           ))}
         </div>
       ) : (

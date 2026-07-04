@@ -21,6 +21,8 @@ export interface ShellFrameProps
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
+  /** First load of the session list — the sidebar's "Chats" section shows a skeleton, not the empty hint. */
+  sessionsLoading?: boolean;
   /** Derived once by the workbench surface; shells consume it instead of re-deriving from the list. */
   activeSession: SessionInfo | null;
   conversation: ConversationViewModel;
@@ -60,6 +62,7 @@ export function ShellFrame({
   threadGroups,
   workspaces,
   workspacesLoading,
+  sessionsLoading,
   activeSession,
   conversation,
   answeredPermissions,
@@ -103,6 +106,7 @@ export function ShellFrame({
           threadGroups={threadGroups}
           workspaces={workspaces}
           workspacesLoading={workspacesLoading}
+          sessionsLoading={sessionsLoading}
           activeId={active?.sessionId ?? null}
           pinnedSessionIds={pinnedSessionIds}
           footer={<DefaultHostFooter />}

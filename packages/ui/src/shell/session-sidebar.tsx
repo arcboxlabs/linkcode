@@ -39,6 +39,8 @@ export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupStat
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
+  /** First load of the session list — the "Chats" section shows a skeleton, not the empty hint. */
+  sessionsLoading?: boolean;
   topInsetClassName?: string;
   footer?: React.ReactNode;
   className?: string;
@@ -67,6 +69,7 @@ export function SessionSidebar({
   threadGroups,
   workspaces,
   workspacesLoading,
+  sessionsLoading,
   activeId,
   pinnedSessionIds,
   topInsetClassName,
@@ -121,6 +124,7 @@ export function SessionSidebar({
           <ThreadsView
             groups={threadGroups}
             workspacesLoading={workspacesLoading}
+            sessionsLoading={sessionsLoading}
             activeId={activeId}
             pinnedSessionIds={pinnedSessionIds}
             onSelect={onSelect}

@@ -45,6 +45,7 @@ export function DesktopShell({
   threadGroups,
   workspaces,
   workspacesLoading,
+  sessionsLoading,
   activeSession,
   conversation,
   answeredPermissions,
@@ -465,6 +466,7 @@ export function DesktopShell({
                 threadGroups={threadGroups}
                 workspaces={workspaces}
                 workspacesLoading={workspacesLoading}
+                sessionsLoading={sessionsLoading}
                 activeId={active?.sessionId ?? null}
                 pinnedSessionIds={pinnedSessionIds}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}

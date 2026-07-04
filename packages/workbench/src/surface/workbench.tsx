@@ -296,6 +296,7 @@ function WorkbenchSessionSurface({
       threadGroups={threadGroups}
       workspaces={projectWorkspaces}
       workspacesLoading={workspacesLoading}
+      sessionsLoading={sessions.isLoading}
       activeSession={active}
       conversation={conversation}
       answeredPermissions={answered}
