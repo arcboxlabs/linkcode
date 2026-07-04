@@ -55,8 +55,8 @@ export const zhCN = {
       showMore: '显示其余 {count} 个文件',
       showLess: '收起文件',
     },
-    plan: {
-      title: '计划',
+    step: {
+      title: '步骤',
       progress: '{current}/{total}',
     },
     permission: {

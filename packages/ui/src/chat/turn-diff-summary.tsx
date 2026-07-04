@@ -72,7 +72,7 @@ function FileRow({ file }: { file: TurnFileEdit }): React.ReactNode {
 
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="min-w-0 flex-1 truncate font-mono text-sm text-ellipsis">
+      <span className="min-w-0 flex-1 truncate text-sm text-ellipsis">
         <span className="text-muted-foreground">{file.path.slice(0, basenameStart)}</span>
         <span className="text-foreground">{file.path.slice(basenameStart)}</span>
       </span>

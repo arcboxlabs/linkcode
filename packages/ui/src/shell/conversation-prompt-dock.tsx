@@ -1,9 +1,9 @@
 import type { PermissionOption } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
-import { ChevronLeftIcon, ChevronRightIcon, ListTodoIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { CircularProgress } from '../chat/circular-progress';
 import { keyedItems, stableContentKey } from '../chat/content-keys';
 import type {
   CurrentPlan,
@@ -16,9 +16,9 @@ import {
   selectPendingPermissionItems,
 } from '../chat/conversation-prompts';
 import { PermissionCard } from '../chat/permission-card';
-import { Plan, PlanContent, PlanHeader, PlanItem } from '../chat/plan';
-import { Shimmer } from '../chat/shimmer';
+import { Step, StepContent, StepHeader, StepItem } from '../chat/step';
 import type { ConversationViewModel } from '../chat/types';
+import { cn } from '../lib/cn';
 
 /** Actionable prompts pinned above the composer: the current plan and pending permission asks. */
 export function ConversationPromptDock({
@@ -50,37 +50,45 @@ export function ConversationPromptDock({
             onRespondPermission={onRespondPermission}
           />
         ) : null}
-        {plan ? <PlanPromptRow plan={plan} /> : null}
+        {plan ? <StepPromptRow plan={plan} /> : null}
       </div>
     </div>
   );
 }
 
-function PlanPromptRow({ plan }: { plan: CurrentPlan }): React.ReactNode {
-  const t = useTranslations('workbench.plan');
+function StepPromptRow({ plan }: { plan: CurrentPlan }): React.ReactNode {
+  const t = useTranslations('workbench.step');
   const entry = plan.item.plan.entries[plan.currentIndex];
 
   return (
-    <Plan className="my-0 px-3 py-1.5" defaultOpen={false}>
-      <PlanHeader title={t('title')}>
-        <ListTodoIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="shrink-0">{t('title')}</span>
-        <span className="min-w-0 flex-1 truncate font-normal text-muted-foreground">
-          {plan.complete ? entry.content : <Shimmer>{entry.content}</Shimmer>}
+    <Step className="my-0 px-3 py-1.5" defaultOpen={false}>
+      <StepHeader title={t('title')}>
+        <CircularProgress
+          className="size-3.5 shrink-0 text-muted-foreground"
+          value={plan.currentIndex + 1}
+          max={plan.total}
+        />
+        <span className="shrink-0">
+          {t('title')} {t('progress', { current: plan.currentIndex + 1, total: plan.total })}
         </span>
-        <Badge size="sm" variant={plan.complete ? 'success' : 'secondary'}>
-          {t('progress', { current: plan.currentIndex + 1, total: plan.total })}
-        </Badge>
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate font-normal text-muted-foreground',
+            plan.complete && 'text-muted-foreground line-through',
+          )}
+        >
+          {entry.content}
+        </span>
         <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
-      </PlanHeader>
-      <PlanContent>
+      </StepHeader>
+      <StepContent>
         {keyedItems(plan.item.plan.entries, stableContentKey).map(({ key, item }) => (
-          <PlanItem key={key} status={item.status}>
+          <StepItem key={key} status={item.status}>
             {item.content}
-          </PlanItem>
+          </StepItem>
         ))}
-      </PlanContent>
-    </Plan>
+      </StepContent>
+    </Step>
   );
 }
 
@@ -93,7 +101,10 @@ function PermissionPrompt({
   respondingPermissions: ReadonlySet<string>;
   onRespondPermission: (requestId: string, option: PermissionOption) => void;
 }): React.ReactNode {
-  const [cursor, setCursor] = useState<PermissionPageCursor>({ requestId: null, index: 0 });
+  const [cursor, setCursor] = useState<PermissionPageCursor>({
+    requestId: null,
+    index: 0,
+  });
   const pageIndex = resolvePermissionPageIndex(items, cursor);
   const item = items[pageIndex];
 

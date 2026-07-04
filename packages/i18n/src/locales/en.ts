@@ -57,8 +57,8 @@ export const en = {
       showMore: 'Show {count, plural, one {# more file} other {# more files}}',
       showLess: 'Collapse files',
     },
-    plan: {
-      title: 'Plan',
+    step: {
+      title: 'Step',
       progress: '{current}/{total}',
     },
     permission: {

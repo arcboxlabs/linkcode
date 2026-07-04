@@ -12,9 +12,9 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 
-export type PlanProps = React.ComponentProps<typeof Collapsible>;
+export type StepProps = React.ComponentProps<typeof Collapsible>;
 
-export function Plan({ className, defaultOpen = true, ...props }: PlanProps): React.ReactNode {
+export function Step({ className, defaultOpen = true, ...props }: StepProps): React.ReactNode {
   return (
     <Collapsible
       className={cn('my-1 rounded-xl border border-border bg-card p-3', className)}
@@ -24,16 +24,16 @@ export function Plan({ className, defaultOpen = true, ...props }: PlanProps): Re
   );
 }
 
-export type PlanHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & {
+export type StepHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   title: string;
 };
 
-export function PlanHeader({
+export function StepHeader({
   className,
   title,
   children,
   ...props
-}: PlanHeaderProps): React.ReactNode {
+}: StepHeaderProps): React.ReactNode {
   return (
     <CollapsibleTrigger
       className={cn(
@@ -53,27 +53,27 @@ export function PlanHeader({
   );
 }
 
-export type PlanContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type StepContentProps = React.ComponentProps<typeof CollapsibleContent>;
 
-export function PlanContent({ className, ...props }: PlanContentProps): React.ReactNode {
+export function StepContent({ className, ...props }: StepContentProps): React.ReactNode {
   return <CollapsibleContent className={cn('mt-2', className)} {...props} />;
 }
 
-export type PlanItemStatus = 'pending' | 'in_progress' | 'completed';
+export type StepItemStatus = 'pending' | 'in_progress' | 'completed';
 
-export type PlanItemProps = React.ComponentProps<'div'> & {
-  status: PlanItemStatus;
+export type StepItemProps = React.ComponentProps<'div'> & {
+  status: StepItemStatus;
 };
 
-export function PlanItem({
+export function StepItem({
   className,
   status,
   children,
   ...props
-}: PlanItemProps): React.ReactNode {
+}: StepItemProps): React.ReactNode {
   return (
     <div className={cn('flex items-center gap-2 py-0.5 text-sm', className)} {...props}>
-      <PlanItemIcon status={status} />
+      <StepItemIcon status={status} />
       <span
         className={cn('flex-1', status === 'completed' && 'text-muted-foreground line-through')}
       >
@@ -83,12 +83,14 @@ export function PlanItem({
   );
 }
 
-function PlanItemIcon({ status }: { status: PlanItemStatus }): React.ReactNode {
+function StepItemIcon({ status }: { status: StepItemStatus }): React.ReactNode {
   switch (status) {
     case 'pending':
       return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground/60" />;
     case 'in_progress':
-      return <CircleDashedIcon className="size-3.5 shrink-0 text-warning-foreground" />;
+      return (
+        <CircleDashedIcon className="size-3.5 shrink-0 text-warning-foreground animate-spin" />
+      );
     case 'completed':
       return <CircleCheckIcon className="size-3.5 shrink-0 text-success-foreground" />;
     default:
