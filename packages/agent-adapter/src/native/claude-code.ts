@@ -20,7 +20,6 @@ import type {
   AgentHistorySession,
   ContentBlock,
   EffortLevel,
-  MessageId,
   PermissionOption,
   StartOptions,
   StopReason,
@@ -30,7 +29,6 @@ import type {
 import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
-import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -159,10 +157,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
-  /** Current segment's ids, refreshed each turn and after every tool call so text / thinking emitted
-   * before and after a tool render as separate bubbles instead of merging into one. */
-  private messageId: MessageId = nextMessageId();
-  private thoughtId: MessageId = nextMessageId();
 
   protected async onStart(): Promise<void> {
     // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
@@ -224,8 +218,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     const opts = nullthrow(this.opts, 'claude-code: session not started');
-    this.messageId = nextMessageId();
-    this.thoughtId = nextMessageId();
+    this.freshSegment();
     this.emitStatus('running');
     const message: SDKUserMessage = {
       type: 'user',
@@ -444,10 +437,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
     // A tool call closes this assistant segment; text Claude streams after the tool_result groups into a
     // fresh bubble rather than merging with the pre-tool narration.
-    if (calledTool) {
-      this.messageId = nextMessageId();
-      this.thoughtId = nextMessageId();
-    }
+    if (calledTool) this.freshSegment();
   }
 
   /**

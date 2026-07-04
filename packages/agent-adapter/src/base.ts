@@ -26,7 +26,7 @@ import type { Unsubscribe } from '@linkcode/transport';
 import { Listeners } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { AgentAdapter } from './adapter';
-import { nextRequestId } from './adapter';
+import { nextMessageId, nextRequestId } from './adapter';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
 
@@ -61,6 +61,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   private readonly pending = new Map<string, PermissionResolver>();
   /** Running tool-call snapshots, keyed by toolCallId — the source for `emitTool`'s full-snapshot emits. */
   private readonly toolCalls = new Map<string, ToolCall>();
+  /** Current segment's ids, refreshed via `freshSegment()` at each turn/tool boundary so text /
+   * thinking emitted before and after a tool render as separate bubbles instead of merging into one. */
+  protected messageId: MessageId = nextMessageId();
+  protected thoughtId: MessageId = nextMessageId();
 
   async start(opts: StartOptions): Promise<void> {
     this.opts = opts;
@@ -152,6 +156,13 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected emitStatus(status: SessionStatus): void {
     this.emit({ type: 'status', status });
+  }
+  /** Opens a fresh message/thought segment: call at a turn boundary (prompt start) and after every
+   * tool call so narration emitted after renders as a new bubble instead of merging with what came
+   * before it. */
+  protected freshSegment(): void {
+    this.messageId = nextMessageId();
+    this.thoughtId = nextMessageId();
   }
   protected emitAssistantText(text: string, messageId: MessageId): void {
     if (text.length === 0) return;

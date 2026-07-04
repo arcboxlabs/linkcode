@@ -46,31 +46,72 @@ function claudeTextDelta(text: string): object {
   };
 }
 
-describe('PiAdapter message grouping', () => {
+/** Drives an adapter's narration/tool events through equivalent scenarios so the shared
+ * fresh-segment-after-a-tool-call contract (`BaseAgentAdapter#freshSegment`) can be exercised once
+ * against every adapter that implements it, instead of duplicating the scenario per adapter. */
+interface AdapterDriver {
+  seen: AgentEvent[];
+  text(delta: string): void;
+  toolCall(): void;
+}
+
+function piDriver(): AdapterDriver {
+  const adapter = new TestPi();
+  const seen = record(adapter);
+  adapter.feed({ type: 'agent_start' });
+  return {
+    seen,
+    text: (delta) =>
+      adapter.feed({
+        type: 'message_update',
+        assistantMessageEvent: { type: 'text_delta', delta },
+      }),
+    toolCall() {
+      adapter.feed({ type: 'tool_execution_start', toolCallId: 't1', toolName: 'read', args: {} });
+      adapter.feed({ type: 'tool_execution_end', toolCallId: 't1', isError: false, result: 'ok' });
+    },
+  };
+}
+
+function claudeDriver(): AdapterDriver {
+  const adapter = new TestClaude();
+  const seen = record(adapter);
+  return {
+    seen,
+    text: (delta) => adapter.feed(claudeTextDelta(delta)),
+    toolCall() {
+      adapter.feed({
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] },
+      });
+      adapter.feed({
+        type: 'user',
+        message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
+      });
+    },
+  };
+}
+
+describe.each([
+  { name: 'PiAdapter', make: piDriver },
+  { name: 'ClaudeCodeAdapter', make: claudeDriver },
+])('$name message grouping', ({ make }) => {
   it('opens a fresh messageId for narration after a tool call', () => {
-    const adapter = new TestPi();
-    const seen = record(adapter);
+    const driver = make();
+    driver.text('before');
+    driver.toolCall();
+    driver.text('after');
 
-    adapter.feed({ type: 'agent_start' });
-    adapter.feed({
-      type: 'message_update',
-      assistantMessageEvent: { type: 'text_delta', delta: 'before' },
-    });
-    adapter.feed({ type: 'tool_execution_start', toolCallId: 't1', toolName: 'read', args: {} });
-    adapter.feed({ type: 'tool_execution_end', toolCallId: 't1', isError: false, result: 'ok' });
-    adapter.feed({
-      type: 'message_update',
-      assistantMessageEvent: { type: 'text_delta', delta: 'after' },
-    });
-
-    const chunks = agentChunks(seen);
+    const chunks = agentChunks(driver.seen);
     expect(chunks.map((c) => c.content)).toEqual([
       { type: 'text', text: 'before' },
       { type: 'text', text: 'after' },
     ]);
     expect(chunks[0].messageId).not.toBe(chunks[1].messageId);
   });
+});
 
+describe('PiAdapter message grouping', () => {
   it('keeps consecutive narration (no tool between) under one messageId', () => {
     const adapter = new TestPi();
     const seen = record(adapter);
@@ -88,30 +129,5 @@ describe('PiAdapter message grouping', () => {
     const chunks = agentChunks(seen);
     expect(chunks).toHaveLength(2);
     expect(chunks[0].messageId).toBe(chunks[1].messageId);
-  });
-});
-
-describe('ClaudeCodeAdapter message grouping', () => {
-  it('opens a fresh messageId for narration after a tool_use', () => {
-    const adapter = new TestClaude();
-    const seen = record(adapter);
-
-    adapter.feed(claudeTextDelta('before'));
-    adapter.feed({
-      type: 'assistant',
-      message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] },
-    });
-    adapter.feed({
-      type: 'user',
-      message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
-    });
-    adapter.feed(claudeTextDelta('after'));
-
-    const chunks = agentChunks(seen);
-    expect(chunks.map((c) => c.content)).toEqual([
-      { type: 'text', text: 'before' },
-      { type: 'text', text: 'after' },
-    ]);
-    expect(chunks[0].messageId).not.toBe(chunks[1].messageId);
   });
 });

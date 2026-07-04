@@ -1,7 +1,6 @@
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import type { ContentBlock, MessageId, StartOptions } from '@linkcode/schema';
+import type { ContentBlock, StartOptions } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
-import { nextMessageId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { contentToText, toolKindFromName } from '../util';
 
@@ -15,10 +14,6 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
-  /** Current segment's ids, refreshed each turn and at every tool boundary so text / thinking emitted
-   * before and after a tool render as separate bubbles instead of merging into one. */
-  private messageId: MessageId = nextMessageId();
-  private thoughtId: MessageId = nextMessageId();
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const pi = await this.loadSdk(
@@ -81,8 +76,7 @@ export class PiAdapter extends BaseAgentAdapter {
     switch (ev.type) {
       case 'agent_start':
         // Fresh ids at the turn start; a tool boundary later opens the next segment (see below).
-        this.messageId = nextMessageId();
-        this.thoughtId = nextMessageId();
+        this.freshSegment();
         this.emitStatus('running');
         break;
       case 'agent_end':
@@ -104,8 +98,7 @@ export class PiAdapter extends BaseAgentAdapter {
           rawInput: ev.args,
         });
         // The tool closes the current segment; narration after it groups into a new bubble.
-        this.messageId = nextMessageId();
-        this.thoughtId = nextMessageId();
+        this.freshSegment();
         break;
       case 'tool_execution_end':
         this.emitTool({
