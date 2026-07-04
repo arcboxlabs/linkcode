@@ -11,6 +11,7 @@ import {
 import { cn } from 'coss-ui/lib/utils';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
+import { useTranslations } from 'use-intl';
 import type { TableDefinition } from './core/create-table';
 import { createTableRender } from './core/table-render';
 import type { SortDirection } from './core/types';
@@ -46,9 +47,12 @@ const SORT_ICON: Record<SortDirection, React.ReactNode> = {
   desc: <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />,
 };
 
-function getSortTitle(next: SortDirection | undefined): string {
-  if (next === undefined) return 'Clear sorting';
-  return next === 'desc' ? 'Sort descending' : 'Sort ascending';
+function getSortTitle(
+  next: SortDirection | undefined,
+  t: ReturnType<typeof useTranslations>,
+): string {
+  if (next === undefined) return t('clearSorting');
+  return next === 'desc' ? t('sortDescending') : t('sortAscending');
 }
 
 interface DataTableProps<TData> {
@@ -88,6 +92,7 @@ export function DataTable<TData>({
   fill = false,
   onRowClick,
 }: DataTableProps<TData>) {
+  const t = useTranslations('dataTable');
   // derived pagination view: only the state hook lives at the call site (the
   // fetch key reads it); the render derivation is DataTable's own concern
   const paginationRender = usePaginationRender({
@@ -130,7 +135,7 @@ export function DataTable<TData>({
                         onKeyDown={sortHandler}
                         role="button"
                         tabIndex={0}
-                        title={getSortTitle(sort.nextSortDirection)}
+                        title={getSortTitle(sort.nextSortDirection, t)}
                       >
                         {column.header}
                         {sort.sortDirection ? SORT_ICON[sort.sortDirection] : null}

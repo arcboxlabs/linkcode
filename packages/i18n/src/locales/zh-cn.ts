@@ -314,6 +314,18 @@ export const zhCN = {
       back: '返回',
     },
   },
+  dataTable: {
+    clearSorting: '取消排序',
+    sortDescending: '按降序排序',
+    sortAscending: '按升序排序',
+  },
+  pagination: {
+    perPage: '每页',
+    viewing: '显示',
+    of: '共',
+    selectPageSize: '选择每页数量',
+    selectResultRange: '选择结果范围',
+  },
 } as const;
 
 type WidenMessages<T> = {

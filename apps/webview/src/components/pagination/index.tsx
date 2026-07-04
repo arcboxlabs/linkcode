@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from 'coss-ui/components/select';
 import { useMemo } from 'react';
+import { useTranslations } from 'use-intl';
 import type { PaginationRender } from './use-pagination-render';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -27,6 +28,7 @@ interface PaginationFooterProps {
 }
 
 export function PaginationFooter({ pagination, rowNoun = 'results' }: PaginationFooterProps) {
+  const t = useTranslations('pagination');
   const {
     pageIndex,
     pageSize,
@@ -63,7 +65,7 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
             }}
             value={pageSize}
           >
-            <SelectTrigger aria-label="Select page size" className="w-fit min-w-none" size="sm">
+            <SelectTrigger aria-label={t('selectPageSize')} className="w-fit min-w-none" size="sm">
               <SelectValue />
             </SelectTrigger>
             <SelectPopup>
@@ -74,10 +76,10 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
               ))}
             </SelectPopup>
           </Select>
-          <p>per page</p>
+          <p>{t('perPage')}</p>
         </div>
         <div className="flex items-center gap-2 whitespace-nowrap">
-          <p>Viewing</p>
+          <p>{t('viewing')}</p>
           <Select
             items={pageRangeItems}
             onValueChange={(value) => {
@@ -85,7 +87,11 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
             }}
             value={pageIndex}
           >
-            <SelectTrigger aria-label="Select result range" className="w-fit min-w-none" size="sm">
+            <SelectTrigger
+              aria-label={t('selectResultRange')}
+              className="w-fit min-w-none"
+              size="sm"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectPopup>
@@ -97,7 +103,7 @@ export function PaginationFooter({ pagination, rowNoun = 'results' }: Pagination
             </SelectPopup>
           </Select>
           <p>
-            of <strong className="font-medium text-foreground">{rowCount}</strong> {rowNoun}
+            {t('of')} <strong className="font-medium text-foreground">{rowCount}</strong> {rowNoun}
           </p>
         </div>
       </div>
