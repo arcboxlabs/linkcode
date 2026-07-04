@@ -13,7 +13,12 @@ import {
   setModel,
   updateWorkspace,
 } from '@linkcode/sdk';
-import type { PermissionDecision, ThreadGroupViewModel } from '@linkcode/ui';
+import type {
+  NewSessionDraft,
+  NewSessionSubmission,
+  PermissionDecision,
+  ThreadGroupViewModel,
+} from '@linkcode/ui';
 import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
@@ -30,6 +35,7 @@ import { useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
 import { useWorkspaces } from '../workspace/hooks';
+import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import { useSeededConversation } from './use-seeded-conversation';
@@ -122,6 +128,9 @@ function WorkbenchSessionSurface({
   const threadOrder = useSidebarOrderStore((state) => state.threadOrder);
   const setGroupOrder = useSidebarOrderStore((state) => state.setGroupOrder);
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
+  const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
+  const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
+  const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
@@ -172,6 +181,20 @@ function WorkbenchSessionSurface({
     if (!sessions.activeId) return;
     onClearError();
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
+  }
+
+  async function handleSubmitDraft(submission: NewSessionSubmission): Promise<void> {
+    onClearError();
+    // Rejections propagate so the new-session page stays up; the error banner reports them.
+    const sessionId = await sessions.create({
+      kind: submission.kind,
+      cwd: submission.cwd,
+      model: submission.model,
+      modeId: submission.modeId,
+    });
+    rememberNewSessionDefaults(submission.kind, submission.workspaceId);
+    // The first prompt rides behind the started session, like any conversation send.
+    void promptMutation.trigger({ sessionId, text: submission.prompt }).catch(noop);
   }
 
   function handleModeChange(modeId: string): Promise<void> {
@@ -257,11 +280,32 @@ function WorkbenchSessionSurface({
   }
 
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
-  // group) — excluded from the picker every other workspace-selection flow (New Task, Add
-  // workspace, per-group New thread) offers.
-  const projectWorkspaces = (workspaces ?? []).filter(
+  // group) — split out so the new-session picker offers it as its own "Chat" entry.
+  const allWorkspaces = workspaces ?? [];
+  const chatWorkspace =
+    allWorkspaces.find((workspace) => workspaceKind(workspace) === 'chat') ?? null;
+  const projectWorkspaces = allWorkspaces.filter(
     (workspace) => workspaceKind(workspace) !== 'chat',
   );
+
+  // Resolve the draft's initial picks: an explicit preselection (group "+", Chats "+") wins, then
+  // the persisted last-used workspace (if it still exists), then chat, then the first project.
+  const persistedWorkspaceId =
+    lastWorkspaceId != null &&
+    allWorkspaces.some((workspace) => workspace.workspaceId === lastWorkspaceId)
+      ? lastWorkspaceId
+      : null;
+  const draft: NewSessionDraft | null = sessions.draft
+    ? {
+        initialWorkspaceId:
+          sessions.draft.workspaceId ??
+          persistedWorkspaceId ??
+          chatWorkspace?.workspaceId ??
+          projectWorkspaces[0]?.workspaceId ??
+          null,
+        initialProvider: lastProvider ?? 'claude-code',
+      }
+    : null;
 
   function handleRespond(requestId: string, decision: PermissionDecision): void {
     if (!sessions.activeId) return;
@@ -291,7 +335,9 @@ function WorkbenchSessionSurface({
       threadGroups={threadGroups}
       workspaces={projectWorkspaces}
       workspacesLoading={workspacesLoading}
+      chatWorkspace={chatWorkspace}
       activeSession={active}
+      draft={draft}
       conversation={conversation}
       permissionDecisions={permissionDecisions}
       respondingPermissions={responding}
@@ -307,7 +353,8 @@ function WorkbenchSessionSurface({
       onToggleSessionPinned={toggleSessionPinned}
       onReorderGroups={handleReorderGroups}
       onReorderThreads={handleReorderThreads}
-      onCreateSession={sessions.create}
+      onStartDraft={sessions.startDraft}
+      onSubmitDraft={handleSubmitDraft}
       onImportSession={handleImportedSession}
       onRegisterWorkspace={handleRegisterWorkspace}
       onRenameWorkspace={handleRenameWorkspace}

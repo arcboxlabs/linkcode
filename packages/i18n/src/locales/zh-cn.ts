@@ -192,8 +192,6 @@ export const zhCN = {
       pinThread: '置顶线程',
       unpinThread: '取消置顶',
       stopThread: '停止线程',
-      workspaceEmptyTitle: '暂无工作区',
-      chooseWorkspaceTitle: '选择工作区',
       chooseDirectory: '选择目录…',
       registerWorkspaceError: '添加工作区失败：{message}',
       importHistoryTitle: '导入历史记录',

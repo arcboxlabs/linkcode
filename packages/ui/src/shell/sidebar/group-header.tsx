@@ -1,4 +1,4 @@
-import type { AgentKind, WorkspaceRecord } from '@linkcode/schema';
+import type { WorkspaceRecord } from '@linkcode/schema';
 import {
   AlertDialog,
   AlertDialogClose,
@@ -17,7 +17,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'coss-ui/components/menu';
-import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   ArchiveIcon,
@@ -30,7 +29,6 @@ import {
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
-import { AgentKindList } from './agent-kind-list';
 import type { BranchStatusComponentType } from './branch-status';
 
 export interface ThreadGroupHeaderProps {
@@ -39,8 +37,9 @@ export interface ThreadGroupHeaderProps {
   sessionCount: number;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  /** Undefined for the unregistered fallback group — it has no single `cwd` to start a thread in. */
-  onCreateThread?: (kind: AgentKind) => void;
+  /** Opens the new-session page preselecting this group's workspace. Undefined for the
+   * unregistered fallback group — it has no single `cwd` to start a thread in. */
+  onNewThread?: () => void;
   onRename?: (name: string) => Promise<void>;
   onArchive?: () => Promise<void>;
   historyOpen: boolean;
@@ -57,7 +56,7 @@ export function ThreadGroupHeader({
   sessionCount,
   collapsed,
   onToggleCollapsed,
-  onCreateThread,
+  onNewThread,
   onRename,
   onArchive,
   historyOpen,
@@ -72,8 +71,7 @@ export function ThreadGroupHeader({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveError, setArchiveError] = useState<unknown>(null);
   const [archivePending, setArchivePending] = useState(false);
-  const [newThreadOpen, setNewThreadOpen] = useState(false);
-  const hasActions = Boolean(onCreateThread || onRename || onArchive || onToggleHistory);
+  const hasActions = Boolean(onNewThread || onRename || onArchive || onToggleHistory);
 
   function beginRename(): void {
     setDraftName(title);
@@ -157,24 +155,16 @@ export function ThreadGroupHeader({
       )}
       {!renaming && hasActions && (
         <div className="-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0.5 opacity-0 outline-none focus-within:opacity-100 group-hover:opacity-100">
-          {onCreateThread && (
-            <Popover open={newThreadOpen} onOpenChange={setNewThreadOpen}>
-              <PopoverTrigger
-                aria-label={t('newThread')}
-                title={t('newThread')}
-                className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <PlusIcon className="size-3.5" />
-              </PopoverTrigger>
-              <PopoverPopup align="start" side="right" sideOffset={8} className="w-56 p-0">
-                <AgentKindList
-                  onPick={(kind) => {
-                    setNewThreadOpen(false);
-                    onCreateThread(kind);
-                  }}
-                />
-              </PopoverPopup>
-            </Popover>
+          {onNewThread && (
+            <button
+              type="button"
+              aria-label={t('newThread')}
+              title={t('newThread')}
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onNewThread}
+            >
+              <PlusIcon className="size-3.5" />
+            </button>
           )}
           {(onRename || onArchive || onToggleHistory) && (
             <DropdownMenu>

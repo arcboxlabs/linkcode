@@ -1,9 +1,6 @@
-import type { AgentKind, SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
-import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import type { SessionId, SessionInfo, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { PlusIcon } from 'lucide-react';
-import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { AgentKindList } from './agent-kind-list';
 import { ShowMoreToggle } from './show-more-toggle';
 import { ThreadRow } from './thread-row';
 
@@ -23,7 +20,8 @@ export interface ChatsSectionProps {
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  /** Opens the new-session page preselecting the chat workspace. */
+  onStartDraft: (workspaceId: WorkspaceId) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
 }
 
@@ -45,11 +43,10 @@ export function ChatsSection({
   onSelect,
   onStop,
   onToggleSessionPinned,
-  onCreate,
+  onStartDraft,
   onTogglePreviewExpanded,
 }: ChatsSectionProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
-  const [newChatOpen, setNewChatOpen] = useState(false);
 
   return (
     <section>
@@ -58,23 +55,15 @@ export function ChatsSection({
           {t('chats')}
         </span>
         {workspace && (
-          <Popover open={newChatOpen} onOpenChange={setNewChatOpen}>
-            <PopoverTrigger
-              aria-label={t('newChat')}
-              title={t('newChat')}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <PlusIcon className="size-3.5" />
-            </PopoverTrigger>
-            <PopoverPopup align="start" side="right" sideOffset={8} className="w-56 p-0">
-              <AgentKindList
-                onPick={(pickedKind) => {
-                  setNewChatOpen(false);
-                  onCreate({ kind: pickedKind, cwd: workspace.cwd });
-                }}
-              />
-            </PopoverPopup>
-          </Popover>
+          <button
+            type="button"
+            aria-label={t('newChat')}
+            title={t('newChat')}
+            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onStartDraft(workspace.workspaceId)}
+          >
+            <PlusIcon className="size-3.5" />
+          </button>
         )}
       </div>
       {sessions.length > 0 ? (

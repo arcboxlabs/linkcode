@@ -2,13 +2,7 @@ import { move } from '@dnd-kit/helpers';
 import type { DragEndEvent, DragOverEvent } from '@dnd-kit/react';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
-import type {
-  AgentKind,
-  SessionId,
-  SessionInfo,
-  WorkspaceId,
-  WorkspaceRecord,
-} from '@linkcode/schema';
+import type { SessionId, SessionInfo, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { useTranslations } from 'use-intl';
@@ -60,7 +54,8 @@ export interface ThreadsViewProps {
     overId: SessionId,
     placement: 'before' | 'after',
   ) => void;
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  /** Opens the new-session page, optionally preselecting a workspace (group "+", Chats "+"). */
+  onStartDraft: (workspaceId?: WorkspaceId) => void;
   onImportSession?: (sessionId: SessionId) => void;
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
@@ -87,7 +82,7 @@ export function ThreadsView({
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
-  onCreate,
+  onStartDraft,
   onImportSession,
   onPickDirectory,
   onRegisterWorkspace,
@@ -188,7 +183,7 @@ export function ThreadsView({
               onSelect={onSelect}
               onStop={onStop}
               onToggleSessionPinned={onToggleSessionPinned}
-              onCreate={onCreate}
+              onStartDraft={onStartDraft}
               onImportSession={onImportSession}
               onRenameWorkspace={onRenameWorkspace}
               onArchiveWorkspace={onArchiveWorkspace}
@@ -217,7 +212,7 @@ export function ThreadsView({
           onSelect={onSelect}
           onStop={onStop}
           onToggleSessionPinned={onToggleSessionPinned}
-          onCreate={onCreate}
+          onStartDraft={onStartDraft}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
         />
       </div>
@@ -233,7 +228,7 @@ function ThreadGroupSection({
   onSelect,
   onStop,
   onToggleSessionPinned,
-  onCreate,
+  onStartDraft,
   onImportSession,
   onRenameWorkspace,
   onArchiveWorkspace,
@@ -251,7 +246,7 @@ function ThreadGroupSection({
   onSelect: (id: SessionId) => void;
   onStop: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
-  onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
+  onStartDraft: (workspaceId?: WorkspaceId) => void;
   onImportSession?: (sessionId: SessionId) => void;
   onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
   onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
@@ -288,7 +283,7 @@ function ThreadGroupSection({
         sessionCount={group.sessions.length}
         collapsed={group.collapsed}
         onToggleCollapsed={() => onToggleGroupCollapsed(group.collapseKey)}
-        onCreateThread={workspace ? (kind) => onCreate({ kind, cwd: workspace.cwd }) : undefined}
+        onNewThread={workspace ? () => onStartDraft(workspace.workspaceId) : undefined}
         onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}
         onArchive={workspace ? () => onArchiveWorkspace(workspace.workspaceId) : undefined}
         historyOpen={group.historyOpen}
