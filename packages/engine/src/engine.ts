@@ -32,6 +32,16 @@ interface Session {
   status: SessionInfo['status'];
 }
 
+/** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
+export interface EngineDeps {
+  factory?: AdapterFactory;
+  sessionStore?: SessionStore;
+  ptyBackend?: PtyBackend;
+  providerStore?: ProviderConfigStore;
+  git?: GitService;
+  workspaceStore?: WorkspaceStore;
+}
+
 /**
  * Engine: the local core engine — the "host" that runs the agents
  * (docs/ARCHITECTURE.md#the-host-engine-adapters-abstraction).
@@ -50,22 +60,25 @@ export class Engine {
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
   private readonly workspaces: WorkspaceRegistry;
+  private readonly factory: AdapterFactory;
+  private readonly providerStore: ProviderConfigStore;
+  private readonly sessionStore: SessionStore;
+  private readonly git: GitService;
   private seq = 0;
 
   constructor(
     private readonly transport: Transport,
-    private readonly factory: AdapterFactory = createAdapter,
-    private readonly providerStore: ProviderConfigStore = new InMemoryProviderConfigStore(),
-    ptyBackend?: PtyBackend,
-    private readonly sessionStore: SessionStore = new InMemorySessionStore(),
-    private readonly git: GitService = new GitService(),
-    workspaceStore: WorkspaceStore = new InMemoryWorkspaceStore(),
+    deps: EngineDeps = {},
   ) {
-    this.history = new HistoryService(factory);
-    this.terminals = ptyBackend
-      ? new TerminalService(ptyBackend, transport, (id) => this.sessions.has(id))
+    this.factory = deps.factory ?? createAdapter;
+    this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
+    this.sessionStore = deps.sessionStore ?? new InMemorySessionStore();
+    this.git = deps.git ?? new GitService();
+    this.history = new HistoryService(this.factory);
+    this.terminals = deps.ptyBackend
+      ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
-    this.workspaces = new WorkspaceRegistry(workspaceStore);
+    this.workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   }
 
   async start(): Promise<void> {
