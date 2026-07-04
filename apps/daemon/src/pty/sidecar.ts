@@ -91,7 +91,11 @@ export class SidecarPtyBackend implements PtyBackend {
     child.stdout.on('data', (chunk: Buffer) => {
       try {
         for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
-      } catch {
+      } catch (err) {
+        console.error(
+          `[linkcode/daemon] pty sidecar protocol error (chunk length ${chunk.length}, ${this.terminals.size} active terminal(s)):`,
+          err,
+        );
         child.kill();
         this.onChildGone();
       }
@@ -197,14 +201,27 @@ export class SidecarPtyBackend implements PtyBackend {
   }
 }
 
-/** Resolve the sidecar binary: an explicit override (set by the desktop supervisor), else the release build. */
+/**
+ * Resolve the sidecar binary: an explicit override (set by the desktop supervisor) always wins;
+ * in dev, fall back to the workspace's release build by walking up from this file's known depth
+ * under `src/`. That depth assumption breaks once tsup bundles this module into a flat `dist/`
+ * output, so production trusts only the override instead of guessing a wrong path and leaving the
+ * sidecar silently missing.
+ */
 export function resolveSidecarPath(): string {
   const override = process.env.LINKCODE_PTY_SIDECAR_PATH;
   if (override) return override;
-  // Dev: this file runs from source (tsx) at apps/daemon/src/pty, so the repo root is four levels up.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = join(here, '..', '..', '..', '..');
-  return join(repoRoot, 'target', 'release', binaryName());
+  const here = fileURLToPath(import.meta.url);
+  // tsx runs this file straight from source (`.ts`); a tsup bundle is emitted as `.js`/`.mjs`.
+  if (here.endsWith('.ts')) {
+    // Dev: this file lives at apps/daemon/src/pty, so the repo root is four levels up.
+    const repoRoot = join(dirname(here), '..', '..', '..', '..');
+    return join(repoRoot, 'target', 'release', binaryName());
+  }
+  console.error(
+    '[linkcode/daemon] pty sidecar is not configured: set LINKCODE_PTY_SIDECAR_PATH to the built linkcode-pty binary. Terminals will be unavailable.',
+  );
+  return '';
 }
 
 function binaryName(): string {
