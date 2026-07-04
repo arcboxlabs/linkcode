@@ -1,7 +1,6 @@
-import { Button } from 'coss-ui/components/button';
-import { CheckIcon, CopyIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
-import { useCopyButton } from './use-copy-button';
+import type { CopyIconButtonProps } from './copy-icon-button';
+import { CopyIconButton } from './copy-icon-button';
 
 export interface CodeBlockProps extends React.ComponentProps<'div'> {
   code: string;
@@ -64,31 +63,10 @@ export function CodeBlockActions({ className, ...props }: CodeBlockActionsProps)
   return <div className={cn('-my-1 flex items-center gap-1', className)} {...props} />;
 }
 
-export type CodeBlockCopyButtonProps = React.ComponentProps<typeof Button> & {
+export type CodeBlockCopyButtonProps = Omit<CopyIconButtonProps, 'value'> & {
   code: string;
-  timeout?: number;
 };
 
-export function CodeBlockCopyButton({
-  code,
-  timeout = 1600,
-  children,
-  className,
-  ...props
-}: CodeBlockCopyButtonProps): React.ReactNode {
-  const { copied, copyValue } = useCopyButton(code, timeout);
-
-  return (
-    <Button
-      aria-label={copied ? 'Copied' : 'Copy'}
-      className={cn('size-6', className)}
-      onClick={copyValue}
-      size="icon-xs"
-      type="button"
-      variant="ghost"
-      {...props}
-    >
-      {children ?? (copied ? <CheckIcon /> : <CopyIcon />)}
-    </Button>
-  );
+export function CodeBlockCopyButton({ code, ...props }: CodeBlockCopyButtonProps): React.ReactNode {
+  return <CopyIconButton value={code} {...props} />;
 }
