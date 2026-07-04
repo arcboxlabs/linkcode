@@ -1,3 +1,4 @@
+import { DAEMON_DEFAULT_URL } from '@linkcode/schema/daemon-runtime-constants';
 import { defineInvokes } from '@moeru/eventa';
 import { createContext as createRendererContext } from '@moeru/eventa/adapters/electron/renderer';
 import type { IpcRenderer } from 'electron';
@@ -22,9 +23,6 @@ const FALLBACK_SETTINGS: DesktopSettings = {
   locale: null,
   daemonUrl: null,
 };
-
-// Mirrors DAEMON_DEFAULT_URL from @linkcode/schema, which cannot be imported here (it would pull zod).
-const FALLBACK_DAEMON_URL = 'http://127.0.0.1:19523';
 
 export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBridge {
   const { context } = createRendererContext(toEventaRendererIpc(ipcRenderer));
@@ -75,7 +73,7 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
     daemon: {
       resolveUrl: () =>
         (ipcRenderer.sendSync(DAEMON_URL_SNAPSHOT_CHANNEL) as string | undefined) ??
-        FALLBACK_DAEMON_URL,
+        DAEMON_DEFAULT_URL,
     },
   };
 }

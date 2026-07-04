@@ -688,6 +688,9 @@ importers:
 
   packages/ipc:
     dependencies:
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@moeru/eventa':
         specifier: 1.0.0-beta.10
         version: 1.0.0-beta.10(electron@42.4.1)(hono@4.12.27)
