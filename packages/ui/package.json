@@ -54,13 +54,17 @@
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-native": ">=0.80"
+    "react-native": ">=0.80",
+    "react-native-safe-area-context": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "react-dom": {
       "optional": true
     },
     "react-native": {
+      "optional": true
+    },
+    "react-native-safe-area-context": {
       "optional": true
     }
   }

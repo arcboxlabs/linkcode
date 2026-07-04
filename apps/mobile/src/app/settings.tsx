@@ -1,9 +1,7 @@
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
-import { MobileHome } from '@linkcode/ui/native';
+import { MobileHome, ScreenScroll } from '@linkcode/ui/native';
 import { useRouter } from 'expo-router';
 import { Button, Card, ListGroup } from 'heroui-native';
-import { ScrollView, Text } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 
 /** App settings: host management entry plus the About/contract summary. */
@@ -11,22 +9,9 @@ export default function SettingsScreen(): React.ReactNode {
   const t = useTranslations('mobile.settings');
   const tAbout = useTranslations('mobile.about');
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{
-        padding: 24,
-        paddingTop: insets.top + 24,
-        paddingBottom: insets.bottom + 24,
-        gap: 24,
-      }}
-    >
-      <Text className="text-[24px] text-foreground" style={{ fontWeight: '600' }}>
-        {t('title')}
-      </Text>
-
+    <ScreenScroll title={t('title')}>
       <ListGroup>
         <ListGroup.Item onPress={() => router.push('/connect')}>
           <ListGroup.ItemContent>
@@ -54,6 +39,6 @@ export default function SettingsScreen(): React.ReactNode {
       <Button variant="ghost" onPress={() => router.back()}>
         <Button.Label>{t('back')}</Button.Label>
       </Button>
-    </ScrollView>
+    </ScreenScroll>
   );
 }
