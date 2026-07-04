@@ -1,4 +1,5 @@
 import type { LinkCodeClient } from '@linkcode/client-core';
+import type { TerminalOpenOptions } from '@linkcode/schema';
 import type { TerminalSession } from '@linkcode/ui/shell/terminal';
 import type { TerminalTransportClient } from './transport-session';
 import { createTransportTerminalSession } from './transport-session';
@@ -25,11 +26,7 @@ export interface TerminalSessionLease {
   release: () => void;
 }
 
-export interface TerminalOpenOptions {
-  cols: number;
-  rows: number;
-  cwd?: string;
-}
+export type { TerminalOpenOptions };
 
 interface RegistryEntry {
   refCount: number;

@@ -18,6 +18,7 @@ export * from './permission';
 export * from './plan';
 export * from './provider-config';
 export * from './session';
+export * from './terminal';
 export * from './tool-call';
 export * from './usage';
 export * from './wire';
