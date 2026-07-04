@@ -1,5 +1,7 @@
 import type { WireMessage, WirePayload } from '@linkcode/schema';
-import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { noop } from 'foxts/noop';
+import { once } from 'foxts/once';
 
 /** Unsubscribe. */
 export type Unsubscribe = () => void;
@@ -59,5 +61,65 @@ export class Listeners<T> {
 
   clear(): void {
     this.set.clear();
+  }
+}
+
+/**
+ * Base for the four wire-carried `Transport` implementations (ws / ws-server / socket-io /
+ * socket-io-server). Factors out the inbound/close listener bookkeeping, the deferred
+ * `emitClosed` arming, and the parse-or-throw `send()` gate that all four repeat; each
+ * subclass models only how its underlying socket is bound and how validated bytes actually
+ * go out. See docs/ARCHITECTURE.md's Transport & wire protocol section.
+ *
+ * Binding timing is the load-bearing difference between the two sides, modeled as the
+ * overridable `connect()`: client transports (ws.ts / socket-io.ts) don't have a socket yet,
+ * so they override `connect()` to create one — and arm `emitClosed` — there; server-side
+ * connections (ws-server.ts / socket-io-server.ts) already hold a live socket at construction
+ * time, so they arm `emitClosed` in their constructor and keep the inherited default `connect()`
+ * below. Subclasses call `armClosedListener()` at whichever point applies.
+ */
+export abstract class WireConnection implements Transport {
+  protected readonly inbound = new Listeners<WireMessage>();
+  protected readonly closed = new Listeners<void>();
+  /** No-op until `armClosedListener()` runs; closing before that point is a safe no-op. */
+  protected emitClosed: () => void = noop;
+
+  protected constructor(
+    /** Used to prefix thrown/error messages, e.g. `WsTransport: invalid WireMessage: ...`. */
+    private readonly label: string,
+  ) {}
+
+  /** Default: the socket is already open when handed to us. Client transports override this. */
+  connect(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  abstract close(): void | Promise<void>;
+
+  /** Push already-validated bytes onto the underlying socket (or drop them if it isn't ready). */
+  protected abstract sendBytes(msg: WireMessage): void;
+
+  send(msg: WireMessage): void {
+    const parsed = parseWireMessage(msg);
+    if (!parsed.success) {
+      throw new Error(`${this.label}: invalid WireMessage: ${parsed.error.message}`);
+    }
+    this.sendBytes(parsed.data);
+  }
+
+  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
+    return this.inbound.add(cb);
+  }
+
+  onClose(cb: () => void): Unsubscribe {
+    return this.closed.add(cb);
+  }
+
+  /** Arm `emitClosed` for this connection's lifetime; foxts `once` prewarms by default, so pass `false` to defer it to the first real close. */
+  protected armClosedListener(): void {
+    this.emitClosed = once((): void => {
+      this.inbound.clear();
+      this.closed.emit();
+    }, false);
   }
 }

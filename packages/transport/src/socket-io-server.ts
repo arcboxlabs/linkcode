@@ -2,12 +2,11 @@ import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
 import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
-import { once } from 'foxts/once';
 import type { Socket } from 'socket.io';
 import { Server as SocketIoServerImpl } from 'socket.io';
 import { boundPort, createIdentityRequestHandler, listenHttp } from './http-server';
-import type { Transport, TransportServer, Unsubscribe } from './transport';
-import { Listeners } from './transport';
+import type { Transport, TransportServer } from './transport';
+import { Listeners, WireConnection } from './transport';
 
 const FRAME_EVENT = 'frame';
 
@@ -22,16 +21,12 @@ export interface SocketIoServer extends TransportServer {
   readonly port: number;
 }
 
-class SocketIoServerConnection implements Transport {
-  private readonly inbound = new Listeners<WireMessage>();
-  private readonly closed = new Listeners<void>();
-  // foxts `once` prewarms (executes) by default; `false` defers it to the first real close.
-  private readonly emitClosed = once((): void => {
-    this.inbound.clear();
-    this.closed.emit();
-  }, false);
-
+class SocketIoServerConnection extends WireConnection {
   constructor(private readonly socket: Socket) {
+    super('SocketIoServer');
+    // The Socket.IO connection is already live when handed to us, so emitClosed is armed up front.
+    this.armClosedListener();
+
     socket.on(FRAME_EVENT, (raw: unknown) => {
       const parsed = parseWireMessage(raw);
       if (parsed.success) this.inbound.emit(parsed.data);
@@ -40,24 +35,8 @@ class SocketIoServerConnection implements Transport {
     socket.on('disconnect', () => this.emitClosed());
   }
 
-  connect(): Promise<void> {
-    return Promise.resolve(); // The Socket.IO connection is already open when handed to us.
-  }
-
-  send(msg: WireMessage): void {
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`SocketIoServer: invalid WireMessage: ${parsed.error.message}`);
-    }
-    if (this.socket.connected) this.socket.emit(FRAME_EVENT, parsed.data);
-  }
-
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
-    return this.inbound.add(cb);
-  }
-
-  onClose(cb: () => void): Unsubscribe {
-    return this.closed.add(cb);
+  protected sendBytes(msg: WireMessage): void {
+    if (this.socket.connected) this.socket.emit(FRAME_EVENT, msg);
   }
 
   close(): void {
