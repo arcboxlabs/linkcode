@@ -3,9 +3,10 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ProvidersConfig } from '@linkcode/schema';
 import {
+  AgentKindSchema,
   DAEMON_DEFAULT_PORT,
   DAEMON_RUNTIME_FILE_SEGMENTS,
-  ProvidersConfigSchema,
+  ProviderConfigSchema,
 } from '@linkcode/schema';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 
@@ -72,14 +73,41 @@ export function loadConfig(): DaemonConfig {
       })
     : [];
 
-  const providers = ProvidersConfigSchema.safeParse(file.providers ?? {});
-
   return {
     listeners: applyEnvOverrides(
       configuredListeners.length > 0 ? configuredListeners : [fallbackListener],
     ),
-    providers: providers.success ? providers.data : {},
+    providers: parseProviders(file.providers),
   };
+}
+
+/**
+ * Parse `file.providers` field by field: an invalid entry (unknown agent kind, or a value that
+ * fails `ProviderConfigSchema`) is dropped and logged rather than discarding every other,
+ * otherwise-valid entry — a single typo must not blank out the rest of the user's config, and
+ * `saveProviders` would otherwise persist that loss back to disk on the next write.
+ */
+function parseProviders(raw: unknown): ProvidersConfig {
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) {
+    console.error('Invalid providers config: expected an object, got', raw);
+    return {};
+  }
+  const providers: ProvidersConfig = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const kind = AgentKindSchema.safeParse(key);
+    if (!kind.success) {
+      console.error(`Invalid providers config: unknown agent kind "${key}"`, kind.error);
+      continue;
+    }
+    const config = ProviderConfigSchema.safeParse(value);
+    if (!config.success) {
+      console.error(`Invalid providers config for "${key}":`, config.error);
+      continue;
+    }
+    providers[kind.data] = config.data;
+  }
+  return providers;
 }
 
 /**
