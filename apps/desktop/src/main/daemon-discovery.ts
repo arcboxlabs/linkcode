@@ -1,11 +1,5 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { isPidAlive, readJsonFileSync } from '@linkcode/common/node';
-import {
-  DAEMON_DEFAULT_URL,
-  DAEMON_RUNTIME_FILE_SEGMENTS,
-  DaemonRuntimeInfoSchema,
-} from '@linkcode/schema';
+import { daemonRuntimeFilePath, isPidAlive, readJsonFileSync } from '@linkcode/common/node';
+import { DAEMON_DEFAULT_URL, DaemonRuntimeInfoSchema } from '@linkcode/schema';
 import { getSettings } from './settings';
 
 /**
@@ -18,7 +12,7 @@ export function resolveDaemonUrl(): string {
 }
 
 function discoverRuntimeUrl(): string | null {
-  const file = join(homedir(), ...DAEMON_RUNTIME_FILE_SEGMENTS);
+  const file = daemonRuntimeFilePath();
   const parsed = DaemonRuntimeInfoSchema.safeParse(readJsonFileSync(file));
   if (!parsed.success || !isPidAlive(parsed.data.pid)) return null;
   // The renderer connects over Socket.IO; ignore listeners it cannot dial.

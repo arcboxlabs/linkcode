@@ -613,6 +613,9 @@ importers:
 
   packages/common:
     dependencies:
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../schema
       zod:
         specifier: 'catalog:'
         version: 4.4.3
