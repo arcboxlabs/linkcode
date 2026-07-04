@@ -360,3 +360,48 @@ fn rejects_open_with_a_nonexistent_cwd() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+#[test]
+fn close_escalates_to_sigkill_when_the_shell_ignores_sighup() {
+    let (mut child, mut stdin, mut stdout) = spawn_sidecar();
+    write_frame(
+        &mut stdin,
+        OPEN,
+        br#"{"terminalId":"t-1","cols":80,"rows":24,"cmd":"/bin/sh","args":["-c","trap '' HUP; echo ready-linkcode; while true; do sleep 1; done"]}"#,
+    );
+    assert!(
+        wait_for(&mut stdout, 10, |type_byte, _| type_byte == OPENED),
+        "terminal should open"
+    );
+    // Wait for the trap to actually be installed before closing — otherwise CLOSE can race the
+    // shell's own startup and land while SIGHUP still has its default (terminating) disposition,
+    // which would exit the shell without ever exercising the escalation this test targets.
+    assert!(
+        wait_for(&mut stdout, 10, |type_byte, body| {
+            type_byte == OUTPUT && frame_text(body).contains("ready-linkcode")
+        }),
+        "shell should report its trap is installed"
+    );
+
+    let start = Instant::now();
+    write_frame(&mut stdin, CLOSE, br#"{"terminalId":"t-1"}"#);
+    // A plain SIGHUP would never end this shell (it traps and ignores it); the sidecar's close()
+    // grace-period escalation to SIGKILL is what must surface the EXIT frame.
+    let exited = wait_for(&mut stdout, 10, |type_byte, body| {
+        type_byte == EXIT && String::from_utf8_lossy(body).contains("t-1")
+    });
+    assert!(
+        exited,
+        "close() should escalate to SIGKILL once the grace period elapses"
+    );
+    // A generous lower bound confirms this actually waited out the grace period rather than
+    // exiting immediately (e.g. if SIGHUP's default disposition had killed it despite the trap).
+    assert!(
+        start.elapsed() >= Duration::from_secs(2),
+        "expected the grace period to elapse before SIGKILL, took {:?}",
+        start.elapsed()
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
