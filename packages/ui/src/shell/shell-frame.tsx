@@ -1,5 +1,4 @@
 import type {
-  AgentKind,
   EffortLevel,
   SessionId,
   SessionInfo,
@@ -9,12 +8,14 @@ import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
+import type { NewSessionDraft, NewSessionSubmission } from './new-session-surface';
+import { NewSessionSurface } from './new-session-surface';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
 import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
 import type { ThreadGroupViewModel } from './threads-view';
 
 /** Session/group action field names this shell exposes under its own naming (`onSelectSession`, etc). */
-type RenamedThreadGroupActions = 'onSelect' | 'onClose' | 'onCreate';
+type RenamedThreadGroupActions = 'onSelect' | 'onClose';
 
 export interface ShellFrameProps
   extends Pick<ThreadGroupActions, Exclude<keyof ThreadGroupActions, RenamedThreadGroupActions>>,
@@ -24,8 +25,12 @@ export interface ShellFrameProps
   workspacesLoading?: boolean;
   /** First load of the session list — the sidebar's "Chats" section shows a skeleton, not the empty hint. */
   sessionsLoading?: boolean;
+  /** The daemon-owned chat workspace, offered by the new-session page's picker as "Chat". */
+  chatWorkspace: WorkspaceRecord | null;
   /** Derived once by the workbench surface; shells consume it instead of re-deriving from the list. */
   activeSession: SessionInfo | null;
+  /** Non-null while the new-session page is up — it replaces the conversation column. */
+  draft: NewSessionDraft | null;
   conversation: ConversationViewModel;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
@@ -43,7 +48,8 @@ export interface ShellFrameProps
     overId: SessionId,
     placement: 'before' | 'after',
   ) => void;
-  onCreateSession: (opts: { kind: AgentKind; cwd: string }) => void;
+  /** Starts the drafted session and sends its first prompt; rejection keeps the page up. */
+  onSubmitDraft: (submission: NewSessionSubmission) => Promise<void>;
   /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
   onSendPrompt: (text: string) => void;
@@ -65,7 +71,9 @@ export function ShellFrame({
   workspaces,
   workspacesLoading,
   sessionsLoading,
+  chatWorkspace,
   activeSession,
+  draft,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -77,7 +85,8 @@ export function ShellFrame({
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
-  onCreateSession,
+  onStartDraft,
+  onSubmitDraft,
   onImportSession,
   onRegisterWorkspace,
   onRenameWorkspace,
@@ -106,7 +115,6 @@ export function ShellFrame({
       <div className="w-72 shrink-0">
         <SessionSidebar
           threadGroups={threadGroups}
-          workspaces={workspaces}
           workspacesLoading={workspacesLoading}
           sessionsLoading={sessionsLoading}
           activeId={active?.sessionId ?? null}
@@ -117,7 +125,7 @@ export function ShellFrame({
           onToggleSessionPinned={onToggleSessionPinned}
           onReorderGroups={onReorderGroups}
           onReorderThreads={onReorderThreads}
-          onCreate={onCreateSession}
+          onStartDraft={onStartDraft}
           onImportSession={onImportSession}
           onRegisterWorkspace={onRegisterWorkspace}
           onRenameWorkspace={onRenameWorkspace}
@@ -134,26 +142,39 @@ export function ShellFrame({
       <main className="flex min-w-0 flex-1 flex-col">
         {header}
         <ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />
-        {/* Keyed per session: switching resets the composer draft and scroll without touching the shell. */}
-        <ConversationSurface
-          key={active?.sessionId ?? 'no-active-session'}
-          className="min-h-0 flex-1"
-          conversation={conversation}
-          agentKind={active?.kind}
-          agentLabel={active ? active.kind : undefined}
-          disabled={!active || active.status === 'stopped'}
-          isRunning={isRunning}
-          cwd={active?.cwd}
-          permissionDecisions={permissionDecisions}
-          respondingPermissions={respondingPermissions}
-          TerminalBlockComponent={TerminalBlockComponent}
-          onSendPrompt={onSendPrompt}
-          onStopTurn={onStopTurn}
-          onRespondPermission={onRespondPermission}
-          onModeChange={onModeChange}
-          onModelChange={onModelChange}
-          onEffortChange={onEffortChange}
-        />
+        {draft ? (
+          // Keyed per entry point so opening from another group resets the page's picks.
+          <NewSessionSurface
+            key={draft.initialWorkspaceId ?? 'default'}
+            className="min-h-0 flex-1"
+            draft={draft}
+            workspaces={workspaces}
+            chatWorkspace={chatWorkspace}
+            onSubmit={onSubmitDraft}
+            onRegisterWorkspace={onRegisterWorkspace}
+          />
+        ) : (
+          // Keyed per session: switching resets the composer draft and scroll without touching the shell.
+          <ConversationSurface
+            key={active?.sessionId ?? 'no-active-session'}
+            className="min-h-0 flex-1"
+            conversation={conversation}
+            agentKind={active?.kind}
+            agentLabel={active ? active.kind : undefined}
+            disabled={!active || active.status === 'stopped'}
+            isRunning={isRunning}
+            cwd={active?.cwd}
+            permissionDecisions={permissionDecisions}
+            respondingPermissions={respondingPermissions}
+            TerminalBlockComponent={TerminalBlockComponent}
+            onSendPrompt={onSendPrompt}
+            onStopTurn={onStopTurn}
+            onRespondPermission={onRespondPermission}
+            onModeChange={onModeChange}
+            onModelChange={onModelChange}
+            onEffortChange={onEffortChange}
+          />
+        )}
       </main>
     </div>
   );

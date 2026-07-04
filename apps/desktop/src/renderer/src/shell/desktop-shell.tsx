@@ -4,6 +4,7 @@ import {
   ConversationSurface,
   ErrorBanner,
   HostFooter,
+  NewSessionSurface,
   SessionSidebar,
 } from '@linkcode/ui';
 import {
@@ -52,7 +53,9 @@ export function DesktopShell({
   workspaces,
   workspacesLoading,
   sessionsLoading,
+  chatWorkspace,
   activeSession,
+  draft,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -63,7 +66,8 @@ export function DesktopShell({
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
-  onCreateSession,
+  onStartDraft,
+  onSubmitDraft,
   onImportSession,
   onRegisterWorkspace,
   onRenameWorkspace,
@@ -209,7 +213,7 @@ export function DesktopShell({
 
   const active = activeSession;
   const titledSession = active?.title === undefined ? null : active;
-  const hideMainTitle = active === null ? false : titledSession === null;
+  const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const agentLabel = active?.kind;
   const {
@@ -265,26 +269,41 @@ export function DesktopShell({
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
       <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
-      {/* Keyed per session: switching resets the composer draft and scroll without touching the shell. */}
-      <ConversationSurface
-        key={active?.sessionId ?? 'no-active-session'}
-        className="min-h-0 flex-1"
-        conversation={conversation}
-        agentKind={active?.kind}
-        agentLabel={agentLabel}
-        cwd={active?.cwd}
-        permissionDecisions={permissionDecisions}
-        respondingPermissions={respondingPermissions}
-        TerminalBlockComponent={TerminalBlockComponent}
-        disabled={!active || active.status === 'stopped'}
-        isRunning={isRunning}
-        topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
-        onSendPrompt={onSendPrompt}
-        onStopTurn={onStopTurn}
-        onRespondPermission={onRespondPermission}
-        onModelChange={onModelChange}
-        onEffortChange={onEffortChange}
-      />
+      {draft ? (
+        // Keyed per entry point so opening from another group resets the page's picks.
+        <NewSessionSurface
+          key={draft.initialWorkspaceId ?? 'default'}
+          className="min-h-0 flex-1"
+          draft={draft}
+          workspaces={workspaces}
+          chatWorkspace={chatWorkspace}
+          topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
+          onSubmit={onSubmitDraft}
+          onPickDirectory={pickDirectory}
+          onRegisterWorkspace={onRegisterWorkspace}
+        />
+      ) : (
+        // Keyed per session: switching resets the composer draft and scroll without touching the shell.
+        <ConversationSurface
+          key={active?.sessionId ?? 'no-active-session'}
+          className="min-h-0 flex-1"
+          conversation={conversation}
+          agentKind={active?.kind}
+          agentLabel={agentLabel}
+          cwd={active?.cwd}
+          permissionDecisions={permissionDecisions}
+          respondingPermissions={respondingPermissions}
+          TerminalBlockComponent={TerminalBlockComponent}
+          disabled={!active || active.status === 'stopped'}
+          isRunning={isRunning}
+          topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
+          onSendPrompt={onSendPrompt}
+          onStopTurn={onStopTurn}
+          onRespondPermission={onRespondPermission}
+          onModelChange={onModelChange}
+          onEffortChange={onEffortChange}
+        />
+      )}
     </main>
   );
 
@@ -483,7 +502,6 @@ export function DesktopShell({
               <SessionSidebar
                 className={sidebarClassName}
                 threadGroups={threadGroups}
-                workspaces={workspaces}
                 workspacesLoading={workspacesLoading}
                 sessionsLoading={sessionsLoading}
                 activeId={active?.sessionId ?? null}
@@ -514,7 +532,7 @@ export function DesktopShell({
                 onToggleSessionPinned={onToggleSessionPinned}
                 onReorderGroups={onReorderGroups}
                 onReorderThreads={onReorderThreads}
-                onCreate={onCreateSession}
+                onStartDraft={onStartDraft}
               />
             </div>
           </Allotment.Pane>
