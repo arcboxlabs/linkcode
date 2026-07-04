@@ -1,11 +1,11 @@
 import { useSessions } from '@linkcode/client-core';
 import type { AgentKind } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
+import { EmptyState, ScreenScroll } from '@linkcode/ui/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, Card, Chip, Input, Label, ListGroup, Spinner, TextField } from 'heroui-native';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RefreshControl, Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import { SessionStatusChip } from '../../../components/session-status-chip';
 
@@ -13,7 +13,6 @@ import { SessionStatusChip } from '../../../components/session-status-chip';
 export default function SessionsScreen(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { hostId } = useLocalSearchParams<{ hostId: string }>();
   const { sessions, create, refresh, loading } = useSessions();
 
@@ -45,39 +44,22 @@ export default function SessionsScreen(): React.ReactNode {
   };
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{
-        padding: 24,
-        paddingTop: insets.top + 24,
-        paddingBottom: insets.bottom + 24,
-        gap: 24,
-      }}
-      keyboardShouldPersistTaps="handled"
+    <ScreenScroll
+      title={t('title')}
+      keyboardAware
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      <View className="flex-row items-center justify-between">
-        <Text className="text-[24px] text-foreground" style={{ fontWeight: '600' }}>
-          {t('title')}
-        </Text>
+      headerRight={
         <Button variant="ghost" size="sm" onPress={() => router.push('/settings')}>
           <Button.Label>{t('settings')}</Button.Label>
         </Button>
-      </View>
-
+      }
+    >
       {loading ? (
         <View className="items-center py-8">
           <Spinner />
         </View>
       ) : sessions.length === 0 ? (
-        <View className="gap-1">
-          <Text className="text-[15px] text-foreground" style={{ fontWeight: '500' }}>
-            {t('emptyTitle')}
-          </Text>
-          <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
-            {t('emptyHint')}
-          </Text>
-        </View>
+        <EmptyState title={t('emptyTitle')} hint={t('emptyHint')} />
       ) : (
         <ListGroup>
           {sessions.map((session) => (
@@ -134,6 +116,6 @@ export default function SessionsScreen(): React.ReactNode {
           </Button>
         </Card.Body>
       </Card>
-    </ScrollView>
+    </ScreenScroll>
   );
 }

@@ -1,8 +1,8 @@
+import { EmptyState, ScreenScroll } from '@linkcode/ui/native';
 import { useRouter } from 'expo-router';
 import { Button, Card, Input, Label, ListGroup, TextField } from 'heroui-native';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 
@@ -14,7 +14,6 @@ import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 export default function ConnectScreen() {
   const t = useTranslations('mobile.connect');
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const hosts = useHostRegistryStore((state) => state.hosts);
   const addHost = useHostRegistryStore((state) => state.addHost);
   const removeHost = useHostRegistryStore((state) => state.removeHost);
@@ -37,29 +36,9 @@ export default function ConnectScreen() {
   };
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{
-        padding: 24,
-        paddingTop: insets.top + 24,
-        paddingBottom: insets.bottom + 24,
-        gap: 24,
-      }}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text className="text-[24px] text-foreground" style={{ fontWeight: '600' }}>
-        {t('title')}
-      </Text>
-
+    <ScreenScroll title={t('title')} keyboardAware>
       {hosts.length === 0 ? (
-        <View className="gap-1">
-          <Text className="text-[15px] text-foreground" style={{ fontWeight: '500' }}>
-            {t('emptyTitle')}
-          </Text>
-          <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
-            {t('emptyHint')}
-          </Text>
-        </View>
+        <EmptyState title={t('emptyTitle')} hint={t('emptyHint')} />
       ) : (
         <View className="gap-2">
           <Text
@@ -119,6 +98,6 @@ export default function ConnectScreen() {
           </Button>
         </Card.Body>
       </Card>
-    </ScrollView>
+    </ScreenScroll>
   );
 }
