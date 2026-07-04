@@ -64,10 +64,12 @@ export interface ComposerProps {
   onModelChange?: (model: string) => Promise<void>;
   /** Called when the user picks a reasoning-effort level; same confirm-then-reflect contract. */
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
-  /** Providers offered for selection (planned for the unified new-session composer). Absent or
-   * empty means the provider is fixed — the trigger then hides the provider glyph and submenu. */
+  /** Providers offered for selection (the new-session composer). Absent or empty means the
+   * provider is fixed — the trigger then hides the provider glyph and submenu. */
   selectableProviders?: AgentKind[];
   onProviderChange?: (provider: AgentKind) => Promise<void>;
+  /** Strip rendered at the bottom of the composer card (e.g. the new-session workspace bar). */
+  contextBar?: React.ReactNode;
 }
 
 interface MenuState {
@@ -112,6 +114,7 @@ export function Composer({
   onEffortChange,
   selectableProviders,
   onProviderChange,
+  contextBar,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const [value, setValue] = useState('');
@@ -373,6 +376,8 @@ export function Composer({
                 variant={isRunning ? 'secondary' : 'default'}
               />
             </PromptInputFooter>
+            {/* Sibling of the footer addon, which is `order-last` — this must match to stay below it. */}
+            {contextBar ? <div className="order-last w-full">{contextBar}</div> : null}
           </PromptInput>
         </div>
       </div>

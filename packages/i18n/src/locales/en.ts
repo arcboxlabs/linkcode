@@ -99,6 +99,14 @@ export const en = {
     mode: {
       label: 'Mode',
     },
+    newSession: {
+      heading: 'What should we build?',
+      headingIn: 'What should we build in {name}?',
+      chooseWorkspace: 'Choose a workspace',
+      chat: 'Chat',
+      workLocally: 'Work locally',
+      branch: 'Branch',
+    },
     panel: {
       window: {
         diff: 'Diff',

@@ -5,6 +5,7 @@ export * from './composer';
 export * from './conversation-surface';
 export * from './error-banner';
 export * from './general-settings-panel';
+export * from './new-session-surface';
 export * from './session-sidebar';
 export * from './settings-sidebar-nav';
 export * from './shell-control';
