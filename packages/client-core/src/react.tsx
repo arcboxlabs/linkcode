@@ -13,7 +13,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -46,12 +45,7 @@ export function useLinkCodeClient(): LinkCodeClient {
 
 const NO_SEQUENCED_EVENTS: readonly SequencedAgentEvent[] = [];
 const NO_EVENTS: AgentEvent[] = [];
-
-/**
- * Cap on retained terminal output, in characters. This is a read-only display buffer, so
- * unbounded agent output would otherwise grow memory and per-chunk re-render cost without limit.
- */
-const TERMINAL_OUTPUT_CAP = 200000;
+const NO_TERMINAL_OUTPUT = '';
 
 /**
  * Subscribe to a session's normalized event stream (push model). The client's per-session buffer
@@ -76,28 +70,23 @@ export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   );
 }
 
-/** Subscribe to a terminal's output, accumulating it into a string for read-only display. */
+/**
+ * Subscribe to a terminal's accumulated output (read-only display). The client's per-terminal
+ * buffer is the store: `useSyncExternalStore` reads its capped string snapshot, mirroring
+ * `useAgentEvents`'s use of the client's per-session event buffer.
+ */
 export function useTerminalOutput(terminalId: string | null): string {
   const client = useLinkCodeClient();
-  const [state, setState] = useState<{ id: string | null; output: string }>({
-    id: null,
-    output: '',
-  });
-
-  useEffect(() => {
-    if (!terminalId) return;
-    return client.subscribeTerminalOutput(terminalId, (data) => {
-      setState((prev) => {
-        const output = prev.id === terminalId ? prev.output + data : data;
-        return {
-          id: terminalId,
-          output: output.length > TERMINAL_OUTPUT_CAP ? output.slice(-TERMINAL_OUTPUT_CAP) : output,
-        };
-      });
-    });
-  }, [client, terminalId]);
-
-  return state.id === terminalId ? state.output : '';
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!terminalId) return noop;
+      return client.subscribeTerminalOutputSnapshot(terminalId, onStoreChange);
+    },
+    [client, terminalId],
+  );
+  return useSyncExternalStore(subscribe, () =>
+    terminalId ? client.terminalOutputSnapshot(terminalId) : NO_TERMINAL_OUTPUT,
+  );
 }
 
 /** Return a function that sends input to the current session. */
