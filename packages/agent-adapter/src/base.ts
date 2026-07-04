@@ -170,9 +170,6 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     if (text.length === 0) return;
     this.emit({ type: 'agent-message-chunk', messageId, content: textBlock(text) });
   }
-  protected emitAssistantContent(content: ContentBlock, messageId: MessageId): void {
-    this.emit({ type: 'agent-message-chunk', messageId, content });
-  }
   protected emitThought(text: string, messageId: MessageId): void {
     if (text.length === 0) return;
     this.emit({ type: 'agent-thought-chunk', messageId, content: textBlock(text) });
