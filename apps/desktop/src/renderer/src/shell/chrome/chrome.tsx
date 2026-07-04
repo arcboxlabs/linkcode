@@ -153,11 +153,6 @@ export function DesktopChrome({
   const chromeRootRef = useRef<HTMLDivElement | null>(null);
   const leftRailContentRef = useRef<HTMLDivElement | null>(null);
   const rightRailContentRef = useRef<HTMLDivElement | null>(null);
-  const activeExpandedPanel = getActiveExpandedPanel({
-    expandedPanel,
-    rightPanelOpen,
-    bottomPanelOpen,
-  });
   useChromeRailInsets({ rootRef: chromeRootRef, leftRailContentRef, rightRailContentRef });
   const setPortalTarget = useCallback<SetChromePortalTarget>((key, target) => {
     setPortalTargets((current) => {
@@ -179,7 +174,7 @@ export function DesktopChrome({
       >
         <ChromeSegmentGrid
           header={header}
-          activeExpandedPanel={activeExpandedPanel}
+          expandedPanel={expandedPanel}
           hasNativeBackdrop={hasNativeBackdrop}
           titleContent={titleContent}
           titleChip={titleChip}
@@ -222,14 +217,14 @@ export function DesktopChrome({
 
 function ChromeSegmentGrid({
   header,
-  activeExpandedPanel,
+  expandedPanel,
   hasNativeBackdrop,
   titleContent,
   titleChip,
   setPortalTarget,
 }: {
   header: WorkbenchShellHeader;
-  activeExpandedPanel: DesktopPanelSide | null;
+  expandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
   titleContent?: React.ReactNode;
   titleChip?: React.ReactNode;
@@ -238,9 +233,7 @@ function ChromeSegmentGrid({
   return (
     <div
       className="absolute inset-0 grid overflow-hidden"
-      style={
-        activeExpandedPanel ? MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE : CHROME_BACKGROUND_GRID_STYLE
-      }
+      style={expandedPanel ? MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE : CHROME_BACKGROUND_GRID_STYLE}
     >
       <ChromeSegment
         segment="sidebar"
@@ -262,7 +255,7 @@ function ChromeSegmentGrid({
         // While any panel is maximized the main segment hosts that panel's tabs
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
-          left: activeExpandedPanel ? null : titleContent === undefined ? (
+          left: expandedPanel ? null : titleContent === undefined ? (
             <MainChromeTitle header={header} chip={titleChip} />
           ) : (
             titleContent
@@ -489,20 +482,6 @@ function DefaultRightChromeControls({
 
 function NativeTrafficLightInset(): React.ReactNode {
   return <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />;
-}
-
-function getActiveExpandedPanel({
-  expandedPanel,
-  rightPanelOpen,
-  bottomPanelOpen,
-}: {
-  expandedPanel: DesktopPanelSide | null;
-  rightPanelOpen: boolean;
-  bottomPanelOpen: boolean;
-}): DesktopPanelSide | null {
-  if (expandedPanel === 'right' && rightPanelOpen) return 'right';
-  if (expandedPanel === 'bottom' && bottomPanelOpen) return 'bottom';
-  return null;
 }
 
 function createChromeSlotKey(
