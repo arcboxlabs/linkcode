@@ -4,6 +4,7 @@ export * from './app/workbench-app';
 export * from './app/workbench-providers';
 export * from './git/hooks';
 export * from './git/panel';
+export * from './lib/form';
 export * from './palette/hotkey';
 export * from './palette/match';
 export * from './palette/store';

@@ -1,66 +1,65 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { rhfErrorsToFormErrors } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
-import { Field, FieldDescription, FieldLabel } from 'coss-ui/components/field';
+import { Field, FieldDescription, FieldError, FieldLabel } from 'coss-ui/components/field';
+import { Form } from 'coss-ui/components/form';
 import { Input } from 'coss-ui/components/input';
-import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { useDesktopSettingsStore } from './store';
 
-const daemonUrlSchema = z.url();
+// Empty submits as null, which falls back to auto-discovery — see setDaemonUrl below.
+const connectionSchema = z.object({
+  daemonUrl: z
+    .string()
+    .transform((value) => value.trim())
+    .pipe(z.union([z.literal(''), z.url()])),
+});
+type ConnectionForm = z.infer<typeof connectionSchema>;
 
 export function ConnectionTab(): React.ReactNode {
   const t = useTranslations('settings.connection');
   const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);
   const setDaemonUrl = useDesktopSettingsStore((state) => state.setDaemonUrl);
-  const [value, setValue] = useState(daemonUrlOverride ?? '');
-  const [error, setError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isDirty },
+  } = useForm<ConnectionForm>({
+    resolver: zodResolver(connectionSchema),
+    defaultValues: { daemonUrl: daemonUrlOverride ?? '' },
+  });
 
   return (
-    <form
+    <Form
       className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const trimmed = value.trim();
-        if (trimmed === '') {
-          setError(null);
-          setDaemonUrl(null);
-          return;
-        }
-        const parsed = daemonUrlSchema.safeParse(trimmed);
-        if (!parsed.success) {
-          setError(t('invalidUrl'));
-          return;
-        }
-        setError(null);
-        setDaemonUrl(parsed.data);
-      }}
+      errors={rhfErrorsToFormErrors(errors)}
+      onSubmit={handleSubmit(({ daemonUrl: next }) => setDaemonUrl(next === '' ? null : next))}
     >
       <div>
         <h2 className="font-semibold text-sm">{t('title')}</h2>
         <p className="text-muted-foreground text-xs">{t('hint')}</p>
       </div>
-      <Field>
+      <Field name="daemonUrl">
         <FieldLabel>{t('url')}</FieldLabel>
         <Input
           className="w-full"
-          value={value}
           placeholder={daemonUrl}
           spellCheck={false}
           autoComplete="off"
-          onChange={(event) => {
-            setValue(event.target.value);
-            setError(null);
-          }}
+          {...register('daemonUrl')}
         />
         <FieldDescription>{t('urlHint')}</FieldDescription>
-        {error ? <p className="text-destructive-foreground text-xs">{error}</p> : null}
+        <FieldError />
       </Field>
       <div>
-        <Button type="submit" size="sm" disabled={value.trim() === (daemonUrlOverride ?? '')}>
+        <Button type="submit" size="sm" disabled={!isDirty}>
           {t('save')}
         </Button>
       </div>
-    </form>
+    </Form>
   );
 }

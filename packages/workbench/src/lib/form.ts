@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createErrorMap } from 'zod-validation-error';
 
 // Activates human-readable zod validation messages globally as a module side
-// effect — any file importing from `@/lib/form` turns it on, so forms get
+// effect — any file importing from this module turns it on, so forms get
 // friendly messages without per-schema overrides.
 z.config({ customError: createErrorMap() });
 

@@ -31,6 +31,9 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 - `git/` — daemon-backed git status/PR polling hooks (`useGitStatus`, `useGitPullRequestStatus`)
   and the Diff-section container (`GitPanel`) that assembles them for `packages/ui`'s
   `GitOverview`.
+- `lib/` — small framework-adjacent utilities shared by both apps' forms, e.g.
+  `rhfErrorsToFormErrors` (react-hook-form `FieldErrors` → coss-ui `<Form errors>` shape) and the
+  zod human-readable error map it activates as a side effect.
 - `sidebar/` — the flattened thread-group sidebar's data layer: `groupThreadsByWorkspace` (grouping/
   sort) and `selectVisibleSessions` (per-group preview truncation, both unit-tested pure functions),
   `useSidebarGroupCollapseStore` (the persisted, cwd-keyed collapse state),
