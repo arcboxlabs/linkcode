@@ -1,5 +1,4 @@
 import type { Conversation } from '@linkcode/client-core';
-import { useTerminalOutput } from '@linkcode/client-core';
 import type { EffortLevel, SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { workspaceKind } from '@linkcode/schema';
 import {
@@ -14,7 +13,6 @@ import {
   updateWorkspace,
 } from '@linkcode/sdk';
 import type { ThreadGroupViewModel } from '@linkcode/ui';
-import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -31,6 +29,7 @@ import { applyThreadDrag, orderGroups, orderThreads } from '../sidebar/ordering'
 import { useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
+import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
@@ -213,24 +212,25 @@ function WorkbenchSessionSurface({
     sessions.select(sessionId);
   }
 
-  function handleRegisterWorkspace(cwd: string): Promise<WorkspaceRecord> {
-    return registerWorkspaceMutation.trigger({ cwd }).then((workspace) => {
+  // Every workspace-mutating request revalidates the workspace list the same way afterward.
+  function afterWorkspacesChange<T>(pending: Promise<T>): Promise<T> {
+    return pending.then((result) => {
       void refreshWorkspaces();
-      return workspace;
+      return result;
     });
+  }
+
+  function handleRegisterWorkspace(cwd: string): Promise<WorkspaceRecord> {
+    return afterWorkspacesChange(registerWorkspaceMutation.trigger({ cwd }));
   }
 
   function handleRenameWorkspace(workspaceId: WorkspaceId, name: string): Promise<void> {
     // Let the rejection propagate: the group header awaits it to show an inline error.
-    return updateWorkspaceMutation.trigger({ workspaceId, name }).then(() => {
-      void refreshWorkspaces();
-    });
+    return afterWorkspacesChange(updateWorkspaceMutation.trigger({ workspaceId, name })).then(noop);
   }
 
   function handleArchiveWorkspace(workspaceId: WorkspaceId): Promise<void> {
-    return archiveWorkspaceMutation.trigger({ workspaceId }).then(() => {
-      void refreshWorkspaces();
-    });
+    return afterWorkspacesChange(archiveWorkspaceMutation.trigger({ workspaceId })).then(noop);
   }
 
   function handleTogglePreviewExpanded(groupKey: string): void {
@@ -334,9 +334,4 @@ function WorkbenchSessionSurface({
       onEffortChange={handleEffortChange}
     />
   );
-}
-
-function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): React.ReactNode {
-  const output = useTerminalOutput(terminalId);
-  return <TerminalBlock terminalId={terminalId} output={output} />;
 }

@@ -14,6 +14,7 @@ export * from './runtime/tayori';
 export * from './surface/shell';
 export * from './surface/use-workbench-sessions';
 export * from './surface/workbench';
+export * from './terminal/block';
 export * from './terminal/panel';
 export * from './terminal/transport-session';
 export * from './workspace/hooks';
