@@ -3,6 +3,7 @@ export const zhCN = {
     daemonCommand: 'pnpm --filter @linkcode/daemon dev',
   },
   workbench: {
+    pageTitle: '工作台',
     connection: {
       connected: '已连接',
       connecting: '正在连接 daemon…',

@@ -1,4 +1,5 @@
 import { useCommandPaletteHotkey, useCommandPaletteStore, Workbench } from '@linkcode/workbench';
+import { usePageTitle } from '@webview/hooks/use-page-title';
 import { WebWorkbenchShell } from '@webview/shell/web-workbench-shell';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
@@ -13,6 +14,8 @@ const PALETTE_SHORTCUT = IS_MAC ? '⌘K' : 'Ctrl+K';
 export function WorkbenchRoute(): React.ReactNode {
   const navigate = useNavigate();
   const t = useTranslations('workbench.palette');
+  const tWorkbench = useTranslations('workbench');
+  usePageTitle(tWorkbench('pageTitle'));
   useCommandPaletteHotkey({ isMac: IS_MAC });
   useEffect(() => {
     const { registerCommands, unregisterCommands } = useCommandPaletteStore.getState();

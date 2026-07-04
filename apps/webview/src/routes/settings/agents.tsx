@@ -1,6 +1,7 @@
 import type { AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
 import { getProviderConfig, setProviderConfig } from '@linkcode/sdk';
+import { usePageTitle } from '@webview/hooks/use-page-title';
 import { useData, useMutation } from '@webview/lib/tayori';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
@@ -45,6 +46,8 @@ function toConfig(values: AgentFormValues): ProvidersConfig {
 export function AgentsSettings(): React.ReactNode {
   const t = useTranslations('settings.agents');
   const tAgent = useTranslations('workbench.agentKind');
+  const tTabs = useTranslations('settings.tabs');
+  usePageTitle(tTabs('agents'));
   const { data, isLoading, mutate } = useData(getProviderConfig, {});
   const save = useMutation(setProviderConfig);
 
