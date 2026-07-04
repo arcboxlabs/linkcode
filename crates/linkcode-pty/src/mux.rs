@@ -5,6 +5,7 @@ use std::io::{self, Read, Write};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use portable_pty::{Child, MasterPty, PtySize};
 use serde_json::json;
@@ -66,6 +67,12 @@ impl Terminal {
         }
     }
 }
+
+/// How long `close` waits for `SIGHUP` to take effect before escalating to `SIGKILL` — long enough
+/// for a well-behaved shell to run its exit traps, short enough that a client closing a terminal
+/// doesn't wait indefinitely on one that ignores (or never received, e.g. a detached grandchild)
+/// the signal.
+const CLOSE_GRACE_PERIOD: Duration = Duration::from_secs(3);
 
 /// A frame bound for the daemon, or the sentinel that tells the writer thread to drain and stop.
 enum OutMsg {
@@ -188,10 +195,24 @@ impl Mux {
     }
 
     /// Request termination; the `EXIT` frame and map removal follow from the reader hitting EOF.
-    pub fn close(&self, terminal_id: &str) {
+    /// If the terminal is still alive after [`CLOSE_GRACE_PERIOD`] — its reader hasn't reaped it,
+    /// so `SIGHUP` didn't end it — escalate to `SIGKILL` on the same process group. This reuses
+    /// `signal_group`, the same primitive `shutdown` uses for its unconditional kill.
+    pub fn close(self: &Arc<Self>, terminal_id: &str) {
         if let Some(terminal) = self.terminal(terminal_id) {
             terminal.signal_group(Teardown::Hangup);
+        } else {
+            return;
         }
+        let mux = Arc::clone(self);
+        let terminal_id = terminal_id.to_string();
+        thread::spawn(move || {
+            thread::sleep(CLOSE_GRACE_PERIOD);
+            // Still present means the reader hasn't hit EOF yet — SIGHUP alone didn't end it.
+            if let Some(terminal) = mux.terminal(&terminal_id) {
+                terminal.signal_group(Teardown::Kill);
+            }
+        });
     }
 
     /// Tear every terminal down, then join the reader threads (so their final `EXIT` frames are
