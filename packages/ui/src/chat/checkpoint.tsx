@@ -1,8 +1,8 @@
-import { Button } from 'coss-ui/components/button';
 import { Separator } from 'coss-ui/components/separator';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { BookmarkIcon, RotateCcwIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { TooltipIconButtonProps } from './tooltip-icon-button';
+import { TooltipIconButton } from './tooltip-icon-button';
 
 // TODO(linkcode-schema): Provisional UI-only checkpoint metadata, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when restore/checkpoint events exist in the data plane.
@@ -61,36 +61,16 @@ export function CheckpointIcon({ className, ...props }: CheckpointIconProps): Re
   return <BookmarkIcon className={cn('size-4 shrink-0', className)} {...props} />;
 }
 
-export type CheckpointTriggerProps = React.ComponentProps<typeof Button> & {
-  tooltip?: string;
-};
+export type CheckpointTriggerProps = TooltipIconButtonProps;
 
 export function CheckpointTrigger({
   className,
-  tooltip,
   children,
-  size = 'icon-xs',
-  variant = 'ghost',
   ...props
 }: CheckpointTriggerProps): React.ReactNode {
-  const button = (
-    <Button
-      className={cn('size-7', className)}
-      size={size}
-      type="button"
-      variant={variant}
-      {...props}
-    >
-      {children ?? <RotateCcwIcon className="size-3.5" />}
-    </Button>
-  );
-
-  if (!tooltip) return button;
-
   return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
+    <TooltipIconButton className={cn('size-7', className)} {...props}>
+      {children ?? <RotateCcwIcon className="size-3.5" />}
+    </TooltipIconButton>
   );
 }

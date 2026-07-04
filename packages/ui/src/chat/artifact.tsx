@@ -1,7 +1,8 @@
 import { Button } from 'coss-ui/components/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { XIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { TooltipIconButtonProps } from './tooltip-icon-button';
+import { TooltipIconButton } from './tooltip-icon-button';
 
 // TODO(linkcode-schema): Provisional UI-only artifact metadata, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when generated artifacts are emitted by the data plane.
@@ -87,38 +88,10 @@ export function ArtifactActions({ className, ...props }: ArtifactActionsProps): 
   return <div className={cn('flex items-center gap-1', className)} {...props} />;
 }
 
-export type ArtifactActionProps = React.ComponentProps<typeof Button> & {
-  tooltip?: string;
-};
+export type ArtifactActionProps = TooltipIconButtonProps;
 
-export function ArtifactAction({
-  className,
-  tooltip,
-  children,
-  size = 'icon-xs',
-  variant = 'ghost',
-  ...props
-}: ArtifactActionProps): React.ReactNode {
-  const button = (
-    <Button
-      className={cn('size-7', className)}
-      size={size}
-      type="button"
-      variant={variant}
-      {...props}
-    >
-      {children}
-    </Button>
-  );
-
-  if (!tooltip) return button;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
-  );
+export function ArtifactAction({ className, ...props }: ArtifactActionProps): React.ReactNode {
+  return <TooltipIconButton className={cn('size-7', className)} {...props} />;
 }
 
 export type ArtifactCloseProps = React.ComponentProps<typeof Button>;
