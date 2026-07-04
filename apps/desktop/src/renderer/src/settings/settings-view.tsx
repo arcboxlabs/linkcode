@@ -1,15 +1,7 @@
-import { ShellSidebar, ShellSidebarItem } from '@linkcode/ui';
-import { Input } from 'coss-ui/components/input';
+import { SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import {
-  BotIcon,
-  ChevronLeftIcon,
-  InfoIcon,
-  SearchIcon,
-  SettingsIcon,
-  WifiIcon,
-} from 'lucide-react';
+import { BotIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
@@ -90,56 +82,41 @@ export function SettingsView(): React.ReactNode {
               className={hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar'}
               topInset={<div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />}
             >
-              <div className="px-[var(--lc-sidebar-edge,0.5rem)]">
-                <ShellSidebarItem onClick={closeSettings}>
-                  <ChevronLeftIcon className="size-4" />
-                  {t('back')}
-                </ShellSidebarItem>
-
-                <div className="relative py-[var(--lc-sidebar-edge,0.5rem)]">
-                  <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 text-muted-foreground" />
-                  {/* Visual placeholder until settings search is backed by the shared registry. */}
-                  <Input
-                    aria-label={t('searchPlaceholder')}
-                    className="[&_[data-slot=input]]:pl-8"
-                    nativeInput
-                    placeholder={t('searchPlaceholder')}
-                    readOnly
-                    type="search"
-                  />
-                </div>
-
-                <nav className="flex flex-col gap-1">
-                  <ShellSidebarItem
-                    active={category === 'general'}
-                    onClick={() => setCategory('general')}
-                  >
-                    <SettingsIcon className="size-4" />
-                    {t('tabs.general')}
-                  </ShellSidebarItem>
-                  <ShellSidebarItem
-                    active={category === 'connection'}
-                    onClick={() => setCategory('connection')}
-                  >
-                    <WifiIcon className="size-4" />
-                    {t('tabs.connection')}
-                  </ShellSidebarItem>
-                  <ShellSidebarItem
-                    active={category === 'about'}
-                    onClick={() => setCategory('about')}
-                  >
-                    <InfoIcon className="size-4" />
-                    {t('tabs.about')}
-                  </ShellSidebarItem>
-                  <ShellSidebarItem
-                    active={category === 'agents'}
-                    onClick={() => setCategory('agents')}
-                  >
-                    <BotIcon className="size-4" />
-                    {t('tabs.agents')}
-                  </ShellSidebarItem>
-                </nav>
-              </div>
+              <SettingsSidebarNav
+                backLabel={t('back')}
+                onBack={closeSettings}
+                searchPlaceholder={t('searchPlaceholder')}
+                items={[
+                  {
+                    key: 'general',
+                    icon: <SettingsIcon className="size-4" />,
+                    label: t('tabs.general'),
+                    active: category === 'general',
+                    onClick: () => setCategory('general'),
+                  },
+                  {
+                    key: 'connection',
+                    icon: <WifiIcon className="size-4" />,
+                    label: t('tabs.connection'),
+                    active: category === 'connection',
+                    onClick: () => setCategory('connection'),
+                  },
+                  {
+                    key: 'about',
+                    icon: <InfoIcon className="size-4" />,
+                    label: t('tabs.about'),
+                    active: category === 'about',
+                    onClick: () => setCategory('about'),
+                  },
+                  {
+                    key: 'agents',
+                    icon: <BotIcon className="size-4" />,
+                    label: t('tabs.agents'),
+                    active: category === 'agents',
+                    onClick: () => setCategory('agents'),
+                  },
+                ]}
+              />
             </ShellSidebar>
           </div>
           <main className="flex min-w-0 flex-1 flex-col bg-background">
