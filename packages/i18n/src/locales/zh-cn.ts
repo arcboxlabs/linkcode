@@ -38,6 +38,16 @@ export const zhCN = {
       other: '工具调用',
       failed: '{count} 失败',
     },
+    message: {
+      copy: '复制',
+      copied: '已复制',
+      edit: '编辑',
+      showMore: '展开',
+      showLess: '收起',
+      goodResponse: '有帮助',
+      badResponse: '没帮助',
+      branch: '创建分支',
+    },
     diffSummary: {
       title: '编辑了 {count} 个文件',
       undo: '撤销',

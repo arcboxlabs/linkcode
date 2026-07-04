@@ -57,7 +57,7 @@ export function MessageAction({
   tooltip,
   label,
   children,
-  size = 'icon-sm',
+  size = 'icon-xs',
   variant = 'ghost',
   ...props
 }: MessageActionProps): React.ReactNode {

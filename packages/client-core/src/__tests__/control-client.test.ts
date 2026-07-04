@@ -73,7 +73,7 @@ describe('LinkCodeClient event buffer', () => {
     expect(client.eventSeq(sessionId)).toBe(2);
 
     // A late subscriber replays the buffer with the original seqs, not renumbered ones.
-    const seen: SequencedAgentEvent[] = [];
+    const seen: Array<Pick<SequencedAgentEvent, 'event' | 'seq'>> = [];
     client.subscribe(sessionId, (event, seq) => seen.push({ event, seq }));
     expect(seen).toEqual([
       { event: first, seq: 1 },
@@ -100,7 +100,7 @@ describe('LinkCodeClient event buffer', () => {
     });
 
     const snapshot = client.eventsSnapshot(sessionId);
-    expect(snapshot).toEqual([{ event, seq: 1 }]);
+    expect(snapshot).toEqual([{ event, seq: 1, receivedAt: expect.any(Number) as number }]);
     // Identity is stable until the next event — the useSyncExternalStore contract.
     expect(client.eventsSnapshot(sessionId)).toBe(snapshot);
 
@@ -139,7 +139,7 @@ describe('LinkCodeClient event buffer', () => {
     });
     // Were the counter reset with the buffer, a pre-stop uptoSeq would swallow this event.
     expect(client.eventSeq(sessionId)).toBe(2);
-    const seen: SequencedAgentEvent[] = [];
+    const seen: Array<Pick<SequencedAgentEvent, 'event' | 'seq'>> = [];
     client.subscribe(sessionId, (e, seq) => seen.push({ event: e, seq }));
     expect(seen).toEqual([{ event, seq: 2 }]);
 

@@ -236,31 +236,73 @@ describe('buildConversation', () => {
 describe('mergeSeededEvents', () => {
   it('passes the live stream through when there is no seed', () => {
     const events = mergeSeededEvents(undefined, [
-      { event: userText('hi'), seq: 1 },
-      { event: text('yo'), seq: 2 },
+      { event: userText('hi'), seq: 1, receivedAt: 1001 },
+      { event: text('yo'), seq: 2, receivedAt: 1002 },
     ]);
-    expect(events).toEqual([userText('hi'), text('yo')]);
+    expect(events).toEqual([
+      { ...userText('hi'), receivedAt: 1001 },
+      { ...text('yo'), receivedAt: 1002 },
+    ]);
   });
 
   it('drops live events at or before the snapshot cut and keeps the tail', () => {
     const seed = { events: [userText('old prompt'), text('old reply')], uptoSeq: 2 };
     const events = mergeSeededEvents(seed, [
-      { event: userText('duplicate of transcript'), seq: 1 },
-      { event: userText('boundary'), seq: 2 },
-      { event: userText('new prompt'), seq: 3 },
-      { event: text('new reply', 'm2'), seq: 4 },
+      { event: userText('duplicate of transcript'), seq: 1, receivedAt: 1001 },
+      { event: userText('boundary'), seq: 2, receivedAt: 1002 },
+      { event: userText('new prompt'), seq: 3, receivedAt: 1003 },
+      { event: text('new reply', 'm2'), seq: 4, receivedAt: 1004 },
     ]);
     expect(events).toEqual([
       userText('old prompt'),
       text('old reply'),
-      userText('new prompt'),
-      text('new reply', 'm2'),
+      { ...userText('new prompt'), receivedAt: 1003 },
+      { ...text('new reply', 'm2'), receivedAt: 1004 },
     ]);
   });
 
   it('keeps the seed intact when there are no live events', () => {
     const seed = { events: [userText('only history')], uptoSeq: 0 };
     expect(mergeSeededEvents(seed, [])).toEqual([userText('only history')]);
+  });
+});
+
+describe('receive-time stamping', () => {
+  it('stamps items from their events and refreshes on updates', () => {
+    const c = buildConversation([
+      { ...userText('prompt'), receivedAt: 1000 },
+      { ...text('first chunk'), receivedAt: 2000 },
+      { ...text(' second chunk'), receivedAt: 3000 },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'Run',
+          kind: 'execute',
+          status: 'in_progress',
+          content: [],
+        },
+        receivedAt: 4000,
+      },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'Run',
+          kind: 'execute',
+          status: 'completed',
+          content: [],
+        },
+        receivedAt: 5000,
+      },
+    ]);
+
+    expect(c.items.map((item) => item.receivedAt)).toEqual([1000, 3000, 5000]);
+  });
+
+  it('leaves unstamped (seeded) events without a receive time', () => {
+    const c = buildConversation([userText('history')]);
+    expect(c.items[0].receivedAt).toBeUndefined();
   });
 });
 

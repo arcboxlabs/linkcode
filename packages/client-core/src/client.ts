@@ -37,6 +37,9 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 export interface SequencedAgentEvent {
   event: AgentEvent;
   seq: number;
+  /** TODO(wire): client receive time — approximate, and absent for history reads. Replace with an
+   * authoritative event timestamp once the wire carries one. */
+  receivedAt: number;
 }
 
 type EventCb = (event: AgentEvent, seq: number) => void;
@@ -208,7 +211,7 @@ export class LinkCodeClient {
       case 'agent.event': {
         const seq = (this.eventSeqs.get(p.sessionId) ?? 0) + 1;
         this.eventSeqs.set(p.sessionId, seq);
-        const sequenced: SequencedAgentEvent = { event: p.event, seq };
+        const sequenced: SequencedAgentEvent = { event: p.event, seq, receivedAt: Date.now() };
         const buf = this.events.get(p.sessionId);
         if (buf) buf.push(sequenced);
         else this.events.set(p.sessionId, [sequenced]);

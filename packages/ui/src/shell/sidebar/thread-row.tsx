@@ -2,8 +2,8 @@ import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
 import { PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 import { cn } from '../../lib/cn';
-import { AGENT_LABELS, AgentIcon } from '../agent-icon';
 import { relativeTimeLabel } from '../relative-time';
 import { repositoryLabel } from '../repository-label';
 

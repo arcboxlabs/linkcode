@@ -19,18 +19,23 @@ import {
   declinedToolCallIds,
   selectPendingPermissionItems,
 } from './conversation-prompts';
+import { assistantTurnText, latestReceivedAt } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
+import { AgentTurnActions } from './turn-actions';
 import { TurnDiffSummary } from './turn-diff-summary';
 import { splitTurnSegments, turnFileEdits } from './turn-edits';
 import type { ConversationViewModel } from './types';
+import { UserMessage } from './user-message';
 
 export interface ConversationViewProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   cwd?: string;
+  /** TODO(backend): shown in the per-turn meta once session state reflects the active model. */
+  modelName?: string;
   /** requestIds and selected options answered in this client. */
   permissionDecisions: ReadonlyMap<string, PermissionOption>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
@@ -41,6 +46,7 @@ export function ConversationView({
   conversation,
   agentKind,
   cwd,
+  modelName,
   permissionDecisions,
   TerminalBlockComponent,
 }: ConversationViewProps): React.ReactNode {
@@ -99,9 +105,10 @@ export function ConversationView({
     const item = entry.item;
     switch (item.kind) {
       case 'message':
+        if (item.role === 'user') return <UserMessage key={item.id} item={item} />;
         return (
-          <Message key={item.id} from={item.role}>
-            <MessageContent className={item.role === 'assistant' ? 'space-y-1' : undefined}>
+          <Message key={item.id} from="assistant">
+            <MessageContent className="space-y-1">
               {keyedItems(item.blocks, stableContentKey).map(({ key, item: block }) => (
                 <ContentBlockView key={key} block={block} />
               ))}
@@ -152,13 +159,37 @@ export function ConversationView({
     >
       <ConversationContent>
         {segments.map((segment, index) => {
-          // One rollup per agent turn, once it has settled — the in-flight turn shows none.
+          // Per-turn trailers (edit rollup, reply actions) appear once the turn has settled —
+          // the in-flight turn shows none.
           const ended = index < segments.length - 1 || !isThinking;
           const edits = ended ? turnFileEdits(segment.items) : null;
+          const replyText = ended ? assistantTurnText(segment.items) : '';
+          const entries = groupTimeline(segment.items);
+          const leadingUserEntry =
+            entries[0]?.type === 'item' &&
+            entries[0].item.kind === 'message' &&
+            entries[0].item.role === 'user'
+              ? entries[0]
+              : null;
+          const agentEntries = leadingUserEntry ? entries.slice(1) : entries;
+          const hasAgentTurnContent = agentEntries.length > 0 || edits || replyText;
           return (
             <Fragment key={segment.turnId ?? 'lead-in'}>
-              {groupTimeline(segment.items).map((entry) => renderEntry(entry))}
-              {edits ? <TurnDiffSummary edits={edits} /> : null}
+              {leadingUserEntry ? renderEntry(leadingUserEntry) : null}
+              {hasAgentTurnContent ? (
+                <div className="group/turn flex flex-col gap-3">
+                  {agentEntries.map((entry) => renderEntry(entry))}
+                  {edits ? <TurnDiffSummary edits={edits} /> : null}
+                  {replyText ? (
+                    <AgentTurnActions
+                      agentKind={agentKind}
+                      copyText={replyText}
+                      modelName={modelName}
+                      receivedAt={latestReceivedAt(segment.items)}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
             </Fragment>
           );
         })}

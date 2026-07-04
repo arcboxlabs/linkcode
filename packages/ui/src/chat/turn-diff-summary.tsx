@@ -34,11 +34,11 @@ export function TurnDiffSummary({
           <div className="font-medium">{t('title', { count: edits.files.length })}</div>
           <DiffStat additions={edits.additions} deletions={edits.deletions} />
         </div>
-        <Button disabled={!onUndo} type="button" variant="ghost" onClick={onUndo}>
+        <Button disabled={!onUndo} size="sm" type="button" variant="ghost" onClick={onUndo}>
           <Undo2Icon />
           {t('undo')}
         </Button>
-        <Button disabled={!onReview} type="button" variant="outline" onClick={onReview}>
+        <Button disabled={!onReview} size="sm" type="button" variant="outline" onClick={onReview}>
           {t('review')}
         </Button>
       </div>

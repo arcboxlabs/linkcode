@@ -21,41 +21,44 @@ import type { SequencedAgentEvent } from './client';
 
 export type ConversationTurnId = string | null;
 
+/**
+ * Fields every timeline item carries. `receivedAt` is the client receive time of the item's
+ * latest event — TODO(wire): approximate and absent for history-seeded items; replace with an
+ * authoritative event timestamp once the wire carries one.
+ */
+interface ConversationItemBase {
+  id: string;
+  turnId: ConversationTurnId;
+  receivedAt?: number;
+}
+
 /** A single semantic item in the conversation timeline. */
 export type ConversationItem =
-  | {
+  | (ConversationItemBase & {
       kind: 'message';
-      id: string;
-      turnId: ConversationTurnId;
       role: 'user' | 'assistant';
       blocks: ContentBlock[];
       isStreaming: boolean;
-    }
-  | {
+    })
+  | (ConversationItemBase & {
       kind: 'reasoning';
-      id: string;
-      turnId: ConversationTurnId;
       blocks: ContentBlock[];
       isStreaming: boolean;
-    }
-  | { kind: 'tool'; id: string; turnId: ConversationTurnId; toolCall: ToolCall }
-  | { kind: 'plan'; id: string; turnId: ConversationTurnId; plan: Plan }
-  | {
+    })
+  | (ConversationItemBase & { kind: 'tool'; toolCall: ToolCall })
+  | (ConversationItemBase & { kind: 'plan'; plan: Plan })
+  | (ConversationItemBase & {
       kind: 'approval';
-      id: string;
-      turnId: ConversationTurnId;
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
-    }
-  | {
+    })
+  | (ConversationItemBase & {
       kind: 'error';
-      id: string;
-      turnId: ConversationTurnId;
       message: string;
       code?: string;
       recoverable: boolean;
-    };
+    });
 
 export interface ConversationViewModel {
   /** Ordered timeline of everything the user should see. */
@@ -91,8 +94,11 @@ function appendBlock(blocks: ContentBlock[], block: ContentBlock): void {
   blocks.push(block);
 }
 
+/** An agent event optionally paired with its client receive time (see `SequencedAgentEvent`). */
+export type StampedAgentEvent = AgentEvent & { receivedAt?: number };
+
 /** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */
-export function buildConversation(events: readonly AgentEvent[]): Conversation {
+export function buildConversation(events: readonly StampedAgentEvent[]): Conversation {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
   // messageId → item index, so streaming chunks bucket into one item regardless of interleaving.
@@ -113,12 +119,14 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
     kind: 'message' | 'reasoning',
     messageId: string,
     block: ContentBlock,
+    receivedAt: number | undefined,
   ): void => {
     const existing = messageIndex.get(messageId);
     if (existing !== undefined) {
       const item = items[existing];
       if (item.kind === kind) {
         appendBlock(item.blocks, block);
+        item.receivedAt = receivedAt ?? item.receivedAt;
         return;
       }
     }
@@ -130,6 +138,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
         role: 'assistant',
         blocks: [block],
         isStreaming: false,
+        receivedAt,
       });
     } else {
       items.push({
@@ -138,6 +147,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
         turnId: currentTurnId,
         blocks: [block],
         isStreaming: false,
+        receivedAt,
       });
     }
     messageIndex.set(messageId, items.length - 1);
@@ -155,14 +165,15 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           role: 'user',
           blocks: [...event.content],
           isStreaming: false,
+          receivedAt: event.receivedAt,
         });
         break;
       }
       case 'agent-message-chunk':
-        openAgentStream('message', event.messageId, event.content);
+        openAgentStream('message', event.messageId, event.content, event.receivedAt);
         break;
       case 'agent-thought-chunk':
-        openAgentStream('reasoning', event.messageId, event.content);
+        openAgentStream('reasoning', event.messageId, event.content, event.receivedAt);
         break;
 
       case 'tool-call': {
@@ -174,11 +185,15 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
             id: event.toolCall.toolCallId,
             turnId: currentTurnId,
             toolCall: event.toolCall,
+            receivedAt: event.receivedAt,
           });
           toolIndex.set(event.toolCall.toolCallId, items.length - 1);
         } else {
           const item = items[existing];
-          if (item.kind === 'tool') item.toolCall = event.toolCall;
+          if (item.kind === 'tool') {
+            item.toolCall = event.toolCall;
+            item.receivedAt = event.receivedAt ?? item.receivedAt;
+          }
         }
         break;
       }
@@ -191,6 +206,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
             id: genId('plan'),
             turnId: currentTurnId,
             plan: event.plan,
+            receivedAt: event.receivedAt,
           });
           planIndexByTurn.set(currentTurnId, items.length - 1);
           break;
@@ -221,6 +237,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           message: event.message,
           code: event.code,
           recoverable: event.recoverable,
+          receivedAt: event.receivedAt,
         });
         break;
 
@@ -232,6 +249,7 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
           requestId: event.requestId,
           toolCall: event.toolCall,
           options: event.options,
+          receivedAt: event.receivedAt,
         });
         break;
       default:
@@ -280,16 +298,17 @@ export interface ConversationSeed {
 /**
  * Prepend a transcript snapshot to the live event stream. The cut is ordered, not clocked: live
  * events received at or before the moment the snapshot resolved (seq ≤ uptoSeq) are contained in
- * it and dropped; only the tail received after the snapshot is appended.
+ * it and dropped; only the tail received after the snapshot is appended. Live events keep their
+ * client receive time; snapshot events have none.
  */
 export function mergeSeededEvents(
   seed: ConversationSeed | undefined,
   live: readonly SequencedAgentEvent[],
-): AgentEvent[] {
-  if (!seed) return live.map(({ event }) => event);
-  const merged = [...seed.events];
-  for (const { event, seq } of live) {
-    if (seq > seed.uptoSeq) merged.push(event);
+): StampedAgentEvent[] {
+  if (!seed) return live.map(({ event, receivedAt }) => ({ ...event, receivedAt }));
+  const merged: StampedAgentEvent[] = [...seed.events];
+  for (const { event, seq, receivedAt } of live) {
+    if (seq > seed.uptoSeq) merged.push({ ...event, receivedAt });
   }
   return merged;
 }

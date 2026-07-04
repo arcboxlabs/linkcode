@@ -10,6 +10,8 @@ export interface ConversationSurfaceProps {
   agentKind?: AgentKind;
   agentLabel?: string;
   cwd?: string;
+  /** TODO(backend): thread the session's active model here once the daemon reflects it. */
+  modelName?: string;
   permissionDecisions: ReadonlyMap<string, PermissionOption>;
   respondingPermissions: ReadonlySet<string>;
   disabled?: boolean;
@@ -31,6 +33,7 @@ export function ConversationSurface({
   agentKind,
   agentLabel,
   cwd,
+  modelName,
   permissionDecisions,
   respondingPermissions,
   disabled = false,
@@ -54,6 +57,7 @@ export function ConversationSurface({
           conversation={conversation}
           agentKind={agentKind}
           cwd={cwd}
+          modelName={modelName}
           permissionDecisions={permissionDecisions}
           TerminalBlockComponent={TerminalBlockComponent}
         />

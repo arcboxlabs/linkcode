@@ -40,6 +40,16 @@ export const en = {
       other: 'Used tools',
       failed: '{count} failed',
     },
+    message: {
+      copy: 'Copy',
+      copied: 'Copied',
+      edit: 'Edit',
+      showMore: 'Show more',
+      showLess: 'Show less',
+      goodResponse: 'Good response',
+      badResponse: 'Bad response',
+      branch: 'Branch conversation',
+    },
     diffSummary: {
       title: 'Edited {count, plural, one {# file} other {# files}}',
       undo: 'Undo',
