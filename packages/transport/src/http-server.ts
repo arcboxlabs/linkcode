@@ -34,3 +34,33 @@ export function boundPort(server: HttpServer, requested: number): number {
   const address = server.address();
   return typeof address === 'object' && address !== null ? address.port : requested;
 }
+
+/** The subset of `WebSocketServer` / socket.io `Server` that `closeServerPair` needs to shut one down. */
+export interface ClosablePrimaryServer {
+  close(cb: (err?: Error | null) => void): void;
+}
+
+/**
+ * Close a primary server (the `ws` `WebSocketServer` or the socket.io `Server`) and, once it has
+ * finished, the underlying HTTP server it rides on. Both wrap Node's callback-style `close` with
+ * the same shape, so ws-server.ts and socket-io-server.ts share this instead of each re-deriving
+ * the same two-stage close-then-close-http Promise.
+ */
+export function closeServerPair(
+  primary: ClosablePrimaryServer,
+  httpServer: HttpServer,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    primary.close((err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      if (!httpServer.listening) {
+        resolve();
+        return;
+      }
+      httpServer.close((httpErr) => (httpErr ? reject(httpErr) : resolve()));
+    });
+  });
+}

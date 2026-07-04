@@ -1,10 +1,14 @@
-import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
 import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import type { Socket } from 'socket.io';
 import { Server as SocketIoServerImpl } from 'socket.io';
-import { boundPort, createIdentityRequestHandler, listenHttp } from './http-server';
+import {
+  boundPort,
+  closeServerPair,
+  createIdentityRequestHandler,
+  listenHttp,
+} from './http-server';
 import type { Transport, TransportServer } from './transport';
 import { Listeners, WireConnection } from './transport';
 
@@ -61,22 +65,6 @@ export async function createSocketIoServer(opts: SocketIoServerOptions): Promise
   return {
     port: boundPort(httpServer, opts.port),
     onConnection: (cb) => connections.add(cb),
-    close: () => closeSocketIoServer(io, httpServer),
+    close: () => closeServerPair(io, httpServer),
   };
-}
-
-function closeSocketIoServer(io: SocketIoServerImpl, httpServer: HttpServer): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    io.close((ioErr) => {
-      if (ioErr) {
-        reject(ioErr);
-        return;
-      }
-      if (!httpServer.listening) {
-        resolve();
-        return;
-      }
-      httpServer.close((httpErr) => (httpErr ? reject(httpErr) : resolve()));
-    });
-  });
 }

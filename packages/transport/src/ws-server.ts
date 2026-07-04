@@ -1,10 +1,14 @@
-import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
 import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import type { RawData } from 'ws';
 import { WebSocket, WebSocketServer } from 'ws';
-import { boundPort, createIdentityRequestHandler, listenHttp } from './http-server';
+import {
+  boundPort,
+  closeServerPair,
+  createIdentityRequestHandler,
+  listenHttp,
+} from './http-server';
 import type { Transport, TransportServer } from './transport';
 import { Listeners, WireConnection } from './transport';
 
@@ -81,22 +85,6 @@ export async function createWsServer(opts: WsServerOptions): Promise<WsServer> {
   return {
     port: boundPort(httpServer, opts.port),
     onConnection: (cb) => connections.add(cb),
-    close: () => closeWsServer(wss, httpServer),
+    close: () => closeServerPair(wss, httpServer),
   };
-}
-
-function closeWsServer(wss: WebSocketServer, httpServer: HttpServer): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    wss.close((err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      if (!httpServer.listening) {
-        resolve();
-        return;
-      }
-      httpServer.close((httpErr) => (httpErr ? reject(httpErr) : resolve()));
-    });
-  });
 }
