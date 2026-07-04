@@ -39,6 +39,8 @@ export interface ThreadGroupViewModel {
 export interface ThreadsViewProps extends ThreadGroupActions, ThreadGroupState {
   groups: ThreadGroupViewModel[];
   workspacesLoading?: boolean;
+  /** First load of the session list — the "Chats" section shows a skeleton, not the empty hint. */
+  sessionsLoading?: boolean;
   /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
   onReorderGroups: (orderedCollapseKeys: string[]) => void;
   /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
@@ -56,6 +58,7 @@ export interface ThreadsViewProps extends ThreadGroupActions, ThreadGroupState {
 export function ThreadsView({
   groups,
   workspacesLoading,
+  sessionsLoading,
   activeId,
   pinnedSessionIds,
   onSelect,
@@ -184,6 +187,7 @@ export function ThreadsView({
         <ChatsSection
           workspace={chatGroup?.workspace ?? null}
           sessions={chatGroup?.visibleSessions ?? []}
+          isLoading={sessionsLoading}
           hasOverflow={chatGroup?.hasOverflow ?? false}
           previewExpanded={chatGroup?.previewExpanded ?? false}
           groupKey={chatGroup?.key ?? 'chat'}
