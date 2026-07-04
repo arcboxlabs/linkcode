@@ -1,10 +1,4 @@
-import type {
-  ContentBlock,
-  MessageId,
-  StartOptions,
-  ToolCallContent,
-  ToolCallStatus,
-} from '@linkcode/schema';
+import type { ContentBlock, StartOptions, ToolCallContent, ToolCallStatus } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -59,8 +53,6 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** True once `onCancel` has aborted the in-flight turn — any stream fallout until the next prompt
    * (thrown or clean) is that abort's expected side effect, not a failure. */
   private cancelling = false;
-  /** Per-part cursor for turning OpenCode's cumulative part text into deltas. */
-  private readonly textLen = new Map<string, number>();
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
@@ -206,12 +198,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private handlePart(part: Part): void {
     switch (part.type) {
       case 'text': {
-        this.streamPartText(part.id, part.text, 'message');
+        this.streamDelta(part.id, part.text, 'message');
 
         break;
       }
       case 'reasoning': {
-        this.streamPartText(part.id, part.text, 'thought');
+        this.streamDelta(part.id, part.text, 'thought');
 
         break;
       }
@@ -231,14 +223,5 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       default:
         break;
     }
-  }
-
-  private streamPartText(partId: string, full: string, kind: 'message' | 'thought'): void {
-    const prev = this.textLen.get(partId) ?? 0;
-    if (full.length <= prev) return;
-    const delta = full.slice(prev);
-    this.textLen.set(partId, full.length);
-    if (kind === 'message') this.emitAssistantText(delta, partId as MessageId);
-    else this.emitThought(delta, partId as MessageId);
   }
 }

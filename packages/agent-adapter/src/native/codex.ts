@@ -14,7 +14,6 @@ import type {
   AgentHistoryResumeOptions,
   AgentHistorySession,
   ContentBlock,
-  MessageId,
   StartOptions,
   TokenUsage,
   ToolCallContent,
@@ -77,8 +76,6 @@ export class CodexAdapter extends BaseAgentAdapter {
   private thread: CodexThread | null = null;
   private abort: AbortController | null = null;
   private resumeThreadId: string | undefined;
-  /** Per-item cursor for turning Codex's cumulative text into deltas. */
-  private readonly textLen = new Map<string, number>();
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const codex = await this.createCodex();
@@ -214,10 +211,10 @@ export class CodexAdapter extends BaseAgentAdapter {
   private handleItem(item: ThreadItem): void {
     switch (item.type) {
       case 'agent_message':
-        this.streamText(item.id, item.text, 'message');
+        this.streamDelta(item.id, item.text, 'message');
         break;
       case 'reasoning':
-        this.streamText(item.id, item.text, 'thought');
+        this.streamDelta(item.id, item.text, 'thought');
         break;
       case 'command_execution':
         this.emitTool({
@@ -277,16 +274,6 @@ export class CodexAdapter extends BaseAgentAdapter {
       default:
         break;
     }
-  }
-
-  /** Convert Codex's cumulative item text into an incremental chunk. */
-  private streamText(itemId: string, fullText: string, kind: 'message' | 'thought'): void {
-    const prev = this.textLen.get(itemId) ?? 0;
-    if (fullText.length <= prev) return;
-    const delta = fullText.slice(prev);
-    this.textLen.set(itemId, fullText.length);
-    if (kind === 'message') this.emitAssistantText(delta, itemId as MessageId);
-    else this.emitThought(delta, itemId as MessageId);
   }
 }
 
