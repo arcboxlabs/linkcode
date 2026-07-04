@@ -97,6 +97,14 @@ export const zhCN = {
     mode: {
       label: '模式',
     },
+    newSession: {
+      heading: '想构建什么？',
+      headingIn: '在 {name} 中构建什么？',
+      chooseWorkspace: '选择工作区',
+      chat: '聊天',
+      workLocally: '本地运行',
+      branch: '分支',
+    },
     panel: {
       window: {
         diff: '差异',
