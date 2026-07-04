@@ -61,15 +61,12 @@ async function main(): Promise<void> {
   };
   const hub = new Hub();
   const store = createProviderConfigStore(config.providers ?? {});
-  const engine = new Engine(
-    hub,
-    undefined,
-    store,
-    new SidecarPtyBackend(resolveSidecarPath()),
-    createSessionStore(databasePath()),
-    undefined,
-    createWorkspaceStore(databasePath()),
-  );
+  const engine = new Engine(hub, {
+    providerStore: store,
+    ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
+    sessionStore: createSessionStore(databasePath()),
+    workspaceStore: createWorkspaceStore(databasePath()),
+  });
   await engine.start();
   // Runs before any listener binds, so `workspace.list` always includes the chat workspace by the
   // time a client can connect.

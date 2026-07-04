@@ -109,7 +109,7 @@ function harness(store = new InMemorySessionStore()) {
     adapters.push(adapter);
     return adapter;
   };
-  const engine = new Engine(transport, factory, undefined, undefined, store);
+  const engine = new Engine(transport, { factory, sessionStore: store });
 
   async function inject(payload: WirePayload): Promise<void> {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));

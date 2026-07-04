@@ -150,7 +150,7 @@ describe('Engine history wire API', () => {
   it('lists, reads, and resumes history over transport', async () => {
     const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
     const [clientTransport, engineTransport] = createLocalTransportPair();
-    const engine = new Engine(engineTransport, fakeFactory(state));
+    const engine = new Engine(engineTransport, { factory: fakeFactory(state) });
     const received: WireMessage[] = [];
 
     clientTransport.onMessage((msg) => received.push(msg));
