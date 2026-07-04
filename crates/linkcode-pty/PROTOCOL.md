@@ -45,7 +45,7 @@ Sidecar to daemon:
 | `0x83` | `EXIT` | JSON [`Exit`](#exit) |
 | `0x84` | `ERROR` | JSON [`Error`](#error) |
 
-Unknown frame types are ignored by the current sidecar. Malformed `OPEN` frames are fatal because otherwise the daemon can wait forever for `OPENED` or `ERROR`.
+Unknown frame types are ignored by the current sidecar. A malformed `OPEN` frame fails only that terminal — the sidecar replies `ERROR` for its `terminalId` and keeps running every other terminal. If the frame is malformed badly enough that `terminalId` itself cannot be recovered, the sidecar cannot reply `ERROR` at all: it logs to stderr and the daemon's pending open for that frame hangs forever (there is no open timeout). This should not happen in practice, since the daemon always encodes `terminalId` itself.
 
 ## Data frame body
 
@@ -97,7 +97,7 @@ Behavior:
 - On success, the sidecar sends `OPENED` before any `OUTPUT` for that terminal.
 - If the terminal id already exists, the sidecar sends `ERROR`.
 - If spawning fails, the sidecar sends `ERROR`.
-- If the `OPEN` JSON itself is malformed, the sidecar logs to stderr, kills all terminals, and exits.
+- If the `OPEN` JSON itself is malformed, the sidecar logs to stderr and replies `ERROR` for that `terminalId` alone; every other terminal keeps running. If `terminalId` cannot be recovered from the malformed body, no `ERROR` is sent — see [Frame types](#frame-types).
 
 ### `RESIZE`
 
