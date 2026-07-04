@@ -20,9 +20,11 @@ import { SessionInfoSchema, SessionRecordSchema } from './session';
 import { WorkspaceKindSchema, WorkspaceRecordSchema } from './workspace';
 
 /**
- * Wire protocol: the envelope actually transmitted by the transport layer (PLAN §6).
- * Local direct connection (LocalTransport) and remote tunnel (WsTransport) share the same format (PLAN §2.6).
- * Validate with zod at the trust boundary both before sending and after receiving (PLAN §2.1).
+ * Wire protocol: the envelope actually transmitted by the transport layer
+ * (docs/ARCHITECTURE.md#transport--wire-protocol).
+ * Local direct connection (LocalTransport) and remote tunnel (WsTransport) share the same format
+ * (docs/ARCHITECTURE.md#core-principles). Validate with zod at the trust boundary both before
+ * sending and after receiving (docs/ARCHITECTURE.md#core-principles).
  *
  * v2: the daemon serves multiple clients, so `agent.event` is broadcast to all attached clients of a
  * session. Request/response control messages carry a correlation id (`clientReqId` → `replyTo`) so the

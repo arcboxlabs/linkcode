@@ -5,7 +5,8 @@ import type { Transport, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
 /**
- * LocalTransport: local direct-connection (in-process / over IPC) implementation (PLAN §4.4).
+ * LocalTransport: local direct-connection (in-process / over IPC) implementation
+ * (docs/ARCHITECTURE.md#packages--repo-layout).
  * Used when PC / Web connect locally to a host in the same process or on the same machine.
  * Use `createLocalTransportPair()` to obtain a pair of endpoints that loop back to each other.
  */

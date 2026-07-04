@@ -1,7 +1,7 @@
 import type { ProvidersConfig, StartOptions } from '@linkcode/schema';
 
 /**
- * Daemon-owned provider config store (data plane, PLAN §4.2 / §4.6). The host reads it to inject
+ * Daemon-owned provider config store (data plane, docs/ARCHITECTURE.md#packages--repo-layout). The host reads it to inject
  * per-agent defaults at session start and services `config.get` / `config.set` over the wire. The
  * daemon supplies a persistent implementation; the in-memory default keeps the Engine usable
  * standalone (tests / no daemon).

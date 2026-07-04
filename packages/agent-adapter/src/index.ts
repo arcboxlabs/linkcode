@@ -1,5 +1,6 @@
 /**
- * @linkcode/agent-adapter — the agent adapter layer + abstraction layer (PLAN §4.2 / §6).
+ * @linkcode/agent-adapter — the agent adapter layer + abstraction layer
+ * (docs/ARCHITECTURE.md#packages--repo-layout, #key-contracts).
  *
  * Native adapters drive each agent's real SDK (claude-code / codex / opencode / pi) and normalize their
  * events into the zod `AgentEvent` contract. Driven by `@linkcode/engine` but standalone so the adapter

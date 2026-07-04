@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AgentKindSchema } from './common';
 
 /**
- * Daemon-owned per-agent provider configuration (data plane, PLAN §4.2 / §4.6).
+ * Daemon-owned per-agent provider configuration (data plane, docs/ARCHITECTURE.md#packages--repo-layout).
  * The daemon persists this in ~/.linkcode/config.json and applies it to StartOptions at session
  * start. Unlike system-plane desktop settings, it travels over `transport`, never over TypeSafe IPC.
  */

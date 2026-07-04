@@ -5,9 +5,11 @@ import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 export type Unsubscribe = () => void;
 
 /**
- * transport: the communication protocol layer (PLAN §4.4 / §6).
+ * transport: the communication protocol layer
+ * (docs/ARCHITECTURE.md#packages--repo-layout, #key-contracts).
  * Responsible only for "how messages are transmitted"; what it carries is always the schema-defined WireMessage.
- * Upper layers are unaware whether the underlying connection is a local direct connection or a tunnel (PLAN §2.6).
+ * Upper layers are unaware whether the underlying connection is a local direct connection or a tunnel
+ * (docs/ARCHITECTURE.md#core-principles).
  */
 export interface Transport {
   connect(): Promise<void>;

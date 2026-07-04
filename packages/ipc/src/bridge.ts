@@ -6,8 +6,9 @@ import type {
 } from './context';
 
 /**
- * SystemBridge: the capability contract of TypeSafe IPC (PLAN §6) — system / UI capabilities only.
- * Business data always goes through the transport and is **forbidden from this channel** (PLAN §2.3).
+ * SystemBridge: the capability contract of TypeSafe IPC (docs/ARCHITECTURE.md#key-contracts) —
+ * system / UI capabilities only. Business data always goes through the transport and is
+ * **forbidden from this channel** (docs/ARCHITECTURE.md#core-principles).
  */
 export interface SystemBridge {
   window: {

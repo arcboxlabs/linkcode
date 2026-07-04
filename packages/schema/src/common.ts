@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 /**
- * Common base types. 🔧 Proposed starting point — not a final contract.
- * The workflow is always "change the schema first, then the implementation" (PLAN §2.1).
+ * Common base types. The zod schema is the only data contract: the workflow is always
+ * "change the schema first, then the implementation" (docs/ARCHITECTURE.md#core-principles).
  */
 
 /** Session ID: the lifecycle identifier of a single agent session. */
@@ -25,6 +25,6 @@ export type AgentHistoryId = z.infer<typeof AgentHistoryIdSchema>;
 export const TimestampSchema = z.number().int().nonnegative();
 export type Timestamp = z.infer<typeof TimestampSchema>;
 
-/** Supported agent kinds. ✅ Four vendors (CC naming ❓, see PLAN §4.2). */
+/** Supported agent kinds — the four vendors in docs/ARCHITECTURE.md#packages--repo-layout. */
 export const AgentKindSchema = z.enum(['claude-code', 'codex', 'opencode', 'pi']);
 export type AgentKind = z.infer<typeof AgentKindSchema>;

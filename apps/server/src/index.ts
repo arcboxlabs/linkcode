@@ -3,12 +3,12 @@ import type { RawData, WebSocket } from 'ws';
 import { WebSocketServer } from 'ws';
 
 /**
- * Link Code Server — relay / tunnel (PLAN §4.7).
+ * Link Code Server — relay / tunnel (docs/ARCHITECTURE.md#packages--repo-layout).
  * It does not run an agent itself; it only lets external devices (Mobile) connect to the local Host.
  * Both Host ↔ Server and Mobile ↔ Server use websockets carrying the WireMessage defined by schema.
  *
- * ❓ The data models / protocol details for the following capabilities are still to be confirmed (PLAN §10.7);
- *   this is only a minimal skeleton for now:
+ * ❓ The data models / protocol details for the following capabilities are still to be confirmed
+ *   (see docs/ARCHITECTURE.md#open-questions); this is only a minimal skeleton for now:
  *   - token    authentication: validate the token on connection to identify the user / device.
  *   - perm     permissions: authorization policy for tool calls.
  *   - store    storage: persistence of session history.
@@ -44,7 +44,7 @@ wss.on('connection', (socket, req) => {
     } catch {
       return; // not JSON, discard
     }
-    // Trust boundary: validate with zod before forwarding (PLAN §2.1).
+    // Trust boundary: validate with zod before forwarding (docs/ARCHITECTURE.md#core-principles).
     const parsed = parseWireMessage(raw);
     if (!parsed.success) return;
 

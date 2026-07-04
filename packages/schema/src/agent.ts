@@ -21,7 +21,8 @@ import { TokenUsageSchema } from './usage';
 /**
  * Agent data-plane contract. The abstraction layer normalizes each vendor's native agent events into the
  * `AgentEvent` union, tailored to the four supported agents (claude-code / codex / opencode / pi) and the
- * front-end. The flow is always "change the schema first, then the implementation" (PLAN §2.1).
+ * front-end. The flow is always "change the schema first, then the implementation"
+ * (docs/ARCHITECTURE.md#core-principles).
  */
 
 // ── Upstream: client → host → agent ──────────────────────────────────────────

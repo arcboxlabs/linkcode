@@ -7,7 +7,7 @@ import { ensureDefaultPickerDirectory } from './default-picker-directory';
 import { getSettings, setSettings } from './settings';
 import { checkForUpdates } from './updater';
 
-/** Binds the system IPC capability contract to the real Electron implementation (system / UI only, PLAN §2.3). */
+/** Binds the system IPC capability contract to the real Electron implementation (system / UI only, docs/ARCHITECTURE.md#core-principles). */
 export function systemContextFor(win: BrowserWindow): SystemContext {
   return {
     window: {

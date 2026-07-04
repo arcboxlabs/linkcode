@@ -83,9 +83,10 @@ function nextClientReqId(): string {
 }
 
 /**
- * LinkCodeClient: the data-plane client shared across all platforms (PLAN §4.6).
+ * LinkCodeClient: the data-plane client shared across all platforms
+ * (docs/ARCHITECTURE.md#packages--repo-layout).
  * Layers session semantics (start / prompt / subscribe / stop) on top of any Transport, agnostic to
- * whether it's a LocalTransport or a WsTransport to the daemon (PLAN §2.6).
+ * whether it's a LocalTransport or a WsTransport to the daemon (docs/ARCHITECTURE.md#core-principles).
  *
  * The daemon broadcasts events to every client, so control replies are paired by correlation id rather
  * than by order: each request carries a `clientReqId` and the reply echoes it as `replyTo`.
