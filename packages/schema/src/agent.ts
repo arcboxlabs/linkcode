@@ -7,7 +7,7 @@ import {
   TimestampSchema,
 } from './common';
 import { ContentBlockSchema } from './content';
-import { PermissionOptionSchema, PermissionOutcomeSchema } from './permission';
+import { PermissionOutcomeSchema, PermissionRequestSchema } from './permission';
 import { PlanSchema } from './plan';
 import {
   McpServerSchema,
@@ -15,7 +15,7 @@ import {
   SessionStatusSchema,
   StopReasonSchema,
 } from './session';
-import { ToolCallSchema, ToolCallUpdateSchema } from './tool-call';
+import { ToolCallSchema } from './tool-call';
 import { TokenUsageSchema } from './usage';
 
 /**
@@ -129,11 +129,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   }),
 
   // ── Agent → client request (awaits a reply via AgentInput, correlated by requestId) ──
-  z.object({
+  PermissionRequestSchema.extend({
     type: z.literal('permission-request'),
     requestId: z.string().min(1),
-    toolCall: ToolCallUpdateSchema,
-    options: z.array(PermissionOptionSchema),
   }),
 ]);
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
