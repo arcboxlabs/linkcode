@@ -122,28 +122,56 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return { providerID, modelID: rest.join('/') };
   }
 
+  /** Runs for the whole session, dispatching every SSE event the OpenCode server pushes over the
+   * single long-lived `event.subscribe()` stream (subscribed once in `onStart`). Only returns when
+   * that stream ends — `subscribe()` rejecting up front, the iterator throwing mid-stream, or the
+   * server just closing it. */
   private async consumeEvents(): Promise<void> {
     if (!this.client) return;
-    const sub = await this.client.event.subscribe();
-    for await (const ev of sub.stream) {
-      if (this.stopped) break;
-      this.handleEvent(ev);
+    let caught: unknown;
+    try {
+      const sub = await this.client.event.subscribe();
+      for await (const ev of sub.stream) {
+        if (this.stopped) break;
+        this.handleEvent(ev);
+      }
+    } catch (err) {
+      caught = err;
     }
+    if (this.stopped) return;
+    // Nothing resubscribes today (see CODE-9), so however the stream ended — thrown or just
+    // closed — this session can no longer receive events. Sweep in-flight state and surface it
+    // instead of going silently deaf.
+    this.teardown();
+    this.emitError(
+      caught
+        ? (extractErrorMessage(caught) ?? 'opencode: event stream failed')
+        : 'opencode: event stream ended unexpectedly',
+      undefined,
+      false,
+    );
+    this.emitStatus('idle');
   }
 
+  /** Each event is handled in its own try/catch so one malformed event (e.g. an unexpected
+   * `properties`/`part` shape) reports an error without ending the whole stream. */
   private handleEvent(ev: Event): void {
-    switch (ev.type) {
-      case 'message.part.updated':
-        if (ev.properties.sessionID === this.sessionId) this.handlePart(ev.properties.part);
-        break;
-      case 'session.idle':
-        if (ev.properties.sessionID === this.sessionId) {
-          this.emitStop('end_turn');
-          this.emitStatus('idle');
-        }
-        break;
-      default:
-        break;
+    try {
+      switch (ev.type) {
+        case 'message.part.updated':
+          if (ev.properties.sessionID === this.sessionId) this.handlePart(ev.properties.part);
+          break;
+        case 'session.idle':
+          if (ev.properties.sessionID === this.sessionId) {
+            this.emitStop('end_turn');
+            this.emitStatus('idle');
+          }
+          break;
+        default:
+          break;
+      }
+    } catch (err) {
+      this.emitError(extractErrorMessage(err) ?? `opencode: failed to handle event (${ev.type})`);
     }
   }
 
