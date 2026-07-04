@@ -1,13 +1,13 @@
-import { Button } from 'coss-ui/components/button';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { ChevronRightIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/cn';
+import type { TooltipIconButtonProps } from './tooltip-icon-button';
+import { TooltipIconButton } from './tooltip-icon-button';
 
 const EMPTY_WEB_PREVIEW_LOGS: readonly ChatWebPreviewLog[] = [];
 
@@ -110,31 +110,12 @@ export function WebPreviewNavigation({
   );
 }
 
-export type WebPreviewNavigationButtonProps = React.ComponentProps<typeof Button> & {
-  tooltip?: string;
-};
+export type WebPreviewNavigationButtonProps = TooltipIconButtonProps;
 
-export function WebPreviewNavigationButton({
-  tooltip,
-  children,
-  size = 'icon-xs',
-  variant = 'ghost',
-  ...props
-}: WebPreviewNavigationButtonProps): React.ReactNode {
-  const button = (
-    <Button size={size} type="button" variant={variant} {...props}>
-      {children}
-    </Button>
-  );
-
-  if (!tooltip) return button;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
-  );
+export function WebPreviewNavigationButton(
+  props: WebPreviewNavigationButtonProps,
+): React.ReactNode {
+  return <TooltipIconButton {...props} />;
 }
 
 export type WebPreviewUrlProps = Omit<React.ComponentProps<'input'>, 'onKeyDown'> & {
