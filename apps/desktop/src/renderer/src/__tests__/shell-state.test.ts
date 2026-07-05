@@ -2,11 +2,13 @@ import type { DesktopShellState, RightPanelState } from '@renderer/shell/store/m
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
-  closeRightTerminalTabState,
+  closeSectionTabState,
   createDefaultRightPanelState,
   createPanelState,
+  createRightFileTab,
   createRightTerminalTab,
   DEFAULT_LAYOUT,
+  openFileTabState,
   parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
@@ -172,10 +174,12 @@ describe('desktop shell state persistence', () => {
   });
 
   it('round trips the latest serialized shape', () => {
+    const fileTab = createRightFileTab('/w/PLAN.md');
     const rightPanel: RightPanelState = {
       open: true,
       activeSection: 'browser',
       terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
+      files: { tabs: [fileTab, createRightFileTab('/w/report.pdf')], activeTabId: fileTab.id },
     };
     const source: DesktopShellState = {
       sidebarOpen: false,
@@ -195,18 +199,23 @@ describe('desktop shell state persistence', () => {
     expect(parsed.expansionStack).toEqual(['right', 'bottom']);
     expect(parsed.rightPanel.activeSection).toBe('browser');
     expect(parsed.rightPanel.terminal.tabs).toHaveLength(2);
+    expect(parsed.rightPanel.files.tabs.map((tab) => tab.path)).toEqual([
+      '/w/PLAN.md',
+      '/w/report.pdf',
+    ]);
+    expect(parsed.rightPanel.files.activeTabId).toBe(parsed.rightPanel.files.tabs[0].id);
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
   });
 });
 
-describe('closeRightTerminalTabState', () => {
+describe('closeSectionTabState', () => {
   it('falls back the active tab to the neighbor that slides into its slot', () => {
     const a = createRightTerminalTab();
     const b = createRightTerminalTab();
     const c = createRightTerminalTab();
     const terminal = { tabs: [a, b, c], activeTabId: b.id };
 
-    const next = closeRightTerminalTabState(terminal, b.id);
+    const next = closeSectionTabState(terminal, b.id);
 
     expect(next.tabs.map((tab) => tab.id)).toEqual([a.id, c.id]);
     expect(next.activeTabId).toBe(c.id);
@@ -217,7 +226,7 @@ describe('closeRightTerminalTabState', () => {
     const b = createRightTerminalTab();
     const terminal = { tabs: [a, b], activeTabId: a.id };
 
-    const next = closeRightTerminalTabState(terminal, b.id);
+    const next = closeSectionTabState(terminal, b.id);
 
     expect(next.tabs.map((tab) => tab.id)).toEqual([a.id]);
     expect(next.activeTabId).toBe(a.id);
@@ -227,7 +236,7 @@ describe('closeRightTerminalTabState', () => {
     const a = createRightTerminalTab();
     const terminal = { tabs: [a], activeTabId: a.id };
 
-    const next = closeRightTerminalTabState(terminal, a.id);
+    const next = closeSectionTabState(terminal, a.id);
 
     expect(next.tabs).toEqual([]);
     expect(next.activeTabId).toBeNull();
@@ -237,7 +246,32 @@ describe('closeRightTerminalTabState', () => {
     const a = createRightTerminalTab();
     const terminal = { tabs: [a], activeTabId: a.id };
 
-    expect(closeRightTerminalTabState(terminal, 'missing')).toBe(terminal);
+    expect(closeSectionTabState(terminal, 'missing')).toBe(terminal);
+  });
+});
+
+describe('openFileTabState', () => {
+  it('appends and focuses a new tab per distinct path', () => {
+    const empty = { tabs: [], activeTabId: null };
+    const one = openFileTabState(empty, '/w/PLAN.md');
+    expect(one.tabs.map((tab) => tab.path)).toEqual(['/w/PLAN.md']);
+    expect(one.activeTabId).toBe(one.tabs[0].id);
+
+    const two = openFileTabState(one, '/w/report.pdf');
+    expect(two.tabs).toHaveLength(2);
+    expect(two.activeTabId).toBe(two.tabs[1].id);
+  });
+
+  it('re-focuses the existing tab instead of duplicating the path', () => {
+    const one = openFileTabState({ tabs: [], activeTabId: null }, '/w/PLAN.md');
+    const two = openFileTabState(one, '/w/report.pdf');
+
+    const refocused = openFileTabState(two, '/w/PLAN.md');
+    expect(refocused.tabs).toHaveLength(2);
+    expect(refocused.activeTabId).toBe(two.tabs[0].id);
+
+    // Already active and present: the state is returned untouched.
+    expect(openFileTabState(refocused, '/w/PLAN.md')).toBe(refocused);
   });
 });
 

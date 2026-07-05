@@ -6,8 +6,8 @@ export const PANEL_WINDOW_TYPES = ['diff', 'terminal', 'browser', 'files'] as co
 
 export type PanelWindowType = (typeof PANEL_WINDOW_TYPES)[number];
 
-/** The right panel's three fixed sections — a subset of {@link PanelWindowType}. */
-export const PANEL_SECTIONS = ['diff', 'terminal', 'browser'] as const;
+/** The right panel's fixed sections — a subset of {@link PanelWindowType}. */
+export const PANEL_SECTIONS = ['diff', 'terminal', 'browser', 'files'] as const;
 
 export type PanelSection = (typeof PANEL_SECTIONS)[number];
 

@@ -10,7 +10,7 @@ import type {
   PersistedDesktopShellState,
 } from './model';
 import {
-  closeRightTerminalTabState,
+  closeSectionTabState,
   createDefaultDesktopShellState,
   createRightTerminalTab,
   createTab,
@@ -18,6 +18,7 @@ import {
   DESKTOP_SHELL_STORAGE_KEY,
   getExpandedPanel,
   normalizeLayout,
+  openFileTabState,
   PersistedDesktopShellStateSchema,
   pushExpandedPanel,
   removeExpandedPanel,
@@ -43,6 +44,10 @@ interface DesktopShellActions {
   addRightTerminalTab: () => void;
   closeRightTerminalTab: (id: string) => void;
   setActiveRightTerminalTab: (id: string) => void;
+  /** Opens (or re-focuses) a file viewer tab and brings the files section forward. */
+  openRightFileTab: (path: string) => void;
+  closeRightFileTab: (id: string) => void;
+  setActiveRightFileTab: (id: string) => void;
   resetSidebarSize: () => void;
   resetRightPanelSize: () => void;
   resetBottomPanelSize: () => void;
@@ -220,7 +225,7 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
             ...current,
             rightPanel: {
               ...current.rightPanel,
-              terminal: closeRightTerminalTabState(current.rightPanel.terminal, id),
+              terminal: closeSectionTabState(current.rightPanel.terminal, id),
             },
           }));
         },
@@ -231,6 +236,38 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
             rightPanel: {
               ...current.rightPanel,
               terminal: { ...current.rightPanel.terminal, activeTabId: id },
+            },
+          }));
+        },
+
+        openRightFileTab(path) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              open: true,
+              activeSection: 'files',
+              files: openFileTabState(current.rightPanel.files, path),
+            },
+          }));
+        },
+
+        closeRightFileTab(id) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              files: closeSectionTabState(current.rightPanel.files, id),
+            },
+          }));
+        },
+
+        setActiveRightFileTab(id) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              files: { ...current.rightPanel.files, activeTabId: id },
             },
           }));
         },

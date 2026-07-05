@@ -112,6 +112,9 @@ export function DesktopShell({
       addRightTerminalTab: state.addRightTerminalTab,
       closeRightTerminalTab: state.closeRightTerminalTab,
       setActiveRightTerminalTab: state.setActiveRightTerminalTab,
+      openRightFileTab: state.openRightFileTab,
+      closeRightFileTab: state.closeRightFileTab,
+      setActiveRightFileTab: state.setActiveRightFileTab,
       resetSidebarSize: state.resetSidebarSize,
       resetRightPanelSize: state.resetRightPanelSize,
       resetBottomPanelSize: state.resetBottomPanelSize,
@@ -230,6 +233,9 @@ export function DesktopShell({
     addRightTerminalTab,
     closeRightTerminalTab,
     setActiveRightTerminalTab,
+    openRightFileTab,
+    closeRightFileTab,
+    setActiveRightFileTab,
     resetSidebarSize: resetSidebarLayoutSize,
     resetRightPanelSize: resetRightPanelLayoutSize,
     resetBottomPanelSize: resetBottomPanelLayoutSize,
@@ -266,6 +272,14 @@ export function DesktopShell({
     resetBottomPanelLayoutSize();
   }
 
+  // File-artifact clicks land in the right panel's files section; relative paths are
+  // anchored to the active session's cwd (the same root the daemon reads against).
+  function openFileArtifact(path: string): void {
+    const cwd = active?.cwd;
+    const anchored = path[0] === '/' ? path : cwd ? `${cwd}/${path}` : null;
+    if (anchored !== null) openRightFileTab(anchored);
+  }
+
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
       <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
@@ -300,6 +314,7 @@ export function DesktopShell({
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
+          onOpenFileArtifact={openFileArtifact}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}
         />
@@ -334,6 +349,8 @@ export function DesktopShell({
         onSelectTerminalTab={setActiveRightTerminalTab}
         onCloseTerminalTab={closeRightTerminalTab}
         onAddTerminalTab={addRightTerminalTab}
+        onSelectFileTab={setActiveRightFileTab}
+        onCloseFileTab={closeRightFileTab}
         onToggleMax={() => toggleMaxPanel('right')}
       />
     );
