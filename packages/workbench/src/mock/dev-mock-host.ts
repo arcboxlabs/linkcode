@@ -298,7 +298,14 @@ export class DevMockHost {
     model: string | undefined,
   ): void {
     const now = Date.now();
-    const session = this.addSession({ kind, cwd, status: 'idle', createdAt: now, updatedAt: now, model });
+    const session = this.addSession({
+      kind,
+      cwd,
+      status: 'idle',
+      createdAt: now,
+      updatedAt: now,
+      model,
+    });
     // Parity with the engine: starting a session registers/freshens its directory's workspace.
     this.touchWorkspace(cwd, now);
     const { sessionId } = session;
