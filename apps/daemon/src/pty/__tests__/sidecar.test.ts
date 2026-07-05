@@ -80,6 +80,25 @@ describe('SidecarPtyBackend', () => {
     await expect(pending).rejects.toThrow('pty backend shutdown');
   });
 
+  it('rejects a pending open the sidecar never answers, after the open timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const { SidecarPtyBackend } = await import('../sidecar');
+      const child = fakeChild();
+      mocks.spawn.mockReturnValueOnce(child);
+      const backend = new SidecarPtyBackend('/bin/linkcode-pty');
+
+      // No OPENED/ERROR ever comes back (e.g. an OPEN whose terminalId the sidecar couldn't parse
+      // to reply ERROR against) — the open must not hang forever.
+      const pending = backend.open('term-1', { cols: 80, rows: 24 });
+      const rejection = expect(pending).rejects.toThrow('pty open timed out');
+      await vi.advanceTimersByTimeAsync(10000);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('kills the sidecar and exits live terminals after a malformed frame', async () => {
     const { SidecarPtyBackend } = await import('../sidecar');
     const child = fakeChild();
