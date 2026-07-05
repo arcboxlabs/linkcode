@@ -239,6 +239,11 @@ export const zhCN = {
       resourceLink: '[资源：{name}]',
       resource: '[资源]',
     },
+    artifact: {
+      streaming: '生成中…',
+      renderFailed: '无法渲染，已显示源代码',
+      clickToReference: '点击图中元素可引用到输入框',
+    },
     agentKind: {
       'claude-code': 'Claude Code',
       codex: 'Codex',

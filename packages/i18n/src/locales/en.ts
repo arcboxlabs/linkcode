@@ -242,6 +242,11 @@ export const en = {
       resourceLink: '[resource: {name}]',
       resource: '[resource]',
     },
+    artifact: {
+      streaming: 'Generating…',
+      renderFailed: 'Could not render; showing source',
+      clickToReference: 'Click an element in the diagram to reference it in the composer',
+    },
     agentKind: {
       'claude-code': 'Claude Code',
       codex: 'Codex',

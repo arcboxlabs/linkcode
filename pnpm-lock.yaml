@@ -821,6 +821,9 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
+      dompurify:
+        specifier: ^3.4.11
+        version: 3.4.11
       foxact:
         specifier: ^0.3.7
         version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -830,6 +833,9 @@ importers:
       lucide-react:
         specifier: ^1.18.0
         version: 1.18.0(react@19.2.7)
+      mermaid:
+        specifier: ^11.16.0
+        version: 11.16.0
       motion:
         specifier: ^12.40.0
         version: 12.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
