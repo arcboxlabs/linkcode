@@ -102,6 +102,7 @@ export const zhCN = {
       headingIn: '在 {name} 中构建什么？',
       chooseWorkspace: '选择工作区',
       chat: '聊天',
+      noProject: '不使用项目',
       workLocally: '本地运行',
       branch: '分支',
     },

@@ -289,7 +289,16 @@ export function ModelSelectorMenu({
         ) : null}
         {providers.length > 0 && onSelectProvider ? (
           <MenuSub>
-            <MenuSubTrigger>{t('provider')}</MenuSubTrigger>
+            <MenuSubTrigger>
+              {provider ? (
+                <>
+                  <AgentIcon kind={provider} variant="ghost" />
+                  {AGENT_LABELS[provider]}
+                </>
+              ) : (
+                t('provider')
+              )}
+            </MenuSubTrigger>
             <MenuSubPopup className="w-48">
               <MenuRadioGroup
                 value={provider ?? ''}
