@@ -1,4 +1,4 @@
-import { Engine } from '@linkcode/engine';
+import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
 import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
@@ -61,11 +61,16 @@ async function main(): Promise<void> {
   };
   const hub = new Hub();
   const store = createProviderConfigStore(config.providers ?? {});
+  // Shared between the engine's script service (writer) and every listener's reverse
+  // proxy (reader). Preview traffic bypasses daemon auth by decision — the boundary is
+  // the loopback bind (see config.ts DEFAULT_HOST); remote exposure is the tunnel's job.
+  const previewRoutes = new PreviewRouteRegistry();
   const engine = new Engine(hub, {
     providerStore: store,
     ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
     sessionStore: createSessionStore(databasePath()),
     workspaceStore: createWorkspaceStore(databasePath()),
+    previewRoutes,
   });
   await engine.start();
   // Runs before any listener binds, so `workspace.list` always includes the chat workspace by the
@@ -97,7 +102,9 @@ async function main(): Promise<void> {
     // itself because listenWithPortHunt treats an occupant with our pid as "keep hunting".
     const bound: DaemonListenerInfo[] = await Promise.all(
       config.listeners.map(async (listener) => {
-        const { server, url } = await listenWithPortHunt(listener, identity);
+        const { server, url, port } = await listenWithPortHunt(listener, identity, previewRoutes);
+        // Preview URLs carry the first bound port; every listener proxies the same table.
+        previewRoutes.proxyPort ??= port;
         server.onConnection((conn) => {
           cancelReap();
           hub.addConnection(conn);
