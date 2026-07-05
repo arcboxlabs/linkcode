@@ -1,9 +1,4 @@
-import type {
-  EffortLevel,
-  SessionId,
-  SessionInfo,
-  WorkspaceRecord,
-} from '@linkcode/schema';
+import type { EffortLevel, SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationSurface } from './conversation-surface';

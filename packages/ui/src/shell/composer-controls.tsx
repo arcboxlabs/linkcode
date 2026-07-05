@@ -2,10 +2,8 @@ import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
-  MenuCheckboxItem,
   MenuGroup,
   MenuGroupLabel,
-  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -17,10 +15,8 @@ import {
 } from 'coss-ui/components/menu';
 import { Separator } from 'coss-ui/components/separator';
 import {
-  AtSignIcon,
   ChevronDownIcon,
   ListTodoIcon,
-  PaperclipIcon,
   PlusIcon,
   ShieldIcon,
   SlidersHorizontalIcon,
@@ -43,73 +39,28 @@ function optionById<T extends { id: string }>(
   return undefined;
 }
 
-/** The `+` menu gathering the composer's secondary operations (attach, mention, mode toggles). */
+/** The `+` trigger for the composer's shared command popup. */
 export function ComposerPlusMenu({
   disabled,
-  modes,
-  currentModeId,
-  onToggleMode,
-  onInsertMention,
-  finalFocus,
+  onOpenPlusCommand,
 }: {
   disabled: boolean;
-  /** Agent-advertised workflow modes (plan / goal / … — see session-modes.ts), one active at most. */
-  modes: SessionMode[];
-  currentModeId: string | null;
-  onToggleMode?: (mode: SessionMode) => void;
-  onInsertMention: () => void;
-  /** Where focus lands after the menu closes — the composer textarea. */
-  finalFocus: React.RefObject<HTMLTextAreaElement | null>;
+  onOpenPlusCommand: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
 
   return (
-    <Menu>
-      <MenuTrigger
-        disabled={disabled}
-        render={
-          <Button
-            aria-label={t('add')}
-            className="rounded-full text-muted-foreground"
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          />
-        }
-      >
-        <PlusIcon />
-      </MenuTrigger>
-      <MenuPopup align="start" className="w-64" finalFocus={finalFocus} side="top" sideOffset={8}>
-        <MenuItem disabled>
-          <PaperclipIcon />
-          {t('attach')}
-        </MenuItem>
-        <MenuItem onClick={onInsertMention}>
-          <AtSignIcon />
-          {t('mentions')}
-        </MenuItem>
-        {modes.length > 0 && onToggleMode ? (
-          <>
-            <MenuSeparator />
-            {modes.map((mode) => (
-              <MenuCheckboxItem
-                key={mode.modeId}
-                checked={currentModeId === mode.modeId}
-                closeOnClick
-                onCheckedChange={() => onToggleMode(mode)}
-              >
-                <span className="flex min-w-0 flex-col">
-                  <span>{mode.name}</span>
-                  {mode.description ? (
-                    <span className="text-muted-foreground text-xs">{mode.description}</span>
-                  ) : null}
-                </span>
-              </MenuCheckboxItem>
-            ))}
-          </>
-        ) : null}
-      </MenuPopup>
-    </Menu>
+    <Button
+      aria-label={t('add')}
+      className="rounded-full text-muted-foreground"
+      disabled={disabled}
+      onClick={onOpenPlusCommand}
+      size="icon-sm"
+      type="button"
+      variant="ghost"
+    >
+      <PlusIcon />
+    </Button>
   );
 }
 

@@ -10,23 +10,25 @@ import type { SessionMode } from '@linkcode/schema';
  * the approval policy, which is the separate permission/safety axis — see approval-policy.ts.
  *
  * TODO(backend): the advertised mode list (`SessionModeState.availableModes`) is not emitted to
- * clients yet — only `current-mode-update` is. Emit it (names/descriptions come from the agent,
- * per provider) so `STUB_SESSION_MODES` below can be deleted. Approval-policy-flavored ids
- * (default / acceptEdits / bypassPermissions) must not appear on this channel once the policy
- * axis lands; adapters map them onto the policy concept instead.
+ * clients yet — only `current-mode-update` is. Until then, the composer command menu shows the
+ * frontend-only stub rows below. Once agents provide real names/descriptions, delete
+ * `STUB_SESSION_MODES` and keep approval-policy-flavored ids (default / acceptEdits /
+ * bypassPermissions) off this channel; adapters map them onto the policy concept instead.
  */
 
 // TODO(backend): replace with the agent-advertised mode list from `SessionModeState`.
+// TODO(modes): prevent hardcoded workflow modes once agents reliably advertise capabilities.
+// TODO(i18n): move stub labels/descriptions into i18n after the command-menu copy settles.
 export const STUB_SESSION_MODES: SessionMode[] = [
   {
     modeId: 'plan',
     name: 'Plan',
-    description: 'Research and propose a plan before making changes.',
+    description: 'Research and propose changes',
   },
   {
     modeId: 'goal',
     name: 'Goal',
-    description: 'Set a goal the agent will keep working towards.',
+    description: 'Keep working toward a goal',
   },
 ];
 
