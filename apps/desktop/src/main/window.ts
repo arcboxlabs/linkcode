@@ -50,7 +50,16 @@ function createWindow(): BrowserWindow {
       webSecurity: true,
       // Chromium's built-in PDF viewer (the files-section PDF tabs) is a plugin.
       plugins: true,
+      // The right panel's Browser section renders an Electron <webview>.
+      webviewTag: true,
     },
+  });
+
+  // window.open / target=_blank means "the system browser" everywhere in the app
+  // (chat links, preview open-external); nothing may spawn a child Electron window.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) void shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   const updateBackgroundColor = (): void => {

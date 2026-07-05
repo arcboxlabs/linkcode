@@ -48,6 +48,12 @@ interface DesktopShellActions {
   openRightFileTab: (path: string) => void;
   closeRightFileTab: (id: string) => void;
   setActiveRightFileTab: (id: string) => void;
+  /** Navigate the in-app browser and bring the browser section forward. */
+  openBrowserUrl: (url: string) => void;
+  /** Track a navigation that happened inside the webview (keeps the address bar honest). */
+  setBrowserUrl: (url: string | null) => void;
+  /** Attach a viewer tab for a terminal that already exists on the daemon (script logs). */
+  openRightTerminalAttachTab: (terminalId: string) => void;
   resetSidebarSize: () => void;
   resetRightPanelSize: () => void;
   resetBottomPanelSize: () => void;
@@ -270,6 +276,44 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
               files: { ...current.rightPanel.files, activeTabId: id },
             },
           }));
+        },
+
+        openBrowserUrl(url) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              open: true,
+              activeSection: 'browser',
+              browser: { url },
+            },
+          }));
+        },
+
+        setBrowserUrl(url) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: { ...current.rightPanel, browser: { url } },
+          }));
+        },
+
+        openRightTerminalAttachTab(terminalId) {
+          const id = `attach:${terminalId}`;
+          updateShellState((current) => {
+            const terminal = current.rightPanel.terminal;
+            const tabs = terminal.tabs.some((tab) => tab.id === id)
+              ? terminal.tabs
+              : [...terminal.tabs, { id }];
+            return {
+              ...current,
+              rightPanel: {
+                ...current.rightPanel,
+                open: true,
+                activeSection: 'terminal',
+                terminal: { tabs, activeTabId: id },
+              },
+            };
+          });
         },
 
         resetSidebarSize() {
