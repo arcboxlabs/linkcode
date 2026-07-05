@@ -103,6 +103,7 @@ export const en = {
       headingIn: 'What should we build in {name}?',
       chooseWorkspace: 'Choose a workspace',
       chat: 'Chat',
+      noProject: "Don't work in a project",
       workLocally: 'Work locally',
       branch: 'Branch',
     },
