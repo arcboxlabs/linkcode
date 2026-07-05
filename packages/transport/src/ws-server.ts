@@ -9,6 +9,8 @@ import {
   createIdentityRequestHandler,
   listenHttp,
 } from './http-server';
+import { createPreviewRequestHandler, handlePreviewUpgrade } from './preview-proxy';
+import type { PreviewRouteTable } from './preview-routes';
 import type { Transport, TransportServer } from './transport';
 import { Listeners, WireConnection } from './transport';
 
@@ -24,6 +26,8 @@ export interface WsServerOptions {
   host?: string;
   /** Served at `GET /linkcode` so peers can tell this port belongs to a linkcode daemon. */
   identity?: DaemonIdentity;
+  /** Enables the Host-routed preview reverse proxy (requests + WS upgrades). */
+  previewRoutes?: PreviewRouteTable;
 }
 
 export interface WsServer extends TransportServer {
@@ -70,15 +74,25 @@ function rawDataToString(data: RawData): string {
 
 /** Start a WebSocket server; each accepted socket is surfaced as a `ServerConnection`. */
 export async function createWsServer(opts: WsServerOptions): Promise<WsServer> {
-  const httpServer = createServer(createIdentityRequestHandler(opts.identity));
+  const identityHandler = createIdentityRequestHandler(opts.identity);
+  const previewRoutes = opts.previewRoutes;
+  const httpServer = createServer(
+    previewRoutes ? createPreviewRequestHandler(previewRoutes, identityHandler) : identityHandler,
+  );
   await listenHttp(httpServer, opts.port, opts.host);
 
   // Attach only after a successful bind: `ws` re-emits the http server's 'error' events on the
-  // wss, which would turn a handled bind failure into an unhandled-'error' crash.
-  const wss = new WebSocketServer({ server: httpServer });
+  // wss, which would turn a handled bind failure into an unhandled-'error' crash. `noServer` +
+  // our own upgrade dispatcher lets preview-host upgrades (dev-server HMR) route to the proxy
+  // instead of the transport WS.
+  const wss = new WebSocketServer({ noServer: true });
+  httpServer.on('upgrade', (req, socket, head) => {
+    if (previewRoutes && handlePreviewUpgrade(previewRoutes, req, socket, head)) return;
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  });
   const connections = new Listeners<Transport>();
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws: WebSocket) => {
     connections.emit(new WsServerConnection(ws));
   });
 
