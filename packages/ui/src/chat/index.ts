@@ -2,6 +2,7 @@ export * from './activity-group';
 export * from './activity-groups';
 export * from './agent-icon';
 export * from './artifact';
+export * from './artifacts';
 export * from './attachments';
 export * from './checkpoint';
 export * from './circular-progress';
