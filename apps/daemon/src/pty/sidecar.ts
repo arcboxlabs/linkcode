@@ -51,6 +51,14 @@ export class SidecarPtyBackend implements PtyBackend {
   constructor(private readonly binaryPath: string) {}
 
   open(terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
+    // No binary to spawn (unconfigured in production — see `resolveSidecarPath`): fail this open
+    // with a clear, stable message instead of calling `spawn('')`, which would fail the same way
+    // on every terminal open with a confusing "sidecar exited" error instead of a config problem.
+    if (!this.binaryPath) {
+      return Promise.reject(
+        new Error('pty sidecar not configured: terminals are unavailable on this host'),
+      );
+    }
     if (this.pending.has(terminalId) || this.terminals.has(terminalId)) {
       return Promise.reject(new Error(`terminal already exists: ${terminalId}`));
     }
