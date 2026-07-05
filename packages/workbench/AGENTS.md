@@ -33,7 +33,9 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   `GitOverview`.
 - `lib/` — small framework-adjacent utilities shared by both apps' forms, e.g.
   `rhfErrorsToFormErrors` (react-hook-form `FieldErrors` → coss-ui `<Form errors>` shape) and the
-  zod human-readable error map it activates as a side effect.
+  zod human-readable error map it activates as a side effect. Exported only through the `./form`
+  subpath (not the root barrel) so that global zod side effect only fires for consumers that
+  actually import a form util, not for every `@linkcode/workbench` import.
 - `sidebar/` — the flattened thread-group sidebar's data layer: `groupThreadsByWorkspace` (grouping/
   sort) and `selectVisibleSessions` (per-group preview truncation, both unit-tested pure functions),
   `useSidebarGroupCollapseStore` (the persisted, cwd-keyed collapse state),
@@ -45,6 +47,9 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   tayori. `surface/workbench.tsx` combines all of this into the `ThreadGroupViewModel[]` (grouping +
   visibility + collapse/preview/history-open flags) that flows into the shell as plain props.
 
-The public API is the root barrel (`src/index.ts`) plus the `./tayori` subpath (pinned in
-`package.json` `exports`). Consumers never deep-import other paths — export new modules through the
-barrel, and don't add subpaths without need.
+The public API is the root barrel (`src/index.ts`) plus the `./tayori` and `./form` subpaths
+(pinned in `package.json` `exports`). Consumers never deep-import other paths — export new modules
+through the barrel, and don't add subpaths without need. `./form` is not also re-exported from the
+barrel: `lib/form.ts` activates a global zod error-map side effect on import, so keeping it off the
+barrel means only consumers that actually import a form util pay for it, instead of every
+`@linkcode/workbench` consumer.
