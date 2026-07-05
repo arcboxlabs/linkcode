@@ -104,6 +104,7 @@ export function buildConversation(events: readonly StampedAgentEvent[]): Convers
   // messageId → item index, so streaming chunks bucket into one item regardless of interleaving.
   const messageIndex = new Map<string, number>();
   const planIndexByTurn = new Map<ConversationTurnId, number>();
+  const closedTurnIds = new Set<string>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   const genId = (prefix: string): string => `${prefix}-${gen++}`;
@@ -227,6 +228,10 @@ export function buildConversation(events: readonly StampedAgentEvent[]): Convers
         break;
       case 'stop':
         stopReason = event.stopReason;
+        if (currentTurnId) {
+          closedTurnIds.add(currentTurnId);
+          currentTurnId = null;
+        }
         break;
 
       case 'error':
@@ -261,6 +266,7 @@ export function buildConversation(events: readonly StampedAgentEvent[]): Convers
   const pendingPermissionIds: string[] = [];
   for (const item of items) {
     if (item.kind !== 'approval') continue;
+    if (item.turnId && closedTurnIds.has(item.turnId)) continue;
     const toolItemIndex = toolIndex.get(item.toolCall.toolCallId);
     const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
     const settled =

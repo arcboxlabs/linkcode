@@ -384,6 +384,7 @@ export class DevMockHost {
       return;
     }
     session.epoch += 1;
+    this.drainSessionPermissions(sessionId, { outcome: 'cancelled' });
     session.status = 'stopped';
     this.emit(sessionId, { type: 'status', status: 'stopped' });
     this.sendSuccess(replyTo);
@@ -411,6 +412,7 @@ export class DevMockHost {
         break;
       case 'cancel':
         session.epoch += 1;
+        this.drainSessionPermissions(sessionId, { outcome: 'cancelled' });
         session.status = 'idle';
         this.emit(sessionId, { type: 'stop', stopReason: 'cancelled' });
         this.emit(sessionId, { type: 'status', status: 'idle' });
@@ -661,6 +663,18 @@ export class DevMockHost {
       if (pending.sessionId === sessionId) return true;
     }
     return false;
+  }
+
+  private drainSessionPermissions(sessionId: SessionId, outcome: PermissionOutcome): void {
+    for (const [requestId, pending] of this.permissions) {
+      if (pending.sessionId !== sessionId) continue;
+      this.permissions.delete(requestId);
+      this.emitToolSnapshot(sessionId, {
+        ...pending.toolCall,
+        status: 'failed',
+        rawOutput: { outcome },
+      });
+    }
   }
 
   private respondPermission(

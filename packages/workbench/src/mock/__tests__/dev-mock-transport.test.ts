@@ -309,6 +309,44 @@ describe('dev mock transport', () => {
     client.dispose();
   }, 10000);
 
+  it('cancels pending showcase permissions when the turn is stopped', async () => {
+    const client = await connectedClient();
+    const sessions = await client.listSessions();
+    const showcase = sessions.find((session) => session.title === 'Mocked streaming showcase');
+    if (!showcase) throw new Error('showcase session not found');
+
+    const events = collectEvents(client, showcase.sessionId);
+    await eventually(
+      () => events.filter((event) => event.type === 'permission-request').length >= 2,
+      15000,
+    );
+    const permissionRequests = events.filter(
+      (event): event is Extract<AgentEvent, { type: 'permission-request' }> =>
+        event.type === 'permission-request',
+    );
+
+    await client.cancel(showcase.sessionId);
+
+    for (const request of permissionRequests) {
+      // eslint-disable-next-line no-await-in-loop -- assert each cancelled ask reaches its own tool snapshot.
+      const cancelledTool = await eventually(() =>
+        toolCalls(events).find(
+          (tool) => tool.toolCallId === request.toolCall.toolCallId && tool.status === 'failed',
+        ),
+      );
+      expect(cancelledTool.rawOutput).toEqual({ outcome: { outcome: 'cancelled' } });
+      // eslint-disable-next-line no-await-in-loop -- the cancelled ask must be gone from the mock permission map.
+      await expect(
+        client.respondPermission(showcase.sessionId, request.requestId, {
+          outcome: 'selected',
+          optionId: 'allow_once',
+        }),
+      ).rejects.toThrow('Unknown permission request');
+    }
+
+    client.dispose();
+  }, 20000);
+
   it('cancels an in-flight prompt turn', async () => {
     const client = await connectedClient();
     const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });

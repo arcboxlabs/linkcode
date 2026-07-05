@@ -199,6 +199,10 @@ describe('buildConversation', () => {
     expect(buildConversation(base).pendingPermissionIds).toEqual(['p1']);
     expect(buildConversation(base).items.some((i) => i.kind === 'approval')).toBe(true);
 
+    const stopped = buildConversation([...base, { type: 'stop', stopReason: 'cancelled' }]);
+    expect(stopped.pendingPermissionIds).toEqual([]);
+    expect(stopped.items.some((i) => i.kind === 'approval')).toBe(true);
+
     const settled = buildConversation([
       ...base,
       {
