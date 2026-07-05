@@ -9,6 +9,8 @@ import {
   createIdentityRequestHandler,
   listenHttp,
 } from './http-server';
+import { createPreviewRequestHandler, handlePreviewUpgrade } from './preview-proxy';
+import type { PreviewRouteTable } from './preview-routes';
 import type { Transport, TransportServer } from './transport';
 import { Listeners, WireConnection } from './transport';
 
@@ -19,6 +21,8 @@ export interface SocketIoServerOptions {
   host?: string;
   /** Served at `GET /linkcode` so peers can tell this port belongs to a linkcode daemon. */
   identity?: DaemonIdentity;
+  /** Enables the Host-routed preview reverse proxy (requests + WS upgrades). */
+  previewRoutes?: PreviewRouteTable;
 }
 
 export interface SocketIoServer extends TransportServer {
@@ -50,9 +54,23 @@ class SocketIoServerConnection extends WireConnection {
 }
 
 export async function createSocketIoServer(opts: SocketIoServerOptions): Promise<SocketIoServer> {
-  const httpServer = createServer(createIdentityRequestHandler(opts.identity));
+  const identityHandler = createIdentityRequestHandler(opts.identity);
+  const previewRoutes = opts.previewRoutes;
+  const httpServer = createServer(
+    previewRoutes ? createPreviewRequestHandler(previewRoutes, identityHandler) : identityHandler,
+  );
+  // The proxy's upgrade listener registers BEFORE socket.io attaches its own, and
+  // `destroyUpgrade: false` keeps engine.io from reaping proxied (non-socket.io) upgrades
+  // it doesn't recognize. Known limitation: a preview app requesting the daemon's own
+  // `/socket.io/` path is answered by the daemon, not proxied.
+  if (previewRoutes) {
+    httpServer.on('upgrade', (req, socket, head) => {
+      handlePreviewUpgrade(previewRoutes, req, socket, head);
+    });
+  }
   const io = new SocketIoServerImpl(httpServer, {
     cors: { origin: true },
+    destroyUpgrade: previewRoutes === undefined,
   });
   const connections = new Listeners<Transport>();
 

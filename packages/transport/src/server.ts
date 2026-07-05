@@ -23,9 +23,19 @@ export type TransportServerOptions =
 export function createTransportServer(opts: TransportServerOptions): Promise<TransportServer> {
   switch (opts.type) {
     case 'socket.io':
-      return createSocketIoServer({ port: opts.port, host: opts.host, identity: opts.identity });
+      return createSocketIoServer({
+        port: opts.port,
+        host: opts.host,
+        identity: opts.identity,
+        previewRoutes: opts.previewRoutes,
+      });
     case 'ws':
-      return createWsServer({ port: opts.port, host: opts.host, identity: opts.identity });
+      return createWsServer({
+        port: opts.port,
+        host: opts.host,
+        identity: opts.identity,
+        previewRoutes: opts.previewRoutes,
+      });
     default:
       return never(opts, 'transport server type');
   }
