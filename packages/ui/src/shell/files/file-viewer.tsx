@@ -65,16 +65,7 @@ export function FileViewer({
         </div>
       );
     case 'pdf':
-      return (
-        <object
-          data={dataUrl(file)}
-          type="application/pdf"
-          className={cn('h-full w-full', className)}
-          aria-label={file.path}
-        >
-          <FileViewerNotice title={t('unsupported')}>{file.path}</FileViewerNotice>
-        </object>
-      );
+      return <PdfView file={file} className={className} />;
     case 'text':
       return (
         <pre
@@ -93,6 +84,41 @@ export function FileViewer({
         </FileViewerNotice>
       );
   }
+}
+
+/** Blob URLs keyed by the SWR-cached file object: idempotent per file (safe to call in
+ * render), alive exactly as long as the cache holds the file, revoked when it's GC'd. */
+const pdfBlobUrls = new WeakMap<WorkspaceFile, string>();
+const pdfBlobReclaim = new FinalizationRegistry<string>((url) => URL.revokeObjectURL(url));
+
+function pdfBlobUrlFor(file: WorkspaceFile): string {
+  const cached = pdfBlobUrls.get(file);
+  if (cached !== undefined) return cached;
+  const bytes = Uint8Array.from(atob(file.content), (char) => char.codePointAt(0)!);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  pdfBlobUrls.set(file, url);
+  pdfBlobReclaim.register(file, url);
+  return url;
+}
+
+/** Chromium's built-in PDF viewer refuses `data:` documents (and in Electron only
+ * loads via frame navigation, not <object>/<embed>), so the base64 payload becomes a
+ * blob URL in an iframe. */
+function PdfView({
+  file,
+  className,
+}: {
+  file: WorkspaceFile;
+  className?: string;
+}): React.ReactNode {
+  return (
+    // eslint-disable-next-line @eslint-react/dom-no-missing-iframe-sandbox -- a sandboxed frame blocks the PDF plugin; the source is an app-constructed application/pdf blob
+    <iframe
+      src={pdfBlobUrlFor(file)}
+      title={file.path}
+      className={cn('h-full w-full border-0', className)}
+    />
+  );
 }
 
 function FileViewerNotice({

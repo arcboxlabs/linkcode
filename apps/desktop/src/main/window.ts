@@ -48,6 +48,8 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      // Chromium's built-in PDF viewer (the files-section PDF tabs) is a plugin.
+      plugins: true,
     },
   });
 
