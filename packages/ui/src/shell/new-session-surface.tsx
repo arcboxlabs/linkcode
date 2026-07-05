@@ -268,7 +268,6 @@ function NewSessionContextBar({
               </MenuItem>
             </>
           )}
-          <MenuSeparator />
           {/* TODO(backend): sessions without a working directory — StartOptionsSchema requires a
               non-empty cwd, so "no project" cannot be represented yet; enable once the daemon
               supports cwd-less sessions. */}

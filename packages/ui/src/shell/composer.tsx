@@ -1,7 +1,8 @@
 import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
+import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
+import { Command } from 'coss-ui/components/command';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import { clamp } from 'foxts/clamp';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -11,26 +12,34 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '../chat/prompt-input';
-import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { ApprovalPolicyOption } from './approval-policy';
 import { STUB_APPROVAL_POLICIES } from './approval-policy';
+import type {
+  ComposerCommandEntry,
+  ComposerCommandSource,
+  MentionCommandEntry,
+  MentionItem,
+} from './composer-command';
+import {
+  buildComposerCommandGroups,
+  ComposerCommandMenu,
+  commandEntryToString,
+  computeTextTrigger,
+  preventBaseUIHandler,
+  textControlFromEvent,
+} from './composer-command';
 import {
   ApprovalPolicyMenu,
   ComposerPlusMenu,
   ModelSelectorMenu,
   SessionModeChip,
 } from './composer-controls';
+import { movePlusCommandStart } from './composer-plus-search';
 import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
-/** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
-export interface MentionItem {
-  id: string;
-  value: string;
-  label: string;
-  hint?: string;
-}
+export type { MentionItem } from './composer-command';
 
 export interface ComposerProps {
   agentLabel?: string;
@@ -72,30 +81,9 @@ export interface ComposerProps {
   contextBar?: React.ReactNode;
 }
 
-interface MenuState {
-  query: string;
-  start: number;
-}
-
-interface MenuEntry {
-  id: string;
-  insert: string;
-  label: string;
-  hint?: string;
-}
-
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
 const WHITESPACE_RE = /\s/;
 const LEADING_WHITESPACE_RE = /^\s/;
-
-/** Find an `@` autocomplete trigger at the caret (the maximal non-whitespace run ending there). */
-function computeMenu(value: string, caret: number): MenuState | null {
-  let start = caret;
-  while (start > 0 && !WHITESPACE_RE.test(value[start - 1])) start--;
-  const token = value.slice(start, caret);
-  if (token[0] === '@') return { query: token.slice(1), start };
-  return null;
-}
 
 export function Composer({
   agentLabel,
@@ -123,40 +111,68 @@ export function Composer({
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
-  const [activeIndexState, setActiveIndexState] = useState({ menuKey: '', index: 0 });
+  const [plusCommandStart, setPlusCommandStart] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingCaretRef = useRef<number | null>(null);
 
-  const raw = computeMenu(value, caret);
-  const menu = raw && raw.start !== dismissedStart ? raw : null;
+  const rawTrigger = computeTextTrigger(value, caret);
+  const textTrigger = rawTrigger && rawTrigger.start !== dismissedStart ? rawTrigger : null;
+  const commandSource: ComposerCommandSource | null =
+    plusCommandStart === null
+      ? textTrigger?.kind === 'mention'
+        ? 'mention'
+        : textTrigger?.kind === 'slash'
+          ? 'slash'
+          : null
+      : 'plus';
+  const plusQuery =
+    plusCommandStart !== null && caret >= plusCommandStart
+      ? value.slice(plusCommandStart, caret).toLowerCase()
+      : '';
 
-  const entries = useMemo<MenuEntry[]>(() => {
-    if (!menu) return [];
-    const q = menu.query.toLowerCase();
-    return mentionItems.reduce<MenuEntry[]>((items, m) => {
-      if (m.label.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)) {
-        items.push({ id: m.id, insert: `@${m.value}`, label: m.label, hint: m.hint });
-      }
-      return items;
-    }, []);
-  }, [menu, mentionItems]);
+  const commandGroups = useMemo(
+    () =>
+      buildComposerCommandGroups({
+        availableModes,
+        commandSource,
+        currentModeId,
+        labels: {
+          attach: t('attach'),
+          commands: t('commands'),
+          mentions: t('mentions'),
+        },
+        mentionItems,
+        modesEnabled: Boolean(onModeChange),
+        plusQuery,
+        textTrigger,
+      }),
+    [
+      availableModes,
+      commandSource,
+      currentModeId,
+      mentionItems,
+      onModeChange,
+      plusQuery,
+      t,
+      textTrigger,
+    ],
+  );
 
-  const menuKey = menu ? `mention:${menu.query}` : '';
-  const maxActiveIndex = Math.max(0, entries.length - 1);
-  const activeIndex =
-    activeIndexState.menuKey === menuKey ? Math.min(activeIndexState.index, maxActiveIndex) : 0;
-
-  function updateActiveIndex(next: number | ((current: number) => number)): void {
-    setActiveIndexState((prev) => {
-      const current = prev.menuKey === menuKey ? prev.index : 0;
-      const index = typeof next === 'function' ? next(current) : next;
-      return { menuKey, index: clamp(index, 0, maxActiveIndex) };
-    });
-  }
+  const hasCommandItems = commandGroups.some((group) => group.items.length > 0);
+  const commandOpen = !disabled && Boolean(commandSource);
 
   function updateCaret(nextCaret: number, nextValue = value): void {
     setCaret(nextCaret);
-    if (!computeMenu(nextValue, nextCaret)) setDismissedStart(null);
+    if (!computeTextTrigger(nextValue, nextCaret)) setDismissedStart(null);
+  }
+
+  function updateValue(nextValue: string, event: Event): void {
+    setPlusCommandStart((start) =>
+      start === null ? null : movePlusCommandStart(value, nextValue, start),
+    );
+    setValue(nextValue);
+    const control = textControlFromEvent(event);
+    updateCaret(control?.selectionStart ?? nextValue.length, nextValue);
   }
 
   // Layout effect (not a passive one) so the caret lands before paint — a mention insertion
@@ -179,46 +195,89 @@ export function Composer({
     setValue('');
     setCaret(0);
     setDismissedStart(null);
+    setPlusCommandStart(null);
   }
 
-  function selectEntry(entry: MenuEntry): void {
-    if (!menu) return;
+  function setValueAndCaret(nextValue: string, nextCaret: number): void {
+    setValue(nextValue);
+    setCaret(nextCaret);
+    pendingCaretRef.current = nextCaret;
+  }
+
+  function focusTextareaAtCaret(): void {
+    pendingCaretRef.current = textareaRef.current?.selectionStart ?? caret;
+  }
+
+  function openPlusCommand(): void {
+    if (disabled) return;
+    setDismissedStart(null);
+    setPlusCommandStart(textareaRef.current?.selectionStart ?? caret);
+    focusTextareaAtCaret();
+  }
+
+  function insertMentionTrigger(nextValue = value, nextCaret = caret): void {
+    const before = nextValue.slice(0, nextCaret);
+    const insert = `${before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : ''}@`;
+    const updated = `${before}${insert}${nextValue.slice(nextCaret)}`;
+    setPlusCommandStart(null);
+    setDismissedStart(null);
+    setValueAndCaret(updated, nextCaret + insert.length);
+  }
+
+  function selectMention(entry: MentionCommandEntry): void {
+    if (textTrigger?.kind !== 'mention') return;
     // Avoid a double space when the trigger token is already followed by whitespace.
     const rest = value.slice(caret);
     const sep = LEADING_WHITESPACE_RE.test(rest) ? '' : ' ';
-    const next = `${value.slice(0, menu.start)}${entry.insert}${sep}${rest}`;
-    const pos = menu.start + entry.insert.length + sep.length;
-    setValue(next);
-    setCaret(pos);
-    pendingCaretRef.current = pos;
+    const insert = `@${entry.mention.value}`;
+    const next = `${value.slice(0, textTrigger.start)}${insert}${sep}${rest}`;
+    setPlusCommandStart(null);
+    setValueAndCaret(next, textTrigger.start + insert.length + sep.length);
+  }
+
+  function selectMentionCommand(): void {
+    if (textTrigger?.kind === 'slash') {
+      const next = `${value.slice(0, textTrigger.start)}@${value.slice(caret)}`;
+      setPlusCommandStart(null);
+      setDismissedStart(null);
+      setValueAndCaret(next, textTrigger.start + 1);
+      return;
+    }
+
+    insertMentionTrigger(value, textareaRef.current?.selectionStart ?? caret);
+  }
+
+  function selectCommand(entry: ComposerCommandEntry): void {
+    if (entry.disabled) return;
+
+    if (entry.kind === 'mention') {
+      selectMention(entry);
+      return;
+    }
+
+    if (entry.kind === 'action') {
+      if (entry.id === 'mention-command') selectMentionCommand();
+      return;
+    }
+
+    toggleMode(entry.mode);
+    setPlusCommandStart(null);
+    focusTextareaAtCaret();
+  }
+
+  function closeCommand(): void {
+    setPlusCommandStart(null);
+    if (textTrigger) setDismissedStart(textTrigger.start);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
     // Don't treat IME-composition Enter (CJK candidate confirm) as submit/select.
     if (e.nativeEvent.isComposing || e.key === 'Process') return;
-    // An open menu (even with no matches) owns Enter/Tab/Escape/arrows.
-    if (menu) {
-      if (e.key === 'ArrowDown' && entries.length > 0) {
-        e.preventDefault();
-        updateActiveIndex((i) => (i + 1) % entries.length);
-        return;
-      }
-      if (e.key === 'ArrowUp' && entries.length > 0) {
-        e.preventDefault();
-        updateActiveIndex((i) => (i - 1 + entries.length) % entries.length);
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        if (entries.length > 0) selectEntry(entries[Math.min(activeIndex, entries.length - 1)]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setDismissedStart(menu.start);
-        return;
-      }
+    if (commandOpen) {
+      if (!hasCommandItems && e.key === 'Enter') e.preventDefault();
+      return;
     }
+    preventBaseUIHandler(e);
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -252,18 +311,6 @@ export function Composer({
     void onApprovalPolicyChange?.(policyId).catch(noop);
   }
 
-  function insertMentionTrigger(): void {
-    const pos = textareaRef.current?.selectionStart ?? value.length;
-    const before = value.slice(0, pos);
-    const insert = `${before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : ''}@`;
-    const next = `${before}${insert}${value.slice(pos)}`;
-    const nextCaret = pos + insert.length;
-    setValue(next);
-    setCaret(nextCaret);
-    setDismissedStart(null);
-    pendingCaretRef.current = nextCaret;
-  }
-
   async function selectModel(modelId: string): Promise<void> {
     try {
       await onModelChange?.(modelId);
@@ -285,145 +332,108 @@ export function Composer({
     }
   }
 
+  const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
+
   return (
     <div className="relative px-4 pb-4">
       <div className="mx-auto max-w-3xl">
-        <div className="relative">
-          {menu && (
-            <AutocompleteMenu
-              entries={entries}
-              activeIndex={activeIndex}
-              emptyLabel={t('noMentions')}
-              onSelect={selectEntry}
-              onHover={updateActiveIndex}
-            />
-          )}
-          <PromptInput onSubmit={submit}>
-            <PromptInputTextarea
-              ref={textareaRef}
-              value={value}
-              disabled={disabled}
-              rows={1}
-              placeholder={
-                disabled
-                  ? t('placeholderDisconnected')
-                  : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
-              }
-              onChange={(e) => {
-                const nextValue = e.target.value;
-                setValue(nextValue);
-                updateCaret(e.target.selectionStart, nextValue);
-              }}
-              onClick={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
-              onKeyUp={(e) => updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)}
-              onKeyDown={onKeyDown}
-            />
-            <PromptInputFooter>
-              <PromptInputTools>
-                <ComposerPlusMenu
-                  currentModeId={currentModeId}
-                  disabled={disabled}
-                  finalFocus={textareaRef}
-                  modes={availableModes}
-                  onInsertMention={insertMentionTrigger}
-                  onToggleMode={onModeChange ? toggleMode : undefined}
-                />
-                {approvalPolicies.length > 0 ? (
-                  <ApprovalPolicyMenu
-                    activePolicyId={activePolicyId}
-                    agentLabel={placeholderAgent}
+        <div className="relative isolate">
+          <Command
+            autoHighlight="always"
+            filter={null}
+            inline={false}
+            items={commandGroups}
+            itemToStringValue={commandEntryToString}
+            keepHighlight
+            open={commandOpen}
+            value={value}
+            onOpenChange={(open) => {
+              if (!open) closeCommand();
+            }}
+            onValueChange={(nextValue, details) => updateValue(nextValue, details.event)}
+          >
+            {commandOpen ? (
+              <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
+            ) : null}
+            <PromptInput onSubmit={submit} className="relative z-10">
+              <AutocompletePrimitive.Input
+                render={
+                  <PromptInputTextarea
+                    ref={textareaRef}
                     disabled={disabled}
-                    policies={approvalPolicies}
-                    onSelect={selectPolicy}
+                    rows={1}
+                    placeholder={
+                      disabled
+                        ? t('placeholderDisconnected')
+                        : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
+                    }
+                    onClick={(e) =>
+                      updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                    }
+                    onKeyUp={(e) =>
+                      updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                    }
+                    onKeyDown={onKeyDown}
                   />
-                ) : null}
-                {activeMode && onModeChange ? (
-                  <SessionModeChip
-                    disabled={disabled}
-                    mode={activeMode}
-                    onToggle={() => toggleMode(activeMode)}
-                  />
-                ) : null}
-              </PromptInputTools>
-              <ModelSelectorMenu
-                disabled={disabled}
-                effortOptions={effortOptions}
-                modelOptions={modelOptions}
-                provider={agentKind}
-                selectableProviders={selectableProviders}
-                selectedEffortId={selectedEffortId}
-                selectedModelId={selectedModelId}
-                onSelectEffort={(effort) => {
-                  void selectEffort(effort);
-                }}
-                onSelectModel={(model) => {
-                  void selectModel(model);
-                }}
-                onSelectProvider={
-                  onProviderChange
-                    ? (provider) => {
-                        void onProviderChange(provider).catch(noop);
-                      }
-                    : undefined
                 }
               />
-              <PromptInputSubmit
-                aria-label={isRunning ? t('stop') : t('send')}
-                disabled={!isRunning && (disabled || value.trim().length === 0)}
-                onStop={onStop}
-                status={isRunning ? 'streaming' : 'ready'}
-                className="rounded-full"
-                variant={isRunning ? 'secondary' : 'default'}
-              />
-            </PromptInputFooter>
-            {/* Sibling of the footer addon, which is `order-last` — this must match to stay below it. */}
-            {contextBar ? <div className="order-last w-full">{contextBar}</div> : null}
-          </PromptInput>
+              <PromptInputFooter>
+                <PromptInputTools>
+                  <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
+                  {approvalPolicies.length > 0 ? (
+                    <ApprovalPolicyMenu
+                      activePolicyId={activePolicyId}
+                      agentLabel={placeholderAgent}
+                      disabled={disabled}
+                      policies={approvalPolicies}
+                      onSelect={selectPolicy}
+                    />
+                  ) : null}
+                  {activeMode && onModeChange ? (
+                    <SessionModeChip
+                      disabled={disabled}
+                      mode={activeMode}
+                      onToggle={() => toggleMode(activeMode)}
+                    />
+                  ) : null}
+                </PromptInputTools>
+                <ModelSelectorMenu
+                  disabled={disabled}
+                  effortOptions={effortOptions}
+                  modelOptions={modelOptions}
+                  provider={agentKind}
+                  selectableProviders={selectableProviders}
+                  selectedEffortId={selectedEffortId}
+                  selectedModelId={selectedModelId}
+                  onSelectEffort={(effort) => {
+                    void selectEffort(effort);
+                  }}
+                  onSelectModel={(model) => {
+                    void selectModel(model);
+                  }}
+                  onSelectProvider={
+                    onProviderChange
+                      ? (provider) => {
+                          void onProviderChange(provider).catch(noop);
+                        }
+                      : undefined
+                  }
+                />
+                <PromptInputSubmit
+                  aria-label={isRunning ? t('stop') : t('send')}
+                  disabled={!isRunning && (disabled || value.trim().length === 0)}
+                  onStop={onStop}
+                  status={isRunning ? 'streaming' : 'ready'}
+                  className="rounded-full"
+                  variant={isRunning ? 'secondary' : 'default'}
+                />
+              </PromptInputFooter>
+              {/* Sibling of the footer addon, which is `order-last` — this must match to stay below it. */}
+              {contextBar ? <div className="order-last w-full">{contextBar}</div> : null}
+            </PromptInput>
+          </Command>
         </div>
       </div>
-    </div>
-  );
-}
-
-interface AutocompleteMenuProps {
-  entries: MenuEntry[];
-  activeIndex: number;
-  emptyLabel: string;
-  onSelect: (entry: MenuEntry) => void;
-  onHover: (index: number) => void;
-}
-
-/** Command-palette popover floating above the composer. */
-function AutocompleteMenu({
-  entries,
-  activeIndex,
-  emptyLabel,
-  onSelect,
-  onHover,
-}: AutocompleteMenuProps): React.ReactNode {
-  return (
-    <div className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
-      {entries.length === 0 ? (
-        <div className="px-3 py-2 text-muted-foreground text-sm">{emptyLabel}</div>
-      ) : (
-        entries.map((entry, i) => (
-          <button
-            key={entry.id}
-            type="button"
-            onMouseEnter={() => onHover(i)}
-            onClick={() => onSelect(entry)}
-            className={cn(
-              'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm',
-              i === activeIndex ? 'bg-accent text-accent-foreground' : 'text-foreground',
-            )}
-          >
-            <span className="font-medium">{entry.label}</span>
-            {entry.hint && (
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.hint}</span>
-            )}
-          </button>
-        ))
-      )}
     </div>
   );
 }
