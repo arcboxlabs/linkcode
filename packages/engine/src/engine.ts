@@ -14,6 +14,7 @@ import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { ArtifactHostService } from './artifacts/host-service';
 import { readWorkspaceFile } from './file-service';
 import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
@@ -70,6 +71,7 @@ export class Engine {
   private readonly sessionStore: SessionStore;
   private readonly git: GitService;
   private readonly scripts?: ScriptService;
+  private readonly artifactHost: ArtifactHostService;
   private seq = 0;
 
   constructor(
@@ -85,14 +87,16 @@ export class Engine {
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
     this.workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
+    const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
     this.scripts = this.terminals
       ? new ScriptService(
           transport,
           this.terminals,
-          deps.previewRoutes ?? new PreviewRouteRegistry(),
+          routes,
           (cwd) => this.workspaces.findByCwd(cwd)?.name,
         )
       : undefined;
+    this.artifactHost = new ArtifactHostService(routes);
   }
 
   async start(): Promise<void> {
@@ -433,6 +437,21 @@ export class Engine {
           this.sendSuccess(p.clientReqId);
           return Promise.resolve();
         });
+        break;
+      }
+      case 'artifact.host': {
+        await this.tryReply(p.clientReqId, () => {
+          const artifact = this.artifactHost.host(p.content, p.mimeType);
+          this.transport.send(
+            createWireMessage({ kind: 'artifact.hosted', replyTo: p.clientReqId, artifact }),
+          );
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'artifact.revoke': {
+        this.artifactHost.revoke(p.hash);
+        this.sendSuccess(p.clientReqId);
         break;
       }
       case 'session.attach':

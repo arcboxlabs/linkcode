@@ -7,16 +7,16 @@ import type { PreviewRoute, PreviewRouteTable } from '@linkcode/transport';
  * proxy URLs can be minted after the port hunt settles.
  */
 export class PreviewRouteRegistry implements PreviewRouteTable {
-  private readonly routes = new Map<string, { port: number; owner: string }>();
+  private readonly routes = new Map<string, { target: PreviewRoute; owner: string }>();
   /** The bound daemon HTTP port (set by the daemon after listen); null until known. */
   proxyPort: number | null = null;
 
-  register(hostname: string, port: number, owner: string): void {
+  register(hostname: string, target: PreviewRoute, owner: string): void {
     const existing = this.routes.get(hostname);
     if (existing && existing.owner !== owner) {
       throw new Error(`preview hostname ${hostname} is already registered by ${existing.owner}`);
     }
-    this.routes.set(hostname, { port, owner });
+    this.routes.set(hostname, { target, owner });
   }
 
   unregister(hostname: string, owner: string): void {
@@ -25,7 +25,6 @@ export class PreviewRouteRegistry implements PreviewRouteTable {
   }
 
   lookup(hostname: string): PreviewRoute | null {
-    const route = this.routes.get(hostname);
-    return route ? { port: route.port } : null;
+    return this.routes.get(hostname)?.target ?? null;
   }
 }

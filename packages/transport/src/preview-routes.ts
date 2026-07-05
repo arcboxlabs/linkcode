@@ -5,10 +5,18 @@
  * without ever reaching the daemon API (the auth-exemption boundary decided in CODE-58).
  */
 
-export interface PreviewRoute {
-  /** Loopback port of the upstream dev server. */
-  port: number;
-}
+/** Either an upstream dev server to proxy to, or daemon-held content served directly
+ * (ephemeral artifact hosting — CODE-62). */
+export type PreviewRoute =
+  | {
+      /** Loopback port of the upstream dev server. */
+      port: number;
+    }
+  | {
+      /** Response body served verbatim for every path under the hostname. */
+      body: string;
+      contentType: string;
+    };
 
 /** The proxy's view of the route table; the engine's registry implements it. */
 export interface PreviewRouteTable {
@@ -32,4 +40,14 @@ export function isPreviewHostname(hostname: string): boolean {
   if (!hostname.endsWith(LOCALHOST_SUFFIX)) return false;
   const label = hostname.slice(0, -LOCALHOST_SUFFIX.length);
   return label.includes('--') && PREVIEW_LABEL_RE.test(label);
+}
+
+/** Whether an Origin header value belongs to the preview namespace (used to keep
+ * preview/artifact pages from talking to the daemon's own endpoints — CORS denial). */
+export function isPreviewOrigin(origin: string): boolean {
+  try {
+    return isPreviewHostname(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
 }

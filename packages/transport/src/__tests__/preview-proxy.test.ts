@@ -114,6 +114,28 @@ describe('preview reverse proxy (ws server)', () => {
     expect(reply).toBe('echo:ping');
   });
 
+  it('serves content-hosted routes directly with nosniff and no-store', async () => {
+    const daemon = await startDaemon({
+      lookup: (hostname) =>
+        hostname === 'artifact--abc123def.localhost'
+          ? { body: '<h1>hosted</h1>', contentType: 'text/html; charset=utf-8' }
+          : null,
+    });
+
+    const res = await get(daemon.port, '/anything', 'artifact--abc123def.localhost');
+    expect(res.status).toBe(200);
+    expect(res.body).toBe('<h1>hosted</h1>');
+
+    const ws = new WebSocket(`ws://127.0.0.1:${daemon.port}/`, {
+      headers: { host: 'artifact--abc123def.localhost' },
+    });
+    const wsFailed = await new Promise<boolean>((resolve) => {
+      ws.on('error', () => resolve(true));
+      ws.on('open', () => resolve(false));
+    });
+    expect(wsFailed).toBe(true);
+  });
+
   it('rejects upgrades for unrouted preview hosts without touching the transport WS', async () => {
     const daemon = await startDaemon({ lookup: () => null });
     const ws = new WebSocket(`ws://127.0.0.1:${daemon.port}/`, {
