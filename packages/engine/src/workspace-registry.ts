@@ -37,6 +37,12 @@ export class WorkspaceRegistry {
     return [...this.byId.values()].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
   }
 
+  /** The workspace registered for a directory, if any. */
+  findByCwd(cwd: string): WorkspaceRecord | undefined {
+    const id = this.byCwdKey.get(normalizeCwdKey(cwd));
+    return id === undefined ? undefined : this.byId.get(id);
+  }
+
   /**
    * Explicitly register a directory. Idempotent: an already-known directory just gets its
    * `lastUsedAt` freshened, returning the existing record (its `kind` is never changed by this

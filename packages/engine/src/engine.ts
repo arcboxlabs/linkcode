@@ -20,6 +20,8 @@ import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
 import type { PtyBackend } from './pty-backend';
+import { PreviewRouteRegistry } from './scripts/route-registry';
+import { ScriptService } from './scripts/script-service';
 import type { SessionStore } from './session-store';
 import { InMemorySessionStore } from './session-store';
 import { TerminalService } from './terminal-service';
@@ -41,6 +43,8 @@ export interface EngineDeps {
   providerStore?: ProviderConfigStore;
   git?: GitService;
   workspaceStore?: WorkspaceStore;
+  /** Shared with the transport's reverse proxy; scripts need a PTY backend to run. */
+  previewRoutes?: PreviewRouteRegistry;
 }
 
 /**
@@ -65,6 +69,7 @@ export class Engine {
   private readonly providerStore: ProviderConfigStore;
   private readonly sessionStore: SessionStore;
   private readonly git: GitService;
+  private readonly scripts?: ScriptService;
   private seq = 0;
 
   constructor(
@@ -80,6 +85,14 @@ export class Engine {
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
     this.workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
+    this.scripts = this.terminals
+      ? new ScriptService(
+          transport,
+          this.terminals,
+          deps.previewRoutes ?? new PreviewRouteRegistry(),
+          (cwd) => this.workspaces.findByCwd(cwd)?.name,
+        )
+      : undefined;
   }
 
   async start(): Promise<void> {
@@ -383,6 +396,45 @@ export class Engine {
         });
         break;
       }
+      case 'script.list': {
+        const scripts = this.scripts;
+        if (!scripts) {
+          this.sendFailure(p.clientReqId, new Error('Scripts are not supported on this host'));
+          break;
+        }
+        await this.tryReply(p.clientReqId, async () => {
+          const list = await scripts.list(p.cwd);
+          this.transport.send(
+            createWireMessage({ kind: 'script.listed', replyTo: p.clientReqId, scripts: list }),
+          );
+        });
+        break;
+      }
+      case 'script.start': {
+        const scripts = this.scripts;
+        if (!scripts) {
+          this.sendFailure(p.clientReqId, new Error('Scripts are not supported on this host'));
+          break;
+        }
+        await this.tryReply(p.clientReqId, async () => {
+          await scripts.start(p.cwd, p.scriptName);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'script.stop': {
+        const scripts = this.scripts;
+        if (!scripts) {
+          this.sendFailure(p.clientReqId, new Error('Scripts are not supported on this host'));
+          break;
+        }
+        await this.tryReply(p.clientReqId, () => {
+          scripts.stop(p.cwd, p.scriptName);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
       case 'session.attach':
       case 'session.detach': {
         // Multi-device attach is implicit: events are broadcast to all clients. These are accepted as
@@ -433,6 +485,7 @@ export class Engine {
       }),
     );
     this.sessions.clear();
+    this.scripts?.shutdown();
     this.terminals?.closeAll();
     this.transport.close();
   }

@@ -4,6 +4,7 @@
  */
 
 export * from './local';
+export * from './preview-routes';
 export * from './socket-io';
 export * from './transport';
 export * from './ws';
