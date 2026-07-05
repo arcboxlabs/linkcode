@@ -32,7 +32,7 @@ describe('readWorkspaceFile', () => {
   it('detects binary content and returns base64', async () => {
     const root = makeTempDir();
     // PNG magic prefix plus a NUL byte to trip the binary sniff.
-    const bytes = Buffer.from([137, 80, 78, 71, 0, 1, 2]);
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]);
     writeFileSync(join(root, 'pic.png'), bytes);
 
     const file = await readWorkspaceFile(root, 'pic.png');

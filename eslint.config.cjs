@@ -77,6 +77,15 @@ module.exports = require('eslint-config-sukka').sukka(
     },
   },
   {
+    // Biome's formatter lower-cases hex digits in number literals with no option to
+    // disable it, while unicorn insists on upper case. Biome owns literal casing;
+    // keep the two from fighting over every hex constant.
+    name: 'linkcode/number-literal-case-owned-by-biome',
+    rules: {
+      'sukka/unicorn/number-literal-case': 'off',
+    },
+  },
+  {
     files: ['eslint.config.cjs', '**/*.config.js', '**/*.cjs'],
     languageOptions: {
       globals: {
