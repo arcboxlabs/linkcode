@@ -107,7 +107,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.turnActive = false;
     this.cancelling = true;
     if (this.client && this.sessionId) {
-      await this.client.session.abort({ sessionID: this.sessionId });
+      try {
+        await this.client.session.abort({ sessionID: this.sessionId });
+      } catch (err) {
+        // The abort itself failed, so no cancel-induced idle/close is coming to reset the flag.
+        // Leaving `cancelling` latched would make `consumeEvents()` swallow a later genuine stream
+        // failure as an expected cancel close — clear it here so only a real cancel suppresses.
+        this.cancelling = false;
+        throw err;
+      }
     }
   }
 

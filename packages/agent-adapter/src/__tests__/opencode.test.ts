@@ -207,6 +207,27 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     });
   });
 
+  it('does not latch the cancel suppression when abort() itself rejects, so a later stream failure still surfaces', async () => {
+    const { adapter, events } = await makeAdapter();
+
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    // The abort request fails: the turn was never actually cancelled, so no cancel-induced close
+    // is coming. `send('cancel')` rejects — the caller sees the failure directly.
+    client.session.abort.mockRejectedValueOnce(new Error('abort failed'));
+    await expect(adapter.send({ type: 'cancel' })).rejects.toThrow('abort failed');
+
+    // A genuine disconnect afterwards must NOT be swallowed as an expected cancel close.
+    client.stream.fail(new Error('connection dropped'));
+
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(errors(events)[0].recoverable).toBe(false);
+    expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(true);
+  });
+
   it('reports a subscribe() rejection without an unhandled rejection', async () => {
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
