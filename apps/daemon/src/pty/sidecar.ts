@@ -78,11 +78,11 @@ export class SidecarPtyBackend implements PtyBackend {
         cols: opts.cols,
         rows: opts.rows,
         cmd: opts.shell ?? defaultShell(),
-        args: [],
+        args: opts.args ?? [],
         // The daemon's own cwd is an implementation accident (wherever it was launched from) —
         // an unspecified shell belongs in the user's home, like a fresh terminal app tab.
         cwd: opts.cwd ?? homedir(),
-        env: {},
+        env: opts.env ?? {},
       }),
     );
     return new Promise<PtyProcess>((resolve, reject) => {
