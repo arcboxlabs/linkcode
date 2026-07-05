@@ -3,6 +3,7 @@ import { code } from '@streamdown/code';
 import type { Components, PluginConfig } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
+import { ArtifactFenceRenderer, artifactFenceLanguages } from './artifacts';
 
 // Typography overrides keep the chat-tuned look; fenced code blocks stay on
 // Streamdown's defaults for shiki highlighting and copy controls.
@@ -101,7 +102,15 @@ const components: Components = {
   ),
 };
 
-const plugins: PluginConfig = { cjk, code };
+const plugins: PluginConfig = {
+  cjk,
+  code,
+  // Fences whose language a registered artifact kind claims render as inline
+  // artifacts; everything else stays on the default shiki code block. The language
+  // list is snapshotted here, hence the module-scope registration constraint
+  // documented in artifacts/registry.ts.
+  renderers: [{ language: artifactFenceLanguages(), component: ArtifactFenceRenderer }],
+};
 
 export function Markdown({
   children,

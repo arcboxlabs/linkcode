@@ -1,8 +1,11 @@
 import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import { useRef } from 'react';
+import { ArtifactHostActionsProvider } from '../chat/artifacts';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
+import type { ComposerHandle } from './composer';
 import { Composer } from './composer';
 import { ConversationPromptDock } from './conversation-prompt-dock';
 
@@ -50,18 +53,27 @@ export function ConversationSurface({
   onModelChange,
   onEffortChange,
 }: ConversationSurfaceProps): React.ReactNode {
+  const composerRef = useRef<ComposerHandle | null>(null);
+  // Artifact interactions (click-to-reference) land in this surface's own composer;
+  // the loop stays inside the presentation layer.
+  const artifactActions = {
+    referenceToComposer: (text: string) => composerRef.current?.insertText(text),
+  };
+
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
       {topContent}
       <div className={cn('min-h-0 flex-1', conversationClassName)}>
-        <ConversationView
-          conversation={conversation}
-          agentKind={agentKind}
-          cwd={cwd}
-          modelName={modelName}
-          permissionDecisions={permissionDecisions}
-          TerminalBlockComponent={TerminalBlockComponent}
-        />
+        <ArtifactHostActionsProvider actions={artifactActions}>
+          <ConversationView
+            conversation={conversation}
+            agentKind={agentKind}
+            cwd={cwd}
+            modelName={modelName}
+            permissionDecisions={permissionDecisions}
+            TerminalBlockComponent={TerminalBlockComponent}
+          />
+        </ArtifactHostActionsProvider>
       </div>
       <ConversationPromptDock
         conversation={conversation}
@@ -73,6 +85,7 @@ export function ConversationSurface({
           approval-policy state/handler (approval-policy.ts) once the daemon exposes them; the
           composer stubs both lists today. */}
       <Composer
+        handleRef={composerRef}
         agentLabel={agentLabel}
         agentKind={agentKind}
         disabled={disabled}

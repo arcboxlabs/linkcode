@@ -3,7 +3,7 @@ import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Command } from 'coss-ui/components/command';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import { useMemo, useRef, useState } from 'react';
+import { useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   PromptInput,
@@ -41,7 +41,16 @@ import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
 export type { MentionItem } from './composer-command';
 
+/** Imperative surface for callers outside the composer tree (e.g. artifact
+ * click-to-reference); the draft itself stays composer-local state. */
+export interface ComposerHandle {
+  /** Insert text at the caret (whitespace-separated), focus, and place the caret after it. */
+  insertText: (text: string) => void;
+}
+
 export interface ComposerProps {
+  /** Receives the imperative handle (React 19 ref-as-prop). */
+  handleRef?: React.Ref<ComposerHandle>;
   agentLabel?: string;
   /** Which adapter is running the active session; picks the model list to show (if any). */
   agentKind?: AgentKind;
@@ -86,6 +95,7 @@ const WHITESPACE_RE = /\s/;
 const LEADING_WHITESPACE_RE = /^\s/;
 
 export function Composer({
+  handleRef,
   agentLabel,
   agentKind,
   disabled,
@@ -310,6 +320,25 @@ export function Composer({
     setActivePolicyId(policyId);
     void onApprovalPolicyChange?.(policyId).catch(noop);
   }
+
+  function insertText(text: string): void {
+    const insert = text.trim();
+    if (!insert || disabled) return;
+    const pos = textareaRef.current?.selectionStart ?? value.length;
+    const before = value.slice(0, pos);
+    const after = value.slice(pos);
+    const lead = before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : '';
+    const trail = LEADING_WHITESPACE_RE.test(after) ? '' : ' ';
+    setValueAndCaret(
+      `${before}${lead}${insert}${trail}${after}`,
+      pos + lead.length + insert.length + trail.length,
+    );
+    setDismissedStart(null);
+  }
+
+  // No deps: the handle re-binds every render so insertText always sees the current draft.
+  useImperativeHandle(handleRef, () => ({ insertText }));
+
 
   async function selectModel(modelId: string): Promise<void> {
     try {
