@@ -95,7 +95,7 @@ export class ScriptService {
     if (decl.type === 'service') {
       const port = state.plan.get(scriptName)!;
       run.hostname = this.hostnameFor(cwd, scriptName);
-      this.routes.register(run.hostname, port, ownerKey(cwd, scriptName));
+      this.routes.register(run.hostname, { port }, ownerKey(cwd, scriptName));
       run.probeTimer = setInterval(() => {
         void this.probe(cwd, decl, run, port);
       }, HEALTH_PROBE_INTERVAL_MS);

@@ -33,8 +33,22 @@ export function createPreviewRequestHandler(
       res.end(`No running service for ${hostname}\n`);
       return;
     }
+    if ('body' in route) {
+      serveContent(res, route.body, route.contentType);
+      return;
+    }
     proxyRequest(req, res, route.port);
   };
+}
+
+/** Hosted artifact content: same body for every path (single-document origins). */
+function serveContent(res: ServerResponse, body: string, contentType: string): void {
+  res.writeHead(200, {
+    'content-type': contentType,
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'no-store',
+  });
+  res.end(body);
 }
 
 /**
@@ -50,7 +64,8 @@ export function handlePreviewUpgrade(
   const hostname = normalizeHostname(req.headers.host);
   if (hostname === null || !isPreviewHostname(hostname)) return false;
   const route = routes.lookup(hostname);
-  if (route === null) {
+  if (route === null || 'body' in route) {
+    // Content-hosted artifact origins have no WebSocket upstream.
     socket.end('HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n');
     return true;
   }

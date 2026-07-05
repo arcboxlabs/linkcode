@@ -11,6 +11,7 @@ import {
 } from './http-server';
 import { createPreviewRequestHandler, handlePreviewUpgrade } from './preview-proxy';
 import type { PreviewRouteTable } from './preview-routes';
+import { isPreviewOrigin } from './preview-routes';
 import type { Transport, TransportServer } from './transport';
 import { Listeners, WireConnection } from './transport';
 
@@ -69,7 +70,13 @@ export async function createSocketIoServer(opts: SocketIoServerOptions): Promise
     });
   }
   const io = new SocketIoServerImpl(httpServer, {
-    cors: { origin: true },
+    // Reflect any origin EXCEPT the preview/artifact namespace: hosted artifact pages
+    // must not be able to reach the daemon's own endpoints from the browser.
+    cors: {
+      origin(origin, callback) {
+        callback(null, origin === undefined || !isPreviewOrigin(origin));
+      },
+    },
     destroyUpgrade: previewRoutes === undefined,
   });
   const connections = new Listeners<Transport>();
