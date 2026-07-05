@@ -18,6 +18,7 @@ import {
   GitBranchIcon,
   LaptopMinimalIcon,
   MessagesSquareIcon,
+  XIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -267,6 +268,14 @@ function NewSessionContextBar({
               </MenuItem>
             </>
           )}
+          <MenuSeparator />
+          {/* TODO(backend): sessions without a working directory — StartOptionsSchema requires a
+              non-empty cwd, so "no project" cannot be represented yet; enable once the daemon
+              supports cwd-less sessions. */}
+          <MenuItem disabled>
+            <XIcon />
+            {t('noProject')}
+          </MenuItem>
         </MenuPopup>
       </Menu>
       {/* TODO(backend): execution-target selection (local host vs remote) — stub until remote hosts exist. */}
