@@ -6,6 +6,7 @@ import { fileWireVariants } from './file';
 import { gitWireVariants } from './git';
 import { historyWireVariants } from './history';
 import { keepAliveWireVariants } from './keep-alive';
+import { scriptWireVariants } from './script';
 import { sessionWireVariants } from './session';
 import { terminalWireVariants } from './terminal';
 import { workspaceWireVariants } from './workspace';
@@ -43,6 +44,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...workspaceWireVariants,
   ...gitWireVariants,
   ...fileWireVariants,
+  ...scriptWireVariants,
 
   // ── Data plane ──
   z.object({

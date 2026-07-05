@@ -18,6 +18,7 @@ export * from './history';
 export * from './permission';
 export * from './plan';
 export * from './provider-config';
+export * from './script';
 export * from './session';
 export * from './terminal';
 export * from './tool-call';
