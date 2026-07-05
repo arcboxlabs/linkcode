@@ -118,10 +118,11 @@ export class Engine {
             this.sessions.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
-          await session.adapter.send(p.input);
-          // Echo the user's prompt into the broadcast stream so every attached client (and any
-          // reconnect) sees the full conversation; ordered after the adapter accepted it — a
-          // rejected send must not leave a "ghost" user message client-side.
+          // Echo the user's prompt into the broadcast stream (and set the title) before awaiting
+          // send: turn-blocking adapters (e.g. CodexAdapter, whose `send` waits for the whole
+          // streamed turn to resolve) would otherwise delay the echo until after the assistant's
+          // reply — or forever, if the turn hangs. A failed send still surfaces to the client, via
+          // tryReply's `request.failed` reply, so this doesn't reintroduce a silent "ghost" message.
           if (p.input.type === 'prompt') {
             this.transport.send(
               createWireMessage({
@@ -132,6 +133,7 @@ export class Engine {
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
           }
+          await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
         });
         break;
