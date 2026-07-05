@@ -7,6 +7,7 @@ import {
   DaemonIdentitySchema,
   DaemonRuntimeInfoSchema,
 } from '@linkcode/schema';
+import type { PreviewRouteTable } from '@linkcode/transport';
 import type { TransportServer } from '@linkcode/transport/server';
 import { createTransportServer } from '@linkcode/transport/server';
 import { isErrorLikeObject } from 'foxts/extract-error-message';
@@ -58,20 +59,22 @@ export async function probeDaemonIdentity(baseUrl: string): Promise<DaemonIdenti
 export function listenWithPortHunt(
   listener: DaemonListenerConfig,
   identity: DaemonIdentity,
-): Promise<{ server: TransportServer; url: string }> {
-  return huntFrom(listener, identity, 0);
+  previewRoutes?: PreviewRouteTable,
+): Promise<{ server: TransportServer; url: string; port: number }> {
+  return huntFrom(listener, identity, previewRoutes, 0);
 }
 
 // Recursive rather than a loop: each attempt depends on the previous one (bind, probe, next port).
 async function huntFrom(
   listener: DaemonListenerConfig,
   identity: DaemonIdentity,
+  previewRoutes: PreviewRouteTable | undefined,
   attempt: number,
-): Promise<{ server: TransportServer; url: string }> {
+): Promise<{ server: TransportServer; url: string; port: number }> {
   const port = listener.port + attempt;
   try {
-    const server = await createTransportServer({ ...listener, port, identity });
-    return { server, url: listenerUrl(listener.type, listener.host, port) };
+    const server = await createTransportServer({ ...listener, port, identity, previewRoutes });
+    return { server, url: listenerUrl(listener.type, listener.host, port), port };
   } catch (err) {
     if (!isAddrInUse(err)) throw err;
     const probeUrl = httpUrl(listener.host, port);
@@ -86,7 +89,7 @@ async function huntFrom(
         { cause: err },
       );
     }
-    return huntFrom(listener, identity, attempt + 1);
+    return huntFrom(listener, identity, previewRoutes, attempt + 1);
   }
 }
 
