@@ -84,7 +84,7 @@ export function DiffBlock({
 
   return (
     <div className="my-1 overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-xs">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/32 px-3 py-1.5 text-xs">
         <FileTextIcon className="size-3.5 text-muted-foreground" />
         <span className="truncate font-mono text-muted-foreground">{path}</span>
         <span className="ml-auto flex gap-1.5">

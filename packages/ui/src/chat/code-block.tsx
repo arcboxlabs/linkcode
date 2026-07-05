@@ -21,7 +21,7 @@ export function CodeBlock({
 
   return (
     <div
-      className={cn('my-2 overflow-hidden rounded-lg border border-border bg-muted', className)}
+      className={cn('my-2 overflow-hidden rounded-lg border border-border', className)}
       data-language={language}
       {...props}
     >
@@ -44,7 +44,7 @@ export function CodeBlockHeader({ className, ...props }: CodeBlockHeaderProps): 
   return (
     <div
       className={cn(
-        'flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-xs',
+        'flex items-center justify-between gap-2 border-b border-border bg-muted/32 px-3 py-1.5 text-xs',
         className,
       )}
       {...props}
