@@ -1,0 +1,105 @@
+import { describe, expect, it } from 'vitest';
+import {
+  artifactFenceLanguages,
+  registerArtifactDetector,
+  registerArtifactKind,
+  resolveFencedArtifact,
+} from '../registry';
+import type { FencedBlock } from '../types';
+
+function fence(language: string, code = 'graph TD;\nA-->B'): FencedBlock {
+  return { language, code, isIncomplete: false };
+}
+
+describe('resolveFencedArtifact', () => {
+  it('maps builtin fence languages through the baseline detector', () => {
+    const resolved = resolveFencedArtifact(fence('mermaid'));
+    expect(resolved).not.toBeNull();
+    expect(resolved!.artifact).toMatchObject({
+      kind: 'mermaid',
+      detectorId: 'fenced-block',
+      source: { type: 'inline', language: 'mermaid', text: 'graph TD;\nA-->B' },
+    });
+    expect(resolved!.definition.capabilities.inlineCapable).toBe(true);
+
+    expect(resolveFencedArtifact(fence('svg'))!.artifact.kind).toBe('svg');
+  });
+
+  it('degrades unknown languages to a plain code block', () => {
+    expect(resolveFencedArtifact(fence('python'))).toBeNull();
+  });
+
+  it('lets a registered detector take precedence over the baseline', () => {
+    const unregisterKind = registerArtifactKind({
+      id: 'vendor-diagram',
+      capabilities: {
+        inlineCapable: true,
+        panelCapable: false,
+        sandboxRequired: false,
+        interactive: false,
+      },
+      fenceLanguages: [],
+      Inline: () => null,
+    });
+    const unregisterDetector = registerArtifactDetector({
+      id: 'vendor',
+      detectFence: (block) =>
+        block.language === 'mermaid'
+          ? {
+              kind: 'vendor-diagram',
+              source: { type: 'inline', language: block.language, text: block.code },
+              detectorId: 'vendor',
+            }
+          : null,
+    });
+
+    try {
+      expect(resolveFencedArtifact(fence('mermaid'))!.artifact.kind).toBe('vendor-diagram');
+    } finally {
+      unregisterDetector();
+      unregisterKind();
+    }
+
+    expect(resolveFencedArtifact(fence('mermaid'))!.artifact.kind).toBe('mermaid');
+  });
+
+  it('degrades when the detected kind cannot render inline', () => {
+    const unregisterDetector = registerArtifactDetector({
+      id: 'points-at-unknown-kind',
+      detectFence: (block) => ({
+        kind: 'not-registered',
+        source: { type: 'inline', language: block.language, text: block.code },
+        detectorId: 'points-at-unknown-kind',
+      }),
+    });
+
+    try {
+      expect(resolveFencedArtifact(fence('mermaid'))).toBeNull();
+    } finally {
+      unregisterDetector();
+    }
+  });
+});
+
+describe('registerArtifactKind', () => {
+  it('rejects duplicate kind ids', () => {
+    expect(() =>
+      registerArtifactKind({
+        id: 'mermaid',
+        capabilities: {
+          inlineCapable: true,
+          panelCapable: false,
+          sandboxRequired: false,
+          interactive: false,
+        },
+        fenceLanguages: ['mermaid'],
+      }),
+    ).toThrow('already registered');
+  });
+});
+
+describe('artifactFenceLanguages', () => {
+  it('collects the union of registered fence languages', () => {
+    expect(artifactFenceLanguages()).toEqual(expect.arrayContaining(['mermaid', 'svg']));
+  });
+});
