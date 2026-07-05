@@ -18,6 +18,7 @@ import type {
   SessionRecord,
   StartOptions,
   WireMessage,
+  WorkspaceFile,
   WorkspaceId,
   WorkspaceKind,
   WorkspaceRecord,
@@ -107,6 +108,9 @@ export class LinkCodeClient {
         break;
       case 'git.diff.get.result':
         this.pending.resolve('gitDiff', p.replyTo, p.diff);
+        break;
+      case 'file.read.result':
+        this.pending.resolve('fileRead', p.replyTo, p.file);
         break;
       case 'workspace.listed':
         this.pending.resolve('workspaceList', p.replyTo, p.workspaces);
@@ -245,6 +249,11 @@ export class LinkCodeClient {
 
   getGitDiff(cwd: string, mode: GitDiffMode): Promise<GitDiff> {
     return this.control.getGitDiff(cwd, mode);
+  }
+
+  /** Read a file contained to a workspace directory (directory-backed, like git.*). */
+  readFile(cwd: string, path: string): Promise<WorkspaceFile> {
+    return this.control.readFile(cwd, path);
   }
 
   listWorkspaces(): Promise<WorkspaceRecord[]> {

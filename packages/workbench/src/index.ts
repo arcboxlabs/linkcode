@@ -2,6 +2,7 @@ export * from './app/app-providers';
 export * from './app/connection-state';
 export * from './app/workbench-app';
 export * from './app/workbench-providers';
+export * from './files/hooks';
 export * from './git/hooks';
 export * from './git/panel';
 export * from './palette/hotkey';

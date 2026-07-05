@@ -21,6 +21,7 @@ import { normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
+import { mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
 import {
@@ -192,6 +193,13 @@ export class DevMockHost {
           diff: gitFixtureFor(p.cwd).diff,
         });
         break;
+      case 'file.read': {
+        await wait(CONTROL_LATENCY_MS);
+        const file = mockFileFixture(p.cwd, p.path);
+        if (file) this.send({ kind: 'file.read.result', replyTo: p.clientReqId, file });
+        else this.sendFailure(p.clientReqId, `Mock host has no fixture for ${p.path}`);
+        break;
+      }
       case 'session.import':
         await wait(CONTROL_LATENCY_MS);
         this.importSession(p.clientReqId, p.agentKind, p.historyId);

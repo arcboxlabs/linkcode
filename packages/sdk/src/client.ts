@@ -17,6 +17,7 @@ import type {
   SessionInfo,
   SessionRecord,
   StartOptions,
+  WorkspaceFile,
   WorkspaceId,
   WorkspaceKind,
   WorkspaceRecord,
@@ -170,6 +171,11 @@ export class LinkCodeSdkClient {
   /** A unified-diff patch for a directory (directory-backed: keyed by cwd, not by session). */
   getGitDiff(cwd: string, mode: GitDiffMode): RequestResult<GitDiff> {
     return toResult(this.raw.getGitDiff(cwd, mode));
+  }
+
+  /** Read a file contained to a workspace directory (directory-backed, like git.*). */
+  readFile(cwd: string, path: string): RequestResult<WorkspaceFile> {
+    return toResult(this.raw.readFile(cwd, path));
   }
 
   /** Every registered workspace (directory), most recently used first. */
