@@ -1,9 +1,9 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
+import type { TunnelClientOptions, TunnelClientState } from '@linkcode/tunnel';
+import { TunnelClient } from '@linkcode/tunnel';
 import type { Transport, Unsubscribe } from './transport';
 import { Listeners } from './transport';
-import type { TunnelClientOptions, TunnelClientState } from './tunnel-client';
-import { TunnelClient } from './tunnel-client';
 
 export type TunnelTransportOptions = TunnelClientOptions;
 
