@@ -43,6 +43,16 @@ function fakeChild(): PassThrough & {
 }
 
 describe('SidecarPtyBackend', () => {
+  it('rejects an open with an unconfigured binary path instead of spawning it', async () => {
+    const { SidecarPtyBackend } = await import('../sidecar');
+    const backend = new SidecarPtyBackend('');
+
+    await expect(backend.open('term-1', { cols: 80, rows: 24 })).rejects.toThrow(
+      'pty sidecar not configured',
+    );
+    expect(mocks.spawn).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate terminal ids while an open is pending', async () => {
     const { SidecarPtyBackend } = await import('../sidecar');
     const child = fakeChild();
