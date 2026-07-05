@@ -143,17 +143,68 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     }
   });
 
-  it('treats the stream ending on its own (no stop()) as a fatal, non-recoverable error', async () => {
-    const { events } = await makeAdapter();
+  it('treats the stream ending after the turn already went idle as expected, not an error', async () => {
+    const { adapter, events } = await makeAdapter();
+
+    await adapter.send({ type: 'prompt', content: [] });
+    client.stream.push({
+      id: 'e-idle',
+      type: 'session.idle',
+      properties: { sessionID: 'sess-1' },
+    });
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+    });
     events.length = 0;
 
+    // opencode closing the SSE stream right after the turn ended is the normal fallout of a
+    // completed round-trip, not a failure — there's nothing left to interrupt.
+    client.stream.end();
+
+    await vi.waitFor(() => {
+      // Give the loop a chance to run; nothing should ever land.
+      expect(events).toHaveLength(0);
+    });
+  });
+
+  it('treats the stream closing while a turn is still active as a fatal error and stops the session', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    // The stream closes mid-turn — before `session.idle` — so the in-flight round-trip can no
+    // longer receive completion signals.
     client.stream.end();
 
     await vi.waitFor(() => {
       expect(errors(events)).toHaveLength(1);
     });
     expect(errors(events)[0].recoverable).toBe(false);
-    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+    // `stopped`, not `idle` — the shell only disables the composer on `stopped`, and a session that
+    // can no longer receive events must not look usable.
+    expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(true);
+    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(false);
+  });
+
+  it('treats a cancel-triggered stream close as the expected fallout of the abort, not an error', async () => {
+    const { adapter, events } = await makeAdapter();
+
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    await adapter.send({ type: 'cancel' });
+    expect(client.session.abort).toHaveBeenCalledWith({ sessionID: 'sess-1' });
+
+    // Cancel aborts the turn without a matching `session.idle`; opencode then closes the stream —
+    // that's the abort's own fallout, not an unexpected disconnect.
+    client.stream.end();
+
+    await vi.waitFor(() => {
+      // Give the loop a chance to run; nothing should ever land.
+      expect(events).toHaveLength(0);
+    });
   });
 
   it('reports a subscribe() rejection without an unhandled rejection', async () => {
@@ -176,6 +227,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       });
       expect(errors(events)[0].message).toContain('beforeRequest hook rejected');
       expect(errors(events)[0].recoverable).toBe(false);
+      expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(true);
 
       await vi.waitFor(() => {
         expect(unhandled).not.toHaveBeenCalled();
