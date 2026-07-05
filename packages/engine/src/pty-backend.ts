@@ -15,6 +15,10 @@ export interface PtyOpenOptions {
   cwd?: string;
   /** Shell/command to run; defaults to the host's login shell when unset. */
   shell?: string;
+  /** Arguments for `shell` (engine-internal — the wire's terminal.open does not expose them). */
+  args?: string[];
+  /** Extra environment merged over the inherited one (engine-internal, e.g. the script env contract). */
+  env?: Record<string, string>;
 }
 
 /**

@@ -7,6 +7,8 @@ interface TerminalEntry {
   process: PtyProcess;
   /** Set for agent-owned terminals so `killBySession` can reap them when the session stops. */
   sessionId?: SessionId;
+  /** Engine-owned (e.g. a workspace script): survives client disconnects, dies with its owner. */
+  managed?: boolean;
   unsubData: Unsubscribe;
   unsubExit: Unsubscribe;
 }
@@ -32,14 +34,34 @@ export class TerminalService {
 
   /** Spawn a terminal, reply `terminal.opened`, then stream `terminal.output` / `terminal.exit`. */
   async open(clientReqId: string, opts: PtyOpenOptions & { sessionId?: SessionId }): Promise<void> {
+    const terminalId = await this.spawn(opts, { sessionId: opts.sessionId });
+    this.send({ kind: 'terminal.opened', replyTo: clientReqId, terminalId });
+  }
+
+  /**
+   * Spawn an engine-owned terminal (e.g. a workspace script): no `terminal.opened` reply, exempt
+   * from {@link killHostTerminals}, output/exit broadcast as usual so clients can view its logs.
+   */
+  openManaged(opts: PtyOpenOptions, onExit?: (exitCode: number | null) => void): Promise<string> {
+    return this.spawn(opts, { managed: true, onExit });
+  }
+
+  private async spawn(
+    opts: PtyOpenOptions,
+    owner: {
+      sessionId?: SessionId;
+      managed?: boolean;
+      onExit?: (exitCode: number | null) => void;
+    },
+  ): Promise<string> {
     const terminalId = this.nextTerminalId();
     const process = await this.backend.open(terminalId, opts);
 
     // `backend.open` is async; a `session.stop` may have run its `killBySession` while we awaited,
     // before this terminal was ever registered. Reap it now instead of leaking an orphaned PTY.
-    if (opts.sessionId && this.isSessionActive?.(opts.sessionId) === false) {
+    if (owner.sessionId && this.isSessionActive?.(owner.sessionId) === false) {
       process.kill();
-      throw new Error(`session ${opts.sessionId} stopped before terminal ${terminalId} opened`);
+      throw new Error(`session ${owner.sessionId} stopped before terminal ${terminalId} opened`);
     }
 
     let pending = '';
@@ -65,10 +87,17 @@ export class TerminalService {
       flush();
       this.dispose(terminalId);
       this.send({ kind: 'terminal.exit', terminalId, exitCode });
+      owner.onExit?.(exitCode);
     });
 
-    this.terminals.set(terminalId, { process, sessionId: opts.sessionId, unsubData, unsubExit });
-    this.send({ kind: 'terminal.opened', replyTo: clientReqId, terminalId });
+    this.terminals.set(terminalId, {
+      process,
+      sessionId: owner.sessionId,
+      managed: owner.managed,
+      unsubData,
+      unsubExit,
+    });
+    return terminalId;
   }
 
   input(terminalId: string, data: string): void {
@@ -98,7 +127,7 @@ export class TerminalService {
    */
   killHostTerminals(): void {
     for (const entry of this.terminals.values()) {
-      if (entry.sessionId === undefined) entry.process.kill();
+      if (entry.sessionId === undefined && entry.managed !== true) entry.process.kill();
     }
   }
 
