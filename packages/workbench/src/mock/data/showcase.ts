@@ -166,7 +166,7 @@ export const SHOWCASE_EXPLORE_NARRATION = textBlock(
 );
 
 export const SHOWCASE_FILES_NARRATION = textBlock(
-  'Renderer patches are in; running the focused checks to confirm nothing regressed.',
+  'Renderer patches are in; the delivery plan lives in `PLAN.md`, with the summary exported to `docs/report.pdf` and the diagram to `docs/logo.png`. Running the focused checks next.',
 );
 
 export const SHOWCASE_COMMANDS_NARRATION = textBlock(
@@ -244,6 +244,15 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
             newText: "const tone = 'coss';\nconst scale = 'text-sm';\n",
           },
         ],
+      },
+      {
+        toolCallId: 'mock-tool-write-plan',
+        title: 'Write PLAN.md',
+        kind: 'edit',
+        status: 'completed',
+        locations: [{ path: 'PLAN.md' }],
+        rawInput: { file_path: 'PLAN.md' },
+        content: [],
       },
       {
         toolCallId: 'mock-tool-delete-legacy',
