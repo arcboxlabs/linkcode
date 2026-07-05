@@ -53,6 +53,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private closeServer: (() => void) | null = null;
   private sessionId: string | null = null;
   private stopped = false;
+  /** True while a turn is in flight (prompt sent, `session.idle` not yet seen) — gates whether the
+   * event stream ending is an unexpected failure or an expected side effect of the turn finishing. */
+  private turnActive = false;
+  /** True once `onCancel` has aborted the in-flight turn — any stream fallout until the next prompt
+   * (thrown or clean) is that abort's expected side effect, not a failure. */
+  private cancelling = false;
   /** Per-part cursor for turning OpenCode's cumulative part text into deltas. */
   private readonly textLen = new Map<string, number>();
 
@@ -86,6 +92,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     if (!this.client || !this.sessionId) throw new Error('opencode: session not started');
     const parts: TextPartInput[] = [{ type: 'text', text: contentToText(content) }];
+    this.turnActive = true;
+    this.cancelling = false;
     this.emitStatus('running');
     await this.client.session.prompt({
       sessionID: this.sessionId,
@@ -96,6 +104,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   protected override async onCancel(): Promise<void> {
+    this.turnActive = false;
+    this.cancelling = true;
     if (this.client && this.sessionId) {
       await this.client.session.abort({ sessionID: this.sessionId });
     }
@@ -125,7 +135,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Runs for the whole session, dispatching every SSE event the OpenCode server pushes over the
    * single long-lived `event.subscribe()` stream (subscribed once in `onStart`). Only returns when
    * that stream ends — `subscribe()` rejecting up front, the iterator throwing mid-stream, or the
-   * server just closing it. */
+   * server just closing it.
+   *
+   * Not every ending is a failure: a turn finishing normally (`session.idle`) closes the stream just
+   * like a genuine disconnect would, and so does our own `cancel` aborting the turn — neither should
+   * be reported as an error. Only a clean close while a turn is still active (not idle, not
+   * cancelled), or the iterator itself throwing outside of a cancel, is a real, unexpected failure. */
   private async consumeEvents(): Promise<void> {
     if (!this.client) return;
     let caught: unknown;
@@ -138,10 +153,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     } catch (err) {
       caught = err;
     }
-    if (this.stopped) return;
-    // Nothing resubscribes today (see CODE-9), so however the stream ended — thrown or just
-    // closed — this session can no longer receive events. Sweep in-flight state and surface it
-    // instead of going silently deaf.
+    if (this.stopped || this.cancelling) return;
+    // Clean close with no turn in flight (already idle, or never started one) is expected —
+    // nothing was interrupted.
+    if (!caught && !this.turnActive) return;
+    // Nothing resubscribes today (see CODE-9), so this session can no longer receive events.
+    // Sweep in-flight state and surface it as fatal — `stopped`, not `idle`, so the UI disables
+    // the composer instead of treating this session as still usable.
     this.teardown();
     this.emitError(
       caught
@@ -150,7 +168,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       undefined,
       false,
     );
-    this.emitStatus('idle');
+    this.emitStatus('stopped');
   }
 
   /** Each event is handled in its own try/catch so one malformed event (e.g. an unexpected
@@ -163,6 +181,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           break;
         case 'session.idle':
           if (ev.properties.sessionID === this.sessionId) {
+            this.turnActive = false;
+            this.cancelling = false;
             this.emitStop('end_turn');
             this.emitStatus('idle');
           }
