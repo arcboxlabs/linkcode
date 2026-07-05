@@ -4,6 +4,13 @@ import type { ConversationItem, ConversationViewModel } from './types';
 export type PlanConversationItem = Extract<ConversationItem, { kind: 'plan' }>;
 export type PermissionConversationItem = Extract<ConversationItem, { kind: 'approval' }>;
 
+export type PermissionDecision =
+  | {
+      outcome: 'selected';
+      option: PermissionOption;
+    }
+  | { outcome: 'cancelled' };
+
 export interface CurrentPlan {
   item: PlanConversationItem;
   currentIndex: number;
@@ -11,9 +18,13 @@ export interface CurrentPlan {
   complete: boolean;
 }
 
-export interface PermissionPageCursor {
-  requestId: string | null;
+export interface PromptPageCursor {
+  promptId: string | null;
   index: number;
+}
+
+export interface PromptPageItem {
+  promptId: string;
 }
 
 export function conversationFlowItems(
@@ -60,26 +71,28 @@ export function selectPendingPermissionItems(
   );
 }
 
-export function resolvePermissionPageIndex(
-  items: readonly PermissionConversationItem[],
-  cursor: PermissionPageCursor,
+export function resolvePromptPageIndex(
+  items: readonly PromptPageItem[],
+  cursor: PromptPageCursor,
 ): number {
   if (items.length === 0) return 0;
-  if (cursor.requestId) {
-    const selectedIndex = items.findIndex((item) => item.requestId === cursor.requestId);
+  if (cursor.promptId) {
+    const selectedIndex = items.findIndex((item) => item.promptId === cursor.promptId);
     if (selectedIndex >= 0) return selectedIndex;
   }
   return Math.min(Math.max(cursor.index, 0), items.length - 1);
 }
 
-export function isPermissionDeclined(option: PermissionOption | undefined): boolean {
-  return option?.kind === 'reject_once' || option?.kind === 'reject_always';
+export function isPermissionDeclined(decision: PermissionDecision | undefined): boolean {
+  if (!decision) return false;
+  if (decision.outcome === 'cancelled') return true;
+  return decision.option.kind === 'reject_once' || decision.option.kind === 'reject_always';
 }
 
 /** toolCallIds whose gating permission the user declined in this client. */
 export function declinedToolCallIds(
   items: readonly ConversationItem[],
-  decisions: ReadonlyMap<string, PermissionOption>,
+  decisions: ReadonlyMap<string, PermissionDecision>,
 ): Set<string> {
   const ids = new Set<string>();
   for (const item of items) {

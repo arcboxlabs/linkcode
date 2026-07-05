@@ -1,12 +1,6 @@
 import type { Conversation } from '@linkcode/client-core';
 import { useTerminalOutput } from '@linkcode/client-core';
-import type {
-  EffortLevel,
-  PermissionOption,
-  SessionId,
-  WorkspaceId,
-  WorkspaceRecord,
-} from '@linkcode/schema';
+import type { EffortLevel, SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
@@ -19,7 +13,7 @@ import {
   setModel,
   updateWorkspace,
 } from '@linkcode/sdk';
-import type { ThreadGroupViewModel } from '@linkcode/ui';
+import type { PermissionDecision, ThreadGroupViewModel } from '@linkcode/ui';
 import { TerminalBlock } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
@@ -108,7 +102,7 @@ function WorkbenchSessionSurface({
   // Workflow-mode switches ride the generic input op; the mode reflects via current-mode-update.
   const modeMutation = useMutation(sendInput, { onError });
   const [permissionDecisions, setPermissionDecisions] = useState(
-    () => new Map<string, PermissionOption>(),
+    () => new Map<string, PermissionDecision>(),
   );
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
@@ -269,7 +263,7 @@ function WorkbenchSessionSurface({
     (workspace) => workspaceKind(workspace) !== 'chat',
   );
 
-  function handleRespond(requestId: string, option: PermissionOption): void {
+  function handleRespond(requestId: string, decision: PermissionDecision): void {
     if (!sessions.activeId) return;
     onClearError();
     addResponding(requestId);
@@ -277,10 +271,14 @@ function WorkbenchSessionSurface({
       .trigger({
         sessionId: sessions.activeId,
         requestId,
-        outcome: { outcome: 'selected', optionId: option.optionId },
+        // The UI prompt is generic; the transport still expects the permission schema outcome.
+        outcome:
+          decision.outcome === 'cancelled'
+            ? { outcome: 'cancelled' }
+            : { outcome: 'selected', optionId: decision.option.optionId },
       })
       .then(() => {
-        setPermissionDecisions((previous) => new Map(previous).set(requestId, option));
+        setPermissionDecisions((previous) => new Map(previous).set(requestId, decision));
       })
       .catch(noop)
       .finally(() => {

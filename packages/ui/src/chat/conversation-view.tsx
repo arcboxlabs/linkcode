@@ -1,4 +1,4 @@
-import type { AgentKind, PermissionOption } from '@linkcode/schema';
+import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
 import { Fragment } from 'react';
 import { useTranslations } from 'use-intl';
@@ -13,6 +13,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from './conversation';
+import type { PermissionDecision } from './conversation-prompts';
 import {
   conversationFlowItems,
   declinedToolCall,
@@ -36,8 +37,8 @@ export interface ConversationViewProps {
   cwd?: string;
   /** TODO(backend): shown in the per-turn meta once session state reflects the active model. */
   modelName?: string;
-  /** requestIds and selected options answered in this client. */
-  permissionDecisions: ReadonlyMap<string, PermissionOption>;
+  /** requestIds answered in this client, including cancelled skips. */
+  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }
 

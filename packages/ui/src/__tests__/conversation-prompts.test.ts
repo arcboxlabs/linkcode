@@ -1,12 +1,17 @@
 import type { PermissionOption, Plan } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import type { PermissionConversationItem } from '../chat/conversation-prompts';
+import {
+  isConversationPromptResponseSubmittable,
+  STUB_AGENT_QUESTION_PROMPTS,
+  STUB_PLAN_REVIEW_PROMPTS,
+} from '../chat/conversation-prompt';
+import type { PermissionConversationItem, PermissionDecision } from '../chat/conversation-prompts';
 import {
   conversationFlowItems,
   declinedToolCall,
   declinedToolCallIds,
   isPermissionDeclined,
-  resolvePermissionPageIndex,
+  resolvePromptPageIndex,
   selectCurrentPlan,
   selectPendingPermissionItems,
 } from '../chat/conversation-prompts';
@@ -127,28 +132,38 @@ describe('conversation prompt selectors', () => {
     expect(selectPendingPermissionItems(conversation([item]))).toEqual([]);
   });
 
-  it('preserves and clamps the permission prompt page', () => {
-    const first = approval('first');
-    const second = approval('second');
-    const third = approval('third');
+  it('preserves and clamps the prompt page', () => {
+    const first = { promptId: 'first' };
+    const second = { promptId: 'second' };
+    const third = { promptId: 'third' };
 
-    expect(
-      resolvePermissionPageIndex([first, second, third], { requestId: 'second', index: 1 }),
-    ).toBe(1);
-    expect(resolvePermissionPageIndex([first, third], { requestId: 'second', index: 1 })).toBe(1);
-    expect(resolvePermissionPageIndex([first], { requestId: 'third', index: 2 })).toBe(0);
+    expect(resolvePromptPageIndex([first, second, third], { promptId: 'second', index: 1 })).toBe(
+      1,
+    );
+    expect(resolvePromptPageIndex([first, third], { promptId: 'second', index: 1 })).toBe(1);
+    expect(resolvePromptPageIndex([first], { promptId: 'third', index: 2 })).toBe(0);
   });
 
-  it('collects only reject decisions as declined tool calls', () => {
-    const items = [approval('allowed'), approval('rejected'), approval('unanswered')];
-    const decisions = new Map<string, PermissionOption>([
-      ['allowed', ALLOW],
-      ['rejected', REJECT],
+  it('collects reject and cancelled decisions as declined tool calls', () => {
+    const items = [
+      approval('allowed'),
+      approval('rejected'),
+      approval('skipped'),
+      approval('unanswered'),
+    ];
+    const decisions = new Map<string, PermissionDecision>([
+      ['allowed', { outcome: 'selected', option: ALLOW }],
+      ['rejected', { outcome: 'selected', option: REJECT }],
+      ['skipped', { outcome: 'cancelled' }],
     ]);
 
-    expect(isPermissionDeclined(ALLOW)).toBe(false);
+    expect(isPermissionDeclined({ outcome: 'selected', option: ALLOW })).toBe(false);
+    expect(isPermissionDeclined({ outcome: 'selected', option: REJECT })).toBe(true);
+    expect(isPermissionDeclined({ outcome: 'cancelled' })).toBe(true);
     expect(isPermissionDeclined(undefined)).toBe(false);
-    expect(declinedToolCallIds(items, decisions)).toEqual(new Set(['tool-rejected']));
+    expect(declinedToolCallIds(items, decisions)).toEqual(
+      new Set(['tool-rejected', 'tool-skipped']),
+    );
   });
 
   it('materializes a failed tool call from a declined permission snapshot', () => {
@@ -162,5 +177,65 @@ describe('conversation prompt selectors', () => {
       rawInput: undefined,
       rawOutput: undefined,
     });
+  });
+
+  it('validates generic single and multiple prompt responses', () => {
+    const choices = [
+      { id: 'yes', label: 'Yes' },
+      { id: 'no', label: 'No' },
+    ];
+
+    expect(
+      isConversationPromptResponseSubmittable(
+        { mode: 'single', choices },
+        { selectedIds: ['yes'] },
+      ),
+    ).toBe(true);
+    expect(
+      isConversationPromptResponseSubmittable(
+        { mode: 'single', choices },
+        { selectedIds: ['yes', 'no'] },
+      ),
+    ).toBe(false);
+    expect(
+      isConversationPromptResponseSubmittable(
+        { mode: 'multiple', choices },
+        { selectedIds: ['yes', 'no'] },
+      ),
+    ).toBe(true);
+    expect(
+      isConversationPromptResponseSubmittable({ mode: 'multiple', choices }, { selectedIds: [] }),
+    ).toBe(false);
+  });
+
+  it('validates inline custom prompt responses', () => {
+    const choices = [
+      { id: 'yes', label: 'Yes' },
+      { id: 'no', label: 'No' },
+    ];
+
+    expect(
+      isConversationPromptResponseSubmittable(
+        { mode: 'single', choices },
+        { selectedIds: [], customText: '' },
+      ),
+    ).toBe(false);
+    expect(
+      isConversationPromptResponseSubmittable(
+        { mode: 'single', choices },
+        { selectedIds: [], customText: 'Use a safer command' },
+      ),
+    ).toBe(true);
+    expect(
+      isConversationPromptResponseSubmittable(
+        { mode: 'multiple', choices },
+        { selectedIds: [], customText: 'Use a safer command' },
+      ),
+    ).toBe(true);
+  });
+
+  it('leaves future prompt stubs empty until the backend schema exists', () => {
+    expect(STUB_AGENT_QUESTION_PROMPTS).toEqual([]);
+    expect(STUB_PLAN_REVIEW_PROMPTS).toEqual([]);
   });
 });

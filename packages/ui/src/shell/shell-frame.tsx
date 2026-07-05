@@ -1,13 +1,13 @@
 import type {
   AgentKind,
   EffortLevel,
-  PermissionOption,
   SessionId,
   SessionInfo,
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
+import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
@@ -21,7 +21,7 @@ export interface ShellFrameProps {
   /** Derived once by the workbench surface; shells consume it instead of re-deriving from the list. */
   activeSession: SessionInfo | null;
   conversation: ConversationViewModel;
-  permissionDecisions: ReadonlyMap<string, PermissionOption>;
+  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
@@ -50,7 +50,7 @@ export interface ShellFrameProps {
   onToggleImportHistory: (groupKey: string) => void;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
-  onRespondPermission: (requestId: string, option: PermissionOption) => void;
+  onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   BranchStatusComponent?: BranchStatusComponentType;
   HistoryComponent?: React.ComponentType<{

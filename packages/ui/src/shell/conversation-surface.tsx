@@ -1,4 +1,5 @@
-import type { AgentKind, EffortLevel, PermissionOption } from '@linkcode/schema';
+import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
@@ -12,7 +13,7 @@ export interface ConversationSurfaceProps {
   cwd?: string;
   /** TODO(backend): thread the session's active model here once the daemon reflects it. */
   modelName?: string;
-  permissionDecisions: ReadonlyMap<string, PermissionOption>;
+  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
   disabled?: boolean;
   isRunning: boolean;
@@ -22,7 +23,7 @@ export interface ConversationSurfaceProps {
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
-  onRespondPermission: (requestId: string, option: PermissionOption) => void;
+  onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onModeChange?: (modeId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
