@@ -11,6 +11,7 @@ import type {
   WirePayload,
   WorkspaceFile,
   WorkspaceRecord,
+  WorkspaceScript,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
@@ -41,6 +42,7 @@ export interface PendingValueMap {
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
   fileRead: WorkspaceFile;
+  scriptList: WorkspaceScript[];
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   ack: RequestAck;
@@ -72,6 +74,7 @@ export class PendingRegistry {
     gitPrStatus: new Map(),
     gitDiff: new Map(),
     fileRead: new Map(),
+    scriptList: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     ack: new Map(),

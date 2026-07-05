@@ -20,6 +20,7 @@ import type {
   WorkspaceId,
   WorkspaceKind,
   WorkspaceRecord,
+  WorkspaceScript,
 } from '@linkcode/schema';
 import type { Options, RequestResult } from './client';
 import { resolveClient } from './client';
@@ -152,6 +153,25 @@ export function readWorkspaceFile(
   options: Options<{ cwd: string; path: string }>,
 ): RequestResult<WorkspaceFile> {
   return resolveClient(options).readFile(options.cwd, options.path);
+}
+
+/** The workspace's declared scripts with live lifecycle/health (directory-backed). */
+export function listWorkspaceScripts(
+  options: Options<{ cwd: string }>,
+): RequestResult<WorkspaceScript[]> {
+  return resolveClient(options).listScripts(options.cwd);
+}
+
+export function startWorkspaceScript(
+  options: Options<{ cwd: string; scriptName: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).startScript(options.cwd, options.scriptName);
+}
+
+export function stopWorkspaceScript(
+  options: Options<{ cwd: string; scriptName: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).stopScript(options.cwd, options.scriptName);
 }
 
 /** Every registered workspace (directory), most recently used first. */

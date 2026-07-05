@@ -21,6 +21,7 @@ import type {
   WorkspaceId,
   WorkspaceKind,
   WorkspaceRecord,
+  WorkspaceScript,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
@@ -176,6 +177,24 @@ export class LinkCodeSdkClient {
   /** Read a file contained to a workspace directory (directory-backed, like git.*). */
   readFile(cwd: string, path: string): RequestResult<WorkspaceFile> {
     return toResult(this.raw.readFile(cwd, path));
+  }
+
+  /** The workspace's declared scripts with live lifecycle/health (directory-backed). */
+  listScripts(cwd: string): RequestResult<WorkspaceScript[]> {
+    return toResult(this.raw.listScripts(cwd));
+  }
+
+  startScript(cwd: string, scriptName: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.startScript(cwd, scriptName));
+  }
+
+  stopScript(cwd: string, scriptName: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.stopScript(cwd, scriptName));
+  }
+
+  /** Broadcast `script.status` updates for every workspace (callers filter by cwd). */
+  subscribeScriptStatus(cb: (cwd: string, script: WorkspaceScript) => void): () => void {
+    return this.raw.subscribeScriptStatus(cb);
   }
 
   /** Every registered workspace (directory), most recently used first. */
