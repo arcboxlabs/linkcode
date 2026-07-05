@@ -27,6 +27,7 @@ export function ConnectionTab(): React.ReactNode {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isDirty },
   } = useForm<ConnectionForm>({
     resolver: zodResolver(connectionSchema),
@@ -37,7 +38,12 @@ export function ConnectionTab(): React.ReactNode {
     <Form
       className="flex flex-col gap-4"
       errors={rhfErrorsToFormErrors(errors)}
-      onSubmit={handleSubmit(({ daemonUrl: next }) => setDaemonUrl(next === '' ? null : next))}
+      onSubmit={handleSubmit(({ daemonUrl: next }) => {
+        setDaemonUrl(next === '' ? null : next);
+        // Rebase the form's baseline to the saved value so `isDirty` compares against the current
+        // setting, not the mount-time default — otherwise re-typing the old value falsely reads clean.
+        reset({ daemonUrl: next });
+      })}
     >
       <div>
         <h2 className="font-semibold text-sm">{t('title')}</h2>
