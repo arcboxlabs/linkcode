@@ -10,6 +10,7 @@ import type {
   GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
+  HostedArtifact,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -172,6 +173,13 @@ export function stopWorkspaceScript(
   options: Options<{ cwd: string; scriptName: string }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).stopScript(options.cwd, options.scriptName);
+}
+
+/** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
+export function hostArtifact(
+  options: Options<{ content: string; mimeType: string }>,
+): RequestResult<HostedArtifact> {
+  return resolveClient(options).hostArtifact(options.content, options.mimeType);
 }
 
 /** Every registered workspace (directory), most recently used first. */

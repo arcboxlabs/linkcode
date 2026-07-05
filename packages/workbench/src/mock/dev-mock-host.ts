@@ -239,6 +239,22 @@ export class DevMockHost {
         }
         break;
       }
+      case 'artifact.host': {
+        await wait(CONTROL_LATENCY_MS);
+        // No reverse proxy in mock mode: a renderer-local blob URL stands in for the
+        // daemon's per-artifact origin (the desktop CSP allows frame-src blob:).
+        const url = URL.createObjectURL(new Blob([p.content], { type: p.mimeType }));
+        this.send({
+          kind: 'artifact.hosted',
+          replyTo: p.clientReqId,
+          artifact: { hash: `mock-${this.messageSeq++}`, hostname: 'mock.localhost', url },
+        });
+        break;
+      }
+      case 'artifact.revoke': {
+        this.sendSuccess(p.clientReqId);
+        break;
+      }
       case 'script.stop': {
         await wait(CONTROL_LATENCY_MS);
         const script = this.scriptsFor(p.cwd).get(p.scriptName);

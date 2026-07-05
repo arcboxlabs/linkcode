@@ -11,6 +11,7 @@ import type {
   GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
+  HostedArtifact,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -195,6 +196,11 @@ export class LinkCodeSdkClient {
   /** Broadcast `script.status` updates for every workspace (callers filter by cwd). */
   subscribeScriptStatus(cb: (cwd: string, script: WorkspaceScript) => void): () => void {
     return this.raw.subscribeScriptStatus(cb);
+  }
+
+  /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
+  hostArtifact(content: string, mimeType: string): RequestResult<HostedArtifact> {
+    return toResult(this.raw.hostArtifact(content, mimeType));
   }
 
   /** Every registered workspace (directory), most recently used first. */

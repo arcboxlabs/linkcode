@@ -4,6 +4,7 @@ import { workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
   cancelTurn,
+  hostArtifact,
   promptText,
   registerWorkspace,
   respondPermission,
@@ -207,6 +208,11 @@ function WorkbenchSessionSurface({
     void promptMutation.trigger({ sessionId, text: submission.prompt }).catch(noop);
   }
 
+  async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
+    const { data } = await hostArtifact({ content, mimeType });
+    return { url: data.url };
+  }
+
   function handleModeChange(modeId: string): Promise<void> {
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
@@ -377,6 +383,7 @@ function WorkbenchSessionSurface({
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
+      onHostArtifact={handleHostArtifact}
       onOpenSearch={openCommandPalette}
       searchShortcut={paletteShortcut}
       TerminalBlockComponent={RuntimeTerminalBlock}

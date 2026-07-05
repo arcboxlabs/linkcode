@@ -50,6 +50,8 @@ export interface ShellFrameProps
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
+  /** Hosts inline artifact content on the daemon (sandboxed html previews, CODE-62). */
+  onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Opens the command palette — the sidebar Search entry stays disabled without it. */
   onOpenSearch?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
@@ -92,6 +94,7 @@ export function ShellFrame({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onHostArtifact,
   onOpenSearch,
   searchShortcut,
   TerminalBlockComponent,
@@ -165,6 +168,7 @@ export function ShellFrame({
             onSendPrompt={onSendPrompt}
             onStopTurn={onStopTurn}
             onRespondPermission={onRespondPermission}
+            onHostArtifact={onHostArtifact}
             onModeChange={onModeChange}
             onModelChange={onModelChange}
             onEffortChange={onEffortChange}

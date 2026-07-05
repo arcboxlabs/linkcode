@@ -244,6 +244,9 @@ export const zhCN = {
       renderFailed: '无法渲染，已显示源代码',
       clickToReference: '点击图中元素可引用到输入框',
       openFile: '在面板中打开',
+      expandPreview: '预览',
+      openInPanel: '在面板打开',
+      hostFailed: '预览托管失败',
     },
     files: {
       empty: '从对话中打开文件后在此查看',

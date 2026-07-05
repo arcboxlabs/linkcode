@@ -11,6 +11,7 @@ import type {
   GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
+  HostedArtifact,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -55,10 +56,34 @@ type TerminalErrorCb = (err: Error) => void;
  * for per-session agent events, and a {@link TerminalChannel} for PTY sessions.
  */
 export class LinkCodeClient {
+<<<<<<< HEAD
   private readonly pending = new PendingRegistry();
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
+=======
+  private readonly subscribers = new Map<SessionId, Set<EventCb>>();
+  /** Per-session event buffer so a re-subscribe (switching the active session back) can replay the timeline. */
+  private readonly events = new Map<SessionId, SequencedAgentEvent[]>();
+  /** Cached immutable copies of {@link events}, invalidated per event — `getSnapshot` sources. */
+  private readonly eventSnapshots = new Map<SessionId, readonly SequencedAgentEvent[]>();
+  /** Per-session receive counters. Deliberately NOT cleared with the buffer on `stopSession`: a
+   * stop→resume in the same connection must keep seq monotone, or a seed's `uptoSeq` sampled
+   * before the stop would swallow the resumed session's fresh events. */
+  private readonly eventSeqs = new Map<SessionId, number>();
+  private readonly pendingStarts = new Map<string, Pending<SessionId>>();
+  private readonly pendingLists = new Map<string, Pending<SessionInfo[]>>();
+  private readonly pendingImports = new Map<string, Pending<SessionRecord>>();
+  private readonly pendingHistoryLists = new Map<string, Pending<AgentHistoryListResult>>();
+  private readonly pendingHistoryReads = new Map<string, Pending<AgentHistoryReadResult>>();
+  private readonly pendingConfigGets = new Map<string, Pending<ProvidersConfig>>();
+  private readonly pendingGitStatuses = new Map<string, Pending<GitStatus>>();
+  private readonly pendingGitPrStatuses = new Map<string, Pending<GitPullRequestStatus>>();
+  private readonly pendingGitDiffs = new Map<string, Pending<GitDiff>>();
+  private readonly pendingFileReads = new Map<string, Pending<WorkspaceFile>>();
+  private readonly pendingScriptLists = new Map<string, Pending<WorkspaceScript[]>>();
+  private readonly pendingArtifactHosts = new Map<string, Pending<HostedArtifact>>();
+>>>>>>> d19f633 (feat(ui,workbench): sandboxed html artifact preview with promote-to-browser)
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
@@ -118,7 +143,17 @@ export class LinkCodeClient {
       case 'script.listed':
         this.pending.resolve('scriptList', p.replyTo, p.scripts);
         break;
+<<<<<<< HEAD
       case 'script.status':
+=======
+      }
+      case 'artifact.hosted': {
+        this.pendingArtifactHosts.get(p.replyTo)?.resolve(p.artifact);
+        this.pendingArtifactHosts.delete(p.replyTo);
+        break;
+      }
+      case 'script.status': {
+>>>>>>> d19f633 (feat(ui,workbench): sandboxed html artifact preview with promote-to-browser)
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
         break;
       case 'workspace.listed':
@@ -285,6 +320,20 @@ export class LinkCodeClient {
     return () => this.scriptStatusSubs.delete(cb);
   }
 
+<<<<<<< HEAD
+=======
+  /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
+  hostArtifact(content: string, mimeType: string): Promise<HostedArtifact> {
+    return this.sendCorrelated(this.pendingArtifactHosts, (clientReqId) => ({
+      kind: 'artifact.host',
+      clientReqId,
+      content,
+      mimeType,
+    }));
+  }
+
+  /** Every registered workspace (directory), most recently used first. */
+>>>>>>> d19f633 (feat(ui,workbench): sandboxed html artifact preview with promote-to-browser)
   listWorkspaces(): Promise<WorkspaceRecord[]> {
     return this.control.listWorkspaces();
   }
@@ -370,6 +419,88 @@ export class LinkCodeClient {
     this.transport.close();
   }
 
+<<<<<<< HEAD
+=======
+  /** Reject every in-flight request so awaiters get an error instead of hanging forever. */
+  private failAllPending(err: Error): void {
+    for (const map of [
+      this.pendingStarts,
+      this.pendingLists,
+      this.pendingImports,
+      this.pendingHistoryLists,
+      this.pendingHistoryReads,
+      this.pendingConfigGets,
+      this.pendingGitStatuses,
+      this.pendingGitPrStatuses,
+      this.pendingGitDiffs,
+      this.pendingFileReads,
+      this.pendingScriptLists,
+      this.pendingArtifactHosts,
+      this.pendingWorkspaceLists,
+      this.pendingWorkspaceRegisters,
+      this.pendingAcks,
+      this.pendingTerminalOpens,
+    ]) {
+      for (const pending of map.values()) pending.reject(err);
+      map.clear();
+    }
+  }
+
+  private rejectPending(replyTo: string, message: string, code?: string): void {
+    const err = new Error(message);
+    if (code) Object.assign(err, { code });
+    if (rejectFrom(this.pendingStarts, replyTo, err)) return;
+    if (rejectFrom(this.pendingLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingImports, replyTo, err)) return;
+    if (rejectFrom(this.pendingHistoryLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingHistoryReads, replyTo, err)) return;
+    if (rejectFrom(this.pendingConfigGets, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitStatuses, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitPrStatuses, replyTo, err)) return;
+    if (rejectFrom(this.pendingGitDiffs, replyTo, err)) return;
+    if (rejectFrom(this.pendingFileReads, replyTo, err)) return;
+    if (rejectFrom(this.pendingScriptLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingArtifactHosts, replyTo, err)) return;
+    if (rejectFrom(this.pendingWorkspaceLists, replyTo, err)) return;
+    if (rejectFrom(this.pendingWorkspaceRegisters, replyTo, err)) return;
+    if (rejectFrom(this.pendingAcks, replyTo, err)) return;
+    rejectFrom(this.pendingTerminalOpens, replyTo, err);
+  }
+
+  /** Send a fire-and-forget terminal frame, routing any send failure to the terminal's error subs. */
+  private sendTerminalFrame(terminalId: string, payload: WirePayload): void {
+    const onFail = (err: unknown) => this.emitTerminalError(terminalId, toError(err));
+    try {
+      void Promise.resolve(this.transport.send(createWireMessage(payload))).catch(onFail);
+    } catch (err) {
+      onFail(err);
+    }
+  }
+
+  private emitTerminalError(terminalId: string, err: Error): void {
+    const subs = this.terminalErrorSubs.get(terminalId);
+    if (subs) for (const cb of subs) cb(err);
+  }
+
+  private sendCorrelated<T>(
+    pendingMap: Map<string, Pending<T>>,
+    makePayload: (clientReqId: string) => WirePayload,
+  ): Promise<T> {
+    const clientReqId = nextClientReqId();
+    return new Promise<T>((resolve, reject) => {
+      pendingMap.set(clientReqId, { resolve, reject });
+      try {
+        const sent = this.transport.send(createWireMessage(makePayload(clientReqId)));
+        void Promise.resolve(sent).catch((err) => {
+          rejectFrom(pendingMap, clientReqId, toError(err));
+        });
+      } catch (err) {
+        rejectFrom(pendingMap, clientReqId, toError(err));
+      }
+    });
+  }
+
+>>>>>>> d19f633 (feat(ui,workbench): sandboxed html artifact preview with promote-to-browser)
   private isClosed(): boolean {
     return this.closed;
   }

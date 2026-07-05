@@ -1,3 +1,4 @@
+import { HtmlInline } from './html-inline';
 import { MermaidInline } from './mermaid-inline';
 import { SvgInline } from './svg-inline';
 import type { ArtifactKindDefinition } from './types';
@@ -40,5 +41,16 @@ export const BUILTIN_ARTIFACT_KINDS: readonly ArtifactKindDefinition[] = [
     },
     fenceLanguages: ['svg'],
     Inline: SvgInline,
+  },
+  {
+    id: 'html',
+    capabilities: {
+      inlineCapable: true,
+      panelCapable: true,
+      sandboxRequired: true,
+      interactive: false,
+    },
+    fenceLanguages: ['html'],
+    Inline: HtmlInline,
   },
 ];

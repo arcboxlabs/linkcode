@@ -10,6 +10,13 @@ export interface ArtifactHostActions {
    * Relative paths are anchored to the session cwd by the host. Absent when the shell
    * has no file viewer (webview) — cards then render without the open affordance. */
   openFile?: (path: string) => void;
+  /** Host inline content on the daemon's ephemeral per-artifact origin (CODE-62);
+   * absent when the data plane doesn't support hosting — sandboxed previews then stay
+   * unavailable and the fence renders as code. */
+  hostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
+  /** Promote a hosted artifact/preview URL to the host's browser surface (desktop:
+   * Browser pane). Absent → the renderer falls back to a new browser tab. */
+  openPreviewUrl?: (url: string) => void;
 }
 
 const ArtifactHostActionsContext = createContext<ArtifactHostActions | null>(null);

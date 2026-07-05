@@ -60,6 +60,16 @@ export const SHOWCASE_ARTIFACTS_CONTENT = textBlock(
     '  <text x="100" y="36" text-anchor="middle" font-size="14" fill="currentColor">Sanitized svg artifact</text>',
     '</svg>',
     '```',
+    '',
+    'Self-contained HTML previews in a sandboxed iframe on its own origin:',
+    '',
+    '```html',
+    '<!doctype html>',
+    '<html><body style="font-family: sans-serif; padding: 2rem">',
+    '  <h1 id="t">Sandboxed artifact</h1>',
+    "  <button onclick=\"document.querySelector('#t').textContent = 'clicked!'\">Click me</button>",
+    '</body></html>',
+    '```',
   ].join('\n'),
 );
 
