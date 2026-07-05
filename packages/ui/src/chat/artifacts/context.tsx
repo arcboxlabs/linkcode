@@ -6,6 +6,10 @@ export interface ArtifactHostActions {
   /** Insert a reference produced from an artifact interaction into the composer draft
    * (never auto-sends). */
   referenceToComposer: (text: string) => void;
+  /** Open a workspace file in the host's viewer (desktop: right-panel files section).
+   * Relative paths are anchored to the session cwd by the host. Absent when the shell
+   * has no file viewer (webview) — cards then render without the open affordance. */
+  openFile?: (path: string) => void;
 }
 
 const ArtifactHostActionsContext = createContext<ArtifactHostActions | null>(null);

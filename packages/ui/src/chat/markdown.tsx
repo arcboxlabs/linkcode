@@ -3,7 +3,44 @@ import { code } from '@streamdown/code';
 import type { Components, PluginConfig } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
-import { ArtifactFenceRenderer, artifactFenceLanguages } from './artifacts';
+import { ArtifactFenceRenderer, artifactFenceLanguages, useArtifactHostActions } from './artifacts';
+import { detectInlineFilePath } from './artifacts/file-kind';
+
+const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
+
+/** Inline code, upgraded to a file link when the span is a viewer-openable path and
+ * the host wires `openFile` (degrades to plain code everywhere else). */
+function InlineCode({
+  className,
+  children,
+  node: _node,
+  ...rest
+}: React.ComponentProps<'code'> & { node?: unknown }): React.ReactNode {
+  const actions = useArtifactHostActions();
+  const openFile = actions?.openFile;
+  const path = openFile && typeof children === 'string' ? detectInlineFilePath(children) : null;
+
+  if (openFile && path !== null) {
+    return (
+      <button
+        type="button"
+        className={cn(
+          INLINE_CODE_CLASS,
+          'cursor-pointer underline decoration-dotted underline-offset-2 hover:bg-accent',
+          className,
+        )}
+        onClick={() => openFile(path)}
+      >
+        {children}
+      </button>
+    );
+  }
+  return (
+    <code className={cn(INLINE_CODE_CLASS, className)} {...rest}>
+      {children}
+    </code>
+  );
+}
 
 // Typography overrides keep the chat-tuned look; fenced code blocks stay on
 // Streamdown's defaults for shiki highlighting and copy controls.
@@ -61,14 +98,7 @@ const components: Components = {
       {children}
     </blockquote>
   ),
-  inlineCode: ({ className, children, node: _node, ...rest }) => (
-    <code
-      className={cn('rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]', className)}
-      {...rest}
-    >
-      {children}
-    </code>
-  ),
+  inlineCode: InlineCode,
   table: ({ className, children, node: _node, ...rest }) => (
     <table className={cn('my-2 w-full border-collapse text-sm', className)} {...rest}>
       {children}

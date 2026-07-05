@@ -27,6 +27,9 @@ export interface ConversationSurfaceProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
+  /** Opens a produced-file artifact in the shell's viewer (desktop right panel). Absent
+   * when the shell has no viewer — file cards then render without the open affordance. */
+  onOpenFileArtifact?: (path: string) => void;
   onModeChange?: (modeId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
@@ -49,6 +52,7 @@ export function ConversationSurface({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onOpenFileArtifact,
   onModeChange,
   onModelChange,
   onEffortChange,
@@ -58,6 +62,7 @@ export function ConversationSurface({
   // the loop stays inside the presentation layer.
   const artifactActions = {
     referenceToComposer: (text: string) => composerRef.current?.insertText(text),
+    openFile: onOpenFileArtifact,
   };
 
   return (
