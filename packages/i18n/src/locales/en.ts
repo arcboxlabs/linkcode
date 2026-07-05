@@ -247,6 +247,9 @@ export const en = {
       renderFailed: 'Could not render; showing source',
       clickToReference: 'Click an element in the diagram to reference it in the composer',
       openFile: 'Open in panel',
+      expandPreview: 'Preview',
+      openInPanel: 'Open in panel',
+      hostFailed: 'Failed to host the preview',
     },
     files: {
       empty: 'Files opened from the conversation show up here',
