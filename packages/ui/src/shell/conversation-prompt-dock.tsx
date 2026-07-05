@@ -116,18 +116,17 @@ function PermissionPrompt({
     <PermissionCard
       className="my-0"
       options={item.options}
-      pager={
-        <PermissionPager
-          current={pageIndex + 1}
-          total={items.length}
-          onNext={() => selectPage(pageIndex + 1)}
-          onPrevious={() => selectPage(pageIndex - 1)}
-        />
-      }
       responding={respondingPermissions.has(item.requestId)}
       toolCall={item.toolCall}
       onRespond={(option) => onRespondPermission(item.requestId, option)}
-    />
+    >
+      <PermissionPager
+        current={pageIndex + 1}
+        total={items.length}
+        onNext={() => selectPage(pageIndex + 1)}
+        onPrevious={() => selectPage(pageIndex - 1)}
+      />
+    </PermissionCard>
   );
 }
 

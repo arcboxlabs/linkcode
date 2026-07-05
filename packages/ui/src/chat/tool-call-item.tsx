@@ -5,12 +5,7 @@ import { keyedItems, stableContentKey } from './content-keys';
 import { DiffBlock } from './diff-block';
 import { TerminalBlock } from './terminal-block';
 import { Tool, ToolContent, ToolHeader, ToolJson, ToolSection } from './tool';
-
-export function hasToolBody(toolCall: ToolCall): boolean {
-  return Boolean(
-    toolCall.content.length || toolCall.rawInput !== undefined || toolCall.rawOutput !== undefined,
-  );
-}
+import { hasToolBody } from './tool-utils';
 
 /** The expandable detail of one call — input, content blocks / diffs / terminals, raw output. */
 export function ToolCallBody({

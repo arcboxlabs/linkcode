@@ -66,7 +66,7 @@ export function PermissionCard({
   toolCall,
   options,
   responding,
-  pager,
+  children,
   onRespond,
 }: {
   className?: string;
@@ -74,7 +74,7 @@ export function PermissionCard({
   options: PermissionOption[];
   responding: boolean;
   /** Rendered in the card's top-right action slot (e.g. a multi-request pager). */
-  pager?: React.ReactNode;
+  children?: React.ReactNode;
   onRespond: (option: PermissionOption) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.permission');
@@ -97,7 +97,7 @@ export function PermissionCard({
           {toolCall.title ?? toolCall.toolCallId}
         </span>
       </ConfirmationTitle>
-      {pager ? <AlertAction>{pager}</AlertAction> : null}
+      {children ? <AlertAction>{children}</AlertAction> : null}
       {details.length > 0 && (
         <ConfirmationDescription>
           <div className="min-w-0 space-y-0.5">

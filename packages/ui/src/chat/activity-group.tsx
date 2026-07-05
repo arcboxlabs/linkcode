@@ -19,8 +19,9 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { ActivityBucket, TimelineEntry } from './activity-groups';
-import { diffStats } from './diff-block';
-import { hasToolBody, ToolCallBody } from './tool-call-item';
+import { diffStats } from './diff-utils';
+import { ToolCallBody } from './tool-call-item';
+import { hasToolBody } from './tool-utils';
 
 export type ActivityToolGroup = Extract<TimelineEntry, { type: 'group' }>;
 

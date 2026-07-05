@@ -6,20 +6,9 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
-import {
-  BrainIcon,
-  ChevronRightIcon,
-  FileOutputIcon,
-  FileTextIcon,
-  GlobeIcon,
-  PencilIcon,
-  SearchIcon,
-  ShieldIcon,
-  TerminalIcon,
-  Trash2Icon,
-  WrenchIcon,
-} from 'lucide-react';
+import { ChevronRightIcon, ShieldIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { TOOL_KIND_ICONS } from './tool-utils';
 
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
 
@@ -72,21 +61,6 @@ export function ToolHeader({
     </CollapsibleTrigger>
   );
 }
-
-export const TOOL_KIND_ICONS: Record<
-  ToolCall['kind'],
-  React.ComponentType<{ className?: string }>
-> = {
-  read: FileTextIcon,
-  edit: PencilIcon,
-  delete: Trash2Icon,
-  move: FileOutputIcon,
-  search: SearchIcon,
-  execute: TerminalIcon,
-  think: BrainIcon,
-  fetch: GlobeIcon,
-  other: WrenchIcon,
-};
 
 /**
  * A call's glyph names what it does, not how it went: the kind icon (or a custom `icon` for
