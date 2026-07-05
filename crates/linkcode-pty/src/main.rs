@@ -60,11 +60,11 @@ fn main() {
                     // Fail only this terminal (recover its id if we can); never kill the whole host.
                     match serde_json::from_slice::<TerminalIdOnly>(&body) {
                         Ok(id) => mux.reject_open(&id.terminal_id, &err.to_string()),
-                        // No terminalId to reply ERROR against: the daemon's pending open for
-                        // this frame can never be resolved and will hang until its own timeout,
-                        // if any (see PROTOCOL.md). Surfacing this is the best we can do here.
+                        // No terminalId to reply ERROR against: this side can't resolve it, so the
+                        // daemon's pending open is reclaimed by its own open timeout (see PROTOCOL.md).
+                        // Surfacing it to stderr is the best we can do here.
                         Err(_) => eprintln!(
-                            "OPEN frame has no recoverable terminalId; the daemon's pending open for it will hang"
+                            "OPEN frame has no recoverable terminalId; the daemon's pending open for it will time out"
                         ),
                     }
                 }

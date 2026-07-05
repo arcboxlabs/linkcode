@@ -35,7 +35,16 @@ interface LiveTerminal {
 interface PendingOpen {
   resolve: (process: PtyProcess) => void;
   reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
+
+/**
+ * How long the daemon waits for the sidecar's `OPENED`/`ERROR` reply before giving up on an open.
+ * A pending open is otherwise only cleared by those replies or sidecar exit, so a frame the sidecar
+ * can't answer (e.g. an `OPEN` whose `terminalId` it couldn't parse to reply `ERROR` against) would
+ * hang forever. Local shells reply in milliseconds; this ceiling only trips on a lost reply.
+ */
+const OPEN_TIMEOUT_MS = 10000;
 
 /**
  * `PtyBackend` backed by the `linkcode-pty` Rust sidecar. One long-lived child process multiplexes
@@ -77,7 +86,15 @@ export class SidecarPtyBackend implements PtyBackend {
       }),
     );
     return new Promise<PtyProcess>((resolve, reject) => {
-      this.pending.set(terminalId, { resolve, reject });
+      const timer = setTimeout(() => {
+        const waiter = this.pending.get(terminalId);
+        if (!waiter) return;
+        this.pending.delete(terminalId);
+        waiter.reject(new Error(`pty open timed out: ${terminalId}`));
+      }, OPEN_TIMEOUT_MS);
+      // Don't let a pending open keep the daemon's event loop alive on its own.
+      timer.unref();
+      this.pending.set(terminalId, { resolve, reject, timer });
       writeFrame(child.stdin, OPEN, body);
     });
   }
@@ -123,6 +140,7 @@ export class SidecarPtyBackend implements PtyBackend {
         const { terminalId } = JSON.parse(frame.body.toString('utf8')) as { terminalId: string };
         const waiter = this.pending.get(terminalId);
         if (!waiter) break;
+        clearTimeout(waiter.timer);
         this.pending.delete(terminalId);
         const terminal: LiveTerminal = {
           data: new Listeners<string>(),
@@ -156,6 +174,7 @@ export class SidecarPtyBackend implements PtyBackend {
         };
         const waiter = this.pending.get(terminalId);
         if (!waiter) break;
+        clearTimeout(waiter.timer);
         this.pending.delete(terminalId);
         waiter.reject(new Error(message));
         break;
@@ -202,7 +221,10 @@ export class SidecarPtyBackend implements PtyBackend {
   }
 
   private failAll(error: Error): void {
-    for (const waiter of this.pending.values()) waiter.reject(error);
+    for (const waiter of this.pending.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+    }
     this.pending.clear();
     const terminalIds = Array.from(this.terminals.keys());
     for (const terminalId of terminalIds) this.finish(terminalId, null, false);
