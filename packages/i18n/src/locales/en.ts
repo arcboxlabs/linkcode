@@ -246,6 +246,7 @@ export const en = {
       streaming: 'Generating…',
       renderFailed: 'Could not render; showing source',
       clickToReference: 'Click an element in the diagram to reference it in the composer',
+      openFile: 'Open in panel',
     },
     agentKind: {
       'claude-code': 'Claude Code',

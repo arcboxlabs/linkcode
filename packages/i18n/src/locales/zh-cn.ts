@@ -243,6 +243,7 @@ export const zhCN = {
       streaming: '生成中…',
       renderFailed: '无法渲染，已显示源代码',
       clickToReference: '点击图中元素可引用到输入框',
+      openFile: '在面板中打开',
     },
     agentKind: {
       'claude-code': 'Claude Code',
