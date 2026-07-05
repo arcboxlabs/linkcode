@@ -1,4 +1,4 @@
-import type { ContentBlock, ToolKind } from '@linkcode/schema';
+import type { ContentBlock, ToolCallLocation, ToolKind } from '@linkcode/schema';
 
 const READ_TOOL_NAME_RE = /read|cat|view|open/;
 const EDIT_TOOL_NAME_RE = /write|edit|apply|patch|create|update/;
@@ -17,6 +17,20 @@ export function contentToText(content: ContentBlock[]): string {
       return texts;
     }, [])
     .join('\n');
+}
+
+const PATH_INPUT_KEYS = ['file_path', 'path', 'notebook_path', 'filePath'] as const;
+
+/** Best-effort file location from a tool's raw input (drives produced-file cards and
+ * the follow-along affordance). Vendors without a conventional path field return none. */
+export function locationsFromToolInput(input: unknown): ToolCallLocation[] | undefined {
+  if (input === null || typeof input !== 'object') return undefined;
+  const record = input as Record<string, unknown>;
+  for (const key of PATH_INPUT_KEYS) {
+    const value = record[key];
+    if (typeof value === 'string' && value.length > 0) return [{ path: value }];
+  }
+  return undefined;
 }
 
 /** Best-effort mapping of a tool name to an ACP ToolKind (drives UI iconography). */

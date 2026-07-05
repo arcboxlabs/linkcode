@@ -2,7 +2,7 @@ import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-
 import type { ContentBlock, StartOptions } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
-import { contentToText, toolKindFromName } from '../util';
+import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 /**
  * Pi adapter — drives `@earendil-works/pi-coding-agent` via `createAgentSession()`. Events arrive through
@@ -96,6 +96,7 @@ export class PiAdapter extends BaseAgentAdapter {
           kind: toolKindFromName(ev.toolName),
           status: 'in_progress',
           rawInput: ev.args,
+          locations: locationsFromToolInput(ev.args),
         });
         // The tool closes the current segment; narration after it groups into a new bubble.
         this.freshSegment();
