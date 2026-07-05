@@ -16,6 +16,7 @@ import type {
   SessionInfo,
   SessionRecord,
   StartOptions,
+  WorkspaceFile,
   WorkspaceId,
   WorkspaceKind,
   WorkspaceRecord,
@@ -144,6 +145,13 @@ export function getGitDiff(
   options: Options<{ cwd: string; mode: GitDiffMode }>,
 ): RequestResult<GitDiff> {
   return resolveClient(options).getGitDiff(options.cwd, options.mode);
+}
+
+/** Read a file contained to a workspace directory (directory-backed, like git.*). */
+export function readWorkspaceFile(
+  options: Options<{ cwd: string; path: string }>,
+): RequestResult<WorkspaceFile> {
+  return resolveClient(options).readFile(options.cwd, options.path);
 }
 
 /** Every registered workspace (directory), most recently used first. */

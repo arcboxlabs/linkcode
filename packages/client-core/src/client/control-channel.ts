@@ -19,6 +19,7 @@ import type {
   SessionRecord,
   StartOptions,
   WirePayload,
+  WorkspaceFile,
   WorkspaceId,
   WorkspaceKind,
   WorkspaceRecord,
@@ -178,6 +179,16 @@ export class ControlChannel {
       kind: 'session.delete',
       clientReqId,
       sessionId,
+    }));
+  }
+
+  /** Read a file contained to a workspace directory (directory-backed, like git.*). */
+  readFile(cwd: string, path: string): Promise<WorkspaceFile> {
+    return this.sendCorrelated('fileRead', (clientReqId) => ({
+      kind: 'file.read',
+      clientReqId,
+      cwd,
+      path,
     }));
   }
 

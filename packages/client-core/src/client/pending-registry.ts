@@ -9,6 +9,7 @@ import type {
   SessionInfo,
   SessionRecord,
   WirePayload,
+  WorkspaceFile,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -39,6 +40,7 @@ export interface PendingValueMap {
   gitStatus: GitStatus;
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
+  fileRead: WorkspaceFile;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   ack: RequestAck;
@@ -69,6 +71,7 @@ export class PendingRegistry {
     gitStatus: new Map(),
     gitPrStatus: new Map(),
     gitDiff: new Map(),
+    fileRead: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     ack: new Map(),
