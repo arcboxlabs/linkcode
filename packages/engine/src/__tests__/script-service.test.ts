@@ -172,7 +172,7 @@ describe('ScriptService', () => {
     expect(backend.opens[0].process.killed).toBe(true);
     expect(routes.lookup(hostname)).toBeNull();
 
-    const last = sent.filter((p) => p.kind === 'script.status').at(-1);
+    const last = sent.findLast((p) => p.kind === 'script.status');
     expect(last?.kind === 'script.status' && last.script.lifecycle).toBe('stopped');
     expect(last?.kind === 'script.status' && last.script.exitCode).toBe(0);
 

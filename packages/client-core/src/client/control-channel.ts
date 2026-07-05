@@ -21,6 +21,7 @@ import type {
   WirePayload,
   WorkspaceFile,
   WorkspaceId,
+  WorkspaceScript,
   WorkspaceKind,
   WorkspaceRecord,
 } from '@linkcode/schema';
@@ -189,6 +190,34 @@ export class ControlChannel {
       clientReqId,
       cwd,
       path,
+    }));
+  }
+
+  /** The workspace's declared scripts with live lifecycle/health (directory-backed). */
+  listScripts(cwd: string): Promise<WorkspaceScript[]> {
+    return this.sendCorrelated('scriptList', (clientReqId) => ({
+      kind: 'script.list',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** Start a declared script; state changes stream via the client's `subscribeScriptStatus`. */
+  startScript(cwd: string, scriptName: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'script.start',
+      clientReqId,
+      cwd,
+      scriptName,
+    }));
+  }
+
+  stopScript(cwd: string, scriptName: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'script.stop',
+      clientReqId,
+      cwd,
+      scriptName,
     }));
   }
 

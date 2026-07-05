@@ -22,6 +22,7 @@ import type {
   WorkspaceId,
   WorkspaceKind,
   WorkspaceRecord,
+  WorkspaceScript,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
@@ -37,6 +38,7 @@ export type { SequencedAgentEvent } from './client/event-buffer';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
+type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 
@@ -57,6 +59,7 @@ export class LinkCodeClient {
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
+  private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
   private closed = false;
@@ -111,6 +114,12 @@ export class LinkCodeClient {
         break;
       case 'file.read.result':
         this.pending.resolve('fileRead', p.replyTo, p.file);
+        break;
+      case 'script.listed':
+        this.pending.resolve('scriptList', p.replyTo, p.scripts);
+        break;
+      case 'script.status':
+        for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
         break;
       case 'workspace.listed':
         this.pending.resolve('workspaceList', p.replyTo, p.workspaces);
@@ -254,6 +263,26 @@ export class LinkCodeClient {
   /** Read a file contained to a workspace directory (directory-backed, like git.*). */
   readFile(cwd: string, path: string): Promise<WorkspaceFile> {
     return this.control.readFile(cwd, path);
+  }
+
+  /** The workspace's declared scripts with live lifecycle/health (directory-backed). */
+  listScripts(cwd: string): Promise<WorkspaceScript[]> {
+    return this.control.listScripts(cwd);
+  }
+
+  /** Start a declared script; state changes stream via {@link subscribeScriptStatus}. */
+  startScript(cwd: string, scriptName: string): Promise<RequestAck> {
+    return this.control.startScript(cwd, scriptName);
+  }
+
+  stopScript(cwd: string, scriptName: string): Promise<RequestAck> {
+    return this.control.stopScript(cwd, scriptName);
+  }
+
+  /** Broadcast `script.status` updates for every workspace (callers filter by cwd). */
+  subscribeScriptStatus(cb: ScriptStatusCb): Unsubscribe {
+    this.scriptStatusSubs.add(cb);
+    return () => this.scriptStatusSubs.delete(cb);
   }
 
   listWorkspaces(): Promise<WorkspaceRecord[]> {

@@ -16,6 +16,7 @@ import type {
   WirePayload,
   WorkspaceId,
   WorkspaceRecord,
+  WorkspaceScript,
 } from '@linkcode/schema';
 import { normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -31,6 +32,7 @@ import {
   MOCK_REPLY,
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
+import { mockScriptDeclarations } from './data/scripts';
 import { SEED_SESSIONS, SHOWCASE_TERMINAL_ID } from './data/sessions';
 import {
   createShowcaseToolBursts,
@@ -82,12 +84,22 @@ export class DevMockHost {
   private readonly permissions = new Map<string, PendingPermission>();
   private history: AgentHistorySession[] = [];
   private readonly terminals = new Set<string>();
+  private readonly scripts = new Map<string, Map<string, WorkspaceScript>>();
   private sessionSeq = 0;
   private messageSeq = 0;
   private workspaceSeq = 0;
   private terminalSeq = 0;
 
   constructor(private readonly transport: Transport) {}
+
+  private scriptsFor(cwd: string): Map<string, WorkspaceScript> {
+    let scripts = this.scripts.get(cwd);
+    if (!scripts) {
+      scripts = new Map(mockScriptDeclarations().map((script) => [script.scriptName, script]));
+      this.scripts.set(cwd, scripts);
+    }
+    return scripts;
+  }
 
   start(): void {
     void this.transport.connect();
@@ -198,6 +210,47 @@ export class DevMockHost {
         const file = mockFileFixture(p.cwd, p.path);
         if (file) this.send({ kind: 'file.read.result', replyTo: p.clientReqId, file });
         else this.sendFailure(p.clientReqId, `Mock host has no fixture for ${p.path}`);
+        break;
+      }
+      case 'script.list': {
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'script.listed',
+          replyTo: p.clientReqId,
+          scripts: [...this.scriptsFor(p.cwd).values()],
+        });
+        break;
+      }
+      case 'script.start': {
+        await wait(CONTROL_LATENCY_MS);
+        const script = this.scriptsFor(p.cwd).get(p.scriptName);
+        if (!script || script.lifecycle === 'running') {
+          this.sendFailure(p.clientReqId, `Cannot start mock script: ${p.scriptName}`);
+          break;
+        }
+        this.sendSuccess(p.clientReqId);
+        script.lifecycle = 'running';
+        script.terminalId = SHOWCASE_TERMINAL_ID;
+        this.send({ kind: 'script.status', cwd: p.cwd, script: { ...script } });
+        if (script.type === 'service') {
+          await wait(CONTROL_LATENCY_MS);
+          script.health = 'healthy';
+          this.send({ kind: 'script.status', cwd: p.cwd, script: { ...script } });
+        }
+        break;
+      }
+      case 'script.stop': {
+        await wait(CONTROL_LATENCY_MS);
+        const script = this.scriptsFor(p.cwd).get(p.scriptName);
+        if (script?.lifecycle !== 'running') {
+          this.sendFailure(p.clientReqId, `Mock script not running: ${p.scriptName}`);
+          break;
+        }
+        this.sendSuccess(p.clientReqId);
+        script.lifecycle = 'stopped';
+        script.health = 'unknown';
+        script.exitCode = 0;
+        this.send({ kind: 'script.status', cwd: p.cwd, script: { ...script } });
         break;
       }
       case 'session.import':

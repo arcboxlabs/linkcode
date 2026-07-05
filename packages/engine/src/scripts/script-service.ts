@@ -223,7 +223,7 @@ export class ScriptService {
   }
 
   private hostnameFor(cwd: string, scriptName: string): string {
-    const name = this.workspaceName(cwd) ?? cwd.split('/').filter(Boolean).at(-1) ?? 'workspace';
+    const name = this.workspaceName(cwd) ?? cwd.split('/').findLast(Boolean) ?? 'workspace';
     return scriptHostname(scriptName, name, cwd);
   }
 

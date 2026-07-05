@@ -13,6 +13,7 @@ export * from './runtime/daemon-transport';
 export * from './runtime/debug';
 export * from './runtime/provider';
 export * from './runtime/tayori';
+export * from './scripts/hooks';
 export * from './surface/shell';
 export * from './surface/use-workbench-sessions';
 export * from './surface/workbench';
