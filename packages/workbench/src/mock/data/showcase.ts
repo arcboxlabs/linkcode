@@ -43,6 +43,26 @@ export const SHOWCASE_IMAGE: ContentBlock = {
   mimeType: 'image/png',
 };
 
+export const SHOWCASE_ARTIFACTS_CONTENT = textBlock(
+  [
+    'Inline artifacts render fenced diagrams in place — click an element to reference it:',
+    '',
+    '```mermaid',
+    'graph TD',
+    '  Composer[Composer draft] --> Detector{Fence detector}',
+    '  Detector -->|mermaid / svg| Inline[Inline artifact]',
+    '  Detector -->|other| Code[Shiki code block]',
+    '```',
+    '',
+    '```svg',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">',
+    '  <rect x="4" y="4" width="192" height="52" rx="8" fill="#6366f1" opacity="0.2" />',
+    '  <text x="100" y="36" text-anchor="middle" font-size="14" fill="currentColor">Sanitized svg artifact</text>',
+    '</svg>',
+    '```',
+  ].join('\n'),
+);
+
 export const SHOWCASE_PLAN: Plan = {
   entries: [
     {

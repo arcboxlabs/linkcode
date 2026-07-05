@@ -34,6 +34,7 @@ import { SEED_SESSIONS, SHOWCASE_TERMINAL_ID } from './data/sessions';
 import {
   createShowcaseToolBursts,
   SHOWCASE_ARCHITECTURE_LINK,
+  SHOWCASE_ARTIFACTS_CONTENT,
   SHOWCASE_COMMANDS_NARRATION,
   SHOWCASE_EMBEDDED_RESOURCE,
   SHOWCASE_ERROR_EVENT,
@@ -571,6 +572,11 @@ export class DevMockHost {
         type: 'agent-message-chunk',
         messageId: this.nextMessageId('mock-showcase-image'),
         content: SHOWCASE_IMAGE,
+      },
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-artifacts'),
+        content: SHOWCASE_ARTIFACTS_CONTENT,
       },
       ...toolEvents(bursts.explore),
       {
