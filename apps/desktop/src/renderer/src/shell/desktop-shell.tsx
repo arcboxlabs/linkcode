@@ -1,5 +1,11 @@
 import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
-import { ConversationSurface, ErrorBanner, HostFooter, SessionSidebar } from '@linkcode/ui';
+import {
+  AgentIcon,
+  ConversationSurface,
+  ErrorBanner,
+  HostFooter,
+  SessionSidebar,
+} from '@linkcode/ui';
 import {
   getChromeSurface,
   getWorkspaceMinSize,
@@ -198,6 +204,8 @@ export function DesktopShell({
   );
 
   const active = activeSession;
+  const titledSession = active?.title === undefined ? null : active;
+  const hideMainTitle = active === null ? false : titledSession === null;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const agentLabel = active?.kind;
   const {
@@ -445,8 +453,19 @@ export function DesktopShell({
         sidebarShortcut={panelShortcuts.sidebar}
         rightPanelShortcut={panelShortcuts.right}
         bottomPanelShortcut={panelShortcuts.bottom}
+        titleContent={hideMainTitle ? null : undefined}
+        titleIcon={
+          titledSession ? (
+            <AgentIcon className="text-foreground" kind={titledSession.kind} variant="ghost" />
+          ) : undefined
+        }
         titleChip={
-          <DiffStatChip cwd={active?.cwd} onOpenDiff={() => openRightPanelSection('diff')} />
+          titledSession ? (
+            <DiffStatChip
+              cwd={titledSession.cwd}
+              onOpenDiff={() => openRightPanelSection('diff')}
+            />
+          ) : undefined
         }
         onShowSidebar={() => updateSidebarOpen(true)}
         onHideSidebar={() => updateSidebarOpen(false)}

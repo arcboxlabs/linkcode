@@ -296,7 +296,7 @@ function WorkbenchSessionSurface({
       permissionDecisions={permissionDecisions}
       respondingPermissions={responding}
       header={{
-        title: active ? tk(active.kind) : 'Link Code',
+        title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
         subtitle: active?.cwd,
         usage: conversation.usage,
       }}

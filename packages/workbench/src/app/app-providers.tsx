@@ -12,7 +12,7 @@ function runtimeLocale(): Locale {
 
 // Client-rendered app: the device zone is authoritative. Configured globally so `format.dateTime`
 // doesn't fall back per call-site (use-intl logs ENVIRONMENT_FALLBACK otherwise).
-const runtimeTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const runtimeTimeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export function AppI18nProvider({
   children,
