@@ -248,6 +248,11 @@ export const en = {
       clickToReference: 'Click an element in the diagram to reference it in the composer',
       openFile: 'Open in panel',
     },
+    files: {
+      empty: 'Files opened from the conversation show up here',
+      unsupported: 'No preview available for this file type',
+      loadFailed: 'Failed to read the file',
+    },
     agentKind: {
       'claude-code': 'Claude Code',
       codex: 'Codex',

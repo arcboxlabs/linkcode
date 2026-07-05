@@ -25,11 +25,24 @@ export interface RightPanelTerminalState {
   activeTabId: string | null;
 }
 
-/** The right panel: fixed Diff/Terminal/Browser sections, with per-instance sub-tabs for Terminal. */
+/** One open file in the right panel's files section. */
+export interface FileSectionTab extends PanelSectionTab {
+  path: string;
+}
+
+/** The right panel's files section: viewer sub-tabs for files opened from chat. */
+export interface RightPanelFilesState {
+  tabs: FileSectionTab[];
+  activeTabId: string | null;
+}
+
+/** The right panel: fixed Diff/Terminal/Browser/Files sections, with per-instance
+ * sub-tabs for Terminal (PTYs) and Files (viewers). */
 export interface RightPanelState {
   open: boolean;
   activeSection: PanelSection;
   terminal: RightPanelTerminalState;
+  files: RightPanelFilesState;
 }
 
 export interface LayoutState {
@@ -60,6 +73,8 @@ export interface PersistedRightPanelState {
   activeSection: PanelSection;
   terminalTabCount: number;
   activeTerminalTabIndex: number;
+  fileTabPaths: string[];
+  activeFileTabIndex: number;
 }
 
 export interface PersistedPanelState {
@@ -94,6 +109,9 @@ const DEFAULT_BOTTOM_WINDOW_TYPE: PanelWindowType = 'terminal';
 
 /** Defensive cap on the terminal tab count restored from persisted state. */
 const MAX_PERSISTED_RIGHT_TERMINAL_TABS = 20;
+
+/** Defensive cap on the file tab count restored from persisted state. */
+const MAX_PERSISTED_RIGHT_FILE_TABS = 20;
 
 let tabSequence = 0;
 
@@ -136,6 +154,7 @@ export function createDefaultRightPanelState(): RightPanelState {
     open: false,
     activeSection: 'diff',
     terminal: { tabs: [], activeTabId: null },
+    files: { tabs: [], activeTabId: null },
   };
 }
 
@@ -159,20 +178,35 @@ export function createRightTerminalTab(): PanelSectionTab {
   return { id: `right-terminal-${tabSequence}` };
 }
 
-/** Removes a right-panel terminal tab, falling back the active tab to a neighbor if it was the one closed. */
-export function closeRightTerminalTabState(
-  terminal: RightPanelTerminalState,
+export function createRightFileTab(path: string): FileSectionTab {
+  tabSequence += 1;
+  return { id: `right-file-${tabSequence}`, path };
+}
+
+/** Removes a section sub-tab, falling back the active tab to a neighbor if it was the one closed. */
+export function closeSectionTabState<Tab extends PanelSectionTab>(
+  section: { tabs: Tab[]; activeTabId: string | null },
   id: string,
-): RightPanelTerminalState {
-  const { tabs, activeTabId } = terminal;
+): { tabs: Tab[]; activeTabId: string | null } {
+  const { tabs, activeTabId } = section;
   const index = tabs.findIndex((tab) => tab.id === id);
-  if (index === -1) return terminal;
+  if (index === -1) return section;
 
   const nextTabs = tabs.filter((tab) => tab.id !== id);
   const nextActiveId =
     activeTabId === id ? (nextTabs[clamp(index, 0, nextTabs.length - 1)]?.id ?? null) : activeTabId;
 
   return { tabs: nextTabs, activeTabId: nextActiveId };
+}
+
+/** Opens (or re-focuses) a file viewer tab; one tab per distinct path. */
+export function openFileTabState(files: RightPanelFilesState, path: string): RightPanelFilesState {
+  const existing = files.tabs.find((tab) => tab.path === path);
+  if (existing) {
+    return existing.id === files.activeTabId ? files : { ...files, activeTabId: existing.id };
+  }
+  const tab = createRightFileTab(path);
+  return { tabs: [...files.tabs, tab], activeTabId: tab.id };
 }
 
 export function pushExpandedPanel(stack: PanelSide[], side: PanelSide): PanelSide[] {
@@ -321,27 +355,50 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
       activeSection: PanelSectionSchema.catch(fallback.activeSection),
       terminalTabCount: FiniteNumberSchema.int().nonnegative().catch(0),
       activeTerminalTabIndex: FiniteNumberSchema.int().catch(0),
+      // Absent in pre-files persisted payloads; the catches make the section start empty.
+      fileTabPaths: z.array(z.string().min(1)).catch([]),
+      activeFileTabIndex: FiniteNumberSchema.int().catch(0),
     })
     .catch({
       open: fallback.open,
       activeSection: fallback.activeSection,
       terminalTabCount: 0,
       activeTerminalTabIndex: 0,
+      fileTabPaths: [],
+      activeFileTabIndex: 0,
     })
-    .transform(({ open, activeSection, terminalTabCount, activeTerminalTabIndex }) => {
-      const tabCount = clamp(terminalTabCount, 0, MAX_PERSISTED_RIGHT_TERMINAL_TABS);
-      const tabs = createFixedArray(tabCount).map(() => createRightTerminalTab());
-      const activeIndex = tabs.length > 0 ? clamp(activeTerminalTabIndex, 0, tabs.length - 1) : 0;
-
-      return {
+    .transform(
+      ({
         open,
         activeSection,
-        terminal: {
-          tabs,
-          activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
-        },
-      };
-    });
+        terminalTabCount,
+        activeTerminalTabIndex,
+        fileTabPaths,
+        activeFileTabIndex,
+      }) => {
+        const tabCount = clamp(terminalTabCount, 0, MAX_PERSISTED_RIGHT_TERMINAL_TABS);
+        const tabs = createFixedArray(tabCount).map(() => createRightTerminalTab());
+        const activeIndex = tabs.length > 0 ? clamp(activeTerminalTabIndex, 0, tabs.length - 1) : 0;
+        const fileTabs = fileTabPaths
+          .slice(0, MAX_PERSISTED_RIGHT_FILE_TABS)
+          .map((path) => createRightFileTab(path));
+        const activeFileIndex =
+          fileTabs.length > 0 ? clamp(activeFileTabIndex, 0, fileTabs.length - 1) : 0;
+
+        return {
+          open,
+          activeSection,
+          terminal: {
+            tabs,
+            activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
+          },
+          files: {
+            tabs: fileTabs,
+            activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
+          },
+        };
+      },
+    );
 }
 
 function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
@@ -353,6 +410,12 @@ function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
       panel.terminal.tabs.findIndex((tab) => tab.id === panel.terminal.activeTabId),
       0,
       Math.max(0, panel.terminal.tabs.length - 1),
+    ),
+    fileTabPaths: panel.files.tabs.map((tab) => tab.path),
+    activeFileTabIndex: clamp(
+      panel.files.tabs.findIndex((tab) => tab.id === panel.files.activeTabId),
+      0,
+      Math.max(0, panel.files.tabs.length - 1),
     ),
   };
 }

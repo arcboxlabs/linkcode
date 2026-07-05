@@ -1,7 +1,7 @@
 import type { ThemePreference } from '@linkcode/ipc';
 import type { ChromeSurface, PanelSection } from '@linkcode/ui/shell/panels';
 import { PanelStubContent, SectionPanelRegion } from '@linkcode/ui/shell/panels';
-import { GitPanel } from '@linkcode/workbench';
+import { FilesPanel, GitPanel } from '@linkcode/workbench';
 import { DesktopChromePortal } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
 import type { RightPanelState } from '../store/model';
@@ -29,6 +29,8 @@ export function DesktopRightPanelRegion({
   onSelectTerminalTab,
   onCloseTerminalTab,
   onAddTerminalTab,
+  onSelectFileTab,
+  onCloseFileTab,
   onToggleMax,
 }: {
   panel: RightPanelState;
@@ -45,6 +47,8 @@ export function DesktopRightPanelRegion({
   onSelectTerminalTab: (id: string) => void;
   onCloseTerminalTab: (id: string) => void;
   onAddTerminalTab: () => void;
+  onSelectFileTab: (id: string) => void;
+  onCloseFileTab: (id: string) => void;
   onToggleMax: () => void;
 }): React.ReactNode {
   return (
@@ -60,6 +64,15 @@ export function DesktopRightPanelRegion({
       sectionContent={{
         diff: <GitPanel cwd={cwd} themeType={themeType} />,
         browser: <PanelStubContent type="browser" />,
+        files: (
+          <FilesPanel
+            cwd={cwd}
+            tabs={panel.files.tabs}
+            activeTabId={panel.files.activeTabId}
+            onSelectTab={onSelectFileTab}
+            onCloseTab={onCloseFileTab}
+          />
+        ),
       }}
       terminalContentTargetRef={terminalContentTargetRef}
       onSelectSection={onSelectSection}

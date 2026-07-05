@@ -245,6 +245,11 @@ export const zhCN = {
       clickToReference: '点击图中元素可引用到输入框',
       openFile: '在面板中打开',
     },
+    files: {
+      empty: '从对话中打开文件后在此查看',
+      unsupported: '暂不支持预览此类型的文件',
+      loadFailed: '读取文件失败',
+    },
     agentKind: {
       'claude-code': 'Claude Code',
       codex: 'Codex',

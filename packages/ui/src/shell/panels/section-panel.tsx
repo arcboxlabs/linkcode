@@ -50,8 +50,8 @@ export interface SectionPanelRegionProps {
 }
 
 /**
- * The right panel: a fixed Diff/Terminal/Browser section strip, chrome-integrated exactly like the
- * old right panel's tabs. The Terminal section additionally owns its own sub-tab strip for PTY
+ * The right panel: a fixed Diff/Terminal/Browser/Files section strip, chrome-integrated exactly like
+ * the old right panel's tabs. The Terminal section additionally owns its own sub-tab strip for PTY
  * instances; the strip itself is stateless chrome rendered locally, but the PTY stack behind it is
  * owned by the host (see `terminalContentTargetRef`) so a running shell survives navigating to Diff
  * and back, and surviving the docked ↔ maximized handoff.
