@@ -21,12 +21,14 @@ import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popove
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   ArchiveIcon,
-  ChevronRightIcon,
   EllipsisIcon,
+  FolderIcon,
+  FolderOpenIcon,
   HistoryIcon,
   PencilIcon,
   PlusIcon,
 } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
@@ -48,6 +50,36 @@ export interface ThreadGroupHeaderProps {
   BranchStatusComponent?: BranchStatusComponentType;
   /** Marks the header as its group's drag handle — the whole section moves by grabbing this row. */
   dragHandleRef?: (element: Element | null) => void;
+}
+
+const FOLDER_ICON_SPRING = { type: 'spring', duration: 0.3, bounce: 0 } as const;
+const FOLDER_ICON_SHOWN = { opacity: 1, scale: 1, filter: 'blur(0px)' };
+const FOLDER_ICON_HIDDEN = { opacity: 0, scale: 0.25, filter: 'blur(4px)' };
+
+/** Closed/open folder pair cross-fading with the group's collapse state. */
+function FolderToggleIcon({ open }: { open: boolean }): React.ReactNode {
+  const reduceMotion = useReducedMotion();
+  const transition = reduceMotion ? { duration: 0 } : FOLDER_ICON_SPRING;
+  return (
+    <span aria-hidden className="relative size-3 shrink-0">
+      <motion.span
+        className="absolute inset-0"
+        initial={false}
+        animate={open ? FOLDER_ICON_HIDDEN : FOLDER_ICON_SHOWN}
+        transition={transition}
+      >
+        <FolderIcon className="size-3" />
+      </motion.span>
+      <motion.span
+        className="absolute inset-0"
+        initial={false}
+        animate={open ? FOLDER_ICON_SHOWN : FOLDER_ICON_HIDDEN}
+        transition={transition}
+      >
+        <FolderOpenIcon className="size-3" />
+      </motion.span>
+    </span>
+  );
 }
 
 /** A group's header row: title + branch badge, collapse toggle, and hover-revealed actions. */
@@ -141,10 +173,7 @@ export function ThreadGroupHeader({
             hasActions && 'pr-14',
           )}
         >
-          <ChevronRightIcon
-            aria-hidden
-            className={cn('size-3 shrink-0 transition-transform', !collapsed && 'rotate-90')}
-          />
+          <FolderToggleIcon open={!collapsed} />
           <span className="min-w-0 truncate font-medium">{title}</span>
           {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
           <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
