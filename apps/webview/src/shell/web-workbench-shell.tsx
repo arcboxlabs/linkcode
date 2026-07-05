@@ -1,5 +1,6 @@
 import { ShellFrame, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
+import { WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
 import { SettingsIcon } from 'lucide-react';
 import { Link } from 'react-router';
@@ -20,6 +21,8 @@ export function WebWorkbenchShell({ header, ...props }: WorkbenchShellProps): Re
             )}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {/* No in-app browser in the web client: preview links always open a new tab. */}
+            <WorkspaceServicesMenu cwd={props.activeSession?.cwd} />
             {hasUsage && (
               <span className="font-mono text-muted-foreground text-xs">
                 {header.usage?.inputTokens ?? 0} in / {header.usage?.outputTokens ?? 0} out
