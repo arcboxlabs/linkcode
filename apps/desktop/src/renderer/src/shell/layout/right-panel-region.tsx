@@ -1,6 +1,6 @@
 import type { ThemePreference } from '@linkcode/ipc';
 import type { ChromeSurface, PanelSection } from '@linkcode/ui/shell/panels';
-import { PanelStubContent, SectionPanelRegion } from '@linkcode/ui/shell/panels';
+import { SectionPanelRegion } from '@linkcode/ui/shell/panels';
 import { FilesPanel, GitPanel } from '@linkcode/workbench';
 import { DesktopChromePortal } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
@@ -63,7 +63,8 @@ export function DesktopRightPanelRegion({
       contentStyle={getShellContentMotionStyle({ axis: 'x', phase, reducedMotion })}
       sectionContent={{
         diff: <GitPanel cwd={cwd} themeType={themeType} />,
-        browser: <PanelStubContent type="browser" />,
+        // browser intentionally absent: the webview lives in the shell's resident
+        // content stack (a DOM-moved webview reloads) and shows through this section.
         files: (
           <FilesPanel
             cwd={cwd}

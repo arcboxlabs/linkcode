@@ -14,7 +14,7 @@ import {
   PanelTabContentStack,
 } from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
-import { TerminalPanel } from '@linkcode/workbench';
+import { AttachedTerminalPanel, TerminalPanel, WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
@@ -23,6 +23,7 @@ import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
+import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
@@ -115,6 +116,8 @@ export function DesktopShell({
       openRightFileTab: state.openRightFileTab,
       closeRightFileTab: state.closeRightFileTab,
       setActiveRightFileTab: state.setActiveRightFileTab,
+      openBrowserUrl: state.openBrowserUrl,
+      openRightTerminalAttachTab: state.openRightTerminalAttachTab,
       resetSidebarSize: state.resetSidebarSize,
       resetRightPanelSize: state.resetRightPanelSize,
       resetBottomPanelSize: state.resetBottomPanelSize,
@@ -236,6 +239,8 @@ export function DesktopShell({
     openRightFileTab,
     closeRightFileTab,
     setActiveRightFileTab,
+    openBrowserUrl,
+    openRightTerminalAttachTab,
     resetSidebarSize: resetSidebarLayoutSize,
     resetRightPanelSize: resetRightPanelLayoutSize,
     resetBottomPanelSize: resetBottomPanelLayoutSize,
@@ -392,7 +397,12 @@ export function DesktopShell({
     const items = rightPanel.terminal.tabs.map((tab) => ({
       id: tab.id,
       active: activeIsTerminal && tab.id === rightPanel.terminal.activeTabId,
-      node: (
+      node: tab.id.startsWith('attach:') ? (
+        <AttachedTerminalPanel
+          terminalId={tab.id.slice('attach:'.length)}
+          suspended={rightSplit.phase !== 'open'}
+        />
+      ) : (
         <TerminalPanel
           sessionKey={tab.id}
           cwd={active?.cwd}
@@ -400,6 +410,13 @@ export function DesktopShell({
         />
       ),
     }));
+    // The browser webview lives here permanently: unmounting or DOM-moving a webview
+    // reloads it, so section switches only toggle its visibility.
+    items.push({
+      id: 'browser-resident',
+      active: rightPanel.activeSection === 'browser',
+      node: <BrowserWebviewPane />,
+    });
     return createPortal(<PanelTabContentStack items={items} />, host);
   }
 
@@ -477,12 +494,19 @@ export function DesktopShell({
           ) : undefined
         }
         titleChip={
-          titledSession ? (
-            <DiffStatChip
-              cwd={titledSession.cwd}
-              onOpenDiff={() => openRightPanelSection('diff')}
+          <>
+            <WorkspaceServicesMenu
+              cwd={active?.cwd}
+              onOpenInApp={openBrowserUrl}
+              onViewLogs={openRightTerminalAttachTab}
             />
-          ) : undefined
+            {titledSession ? (
+              <DiffStatChip
+                cwd={titledSession.cwd}
+                onOpenDiff={() => openRightPanelSection('diff')}
+              />
+            ) : undefined}
+          </>
         }
         onShowSidebar={() => updateSidebarOpen(true)}
         onHideSidebar={() => updateSidebarOpen(false)}

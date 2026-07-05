@@ -36,6 +36,11 @@ export interface RightPanelFilesState {
   activeTabId: string | null;
 }
 
+/** The right panel's single-instance in-app browser (Electron webview). */
+export interface RightPanelBrowserState {
+  url: string | null;
+}
+
 /** The right panel: fixed Diff/Terminal/Browser/Files sections, with per-instance
  * sub-tabs for Terminal (PTYs) and Files (viewers). */
 export interface RightPanelState {
@@ -43,6 +48,7 @@ export interface RightPanelState {
   activeSection: PanelSection;
   terminal: RightPanelTerminalState;
   files: RightPanelFilesState;
+  browser: RightPanelBrowserState;
 }
 
 export interface LayoutState {
@@ -75,6 +81,7 @@ export interface PersistedRightPanelState {
   activeTerminalTabIndex: number;
   fileTabPaths: string[];
   activeFileTabIndex: number;
+  browserUrl: string | null;
 }
 
 export interface PersistedPanelState {
@@ -155,6 +162,7 @@ export function createDefaultRightPanelState(): RightPanelState {
     activeSection: 'diff',
     terminal: { tabs: [], activeTabId: null },
     files: { tabs: [], activeTabId: null },
+    browser: { url: null },
   };
 }
 
@@ -358,6 +366,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
       // Absent in pre-files persisted payloads; the catches make the section start empty.
       fileTabPaths: z.array(z.string().min(1)).catch([]),
       activeFileTabIndex: FiniteNumberSchema.int().catch(0),
+      browserUrl: z.string().min(1).nullable().catch(null),
     })
     .catch({
       open: fallback.open,
@@ -366,6 +375,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
       activeTerminalTabIndex: 0,
       fileTabPaths: [],
       activeFileTabIndex: 0,
+      browserUrl: null,
     })
     .transform(
       ({
@@ -375,6 +385,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
         activeTerminalTabIndex,
         fileTabPaths,
         activeFileTabIndex,
+        browserUrl,
       }) => {
         const tabCount = clamp(terminalTabCount, 0, MAX_PERSISTED_RIGHT_TERMINAL_TABS);
         const tabs = createFixedArray(tabCount).map(() => createRightTerminalTab());
@@ -396,6 +407,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
             tabs: fileTabs,
             activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
           },
+          browser: { url: browserUrl },
         };
       },
     );
@@ -417,6 +429,7 @@ function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
       0,
       Math.max(0, panel.files.tabs.length - 1),
     ),
+    browserUrl: panel.browser.url,
   };
 }
 

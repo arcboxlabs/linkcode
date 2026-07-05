@@ -8,9 +8,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./native": "./src/native/index.ts",
+    "./shell/browser": "./src/shell/browser/index.ts",
     "./shell/files": "./src/shell/files/index.ts",
     "./shell/git": "./src/shell/git/index.ts",
     "./shell/panels": "./src/shell/panels/index.ts",
+    "./shell/scripts": "./src/shell/scripts/index.ts",
     "./shell/terminal": "./src/shell/terminal/index.ts",
     "./styles.css": "./src/styles.css"
   },

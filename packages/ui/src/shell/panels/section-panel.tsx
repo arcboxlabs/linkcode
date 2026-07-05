@@ -89,9 +89,12 @@ export function SectionPanelRegion({
       )}
       <div className="relative min-h-0 flex-1">
         <div ref={terminalContentTargetRef} className="absolute inset-0" />
-        {panel.activeSection !== 'terminal' && (
-          <div className="absolute inset-0">{sectionContent[panel.activeSection]}</div>
-        )}
+        {/* Sections without inline content (e.g. Browser, whose webview lives in the shell's
+            resident stack behind this overlay) must not paint a click-blocking layer. */}
+        {panel.activeSection !== 'terminal' &&
+          sectionContent[panel.activeSection] !== undefined && (
+            <div className="absolute inset-0">{sectionContent[panel.activeSection]}</div>
+          )}
       </div>
     </div>
   );

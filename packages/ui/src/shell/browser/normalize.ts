@@ -1,0 +1,20 @@
+/** Loopback-ish authorities (localhost and subdomains — the preview proxy's
+ * `*.localhost` hostnames — plus bare IPv4/IPv6) default to http; the web defaults to https. */
+const LOOPBACK_AUTHORITY_RE =
+  /^(?:(?:[\w-]+\.)*localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\d.:a-f]+\])(?::\d+)?(?:[#/?]|$)/i;
+const SCHEME_RE = /^[a-z][\d+.a-z-]*:/i;
+
+/** Address-bar input → navigable URL (paseo's normalization rules). */
+export function normalizeBrowserUrl(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return '';
+  if (LOOPBACK_AUTHORITY_RE.test(trimmed)) return `http://${trimmed}`;
+  if (SCHEME_RE.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('//')) return `https:${trimmed}`;
+  return `https://${trimmed}`;
+}
+
+/** The in-app browser loads web content only. */
+export function isAllowedBrowserUrl(url: string): boolean {
+  return url.startsWith('http://') || url.startsWith('https://');
+}

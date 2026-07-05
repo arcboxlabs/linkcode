@@ -180,6 +180,7 @@ describe('desktop shell state persistence', () => {
       activeSection: 'browser',
       terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
       files: { tabs: [fileTab, createRightFileTab('/w/report.pdf')], activeTabId: fileTab.id },
+      browser: { url: 'http://web--app-1a2b3c.localhost:19523' },
     };
     const source: DesktopShellState = {
       sidebarOpen: false,
@@ -204,6 +205,7 @@ describe('desktop shell state persistence', () => {
       '/w/report.pdf',
     ]);
     expect(parsed.rightPanel.files.activeTabId).toBe(parsed.rightPanel.files.tabs[0].id);
+    expect(parsed.rightPanel.browser.url).toBe('http://web--app-1a2b3c.localhost:19523');
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
   });
 });
