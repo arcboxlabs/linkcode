@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AgentEventSchema, AgentInputSchema } from '../agent';
 import { MessageIdSchema, SessionIdSchema, TimestampSchema } from '../common';
 import { configWireVariants } from './config';
+import { fileWireVariants } from './file';
 import { gitWireVariants } from './git';
 import { historyWireVariants } from './history';
 import { keepAliveWireVariants } from './keep-alive';
@@ -23,7 +24,7 @@ export {
  * docs/ARCHITECTURE.md's Transport & wire protocol section.
  *
  * The payload union is assembled here from one variant array per resource (session / history /
- * config / workspace / git / terminal / keep-alive, each in its own file in this directory);
+ * config / workspace / git / file / terminal / keep-alive, each in its own file in this directory);
  * `agent.input` / `agent.event` stay inline since they're a thin pass-through of agent.ts's own
  * contract, with no wire-specific shape of their own.
  *
@@ -32,7 +33,7 @@ export {
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 11 as const;
+export const WIRE_PROTOCOL_VERSION = 12 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
@@ -41,6 +42,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...configWireVariants,
   ...workspaceWireVariants,
   ...gitWireVariants,
+  ...fileWireVariants,
 
   // ── Data plane ──
   z.object({

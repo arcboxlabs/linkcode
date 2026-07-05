@@ -12,6 +12,7 @@ export * from './agent';
 export * from './common';
 export * from './content';
 export * from './daemon-runtime';
+export * from './file';
 export * from './git';
 export * from './history';
 export * from './permission';

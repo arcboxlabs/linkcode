@@ -14,6 +14,7 @@ import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { readWorkspaceFile } from './file-service';
 import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
@@ -369,6 +370,15 @@ export class Engine {
           const diff = await this.git.getDiff(p.cwd, p.mode);
           this.transport.send(
             createWireMessage({ kind: 'git.diff.get.result', replyTo: p.clientReqId, diff }),
+          );
+        });
+        break;
+      }
+      case 'file.read': {
+        await this.tryReply(p.clientReqId, async () => {
+          const file = await readWorkspaceFile(p.cwd, p.path);
+          this.transport.send(
+            createWireMessage({ kind: 'file.read.result', replyTo: p.clientReqId, file }),
           );
         });
         break;
