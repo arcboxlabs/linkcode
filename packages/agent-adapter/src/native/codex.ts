@@ -220,6 +220,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           kind: 'edit',
           status: item.status === 'completed' ? 'completed' : 'failed',
           content: textContent(item.changes.map((c) => `${c.kind} ${c.path}`).join('\n')),
+          locations: item.changes.map((c) => ({ path: c.path })),
         });
         break;
       case 'mcp_tool_call':

@@ -3,7 +3,7 @@ import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { BaseAgentAdapter } from '../base';
-import { contentToText, toolKindFromName } from '../util';
+import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
 
@@ -216,6 +216,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           content: toolStateContent(part.state),
           rawInput: part.state.input,
           rawOutput: part.state.status === 'completed' ? part.state.output : undefined,
+          locations: locationsFromToolInput(part.state.input),
         });
 
         break;

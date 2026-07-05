@@ -42,7 +42,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
-import { contentToText, toolKindFromName } from '../util';
+import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantMessage = Extract<SDKMessage, { type: 'assistant' }>['message'];
@@ -444,6 +444,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           status: 'in_progress',
           content: diff,
           rawInput: block.input,
+          locations: locationsFromToolInput(block.input),
         });
         calledTool = true;
       }
