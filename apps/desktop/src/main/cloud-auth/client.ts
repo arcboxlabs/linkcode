@@ -19,6 +19,8 @@ export const CLOUD_AUTH_SCHEME = 'linkcode';
 
 export const authClient = createAuthClient({
   baseURL: CLOUD_API_URL,
+  // The API mounts better-auth at /auth, not the client default /api/auth.
+  basePath: '/auth',
   plugins: [
     electronClient({
       signInURL: CLOUD_SIGN_IN_URL,
