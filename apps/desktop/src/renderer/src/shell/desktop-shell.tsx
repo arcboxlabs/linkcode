@@ -19,6 +19,8 @@ import {
   isAbsoluteFilePath,
   locateFileArtifact,
   TerminalPanel,
+  useCloudHosts,
+  useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
@@ -27,7 +29,7 @@ import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { useCloudAccount } from '../cloud-auth/use-cloud-account';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
@@ -139,6 +141,16 @@ export function DesktopShell({
     })),
   );
   const cloudAuth = useCloudAccount();
+  const remoteHosts = useCloudHosts(!!cloudAuth.account);
+  const { selectedHostId, selectHost } = useSelectedHostStore(
+    useShallow((state) => ({ selectedHostId: state.selectedHostId, selectHost: state.selectHost })),
+  );
+  const format = useFormatter();
+  const remoteHostItems = remoteHosts.data?.map((host) => ({
+    id: host.hostId,
+    name: host.name ?? host.hostId,
+    statusLabel: format.relativeTime(host.lastSeen),
+  }));
   const shellRootRef = useRef<HTMLDivElement | null>(null);
   const { current: shellStyle } = useSingleton<DesktopShellStyle>(() =>
     createDesktopShellStyle(shellState),
@@ -587,6 +599,10 @@ export function DesktopShell({
                     onSignIn={cloudAuth.signIn}
                     onSignOut={cloudAuth.signOut}
                     onManageAccount={cloudAuth.manageAccount}
+                    remoteHosts={remoteHostItems}
+                    remoteHostsLoading={remoteHosts.isLoading}
+                    selectedHostId={selectedHostId}
+                    onSelectHost={selectHost}
                     onOpenSettings={onOpenSettings}
                   />
                 }

@@ -6,6 +6,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popove
 import { Separator } from 'coss-ui/components/separator';
 import {
   BotIcon,
+  CheckIcon,
   ChevronDownIcon,
   CloudIcon,
   ExternalLinkIcon,
@@ -57,6 +58,14 @@ export interface CloudAccount {
   name: string;
   email: string;
   image?: string | null;
+}
+
+/** An online remote host in the footer's Remote access list. */
+export interface RemoteHostItem {
+  id: string;
+  name: string;
+  /** Preformatted relative-activity label, e.g. "active 5s ago". */
+  statusLabel?: string;
 }
 
 export function SessionSidebar({
@@ -214,6 +223,10 @@ export function HostFooter({
   onSignIn,
   onSignOut,
   onManageAccount,
+  remoteHosts,
+  remoteHostsLoading = false,
+  selectedHostId,
+  onSelectHost,
   onOpenSettings,
 }: {
   state?: string;
@@ -227,6 +240,13 @@ export function HostFooter({
   onSignOut?: () => void;
   /** Opens the IdP account center (profile/avatar) in the system browser; shown when signed in. */
   onManageAccount?: () => void;
+  /** The account's online hosts (Remote access); undefined until first load. Requires `account`. */
+  remoteHosts?: RemoteHostItem[];
+  /** First load of the host list — the Remote access area shows a checking hint, not "no hosts". */
+  remoteHostsLoading?: boolean;
+  /** The currently selected host id, if any. */
+  selectedHostId?: string | null;
+  onSelectHost?: (hostId: string) => void;
   onOpenSettings?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
@@ -257,14 +277,24 @@ export function HostFooter({
 
         <Separator className="my-1" />
 
-        <HostFooterRow label="Remote access">
-          <Badge size="sm" variant="secondary">
-            Off
-          </Badge>
-          <Button disabled size="xs" variant="outline">
-            Enable
-          </Button>
-        </HostFooterRow>
+        <div className="py-1">
+          <div className="flex h-8 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate">Remote access</span>
+            {!account && (
+              <span className="text-muted-foreground text-xs">{t('remoteSignedOut')}</span>
+            )}
+          </div>
+          {account && (
+            <RemoteHostList
+              hosts={remoteHosts}
+              loading={remoteHostsLoading}
+              selectedHostId={selectedHostId}
+              onSelectHost={onSelectHost}
+              loadingLabel={t('remoteHostsLoading')}
+              emptyLabel={t('remoteHostsEmpty')}
+            />
+          )}
+        </div>
         <HostFooterRow label="Permission requests">
           <span className="text-muted-foreground text-xs">{pendingPermissionLabel}</span>
         </HostFooterRow>
@@ -333,6 +363,56 @@ export function HostFooter({
 
 function accountInitial(account: CloudAccount): string {
   return (account.name || account.email).trim().charAt(0).toUpperCase() || '?';
+}
+
+function RemoteHostList({
+  hosts,
+  loading,
+  selectedHostId,
+  onSelectHost,
+  loadingLabel,
+  emptyLabel,
+}: {
+  hosts?: RemoteHostItem[];
+  loading: boolean;
+  selectedHostId?: string | null;
+  onSelectHost?: (hostId: string) => void;
+  loadingLabel: string;
+  emptyLabel: string;
+}): React.ReactNode {
+  if (!hosts || hosts.length === 0) {
+    return (
+      <div className="px-1 py-1 text-muted-foreground text-xs">
+        {loading && !hosts ? loadingLabel : emptyLabel}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      {hosts.map((host) => {
+        const selected = host.id === selectedHostId;
+        return (
+          <button
+            key={host.id}
+            type="button"
+            disabled={!onSelectHost}
+            onClick={() => onSelectHost?.(host.id)}
+            className={cn(
+              'flex h-8 items-center gap-2 rounded-md px-2 text-left outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring',
+              selected && 'bg-sidebar-accent',
+            )}
+          >
+            <span className="size-1.5 shrink-0 rounded-full bg-success" />
+            <span className="min-w-0 flex-1 truncate font-medium">{host.name}</span>
+            {host.statusLabel && (
+              <span className="shrink-0 text-muted-foreground text-xs">{host.statusLabel}</span>
+            )}
+            {selected && <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function HostFooterRow({
