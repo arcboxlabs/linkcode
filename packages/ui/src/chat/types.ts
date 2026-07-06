@@ -1,4 +1,5 @@
 import type {
+  ApprovalPolicyState,
   ContentBlock,
   PermissionOption,
   Plan,
@@ -59,6 +60,9 @@ export interface ConversationViewModel {
   usage: TokenUsage | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
+  /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
+   * null (or an empty list) hides the composer's policy menu. */
+  approvalPolicy: ApprovalPolicyState | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /** Permission requests still awaiting a decision. */

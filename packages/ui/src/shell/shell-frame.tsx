@@ -59,6 +59,7 @@ export interface ShellFrameProps
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onDismissError?: () => void;
   onModeChange?: (modeId: string) => Promise<void>;
+  onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
@@ -102,6 +103,7 @@ export function ShellFrame({
   HistoryComponent,
   onDismissError,
   onModeChange,
+  onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
 }: ShellFrameProps): React.ReactNode {
@@ -170,6 +172,7 @@ export function ShellFrame({
             onRespondPermission={onRespondPermission}
             onHostArtifact={onHostArtifact}
             onModeChange={onModeChange}
+            onApprovalPolicyChange={onApprovalPolicyChange}
             onModelChange={onModelChange}
             onEffortChange={onEffortChange}
           />

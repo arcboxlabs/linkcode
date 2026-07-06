@@ -231,6 +231,26 @@ describe('buildConversation', () => {
     const error = c.items.find((i) => i.kind === 'error');
     expect(error?.turnId).toBeNull();
   });
+
+  it('reflects the latest approval-policy state without adding timeline items', () => {
+    const policies = [
+      { policyId: 'default', name: 'Ask for approval' },
+      { policyId: 'auto', name: 'Auto' },
+    ];
+    expect(buildConversation([]).approvalPolicy).toBeNull();
+    const c = buildConversation([
+      {
+        type: 'approval-policy-update',
+        state: { availablePolicies: policies, currentPolicyId: 'default' },
+      },
+      {
+        type: 'approval-policy-update',
+        state: { availablePolicies: policies, currentPolicyId: 'auto' },
+      },
+    ]);
+    expect(c.approvalPolicy).toEqual({ availablePolicies: policies, currentPolicyId: 'auto' });
+    expect(c.items).toHaveLength(0);
+  });
 });
 
 describe('createConversationBuilder', () => {

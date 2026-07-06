@@ -33,6 +33,7 @@ function conversation(
     status: 'running',
     usage: null,
     currentModeId: null,
+    approvalPolicy: null,
     stopReason: null,
     pendingPermissionIds: [],
     ...overrides,

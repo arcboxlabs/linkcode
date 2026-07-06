@@ -17,6 +17,7 @@ const EMPTY_CONVERSATION: Conversation = {
   status: null,
   usage: null,
   currentModeId: null,
+  approvalPolicy: null,
   stopReason: null,
   pendingPermissionIds: [],
 };

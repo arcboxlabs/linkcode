@@ -27,6 +27,7 @@ import type {
   WorkspaceScript,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
 import type { PendingRegistry, PendingValueMap, RequestAck } from './pending-registry';
 import { sendCorrelated } from './pending-registry';
 
@@ -146,6 +147,18 @@ export class ControlChannel {
   /** Switch the session mode. */
   setMode(sessionId: SessionId, modeId: string): Promise<RequestAck> {
     return this.send(sessionId, { type: 'set-mode', modeId });
+  }
+
+  /** Switch the approval policy (the permission axis, orthogonal to setMode). Rejects if the
+   * adapter doesn't advertise policies. */
+  setApprovalPolicy(sessionId: SessionId, policyId: string): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'set-approval-policy', policyId });
+  }
+
+  /** Fire-and-forget: announce this client now observes the session, so the daemon re-broadcasts
+   * the buffered per-session state a late attacher missed (the approval-policy advertisement). */
+  attachSession(sessionId: SessionId): void {
+    this.transport.send(createWireMessage({ kind: 'session.attach', sessionId }));
   }
 
   /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */
