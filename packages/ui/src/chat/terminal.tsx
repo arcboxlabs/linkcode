@@ -27,7 +27,7 @@ export function Terminal({
     >
       <TerminalHeader>
         <TerminalTitle>{title}</TerminalTitle>
-        {isStreaming ? <Shimmer className="text-[11px]">running</Shimmer> : null}
+        {isStreaming ? <Shimmer className="text-xs">running</Shimmer> : null}
       </TerminalHeader>
       {children ?? (output ? <TerminalContent>{output}</TerminalContent> : null)}
     </div>
@@ -39,7 +39,7 @@ export type TerminalHeaderProps = React.ComponentProps<'div'>;
 export function TerminalHeader({ className, ...props }: TerminalHeaderProps): React.ReactNode {
   return (
     <div
-      className={cn('flex items-center justify-between gap-2 px-3 py-2 text-[12.5px]', className)}
+      className={cn('flex items-center justify-between gap-2 px-3 py-2 text-xs', className)}
       {...props}
     />
   );
@@ -70,7 +70,7 @@ export function TerminalContent({
   return (
     <pre
       className={cn(
-        'max-h-80 overflow-auto border-t border-border px-3 py-2 font-mono text-[12px] leading-relaxed',
+        'max-h-80 overflow-auto border-t border-border px-3 py-2 font-mono text-xs leading-relaxed',
         className,
       )}
       {...props}

@@ -14,8 +14,8 @@ import {
   CommandShortcut,
 } from 'coss-ui/components/command';
 import { useTranslations } from 'use-intl';
+import { AgentIcon } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
-import { AgentIcon } from './agent-icon';
 import { SESSION_STATUS_DOT_CLASS } from './sidebar/thread-row';
 
 export interface PaletteThreadViewModel {

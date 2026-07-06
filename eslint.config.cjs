@@ -53,6 +53,8 @@ module.exports = require('eslint-config-sukka').sukka(
         'apps/*/vite.config.ts',
         'apps/*/tsup.config.ts',
         'apps/desktop/electron.vite.config.ts',
+        // agent-adapter tests are included by that package's tsconfig like every other package's;
+        // listing them here too would breach typescript-eslint's 8-file default-project cap.
         'vitest.config.ts',
       ],
     },
@@ -120,7 +122,7 @@ module.exports = require('eslint-config-sukka').sukka(
     // `~icons/*` are unplugin-icons virtual modules resolved by Vite at build time,
     // so the TypeScript import resolver can't see them.
     name: 'linkcode/unplugin-icons-virtual-modules',
-    files: ['packages/ui/src/shell/agent-icon.tsx'],
+    files: ['packages/ui/src/chat/agent-icon.tsx'],
     rules: {
       'import-x/no-unresolved': ['error', { ignore: ['^~icons/'] }],
     },

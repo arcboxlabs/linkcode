@@ -1,6 +1,10 @@
 import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
+import { Fragment } from 'react';
 import { useTranslations } from 'use-intl';
+import { ActivityGroup } from './activity-group';
+import type { TimelineEntry } from './activity-groups';
+import { groupTimeline } from './activity-groups';
 import { ContentBlockView } from './content-block-view';
 import {
   Conversation,
@@ -8,26 +12,33 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from './conversation';
+import type { PermissionDecision } from './conversation-prompts';
+import {
+  conversationFlowItems,
+  declinedToolCall,
+  declinedToolCallIds,
+  selectPendingPermissionItems,
+} from './conversation-prompts';
+import { assistantTurnText, latestReceivedAt } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
-import { PermissionCard } from './permission-card';
-import { PlanCard } from './plan-card';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
+import { AgentTurnActions } from './turn-actions';
+import { TurnDiffSummary } from './turn-diff-summary';
+import { splitTurnSegments, turnFileEdits } from './turn-edits';
 import type { ConversationViewModel } from './types';
+import { UserMessage } from './user-message';
 
 export interface ConversationViewProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   cwd?: string;
-  /** requestIds the user already answered in this client. */
-  answeredPermissions: Set<string>;
-  /** requestIds currently being sent to the daemon. */
-  respondingPermissions: Set<string>;
-  /** requestIds still awaiting a decision (from the normalizer); others are treated as resolved. */
-  pendingPermissions: Set<string>;
+  /** TODO(backend): shown in the per-turn meta once session state reflects the active model. */
+  modelName?: string;
+  /** requestIds answered in this client, including cancelled skips. */
+  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
-  onRespondPermission: (requestId: string, optionId: string) => void;
 }
 
 /** The centered message stream — the main reading surface. Auto-follows only while pinned to the bottom. */
@@ -35,11 +46,9 @@ export function ConversationView({
   conversation,
   agentKind,
   cwd,
-  answeredPermissions,
-  respondingPermissions,
-  pendingPermissions,
+  modelName,
+  permissionDecisions,
   TerminalBlockComponent,
-  onRespondPermission,
 }: ConversationViewProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const tk = useTranslations('workbench.agentKind');
@@ -59,6 +68,86 @@ export function ConversationView({
   }
 
   const isThinking = conversation.status === 'running' || conversation.status === 'starting';
+  // Permission asks live above the composer; the flow only marks declines, on the gated tool row.
+  const declined = declinedToolCallIds(items, permissionDecisions);
+  const snapshottedToolIds = new Set(
+    items.flatMap((item) => (item.kind === 'tool' ? [item.toolCall.toolCallId] : [])),
+  );
+  // Gated calls whose ask is still open (not answered in this client) carry the shield glyph.
+  const awaitingApproval = new Set(
+    selectPendingPermissionItems(conversation).flatMap((item) =>
+      permissionDecisions.has(item.requestId) ? [] : [item.toolCall.toolCallId],
+    ),
+  );
+  const segments = splitTurnSegments(conversationFlowItems(items));
+
+  const renderEntry = (entry: TimelineEntry): React.ReactNode => {
+    if (entry.type === 'group') {
+      return (
+        <ActivityGroup
+          key={entry.id}
+          group={entry}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+    if (entry.type === 'single') {
+      return (
+        <ToolCallItem
+          key={entry.item.id}
+          awaitingApproval={awaitingApproval.has(entry.item.toolCall.toolCallId)}
+          declined={declined.has(entry.item.toolCall.toolCallId)}
+          toolCall={entry.item.toolCall}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+    const item = entry.item;
+    switch (item.kind) {
+      case 'message':
+        if (item.role === 'user') return <UserMessage key={item.id} item={item} />;
+        return (
+          <Message key={item.id} from="assistant">
+            <MessageContent className="space-y-1">
+              {item.blocks.map((block, index) => (
+                // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: appendBlock only pushes or extends the last block, so index+type is a stable position key across token-by-token re-renders
+                <ContentBlockView key={`${index}:${block.type}`} block={block} />
+              ))}
+            </MessageContent>
+          </Message>
+        );
+      case 'reasoning':
+        return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />;
+      case 'approval':
+        // Accepted / pending asks leave no receipt — the tool row (or the dock card) is the
+        // record. A decline only materializes here when the agent never snapshotted the call.
+        if (
+          !declined.has(item.toolCall.toolCallId) ||
+          snapshottedToolIds.has(item.toolCall.toolCallId)
+        ) {
+          return null;
+        }
+        return (
+          <ToolCallItem
+            key={item.id}
+            declined
+            toolCall={declinedToolCall(item.toolCall)}
+            TerminalBlockComponent={TerminalBlockComponent}
+          />
+        );
+      case 'error':
+        return (
+          <ErrorMessage
+            key={item.id}
+            message={item.message}
+            code={item.code}
+            recoverable={item.recoverable}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <Conversation
@@ -70,62 +159,43 @@ export function ConversationView({
       }}
     >
       <ConversationContent>
-        {items.map((item) => {
-          switch (item.kind) {
-            case 'message':
-              return (
-                <Message key={item.id} from={item.role}>
-                  <MessageContent className={item.role === 'assistant' ? 'space-y-1' : undefined}>
-                    {item.blocks.map((block, index) => (
-                      // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: appendBlock only pushes or extends the last block, so index+type is a stable position key across token-by-token re-renders
-                      <ContentBlockView key={`${index}:${block.type}`} block={block} />
-                    ))}
-                  </MessageContent>
-                </Message>
-              );
-            case 'reasoning':
-              return (
-                <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />
-              );
-            case 'tool':
-              return (
-                <ToolCallItem
-                  key={item.id}
-                  toolCall={item.toolCall}
-                  TerminalBlockComponent={TerminalBlockComponent}
-                />
-              );
-            case 'plan':
-              return <PlanCard key={item.id} plan={item.plan} />;
-            case 'approval':
-              return (
-                <PermissionCard
-                  key={item.id}
-                  toolCall={item.toolCall}
-                  options={item.options}
-                  answered={
-                    answeredPermissions.has(item.requestId) ||
-                    !pendingPermissions.has(item.requestId)
-                  }
-                  responding={respondingPermissions.has(item.requestId)}
-                  onRespond={(optionId) => onRespondPermission(item.requestId, optionId)}
-                />
-              );
-            case 'error':
-              return (
-                <ErrorMessage
-                  key={item.id}
-                  message={item.message}
-                  code={item.code}
-                  recoverable={item.recoverable}
-                />
-              );
-            default:
-              return null;
-          }
+        {segments.map((segment, index) => {
+          // Per-turn trailers (edit rollup, reply actions) appear once the turn has settled —
+          // the in-flight turn shows none.
+          const ended = index < segments.length - 1 || !isThinking;
+          const edits = ended ? turnFileEdits(segment.items) : null;
+          const replyText = ended ? assistantTurnText(segment.items) : '';
+          const entries = groupTimeline(segment.items);
+          const leadingUserEntry =
+            entries[0]?.type === 'item' &&
+            entries[0].item.kind === 'message' &&
+            entries[0].item.role === 'user'
+              ? entries[0]
+              : null;
+          const agentEntries = leadingUserEntry ? entries.slice(1) : entries;
+          const hasAgentTurnContent = agentEntries.length > 0 || edits || replyText;
+          return (
+            <Fragment key={segment.turnId ?? 'lead-in'}>
+              {leadingUserEntry ? renderEntry(leadingUserEntry) : null}
+              {hasAgentTurnContent ? (
+                <div className="group/turn flex flex-col gap-3">
+                  {agentEntries.map((entry) => renderEntry(entry))}
+                  {edits ? <TurnDiffSummary edits={edits} /> : null}
+                  {replyText ? (
+                    <AgentTurnActions
+                      agentKind={agentKind}
+                      copyText={replyText}
+                      modelName={modelName}
+                      receivedAt={latestReceivedAt(segment.items)}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </Fragment>
+          );
         })}
         {isThinking && (
-          <div className="flex items-center gap-2 py-1 text-muted-foreground text-[13px]">
+          <div className="flex items-center gap-2 py-1 text-muted-foreground text-sm">
             <Spinner className="size-3.5" />
             <span>{t('thinking')}</span>
           </div>

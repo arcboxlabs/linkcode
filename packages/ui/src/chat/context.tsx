@@ -64,7 +64,7 @@ export function ChatContextChip({
   return (
     <span
       className={cn(
-        'inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[12px]',
+        'inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs',
         className,
       )}
       title={item.path ?? item.description}

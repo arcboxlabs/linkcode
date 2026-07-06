@@ -38,7 +38,7 @@ export function Task({
   ...props
 }: TaskProps): React.ReactNode {
   return (
-    <Collapsible className={cn('my-1 text-[13px]', className)} defaultOpen={defaultOpen} {...props}>
+    <Collapsible className={cn('my-1 text-sm', className)} defaultOpen={defaultOpen} {...props}>
       {children ?? (
         <>
           <TaskTrigger count={items?.length ?? 0} title={title} />
@@ -119,7 +119,7 @@ export function TaskItem({ className, item, children, ...props }: TaskItemProps)
           {children ?? item.title}
         </div>
         {item.description ? (
-          <div className="line-clamp-2 text-[12px] text-muted-foreground">{item.description}</div>
+          <div className="line-clamp-2 text-xs text-muted-foreground">{item.description}</div>
         ) : null}
       </div>
     </div>

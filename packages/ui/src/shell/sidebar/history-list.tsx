@@ -5,8 +5,8 @@ import { createFixedArray } from 'foxact/create-fixed-array';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { HistoryIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 import { cn } from '../../lib/cn';
-import { AGENT_LABELS, AgentIcon } from '../agent-icon';
 
 export interface HistoryListProps {
   entries: readonly AgentHistorySession[];

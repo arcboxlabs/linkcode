@@ -42,11 +42,8 @@ import {
   SHOWCASE_IMAGE,
   SHOWCASE_INTRO_CONTENT,
   SHOWCASE_PERMISSION_DENIED_CONTENT,
-  SHOWCASE_PERMISSION_DIFF,
   SHOWCASE_PERMISSION_GRANTED_CONTENT,
-  SHOWCASE_PERMISSION_ID,
-  SHOWCASE_PERMISSION_OPTIONS,
-  SHOWCASE_PERMISSION_TOOL_ID,
+  SHOWCASE_PERMISSIONS,
   SHOWCASE_PLAN,
   SHOWCASE_SCRIPT_START_DELAY_MS,
   SHOWCASE_SCRIPT_STEP_LATENCY_MS,
@@ -72,8 +69,8 @@ interface MockSession extends SessionInfo {
 
 interface PendingPermission {
   sessionId: SessionId;
-  toolCallId: string;
-  diff: Extract<ToolCall['content'][number], { type: 'diff' }>;
+  /** The pending snapshot the ask was raised for; the response re-emits it resolved. */
+  toolCall: ToolCall;
 }
 
 export class DevMockHost {
@@ -395,6 +392,7 @@ export class DevMockHost {
       return;
     }
     session.epoch += 1;
+    this.drainSessionPermissions(sessionId, { outcome: 'cancelled' });
     session.status = 'stopped';
     this.emit(sessionId, { type: 'status', status: 'stopped' });
     this.sendSuccess(replyTo);
@@ -422,6 +420,7 @@ export class DevMockHost {
         break;
       case 'cancel':
         session.epoch += 1;
+        this.drainSessionPermissions(sessionId, { outcome: 'cancelled' });
         session.status = 'idle';
         this.emit(sessionId, { type: 'stop', stopReason: 'cancelled' });
         this.emit(sessionId, { type: 'status', status: 'idle' });
@@ -542,11 +541,6 @@ export class DevMockHost {
     const bursts = createShowcaseToolBursts(terminalId);
     const toolEvents = (toolCalls: readonly ToolCall[]): AgentEvent[] =>
       toolCalls.map((toolCall) => ({ type: 'tool-call', toolCall }));
-    this.permissions.set(SHOWCASE_PERMISSION_ID, {
-      sessionId: session.sessionId,
-      toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
-      diff: SHOWCASE_PERMISSION_DIFF,
-    });
 
     const script: AgentEvent[] = [
       { type: 'status', status: 'running' },
@@ -606,21 +600,19 @@ export class DevMockHost {
     }
     if (!(await waitForShowcaseStep(session, epoch))) return false;
     this.send({ kind: 'terminal.output', terminalId, data: SHOWCASE_TERMINAL_START_OUTPUT });
-    if (
-      !(await this.emitShowcaseEvent(session, epoch, {
+    for (const permission of SHOWCASE_PERMISSIONS) {
+      this.permissions.set(permission.requestId, {
+        sessionId: session.sessionId,
+        toolCall: permission.toolCall,
+      });
+      // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
+      const emitted = await this.emitShowcaseEvent(session, epoch, {
         type: 'permission-request',
-        requestId: SHOWCASE_PERMISSION_ID,
-        toolCall: {
-          toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
-          title: 'Apply guarded edit',
-          kind: 'edit',
-          status: 'pending',
-          content: [SHOWCASE_PERMISSION_DIFF],
-        },
-        options: SHOWCASE_PERMISSION_OPTIONS,
-      }))
-    ) {
-      return false;
+        requestId: permission.requestId,
+        toolCall: permission.toolCall,
+        options: permission.options,
+      });
+      if (!emitted) return false;
     }
     return this.emitShowcaseEvent(session, epoch, SHOWCASE_ERROR_EVENT);
   }
@@ -662,9 +654,35 @@ export class DevMockHost {
       type: 'token-usage',
       usage: { inputTokens: 148, outputTokens: 96, totalCostUsd: 0 },
     });
+    // A real agent turn stays in flight while a permission ask awaits its reply. Poll instead of
+    // coordinating with respondPermission so the turn lifecycle stays in this one method.
+    while (this.hasPendingPermission(session.sessionId)) {
+      // eslint-disable-next-line no-await-in-loop -- deliberate poll while awaiting the permission reply.
+      await wait(200);
+      if (!isRunningTurn(session, epoch)) return;
+    }
     this.emit(session.sessionId, { type: 'stop', stopReason: 'end_turn' });
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
+  }
+
+  private hasPendingPermission(sessionId: SessionId): boolean {
+    for (const pending of this.permissions.values()) {
+      if (pending.sessionId === sessionId) return true;
+    }
+    return false;
+  }
+
+  private drainSessionPermissions(sessionId: SessionId, outcome: PermissionOutcome): void {
+    for (const [requestId, pending] of this.permissions) {
+      if (pending.sessionId !== sessionId) continue;
+      this.permissions.delete(requestId);
+      this.emitToolSnapshot(sessionId, {
+        ...pending.toolCall,
+        status: 'failed',
+        rawOutput: { outcome },
+      });
+    }
   }
 
   private respondPermission(
@@ -681,12 +699,10 @@ export class DevMockHost {
     this.permissions.delete(requestId);
     const allowed = outcome.outcome === 'selected' && outcome.optionId.startsWith('allow');
     this.emitToolSnapshot(sessionId, {
-      toolCallId: pending.toolCallId,
-      title: 'Apply guarded edit',
-      kind: 'edit',
+      ...pending.toolCall,
       status: allowed ? 'completed' : 'failed',
       content: [
-        pending.diff,
+        ...pending.toolCall.content,
         {
           type: 'content',
           content: allowed

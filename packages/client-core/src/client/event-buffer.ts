@@ -9,6 +9,9 @@ import type { Unsubscribe } from '@linkcode/transport';
 export interface SequencedAgentEvent {
   event: AgentEvent;
   seq: number;
+  /** Client receive time (ms epoch), stamped when the event is ingested from the live stream.
+   * Drives relative timestamps in the UI; absent for events replayed from a history read. */
+  receivedAt?: number;
 }
 
 type EventCb = (event: AgentEvent, seq: number) => void;
@@ -35,7 +38,7 @@ export class EventBuffer {
   ingest(sessionId: SessionId, event: AgentEvent): SequencedAgentEvent {
     const seq = (this.seqs.get(sessionId) ?? 0) + 1;
     this.seqs.set(sessionId, seq);
-    const sequenced: SequencedAgentEvent = { event, seq };
+    const sequenced: SequencedAgentEvent = { event, seq, receivedAt: Date.now() };
     const buf = this.events.get(sessionId);
     if (buf) buf.push(sequenced);
     else this.events.set(sessionId, [sequenced]);

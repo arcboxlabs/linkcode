@@ -20,7 +20,7 @@ export function CodeBlock({
 
   return (
     <div
-      className={cn('my-2 overflow-hidden rounded-lg border border-border bg-muted', className)}
+      className={cn('my-2 overflow-hidden rounded-lg border border-border', className)}
       data-language={language}
       {...props}
     >
@@ -30,7 +30,7 @@ export function CodeBlock({
           {children}
         </CodeBlockHeader>
       ) : null}
-      <pre className="overflow-x-auto p-3 font-mono text-[12.5px] leading-relaxed">
+      <pre className="overflow-x-auto p-3 font-mono text-xs leading-relaxed">
         <code>{code}</code>
       </pre>
     </div>
@@ -43,7 +43,7 @@ export function CodeBlockHeader({ className, ...props }: CodeBlockHeaderProps): 
   return (
     <div
       className={cn(
-        'flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-[12px]',
+        'flex items-center justify-between gap-2 border-b border-border bg-muted/32 px-3 py-1.5 text-xs',
         className,
       )}
       {...props}

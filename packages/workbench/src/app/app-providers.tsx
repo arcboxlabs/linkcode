@@ -10,6 +10,10 @@ function runtimeLocale(): Locale {
   return resolveLocale(navigator.languages);
 }
 
+// Client-rendered app: the device zone is authoritative. Configured globally so `format.dateTime`
+// doesn't fall back per call-site (use-intl logs ENVIRONMENT_FALLBACK otherwise).
+const runtimeTimeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 export function AppI18nProvider({
   children,
   locale,
@@ -20,7 +24,7 @@ export function AppI18nProvider({
   const messages = useMemo(() => getMessages(resolved), [resolved]);
 
   return (
-    <IntlProvider locale={resolved} messages={messages}>
+    <IntlProvider locale={resolved} messages={messages} timeZone={runtimeTimeZone}>
       {children}
     </IntlProvider>
   );

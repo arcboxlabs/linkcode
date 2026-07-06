@@ -31,7 +31,7 @@ export function ContentBlockView({ block }: { block: ContentBlock }): React.Reac
           href={block.uri}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-[13px] text-foreground hover:opacity-80"
+          className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-sm text-foreground hover:opacity-80"
         >
           <FileTextIcon className="size-3.5" />
           {t('resourceLink', { name: block.name })}
@@ -41,7 +41,7 @@ export function ContentBlockView({ block }: { block: ContentBlock }): React.Reac
       return 'text' in block.resource ? (
         <CodeBlock code={block.resource.text} title={block.resource.uri} />
       ) : (
-        <span className="text-[13px] text-muted-foreground">{t('resource')}</span>
+        <span className="text-sm text-muted-foreground">{t('resource')}</span>
       );
     default:
       return null;
