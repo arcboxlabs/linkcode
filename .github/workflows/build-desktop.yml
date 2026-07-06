@@ -69,9 +69,8 @@ jobs:
             platform: mac
           - os: blacksmith-4vcpu-windows-2025 # public beta; VS Build Tools only — enough for NSIS
             platform: win
-          # Linux still off; uncomment to add AppImage/deb.
-          # - os: blacksmith-4vcpu-ubuntu-2204 # older glibc => broader AppImage compatibility
-          #   platform: linux
+          - os: blacksmith-4vcpu-ubuntu-2204 # older glibc => broader AppImage compatibility
+            platform: linux
 
     steps:
       - name: Checkout

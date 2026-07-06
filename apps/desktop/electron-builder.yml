@@ -86,8 +86,13 @@ nsis:
 linux:
   icon: ../../assets/icon.png # shared repo-root raster
   category: Development
+  # The npm package name (@linkcode/desktop) sanitizes to an invalid binary name; name the
+  # executable explicitly.
+  executableName: linkcode
   target:
-    - AppImage
-    - deb
+    - target: AppImage # the only Linux format electron-updater can self-update
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64, arm64]
   # rpm/snap need extra host tooling (rpm/fakeroot, snapcraft); add install steps to
   # build-desktop.yml's Linux job before enabling them here.
