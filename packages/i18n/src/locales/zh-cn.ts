@@ -28,6 +28,7 @@ export const zhCN = {
       kindExecute: '执行',
       kindThink: '思考',
       kindFetch: '获取',
+      kindTask: '子代理',
       kindOther: '工具',
     },
     toolGroup: {

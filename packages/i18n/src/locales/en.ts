@@ -30,6 +30,7 @@ export const en = {
       kindExecute: 'Run',
       kindThink: 'Think',
       kindFetch: 'Fetch',
+      kindTask: 'Subagent',
       kindOther: 'Tool',
     },
     toolGroup: {
