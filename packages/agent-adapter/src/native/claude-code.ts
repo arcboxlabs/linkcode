@@ -60,14 +60,17 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
 ];
 
 /**
- * The approval-policy axis claude-code advertises; ids map 1:1 onto the SDK's `PermissionMode`.
- * Two SDK modes stay off this channel on purpose: `plan` is a workflow mode (the `set-mode` axis),
- * and `dontAsk`'s deny-by-default adds nothing over rejecting the asks `default` already raises.
+ * The approval-policy axis claude-code advertises; ids map 1:1 onto the SDK's `PermissionMode` and
+ * names/order match Claude Desktop's own Mode menu. Claude models permission handling and plan as
+ * ONE axis, so `plan` rides this channel for claude-code (the generic `set-mode` workflow axis
+ * remains for agents like codex where plan is a workflow mode); the composer dedupes the stub
+ * workflow entry by id. Only `dontAsk` stays off the menu: its deny-by-default adds nothing over
+ * rejecting the asks `default` already raises.
  */
 const APPROVAL_POLICIES = [
   {
     policyId: 'default',
-    name: 'Ask for approval',
+    name: 'Ask permissions',
     description: 'Always ask before editing files and running commands.',
   },
   {
@@ -76,13 +79,18 @@ const APPROVAL_POLICIES = [
     description: 'Auto-approve file edits; still ask for everything else.',
   },
   {
+    policyId: 'plan',
+    name: 'Plan mode',
+    description: 'Read-only research; propose a plan before making changes.',
+  },
+  {
     policyId: 'auto',
-    name: 'Auto',
+    name: 'Auto mode',
     description: 'A classifier approves routine actions and blocks risky or external ones.',
   },
   {
     policyId: 'bypassPermissions',
-    name: 'Full access',
+    name: 'Bypass permissions',
     description: 'Skip all permission prompts in this workspace.',
   },
 ] as const satisfies ReadonlyArray<ApprovalPolicy & { policyId: PermissionMode }>;
@@ -188,8 +196,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private cancelling = false;
   /** The effort the session should run at; applied at `Query` creation and on live switches. */
   private effort: EffortLevel | undefined;
-  /** The approval policy the session runs under; applied at `Query` creation and on live switches. */
-  private approvalPolicy: ClaudeApprovalPolicyId = 'default';
+  /** The approval policy the session runs under; applied at `Query` creation and on live switches.
+   * `undefined` = the user hasn't picked one — the CLI then resolves its own default (including
+   * `permissions.defaultMode` from the user's settings.json), reported back via the init message. */
+  private approvalPolicy: ClaudeApprovalPolicyId | undefined;
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
@@ -208,7 +218,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   private approvalPolicyState(): ApprovalPolicyState {
-    return { availablePolicies: [...APPROVAL_POLICIES], currentPolicyId: this.approvalPolicy };
+    return {
+      availablePolicies: [...APPROVAL_POLICIES],
+      currentPolicyId: this.approvalPolicy ?? 'default',
+    };
+  }
+
+  /** Adopt the effective mode the CLI reports (init message) — the authority when the user hasn't
+   * picked a policy, since the CLI resolves settings.json's `permissions.defaultMode` itself. */
+  private syncApprovalPolicy(mode: PermissionMode): void {
+    const policy = APPROVAL_POLICIES.find((p) => p.policyId === mode);
+    if (!policy || policy.policyId === this.approvalPolicy) return;
+    this.approvalPolicy = policy.policyId;
+    this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
   override async resumeHistory(
@@ -298,6 +320,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
+        // Omitted (undefined) until the user picks a policy, so the CLI's own default —
+        // settings.json `permissions.defaultMode` included — stays in charge (see syncApprovalPolicy).
         permissionMode: this.approvalPolicy,
         // Gate flag only — the effective mode stays `permissionMode` above. It must be set at
         // startup for a later live switch to 'bypassPermissions' to be accepted at all.
@@ -477,6 +501,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         break;
       case 'system':
         if (msg.subtype === 'permission_denied') this.handlePermissionDenied(msg);
+        else if (msg.subtype === 'init') this.syncApprovalPolicy(msg.permissionMode);
         break;
       default:
         break;

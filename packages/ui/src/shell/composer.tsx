@@ -137,10 +137,21 @@ export function Composer({
       ? value.slice(plusCommandStart, caret).toLowerCase()
       : '';
 
+  // An id the agent advertises on the approval-policy axis is owned there (claude-code's plan is a
+  // permission mode, mirroring Claude Desktop's single Mode menu) — drop its stub workflow twin.
+  const workflowModes = useMemo(
+    () =>
+      availableModes.filter(
+        (mode) =>
+          !approvalPolicy?.availablePolicies.some((policy) => policy.policyId === mode.modeId),
+      ),
+    [availableModes, approvalPolicy],
+  );
+
   const commandGroups = useMemo(
     () =>
       buildComposerCommandGroups({
-        availableModes,
+        availableModes: workflowModes,
         commandSource,
         currentModeId,
         labels: {
@@ -154,7 +165,7 @@ export function Composer({
         textTrigger,
       }),
     [
-      availableModes,
+      workflowModes,
       commandSource,
       currentModeId,
       mentionItems,
@@ -299,7 +310,7 @@ export function Composer({
   // approval-policy.ts). The active mode is server-reflected; failures land in the error banner,
   // so a rejected switch simply leaves the previous mode active.
   let matchedMode: SessionMode | null = null;
-  for (const mode of availableModes) {
+  for (const mode of workflowModes) {
     if (mode.modeId === currentModeId) matchedMode = mode;
   }
   const activeMode = matchedMode;

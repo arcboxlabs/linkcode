@@ -111,6 +111,7 @@ describe('ClaudeCodeAdapter approval policy', () => {
     expect(updates[0].state.availablePolicies.map((p) => p.policyId)).toEqual([
       'default',
       'acceptEdits',
+      'plan',
       'auto',
       'bypassPermissions',
     ]);
@@ -132,7 +133,8 @@ describe('ClaudeCodeAdapter approval policy', () => {
     const { adapter, events } = await makeAdapter();
     await prompt(adapter);
     const q = queries[0];
-    expect(q.options.permissionMode).toBe('default');
+    // No pick yet: the flag is omitted so the CLI's own default (settings.json) stays in charge.
+    expect(q.options.permissionMode).toBeUndefined();
 
     await setPolicy(adapter, 'auto');
     expect(q.setPermissionMode).toHaveBeenCalledWith('auto');
@@ -145,11 +147,26 @@ describe('ClaudeCodeAdapter approval policy', () => {
     expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('auto');
   });
 
-  it('rejects ids outside the advertised list (plan stays on the mode axis)', async () => {
+  it('rejects ids outside the advertised list (dontAsk stays off the menu)', async () => {
     const { adapter } = await makeAdapter();
     await prompt(adapter);
-    await expect(setPolicy(adapter, 'plan')).rejects.toThrow('unknown approval policy');
+    await expect(setPolicy(adapter, 'dontAsk')).rejects.toThrow('unknown approval policy');
     expect(queries[0].setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  it('adopts the effective mode the CLI reports at init (settings-driven default)', async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    queries[0].push({
+      type: 'system',
+      subtype: 'init',
+      permissionMode: 'acceptEdits',
+      session_id: 's1',
+      uuid: 'u0',
+    });
+    await vi.waitFor(() => {
+      expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('acceptEdits');
+    });
   });
 
   it('settles an auto-denied tool call as failed with the decider reason', async () => {
