@@ -1,0 +1,38 @@
+# One-off: delete the stale 0.0.0 artifacts that the first (mis-versioned) v0.1.0 publish
+# uploaded to the R2 feed. Remove this workflow after it has run once.
+name: R2 cleanup (one-off)
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: release # R2 credentials live here
+    env:
+      R2_BUCKET: linkcode-releases
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_REGION: auto
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+      AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+    steps:
+      - name: Delete stale 0.0.0 objects
+        run: |
+          for key in \
+            "LinkCode-0.0.0-universal-mac.zip" \
+            "LinkCode-0.0.0-universal-mac.zip.blockmap" \
+            "LinkCode-0.0.0-universal.dmg" \
+            "LinkCode-0.0.0-universal.dmg.blockmap" \
+            "LinkCode Setup 0.0.0.exe" \
+            "LinkCode Setup 0.0.0.exe.blockmap" \
+            "builder-debug.yml"; do
+            aws s3 rm "s3://${R2_BUCKET}/desktop/${key}" \
+              --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" || true
+          done
+          echo "=== remaining objects under /desktop ==="
+          aws s3 ls "s3://${R2_BUCKET}/desktop/" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
