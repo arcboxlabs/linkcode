@@ -165,6 +165,13 @@ jobs:
           # Windows auth comes from the azure/login step — deliberately no AZURE_* credential env
           # here, so DefaultAzureCredential falls through to the CLI entry.
 
+      # Post-pack invariants: per-arch artifact set complete, arch markers in every name
+      # (electron-updater routes by them), feed sha512s match the files on disk.
+      - name: Verify packaged artifacts
+        working-directory: ${{ env.DESKTOP_DIR }}
+        shell: bash
+        run: node scripts/verify-artifacts.mjs ${{ matrix.platform }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
