@@ -11,6 +11,14 @@ appId: com.arcboxlabs.linkcode.desktop
 productName: LinkCode
 copyright: Copyright © 2026 ArcBox Labs
 
+# `linkcode://` deep-link scheme for LinkCode Cloud OAuth callbacks. electron-builder registers it
+# in the macOS Info.plist and the Windows installer; dev shells register it at runtime via
+# setAsDefaultProtocolClient (see cloud-auth/client.ts).
+protocols:
+  - name: LinkCode
+    schemes:
+      - linkcode
+
 # electron-builder needs an exact Electron version (it downloads per-platform binaries) and
 # cannot read pnpm's `catalog:` protocol. Keep in sync with the `electron` catalog entry.
 electronVersion: 42.4.1

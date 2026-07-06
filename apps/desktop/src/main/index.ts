@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, Menu } from 'electron';
 import { applyThemePreference } from './appearance';
+import { setupCloudAuth } from './cloud-auth/client';
 import { APP_NAME } from './constants';
 import { buildAppMenu } from './menu';
 import { getSettings } from './settings';
@@ -26,6 +27,11 @@ if (app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
+
+  // Wire the LinkCode Cloud auth protocol + IPC bridges. Must run BEFORE app is ready:
+  // the better-auth electron plugin registers a privileged scheme via
+  // protocol.registerSchemesAsPrivileged, which throws once the app is ready.
+  setupCloudAuth();
 
   app
     .whenReady()
