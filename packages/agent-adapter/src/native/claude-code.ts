@@ -34,6 +34,7 @@ import type {
   ToolCallContent,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
@@ -311,19 +312,42 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
-    const [info, messages] = await Promise.all([
+    const [info, messages, subagentEvents] = await Promise.all([
       mod.getSessionInfo(opts.historyId),
       mod.getSessionMessages(opts.historyId, {
         limit: limit + 1,
         offset,
       }),
+      readSubagentTranscripts(mod, opts.historyId),
     ]);
     const historyId = opts.historyId;
+    const mapper = createClaudeHistoryEventMapper(historyId);
+    const events: AgentHistoryEvent[] = [];
+    for (const message of messages.slice(0, limit)) {
+      for (const event of mapper(message)) {
+        events.push(event);
+        // Splice each subagent's transcript in right after its spawn announce, so the seeded
+        // order matches the live stream and the children land inside the parent's turn (the
+        // UI's per-segment partition depends on that). Keyed off the announce (in_progress)
+        // only — the later settle re-emits the same tool-call id in a terminal state.
+        if (
+          event.event.type === 'tool-call' &&
+          event.event.toolCall.kind === 'task' &&
+          event.event.toolCall.status === 'in_progress'
+        ) {
+          const children = subagentEvents.get(event.event.toolCall.toolCallId);
+          if (children) {
+            appendArrayInPlace(events, children);
+            subagentEvents.delete(event.event.toolCall.toolCallId);
+          }
+        }
+      }
+    }
     return {
       session: info
         ? mapClaudeHistorySession(info)
         : { historyId, kind: this.kind, title: historyId },
-      events: messages.slice(0, limit).flatMap(createClaudeHistoryEventMapper(historyId)),
+      events,
       cursor: cursorFromFetched(offset, messages.length, limit),
     };
   }
@@ -758,6 +782,30 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
       tag: session.tag,
     }),
   };
+}
+
+/**
+ * Subagent transcripts live beside the main one (`subagents/agent-{id}.jsonl`) and are not part of
+ * `getSessionMessages`. Every row `getSubagentMessages` returns carries `parent_tool_use_id` — the
+ * spawning Task/Agent tool_use id (verified against the vendored SDK's on-disk format) — so a plain
+ * run through the history mapper reproduces the same parent-linked events the live stream emits.
+ * Keyed by that parent id for splicing in after the spawn announce.
+ */
+async function readSubagentTranscripts(
+  mod: typeof import('@anthropic-ai/claude-agent-sdk'),
+  sessionId: string,
+): Promise<Map<string, AgentHistoryEvent[]>> {
+  const agentIds = await mod.listSubagents(sessionId);
+  const byParent = new Map<string, AgentHistoryEvent[]>();
+  await Promise.all(
+    agentIds.map(async (agentId) => {
+      const rows = await mod.getSubagentMessages(sessionId, agentId, { limit: 1000 });
+      const parent = rows.find((row) => row.parent_tool_use_id !== null)?.parent_tool_use_id;
+      if (!parent) return;
+      byParent.set(parent, rows.flatMap(createClaudeHistoryEventMapper(asHistoryId(sessionId))));
+    }),
+  );
+  return byParent;
 }
 
 /**

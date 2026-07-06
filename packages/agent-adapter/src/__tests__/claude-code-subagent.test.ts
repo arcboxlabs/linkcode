@@ -1,6 +1,7 @@
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, ToolCall } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
+import { asHistoryId } from '../history-util';
 import { ClaudeCodeAdapter } from '../native/claude-code';
 
 /**
@@ -192,5 +193,113 @@ describe('ClaudeCodeAdapter subagent routing', () => {
     const denied = h.tools().at(-1);
     expect(denied?.status).toBe('failed');
     expect(denied?.parentToolCallId).toBe(TASK_ID);
+  });
+});
+
+describe('ClaudeCodeAdapter readHistory subagent splice', () => {
+  const SESSION = 'session-1';
+
+  function mainRow(type: 'user' | 'assistant', uuid: string, content: unknown[]): SessionMessage {
+    return { type, uuid, session_id: SESSION, parent_tool_use_id: null, message: { content } };
+  }
+
+  function subRow(
+    type: 'user' | 'assistant',
+    uuid: string,
+    content: string | unknown[],
+  ): SessionMessage {
+    return { type, uuid, session_id: SESSION, parent_tool_use_id: TASK_ID, message: { content } };
+  }
+
+  /** The trimmed slice of the SDK module surface readHistory touches. */
+  function fakeSdk(overrides: {
+    messages: SessionMessage[];
+    subagents?: Record<string, SessionMessage[]>;
+  }) {
+    const subagents = overrides.subagents ?? {};
+    return {
+      getSessionInfo: () => Promise.resolve(undefined),
+      getSessionMessages: () => Promise.resolve(overrides.messages),
+      listSubagents: () => Promise.resolve(Object.keys(subagents)),
+      getSubagentMessages: (_sessionId: string, agentId: string) =>
+        Promise.resolve(subagents[agentId] ?? []),
+    };
+  }
+
+  class HistoryClaude extends ClaudeCodeAdapter {
+    constructor(private readonly sdk: ReturnType<typeof fakeSdk>) {
+      super();
+    }
+
+    protected override loadSdk<T>(): Promise<T> {
+      return Promise.resolve(this.sdk as T);
+    }
+  }
+
+  const mainMessages = [
+    mainRow('user', 'u0', [{ type: 'text', text: 'go' }]),
+    mainRow('assistant', 'u1', [
+      { type: 'tool_use', id: TASK_ID, name: 'Agent', input: { description: 'explore' } },
+    ]),
+    mainRow('user', 'u2', [{ type: 'tool_result', tool_use_id: TASK_ID, content: 'report' }]),
+    mainRow('assistant', 'u3', [{ type: 'text', text: 'summary' }]),
+  ];
+
+  it('splices the subagent transcript right after the spawn announce, parent-linked', async () => {
+    const adapter = new HistoryClaude(
+      fakeSdk({
+        messages: mainMessages,
+        subagents: {
+          agent1: [
+            subRow('user', 's0', 'injected prompt'),
+            subRow('assistant', 's1', [{ type: 'text', text: 'nested narration' }]),
+            subRow('assistant', 's2', [
+              { type: 'tool_use', id: 'toolu_sub', name: 'Bash', input: {} },
+            ]),
+            subRow('user', 's3', [
+              { type: 'tool_result', tool_use_id: 'toolu_sub', content: 'ok' },
+            ]),
+          ],
+        },
+      }),
+    );
+    const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+
+    const kinds = result.events.map((e) =>
+      e.event.type === 'tool-call'
+        ? `${e.event.type}:${e.event.toolCall.toolCallId}:${e.event.toolCall.status}`
+        : `${e.event.type}:${e.itemId ?? ''}`,
+    );
+    expect(kinds).toEqual([
+      'user-message:u0',
+      `tool-call:${TASK_ID}:in_progress`,
+      // Spliced subagent transcript (injected prompt skipped, rest parent-linked):
+      'agent-message-chunk:s1',
+      'tool-call:toolu_sub:in_progress',
+      'tool-call:toolu_sub:completed',
+      // Main transcript resumes:
+      `tool-call:${TASK_ID}:completed`,
+      'agent-message-chunk:u3',
+    ]);
+
+    for (const e of result.events) {
+      if (e.event.type === 'tool-call' && e.event.toolCall.toolCallId === 'toolu_sub') {
+        expect(e.event.toolCall.parentToolCallId).toBe(TASK_ID);
+      }
+      if (e.event.type === 'agent-message-chunk' && e.itemId === 's1') {
+        expect(e.event.parentToolCallId).toBe(TASK_ID);
+      }
+    }
+  });
+
+  it('leaves sessions without subagents untouched', async () => {
+    const adapter = new HistoryClaude(fakeSdk({ messages: mainMessages }));
+    const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+    expect(result.events.map((e) => e.event.type)).toEqual([
+      'user-message',
+      'tool-call',
+      'tool-call',
+      'agent-message-chunk',
+    ]);
   });
 });
