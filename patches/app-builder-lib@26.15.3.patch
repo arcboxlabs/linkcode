@@ -1,10 +1,32 @@
 diff --git a/out/node-module-collector/pnpmNodeModulesCollector.js b/out/node-module-collector/pnpmNodeModulesCollector.js
-index 8853912e013d3769f3e763d06720a94091a7ffaa..b56f6e6a6993d0ec27cf426d48143cd6ea078cc7 100644
+index 8853912e013d3769f3e763d06720a94091a7ffaa..ffdf34dd77badbdeecf316fa1db29bbf62837842 100644
 --- a/out/node-module-collector/pnpmNodeModulesCollector.js
 +++ b/out/node-module-collector/pnpmNodeModulesCollector.js
-@@ -49,7 +49,11 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+@@ -1,6 +1,7 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.PnpmNodeModulesCollector = void 0;
++const builder_util_1 = require("builder-util");
+ const lazy_val_1 = require("lazy-val");
+ const moduleManager_1 = require("./moduleManager");
+ const nodeModulesCollector_1 = require("./nodeModulesCollector");
+@@ -48,8 +49,25 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+         }
          return this._allWorkspacePackages.slice(0, 1);
      }
++    async getNodeModules(options) {
++        try {
++            return await super.getNodeModules(options);
++        }
++        catch (error) {
++            // Even with the scoped filter below, `pnpm list --depth Infinity` can die with EMFILE
++            // on Windows (no ulimit escape hatch there). appFileCopier already falls back to the
++            // traversal collector when a collector returns an empty result — it just never gets
++            // the chance when the collector throws. Fail soft so that fallback engages.
++            builder_util_1.log.warn({ error: (error === null || error === void 0 ? void 0 : error.message) || String(error) }, "pnpm node module collection failed; falling back to the traversal collector");
++            return { nodeModules: [], logSummary: undefined };
++        }
++    }
      getArgs() {
 -        return ["list", "--prod", "--json", "--depth", "Infinity", "--silent", "--loglevel=error"];
 +        // `--filter {.}...` scopes the listing to the app at cwd plus its workspace dependency
