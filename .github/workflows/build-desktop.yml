@@ -1,13 +1,8 @@
 # Reusable build workflow for the Electron desktop app (@linkcode/desktop).
 #
-# - Builds on macOS / Linux / Windows via a matrix.
-# - Packages with electron-builder (--publish never; publishing lives in release-desktop.yml).
-# - Signs + notarizes ONLY when called with `sign: true` (release flow). PR builds stay unsigned,
-#   so PRs from forks (no secret access) still build cleanly.
-#
-# Windows signing uses Azure Trusted Signing, injected via `-c.win.azureSignOptions.*` only on
-# signed builds — keeping it out of electron-builder.yml so unsigned builds skip signing instead
-# of failing. macOS skips signing when CSC_IDENTITY_AUTO_DISCOVERY=false.
+# PR builds stay unsigned (forks get no secrets). `sign: true` — the release flow — signs and
+# notarizes inside the protected `release` environment, which holds all signing secrets.
+# Windows Trusted Signing authenticates via OIDC federation (azure/login); no client secret exists.
 
 name: Build Desktop
 
@@ -46,35 +41,36 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write # OIDC token for azure/login (signed Windows builds); unused on PR builds
 
 env:
   DESKTOP_DIR: apps/desktop
   DESKTOP_PACKAGE: "@linkcode/desktop" # name in package.json (used by `pnpm turbo --filter`)
   OUTPUT_DIR: apps/desktop/release # must match electron-builder `directories.output`
 
-  # ---- Windows Azure Trusted Signing: non-secret account identifiers ----
-  # TODO(release): set these to your Trusted Signing account/profile. Authentication
-  # uses the AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET secrets.
-  AZURE_PUBLISHER_NAME: "ArcBox Labs" # must match the certificate subject CN exactly
-  AZURE_SIGN_ENDPOINT: "https://eus.codesigning.azure.net/" # region-specific Trusted Signing endpoint
-  AZURE_CODE_SIGNING_ACCOUNT: "linkcode-signing"
-  AZURE_CERTIFICATE_PROFILE: "linkcode"
+  # Trusted Signing identifiers — not credentials, but kept as `release` environment secrets so
+  # the public repo doesn't advertise the signing infrastructure.
+  AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }} # must match the certificate subject CN exactly
+  AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+  AZURE_CODE_SIGNING_ACCOUNT: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
+  AZURE_CERTIFICATE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
 
 jobs:
   build:
     name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
+    # Signing is gated by the `release` environment (secrets + tag policy); '' = no environment.
+    environment: ${{ inputs.sign && 'release' || '' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-26 # arm64 runner; needs Xcode 26 (actool >= 26) to compile mac.icon (.icon) into Assets.car. Produces universal builds (see electron-builder.yml)
+          - os: blacksmith-6vcpu-macos-26 # arm64 (M4); Xcode 26 (actool >= 26) compiles mac.icon into Assets.car
             platform: mac
-          # Temporarily macOS-only. Re-enable Linux/Windows by uncommenting these — the Windows
-          # job already carries the Azure Trusted Signing wiring below.
-          # - os: ubuntu-22.04 # older glibc => broader Linux/AppImage compatibility
+          # Temporarily macOS-only; the signing wiring below already covers Windows.
+          # - os: blacksmith-4vcpu-ubuntu-2204 # older glibc => broader AppImage compatibility
           #   platform: linux
-          # - os: windows-latest
+          # - os: blacksmith-4vcpu-windows-2025 # public beta; VS Build Tools only — enough for NSIS
           #   platform: win
 
     steps:
@@ -97,24 +93,28 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build workspace
-        # Builds the desktop package (and any workspace deps that expose a build task) via turbo.
         run: pnpm turbo run build --filter "${{ env.DESKTOP_PACKAGE }}..."
         env:
-          # electron-vite inlines this into the main bundle here (DSN is a publishable id, not a secret).
-          # Scoped secret name keeps it from clashing with other apps' Sentry DSNs; only signed release
-          # builds carry it. Declared in apps/desktop/turbo.json `build.env` so turbo's strict env mode
-          # passes it through and rebuilds when it changes.
+          # Inlined into the main bundle (a DSN is a publishable id, not a secret); only signed
+          # builds carry it. Must stay declared in apps/desktop/turbo.json `build.env`.
           MAIN_VITE_SENTRY_DSN: ${{ inputs.sign && secrets.SENTRY_DSN_DESKTOP || '' }}
+
+      # OIDC exchange for Windows Trusted Signing; Invoke-TrustedSigning (spawned by
+      # electron-builder below) picks it up via DefaultAzureCredential's Azure CLI entry.
+      - name: Azure login (Trusted Signing, OIDC)
+        if: ${{ runner.os == 'Windows' && inputs.sign }}
+        uses: azure/login@v2
+        with:
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          allow-no-subscriptions: true
 
       - name: Package with electron-builder
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash # unify quoting across runners for the conditional signing args below
-        # On signed Windows builds, inject Azure Trusted Signing options; otherwise no signing config
-        # is present, so electron-builder skips Windows signing (no cert) and macOS honors CSC_* below.
-        # macOS's default open-file ulimit (256) is too low for electron-builder's node-module-collector
-        # to walk this monorepo's node_modules tree, causing an EMFILE (exit code 232). 10240 (the value
-        # electron-builder's own docs suggest) still hit this on the hosted macOS runner even though it
-        # reproduces fine locally at that same limit — raise it further for headroom.
+        # azureSignOptions is injected via -c only on signed Windows builds so unsigned builds skip
+        # signing instead of failing. ulimit: electron-builder's node-module-collector EMFILEs
+        # walking this monorepo's node_modules even at 10240 — raise it hard.
         run: |
           if [ "${{ runner.os }}" = "macOS" ]; then
             ulimit -n 65536
@@ -122,25 +122,19 @@ jobs:
           pnpm exec electron-builder --${{ matrix.platform }} --publish never \
             ${{ (runner.os == 'Windows' && inputs.sign) && format('-c.win.azureSignOptions.publisherName="{0}" -c.win.azureSignOptions.endpoint="{1}" -c.win.azureSignOptions.codeSigningAccountName="{2}" -c.win.azureSignOptions.certificateProfileName="{3}"', env.AZURE_PUBLISHER_NAME, env.AZURE_SIGN_ENDPOINT, env.AZURE_CODE_SIGNING_ACCOUNT, env.AZURE_CERTIFICATE_PROFILE) || '' }}
         env:
-          # Lets electron-builder read existing releases without hitting rate limits. Harmless on build.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # ---- macOS code signing (only the macOS runner consumes these) ----
+          # macOS signing + notarization (electron-builder drives notarytool).
           CSC_LINK: ${{ (runner.os == 'macOS' && inputs.sign) && secrets.MACOS_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ (runner.os == 'macOS' && inputs.sign) && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
-
-          # ---- macOS notarization (electron-builder drives notarytool) ----
           APPLE_ID: ${{ inputs.sign && secrets.APPLE_ID || '' }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ inputs.sign && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ inputs.sign && secrets.APPLE_TEAM_ID || '' }}
-
-          # Stop macOS from trying to sign with random keychain identities on unsigned builds.
+          # Stop macOS from signing with random keychain identities on unsigned builds.
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ (runner.os == 'macOS' && inputs.sign) && 'true' || 'false' }}
 
-          # ---- Windows Azure Trusted Signing (service-principal auth via EnvironmentCredential) ----
-          AZURE_TENANT_ID: ${{ (runner.os == 'Windows' && inputs.sign) && secrets.AZURE_TENANT_ID || '' }}
-          AZURE_CLIENT_ID: ${{ (runner.os == 'Windows' && inputs.sign) && secrets.AZURE_CLIENT_ID || '' }}
-          AZURE_CLIENT_SECRET: ${{ (runner.os == 'Windows' && inputs.sign) && secrets.AZURE_CLIENT_SECRET || '' }}
+          # Windows auth comes from the azure/login step — deliberately no AZURE_* credential env
+          # here, so DefaultAzureCredential falls through to the CLI entry.
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -148,8 +142,7 @@ jobs:
           name: desktop-${{ matrix.platform }}
           if-no-files-found: error
           retention-days: 7
-          # Installers + update manifests (*.yml) + delta blockmaps. The *.yml and *.blockmap
-          # files are what electron-updater needs — do not drop them.
+          # *.yml + *.blockmap are the electron-updater feed — do not drop them.
           path: |
             ${{ env.OUTPUT_DIR }}/*.dmg
             ${{ env.OUTPUT_DIR }}/*.zip

@@ -25,13 +25,12 @@ files:
   - out/**
   - package.json
 
-# The published artifacts double as the electron-updater feed. The repo is private, so updates
-# are served from Cloudflare R2 instead of GitHub Releases (a private GitHub feed would require
-# embedding a token in the shipped app). The generic provider reads over R2's public URL with no
-# token; CI uploads through R2's S3-compatible API (see release-desktop.yml).
+# The electron-updater feed, served from Cloudflare R2 (uploads in release-desktop.yml). The
+# /desktop prefix namespaces the bucket for future artifact families (agent runtime, daemon).
+# This URL ships inside every released app — never change it.
 publish:
   provider: generic
-  url: https://pub-REPLACE_ME.r2.dev # TODO(release): R2 public bucket URL (r2.dev or a custom domain)
+  url: https://releases.linkcode.ai/desktop
 
 mac:
   # Apple Icon Composer source. Single shared copy at the repo-root assets/ dir (also consumed

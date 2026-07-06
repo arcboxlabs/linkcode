@@ -1,11 +1,7 @@
-# Orchestrates a desktop release:
-#   1. calls build-desktop.yml with sign: true (signed + notarized artifacts)
-#   2. uploads the artifacts to Cloudflare R2 — this is the electron-updater feed
-#   3. publishes a GitHub Release for human-facing downloads / changelog
-#
-# The repo is private, so the auto-update feed is Cloudflare R2 (publish.provider: generic over
-# R2's public URL), not GitHub Releases. The GitHub Release is convenience only, not read by the updater.
-# Triggered by pushing a tag like v1.2.3, or manually with a dry-run option.
+# Desktop release: build signed artifacts (build-desktop.yml, sign: true), upload the
+# electron-updater feed to Cloudflare R2 (served at https://releases.linkcode.ai/desktop), then
+# publish a GitHub Release for human downloads — the updater never reads it.
+# Triggered by pushing a v*.*.* tag, or manually with a dry-run option.
 
 name: Release Desktop
 
@@ -36,6 +32,9 @@ jobs:
     name: Build signed artifacts
     uses: ./.github/workflows/build-desktop.yml
     secrets: inherit # required so build-desktop.yml can read the signing secrets
+    permissions:
+      contents: read
+      id-token: write # the called workflow mints an OIDC token for azure/login (Trusted Signing)
     with:
       ref: ${{ inputs.ref || github.ref }}
       sign: true
@@ -43,12 +42,12 @@ jobs:
   release:
     name: Publish release
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: write # required to create the GitHub Release
     env:
-      R2_BUCKET: linkcode-desktop-releases # TODO(release): R2 bucket name
-      R2_ACCOUNT_ID: REPLACE_ME # TODO(release): Cloudflare account id (host of the R2 S3 endpoint)
+      R2_BUCKET: linkcode-releases
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -72,9 +71,9 @@ jobs:
           fi
 
       - name: Publish update feed to R2
-        # The live electron-updater feed: installers + latest*.yml + *.blockmap, uploaded via R2's
-        # S3-compatible API. The bucket must be publicly readable (r2.dev or a custom domain) so the
-        # shipped app reads updates without credentials. No --delete: keep prior versions for delta.
+        # The live updater feed (installers + latest*.yml + *.blockmap), public via
+        # https://releases.linkcode.ai — the publish.url baked into shipped apps.
+        # No --delete: prior versions stay for delta updates.
         if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -84,7 +83,7 @@ jobs:
           AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
           AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
         run: |
-          aws s3 sync artifacts/ "s3://${R2_BUCKET}/" \
+          aws s3 sync artifacts/ "s3://${R2_BUCKET}/desktop/" \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress \
             --exclude "*" \
