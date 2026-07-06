@@ -67,6 +67,21 @@ describe('ClaudeCodeAdapter subagent routing', () => {
     expect(task.parentToolCallId).toBeUndefined();
   });
 
+  it('classifies the renamed Agent spawn tool as task-kind too', () => {
+    const h = harness();
+    h.feed({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      uuid: 'uuid-main-2',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu_agent', name: 'Agent', input: { description: 'x' } },
+        ],
+      },
+    });
+    expect(h.tools()[0].kind).toBe('task');
+  });
+
   it('stamps parentToolCallId on subagent tool calls and their settles', () => {
     const h = harness();
     h.feed(taskAnnounce());

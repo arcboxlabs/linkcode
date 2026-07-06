@@ -58,11 +58,12 @@ type AssistantMessage = AssistantSDKMessage['message'];
 type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
 
-/** Claude's subagent-spawning tool is literally named `Task`. Exact match on purpose: the shared
- * name-based classifier stays untouched so other adapters (e.g. opencode's lowercase `task`) opt in
- * deliberately rather than by regex accident. */
+/** Claude's subagent-spawning tool: named `Agent` in current CLIs (verified live against the
+ * vendored 0.3.x), `Task` in older transcripts — history replay still meets the old name. Exact
+ * match on purpose: the shared name-based classifier stays untouched so other adapters (e.g.
+ * opencode's lowercase `task`) opt in deliberately rather than by regex accident. */
 function claudeToolKind(name: string): ToolCall['kind'] {
-  return name === 'Task' ? 'task' : toolKindFromName(name);
+  return name === 'Task' || name === 'Agent' ? 'task' : toolKindFromName(name);
 }
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
