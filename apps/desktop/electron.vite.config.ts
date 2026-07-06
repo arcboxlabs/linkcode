@@ -24,7 +24,11 @@ export default defineConfig({
   },
   preload: {
     build: {
-      externalizeDeps: bundleWorkspace,
+      // The preload runs sandboxed and cannot `require()` external node_modules at runtime, so the
+      // better-auth electron bridge must be bundled in, not externalized (unlike in main).
+      externalizeDeps: {
+        exclude: [...bundleWorkspace.exclude, '@better-auth/electron'],
+      },
     },
   },
   renderer: {
