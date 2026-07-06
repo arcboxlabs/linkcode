@@ -11,7 +11,13 @@ import {
   createClaudeHistoryEventMapper,
   mapClaudeStop,
 } from '../native/claude-code';
-import { CodexAdapter, mapCodexStatus, mapCodexUsage } from '../native/codex';
+import {
+  CodexAdapter,
+  decisionFromOutcome,
+  diffContentFromUnified,
+  mapCodexItemStatus,
+  mapCodexTokenUsage,
+} from '../native/codex';
 import { contentToText, toolKindFromName } from '../util';
 
 describe('contentToText', () => {
@@ -293,19 +299,72 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
 });
 
 describe('codex mappers', () => {
-  it('passes status through', () => {
-    expect(mapCodexStatus('in_progress')).toBe('in_progress');
-    expect(mapCodexStatus('failed')).toBe('failed');
+  it('maps item statuses, folding declined into failed', () => {
+    expect(mapCodexItemStatus('inProgress')).toBe('in_progress');
+    expect(mapCodexItemStatus('completed')).toBe('completed');
+    expect(mapCodexItemStatus('failed')).toBe('failed');
+    expect(mapCodexItemStatus('declined')).toBe('failed');
+    expect(mapCodexItemStatus(undefined)).toBe('in_progress');
   });
-  it('maps usage fields', () => {
+  it('maps token usage breakdown fields', () => {
     expect(
-      mapCodexUsage({
-        input_tokens: 10,
-        output_tokens: 20,
-        cached_input_tokens: 3,
-        reasoning_output_tokens: 5,
+      mapCodexTokenUsage({
+        totalTokens: 38,
+        inputTokens: 10,
+        cachedInputTokens: 3,
+        outputTokens: 20,
+        reasoningOutputTokens: 5,
       }),
     ).toEqual({ inputTokens: 10, outputTokens: 20, cacheReadTokens: 3 });
+  });
+  it('maps permission outcomes to approval decisions', () => {
+    expect(decisionFromOutcome({ outcome: 'selected', optionId: 'allow' })).toBe('accept');
+    expect(decisionFromOutcome({ outcome: 'selected', optionId: 'allow_always' })).toBe(
+      'acceptForSession',
+    );
+    expect(decisionFromOutcome({ outcome: 'selected', optionId: 'reject' })).toBe('decline');
+    expect(decisionFromOutcome({ outcome: 'cancelled' })).toBe('cancel');
+  });
+});
+
+describe('diffContentFromUnified', () => {
+  it('splits hunks into old/new sides with context', () => {
+    const diff = [
+      'diff --git a/src/a.ts b/src/a.ts',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1,3 +1,3 @@',
+      ' const a = 1;',
+      '-const b = 2;',
+      '+const b = 3;',
+      ' const c = 4;',
+    ].join('\n');
+    expect(diffContentFromUnified('src/a.ts', diff)).toEqual([
+      {
+        type: 'diff',
+        path: 'src/a.ts',
+        oldText: 'const a = 1;\nconst b = 2;\nconst c = 4;',
+        newText: 'const a = 1;\nconst b = 3;\nconst c = 4;',
+      },
+    ]);
+  });
+  it('emits one block per hunk', () => {
+    const diff = ['@@ -1 +1 @@', '-a', '+b', '@@ -10 +10 @@', '-x', '+y'].join('\n');
+    expect(diffContentFromUnified('f', diff)).toEqual([
+      { type: 'diff', path: 'f', oldText: 'a', newText: 'b' },
+      { type: 'diff', path: 'f', oldText: 'x', newText: 'y' },
+    ]);
+  });
+  it('renders a pure insertion without oldText, like a Write', () => {
+    const diff = ['@@ -0,0 +1,2 @@', '+line 1', '+line 2', ''].join('\n');
+    expect(diffContentFromUnified('new.ts', diff)).toEqual([
+      { type: 'diff', path: 'new.ts', oldText: undefined, newText: 'line 1\nline 2' },
+    ]);
+  });
+  it('falls back to all-added content when no hunk header is present', () => {
+    expect(diffContentFromUnified('raw.txt', 'plain content')).toEqual([
+      { type: 'diff', path: 'raw.txt', newText: 'plain content' },
+    ]);
   });
 });
 

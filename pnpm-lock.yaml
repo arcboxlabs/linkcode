@@ -589,7 +589,7 @@ importers:
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../transport
-      '@openai/codex-sdk':
+      '@openai/codex':
         specifier: ^0.140.0
         version: 0.140.0
       '@opencode-ai/sdk':
@@ -2892,10 +2892,6 @@ packages:
 
   '@nolyfill/shared@1.0.44':
     resolution: {integrity: sha512-NI1zxDh4LYL7PYlKKCwojjuc5CEZslywrOTKBNyodjmWjRiZ4AlCMs3Gp+zDoPQPNkYCSQp/luNojHmJWWfCbw==}
-
-  '@openai/codex-sdk@0.140.0':
-    resolution: {integrity: sha512-sHErDmCss08GMFo3FYVDFtVYiDpf1f3VRdhB4PBILBauZVYuFVYr3INvf6xc6t+oD2MbjuU+gtrw0it9aGesdA==}
-    engines: {node: '>=18'}
 
   '@openai/codex@0.140.0':
     resolution: {integrity: sha512-FMnN12kJzVPljMTYRydLCNgd0cXXmVasNSfq2PtS42RMEIxoQ3dHtMvmno35hu2tfwrKNAAPCm4s+2PaFTEBGg==}
@@ -11642,10 +11638,6 @@ snapshots:
       '@nolyfill/shared': 1.0.44
 
   '@nolyfill/shared@1.0.44': {}
-
-  '@openai/codex-sdk@0.140.0':
-    dependencies:
-      '@openai/codex': 0.140.0
 
   '@openai/codex@0.140.0':
     optionalDependencies:

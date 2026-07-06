@@ -20,7 +20,7 @@ export default defineConfig({
   // node_modules at runtime. `ws` (via @linkcode/transport/server) is externalized for the same reason.
   external: [
     '@anthropic-ai/claude-agent-sdk',
-    '@openai/codex-sdk',
+    '@openai/codex',
     '@opencode-ai/sdk',
     '@earendil-works/pi-coding-agent',
     'ws',
