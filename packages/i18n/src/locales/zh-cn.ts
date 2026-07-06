@@ -35,6 +35,9 @@ export const zhCN = {
       label: '子代理',
       steps: '{count} 步',
       viewTranscript: '查看完整转录',
+      viewerTitle: '子代理',
+      empty: '本会话还没有子代理',
+      failedBadge: '失败',
     },
     toolGroup: {
       explore: '探索',

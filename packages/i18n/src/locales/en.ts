@@ -37,6 +37,9 @@ export const en = {
       label: 'Subagent',
       steps: '{count} steps',
       viewTranscript: 'View full transcript',
+      viewerTitle: 'Subagents',
+      empty: 'No subagents in this conversation yet',
+      failedBadge: 'Failed',
     },
     toolGroup: {
       explore: 'Explored',

@@ -1,6 +1,6 @@
 import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ActivityGroup } from './activity-group';
 import type { TimelineEntry } from './activity-groups';
@@ -23,6 +23,7 @@ import { assistantTurnText, latestReceivedAt } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
 import { SubagentCard } from './subagent-card';
+import { SubagentViewer } from './subagent-viewer';
 import { partitionSubagentItems } from './subagents';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
@@ -55,6 +56,9 @@ export function ConversationView({
   const t = useTranslations('workbench.conversation');
   const tk = useTranslations('workbench.agentKind');
 
+  // Transient viewer state: which subagent's full transcript is open in the modal (null = closed).
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+
   const { items } = conversation;
 
   if (items.length === 0) {
@@ -82,6 +86,13 @@ export function ConversationView({
     ),
   );
   const segments = splitTurnSegments(conversationFlowItems(items));
+  // Conversation-wide view of the same parent→children relation the per-segment partitions see
+  // (a subagent never outlives its turn), for the cross-conversation viewer rail.
+  const subagentTasks = items.filter(
+    (item): item is Extract<ConversationItem, { kind: 'tool' }> =>
+      item.kind === 'tool' && item.toolCall.kind === 'task',
+  );
+  const allSubagentChildren = partitionSubagentItems(items).childrenByParent;
 
   const renderEntry = (
     entry: TimelineEntry,
@@ -94,6 +105,7 @@ export function ConversationView({
           awaitingApproval={awaitingApproval}
           declined={declined}
           items={subagentChildren.get(entry.item.toolCall.toolCallId) ?? []}
+          onExpand={setExpandedTaskId}
           TerminalBlockComponent={TerminalBlockComponent}
           toolCall={entry.item.toolCall}
         />
@@ -222,6 +234,19 @@ export function ConversationView({
         )}
       </ConversationContent>
       <ConversationScrollButton />
+      <SubagentViewer
+        awaitingApproval={awaitingApproval}
+        childrenByParent={allSubagentChildren}
+        declined={declined}
+        onOpenChange={(open) => {
+          if (!open) setExpandedTaskId(null);
+        }}
+        onSelect={setExpandedTaskId}
+        open={expandedTaskId !== null}
+        selectedId={expandedTaskId}
+        tasks={subagentTasks}
+        TerminalBlockComponent={TerminalBlockComponent}
+      />
     </Conversation>
   );
 }
