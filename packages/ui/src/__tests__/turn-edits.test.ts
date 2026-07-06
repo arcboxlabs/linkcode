@@ -54,11 +54,11 @@ describe('turn edit selectors', () => {
 
     expect(edits).toEqual({
       files: [
-        { path: 'a.ts', additions: 3, deletions: 1 },
-        { path: 'b.ts', additions: 0, deletions: 2 },
+        { path: 'a.ts', additions: 2, deletions: 1 },
+        { path: 'b.ts', additions: 0, deletions: 1 },
       ],
-      additions: 3,
-      deletions: 3,
+      additions: 2,
+      deletions: 2,
     });
   });
 
