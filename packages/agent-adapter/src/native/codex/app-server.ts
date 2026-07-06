@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { env as processEnv } from 'node:process';
 import { createInterface } from 'node:readline';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { noop } from 'foxts/noop';
 import { isRecord } from '../../history-util';
 
 /**
@@ -89,12 +90,15 @@ interface PendingRequest {
 /** Handler for a server→client request (approvals); the resolved value is sent back as `result`. */
 export type ServerRequestHandler = (params: unknown) => Promise<unknown>;
 
+const STDERR_TAIL_LIMIT = 2048;
+
 export interface CodexAppServerOptions {
   /** Extra environment for the subprocess (e.g. CODEX_API_KEY); merged over the inherited env. */
   env?: Record<string, string>;
   onNotification: (method: string, params: unknown) => void;
-  /** Called once when the subprocess exits, with null code on signal kills. */
-  onExit: (code: number | null) => void;
+  /** Called once when the subprocess exits, with null code on signal kills and the tail of the
+   * process's stderr as diagnostic detail. */
+  onExit: (code: number | null, stderrTail: string) => void;
 }
 
 export class CodexAppServer {
@@ -102,6 +106,7 @@ export class CodexAppServer {
   private readonly pending = new Map<number, PendingRequest>();
   private readonly requestHandlers = new Map<string, ServerRequestHandler>();
   private closed = false;
+  private stderrTail = '';
 
   private constructor(
     private readonly child: ChildProcessWithoutNullStreams,
@@ -109,10 +114,20 @@ export class CodexAppServer {
   ) {
     const rl = createInterface({ input: child.stdout });
     rl.on('line', (line) => this.handleLine(line));
+    // stdin errors (EPIPE when the process dies mid-write) must not crash the host; the 'exit'
+    // handler is what surfaces the failure.
+    child.stdin.on('error', noop);
+    // stderr must be drained or a chatty process eventually fills the OS pipe buffer and stalls;
+    // keep only a small tail for diagnostics.
+    child.stderr.on('data', (chunk: Buffer) => {
+      this.stderrTail = (this.stderrTail + chunk.toString()).slice(-STDERR_TAIL_LIMIT);
+    });
     child.on('error', (err) => this.failAllPending(err));
     child.on('exit', (code) => {
-      this.failAllPending(new Error(`codex: app-server exited (code ${String(code)})`));
-      if (!this.closed) opts.onExit(code);
+      this.failAllPending(
+        new Error(`codex: app-server exited (code ${String(code)}) ${this.stderrTail}`.trim()),
+      );
+      if (!this.closed) opts.onExit(code, this.stderrTail.trim());
     });
   }
 
