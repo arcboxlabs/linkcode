@@ -32,6 +32,8 @@ export type ConversationItem = (
       role: 'user' | 'assistant';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
+      parentToolCallId?: string;
     }
   | {
       kind: 'reasoning';
@@ -39,6 +41,7 @@ export type ConversationItem = (
       turnId: ConversationTurnId;
       blocks: ContentBlock[];
       isStreaming: boolean;
+      parentToolCallId?: string;
     }
   | { kind: 'tool'; id: string; turnId: ConversationTurnId; toolCall: ToolCall }
   | { kind: 'plan'; id: string; turnId: ConversationTurnId; plan: Plan }
@@ -139,6 +142,7 @@ export function createConversationBuilder(): ConversationBuilder {
     messageId: string,
     block: ContentBlock,
     receivedAt: number | undefined,
+    parentToolCallId: string | undefined,
   ): void => {
     const existing = messageIndex.get(messageId);
     if (existing !== undefined) {
@@ -160,6 +164,7 @@ export function createConversationBuilder(): ConversationBuilder {
         role: 'assistant',
         blocks: [block],
         isStreaming: false,
+        parentToolCallId,
         receivedAt,
       });
     } else {
@@ -169,6 +174,7 @@ export function createConversationBuilder(): ConversationBuilder {
         turnId: currentTurnId,
         blocks: [block],
         isStreaming: false,
+        parentToolCallId,
         receivedAt,
       });
     }
@@ -193,10 +199,22 @@ export function createConversationBuilder(): ConversationBuilder {
         break;
       }
       case 'agent-message-chunk':
-        openAgentStream('message', event.messageId, event.content, receivedAt);
+        openAgentStream(
+          'message',
+          event.messageId,
+          event.content,
+          receivedAt,
+          event.parentToolCallId,
+        );
         break;
       case 'agent-thought-chunk':
-        openAgentStream('reasoning', event.messageId, event.content, receivedAt);
+        openAgentStream(
+          'reasoning',
+          event.messageId,
+          event.content,
+          receivedAt,
+          event.parentToolCallId,
+        );
         break;
 
       case 'tool-call': {
