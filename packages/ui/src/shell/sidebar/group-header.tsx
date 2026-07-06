@@ -223,8 +223,12 @@ export function ThreadGroupHeader({
                 )}
                 {onToggleHistory && (
                   <DropdownMenuCheckboxItem checked={historyOpen} onCheckedChange={onToggleHistory}>
-                    <HistoryIcon />
-                    {t('importHistoryTitle')}
+                    {/* Checkbox items lay children in a plain grid cell; wrap so the leading icon
+                        sits inline with the label instead of stacking above it. */}
+                    <span className="flex items-center gap-2">
+                      <HistoryIcon />
+                      {t('importHistoryTitle')}
+                    </span>
                   </DropdownMenuCheckboxItem>
                 )}
                 {onArchive && (
