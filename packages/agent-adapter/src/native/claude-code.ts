@@ -779,17 +779,27 @@ export function createClaudeHistoryEventMapper(
     if (message.type !== 'user' && message.type !== 'assistant') return [];
     const events: AgentHistoryEvent[] = [];
     const blocks = messageContentBlocks(message.message);
+    // Subagent transcript rows carry the spawning Task's tool_use id, same as live frames.
+    const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
-      const text = textHistoryEvent(historyId, 'assistant', message.uuid, message.message);
+      const text = textHistoryEvent(
+        historyId,
+        'assistant',
+        message.uuid,
+        message.message,
+        undefined,
+        parent,
+      );
       if (text) events.push(text);
       for (const block of blocks) {
         if (!isToolUseBlock(block)) continue;
         events.push(
           toolEvent({
             toolCallId: block.id,
+            parentToolCallId: parent,
             title: block.name,
-            kind: toolKindFromName(block.name),
+            kind: claudeToolKind(block.name),
             status: 'in_progress',
             content: editDiffContent(block.name, block.input) ?? [],
             rawInput: block.input,
@@ -805,6 +815,7 @@ export function createClaudeHistoryEventMapper(
       events.push(
         toolEvent({
           toolCallId: block.tool_use_id,
+          parentToolCallId: parent ?? existing?.parentToolCallId,
           // The announce can sit beyond this read's page window; fall back to emitTool's
           // first-sight defaults rather than dropping the settle.
           title: existing?.title ?? block.tool_use_id,
@@ -817,6 +828,9 @@ export function createClaudeHistoryEventMapper(
         }),
       );
     }
+    // A subagent's user rows are only tool_results plus its injected prompt — never something the
+    // user typed; emitting that prompt would fake a user turn inside the nested transcript.
+    if (parent) return events;
     // Tool-result rows are synthetic user messages; only what remains after removing the
     // tool_results is a prompt the user actually typed.
     const promptValue =
