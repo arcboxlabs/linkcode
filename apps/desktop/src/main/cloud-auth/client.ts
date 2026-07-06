@@ -1,23 +1,18 @@
 import { electronClient } from '@better-auth/electron/client';
 import { createAuthClient } from 'better-auth/client';
 import { BrowserWindow } from 'electron';
-import { IS_DEV_SHELL } from '../constants';
 import { createSafeStorage } from './storage';
 
 /**
  * LinkCode Cloud (linkcodehq) endpoints. The desktop app authenticates against the Hono API
  * (`baseURL`) but the sign-in flow itself runs in the system browser on the web origin
  * (`signInURL`), which bounces through the central IdP and deep-links back via `linkcode://`.
- * Env overrides let a developer point at a local/staging stack; otherwise dev shells hit
- * localhost and released builds hit production.
+ * Production is the default even for dev shells (there is no local cloud stack); the env
+ * overrides point a developer at a local/staging server when they do run one.
  */
-const CLOUD_API_URL =
-  process.env.LINKCODE_CLOUD_API_URL ??
-  (IS_DEV_SHELL ? 'http://localhost:3001' : 'https://api.linkcode.ai');
+const CLOUD_API_URL = process.env.LINKCODE_CLOUD_API_URL ?? 'https://api.linkcode.ai';
 
-const CLOUD_SIGN_IN_URL =
-  process.env.LINKCODE_CLOUD_SIGN_IN_URL ??
-  (IS_DEV_SHELL ? 'http://localhost:3000/sign-in' : 'https://app.linkcode.ai/sign-in');
+const CLOUD_SIGN_IN_URL = process.env.LINKCODE_CLOUD_SIGN_IN_URL ?? 'https://linkcode.ai/sign-in';
 
 /** The custom protocol registered for OAuth deep-link callbacks; trusted by linkcodehq. */
 export const CLOUD_AUTH_SCHEME = 'linkcode';
