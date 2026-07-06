@@ -82,6 +82,11 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.stopSession(sessionId));
   }
 
+  /** Stop the session if live and remove its persisted record; provider-local history stays re-importable. */
+  deleteSession(sessionId: SessionId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.deleteSession(sessionId));
+  }
+
   /** Resume a persisted (cold) session by its Link Code id; resolves with the same id. */
   resumeSession(sessionId: SessionId): RequestResult<SessionId> {
     return toResult(this.raw.resumeSession(sessionId));

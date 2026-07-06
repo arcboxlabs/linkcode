@@ -219,6 +219,14 @@ export class LinkCodeClient {
     });
   }
 
+  /** Stop the session if live and remove its persisted record; provider-local history stays re-importable. */
+  deleteSession(sessionId: SessionId): Promise<RequestAck> {
+    return this.control.deleteSession(sessionId).then((ack) => {
+      this.events.clearSession(sessionId);
+      return ack;
+    });
+  }
+
   getProviderConfig(): Promise<ProvidersConfig> {
     return this.control.getProviderConfig();
   }

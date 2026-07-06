@@ -315,7 +315,7 @@ function WorkbenchSessionSurface({
       errorMessage={errorMessage}
       pinnedSessionIds={pinnedSessionIds}
       onSelectSession={sessions.select}
-      onStopSession={sessions.stop}
+      onCloseSession={sessions.close}
       onToggleSessionPinned={toggleSessionPinned}
       onReorderGroups={handleReorderGroups}
       onReorderThreads={handleReorderThreads}

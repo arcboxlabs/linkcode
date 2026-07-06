@@ -1,5 +1,5 @@
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
-import { listSessions, resumeSession, startSession, stopSession } from '@linkcode/sdk';
+import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
 import { useMemo } from 'react';
 import { useData, useMutation } from '../runtime/tayori';
@@ -14,7 +14,8 @@ export interface WorkbenchSessions {
   isLoading: boolean;
   select: (id: SessionId) => void;
   create: (opts: { kind: AgentKind; cwd: string }) => void;
-  stop: (id: SessionId) => void;
+  /** Stop the session if live and remove it from the list; re-importable from provider history. */
+  close: (id: SessionId) => void;
   /** Revalidate the session list — the cue for a mutation made outside this hook (e.g. an import). */
   refresh: () => void;
 }
@@ -27,7 +28,7 @@ export interface WorkbenchSessions {
 export function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSessions {
   const { data: remoteSessions, isLoading, mutate } = useData(listSessions, {});
   const createMutation = useMutation(startSession, { onError });
-  const stopMutation = useMutation(stopSession, { onError });
+  const closeMutation = useMutation(deleteSession, { onError });
   const resumeMutation = useMutation(resumeSession, { onError });
   const selectedId = useSessionSelectionStore((state) => state.selectedId);
   const setSelectedId = useSessionSelectionStore((state) => state.setSelectedId);
@@ -68,8 +69,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
       .catch(noop);
   }
 
-  function stop(id: SessionId): void {
-    void stopMutation
+  function close(id: SessionId): void {
+    void closeMutation
       .trigger({ sessionId: id })
       .then(() => {
         void mutate();
@@ -88,7 +89,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     isLoading,
     select,
     create,
-    stop,
+    close,
     refresh,
   };
 }

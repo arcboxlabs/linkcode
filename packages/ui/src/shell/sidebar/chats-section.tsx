@@ -25,7 +25,7 @@ export interface ChatsSectionProps {
   activeId: SessionId | null;
   pinnedSessionIds: readonly SessionId[];
   onSelect: (id: SessionId) => void;
-  onStop: (id: SessionId) => void;
+  onClose: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
@@ -48,7 +48,7 @@ export function ChatsSection({
   activeId,
   pinnedSessionIds,
   onSelect,
-  onStop,
+  onClose,
   onToggleSessionPinned,
   onCreate,
   onTogglePreviewExpanded,
@@ -93,7 +93,7 @@ export function ChatsSection({
               sortGroup={sortKey}
               session={session}
               onSelect={() => onSelect(session.sessionId)}
-              onStop={() => onStop(session.sessionId)}
+              onClose={() => onClose(session.sessionId)}
               onTogglePin={() => onToggleSessionPinned(session.sessionId)}
             />
           ))}

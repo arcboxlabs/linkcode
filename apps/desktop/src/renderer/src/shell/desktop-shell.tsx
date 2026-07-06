@@ -59,7 +59,7 @@ export function DesktopShell({
   errorMessage,
   pinnedSessionIds,
   onSelectSession,
-  onStopSession,
+  onCloseSession,
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
@@ -510,7 +510,7 @@ export function DesktopShell({
                 BranchStatusComponent={BranchStatusComponent}
                 HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
-                onStop={onStopSession}
+                onClose={onCloseSession}
                 onToggleSessionPinned={onToggleSessionPinned}
                 onReorderGroups={onReorderGroups}
                 onReorderThreads={onReorderThreads}

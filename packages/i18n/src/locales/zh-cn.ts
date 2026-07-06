@@ -184,7 +184,7 @@ export const zhCN = {
       chatsEmptyHint: '暂无聊天',
       pinThread: '置顶线程',
       unpinThread: '取消置顶',
-      stopThread: '停止线程',
+      closeThread: '关闭线程',
       workspaceEmptyTitle: '暂无工作区',
       chooseWorkspaceTitle: '选择工作区',
       chooseDirectory: '选择目录…',

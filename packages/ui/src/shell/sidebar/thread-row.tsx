@@ -27,7 +27,8 @@ export interface ThreadRowProps {
   /** The group's `collapseKey` — scopes dragging to the row's own group. */
   sortGroup: string;
   onSelect: () => void;
-  onStop: () => void;
+  /** Stop the session if live and remove it from the list; re-importable from provider history. */
+  onClose: () => void;
   onTogglePin: () => void;
 }
 
@@ -39,7 +40,7 @@ export function ThreadRow({
   sortIndex,
   sortGroup,
   onSelect,
-  onStop,
+  onClose,
   onTogglePin,
 }: ThreadRowProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
@@ -100,9 +101,9 @@ export function ThreadRow({
         </button>
         <button
           type="button"
-          aria-label={t('stopThread')}
-          title={t('stopThread')}
-          onClick={onStop}
+          aria-label={t('closeThread')}
+          title={t('closeThread')}
+          onClick={onClose}
           className={cn(ROW_ACTION_CLASS, 'opacity-0 group-hover:opacity-100')}
         >
           <XIcon className="size-3.5" />

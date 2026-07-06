@@ -76,7 +76,7 @@ export function SessionSidebar({
   footer,
   className,
   onSelect,
-  onStop,
+  onClose,
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
@@ -128,7 +128,7 @@ export function SessionSidebar({
             activeId={activeId}
             pinnedSessionIds={pinnedSessionIds}
             onSelect={onSelect}
-            onStop={onStop}
+            onClose={onClose}
             onToggleSessionPinned={onToggleSessionPinned}
             onReorderGroups={onReorderGroups}
             onReorderThreads={onReorderThreads}

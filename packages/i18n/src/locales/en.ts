@@ -186,7 +186,7 @@ export const en = {
       chatsEmptyHint: 'No chats yet',
       pinThread: 'Pin thread',
       unpinThread: 'Unpin thread',
-      stopThread: 'Stop thread',
+      closeThread: 'Close thread',
       workspaceEmptyTitle: 'No workspaces yet',
       chooseWorkspaceTitle: 'Choose a workspace',
       chooseDirectory: 'Choose directory…',
