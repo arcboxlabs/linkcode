@@ -23,7 +23,7 @@ import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
-import { useCloudAuthStore } from '../cloud-auth/store';
+import { useCloudAccount } from '../cloud-auth/use-cloud-account';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
@@ -126,14 +126,7 @@ export function DesktopShell({
       resetBottomPanelSize: state.resetBottomPanelSize,
     })),
   );
-  const cloudAuth = useCloudAuthStore(
-    useShallow((state) => ({
-      user: state.user,
-      authenticating: state.authenticating,
-      signIn: state.signIn,
-      signOut: state.signOut,
-    })),
-  );
+  const cloudAuth = useCloudAccount();
   const shellRootRef = useRef<HTMLDivElement | null>(null);
   const { current: shellStyle } = useSingleton<DesktopShellStyle>(() =>
     createDesktopShellStyle(shellState),
@@ -567,10 +560,11 @@ export function DesktopShell({
                     state={tConnection('connected')}
                     appVersion={appVersion}
                     pendingPermissionCount={conversation.pendingPermissionIds.length}
-                    account={cloudAuth.user}
+                    account={cloudAuth.account}
                     authPending={cloudAuth.authenticating}
                     onSignIn={cloudAuth.signIn}
                     onSignOut={cloudAuth.signOut}
+                    onManageAccount={cloudAuth.manageAccount}
                     onOpenSettings={onOpenSettings}
                   />
                 }

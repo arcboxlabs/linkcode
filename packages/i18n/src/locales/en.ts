@@ -201,6 +201,7 @@ export const en = {
       importHistoryTitle: 'Import history',
       organization: 'Organization',
       signInCloud: 'Sign in to LinkCode Cloud',
+      manageAccount: 'Manage account',
       signOut: 'Sign out',
       historyEmptyTitle: 'No history to import',
       historyEmptyHint: 'This workspace has no saved conversations yet.',
