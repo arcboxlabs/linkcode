@@ -43,6 +43,9 @@ jobs:
     name: Publish release
     needs: build
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    # R2 credentials live in the `release` environment (same gate as the signing secrets) —
+    # without this reference the job resolves them as empty.
+    environment: release
     permissions:
       contents: write # required to create the GitHub Release
     env:
