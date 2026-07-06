@@ -10,7 +10,7 @@ import { createSafeStorage } from './storage';
  * Production is the default even for dev shells (there is no local cloud stack); the env
  * overrides point a developer at a local/staging server when they do run one.
  */
-const CLOUD_API_URL = process.env.LINKCODE_CLOUD_API_URL ?? 'https://api.linkcode.ai';
+export const CLOUD_API_URL = process.env.LINKCODE_CLOUD_API_URL ?? 'https://api.linkcode.ai';
 
 const CLOUD_SIGN_IN_URL = process.env.LINKCODE_CLOUD_SIGN_IN_URL ?? 'https://linkcode.ai/sign-in';
 

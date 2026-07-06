@@ -6,6 +6,7 @@ export * from './app/connection-state';
 export * from './app/workbench-app';
 export * from './app/workbench-providers';
 export * from './assets/hooks';
+export * from './cloud';
 export * from './files/hooks';
 export * from './files/locate';
 export * from './files/panel';
