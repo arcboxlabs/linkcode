@@ -212,6 +212,15 @@ export class LinkCodeClient {
     return this.control.setMode(sessionId, modeId);
   }
 
+  setApprovalPolicy(sessionId: SessionId, policyId: string): Promise<RequestAck> {
+    return this.control.setApprovalPolicy(sessionId, policyId);
+  }
+
+  /** See {@link ControlChannel.attachSession}. */
+  attachSession(sessionId: SessionId): void {
+    this.control.attachSession(sessionId);
+  }
+
   setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
     return this.control.setModel(sessionId, model);
   }

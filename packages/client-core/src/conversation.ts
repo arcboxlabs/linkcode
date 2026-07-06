@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  ApprovalPolicyState,
   ContentBlock,
   PermissionOption,
   Plan,
@@ -68,6 +69,9 @@ export interface ConversationViewModel {
   usage: TokenUsage | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
+  /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
+   * null (or an empty list) means the agent has no switchable policies and the UI hides the menu. */
+  approvalPolicy: ApprovalPolicyState | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -123,6 +127,7 @@ export function createConversationBuilder(): ConversationBuilder {
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
   let currentModeId: string | null = null;
+  let approvalPolicy: ApprovalPolicyState | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
 
@@ -246,6 +251,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'current-mode-update':
         currentModeId = event.currentModeId;
         break;
+      case 'approval-policy-update':
+        approvalPolicy = event.state;
+        break;
       case 'status':
         status = event.status;
         break;
@@ -313,6 +321,7 @@ export function createConversationBuilder(): ConversationBuilder {
       status,
       usage,
       currentModeId,
+      approvalPolicy,
       stopReason,
       pendingPermissionIds,
     };

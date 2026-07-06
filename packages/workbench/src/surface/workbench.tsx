@@ -22,10 +22,11 @@ import type {
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
+import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
@@ -116,13 +117,22 @@ function WorkbenchSessionSurface({
   const permissionMutation = useMutation(respondPermission, { onError });
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  // Workflow-mode switches ride the generic input op; the mode reflects via current-mode-update.
-  const modeMutation = useMutation(sendInput, { onError });
+  // Workflow-mode and approval-policy switches ride the generic input op; each reflects back via
+  // its own session event (current-mode-update / approval-policy-update).
+  const inputMutation = useMutation(sendInput, { onError });
   const [permissionDecisions, setPermissionDecisions] = useState(
     () => new Map<string, PermissionDecision>(),
   );
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
+  const sdkClient = useWorkbenchSdkClient();
+  const activeSessionId = sessions.activeId;
+  // Announce observation of the focused session so the daemon replays buffered per-session state
+  // (the approval-policy advertisement) this client missed — e.g. a reload attaching to an
+  // already-live session. Fire-and-forget; live events cover everything after this point.
+  useEffect(() => {
+    if (activeSessionId) sdkClient.raw.attachSession(activeSessionId);
+  }, [sdkClient, activeSessionId]);
   const {
     data: workspaces,
     isLoading: workspacesLoading,
@@ -218,8 +228,17 @@ function WorkbenchSessionSurface({
     onClearError();
     // Unlike model/effort, the composer doesn't await this to reflect the pick locally: the active
     // mode only ever comes back via current-mode-update, and failures surface in the error banner.
-    return modeMutation
+    return inputMutation
       .trigger({ sessionId: sessions.activeId, input: { type: 'set-mode', modeId } })
+      .then(noop);
+  }
+
+  function handleApprovalPolicyChange(policyId: string): Promise<void> {
+    if (!sessions.activeId) return Promise.reject(new Error('No active session'));
+    onClearError();
+    // Same contract as handleModeChange: the pick reflects back via approval-policy-update.
+    return inputMutation
+      .trigger({ sessionId: sessions.activeId, input: { type: 'set-approval-policy', policyId } })
       .then(noop);
   }
 
@@ -391,6 +410,7 @@ function WorkbenchSessionSurface({
       HistoryComponent={RuntimeWorkspaceHistory}
       onDismissError={onClearError}
       onModeChange={handleModeChange}
+      onApprovalPolicyChange={handleApprovalPolicyChange}
       onModelChange={handleModelChange}
       onEffortChange={handleEffortChange}
     />

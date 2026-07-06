@@ -35,6 +35,7 @@ export interface ConversationSurfaceProps {
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
   onOpenPreviewUrl?: (url: string) => void;
   onModeChange?: (modeId: string) => Promise<void>;
+  onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
@@ -60,6 +61,7 @@ export function ConversationSurface({
   onHostArtifact,
   onOpenPreviewUrl,
   onModeChange,
+  onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
 }: ConversationSurfaceProps): React.ReactNode {
@@ -94,9 +96,8 @@ export function ConversationSurface({
         respondingPermissions={respondingPermissions}
         onRespondPermission={onRespondPermission}
       />
-      {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) and the
-          approval-policy state/handler (approval-policy.ts) once the daemon exposes them; the
-          composer stubs both lists today. */}
+      {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) once the daemon
+          emits it; the composer stubs the workflow-mode list today. */}
       <Composer
         handleRef={composerRef}
         agentLabel={agentLabel}
@@ -104,9 +105,11 @@ export function ConversationSurface({
         disabled={disabled}
         isRunning={isRunning}
         currentModeId={conversation.currentModeId}
+        approvalPolicy={conversation.approvalPolicy}
         onSend={onSendPrompt}
         onStop={onStopTurn}
         onModeChange={onModeChange}
+        onApprovalPolicyChange={onApprovalPolicyChange}
         onModelChange={onModelChange}
         onEffortChange={onEffortChange}
       />

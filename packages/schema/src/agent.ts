@@ -10,6 +10,8 @@ import { ContentBlockSchema } from './content';
 import { PermissionOutcomeSchema, PermissionRequestSchema } from './permission';
 import { PlanSchema } from './plan';
 import {
+  ApprovalPolicyIdSchema,
+  ApprovalPolicyStateSchema,
   McpServerSchema,
   SessionModeIdSchema,
   SessionStatusSchema,
@@ -61,6 +63,9 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cancel') }),
   /** Switch the active session mode. */
   z.object({ type: z.literal('set-mode'), modeId: SessionModeIdSchema }),
+  /** Switch the approval policy (the permission/safety axis, orthogonal to `set-mode`). Only
+   * adapters that advertise policies via `approval-policy-update` accept this; others reject it. */
+  z.object({ type: z.literal('set-approval-policy'), policyId: ApprovalPolicyIdSchema }),
   /** Switch the model for the session, going forward (vendor-specific id). Only adapters that
    * support changing the model on an already-running session accept this; others reject it. */
   z.object({ type: z.literal('set-model'), model: z.string().min(1) }),
@@ -113,6 +118,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // ── Planning / meta ──
   z.object({ type: z.literal('plan'), plan: PlanSchema }),
   z.object({ type: z.literal('current-mode-update'), currentModeId: SessionModeIdSchema }),
+  /** Full approval-policy state (advertised list + current), at session start and after switches. */
+  z.object({ type: z.literal('approval-policy-update'), state: ApprovalPolicyStateSchema }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),

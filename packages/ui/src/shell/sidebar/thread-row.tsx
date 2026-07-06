@@ -84,7 +84,9 @@ export function ThreadRow({
             )}
           />
         </span>
-        <span className="min-w-0 flex-1 truncate font-medium text-sm">{title}</span>
+        {/* No font-medium: IBM Plex Sans lacks CJK, so 500 falls back to PingFang
+            Medium and mixed-script titles read artificially bold. */}
+        <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
       </button>
       <div className="-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0.5">
         <button

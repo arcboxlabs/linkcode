@@ -9,6 +9,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
+  ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
   MessageId,
@@ -100,6 +101,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       case 'set-mode':
         await this.onSetMode(input.modeId);
         return;
+      case 'set-approval-policy':
+        await this.onSetApprovalPolicy(input.policyId);
+        return;
       case 'set-model':
         await this.onSetModel(input.model);
         return;
@@ -139,6 +143,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected onSetMode(_modeId: string): Promise<void> {
     return Promise.resolve();
+  }
+  /** Default: reject. Only adapters that advertise approval policies override this. */
+  protected onSetApprovalPolicy(_policyId: string): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: changing the approval policy is not supported`));
   }
   /** Default: reject. Only adapters that can rebind the model on a live session override this. */
   protected onSetModel(_model: string): Promise<void> {
@@ -233,6 +241,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected emitUsage(usage: TokenUsage): void {
     this.emit({ type: 'token-usage', usage });
+  }
+  protected emitApprovalPolicy(state: ApprovalPolicyState): void {
+    this.emit({ type: 'approval-policy-update', state });
   }
   protected emitStop(stopReason: StopReason): void {
     this.emit({ type: 'stop', stopReason });

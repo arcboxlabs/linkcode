@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
+import type { AgentKind, ApprovalPolicyState, EffortLevel, SessionMode } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Command } from 'coss-ui/components/command';
 import { noop } from 'foxact/noop';
@@ -14,8 +14,6 @@ import {
 } from '../chat/prompt-input';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
-import type { ApprovalPolicyOption } from './approval-policy';
-import { STUB_APPROVAL_POLICIES } from './approval-policy';
 import type {
   ComposerCommandEntry,
   ComposerCommandSource,
@@ -65,17 +63,16 @@ export interface ComposerProps {
   /** Agent-advertised workflow modes (plan / goal / … — see session-modes.ts). Defaults to the
    * stub list until the backend emits the advertised set. */
   availableModes?: SessionMode[];
-  /** Approval policy options — the permission/safety axis (see approval-policy.ts). Defaults to
-   * the stub list until agents advertise their own. */
-  approvalPolicies?: ApprovalPolicyOption[];
+  /** The agent-advertised approval-policy state (the permission/safety axis), reflected from the
+   * session's `approval-policy-update` event. Absent or empty hides the policy menu. */
+  approvalPolicy?: ApprovalPolicyState | null;
   onSend: (text: string) => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
   onModeChange?: (modeId: string) => Promise<void>;
-  /** TODO(backend): the policy selection lives in composer-local state with no wire effect until
-   * the daemon exposes the approval-policy axis (see approval-policy.ts); this callback then
-   * sends the switch and the selection reflects back from session state. */
+  /** Sends the approval-policy switch (`set-approval-policy`); like `onModeChange`, the pick is
+   * reflected back via `approval-policy-update` — a rejected switch keeps the previous policy. */
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
    * the pick once this resolves — it stays on the previous model if the switch is rejected. */
@@ -103,7 +100,7 @@ export function Composer({
   mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
   availableModes = STUB_SESSION_MODES,
-  approvalPolicies = STUB_APPROVAL_POLICIES,
+  approvalPolicy,
   onSend,
   onStop,
   onModeChange,
@@ -140,10 +137,21 @@ export function Composer({
       ? value.slice(plusCommandStart, caret).toLowerCase()
       : '';
 
+  // An id the agent advertises on the approval-policy axis is owned there (claude-code's plan is a
+  // permission mode, mirroring Claude Desktop's single Mode menu) — drop its stub workflow twin.
+  const workflowModes = useMemo(
+    () =>
+      availableModes.filter(
+        (mode) =>
+          !approvalPolicy?.availablePolicies.some((policy) => policy.policyId === mode.modeId),
+      ),
+    [availableModes, approvalPolicy],
+  );
+
   const commandGroups = useMemo(
     () =>
       buildComposerCommandGroups({
-        availableModes,
+        availableModes: workflowModes,
         commandSource,
         currentModeId,
         labels: {
@@ -157,7 +165,7 @@ export function Composer({
         textTrigger,
       }),
     [
-      availableModes,
+      workflowModes,
       commandSource,
       currentModeId,
       mentionItems,
@@ -302,7 +310,7 @@ export function Composer({
   // approval-policy.ts). The active mode is server-reflected; failures land in the error banner,
   // so a rejected switch simply leaves the previous mode active.
   let matchedMode: SessionMode | null = null;
-  for (const mode of availableModes) {
+  for (const mode of workflowModes) {
     if (mode.modeId === currentModeId) matchedMode = mode;
   }
   const activeMode = matchedMode;
@@ -312,12 +320,9 @@ export function Composer({
     void onModeChange?.(target).catch(noop);
   }
 
-  // TODO(backend): local optimistic state only — replace with server-reflected session state once
-  // the daemon exposes the approval-policy axis; a rejected switch should then keep the old pick.
-  const [activePolicyId, setActivePolicyId] = useState<string | null>(null);
-
+  // Server-reflected like the workflow mode: the pick only shows once approval-policy-update
+  // echoes it back, so a rejected switch simply leaves the previous policy active.
   function selectPolicy(policyId: string): void {
-    setActivePolicyId(policyId);
     void onApprovalPolicyChange?.(policyId).catch(noop);
   }
 
@@ -408,12 +413,12 @@ export function Composer({
               <PromptInputFooter>
                 <PromptInputTools>
                   <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
-                  {approvalPolicies.length > 0 ? (
+                  {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
                     <ApprovalPolicyMenu
-                      activePolicyId={activePolicyId}
                       agentLabel={placeholderAgent}
+                      currentPolicyId={approvalPolicy.currentPolicyId}
                       disabled={disabled}
-                      policies={approvalPolicies}
+                      policies={approvalPolicy.availablePolicies}
                       onSelect={selectPolicy}
                     />
                   ) : null}

@@ -172,7 +172,8 @@ export function ThreadGroupHeader({
           )}
         >
           <FolderToggleIcon open={!collapsed} />
-          <span className="min-w-0 truncate font-medium">{title}</span>
+          {/* No font-medium: CJK falls back to PingFang Medium and reads bold. */}
+          <span className="min-w-0 truncate">{title}</span>
           {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
           <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
         </button>

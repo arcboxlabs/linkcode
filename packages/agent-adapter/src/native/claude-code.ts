@@ -1,9 +1,14 @@
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 import { env } from 'node:process';
 import type {
   CanUseTool,
+  PermissionMode,
   PermissionResult,
   Query,
   SDKMessage,
+  SDKPermissionDeniedMessage,
   SDKSessionInfo,
   SDKUserMessage,
   SessionMessage,
@@ -18,6 +23,8 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentHistorySession,
+  ApprovalPolicy,
+  ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
   PermissionOption,
@@ -54,6 +61,75 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ];
+
+/**
+ * The approval-policy axis claude-code advertises; ids map 1:1 onto the SDK's `PermissionMode` and
+ * names/order match Claude Desktop's own Mode menu. Claude models permission handling and plan as
+ * ONE axis, so `plan` rides this channel for claude-code (the generic `set-mode` workflow axis
+ * remains for agents like codex where plan is a workflow mode); the composer dedupes the stub
+ * workflow entry by id. Only `dontAsk` stays off the menu: its deny-by-default adds nothing over
+ * rejecting the asks `default` already raises.
+ */
+const APPROVAL_POLICIES = [
+  {
+    policyId: 'default',
+    name: 'Ask permissions',
+    description: 'Always ask before editing files and running commands.',
+  },
+  {
+    policyId: 'acceptEdits',
+    name: 'Accept edits',
+    description: 'Auto-approve file edits; still ask for everything else.',
+  },
+  {
+    policyId: 'plan',
+    name: 'Plan mode',
+    description: 'Read-only research; propose a plan before making changes.',
+  },
+  {
+    policyId: 'auto',
+    name: 'Auto mode',
+    description: 'A classifier approves routine actions and blocks risky or external ones.',
+  },
+  {
+    policyId: 'bypassPermissions',
+    name: 'Bypass permissions',
+    description: 'Skip all permission prompts in this workspace.',
+  },
+] as const satisfies ReadonlyArray<ApprovalPolicy & { policyId: PermissionMode }>;
+
+type ClaudeApprovalPolicyId = (typeof APPROVAL_POLICIES)[number]['policyId'];
+
+/**
+ * Resolve `permissions.defaultMode` from Claude settings, same precedence as the CLI
+ * (local > project > user). The SDK-driven CLI pins its startup mode to 'default' unless
+ * `--permission-mode` is passed — unlike the interactive CLI it does NOT apply the settings
+ * default itself (verified empirically against 0.3.179's vendored CLI, including with explicit
+ * `settingSources`) — so honoring the user's configured default is on the adapter.
+ */
+async function settingsDefaultMode(cwd: string): Promise<ClaudeApprovalPolicyId | undefined> {
+  const files = [
+    path.join(cwd, '.claude', 'settings.local.json'),
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(homedir(), '.claude', 'settings.json'),
+  ];
+  for (const file of files) {
+    let mode: unknown;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- precedence order is inherently sequential
+      const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+      mode =
+        isRecord(parsed) && isRecord(parsed.permissions)
+          ? parsed.permissions.defaultMode
+          : undefined;
+    } catch {
+      continue; // Missing or malformed settings scope — fall through to the next one.
+    }
+    const policy = APPROVAL_POLICIES.find((p) => p.policyId === mode);
+    if (policy) return policy.policyId;
+  }
+  return undefined;
+}
 
 /**
  * The `prompt` fed to a streaming-input `query()`: an `AsyncIterable<SDKUserMessage>` that stays open
@@ -154,6 +230,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private cancelling = false;
   /** The effort the session should run at; applied at `Query` creation and on live switches. */
   private effort: EffortLevel | undefined;
+  /** The approval policy the session runs under; applied at `Query` creation and on live switches.
+   * `undefined` = the user hasn't picked one — the CLI then resolves its own default (including
+   * `permissions.defaultMode` from the user's settings.json), reported back via the init message. */
+  private approvalPolicy: ClaudeApprovalPolicyId | undefined;
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
@@ -162,12 +242,30 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * diff. */
   private readonly pendingEditDiffs = new Map<string, ToolCallContent[]>();
 
-  protected async onStart(): Promise<void> {
+  protected async onStart(opts: StartOptions): Promise<void> {
     // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
     await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
+    this.emitApprovalPolicy(this.approvalPolicyState());
+  }
+
+  private approvalPolicyState(): ApprovalPolicyState {
+    return {
+      availablePolicies: [...APPROVAL_POLICIES],
+      currentPolicyId: this.approvalPolicy ?? 'default',
+    };
+  }
+
+  /** Adopt the effective mode the CLI reports (init message) — the authority when the user hasn't
+   * picked a policy, since the CLI resolves settings.json's `permissions.defaultMode` itself. */
+  private syncApprovalPolicy(mode: PermissionMode): void {
+    const policy = APPROVAL_POLICIES.find((p) => p.policyId === mode);
+    if (!policy || policy.policyId === this.approvalPolicy) return;
+    this.approvalPolicy = policy.policyId;
+    this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
   override async resumeHistory(
@@ -257,6 +355,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
+        // Omitted (undefined) until the user picks a policy, so the CLI's own default —
+        // settings.json `permissions.defaultMode` included — stays in charge (see syncApprovalPolicy).
+        permissionMode: this.approvalPolicy,
+        // Gate flag only — the effective mode stays `permissionMode` above. It must be set at
+        // startup for a later live switch to 'bypassPermissions' to be accepted at all.
+        allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
         ...(apiKey && { env: { ...env, ANTHROPIC_API_KEY: apiKey } }),
@@ -333,6 +437,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return;
     }
     await this.q.setModel(model);
+  }
+
+  /** Live switch rides the streaming-input control request `Query#setPermissionMode`; before the
+   * first prompt the `Query` doesn't exist yet, so the pick is only stashed and applied at creation
+   * via `options.permissionMode`. The new state reflects only after the CLI accepted the switch, so
+   * a rejected one (e.g. auto mode unavailable for the account) leaves the previous policy shown. */
+  protected override async onSetApprovalPolicy(policyId: string): Promise<void> {
+    const policy = APPROVAL_POLICIES.find((p) => p.policyId === policyId);
+    if (!policy) throw new Error(`claude-code: unknown approval policy: ${policyId}`);
+    if (this.q) await this.q.setPermissionMode(policy.policyId);
+    this.approvalPolicy = policy.policyId;
+    this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
   /** Effort switching has two channels. low–xhigh and `ultracode` switch live via the flag-settings
@@ -418,9 +534,33 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       case 'result':
         this.handleResult(msg);
         break;
+      case 'system':
+        if (msg.subtype === 'permission_denied') this.handlePermissionDenied(msg);
+        else if (msg.subtype === 'init') this.syncApprovalPolicy(msg.permissionMode);
+        break;
       default:
         break;
     }
+  }
+
+  /** A tool call auto-denied without an interactive ask (auto-mode classifier, deny rule, …) never
+   * reaches `canUseTool`; this SDK event is the only carrier of the decider's reason. Settle the
+   * announced tool as failed with that reason — the later `is_error` tool_result for the same id
+   * says only "denied" and is ignored by `emitTool`'s terminal-state guard anyway. */
+  private handlePermissionDenied(msg: SDKPermissionDeniedMessage): void {
+    const diff = this.pendingEditDiffs.get(msg.tool_use_id) ?? [];
+    this.pendingEditDiffs.delete(msg.tool_use_id);
+    const reason = msg.decision_reason ?? msg.message;
+    this.emitTool({
+      toolCallId: msg.tool_use_id,
+      title: msg.tool_name,
+      kind: toolKindFromName(msg.tool_name),
+      status: 'failed',
+      content: [
+        ...diff,
+        ...(reason ? [{ type: 'content' as const, content: textBlock(reason) }] : []),
+      ],
+    });
   }
 
   private handleStreamEvent(event: StreamEvent): void {

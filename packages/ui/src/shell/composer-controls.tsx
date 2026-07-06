@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel, SessionMode } from '@linkcode/schema';
+import type { AgentKind, ApprovalPolicy, EffortLevel, SessionMode } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -26,7 +26,6 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
 import type { ModelOption } from './agent-models';
-import type { ApprovalPolicyOption } from './approval-policy';
 
 // Linear lookup: the policy/model/effort lists are a handful of entries at most.
 function optionById<T extends { id: string }>(
@@ -64,23 +63,24 @@ export function ComposerPlusMenu({
   );
 }
 
-/** The approval-policy picker — the permission/safety axis (see approval-policy.ts). */
+/** The approval-policy picker — the permission/safety axis the agent advertises via
+ * `approval-policy-update` (see `ApprovalPolicyState` in @linkcode/schema). */
 export function ApprovalPolicyMenu({
   agentLabel,
   disabled,
   policies,
-  activePolicyId,
+  currentPolicyId,
   onSelect,
 }: {
   agentLabel: string;
   disabled: boolean;
-  policies: ApprovalPolicyOption[];
-  activePolicyId: string | null;
+  policies: ApprovalPolicy[];
+  currentPolicyId: string | null;
   onSelect: (policyId: string) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
   if (policies.length === 0) return null;
-  const active = optionById(policies, activePolicyId) ?? policies[0];
+  const active = policies.find((policy) => policy.policyId === currentPolicyId) ?? policies[0];
 
   return (
     <Menu>
@@ -97,9 +97,17 @@ export function ApprovalPolicyMenu({
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
           <MenuGroupLabel>{t('approvalTitle', { agent: agentLabel })}</MenuGroupLabel>
-          <MenuRadioGroup value={active.id} onValueChange={(value) => onSelect(String(value))}>
+          <MenuRadioGroup
+            value={active.policyId}
+            onValueChange={(value) => onSelect(String(value))}
+          >
             {policies.map((policy) => (
-              <MenuRadioItem key={policy.id} className="py-1.5" closeOnClick value={policy.id}>
+              <MenuRadioItem
+                key={policy.policyId}
+                className="py-1.5"
+                closeOnClick
+                value={policy.policyId}
+              >
                 <span className="flex min-w-0 flex-col">
                   <span>{policy.name}</span>
                   {policy.description ? (

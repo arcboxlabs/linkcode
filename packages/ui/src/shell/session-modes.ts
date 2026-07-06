@@ -7,13 +7,14 @@ import type { SessionMode } from '@linkcode/schema';
  * via the `current-mode-update` event.
  *
  * This axis is about HOW the agent works (propose a plan first / drive toward a goal); it is NOT
- * the approval policy, which is the separate permission/safety axis — see approval-policy.ts.
+ * the approval policy, which is the separate permission/safety axis — see `ApprovalPolicyState`
+ * in @linkcode/schema (advertised via `approval-policy-update`, switched via `set-approval-policy`).
  *
  * TODO(backend): the advertised mode list (`SessionModeState.availableModes`) is not emitted to
  * clients yet — only `current-mode-update` is. Until then, the composer command menu shows the
  * frontend-only stub rows below. Once agents provide real names/descriptions, delete
- * `STUB_SESSION_MODES` and keep approval-policy-flavored ids (default / acceptEdits /
- * bypassPermissions) off this channel; adapters map them onto the policy concept instead.
+ * `STUB_SESSION_MODES` and keep approval-policy ids (default / acceptEdits / auto /
+ * bypassPermissions) off this channel; they live on the approval-policy axis.
  */
 
 // TODO(backend): replace with the agent-advertised mode list from `SessionModeState`.

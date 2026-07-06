@@ -2,6 +2,7 @@ import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryId,
+  ApprovalPolicyState,
   ContentBlock,
   SessionId,
   SessionInfo,
@@ -34,6 +35,9 @@ interface Session {
   adapter: AgentAdapter;
   unsub: Unsubscribe;
   status: SessionInfo['status'];
+  /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
+   * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
+  approvalPolicy?: ApprovalPolicyState;
 }
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
@@ -454,10 +458,24 @@ export class Engine {
         this.sendSuccess(p.clientReqId);
         break;
       }
-      case 'session.attach':
+      case 'session.attach': {
+        // Multi-device attach is implicit: events are broadcast to all clients. The one buffered
+        // state an attaching client can't recover otherwise is the approval-policy advertisement
+        // (emitted at adapter start); re-broadcast it — clients fold it idempotently.
+        const attached = this.sessions.get(p.sessionId);
+        if (attached?.approvalPolicy) {
+          this.transport.send(
+            createWireMessage({
+              kind: 'agent.event',
+              sessionId: p.sessionId,
+              event: { type: 'approval-policy-update', state: attached.approvalPolicy },
+            }),
+          );
+        }
+        break;
+      }
       case 'session.detach': {
-        // Multi-device attach is implicit: events are broadcast to all clients. These are accepted as
-        // no-ops for now; a future enhancement can replay buffered state to a freshly-attached client.
+        // No-op: events are broadcast to all clients, so there is nothing to unsubscribe per client.
         break;
       }
       case 'terminal.open': {
@@ -532,11 +550,19 @@ export class Engine {
       // whatever triggered the event (the adapter's own internals, in most cases) instead of
       // staying contained to this session.
       try {
-        if (event.type === 'status') {
-          session.status = event.status;
-          if (event.status === 'stopped') this.sealCurrentRun(sessionId);
-        } else if (event.type === 'session-ref') {
-          this.bindSessionRef(sessionId, event.historyId);
+        switch (event.type) {
+          case 'status':
+            session.status = event.status;
+            if (event.status === 'stopped') this.sealCurrentRun(sessionId);
+            break;
+          case 'session-ref':
+            this.bindSessionRef(sessionId, event.historyId);
+            break;
+          case 'approval-policy-update':
+            session.approvalPolicy = event.state;
+            break;
+          default:
+            break;
         }
         this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
       } catch (err) {

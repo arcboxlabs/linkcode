@@ -85,6 +85,7 @@ export function DesktopShell({
   BranchStatusComponent,
   HistoryComponent,
   onDismissError,
+  onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
   onOpenSettings,
@@ -323,6 +324,7 @@ export function DesktopShell({
           onOpenFileArtifact={openFileArtifact}
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}
+          onApprovalPolicyChange={onApprovalPolicyChange}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}
         />
