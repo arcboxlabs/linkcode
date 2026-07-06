@@ -37,6 +37,11 @@ export interface ModelOption {
  * deliberate CODE-104 decision — models change rarely, so refresh it by hand under the discipline
  * above; the dynamic reference implementation lives in closed PR #52.
  *
+ * codex entries are the app-server's own `model/list` catalog (ids and display names verbatim).
+ * Switching rides the next `turn/start`'s `model` override — applies from the next turn, not
+ * mid-turn. Each entry was verified against a live session by switching per turn and reading the
+ * model codex actually requested back from the rollout's `turn_context` rows.
+ *
  * opencode and pi have no entry here — see their adapters' comments for why.
  */
 export const AGENT_MODEL_OPTIONS: Partial<Record<AgentKind, ModelOption[]>> = {
@@ -48,5 +53,10 @@ export const AGENT_MODEL_OPTIONS: Partial<Record<AgentKind, ModelOption[]>> = {
     { id: 'claude-sonnet-5', label: 'Sonnet 5' },
     { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (Legacy)' },
     { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+  ],
+  codex: [
+    { id: 'gpt-5.5', label: 'GPT-5.5' },
+    { id: 'gpt-5.4', label: 'GPT-5.4' },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini' },
   ],
 };
