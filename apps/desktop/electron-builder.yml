@@ -32,6 +32,12 @@ publish:
   provider: generic
   url: https://releases.linkcode.ai/desktop
 
+# Per-arch artifacts on every platform (half the download of a universal binary). The explicit
+# ${arch} suffix is load-bearing: electron-updater picks the feed entry whose filename contains
+# process.arch and falls back to the *first* entry otherwise — the default unsuffixed x64 name
+# would send x64 clients whatever happens to be listed first.
+artifactName: ${productName}-${version}-${arch}.${ext}
+
 mac:
   # Apple Icon Composer source. Single shared copy at the repo-root assets/ dir (also consumed
   # by the mobile app via ios.icon); referenced here to avoid duplicating the bundle. electron-builder
@@ -59,20 +65,23 @@ mac:
   notarize: true # notarytool via App Store Connect API key (APPLE_API_KEY / _KEY_ID / _ISSUER)
   target:
     - target: dmg
-      arch: [universal]
+      arch: [x64, arm64]
     - target: zip # REQUIRED for macOS auto-update (electron-updater pulls the .zip, not the .dmg)
-      arch: [universal]
+      arch: [x64, arm64]
 
 win:
   icon: ../../assets/icon.png # shared repo-root raster (no Liquid Glass on Windows)
   target:
     - target: nsis
-      arch: [x64]
+      arch: [x64, arm64]
 
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  # One installer per arch. NSIS otherwise merges every arch into a single universal installer,
+  # which doubles the download and defeats the per-arch artifactName above.
+  buildUniversalInstaller: false
 
 linux:
   icon: ../../assets/icon.png # shared repo-root raster
