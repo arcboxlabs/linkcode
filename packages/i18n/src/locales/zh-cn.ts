@@ -31,6 +31,11 @@ export const zhCN = {
       kindTask: '子代理',
       kindOther: '工具',
     },
+    subagent: {
+      label: '子代理',
+      steps: '{count} 步',
+      viewTranscript: '查看完整转录',
+    },
     toolGroup: {
       explore: '探索',
       command: '执行命令',

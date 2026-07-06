@@ -33,6 +33,11 @@ export const en = {
       kindTask: 'Subagent',
       kindOther: 'Tool',
     },
+    subagent: {
+      label: 'Subagent',
+      steps: '{count} steps',
+      viewTranscript: 'View full transcript',
+    },
     toolGroup: {
       explore: 'Explored',
       command: 'Ran commands',

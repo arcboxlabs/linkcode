@@ -22,12 +22,14 @@ import {
 import { assistantTurnText, latestReceivedAt } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
+import { SubagentCard } from './subagent-card';
+import { partitionSubagentItems } from './subagents';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
 import { AgentTurnActions } from './turn-actions';
 import { TurnDiffSummary } from './turn-diff-summary';
 import { splitTurnSegments, turnFileEdits } from './turn-edits';
-import type { ConversationViewModel } from './types';
+import type { ConversationItem, ConversationViewModel } from './types';
 import { UserMessage } from './user-message';
 
 export interface ConversationViewProps {
@@ -81,7 +83,22 @@ export function ConversationView({
   );
   const segments = splitTurnSegments(conversationFlowItems(items));
 
-  const renderEntry = (entry: TimelineEntry): React.ReactNode => {
+  const renderEntry = (
+    entry: TimelineEntry,
+    subagentChildren: ReadonlyMap<string, ConversationItem[]>,
+  ): React.ReactNode => {
+    if (entry.type === 'task') {
+      return (
+        <SubagentCard
+          key={entry.item.id}
+          awaitingApproval={awaitingApproval}
+          declined={declined}
+          items={subagentChildren.get(entry.item.toolCall.toolCallId) ?? []}
+          TerminalBlockComponent={TerminalBlockComponent}
+          toolCall={entry.item.toolCall}
+        />
+      );
+    }
     if (entry.type === 'group') {
       return (
         <ActivityGroup
@@ -163,9 +180,12 @@ export function ConversationView({
           // Per-turn trailers (edit rollup, reply actions) appear once the turn has settled —
           // the in-flight turn shows none.
           const ended = index < segments.length - 1 || !isThinking;
+          // Children leave the top-level timeline (they render inside their SubagentCard), but the
+          // turn's edit rollup still counts them; the copyable reply text is the main agent's only.
+          const { topLevel, childrenByParent } = partitionSubagentItems(segment.items);
           const edits = ended ? turnFileEdits(segment.items) : null;
-          const replyText = ended ? assistantTurnText(segment.items) : '';
-          const entries = groupTimeline(segment.items);
+          const replyText = ended ? assistantTurnText(topLevel) : '';
+          const entries = groupTimeline(topLevel);
           const leadingUserEntry =
             entries[0]?.type === 'item' &&
             entries[0].item.kind === 'message' &&
@@ -176,10 +196,10 @@ export function ConversationView({
           const hasAgentTurnContent = agentEntries.length > 0 || edits || replyText;
           return (
             <Fragment key={segment.turnId ?? 'lead-in'}>
-              {leadingUserEntry ? renderEntry(leadingUserEntry) : null}
+              {leadingUserEntry ? renderEntry(leadingUserEntry, childrenByParent) : null}
               {hasAgentTurnContent ? (
                 <div className="group/turn flex flex-col gap-3">
-                  {agentEntries.map((entry) => renderEntry(entry))}
+                  {agentEntries.map((entry) => renderEntry(entry, childrenByParent))}
                   {edits ? <TurnDiffSummary edits={edits} /> : null}
                   {replyText ? (
                     <AgentTurnActions
