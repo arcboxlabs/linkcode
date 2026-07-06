@@ -37,6 +37,12 @@ export function stopSession(
   return resolveClient(options).stopSession(options.sessionId);
 }
 
+export function deleteSession(
+  options: Options<{ sessionId: SessionId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).deleteSession(options.sessionId);
+}
+
 export function resumeSession(
   options: Options<{ sessionId: SessionId }>,
 ): RequestResult<SessionId> {

@@ -172,6 +172,15 @@ export class ControlChannel {
     }));
   }
 
+  /** Stop the session if live and remove its persisted record; provider-local history stays re-importable. */
+  deleteSession(sessionId: SessionId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'session.delete',
+      clientReqId,
+      sessionId,
+    }));
+  }
+
   /** Read the daemon-owned provider config (data plane). */
   getProviderConfig(): Promise<ProvidersConfig> {
     return this.sendCorrelated('configGet', (clientReqId) => ({

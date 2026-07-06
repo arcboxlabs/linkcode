@@ -167,6 +167,26 @@ export class Engine {
         });
         break;
       }
+      case 'session.delete': {
+        await this.tryReply(p.clientReqId, async () => {
+          // Idempotent, unlike session.stop: the target is usually cold (the sidebar lists stopped
+          // sessions too) and another client may have deleted it already. Provider-local history is
+          // left untouched, so the conversation stays re-importable via session.import.
+          const session = this.sessions.get(p.sessionId);
+          if (session) {
+            session.unsub();
+            await session.adapter.stop();
+            this.sessions.delete(p.sessionId);
+            this.terminals?.killBySession(p.sessionId);
+          }
+          // Persisted delete first: if the store throws, the record stays listed (now cold) and the
+          // client's retry still works — dropping it from memory first would desync the two.
+          await this.sessionStore.delete(p.sessionId);
+          this.records.delete(p.sessionId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
       case 'session.list': {
         const sessions = Array.from(this.records.values(), (record) => this.toSessionInfo(record));
         this.transport.send(
@@ -454,6 +474,12 @@ export class Engine {
       this.sealCurrentRun(sessionId);
       await adapter.stop().catch(noop);
       throw err;
+    }
+    // A session.stop/session.delete handled while the adapter was still starting has already torn
+    // this binding down; announcing it as started would leak a live adapter nothing tracks.
+    if (this.sessions.get(sessionId) !== session) {
+      await adapter.stop().catch(noop);
+      throw new Error(`Session was closed while starting: ${sessionId}`);
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
   }

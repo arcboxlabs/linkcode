@@ -21,6 +21,7 @@ describe('LinkCodeClient control API', () => {
     await expect(client.promptText(sessionId, 'hello')).resolves.toEqual({ ok: true });
     await expect(client.cancel(sessionId)).resolves.toEqual({ ok: true });
     await expect(client.stopSession(sessionId)).resolves.toEqual({ ok: true });
+    await expect(client.deleteSession(sessionId)).resolves.toEqual({ ok: true });
 
     client.dispose();
     serverTransport.close();
@@ -149,7 +150,13 @@ describe('LinkCodeClient event buffer', () => {
 });
 
 function successFor(payload: WirePayload): WirePayload | undefined {
-  if (payload.kind !== 'agent.input' && payload.kind !== 'session.stop') return undefined;
+  if (
+    payload.kind !== 'agent.input' &&
+    payload.kind !== 'session.stop' &&
+    payload.kind !== 'session.delete'
+  ) {
+    return undefined;
+  }
   return {
     kind: 'request.succeeded',
     replyTo: payload.clientReqId,

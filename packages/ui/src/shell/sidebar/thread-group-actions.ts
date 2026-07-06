@@ -8,7 +8,8 @@ import type { BranchStatusComponentType } from './branch-status';
  */
 export interface ThreadGroupActions {
   onSelect: (id: SessionId) => void;
-  onStop: (id: SessionId) => void;
+  /** Stop the session if live and remove it from the list; re-importable from provider history. */
+  onClose: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
   onCreate: (opts: { kind: AgentKind; cwd: string }) => void;
   /** Called once a history entry finishes importing as a new thread. */

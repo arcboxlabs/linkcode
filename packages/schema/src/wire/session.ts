@@ -20,6 +20,12 @@ export const sessionWireVariants = [
     clientReqId: z.string().min(1),
     sessionId: SessionIdSchema,
   }),
+  /** Stop the session if live and remove its persisted record; provider-local history survives for re-import. */
+  z.object({
+    kind: z.literal('session.delete'),
+    clientReqId: z.string().min(1),
+    sessionId: SessionIdSchema,
+  }),
   z.object({ kind: z.literal('session.list'), clientReqId: z.string().min(1) }),
   z.object({
     kind: z.literal('session.listed'),

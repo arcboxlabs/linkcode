@@ -14,7 +14,7 @@ import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
 import type { ThreadGroupViewModel } from './threads-view';
 
 /** Session/group action field names this shell exposes under its own naming (`onSelectSession`, etc). */
-type RenamedThreadGroupActions = 'onSelect' | 'onStop' | 'onCreate';
+type RenamedThreadGroupActions = 'onSelect' | 'onClose' | 'onCreate';
 
 export interface ShellFrameProps
   extends Pick<ThreadGroupActions, Exclude<keyof ThreadGroupActions, RenamedThreadGroupActions>>,
@@ -32,7 +32,8 @@ export interface ShellFrameProps
   header?: React.ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
-  onStopSession: (id: SessionId) => void;
+  /** Stop the session if live and remove it from the sidebar list. */
+  onCloseSession: (id: SessionId) => void;
   /** Persists a group drag: the full new project-group order, as `collapseKey`s. */
   onReorderGroups: (orderedCollapseKeys: string[]) => void;
   /** Persists a thread drag within a group: `activeId` landed before/after `overId`. */
@@ -72,7 +73,7 @@ export function ShellFrame({
   errorMessage,
   pinnedSessionIds,
   onSelectSession,
-  onStopSession,
+  onCloseSession,
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
@@ -112,7 +113,7 @@ export function ShellFrame({
           pinnedSessionIds={pinnedSessionIds}
           footer={<DefaultHostFooter />}
           onSelect={onSelectSession}
-          onStop={onStopSession}
+          onClose={onCloseSession}
           onToggleSessionPinned={onToggleSessionPinned}
           onReorderGroups={onReorderGroups}
           onReorderThreads={onReorderThreads}

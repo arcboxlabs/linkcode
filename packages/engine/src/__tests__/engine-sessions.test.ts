@@ -20,6 +20,7 @@ import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { Engine } from '../engine';
+import type { SessionStore } from '../session-store';
 import { InMemorySessionStore } from '../session-store';
 
 class FakeAdapter implements AgentAdapter {
@@ -32,6 +33,7 @@ class FakeAdapter implements AgentAdapter {
 
   startedWith: StartOptions | null = null;
   resumedFrom: string | null = null;
+  stopped = false;
   private readonly listeners = new Set<(e: AgentEvent) => void>();
 
   start(opts: StartOptions): Promise<void> {
@@ -73,11 +75,24 @@ class FakeAdapter implements AgentAdapter {
   }
 
   stop(): Promise<void> {
+    this.stopped = true;
     return Promise.resolve();
   }
 
   emit(event: AgentEvent): void {
     for (const cb of this.listeners) cb(event);
+  }
+}
+
+/** An adapter whose start() blocks until the test releases it, to interleave other requests. */
+class GatedStartAdapter extends FakeAdapter {
+  releaseStart: () => void = noop;
+
+  override start(opts: StartOptions): Promise<void> {
+    this.startedWith = opts;
+    return new Promise((resolve) => {
+      this.releaseStart = resolve;
+    });
   }
 }
 
@@ -88,7 +103,10 @@ function tick(): Promise<void> {
   });
 }
 
-function harness(store = new InMemorySessionStore()) {
+function harness(
+  store: SessionStore = new InMemorySessionStore(),
+  makeAdapter: () => FakeAdapter = () => new FakeAdapter(),
+) {
   const sent: WirePayload[] = [];
   let handler: ((msg: WireMessage) => void) | null = null;
   const transport: Transport = {
@@ -105,7 +123,7 @@ function harness(store = new InMemorySessionStore()) {
   };
   const adapters: FakeAdapter[] = [];
   const factory: AdapterFactory = () => {
-    const adapter = new FakeAdapter();
+    const adapter = makeAdapter();
     adapters.push(adapter);
     return adapter;
   };
@@ -222,6 +240,101 @@ describe('engine session persistence', () => {
 
     await inject({ kind: 'session.list', clientReqId: 'r2' });
     expect(listedSessions(sent, 'r2')[0].status).toBe('stopped');
+  });
+
+  it('deletes a live session: stops the adapter and drops the record', async () => {
+    const store = new InMemorySessionStore();
+    const { engine, sent, inject, adapters } = harness(store);
+    await engine.start();
+    await inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(sent, 'r1');
+    await inject({ kind: 'session.delete', clientReqId: 'r2', sessionId });
+
+    expect(sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'r2')).toBe(true);
+    expect(adapters[0].stopped).toBe(true);
+    expect(await store.load()).toHaveLength(0);
+    await inject({ kind: 'session.list', clientReqId: 'r3' });
+    expect(listedSessions(sent, 'r3')).toHaveLength(0);
+  });
+
+  it('deletes a cold session idempotently instead of failing with "Unknown session"', async () => {
+    const store = new InMemorySessionStore();
+    const first = harness(store);
+    await first.engine.start();
+    await first.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(first.sent, 'r1');
+
+    // A fresh engine over the same store: the session is cold, with no live adapter to stop.
+    const second = harness(store);
+    await second.engine.start();
+    await second.inject({ kind: 'session.delete', clientReqId: 'r2', sessionId });
+    expect(second.sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'r2')).toBe(
+      true,
+    );
+    expect(await store.load()).toHaveLength(0);
+
+    // Deleting again (e.g. from a second attached client) still succeeds.
+    await second.inject({ kind: 'session.delete', clientReqId: 'r3', sessionId });
+    expect(second.sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'r3')).toBe(
+      true,
+    );
+  });
+
+  it('fails the start instead of leaking the adapter when deleted while starting', async () => {
+    const store = new InMemorySessionStore();
+    const { engine, sent, inject, adapters } = harness(store, () => new GatedStartAdapter());
+    await engine.start();
+    // The handler suspends inside adapter.start(); the session is already registered by then.
+    await inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const [record] = await store.load();
+    await inject({ kind: 'session.delete', clientReqId: 'r2', sessionId: record.sessionId });
+    expect(sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'r2')).toBe(true);
+
+    (adapters[0] as GatedStartAdapter).releaseStart();
+    await tick();
+    expect(sent.some((p) => p.kind === 'session.started' && p.replyTo === 'r1')).toBe(false);
+    const failed = sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r1');
+    if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r1');
+    expect(failed.message).toContain('closed while starting');
+    expect(adapters[0].stopped).toBe(true);
+    expect(await store.load()).toHaveLength(0);
+  });
+
+  it('keeps the session listed when the persisted delete fails', async () => {
+    const inner = new InMemorySessionStore();
+    const failingStore: SessionStore = {
+      load: () => inner.load(),
+      save: (record) => inner.save(record),
+      delete: () => Promise.reject(new Error('disk unavailable')),
+    };
+    const { engine, sent, inject } = harness(failingStore);
+    await engine.start();
+    await inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(sent, 'r1');
+    await inject({ kind: 'session.delete', clientReqId: 'r2', sessionId });
+
+    expect(sent.some((p) => p.kind === 'request.failed' && p.replyTo === 'r2')).toBe(true);
+    // The live adapter was stopped, but the record must stay listed (cold) — not half-deleted.
+    await inject({ kind: 'session.list', clientReqId: 'r3' });
+    const sessions = listedSessions(sent, 'r3');
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].status).toBe('stopped');
   });
 
   it('wakes a never-prompted session (no provider linkage) as a fresh start under the same id', async () => {

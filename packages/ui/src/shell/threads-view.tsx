@@ -62,7 +62,7 @@ export function ThreadsView({
   activeId,
   pinnedSessionIds,
   onSelect,
-  onStop,
+  onClose,
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
@@ -165,7 +165,7 @@ export function ThreadsView({
               activeId={activeId}
               pinnedSessionIds={pinnedSessionIds}
               onSelect={onSelect}
-              onStop={onStop}
+              onClose={onClose}
               onToggleSessionPinned={onToggleSessionPinned}
               onCreate={onCreate}
               onImportSession={onImportSession}
@@ -195,7 +195,7 @@ export function ThreadsView({
           activeId={activeId}
           pinnedSessionIds={pinnedSessionIds}
           onSelect={onSelect}
-          onStop={onStop}
+          onClose={onClose}
           onToggleSessionPinned={onToggleSessionPinned}
           onCreate={onCreate}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
@@ -211,7 +211,7 @@ function ThreadGroupSection({
   activeId,
   pinnedSessionIds,
   onSelect,
-  onStop,
+  onClose,
   onToggleSessionPinned,
   onCreate,
   onImportSession,
@@ -273,7 +273,7 @@ function ThreadGroupSection({
                 sortGroup={group.collapseKey}
                 session={session}
                 onSelect={() => onSelect(session.sessionId)}
-                onStop={() => onStop(session.sessionId)}
+                onClose={() => onClose(session.sessionId)}
                 onTogglePin={() => onToggleSessionPinned(session.sessionId)}
               />
             ))}
