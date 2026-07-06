@@ -15,6 +15,7 @@ import type {
   ToolCallContent,
   ToolCallStatus,
 } from '@linkcode/schema';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
@@ -67,7 +68,7 @@ export function mapCodexItemStatus(status: string | undefined): ToolCallStatus {
   }
 }
 
-/** Map a `thread/tokenUsage/updated` breakdown (the per-turn `last` slice) to our TokenUsage. */
+/** Map a `thread/tokenUsage/updated` breakdown to our TokenUsage. */
 export function mapCodexTokenUsage(breakdown: Record<string, unknown>): TokenUsage {
   return {
     inputTokens: numberField(breakdown, 'inputTokens'),
@@ -116,11 +117,17 @@ export class CodexAdapter extends BaseAgentAdapter {
   };
 
   private server: CodexAppServer | null = null;
+  /** In-flight spawn+thread-open, shared by concurrent callers so two prompts racing into a dead
+   * session cannot double-spawn app-server processes. */
+  private starting: Promise<void> | null = null;
   private threadId: string | null = null;
   private activeTurnId: string | null = null;
   /** Guards the window between sending `turn/start` and learning the turn id, so a second prompt
    * queues instead of racing a second `turn/start` into the same thread. */
   private turnStarting = false;
+  /** A cancel that arrived inside the turnStarting window, before the turn id was known; honored
+   * by `activateTurn` the moment the id lands instead of being silently dropped. */
+  private cancelRequested = false;
   /** A turn id that already completed; a late `turn/start` response for it must not re-activate. */
   private lastCompletedTurnId: string | null = null;
   /** Prompts received while a turn is running; drained one per `turn/completed`. */
@@ -201,15 +208,37 @@ export class CodexAdapter extends BaseAgentAdapter {
     // Cancel means stop: the in-flight turn is interrupted and queued prompts are dropped
     // (running them after an explicit cancel would surprise).
     this.pendingPrompts = [];
+    if (!this.server || !this.threadId) return;
+    const turnId = this.activeTurnId;
+    if (!turnId) {
+      // turn/start's round trip is still in flight and the turn id is unknown; arm the cancel so
+      // activateTurn interrupts the moment the id lands, instead of letting the turn run on.
+      if (this.turnStarting) this.cancelRequested = true;
+      return;
+    }
+    await this.interruptTurn(turnId);
+  }
+
+  private async interruptTurn(turnId: string): Promise<void> {
     const server = this.server;
     const threadId = this.threadId;
-    const turnId = this.activeTurnId;
-    if (!server || !threadId || !turnId) return;
+    if (!server || !threadId) return;
     try {
       await server.request('turn/interrupt', { threadId, turnId });
       // turn/completed with status 'interrupted' follows and finalizes the turn (stop+idle).
     } catch {
       // The turn may have settled before the interrupt landed; its own completion finalizes.
+    }
+  }
+
+  /** Record the live turn id (from turn/started or the turn/start response, whichever lands
+   * first) and fire any cancel that was armed while the id was still unknown. */
+  private activateTurn(turnId: string): void {
+    if (turnId === this.lastCompletedTurnId) return;
+    this.activeTurnId = turnId;
+    if (this.cancelRequested) {
+      this.cancelRequested = false;
+      void this.interruptTurn(turnId);
     }
   }
 
@@ -241,9 +270,17 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   /** Spawn the app-server and start (or resume) the session's thread. Re-entrant: a live server
-   * makes this a no-op, and after a crash the next prompt lands here to respawn and resume. */
-  private async ensureThread(): Promise<void> {
-    if (this.server) return;
+   * makes this a no-op, concurrent callers share one in-flight attempt, and after a crash the
+   * next prompt lands here to respawn and resume. */
+  private ensureThread(): Promise<void> {
+    if (this.server) return Promise.resolve();
+    this.starting ??= this.openThread().finally(() => {
+      this.starting = null;
+    });
+    return this.starting;
+  }
+
+  private async openThread(): Promise<void> {
     const opts = nullthrow(this.opts, 'codex: session not started');
     const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
     let server: CodexAppServer;
@@ -251,7 +288,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       server = await CodexAppServer.start({
         env: apiKey ? { CODEX_API_KEY: apiKey } : undefined,
         onNotification: (method, params) => this.handleNotification(method, params),
-        onExit: () => this.handleServerExit(),
+        onExit: (_code, stderrTail) => this.handleServerExit(stderrTail),
       });
     } catch (err) {
       const message = extractErrorMessage(err) ?? 'codex: app-server failed to start';
@@ -285,6 +322,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.threadId = threadId ?? null;
       if (threadId) this.emitSessionRef(asHistoryId(threadId));
     } catch (err) {
+      // Re-arm the resume point: a transient thread/resume failure must not silently downgrade
+      // the next attempt into a brand-new thread that abandons the conversation.
+      this.resumeFrom = resume;
       server.close();
       this.server = null;
       throw err;
@@ -307,10 +347,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       // already completed (lastCompletedTurnId) must not be re-activated by a late response.
       const turn = isRecord(response) ? recordField(response, 'turn') : undefined;
       const turnId = turn ? stringField(turn, 'id') : undefined;
-      if (turnId && this.activeTurnId === null && turnId !== this.lastCompletedTurnId) {
-        this.activeTurnId = turnId;
-      }
+      if (turnId && this.activeTurnId === null) this.activateTurn(turnId);
     } catch (err) {
+      this.cancelRequested = false;
       this.emitError(extractErrorMessage(err) ?? 'codex: turn failed to start');
       this.teardown();
       this.emitStatus('idle');
@@ -321,14 +360,15 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   /** The app-server died out from under the session (crash, external kill). Finalize the turn
    * like claude-code's consume() unwind, and arm the next prompt to respawn + resume in place. */
-  private handleServerExit(): void {
+  private handleServerExit(detail: string): void {
     this.server = null;
     this.activeTurnId = null;
     this.turnStarting = false;
+    this.cancelRequested = false;
     this.pendingPrompts = [];
-    this.resumeFrom = this.threadId ?? undefined;
+    this.resumeFrom = this.threadId ?? this.resumeFrom;
     this.threadId = null;
-    this.emitError('codex: app-server exited unexpectedly');
+    this.emitError(`codex: app-server exited unexpectedly${detail ? ` (${detail})` : ''}`);
     this.teardown();
     this.emitStatus('idle');
   }
@@ -348,7 +388,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'turn/started': {
         const turn = recordField(params, 'turn');
         const id = turn ? stringField(turn, 'id') : undefined;
-        if (id && id !== this.lastCompletedTurnId) this.activeTurnId = id;
+        if (id) this.activateTurn(id);
         this.emitStatus('running');
         break;
       }
@@ -373,6 +413,17 @@ export class CodexAdapter extends BaseAgentAdapter {
         if (itemId && delta) {
           this.emitThought(delta, asMessageId(itemId));
           this.streamedTextLen.set(itemId, (this.streamedTextLen.get(itemId) ?? 0) + delta.length);
+        }
+        break;
+      }
+      case 'item/reasoning/summaryPartAdded': {
+        // A reasoning item can carry several independent summary segments; mirror the '\n\n'
+        // separator the completed item's summary array is joined with, so streamed segments don't
+        // merge into one run-on thought (and the length backstop below stays aligned).
+        const itemId = stringField(params, 'itemId');
+        if (itemId && (this.streamedTextLen.get(itemId) ?? 0) > 0) {
+          this.emitThought('\n\n', asMessageId(itemId));
+          this.streamedTextLen.set(itemId, (this.streamedTextLen.get(itemId) ?? 0) + 2);
         }
         break;
       }
@@ -401,9 +452,12 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'thread/tokenUsage/updated': {
+        // `total` (thread-cumulative), not `last`: this fires once per model call and a turn with
+        // tool round-trips has several; consumers replace usage wholesale, so emitting the `last`
+        // slice would show only the final sub-call's tokens.
         const tokenUsage = recordField(params, 'tokenUsage');
-        const last = tokenUsage ? recordField(tokenUsage, 'last') : undefined;
-        if (last) this.emitUsage(mapCodexTokenUsage(last));
+        const total = tokenUsage ? recordField(tokenUsage, 'total') : undefined;
+        if (total) this.emitUsage(mapCodexTokenUsage(total));
         break;
       }
       case 'error': {
@@ -423,6 +477,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     const id = stringField(turn, 'id');
     if (id) this.lastCompletedTurnId = id;
     this.activeTurnId = null;
+    this.cancelRequested = false;
     this.streamedTextLen.clear();
     const status = stringField(turn, 'status');
     if (status === 'failed') {
@@ -454,14 +509,17 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'reasoning': {
-        // Reasoning streams via summary/text deltas; only fall back to the completed item's
-        // summary when nothing streamed for this id at all.
-        if (!completed || this.streamedTextLen.has(id)) break;
+        // Reasoning streams via summary deltas; on completion emit whatever the deltas missed,
+        // same length reconciliation as agentMessage (delta lengths + the '\n\n' separators from
+        // summaryPartAdded add up to the joined summary). When raw-content deltas streamed
+        // (item/reasoning/textDelta), the streamed length exceeds the summary and this is a no-op.
+        if (!completed) break;
         const summary = item.summary;
         const text = Array.isArray(summary)
           ? summary.filter((part): part is string => typeof part === 'string').join('\n\n')
           : '';
-        this.emitThought(text, asMessageId(id));
+        const seen = this.streamedTextLen.get(id) ?? 0;
+        if (text.length > seen) this.emitThought(text.slice(seen), asMessageId(id));
         break;
       }
       case 'commandExecution': {
@@ -479,22 +537,31 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
       case 'fileChange': {
         const changes = Array.isArray(item.changes) ? item.changes.filter(isRecord) : [];
-        const paths = changes.reduce<string[]>((acc, change) => {
+        const locations: Array<{ path: string }> = [];
+        const content: ToolCallContent[] = [];
+        for (const change of changes) {
           const path = stringField(change, 'path');
-          if (path) acc.push(path);
-          return acc;
-        }, []);
+          if (!path) continue;
+          // An update kind can carry a rename: `kind: {type:'update', move_path}` with `path`
+          // holding the pre-rename identity. Cite (and label the diff with) the destination.
+          const kind = recordField(change, 'kind');
+          const movePath = kind ? stringField(kind, 'move_path') : undefined;
+          const displayPath = movePath ?? path;
+          locations.push({ path: displayPath });
+          const diff = stringField(change, 'diff');
+          if (diff) {
+            appendArrayInPlace(content, diffContentFromUnified(displayPath, diff));
+          } else if (movePath) {
+            appendArrayInPlace(content, textContent(`Renamed ${path} → ${movePath}`));
+          }
+        }
         this.emitTool({
           toolCallId: id,
           title: 'Apply file changes',
           kind: 'edit',
           status: mapCodexItemStatus(stringField(item, 'status')),
-          content: changes.flatMap((change) => {
-            const path = stringField(change, 'path');
-            const diff = stringField(change, 'diff');
-            return path && diff ? diffContentFromUnified(path, diff) : [];
-          }),
-          locations: paths.map((path) => ({ path })),
+          content,
+          locations,
         });
         break;
       }
