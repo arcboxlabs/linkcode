@@ -20,6 +20,17 @@ import {
 
 const WHITESPACE_RUN_RE = /\s+/g;
 
+/** Codex persists machine-injected context into the rollout as ordinary user-role messages,
+ * recognizable only by their wrapper tag. They are not conversation and must not replay as user
+ * bubbles (or become a session's title preview). A real user message could begin with `<` too,
+ * so match the known tags exactly rather than anything XML-ish. */
+const SYNTHETIC_USER_TAGS = ['<environment_context>', '<user_instructions>', '<turn_aborted>'];
+
+export function isSyntheticCodexUserText(text: string): boolean {
+  const trimmed = text.trimStart();
+  return SYNTHETIC_USER_TAGS.some((tag) => trimmed.startsWith(tag));
+}
+
 type JsonRecord = Record<string, unknown>;
 
 interface CodexIndexEntry {
@@ -131,7 +142,6 @@ async function readCodexTranscriptSummary(
   if (rows.length === 0) return undefined;
 
   let id: string | undefined;
-  let title: string | undefined;
   let cwd: string | undefined;
   let model: string | undefined;
   let createdAt: number | undefined;
@@ -174,8 +184,7 @@ async function readCodexTranscriptSummary(
       case 'turn_context': {
         cwd = stringField(payload, 'cwd') ?? cwd;
         model = stringField(payload, 'model') ?? model;
-        title = stringField(payload, 'summary') ?? title;
-
+        // payload.summary is the reasoning-summary mode ('auto'/'concise'/…), not a title.
         break;
       }
       case 'response_item': {
@@ -183,6 +192,7 @@ async function readCodexTranscriptSummary(
         if (role !== 'user' && role !== 'assistant') continue;
         const text = textFromUnknown(payload);
         if (text.trim().length === 0) continue;
+        if (role === 'user' && isSyntheticCodexUserText(text)) continue;
         messageCount += 1;
         if (role === 'user') firstUserText ??= previewText(text);
         else firstAssistantText ??= previewText(text);
@@ -199,7 +209,7 @@ async function readCodexTranscriptSummary(
   return {
     id,
     path,
-    title: firstText(indexEntry?.title, title, firstUserText, firstAssistantText),
+    title: firstText(indexEntry?.title, firstUserText, firstAssistantText),
     cwd,
     model,
     createdAt,
@@ -265,6 +275,7 @@ export function mapCodexHistoryEvents(
     if (!payload) return;
     const role = stringField(payload, 'role');
     if (role !== 'user' && role !== 'assistant') return;
+    if (role === 'user' && isSyntheticCodexUserText(textFromUnknown(payload))) return;
     const itemId =
       stringField(payload, 'id') ?? stringField(row, 'id') ?? `${role}-${index.toString(36)}`;
     const event = textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));

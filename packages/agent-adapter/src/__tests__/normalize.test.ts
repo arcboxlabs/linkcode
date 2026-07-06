@@ -399,6 +399,22 @@ describe('CodexAdapter history', () => {
             },
           },
           {
+            // Machine-injected context codex persists as a user-role message; must not replay
+            // as a user bubble or count as a conversation message.
+            timestamp: '2026-06-17T01:00:30.000Z',
+            type: 'response_item',
+            payload: {
+              id: 'synthetic-1',
+              role: 'user',
+              content: [
+                {
+                  type: 'input_text',
+                  text: '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>',
+                },
+              ],
+            },
+          },
+          {
             timestamp: '2026-06-17T01:01:00.000Z',
             type: 'response_item',
             payload: {
