@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app } from 'electron';
-import { APP_NAME } from './constants';
+import { DEFAULT_WORKSPACES_DIRNAME } from './constants';
 
 /**
  * The default directory the native file/folder picker opens into: a visible `~/LinkCode` folder,
@@ -10,7 +10,7 @@ import { APP_NAME } from './constants';
  * despite the naming overlap — this is purely a picker-dialog default path.
  */
 export async function ensureDefaultPickerDirectory(): Promise<string> {
-  const dir = join(app.getPath('home'), APP_NAME);
+  const dir = join(app.getPath('home'), DEFAULT_WORKSPACES_DIRNAME);
   await mkdir(dir, { recursive: true });
   return dir;
 }

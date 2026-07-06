@@ -9,7 +9,7 @@
     "dev": "electron-vite dev",
     "dev:mock": "electron-vite dev --mode mock",
     "build": "electron-vite build",
-    "package": "pnpm run build && electron-builder --dir -c.mac.identity=null",
+    "package": "electron-vite build --mode devshell && electron-builder --dir -c.mac.identity=null -c.appId=com.arcboxlabs.linkcode.desktop.dev -c.productName=\"LinkCode Dev\"",
     "dist": "pnpm run build && electron-builder",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
