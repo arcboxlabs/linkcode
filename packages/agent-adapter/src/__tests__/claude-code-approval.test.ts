@@ -17,6 +17,20 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   },
 }));
 
+// Isolate `settingsDefaultMode` from the developer's real ~/.claude/settings.json: by default every
+// settings read misses, so unit tests see a clean environment (policy stays 'default'). A test can
+// seed `fsMock.files` (absolute path → JSON) to exercise the settings-default path.
+const fsMock = vi.hoisted(() => ({ files: new Map<string, string>() }));
+
+vi.mock('node:fs/promises', () => ({
+  readFile(file: string) {
+    const content = fsMock.files.get(file);
+    return content === undefined
+      ? Promise.reject(new Error(`ENOENT: ${file}`))
+      : Promise.resolve(content);
+  },
+}));
+
 interface QueryInput {
   prompt: AsyncIterable<SDKUserMessage>;
   options: Record<string, unknown>;
@@ -80,13 +94,17 @@ sdkMock.query = (opts) => {
 
 afterEach(() => {
   queries.length = 0;
+  fsMock.files.clear();
 });
 
-async function makeAdapter(): Promise<{ adapter: ClaudeCodeAdapter; events: AgentEvent[] }> {
+async function makeAdapter(cwd = '/tmp/repo'): Promise<{
+  adapter: ClaudeCodeAdapter;
+  events: AgentEvent[];
+}> {
   const adapter = new ClaudeCodeAdapter();
   const events: AgentEvent[] = [];
   adapter.onEvent((e) => events.push(e));
-  await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+  await adapter.start({ kind: 'claude-code', cwd });
   return { adapter, events };
 }
 
@@ -115,6 +133,19 @@ describe('ClaudeCodeAdapter approval policy', () => {
       'auto',
       'bypassPermissions',
     ]);
+  });
+
+  it('honors permissions.defaultMode from settings.json at start (CLI does not)', async () => {
+    fsMock.files.set(
+      '/work/proj/.claude/settings.json',
+      JSON.stringify({ permissions: { defaultMode: 'acceptEdits' } }),
+    );
+    const { adapter, events } = await makeAdapter('/work/proj');
+    expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('acceptEdits');
+
+    // The resolved default is passed to the Query so the CLI actually starts in that mode.
+    await prompt(adapter);
+    expect(queries[0].options.permissionMode).toBe('acceptEdits');
   });
 
   it('stashes a pre-prompt switch and applies it at Query creation', async () => {

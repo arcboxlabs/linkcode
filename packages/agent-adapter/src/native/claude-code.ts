@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 import { env } from 'node:process';
 import type {
   CanUseTool,
@@ -96,6 +99,37 @@ const APPROVAL_POLICIES = [
 ] as const satisfies ReadonlyArray<ApprovalPolicy & { policyId: PermissionMode }>;
 
 type ClaudeApprovalPolicyId = (typeof APPROVAL_POLICIES)[number]['policyId'];
+
+/**
+ * Resolve `permissions.defaultMode` from Claude settings, same precedence as the CLI
+ * (local > project > user). The SDK-driven CLI pins its startup mode to 'default' unless
+ * `--permission-mode` is passed — unlike the interactive CLI it does NOT apply the settings
+ * default itself (verified empirically against 0.3.179's vendored CLI, including with explicit
+ * `settingSources`) — so honoring the user's configured default is on the adapter.
+ */
+async function settingsDefaultMode(cwd: string): Promise<ClaudeApprovalPolicyId | undefined> {
+  const files = [
+    path.join(cwd, '.claude', 'settings.local.json'),
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(homedir(), '.claude', 'settings.json'),
+  ];
+  for (const file of files) {
+    let mode: unknown;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- precedence order is inherently sequential
+      const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+      mode =
+        isRecord(parsed) && isRecord(parsed.permissions)
+          ? parsed.permissions.defaultMode
+          : undefined;
+    } catch {
+      continue; // Missing or malformed settings scope — fall through to the next one.
+    }
+    const policy = APPROVAL_POLICIES.find((p) => p.policyId === mode);
+    if (policy) return policy.policyId;
+  }
+  return undefined;
+}
 
 /**
  * The `prompt` fed to a streaming-input `query()`: an `AsyncIterable<SDKUserMessage>` that stays open
@@ -208,12 +242,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * diff. */
   private readonly pendingEditDiffs = new Map<string, ToolCallContent[]>();
 
-  protected async onStart(): Promise<void> {
+  protected async onStart(opts: StartOptions): Promise<void> {
     // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
     await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
