@@ -4,7 +4,7 @@ import type { CloudUser } from './bridges';
 interface CloudAuthState {
   /** The signed-in LinkCode Cloud user, or null when signed out / not yet loaded. */
   user: CloudUser | null;
-  /** True from the moment sign-in is requested until the browser callback resolves or errors. */
+  /** True only while the sign-in request is handing off to the system browser. */
   authenticating: boolean;
   signIn: () => void;
   signOut: () => void;
@@ -27,7 +27,11 @@ export const useCloudAuthStore = create<CloudAuthState>((set) => {
     authenticating: false,
     signIn() {
       set({ authenticating: true });
-      void window.requestAuth();
+      // requestAuth resolves once the system browser has been handed the sign-in URL; the
+      // rest of the flow happens out-of-app (deep link → onAuthenticated). Clear the flag on
+      // that handoff — otherwise abandoning the browser leaves no callback to fire and the
+      // button stays disabled until reload.
+      void window.requestAuth().finally(() => set({ authenticating: false }));
     },
     signOut() {
       void window.signOut();
