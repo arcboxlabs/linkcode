@@ -50,14 +50,18 @@ export async function readWorkspaceFile(cwd: string, requestPath: string): Promi
     const buffer = Buffer.alloc(stat.size);
     await handle.read(buffer, 0, stat.size, 0);
 
-    const binary = isBinary(buffer);
+    const mimeType = MIME_BY_EXTENSION[path.extname(resolved).toLowerCase()];
+    // Known-binary types (PDF, raster images) must round-trip as base64 even when no NUL lands in
+    // the sniff window — a utf8 decode would corrupt the bytes, and the client's `atob()` on a
+    // utf8-tagged payload throws. SVG stays text (it's XML).
+    const binary = isBinary(buffer) || isBinaryMime(mimeType);
     return {
       path: resolved,
       size: stat.size,
       mtimeMs: stat.mtimeMs,
       encoding: binary ? 'base64' : 'utf8',
       content: buffer.toString(binary ? 'base64' : 'utf8'),
-      mimeType: MIME_BY_EXTENSION[path.extname(resolved).toLowerCase()],
+      mimeType,
     };
   } finally {
     await handle.close();
@@ -70,4 +74,10 @@ function isBinary(buffer: Buffer): boolean {
     if (buffer[i] === 0) return true;
   }
   return false;
+}
+
+/** MIME types whose bytes are always binary regardless of the NUL sniff (PDF, raster images). */
+function isBinaryMime(mime: string | undefined): boolean {
+  if (!mime) return false;
+  return mime === 'application/pdf' || (mime.startsWith('image/') && mime !== 'image/svg+xml');
 }

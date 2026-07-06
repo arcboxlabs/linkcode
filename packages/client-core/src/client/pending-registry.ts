@@ -4,6 +4,7 @@ import type {
   GitDiff,
   GitPullRequestStatus,
   GitStatus,
+  HostedArtifact,
   ProvidersConfig,
   SessionId,
   SessionInfo,
@@ -43,6 +44,7 @@ export interface PendingValueMap {
   gitDiff: GitDiff;
   fileRead: WorkspaceFile;
   scriptList: WorkspaceScript[];
+  artifactHost: HostedArtifact;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   ack: RequestAck;
@@ -75,6 +77,7 @@ export class PendingRegistry {
     gitDiff: new Map(),
     fileRead: new Map(),
     scriptList: new Map(),
+    artifactHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     ack: new Map(),
