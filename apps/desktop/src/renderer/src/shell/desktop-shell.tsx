@@ -289,7 +289,6 @@ export function DesktopShell({
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
       <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
-<<<<<<< HEAD
       {draft ? (
         // Keyed per entry point so opening from another group resets the page's picks.
         <NewSessionSurface
@@ -322,35 +321,12 @@ export function DesktopShell({
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
           onOpenFileArtifact={openFileArtifact}
+          onHostArtifact={onHostArtifact}
+          onOpenPreviewUrl={openBrowserUrl}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}
         />
       )}
-=======
-      {/* Keyed per session: switching resets the composer draft and scroll without touching the shell. */}
-      <ConversationSurface
-        key={active?.sessionId ?? 'no-active-session'}
-        className="min-h-0 flex-1"
-        conversation={conversation}
-        agentKind={active?.kind}
-        agentLabel={agentLabel}
-        cwd={active?.cwd}
-        answeredPermissions={answeredPermissions}
-        respondingPermissions={respondingPermissions}
-        TerminalBlockComponent={TerminalBlockComponent}
-        disabled={!active || active.status === 'stopped'}
-        isRunning={isRunning}
-        topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
-        onSendPrompt={onSendPrompt}
-        onStopTurn={onStopTurn}
-        onRespondPermission={onRespondPermission}
-        onOpenFileArtifact={openFileArtifact}
-        onHostArtifact={onHostArtifact}
-        onOpenPreviewUrl={openBrowserUrl}
-        onModelChange={onModelChange}
-        onEffortChange={onEffortChange}
-      />
->>>>>>> d19f633 (feat(ui,workbench): sandboxed html artifact preview with promote-to-browser)
     </main>
   );
 

@@ -41,6 +41,29 @@ describe('readWorkspaceFile', () => {
     expect(file.mimeType).toBe('image/png');
   });
 
+  it('returns known-binary types as base64 even without a NUL in the sniff window', async () => {
+    const root = makeTempDir();
+    // A minimal, all-ASCII PDF header — no NUL byte, so the sniff alone would misread it as utf8.
+    const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n');
+    writeFileSync(join(root, 'doc.pdf'), pdf);
+
+    const file = await readWorkspaceFile(root, 'doc.pdf');
+    expect(file.mimeType).toBe('application/pdf');
+    expect(file.encoding).toBe('base64');
+    expect(Buffer.from(file.content, 'base64')).toEqual(pdf);
+  });
+
+  it('keeps svg as utf8 text (it is XML, not binary)', async () => {
+    const root = makeTempDir();
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+    writeFileSync(join(root, 'icon.svg'), svg);
+
+    const file = await readWorkspaceFile(root, 'icon.svg');
+    expect(file.mimeType).toBe('image/svg+xml');
+    expect(file.encoding).toBe('utf8');
+    expect(file.content).toBe(svg);
+  });
+
   it('resolves relative paths against cwd and accepts in-root absolute paths', async () => {
     const root = makeTempDir();
     mkdirSync(join(root, 'docs'));

@@ -339,7 +339,6 @@ export function Composer({
   // No deps: the handle re-binds every render so insertText always sees the current draft.
   useImperativeHandle(handleRef, () => ({ insertText }));
 
-
   async function selectModel(modelId: string): Promise<void> {
     try {
       await onModelChange?.(modelId);

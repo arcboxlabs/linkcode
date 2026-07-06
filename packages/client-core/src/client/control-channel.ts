@@ -12,6 +12,7 @@ import type {
   GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
+  HostedArtifact,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -21,9 +22,9 @@ import type {
   WirePayload,
   WorkspaceFile,
   WorkspaceId,
-  WorkspaceScript,
   WorkspaceKind,
   WorkspaceRecord,
+  WorkspaceScript,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import type { PendingRegistry, PendingValueMap, RequestAck } from './pending-registry';
@@ -218,6 +219,16 @@ export class ControlChannel {
       clientReqId,
       cwd,
       scriptName,
+    }));
+  }
+
+  /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
+  hostArtifact(content: string, mimeType: string): Promise<HostedArtifact> {
+    return this.sendCorrelated('artifactHost', (clientReqId) => ({
+      kind: 'artifact.host',
+      clientReqId,
+      content,
+      mimeType,
     }));
   }
 
