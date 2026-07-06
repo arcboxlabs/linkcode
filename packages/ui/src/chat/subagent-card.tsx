@@ -35,21 +35,28 @@ interface SubagentTranscriptProps {
   toolCall: ToolCall;
   /** The subagent's items (narration / reasoning / tool calls), in arrival order. */
   items: readonly ConversationItem[];
+  /** The whole slice's parent→children buckets, so nested spawns can recurse into their own card. */
+  childrenByParent: ReadonlyMap<string, ConversationItem[]>;
   awaitingApproval: ReadonlySet<string>;
   declined: ReadonlySet<string>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  onExpand?: (toolCallId: string) => void;
 }
 
 /** The nested transcript body, shared between the inline card and the full-size viewer. Children
- * render linearly (no recursive activity grouping); the Task's own rawOutput is not repeated —
+ * render linearly (no recursive activity grouping), except a nested spawn (`task`-kind child),
+ * which recurses into its own SubagentCard — partitioning buckets grandchildren under the inner
+ * task, so a plain tool row would silently drop them. The Task's own rawOutput is not repeated —
  * the transcript already ends with the subagent's report — except as the empty-transcript
  * fallback (e.g. a degraded history read), so the report is never lost. */
 export function SubagentTranscript({
   toolCall,
   items,
+  childrenByParent,
   awaitingApproval,
   declined,
   TerminalBlockComponent,
+  onExpand,
 }: SubagentTranscriptProps): React.ReactNode {
   if (items.length === 0) {
     return (
@@ -76,6 +83,20 @@ export function SubagentTranscript({
           case 'reasoning':
             return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={false} />;
           case 'tool':
+            if (item.toolCall.kind === 'task') {
+              return (
+                <SubagentCard
+                  key={item.id}
+                  awaitingApproval={awaitingApproval}
+                  childrenByParent={childrenByParent}
+                  declined={declined}
+                  items={childrenByParent.get(item.toolCall.toolCallId) ?? []}
+                  onExpand={onExpand}
+                  TerminalBlockComponent={TerminalBlockComponent}
+                  toolCall={item.toolCall}
+                />
+              );
+            }
             return (
               <ToolCallItem
                 key={item.id}
@@ -93,10 +114,7 @@ export function SubagentTranscript({
   );
 }
 
-export interface SubagentCardProps extends SubagentTranscriptProps {
-  /** Opens the full-size transcript viewer for this subagent. */
-  onExpand?: (toolCallId: string) => void;
-}
+export type SubagentCardProps = SubagentTranscriptProps;
 
 /** Inline collapsible card for one subagent run: header shows the agent type + task description
  * and live status; the body nests the full transcript. Auto-open while running but the user's
@@ -104,6 +122,7 @@ export interface SubagentCardProps extends SubagentTranscriptProps {
 export function SubagentCard({
   toolCall,
   items,
+  childrenByParent,
   awaitingApproval,
   declined,
   TerminalBlockComponent,
@@ -169,8 +188,10 @@ export function SubagentCard({
       <CollapsibleContent className="mt-1 space-y-2 border-l-2 border-border pl-3">
         <SubagentTranscript
           awaitingApproval={awaitingApproval}
+          childrenByParent={childrenByParent}
           declined={declined}
           items={items}
+          onExpand={onExpand}
           TerminalBlockComponent={TerminalBlockComponent}
           toolCall={toolCall}
         />

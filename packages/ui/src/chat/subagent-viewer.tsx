@@ -62,8 +62,11 @@ export function SubagentViewer({
             {selected ? (
               <SubagentTranscript
                 awaitingApproval={awaitingApproval}
+                childrenByParent={childrenByParent}
                 declined={declined}
                 items={childrenByParent.get(selected.toolCall.toolCallId) ?? []}
+                // A nested spawn's expand button re-targets the rail selection to that subagent.
+                onExpand={onSelect}
                 TerminalBlockComponent={TerminalBlockComponent}
                 toolCall={selected.toolCall}
               />

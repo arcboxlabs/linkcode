@@ -34,7 +34,6 @@ import type {
   ToolCallContent,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
-import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
@@ -323,25 +322,28 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const historyId = opts.historyId;
     const mapper = createClaudeHistoryEventMapper(historyId);
     const events: AgentHistoryEvent[] = [];
-    for (const message of messages.slice(0, limit)) {
-      for (const event of mapper(message)) {
-        events.push(event);
-        // Splice each subagent's transcript in right after its spawn announce, so the seeded
-        // order matches the live stream and the children land inside the parent's turn (the
-        // UI's per-segment partition depends on that). Keyed off the announce (in_progress)
-        // only — the later settle re-emits the same tool-call id in a terminal state.
-        if (
-          event.event.type === 'tool-call' &&
-          event.event.toolCall.kind === 'task' &&
-          event.event.toolCall.status === 'in_progress'
-        ) {
-          const children = subagentEvents.get(event.event.toolCall.toolCallId);
-          if (children) {
-            appendArrayInPlace(events, children);
-            subagentEvents.delete(event.event.toolCall.toolCallId);
-          }
+    // Splice each subagent's transcript in right after its spawn announce, so the seeded order
+    // matches the live stream and the children land inside the parent's turn (the UI's per-segment
+    // partition depends on that). Keyed off the announce (in_progress) only — the later settle
+    // re-emits the same tool-call id in a terminal state. Recursive: a subagent's own transcript
+    // can announce a further spawn, whose transcript must nest the same way (delete-before-recurse
+    // also guards against a malformed self-referential parent id looping forever).
+    const pushWithSubagents = (event: AgentHistoryEvent): void => {
+      events.push(event);
+      if (
+        event.event.type === 'tool-call' &&
+        event.event.toolCall.kind === 'task' &&
+        event.event.toolCall.status === 'in_progress'
+      ) {
+        const children = subagentEvents.get(event.event.toolCall.toolCallId);
+        if (children) {
+          subagentEvents.delete(event.event.toolCall.toolCallId);
+          for (const child of children) pushWithSubagents(child);
         }
       }
+    };
+    for (const message of messages.slice(0, limit)) {
+      for (const event of mapper(message)) pushWithSubagents(event);
     }
     return {
       session: info

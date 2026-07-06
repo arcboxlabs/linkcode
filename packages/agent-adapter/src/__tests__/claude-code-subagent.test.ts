@@ -292,6 +292,57 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
     }
   });
 
+  it('splices nested spawns recursively under their inner announce', async () => {
+    const INNER_ID = 'toolu_inner';
+    const innerSubRow = (
+      type: 'user' | 'assistant',
+      uuid: string,
+      content: string | unknown[],
+    ): SessionMessage => ({
+      type,
+      uuid,
+      session_id: SESSION,
+      parent_tool_use_id: INNER_ID,
+      message: { content },
+    });
+    const adapter = new HistoryClaude(
+      fakeSdk({
+        messages: mainMessages,
+        subagents: {
+          outer: [
+            subRow('assistant', 's1', [
+              { type: 'tool_use', id: INNER_ID, name: 'Agent', input: { description: 'deeper' } },
+            ]),
+            subRow('user', 's2', [{ type: 'tool_result', tool_use_id: INNER_ID, content: 'done' }]),
+          ],
+          inner: [innerSubRow('assistant', 'n1', [{ type: 'text', text: 'grandchild says' }])],
+        },
+      }),
+    );
+    const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+
+    const ids = result.events.map((e) =>
+      e.event.type === 'tool-call'
+        ? `${e.event.toolCall.toolCallId}:${e.event.toolCall.status}`
+        : (e.itemId ?? ''),
+    );
+    expect(ids).toEqual([
+      'u0',
+      `${TASK_ID}:in_progress`,
+      `${INNER_ID}:in_progress`,
+      // Grandchild transcript nests right under the inner announce:
+      'n1',
+      `${INNER_ID}:completed`,
+      `${TASK_ID}:completed`,
+      'u3',
+    ]);
+    const grandchild = result.events.find((e) => e.itemId === 'n1');
+    expect(grandchild?.event).toMatchObject({
+      type: 'agent-message-chunk',
+      parentToolCallId: INNER_ID,
+    });
+  });
+
   it('leaves sessions without subagents untouched', async () => {
     const adapter = new HistoryClaude(fakeSdk({ messages: mainMessages }));
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });

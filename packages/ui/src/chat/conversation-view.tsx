@@ -103,6 +103,7 @@ export function ConversationView({
         <SubagentCard
           key={entry.item.id}
           awaitingApproval={awaitingApproval}
+          childrenByParent={subagentChildren}
           declined={declined}
           items={subagentChildren.get(entry.item.toolCall.toolCallId) ?? []}
           onExpand={setExpandedTaskId}

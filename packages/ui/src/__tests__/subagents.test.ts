@@ -56,6 +56,20 @@ describe('partitionSubagentItems', () => {
     expect(childrenByParent.get(taskId)).toEqual([childText, childTool]);
   });
 
+  it('buckets a nested spawn under the outer task and grandchildren under the inner one', () => {
+    const outer = tool('task');
+    const outerId = outer.toolCall.toolCallId;
+    const inner = tool('task', { parentToolCallId: outerId });
+    const innerId = inner.toolCall.toolCallId;
+    const grandchild = tool('read', { parentToolCallId: innerId });
+    const { topLevel, childrenByParent } = partitionSubagentItems([outer, inner, grandchild]);
+
+    // SubagentTranscript recurses task-kind children into their own card, so nothing is dropped.
+    expect(topLevel).toEqual([outer]);
+    expect(childrenByParent.get(outerId)).toEqual([inner]);
+    expect(childrenByParent.get(innerId)).toEqual([grandchild]);
+  });
+
   it('falls back to top-level for orphans whose parent is not in the slice', () => {
     const orphanText = narration('toolu_gone');
     const orphanTool = tool('read', { parentToolCallId: 'toolu_gone' });
