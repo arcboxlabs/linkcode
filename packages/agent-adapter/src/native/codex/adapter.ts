@@ -128,6 +128,8 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** A cancel that arrived inside the turnStarting window, before the turn id was known; honored
    * by `activateTurn` the moment the id lands instead of being silently dropped. */
   private cancelRequested = false;
+  /** True while a fresh thread's session-ref announcement is deferred to its first turn. */
+  private holdSessionRef = false;
   /** A turn id that already completed; a late `turn/start` response for it must not re-activate. */
   private lastCompletedTurnId: string | null = null;
   /** Prompts received while a turn is running; drained one per `turn/completed`. */
@@ -236,6 +238,12 @@ export class CodexAdapter extends BaseAgentAdapter {
   private activateTurn(turnId: string): void {
     if (turnId === this.lastCompletedTurnId) return;
     this.activeTurnId = turnId;
+    // The server has accepted the first turn, so the rollout now contains it: safe to hand
+    // clients the history id for transcript seeding (see openThread).
+    if (this.holdSessionRef && this.threadId) {
+      this.holdSessionRef = false;
+      this.emitSessionRef(asHistoryId(this.threadId));
+    }
     if (this.cancelRequested) {
       this.cancelRequested = false;
       void this.interruptTurn(turnId);
@@ -313,6 +321,14 @@ export class CodexAdapter extends BaseAgentAdapter {
         config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
       }),
     };
+    // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger
+    // clients' transcript seed read before codex persists the first turn, and the seed's
+    // uptoSeq cut can then swallow the first prompt (it trusts the snapshot to contain
+    // everything up to the cut). Hold the announcement until the first turn is running —
+    // matching claude-code, whose session id also only surfaces with the first turn's
+    // messages. A resumed thread's rollout is already complete, so announce immediately.
+    // Set before the request: the thread/started notification can outrun the response.
+    this.holdSessionRef = !resume;
     try {
       const response = resume
         ? await server.request('thread/resume', { ...params, threadId: resume, excludeTurns: true })
@@ -320,7 +336,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       const thread = isRecord(response) ? recordField(response, 'thread') : undefined;
       const threadId = thread ? stringField(thread, 'id') : undefined;
       this.threadId = threadId ?? null;
-      if (threadId) this.emitSessionRef(asHistoryId(threadId));
+      if (threadId && !this.holdSessionRef) this.emitSessionRef(asHistoryId(threadId));
     } catch (err) {
       // Re-arm the resume point: a transient thread/resume failure must not silently downgrade
       // the next attempt into a brand-new thread that abandons the conversation.
@@ -365,6 +381,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.activeTurnId = null;
     this.turnStarting = false;
     this.cancelRequested = false;
+    this.holdSessionRef = false;
     this.pendingPrompts = [];
     this.resumeFrom = this.threadId ?? this.resumeFrom;
     this.threadId = null;
@@ -381,7 +398,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         const id = thread ? stringField(thread, 'id') : undefined;
         if (id) {
           this.threadId = id;
-          this.emitSessionRef(asHistoryId(id));
+          // Deferred to the first turn for fresh threads — see openThread.
+          if (!this.holdSessionRef) this.emitSessionRef(asHistoryId(id));
         }
         break;
       }
