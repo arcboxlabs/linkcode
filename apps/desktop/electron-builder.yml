@@ -56,7 +56,7 @@ mac:
   gatekeeperAssess: false
   entitlements: build-resources/entitlements.mac.plist
   entitlementsInherit: build-resources/entitlements.mac.inherit.plist
-  notarize: true # consumes APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  notarize: true # notarytool via App Store Connect API key (APPLE_API_KEY / _KEY_ID / _ISSUER)
   target:
     - target: dmg
       arch: [universal]
