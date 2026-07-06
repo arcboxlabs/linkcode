@@ -174,13 +174,23 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.messageId = nextMessageId();
     this.thoughtId = nextMessageId();
   }
-  protected emitAssistantText(text: string, messageId: MessageId): void {
+  protected emitAssistantText(text: string, messageId: MessageId, parentToolCallId?: string): void {
     if (text.length === 0) return;
-    this.emit({ type: 'agent-message-chunk', messageId, content: textBlock(text) });
+    this.emit({
+      type: 'agent-message-chunk',
+      messageId,
+      parentToolCallId,
+      content: textBlock(text),
+    });
   }
-  protected emitThought(text: string, messageId: MessageId): void {
+  protected emitThought(text: string, messageId: MessageId, parentToolCallId?: string): void {
     if (text.length === 0) return;
-    this.emit({ type: 'agent-thought-chunk', messageId, content: textBlock(text) });
+    this.emit({
+      type: 'agent-thought-chunk',
+      messageId,
+      parentToolCallId,
+      content: textBlock(text),
+    });
   }
 
   /**
@@ -214,6 +224,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
           title: patch.title ?? existing.title,
           kind: patch.kind ?? existing.kind,
           status: patch.status ?? existing.status,
+          parentToolCallId: patch.parentToolCallId ?? existing.parentToolCallId,
           content: patch.content ?? existing.content,
           locations: patch.locations ?? existing.locations,
           rawInput: patch.rawInput ?? existing.rawInput,
@@ -224,6 +235,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
           title: patch.title ?? patch.toolCallId,
           kind: patch.kind ?? 'other',
           status: patch.status ?? 'in_progress',
+          parentToolCallId: patch.parentToolCallId,
           content: patch.content ?? [],
           locations: patch.locations,
           rawInput: patch.rawInput,
