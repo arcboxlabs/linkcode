@@ -18,6 +18,31 @@ export const SessionModeStateSchema = z.object({
 });
 export type SessionModeState = z.infer<typeof SessionModeStateSchema>;
 
+/**
+ * Approval policies — the permission/safety axis: when the agent asks before acting. Orthogonal to
+ * the workflow SessionMode axis above (see packages/ui approval-policy.ts for the rationale).
+ * Adapters advertise their own policy list and translate ids per agent (claude-code → its
+ * permission modes, codex → approval_policy/sandbox).
+ */
+export const ApprovalPolicyIdSchema = z.string().min(1);
+export type ApprovalPolicyId = z.infer<typeof ApprovalPolicyIdSchema>;
+
+export const ApprovalPolicySchema = z.object({
+  policyId: ApprovalPolicyIdSchema,
+  name: z.string(),
+  description: z.string().optional(),
+});
+export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>;
+
+/** Full policy state, emitted whole (at session start and after every switch) so clients never
+ * have to join a separate list request against a current-id event. Empty `availablePolicies`
+ * means the agent has no switchable policy axis and clients hide the selector. */
+export const ApprovalPolicyStateSchema = z.object({
+  availablePolicies: z.array(ApprovalPolicySchema),
+  currentPolicyId: ApprovalPolicyIdSchema,
+});
+export type ApprovalPolicyState = z.infer<typeof ApprovalPolicyStateSchema>;
+
 /** Why a prompt turn ended. */
 export const StopReasonSchema = z.enum([
   'end_turn',
