@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, Menu } from 'electron';
 import { applyThemePreference } from './appearance';
 import { setupCloudAuth } from './cloud-auth/client';
+import { registerCloudTunnelBridge } from './cloud-auth/tunnel';
 import { APP_NAME } from './constants';
 import { startDaemonSupervisor } from './daemon-supervisor';
 import { buildAppMenu } from './menu';
@@ -38,6 +39,9 @@ if (app.requestSingleInstanceLock()) {
   // the better-auth electron plugin registers a privileged scheme via
   // protocol.registerSchemesAsPrivileged, which throws once the app is ready.
   setupCloudAuth();
+  // Cloud data bridge (list online hosts). Not scheme-related, but registered here alongside the
+  // rest of the cloud wiring; ipcMain.handle is safe before the app is ready.
+  registerCloudTunnelBridge();
 
   app
     .whenReady()
