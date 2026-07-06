@@ -46,7 +46,7 @@ interface DirectoryEntry {
   isFile(): boolean;
 }
 
-function codexHome(): string {
+export function codexHome(): string {
   return env.CODEX_HOME ?? join(homedir(), '.codex');
 }
 
