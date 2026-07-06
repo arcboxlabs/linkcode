@@ -355,8 +355,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
         canUseTool: this.canUseTool,
-        // Omitted (undefined) until the user picks a policy, so the CLI's own default —
-        // settings.json `permissions.defaultMode` included — stays in charge (see syncApprovalPolicy).
+        // Resolved in onStart from settings.json `permissions.defaultMode` (see settingsDefaultMode)
+        // — the SDK-driven CLI does not apply that setting itself. `undefined` only when neither the
+        // user nor settings picked one, in which case the CLI starts in its 'default' mode.
         permissionMode: this.approvalPolicy,
         // Gate flag only — the effective mode stays `permissionMode` above. It must be set at
         // startup for a later live switch to 'bypassPermissions' to be accepted at all.
