@@ -61,14 +61,14 @@ function FolderToggleIcon({ open }: { open: boolean }): React.ReactNode {
   const reduceMotion = useReducedMotion();
   const transition = reduceMotion ? { duration: 0 } : FOLDER_ICON_SPRING;
   return (
-    <span aria-hidden className="relative size-3 shrink-0">
+    <span aria-hidden className="relative size-4 shrink-0">
       <motion.span
         className="absolute inset-0"
         initial={false}
         animate={open ? FOLDER_ICON_HIDDEN : FOLDER_ICON_SHOWN}
         transition={transition}
       >
-        <FolderIcon className="size-3" />
+        <FolderIcon className="size-4" />
       </motion.span>
       <motion.span
         className="absolute inset-0"
@@ -76,7 +76,7 @@ function FolderToggleIcon({ open }: { open: boolean }): React.ReactNode {
         animate={open ? FOLDER_ICON_SHOWN : FOLDER_ICON_HIDDEN}
         transition={transition}
       >
-        <FolderOpenIcon className="size-3" />
+        <FolderOpenIcon className="size-4" />
       </motion.span>
     </span>
   );
