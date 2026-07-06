@@ -200,6 +200,8 @@ export const en = {
       registerWorkspaceError: 'Failed to add workspace: {message}',
       importHistoryTitle: 'Import history',
       organization: 'Organization',
+      signInCloud: 'Sign in to LinkCode Cloud',
+      signOut: 'Sign out',
       historyEmptyTitle: 'No history to import',
       historyEmptyHint: 'This workspace has no saved conversations yet.',
       historyLoadError: 'Failed to load history. Try again later.',

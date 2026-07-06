@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, Menu } from 'electron';
 import { applyThemePreference } from './appearance';
+import { setupCloudAuth } from './cloud-auth/client';
 import { APP_NAME } from './constants';
 import { buildAppMenu } from './menu';
 import { getSettings } from './settings';
@@ -37,6 +38,9 @@ if (app.requestSingleInstanceLock()) {
       if (process.platform === 'darwin' && !app.isPackaged) {
         app.dock?.setIcon(join(__dirname, '../../../../assets/icon-dock.png'));
       }
+      // Register the LinkCode Cloud auth protocol + IPC bridges before the window loads so a
+      // cold-start deep-link callback is handled.
+      setupCloudAuth();
       // Apply the stored color scheme before the window exists so its chrome paints correctly first time.
       applyThemePreference(getSettings().theme);
       Menu.setApplicationMenu(buildAppMenu());

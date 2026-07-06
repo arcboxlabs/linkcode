@@ -18,6 +18,7 @@
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
   "dependencies": {
+    "@better-auth/electron": "1.7.0-rc.1",
     "@hookform/resolvers": "^5.4.0",
     "@linkcode/common": "workspace:*",
     "@linkcode/ipc": "workspace:*",
@@ -28,6 +29,7 @@
     "@sentry/electron": "^7.14.0",
     "@sentry/react": "10.60.0",
     "allotment": "^1.20.5",
+    "better-auth": "1.7.0-rc.1",
     "coss-ui": "workspace:*",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",

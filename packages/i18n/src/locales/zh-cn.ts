@@ -198,6 +198,8 @@ export const zhCN = {
       registerWorkspaceError: '添加工作区失败：{message}',
       importHistoryTitle: '导入历史记录',
       organization: '组织',
+      signInCloud: '登录 LinkCode Cloud',
+      signOut: '退出登录',
       historyEmptyTitle: '没有可导入的历史记录',
       historyEmptyHint: '该工作区还没有已保存的历史对话。',
       historyLoadError: '历史记录加载失败，请稍后重试。',

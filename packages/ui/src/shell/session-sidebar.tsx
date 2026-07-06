@@ -1,20 +1,15 @@
 import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
-import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from 'coss-ui/components/select';
 import { Separator } from 'coss-ui/components/separator';
 import {
   BotIcon,
   ChevronDownIcon,
+  CloudIcon,
   FilePlus2Icon,
+  LogOutIcon,
   SearchIcon,
   SettingsIcon,
   SparklesIcon,
@@ -56,7 +51,12 @@ export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupStat
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
 }
 
-const ORGS = [{ label: 'ArcBox Labs', value: 'arcbox' }];
+/** The signed-in LinkCode Cloud account rendered in the footer; null/undefined when signed out. */
+export interface CloudAccount {
+  name: string;
+  email: string;
+  image?: string | null;
+}
 
 export function SessionSidebar({
   threadGroups,
@@ -208,11 +208,21 @@ export function HostFooter({
   state,
   appVersion,
   pendingPermissionCount = 0,
+  account,
+  authPending = false,
+  onSignIn,
+  onSignOut,
   onOpenSettings,
 }: {
   state?: string;
   appVersion?: string;
   pendingPermissionCount?: number;
+  /** LinkCode Cloud account; null/undefined renders the signed-out sign-in button. */
+  account?: CloudAccount | null;
+  /** Sign-in in flight (browser handoff): disables the button and shows a spinner. */
+  authPending?: boolean;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
   onOpenSettings?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
@@ -264,28 +274,35 @@ export function HostFooter({
         <Separator className="my-1" />
 
         <div className="flex items-center gap-2 pt-1">
-          <Select defaultValue="arcbox" items={ORGS}>
-            <SelectTrigger
-              disabled
-              aria-label={t('organization')}
-              className="min-w-0 flex-1"
-              size="sm"
-            >
-              <Avatar className="size-5 rounded-sm">
-                <AvatarFallback className="rounded-sm bg-primary text-primary-foreground">
-                  A
+          {account ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Avatar className="size-6">
+                {account.image && <AvatarImage src={account.image} alt={account.name} />}
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                  {accountInitial(account)}
                 </AvatarFallback>
               </Avatar>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectPopup>
-              {ORGS.map((org) => (
-                <SelectItem key={org.value} value={org.value}>
-                  {org.label}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate font-medium">{account.name}</div>
+                <div className="truncate text-muted-foreground text-xs">{account.email}</div>
+              </div>
+              <Button size="icon-sm" variant="ghost" aria-label={t('signOut')} onClick={onSignOut}>
+                <LogOutIcon />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              className="min-w-0 flex-1 justify-start"
+              size="sm"
+              variant="outline"
+              loading={authPending}
+              disabled={!onSignIn}
+              onClick={onSignIn}
+            >
+              <CloudIcon />
+              {t('signInCloud')}
+            </Button>
+          )}
           <Button
             disabled={!onOpenSettings}
             size="icon-sm"
@@ -299,6 +316,10 @@ export function HostFooter({
       </PopoverPopup>
     </Popover>
   );
+}
+
+function accountInitial(account: CloudAccount): string {
+  return (account.name || account.email).trim().charAt(0).toUpperCase() || '?';
 }
 
 function HostFooterRow({
