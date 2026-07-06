@@ -24,6 +24,9 @@ export const authClient = createAuthClient({
       signInURL: CLOUD_SIGN_IN_URL,
       protocol: { scheme: CLOUD_AUTH_SCHEME },
       storage: createSafeStorage(),
+      // The IdP does not return an avatar, so skip the user-image proxy (and its extra
+      // privileged scheme); the footer renders initials.
+      userImageProxy: { enabled: false },
     }),
   ],
 });
@@ -31,13 +34,16 @@ export const authClient = createAuthClient({
 export type CloudAuthClient = typeof authClient;
 
 /**
- * Wire the auth client into the main process: registers the `linkcode://` protocol, the deep-link
- * handlers, and the IPC bridges the preload exposes. CSP is left to the renderer's own meta policy
- * — the renderer never talks to the cloud API directly, only through these bridges.
+ * Wire the auth client into the main process. Each feature must be opted into explicitly once a
+ * config object is passed: `scheme` registers the `linkcode://` protocol + deep-link handlers,
+ * `bridges` registers the IPC handlers the preload invokes. CSP is left off — the renderer never
+ * talks to the cloud API directly, only through the bridges.
  */
 export function setupCloudAuth(): void {
   authClient.setupMain({
     csp: false,
+    scheme: true,
+    bridges: true,
     getWindow: () => BrowserWindow.getAllWindows().at(0) ?? null,
   });
 }
