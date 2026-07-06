@@ -1,5 +1,5 @@
 import type { AgentKind } from '@linkcode/schema';
-import { AGENT_LABELS, AgentIcon } from '../agent-icon';
+import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 
 export interface AgentKindListProps {
   onPick: (kind: AgentKind) => void;

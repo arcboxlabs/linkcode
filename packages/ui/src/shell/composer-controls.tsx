@@ -27,8 +27,8 @@ import {
   TargetIcon,
 } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
-import { AGENT_LABELS, AgentIcon } from './agent-icon';
 import type { ModelOption } from './agent-models';
 import type { ApprovalPolicyOption } from './approval-policy';
 

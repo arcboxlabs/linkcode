@@ -1,5 +1,6 @@
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
+import { Spinner } from 'coss-ui/components/spinner';
 import {
   AlertCircleIcon,
   FileArchiveIcon,
@@ -8,7 +9,6 @@ import {
   FileTextIcon,
   FolderIcon,
   GlobeIcon,
-  LoaderCircleIcon,
   XIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
@@ -84,9 +84,8 @@ export function Attachment({
       className={cn(
         'group relative min-w-0 overflow-hidden border border-border bg-card',
         variant === 'grid' && 'size-24 rounded-lg',
-        variant === 'inline' &&
-          'flex h-8 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-[12px]',
-        variant === 'list' && 'flex w-full items-center gap-3 rounded-lg p-3 text-[13px]',
+        variant === 'inline' && 'flex h-8 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-xs',
+        variant === 'list' && 'flex w-full items-center gap-3 rounded-lg p-3 text-sm',
         className,
       )}
       {...props}
@@ -155,7 +154,7 @@ export function AttachmentInfo({
 }: AttachmentInfoProps): React.ReactNode {
   if (variant === 'grid') {
     return attachment.status === 'failed' ? (
-      <div className="absolute inset-x-1 bottom-1 rounded bg-background/90 px-1 text-[11px] text-destructive-foreground">
+      <div className="absolute inset-x-1 bottom-1 rounded bg-background/90 px-1 text-xs text-destructive-foreground">
         Failed
       </div>
     ) : null;
@@ -165,7 +164,7 @@ export function AttachmentInfo({
     <div className={cn('min-w-0 flex-1', className)} {...props}>
       <div className="truncate font-medium text-foreground">{attachment.name}</div>
       {variant === 'list' ? (
-        <div className="truncate text-[12px] text-muted-foreground">
+        <div className="truncate text-xs text-muted-foreground">
           {attachment.errorMessage ?? attachment.mimeType ?? formatBytes(attachment.sizeBytes)}
         </div>
       ) : null}
@@ -198,7 +197,7 @@ export function AttachmentStatus({
         {...props}
       >
         {status === 'pending' ? (
-          <LoaderCircleIcon className="size-3 animate-spin" />
+          <Spinner className="size-3" />
         ) : (
           <AlertCircleIcon className="size-3" />
         )}
@@ -237,7 +236,6 @@ export function AttachmentRemove({
         attachmentVariant === 'grid' &&
           'absolute top-1 right-1 size-6 rounded-full bg-background/90',
         attachmentVariant === 'inline' && 'size-5',
-        attachmentVariant === 'list' && 'size-7',
         className,
       )}
       onClick={onRemove}

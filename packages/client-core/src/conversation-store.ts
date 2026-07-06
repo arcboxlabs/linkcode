@@ -69,8 +69,10 @@ export function createConversationStore(
     if (client.eventSeq(sessionId) <= consumedSeq) return;
     const events = client.eventsSnapshot(sessionId);
     for (let i = firstIndexAfter(events, consumedSeq); i < events.length; i += 1) {
-      const { event, seq } = events[i];
-      if (seq > uptoSeq || !SEEDABLE_EVENT_TYPES.has(event.type)) builder.advance(event);
+      const { event, seq, receivedAt } = events[i];
+      if (seq > uptoSeq || !SEEDABLE_EVENT_TYPES.has(event.type)) {
+        builder.advance(event, receivedAt);
+      }
     }
     // Snap to the counter even when the buffer lags it (cleared by a stop): those events are
     // gone from the buffer and covered by transcripts, so there is nothing left to consume.

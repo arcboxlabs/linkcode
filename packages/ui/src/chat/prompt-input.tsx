@@ -28,7 +28,7 @@ export function PromptInput({
 
   return (
     <form className={cn('w-full', className)} onSubmit={handleSubmit} {...props}>
-      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none focus-within:border-ring">
+      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none">
         {children}
       </InputGroup>
     </form>

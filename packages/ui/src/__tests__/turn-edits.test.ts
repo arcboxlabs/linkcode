@@ -1,0 +1,75 @@
+import type { ToolCall } from '@linkcode/schema';
+import { describe, expect, it } from 'vitest';
+import { splitTurnSegments, turnFileEdits } from '../chat/turn-edits';
+import type { ConversationItem } from '../chat/types';
+
+function user(turnId: string | null, id: string): ConversationItem {
+  return { kind: 'message', id, turnId, role: 'user', blocks: [], isStreaming: false };
+}
+
+function tool(
+  turnId: string | null,
+  id: string,
+  status: ToolCall['status'],
+  diffs: Array<{ path: string; oldText?: string; newText: string }> = [],
+): ConversationItem {
+  return {
+    kind: 'tool',
+    id,
+    turnId,
+    toolCall: {
+      toolCallId: id,
+      title: id,
+      kind: 'edit',
+      status,
+      content: diffs.map((diff) => ({ type: 'diff', ...diff })),
+    },
+  };
+}
+
+describe('turn edit selectors', () => {
+  it('splits the timeline into consecutive turn segments', () => {
+    const leadIn = tool(null, 'seeded', 'completed');
+    const firstUser = user('turn-1', 'u1');
+    const firstTool = tool('turn-1', 't1', 'completed');
+    const secondUser = user('turn-2', 'u2');
+
+    expect(splitTurnSegments([leadIn, firstUser, firstTool, secondUser])).toEqual([
+      { turnId: null, items: [leadIn] },
+      { turnId: 'turn-1', items: [firstUser, firstTool] },
+      { turnId: 'turn-2', items: [secondUser] },
+    ]);
+  });
+
+  it('aggregates completed diffs per file and sums totals', () => {
+    const edits = turnFileEdits([
+      tool('turn-1', 't1', 'completed', [
+        { path: 'a.ts', oldText: 'one\ntwo\n', newText: 'one\nthree\n' },
+      ]),
+      tool('turn-1', 't2', 'completed', [
+        { path: 'a.ts', newText: 'added\n' },
+        { path: 'b.ts', oldText: 'gone\n', newText: '' },
+      ]),
+    ]);
+
+    expect(edits).toEqual({
+      files: [
+        { path: 'a.ts', additions: 3, deletions: 1 },
+        { path: 'b.ts', additions: 0, deletions: 2 },
+      ],
+      additions: 3,
+      deletions: 3,
+    });
+  });
+
+  it('ignores non-completed calls and returns null when nothing was edited', () => {
+    expect(
+      turnFileEdits([
+        tool('turn-1', 'failed', 'failed', [{ path: 'a.ts', newText: 'x\n' }]),
+        tool('turn-1', 'running', 'in_progress', [{ path: 'b.ts', newText: 'y\n' }]),
+        user('turn-1', 'u1'),
+      ]),
+    ).toBeNull();
+    expect(turnFileEdits([tool('turn-1', 'no-diff', 'completed')])).toBeNull();
+  });
+});

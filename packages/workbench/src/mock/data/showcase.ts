@@ -71,6 +71,44 @@ export const SHOWCASE_PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'reject_once', name: 'Reject', kind: 'reject_once' },
 ];
 
+const SHOWCASE_PERMISSION_EDIT_TOOL: ToolCall = {
+  toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
+  title: 'Apply guarded edit',
+  kind: 'edit',
+  status: 'pending',
+  content: [SHOWCASE_PERMISSION_DIFF],
+  rawInput: { path: SHOWCASE_PERMISSION_DIFF.path },
+};
+
+const SHOWCASE_PERMISSION_EXEC_TOOL: ToolCall = {
+  toolCallId: 'mock-tool-permission-exec',
+  title: 'Run database migration',
+  kind: 'execute',
+  status: 'pending',
+  content: [],
+  rawInput: { command: 'pnpm run migrate -- --env=dev' },
+};
+
+export interface ShowcasePermission {
+  requestId: string;
+  toolCall: ToolCall;
+  options: PermissionOption[];
+}
+
+/** Two pending asks with different kinds, so the dock's badge/details and pager are exercisable. */
+export const SHOWCASE_PERMISSIONS: ShowcasePermission[] = [
+  {
+    requestId: SHOWCASE_PERMISSION_ID,
+    toolCall: SHOWCASE_PERMISSION_EDIT_TOOL,
+    options: SHOWCASE_PERMISSION_OPTIONS,
+  },
+  {
+    requestId: 'mock-permission-exec',
+    toolCall: SHOWCASE_PERMISSION_EXEC_TOOL,
+    options: SHOWCASE_PERMISSION_OPTIONS,
+  },
+];
+
 export const SHOWCASE_ERROR_EVENT: Extract<AgentEvent, { type: 'error' }> = {
   type: 'error',
   message: 'Recoverable mock diagnostic: preview service returned 503.',
@@ -96,11 +134,11 @@ export const SHOWCASE_TERMINAL_START_OUTPUT =
 export const SHOWCASE_TERMINAL_EXIT_OUTPUT = 'mock terminal stream finished\n';
 
 export const SHOWCASE_PERMISSION_GRANTED_CONTENT = textBlock(
-  'Permission granted; mock edit applied.',
+  'Permission granted; mock action applied.',
 );
 
 export const SHOWCASE_PERMISSION_DENIED_CONTENT = textBlock(
-  'Permission denied; mock edit skipped.',
+  'Permission denied; mock action skipped.',
 );
 
 export const SHOWCASE_EXPLORE_NARRATION = textBlock(
@@ -251,14 +289,7 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
           },
         ],
       },
-      {
-        toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
-        title: 'Apply guarded edit',
-        kind: 'edit',
-        status: 'pending',
-        content: [SHOWCASE_PERMISSION_DIFF],
-        rawInput: { path: SHOWCASE_PERMISSION_DIFF.path },
-      },
+      ...SHOWCASE_PERMISSIONS.map((permission) => permission.toolCall),
     ],
   };
 }

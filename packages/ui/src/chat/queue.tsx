@@ -6,13 +6,13 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { ScrollArea } from 'coss-ui/components/scroll-area';
+import { Spinner } from 'coss-ui/components/spinner';
 import {
   CheckCircleIcon,
   ChevronRightIcon,
   CircleXIcon,
   ClockIcon,
   ListOrderedIcon,
-  LoaderCircleIcon,
   XCircleIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
@@ -40,7 +40,7 @@ export function Queue({
 }: QueueProps): React.ReactNode {
   return (
     <div
-      className={cn('my-1 rounded-xl border border-border bg-card p-3 text-[13px]', className)}
+      className={cn('my-1 rounded-xl border border-border bg-card p-3 text-sm', className)}
       {...props}
     >
       {children ?? (
@@ -92,7 +92,7 @@ export function QueueSectionTrigger({
     >
       {children ?? (
         <>
-          <ListOrderedIcon className="size-4 text-muted-foreground" />
+          <ListOrderedIcon className="size-3.5 text-muted-foreground" />
           <span className="min-w-0 flex-1">{label}</span>
           {typeof count === 'number' ? (
             <Badge size="sm" variant="secondary">
@@ -158,7 +158,7 @@ export function QueueItem({
           {children ?? item.title}
         </div>
         {item.description ? (
-          <div className="line-clamp-2 text-[12px] text-muted-foreground">{item.description}</div>
+          <div className="line-clamp-2 text-xs text-muted-foreground">{item.description}</div>
         ) : null}
       </div>
       <Badge className="shrink-0" size="sm" variant={queueBadgeVariant(item.status)}>
@@ -167,13 +167,13 @@ export function QueueItem({
       {canCancel && onCancel ? (
         <Button
           aria-label={`Cancel ${item.title}`}
-          className="size-6 shrink-0 opacity-0 group-hover:opacity-100"
+          className="shrink-0 opacity-0 group-hover:opacity-100"
           onClick={onCancel}
           size="icon-xs"
           type="button"
           variant="ghost"
         >
-          <XCircleIcon className="size-3.5" />
+          <XCircleIcon />
         </Button>
       ) : null}
     </li>
@@ -185,7 +185,7 @@ function QueueStatusIcon({ status }: { status: ChatQueueItem['status'] }): React
 
   switch (status) {
     case 'running':
-      return <LoaderCircleIcon className={className} />;
+      return <Spinner className={className} />;
     case 'completed':
       return <CheckCircleIcon className={className} />;
     case 'failed':
@@ -200,7 +200,7 @@ function QueueStatusIcon({ status }: { status: ChatQueueItem['status'] }): React
 function queueStatusClass(status: ChatQueueItem['status']): string {
   switch (status) {
     case 'running':
-      return 'animate-spin text-warning-foreground';
+      return 'text-warning-foreground';
     case 'completed':
       return 'text-success-foreground';
     case 'failed':

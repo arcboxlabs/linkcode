@@ -53,7 +53,7 @@ export function SchemaDisplay({
   return (
     <div
       className={cn(
-        'my-2 overflow-hidden rounded-lg border border-border bg-card text-[13px]',
+        'my-2 overflow-hidden rounded-lg border border-border bg-card text-sm',
         className,
       )}
       {...props}
@@ -211,7 +211,7 @@ export function SchemaDisplayParameter({
             {parameter.required ? <Badge variant="error">required</Badge> : null}
           </div>
           {parameter.description ? (
-            <div className="mt-1 text-[12px] text-muted-foreground">{parameter.description}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{parameter.description}</div>
           ) : null}
         </>
       )}
@@ -275,7 +275,7 @@ export function SchemaDisplayProperty({
             <SchemaPropertySummary schemaProperty={schemaProperty} />
           </CollapsibleTrigger>
           {schemaProperty.description ? (
-            <div className="pb-2 text-[12px] text-muted-foreground" style={{ paddingLeft }}>
+            <div className="pb-2 text-xs text-muted-foreground" style={{ paddingLeft }}>
               {schemaProperty.description}
             </div>
           ) : null}
@@ -302,7 +302,7 @@ export function SchemaDisplayProperty({
             <SchemaPropertySummary schemaProperty={schemaProperty} />
           </div>
           {schemaProperty.description ? (
-            <div className="mt-1 pl-5 text-[12px] text-muted-foreground">
+            <div className="mt-1 pl-5 text-xs text-muted-foreground">
               {schemaProperty.description}
             </div>
           ) : null}
@@ -320,7 +320,7 @@ export function SchemaDisplayExample({
 }: SchemaDisplayExampleProps): React.ReactNode {
   return (
     <pre
-      className={cn('m-3 overflow-auto rounded-md bg-muted p-3 font-mono text-[12px]', className)}
+      className={cn('m-3 overflow-auto rounded-md bg-muted p-3 font-mono text-xs', className)}
       {...props}
     />
   );

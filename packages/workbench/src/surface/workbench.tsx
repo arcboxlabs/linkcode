@@ -12,7 +12,7 @@ import {
   setModel,
   updateWorkspace,
 } from '@linkcode/sdk';
-import type { ThreadGroupViewModel } from '@linkcode/ui';
+import type { PermissionDecision, ThreadGroupViewModel } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -66,7 +66,7 @@ export function Workbench({
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
   // sidebar, panels, terminals), which must stay permanently mounted across session switches —
   // remounting it flashes the entire window. Per-session UI reset happens at the conversation
-  // column (the shells key their ConversationSurface), and the permission sets below survive
+  // column (the shells key their ConversationSurface), and the permission state below survives
   // switches safely because adapter requestIds are globally unique.
   return (
     <>
@@ -111,7 +111,9 @@ function WorkbenchSessionSurface({
   const effortMutation = useMutation(setEffort, { onError });
   // Workflow-mode switches ride the generic input op; the mode reflects via current-mode-update.
   const modeMutation = useMutation(sendInput, { onError });
-  const [answered, addAnswered] = useSet<string>();
+  const [permissionDecisions, setPermissionDecisions] = useState(
+    () => new Map<string, PermissionDecision>(),
+  );
   const [responding, addResponding, removeResponding] = useSet<string>();
   const active = sessions.active;
   const {
@@ -272,7 +274,7 @@ function WorkbenchSessionSurface({
     (workspace) => workspaceKind(workspace) !== 'chat',
   );
 
-  function handleRespond(requestId: string, optionId: string): void {
+  function handleRespond(requestId: string, decision: PermissionDecision): void {
     if (!sessions.activeId) return;
     onClearError();
     addResponding(requestId);
@@ -280,10 +282,14 @@ function WorkbenchSessionSurface({
       .trigger({
         sessionId: sessions.activeId,
         requestId,
-        outcome: { outcome: 'selected', optionId },
+        // The UI prompt is generic; the transport still expects the permission schema outcome.
+        outcome:
+          decision.outcome === 'cancelled'
+            ? { outcome: 'cancelled' }
+            : { outcome: 'selected', optionId: decision.option.optionId },
       })
       .then(() => {
-        addAnswered(requestId);
+        setPermissionDecisions((previous) => new Map(previous).set(requestId, decision));
       })
       .catch(noop)
       .finally(() => {
@@ -299,10 +305,10 @@ function WorkbenchSessionSurface({
       sessionsLoading={sessions.isLoading}
       activeSession={active}
       conversation={conversation}
-      answeredPermissions={answered}
+      permissionDecisions={permissionDecisions}
       respondingPermissions={responding}
       header={{
-        title: active ? tk(active.kind) : 'Link Code',
+        title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
         subtitle: active?.cwd,
         usage: conversation.usage,
       }}

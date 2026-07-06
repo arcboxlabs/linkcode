@@ -1,3 +1,4 @@
+import { Alert, AlertTitle } from 'coss-ui/components/alert';
 import { TriangleAlertIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
@@ -11,19 +12,15 @@ export function ErrorMessage({
   recoverable: boolean;
 }): React.ReactNode {
   return (
-    <div
-      className={cn(
-        'my-1 flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px] text-destructive-foreground',
-        recoverable
-          ? 'border-destructive/30 bg-destructive/5'
-          : 'border-destructive/50 bg-destructive/10',
-      )}
+    <Alert
+      className={cn('my-1', !recoverable && 'border-destructive/48 bg-destructive/8')}
+      variant="error"
     >
-      <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
-      <div className="min-w-0 flex-1 break-words">
-        <span>{message}</span>
+      <TriangleAlertIcon />
+      <AlertTitle className="break-words font-normal">
+        {message}
         {code ? <span className="ml-2 text-muted-foreground">({code})</span> : null}
-      </div>
-    </div>
+      </AlertTitle>
+    </Alert>
   );
 }

@@ -6,6 +6,7 @@ import type {
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
+import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
@@ -26,8 +27,8 @@ export interface ShellFrameProps
   /** Derived once by the workbench surface; shells consume it instead of re-deriving from the list. */
   activeSession: SessionInfo | null;
   conversation: ConversationViewModel;
-  answeredPermissions: Set<string>;
-  respondingPermissions: Set<string>;
+  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
+  respondingPermissions: ReadonlySet<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
@@ -46,7 +47,7 @@ export interface ShellFrameProps
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
-  onRespondPermission: (requestId: string, optionId: string) => void;
+  onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   /** Opens the command palette — the sidebar Search entry stays disabled without it. */
   onOpenSearch?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
@@ -65,7 +66,7 @@ export function ShellFrame({
   sessionsLoading,
   activeSession,
   conversation,
-  answeredPermissions,
+  permissionDecisions,
   respondingPermissions,
   header,
   errorMessage,
@@ -142,7 +143,7 @@ export function ShellFrame({
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           cwd={active?.cwd}
-          answeredPermissions={answeredPermissions}
+          permissionDecisions={permissionDecisions}
           respondingPermissions={respondingPermissions}
           TerminalBlockComponent={TerminalBlockComponent}
           onSendPrompt={onSendPrompt}

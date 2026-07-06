@@ -20,8 +20,10 @@ import type {
 
 export type ConversationTurnId = string | null;
 
-/** A single semantic item in the conversation timeline. */
-export type ConversationItem =
+/** A single semantic item in the conversation timeline. `receivedAt` is the client receive time of
+ * the item's latest event (see {@link SequencedAgentEvent}); it drives relative timestamps in the
+ * UI and is absent for items reconstructed from a history read. */
+export type ConversationItem = (
   | {
       kind: 'message';
       id: string;
@@ -54,7 +56,8 @@ export type ConversationItem =
       message: string;
       code?: string;
       recoverable: boolean;
-    };
+    }
+) & { receivedAt?: number };
 
 export interface ConversationViewModel {
   /** Ordered timeline of everything the user should see. */
@@ -94,8 +97,9 @@ function appendBlock(blocks: readonly ContentBlock[], block: ContentBlock): Cont
 }
 
 export interface ConversationBuilder {
-  /** Fold one more event into the running state. */
-  advance(event: AgentEvent): void;
+  /** Fold one more event into the running state. `receivedAt` is the client receive time to stamp
+   * on the item(s) this event touches (omitted for events replayed from a history read). */
+  advance(event: AgentEvent, receivedAt?: number): void;
   /** The current view-model. Cached between advances; every changed item is a fresh object
    * (copy-on-write), so React memoization over items keeps working across snapshots. */
   snapshot(): Conversation;
@@ -129,12 +133,17 @@ export function createConversationBuilder(): ConversationBuilder {
     kind: 'message' | 'reasoning',
     messageId: string,
     block: ContentBlock,
+    receivedAt: number | undefined,
   ): void => {
     const existing = messageIndex.get(messageId);
     if (existing !== undefined) {
       const item = items[existing];
       if (item.kind === kind) {
-        items[existing] = { ...item, blocks: appendBlock(item.blocks, block) };
+        items[existing] = {
+          ...item,
+          blocks: appendBlock(item.blocks, block),
+          receivedAt: receivedAt ?? item.receivedAt,
+        };
         return;
       }
     }
@@ -146,6 +155,7 @@ export function createConversationBuilder(): ConversationBuilder {
         role: 'assistant',
         blocks: [block],
         isStreaming: false,
+        receivedAt,
       });
     } else {
       items.push({
@@ -154,12 +164,13 @@ export function createConversationBuilder(): ConversationBuilder {
         turnId: currentTurnId,
         blocks: [block],
         isStreaming: false,
+        receivedAt,
       });
     }
     messageIndex.set(messageId, items.length - 1);
   };
 
-  const advance = (event: AgentEvent): void => {
+  const advance = (event: AgentEvent, receivedAt?: number): void => {
     cached = null;
     switch (event.type) {
       case 'user-message': {
@@ -172,14 +183,15 @@ export function createConversationBuilder(): ConversationBuilder {
           role: 'user',
           blocks: [...event.content],
           isStreaming: false,
+          receivedAt,
         });
         break;
       }
       case 'agent-message-chunk':
-        openAgentStream('message', event.messageId, event.content);
+        openAgentStream('message', event.messageId, event.content, receivedAt);
         break;
       case 'agent-thought-chunk':
-        openAgentStream('reasoning', event.messageId, event.content);
+        openAgentStream('reasoning', event.messageId, event.content, receivedAt);
         break;
 
       case 'tool-call': {
@@ -191,11 +203,18 @@ export function createConversationBuilder(): ConversationBuilder {
             id: event.toolCall.toolCallId,
             turnId: currentTurnId,
             toolCall: event.toolCall,
+            receivedAt,
           });
           toolIndex.set(event.toolCall.toolCallId, items.length - 1);
         } else {
           const item = items[existing];
-          if (item.kind === 'tool') items[existing] = { ...item, toolCall: event.toolCall };
+          if (item.kind === 'tool') {
+            items[existing] = {
+              ...item,
+              toolCall: event.toolCall,
+              receivedAt: receivedAt ?? item.receivedAt,
+            };
+          }
         }
         break;
       }
@@ -208,12 +227,19 @@ export function createConversationBuilder(): ConversationBuilder {
             id: genId('plan'),
             turnId: currentTurnId,
             plan: event.plan,
+            receivedAt,
           });
           planIndexByTurn.set(currentTurnId, items.length - 1);
           break;
         }
         const item = items[planIndex];
-        if (item.kind === 'plan') items[planIndex] = { ...item, plan: event.plan };
+        if (item.kind === 'plan') {
+          items[planIndex] = {
+            ...item,
+            plan: event.plan,
+            receivedAt: receivedAt ?? item.receivedAt,
+          };
+        }
         break;
       }
 
@@ -238,6 +264,7 @@ export function createConversationBuilder(): ConversationBuilder {
           message: event.message,
           code: event.code,
           recoverable: event.recoverable,
+          receivedAt,
         });
         break;
 
@@ -249,6 +276,7 @@ export function createConversationBuilder(): ConversationBuilder {
           requestId: event.requestId,
           toolCall: event.toolCall,
           options: event.options,
+          receivedAt,
         });
         approvals.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
         break;
