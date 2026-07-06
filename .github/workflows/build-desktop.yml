@@ -172,7 +172,8 @@ jobs:
           name: desktop-${{ matrix.platform }}
           if-no-files-found: error
           retention-days: 7
-          # *.yml + *.blockmap are the electron-updater feed — do not drop them.
+          # *.yml + *.blockmap are the electron-updater feed — do not drop them. builder-debug.yml
+          # is electron-builder's debug dump and must not ship.
           path: |
             ${{ env.OUTPUT_DIR }}/*.dmg
             ${{ env.OUTPUT_DIR }}/*.zip
@@ -185,3 +186,4 @@ jobs:
             ${{ env.OUTPUT_DIR }}/*.snap
             ${{ env.OUTPUT_DIR }}/*.yml
             ${{ env.OUTPUT_DIR }}/*.blockmap
+            !${{ env.OUTPUT_DIR }}/builder-debug.yml
