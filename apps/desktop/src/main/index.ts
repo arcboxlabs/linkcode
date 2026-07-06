@@ -28,6 +28,11 @@ if (app.requestSingleInstanceLock()) {
     }
   });
 
+  // Wire the LinkCode Cloud auth protocol + IPC bridges. Must run BEFORE app is ready:
+  // the better-auth electron plugin registers a privileged scheme via
+  // protocol.registerSchemesAsPrivileged, which throws once the app is ready.
+  setupCloudAuth();
+
   app
     .whenReady()
     .then(() => {
@@ -38,9 +43,6 @@ if (app.requestSingleInstanceLock()) {
       if (process.platform === 'darwin' && !app.isPackaged) {
         app.dock?.setIcon(join(__dirname, '../../../../assets/icon-dock.png'));
       }
-      // Register the LinkCode Cloud auth protocol + IPC bridges before the window loads so a
-      // cold-start deep-link callback is handled.
-      setupCloudAuth();
       // Apply the stored color scheme before the window exists so its chrome paints correctly first time.
       applyThemePreference(getSettings().theme);
       Menu.setApplicationMenu(buildAppMenu());
