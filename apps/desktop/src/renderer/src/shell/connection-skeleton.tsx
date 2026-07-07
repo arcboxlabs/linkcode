@@ -1,10 +1,10 @@
+import { AnimatedMark } from '@linkcode/ui';
 import { Skeleton } from 'coss-ui/components/skeleton';
 
 /**
- * Connection-gate skeleton: approximates the desktop workbench shell (sidebar + new-session main)
- * so the daemon's ~250ms boot reads as the app loading instead of a blank gate or a failure
- * flash. Static shape only — mirrors the shell's default sidebar width (DEFAULT_LAYOUT.sidebarW)
- * so the real UI slides in without layout shift.
+ * Connection-gate loading state: a sidebar skeleton mirroring the shell's default width
+ * (DEFAULT_LAYOUT.sidebarW) plus the breathing brand mark in the main pane, so the daemon's
+ * ~250ms boot reads as the app loading instead of a blank gate or a failure flash.
  */
 export function ConnectionSkeleton(): React.ReactNode {
   return (
@@ -17,9 +17,8 @@ export function ConnectionSkeleton(): React.ReactNode {
         <div className="flex-1" />
         <Skeleton className="h-5 w-36" />
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-8 bg-background p-8">
-        <Skeleton className="h-9 w-72" />
-        <Skeleton className="h-44 w-full max-w-2xl rounded-2xl" />
+      <main className="flex min-w-0 flex-1 items-center justify-center bg-background p-8">
+        <AnimatedMark className="text-foreground" />
       </main>
     </div>
   );
