@@ -25,6 +25,20 @@ runs:
         sudo apt-get update -q
         sudo apt-get install -yq gcc-aarch64-linux-gnu
 
+    # The runner image ships x64-only VC tools; linking aarch64-pc-windows-msvc needs the ARM64
+    # component. A no-op when already present.
+    - name: Install MSVC ARM64 build tools
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $vsPath = & $vswhere -latest -products * -property installationPath
+        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        Start-Process -Wait -FilePath $setup -ArgumentList `
+          "modify", "--installPath", "`"$vsPath`"", `
+          "--add", "Microsoft.VisualStudio.Component.VC.Tools.ARM64", `
+          "--quiet", "--norestart", "--nocache"
+
     - name: Build and stage both arches
       shell: bash
       run: node apps/desktop/scripts/stage-sidecar.mts --all
