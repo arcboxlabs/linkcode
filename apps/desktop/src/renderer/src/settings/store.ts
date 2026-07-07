@@ -20,6 +20,8 @@ export interface DesktopSettingsState {
   setLocaleOverride: (locale: string | null) => void;
   /** Pass null to clear the override and fall back to auto-discovery. */
   setDaemonUrl: (url: string | null) => void;
+  /** Adopt a rediscovered endpoint (connection-gate polling) without persisting an override. */
+  adoptDiscoveredUrl: (url: string) => void;
   openSettings: () => void;
   closeSettings: () => void;
 }
@@ -55,6 +57,8 @@ export const useDesktopSettingsStore = create<DesktopSettingsState>()((set) => (
       set({ daemonUrl: systemBridge.daemon.resolveUrl() });
     });
   },
+
+  adoptDiscoveredUrl: (url) => set({ daemonUrl: url }),
 
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),

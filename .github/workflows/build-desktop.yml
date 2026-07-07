@@ -21,13 +21,13 @@ on:
         required: false
         default: false
   # CI builds on PRs — unsigned.
-  pull_request:
-    paths:
-      - "apps/desktop/**"
-      - "packages/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/build-desktop.yml"
+  # pull_request:
+  #   paths:
+  #     - "apps/desktop/**"
+  #     - "packages/**"
+  #     - "package.json"
+  #     - "pnpm-lock.yaml"
+  #     - ".github/workflows/build-desktop.yml"
   workflow_dispatch:
     inputs:
       sign:
@@ -110,6 +110,10 @@ jobs:
           # builds carry it. Must stay declared in apps/desktop/turbo.json `build.env`.
           MAIN_VITE_SENTRY_DSN: ${{ inputs.sign && secrets.SENTRY_DSN_DESKTOP || '' }}
 
+      # The PTY sidecar ships per arch under Resources (extraResources: sidecar/${arch}).
+      - name: Build PTY sidecar (both arches)
+        uses: ./.github/actions/build-sidecar
+
       # OIDC exchange for Windows Trusted Signing; Invoke-TrustedSigning (spawned by
       # electron-builder below) picks it up via DefaultAzureCredential's Azure CLI entry.
       - name: Azure login (Trusted Signing, OIDC)
@@ -170,7 +174,7 @@ jobs:
       - name: Verify packaged artifacts
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash
-        run: node scripts/verify-artifacts.mjs ${{ matrix.platform }}
+        run: node scripts/verify-artifacts.mts ${{ matrix.platform }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

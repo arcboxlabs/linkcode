@@ -7,6 +7,12 @@ export default defineConfig({
   format: ['esm'],
   target: 'node24',
   clean: true,
+  // Inlined CJS deps (socket.io's tree) call `require()` at runtime; esbuild's ESM output has no
+  // implicit require, so provide one or the bundle dies on boot with "Dynamic require of ... is
+  // not supported".
+  banner: {
+    js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+  },
   // Workspace packages are exported as TS source and must be bundled in.
   noExternal: [/^@linkcode\//],
   // The agent SDKs are pulled in (lazily) via @linkcode/agent-adapter, but must stay external: several

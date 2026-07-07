@@ -11,6 +11,7 @@ import { TimestampSchema } from './common';
 export {
   DAEMON_DEFAULT_PORT,
   DAEMON_DEFAULT_URL,
+  DAEMON_EXIT_ALREADY_RUNNING,
   DAEMON_RUNTIME_FILE_SEGMENTS,
 } from './daemon-runtime-constants';
 

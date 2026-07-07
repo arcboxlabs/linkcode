@@ -1,5 +1,6 @@
 import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
+import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
 import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -50,8 +51,9 @@ async function main(): Promise<void> {
   if (running) {
     const urls = running.listeners.map((listener) => listener.url).join(', ');
     console.error(`[linkcode/daemon] already running (pid ${running.pid}) at ${urls}`);
-    process.exitCode = 1;
-    return;
+    // Explicit exit, not exitCode+return: under utilityProcess the parent IPC channel keeps the
+    // event loop alive forever, so a natural exit never happens and the supervisor never hears it.
+    process.exit(DAEMON_EXIT_ALREADY_RUNNING);
   }
 
   const identity: DaemonIdentity = {
@@ -126,8 +128,8 @@ async function main(): Promise<void> {
     if (err instanceof DaemonAlreadyRunningError) {
       console.error(`[linkcode/daemon] ${extractErrorMessage(err)}`);
       await stopAll();
-      process.exitCode = 1;
-      return;
+      // See the findRunningDaemon branch above for why this must be an explicit exit.
+      process.exit(DAEMON_EXIT_ALREADY_RUNNING);
     }
     throw err;
   }

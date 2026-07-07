@@ -1,3 +1,4 @@
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -22,6 +23,35 @@ export default defineConfig({
     build: {
       externalizeDeps: bundleWorkspace,
     },
+    plugins: [
+      {
+        name: 'bundle-daemon-artifact',
+        // The daemon ships inside the desktop app (CODE-86): the supervisor forks the daemon's own
+        // tsup (esbuild) build artifact under Electron's Node. Consuming apps/daemon/dist — built
+        // first via turbo `^build`, since @linkcode/daemon is a dependency — keeps bundling owned
+        // by the daemon and out/daemon identical to the standalone prod bundle (`pnpm start`).
+        // Its runtime externals (better-sqlite3, agent SDKs, …) resolve from asar node_modules,
+        // collected by electron-builder through the @linkcode/daemon dependency edge.
+        // instrument.js is deliberately not shipped: @sentry/profiling-node is a native module the
+        // Electron rebuild need not carry; child crashes surface via the supervisor's stderr pipe.
+        closeBundle() {
+          const dist = resolve(__dirname, '../daemon/dist/index.js');
+          if (!existsSync(dist)) {
+            throw new Error(
+              'apps/daemon/dist is missing — run `pnpm -F @linkcode/daemon build` first',
+            );
+          }
+          mkdirSync(resolve(__dirname, 'out/daemon'), { recursive: true });
+          // .mjs: the dist file is ESM but leaves the daemon package's type=module scope when copied.
+          cpSync(dist, resolve(__dirname, 'out/daemon/index.mjs'));
+          // The daemon locates drizzle migrations relative to its bundle (`../drizzle` from
+          // out/daemon/index.mjs — see apps/daemon/src/session-store.ts).
+          cpSync(resolve(__dirname, '../daemon/drizzle'), resolve(__dirname, 'out/drizzle'), {
+            recursive: true,
+          });
+        },
+      },
+    ],
   },
   preload: {
     build: {

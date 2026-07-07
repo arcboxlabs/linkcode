@@ -8,5 +8,5 @@
     },
     "types": ["node"]
   },
-  "include": ["src", "electron.vite.config.ts"]
+  "include": ["src", "scripts", "electron.vite.config.ts"]
 }

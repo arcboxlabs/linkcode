@@ -1,0 +1,10 @@
+# Local dev-shell packaging (`pnpm run package:devshell`): a locally testable app that coexists
+# with an installed release LinkCode. The distinct appId/productName drive a separate bundle
+# name, keychain items, and Launch Services registration; unsigned by design. Note the asar's
+# package.json keeps the manifest's own productName ("LinkCode") regardless — no builder config
+# reaches it — which is why main pins userData to APP_NAME explicitly (src/main/index.ts).
+extends: ./electron-builder.yml
+appId: com.arcboxlabs.linkcode.desktop.dev
+productName: LinkCode Dev
+mac:
+  identity: null

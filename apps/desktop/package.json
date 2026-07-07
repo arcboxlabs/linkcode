@@ -1,6 +1,6 @@
 {
   "name": "@linkcode/desktop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "LinkCode desktop application",
   "homepage": "https://linkcode.ai",
@@ -9,10 +9,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "dev:mock": "electron-vite dev --mode mock",
-    "build": "electron-vite build",
-    "package": "electron-vite build --mode devshell && electron-builder --dir -c.mac.identity=null -c.appId=com.arcboxlabs.linkcode.desktop.dev -c.productName=\"LinkCode Dev\"",
-    "dist": "pnpm run build && electron-builder",
     "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "stage:host-runtime": "pnpm -F @linkcode/daemon build && node scripts/stage-sidecar.mts",
+    "package:devshell": "pnpm run stage:host-runtime && electron-vite build --mode devshell && electron-builder --dir --config electron-builder.devshell.yml",
     "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
@@ -21,6 +21,7 @@
     "@better-auth/electron": "1.7.0-rc.1",
     "@hookform/resolvers": "^5.4.0",
     "@linkcode/common": "workspace:*",
+    "@linkcode/daemon": "workspace:*",
     "@linkcode/ipc": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
@@ -44,6 +45,7 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
+    "@electron/asar": "^4.2.0",
     "@proj-airi/lobe-icons": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",
