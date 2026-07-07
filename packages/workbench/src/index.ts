@@ -12,6 +12,8 @@ export * from './files/locate';
 export * from './files/panel';
 export * from './git/hooks';
 export * from './git/panel';
+export * from './history/imported';
+export * from './history/use-provider-history';
 export * from './navigation/store';
 export * from './palette/hotkey';
 export * from './palette/match';
