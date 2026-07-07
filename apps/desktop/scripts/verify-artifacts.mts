@@ -85,7 +85,7 @@ function verifyHostRuntime(resourceDir: string, problems: string[]): void {
       missing = true;
       problems.push(`${resourceDir}/app.asar: missing ${inner}`);
       const unpacked = join(RELEASE_DIR, resourceDir, 'app.asar.unpacked', inner);
-      if (existsSync(unpacked)) problems.push(`  …but present in app.asar.unpacked (smartUnpack?)`);
+      if (existsSync(unpacked)) problems.push('  …but present in app.asar.unpacked (smartUnpack?)');
     }
   }
   // Diagnostics for the CI log: what did this asar actually get under out/?
