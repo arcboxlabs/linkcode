@@ -2,7 +2,14 @@ import { SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
 import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import { BotIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
+import {
+  BotIcon,
+  HistoryIcon,
+  InfoIcon,
+  MoveUpRightIcon,
+  SettingsIcon,
+  WifiIcon,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
@@ -31,6 +38,7 @@ const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
 export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
   const backFromOverlay = useNavigationHistoryStore((state) => state.backFromOverlay);
+  const openOverlay = useNavigationHistoryStore((state) => state.openOverlay);
   const [category, setCategory] = useState<SettingsCategory>('general');
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
@@ -116,6 +124,19 @@ export function SettingsView(): React.ReactNode {
                     label: t('tabs.agents'),
                     active: category === 'agents',
                     onClick: () => setCategory('agents'),
+                  },
+                  {
+                    // A portal, not a category: it leaves Settings for the import surface
+                    // (recorded in navigation history, so Esc there returns here).
+                    key: 'history-import',
+                    icon: <HistoryIcon className="size-4" />,
+                    label: (
+                      <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                        {t('historyImport.portalLabel')}
+                        <MoveUpRightIcon className="size-3.5 text-muted-foreground" />
+                      </span>
+                    ),
+                    onClick: () => openOverlay('history-import'),
                   },
                 ]}
               />

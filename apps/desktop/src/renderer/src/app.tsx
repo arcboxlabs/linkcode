@@ -12,6 +12,7 @@ import {
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useState } from 'react';
+import { HistoryImportView } from './history-import/history-import-view';
 import { systemBridge } from './ipc';
 import { SettingsView } from './settings/settings-view';
 import { useDesktopSettingsStore } from './settings/store';
@@ -25,7 +26,9 @@ const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHost
 export function DesktopApp(): React.ReactNode {
   const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
-  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
+  const overlay = useNavigationHistoryStore((state) => state.overlay);
+  const settingsOpen = overlay === 'settings';
+  const historyImportOpen = overlay === 'history-import';
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
@@ -36,7 +39,15 @@ export function DesktopApp(): React.ReactNode {
         <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
           {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
           <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-            <Workbench shellComponent={DesktopWorkbenchShell} />
+            <div
+              className={historyImportOpen ? 'invisible h-full' : 'h-full'}
+              inert={historyImportOpen}
+            >
+              <Workbench shellComponent={DesktopWorkbenchShell} />
+            </div>
+            {/* Inside the connection gate: browsing history needs the daemon, and while it is
+                unreachable the gate's fallback replaces this whole subtree. */}
+            {historyImportOpen ? <HistoryImportView /> : null}
           </DaemonConnection>
         </div>
         {settingsOpen ? <SettingsView /> : null}
