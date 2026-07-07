@@ -5,6 +5,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentRuntimes,
   ContentBlock,
   EffortLevel,
   GitDiff,
@@ -103,6 +104,9 @@ export class LinkCodeClient {
         break;
       case 'config.get.result':
         this.pending.resolve('configGet', p.replyTo, p.providers);
+        break;
+      case 'agent-runtime.listed':
+        this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
         break;
       case 'git.status.get.result':
         this.pending.resolve('gitStatus', p.replyTo, p.status);
@@ -255,6 +259,10 @@ export class LinkCodeClient {
 
   getProviderConfig(): Promise<ProvidersConfig> {
     return this.control.getProviderConfig();
+  }
+
+  listAgentRuntimes(): Promise<AgentRuntimes> {
+    return this.control.listAgentRuntimes();
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {

@@ -6,6 +6,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentRuntimes,
   ContentBlock,
   EffortLevel,
   GitDiff,
@@ -249,6 +250,14 @@ export class ControlChannel {
   getProviderConfig(): Promise<ProvidersConfig> {
     return this.sendCorrelated('configGet', (clientReqId) => ({
       kind: 'config.get',
+      clientReqId,
+    }));
+  }
+
+  /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
+  listAgentRuntimes(): Promise<AgentRuntimes> {
+    return this.sendCorrelated('agentRuntimeList', (clientReqId) => ({
+      kind: 'agent-runtime.list',
       clientReqId,
     }));
   }

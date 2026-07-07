@@ -6,6 +6,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentRuntimes,
   EffortLevel,
   GitDiff,
   GitDiffMode,
@@ -158,6 +159,11 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned provider config (data plane). */
   setProviderConfig(providers: ProvidersConfig): RequestResult<{ ok: true }> {
     return toResult(this.raw.setProviderConfig(providers));
+  }
+
+  /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
+  listAgentRuntimes(): RequestResult<AgentRuntimes> {
+    return toResult(this.raw.listAgentRuntimes());
   }
 
   /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */

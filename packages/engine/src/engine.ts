@@ -2,6 +2,7 @@ import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryId,
+  AgentRuntimes,
   ApprovalPolicyState,
   ContentBlock,
   SessionId,
@@ -50,6 +51,8 @@ export interface EngineDeps {
   workspaceStore?: WorkspaceStore;
   /** Shared with the transport's reverse proxy; scripts need a PTY backend to run. */
   previewRoutes?: PreviewRouteRegistry;
+  /** Boot-time probe result (`collectAgentRuntimes()`), served to clients on `agent-runtime.list`. */
+  agentRuntimes?: AgentRuntimes;
 }
 
 /**
@@ -76,6 +79,7 @@ export class Engine {
   private readonly git: GitService;
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
+  private readonly agentRuntimes: AgentRuntimes;
   private seq = 0;
 
   constructor(
@@ -101,6 +105,7 @@ export class Engine {
         )
       : undefined;
     this.artifactHost = new ArtifactHostService(routes);
+    this.agentRuntimes = deps.agentRuntimes ?? {};
   }
 
   async start(): Promise<void> {
@@ -306,6 +311,16 @@ export class Engine {
           );
           if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
         });
+        break;
+      }
+      case 'agent-runtime.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'agent-runtime.listed',
+            replyTo: p.clientReqId,
+            runtimes: this.agentRuntimes,
+          }),
+        );
         break;
       }
       case 'config.get': {

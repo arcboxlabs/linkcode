@@ -5,6 +5,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentRuntimes,
   EffortLevel,
   GitDiff,
   GitDiffMode,
@@ -128,6 +129,11 @@ export function setProviderConfig(
   options: Options<{ providers: ProvidersConfig }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).setProviderConfig(options.providers);
+}
+
+/** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
+export function listAgentRuntimes(options?: Options): RequestResult<AgentRuntimes> {
+  return resolveClient(options).listAgentRuntimes();
 }
 
 /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
