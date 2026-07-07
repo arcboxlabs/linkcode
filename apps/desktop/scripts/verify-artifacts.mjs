@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { createHash } from 'node:crypto';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import process, { argv } from 'node:process';
 /**
  * Post-pack assertions for the desktop release artifacts. Runs in CI right after
  * electron-builder (and locally: `node scripts/verify-artifacts.mjs <mac|win|linux>` from
@@ -9,12 +13,11 @@
  *   picks the feed entry whose filename contains process.arch and silently falls back to the
  *   FIRST entry otherwise, so an unsuffixed x64 name would hand x64 clients an arbitrary arch.
  *   Linux selects by per-arch channel file instead, so each channel must reference its own arch;
- * - every feed entry points at an existing file whose sha512 matches.
+ * - every feed entry points at an existing file whose sha512 matches;
+ * - the unpacked apps carry the bundled daemon (asar: out/daemon + migrations) and the PTY
+ *   sidecar (Resources), so a build can never again ship a client with no host runtime (CODE-86/87).
  */
-import { createHash } from 'node:crypto';
-import { createReadStream, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import process, { argv } from 'node:process';
+import { statFile } from '@electron/asar';
 
 const RELEASE_DIR = 'release';
 const FEED_URL_LINE = /^ {2}- url: (.+)$/;
@@ -32,6 +35,10 @@ const EXPECTED = {
       ]),
     ),
     feeds: { 'latest-mac.yml': ['x64', 'arm64'] },
+    resourceDirs: [
+      'mac/LinkCode.app/Contents/Resources',
+      'mac-arm64/LinkCode.app/Contents/Resources',
+    ],
   },
   win: {
     artifacts: ['x64', 'arm64'].flatMap((arch) => [
@@ -39,6 +46,7 @@ const EXPECTED = {
       `LinkCode-${version}-${arch}.exe.blockmap`,
     ]),
     feeds: { 'latest.yml': ['x64', 'arm64'] },
+    resourceDirs: ['win-unpacked/resources', 'win-arm64-unpacked/resources'],
   },
   linux: {
     // AppImage/deb use their ecosystems' arch names (x86_64/amd64); AppImage blockmaps are embedded.
@@ -50,8 +58,28 @@ const EXPECTED = {
     ],
     // The channel files list deb alongside AppImage; x64 deb uses Debian's `amd64` name.
     feeds: { 'latest-linux.yml': ['x86_64', 'amd64'], 'latest-linux-arm64.yml': ['arm64'] },
+    resourceDirs: ['linux-unpacked/resources', 'linux-arm64-unpacked/resources'],
   },
 };
+
+const SIDECAR_BINARY = argv[2] === 'win' ? 'linkcode-pty.exe' : 'linkcode-pty';
+/** Paths inside app.asar that the daemon supervisor and its migrator depend on at runtime. */
+const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.json'];
+
+/** The packed app must carry the host runtime: bundled daemon in the asar, sidecar beside it. */
+function verifyHostRuntime(resourceDir, problems) {
+  const asarPath = join(RELEASE_DIR, resourceDir, 'app.asar');
+  for (const inner of ASAR_HOST_RUNTIME) {
+    try {
+      statFile(asarPath, inner);
+    } catch {
+      problems.push(`${resourceDir}/app.asar: missing ${inner}`);
+    }
+  }
+  if (!existsSync(join(RELEASE_DIR, resourceDir, SIDECAR_BINARY))) {
+    problems.push(`${resourceDir}: missing PTY sidecar ${SIDECAR_BINARY}`);
+  }
+}
 
 /** electron-builder's feed ymls are flat generated documents; a scoped line scan beats a yaml dep. */
 function parseFeedEntries(text) {
@@ -131,13 +159,14 @@ async function main() {
       verifyFeed(feed, archTokens, problems),
     ),
   );
+  for (const resourceDir of expected.resourceDirs) verifyHostRuntime(resourceDir, problems);
 
   if (problems.length > 0) {
     for (const problem of problems) console.error(`✗ ${problem}`);
     return 1;
   }
   console.log(
-    `✓ ${argv[2]}: ${expected.artifacts.length} artifacts + ${Object.keys(expected.feeds).length} feed manifest(s) verified`,
+    `✓ ${argv[2]}: ${expected.artifacts.length} artifacts + ${Object.keys(expected.feeds).length} feed manifest(s) + host runtime in ${expected.resourceDirs.length} app(s) verified`,
   );
   return 0;
 }

@@ -21,13 +21,13 @@ on:
         required: false
         default: false
   # CI builds on PRs — unsigned.
-  pull_request:
-    paths:
-      - "apps/desktop/**"
-      - "packages/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/build-desktop.yml"
+  # pull_request:
+  #   paths:
+  #     - "apps/desktop/**"
+  #     - "packages/**"
+  #     - "package.json"
+  #     - "pnpm-lock.yaml"
+  #     - ".github/workflows/build-desktop.yml"
   workflow_dispatch:
     inputs:
       sign:

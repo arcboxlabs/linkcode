@@ -10,7 +10,8 @@
     "dev": "electron-vite dev",
     "dev:mock": "electron-vite dev --mode mock",
     "build": "electron-vite build",
-    "package": "node scripts/stage-sidecar.mjs && electron-vite build --mode devshell && electron-builder --dir -c.mac.identity=null -c.appId=com.arcboxlabs.linkcode.desktop.dev -c.productName=\"LinkCode Dev\"",
+    "build:sidecar": "node scripts/stage-sidecar.mjs",
+    "package": "pnpm run build:sidecar && electron-vite build --mode devshell && electron-builder --dir -c.mac.identity=null -c.appId=com.arcboxlabs.linkcode.desktop.dev -c.productName=\"LinkCode Dev\"",
     "dist": "pnpm run build && electron-builder",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
@@ -45,6 +46,7 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
+    "@electron/asar": "^4.2.0",
     "@proj-airi/lobe-icons": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",
