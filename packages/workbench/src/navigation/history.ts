@@ -3,7 +3,8 @@ import type { SessionId, WorkspaceId } from '@linkcode/schema';
 /** A place the workbench main surface can navigate back/forward to. */
 export type NavLocation =
   | { surface: 'thread'; sessionId: SessionId }
-  | { surface: 'new-thread'; workspaceId: WorkspaceId | null };
+  | { surface: 'new-thread'; workspaceId: WorkspaceId | null }
+  | { surface: 'settings' };
 
 export interface NavHistoryStacks {
   back: NavLocation[];
@@ -17,7 +18,10 @@ export function locationsEqual(a: NavLocation, b: NavLocation): boolean {
   if (a.surface === 'thread') {
     return b.surface === 'thread' && a.sessionId === b.sessionId;
   }
-  return b.surface === 'new-thread' && a.workspaceId === b.workspaceId;
+  if (a.surface === 'new-thread') {
+    return b.surface === 'new-thread' && a.workspaceId === b.workspaceId;
+  }
+  return b.surface === 'settings';
 }
 
 /**

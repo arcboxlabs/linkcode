@@ -12,6 +12,7 @@ function draft(workspaceId: string | null = null): NavLocation {
   return { surface: 'new-thread', workspaceId: workspaceId as WorkspaceId | null };
 }
 
+const SETTINGS: NavLocation = { surface: 'settings' };
 const EMPTY: NavHistoryStacks = { back: [], forward: [] };
 
 describe('locationsEqual', () => {
@@ -21,6 +22,9 @@ describe('locationsEqual', () => {
     expect(locationsEqual(draft('w1'), draft('w1'))).toBe(true);
     expect(locationsEqual(draft('w1'), draft('w2'))).toBe(false);
     expect(locationsEqual(draft(), thread('a'))).toBe(false);
+    expect(locationsEqual(SETTINGS, { surface: 'settings' })).toBe(true);
+    expect(locationsEqual(SETTINGS, thread('a'))).toBe(false);
+    expect(locationsEqual(draft(), SETTINGS)).toBe(false);
   });
 });
 
@@ -33,6 +37,7 @@ describe('recordTransition', () => {
   it('ignores a navigation to the current location', () => {
     const stacks: NavHistoryStacks = { back: [thread('x')], forward: [thread('y')] };
     expect(recordTransition(stacks, thread('a'), thread('a'))).toBe(stacks);
+    expect(recordTransition(stacks, SETTINGS, { surface: 'settings' })).toBe(stacks);
   });
 
   it('records nothing for a null origin but still branches the timeline', () => {
