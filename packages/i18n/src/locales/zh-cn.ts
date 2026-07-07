@@ -339,6 +339,7 @@ export const zhCN = {
       sortByLatest: '最新优先',
       sortByOldest: '最早优先',
       sortByProject: '按项目',
+      noProject: '无项目',
       importAction: '导入',
       importedBadge: '已导入',
       open: '打开',

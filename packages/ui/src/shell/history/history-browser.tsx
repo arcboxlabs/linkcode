@@ -10,10 +10,11 @@ import {
 } from 'coss-ui/components/empty';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
-import { HistoryIcon } from 'lucide-react';
+import { FolderIcon, HistoryIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
+import { groupHistoryBrowserEntries } from './sort';
 
 /** One provider-local conversation, pre-resolved by the workbench container. */
 export interface HistoryBrowserEntry {
@@ -27,7 +28,10 @@ export interface HistoryBrowserEntry {
 }
 
 export interface HistoryBrowserListProps {
+  /** Pre-sorted by the container; with `groupByProject`, project-sorted (clustered per cwd). */
   entries: readonly HistoryBrowserEntry[];
+  /** Renders sidebar-style project section headers (folder + name + count) between clusters. */
+  groupByProject?: boolean;
   isLoading: boolean;
   /** The list fetch failure message, when there is nothing to show. */
   loadError?: string | null;
@@ -43,6 +47,7 @@ export interface HistoryBrowserListProps {
 /** One provider's importable conversation rows (settings portal main pane). */
 export function HistoryBrowserList({
   entries,
+  groupByProject,
   isLoading,
   loadError,
   importingId,
@@ -92,6 +97,22 @@ export function HistoryBrowserList({
     );
   }
 
+  const rows = (groupEntries: readonly HistoryBrowserEntry[]): React.ReactNode => (
+    <ul className="flex flex-col">
+      {groupEntries.map((entry) => (
+        <HistoryBrowserRow
+          key={entry.historyId}
+          entry={entry}
+          // The section header already names the project; keep grouped row meta to time · count.
+          showProject={!groupByProject}
+          importing={importingId === entry.historyId}
+          onImport={onImport}
+          onOpen={onOpen}
+        />
+      ))}
+    </ul>
+  );
+
   return (
     <div className="flex flex-col">
       {importError != null && (
@@ -99,28 +120,38 @@ export function HistoryBrowserList({
           {t('importError', { message: importError })}
         </p>
       )}
-      <ul className="flex flex-col">
-        {entries.map((entry) => (
-          <HistoryBrowserRow
-            key={entry.historyId}
-            entry={entry}
-            importing={importingId === entry.historyId}
-            onImport={onImport}
-            onOpen={onOpen}
-          />
-        ))}
-      </ul>
+      {groupByProject ? (
+        <div className="flex flex-col gap-5">
+          {groupHistoryBrowserEntries(entries).map((group) => (
+            <section key={group.cwd ?? 'no-project'}>
+              <div
+                className="flex items-center gap-1.5 pb-1 font-medium text-muted-foreground text-xs"
+                title={group.cwd}
+              >
+                <FolderIcon className="size-3.5 shrink-0" />
+                <span className="min-w-0 truncate">{group.label ?? t('noProject')}</span>
+                <span className="ml-auto shrink-0">{group.entries.length}</span>
+              </div>
+              {rows(group.entries)}
+            </section>
+          ))}
+        </div>
+      ) : (
+        rows(entries)
+      )}
     </div>
   );
 }
 
 function HistoryBrowserRow({
   entry,
+  showProject,
   importing,
   onImport,
   onOpen,
 }: {
   entry: HistoryBrowserEntry;
+  showProject: boolean;
   importing: boolean;
   onImport: (historyId: AgentHistoryId) => void;
   onOpen: (historyId: AgentHistoryId) => void;
@@ -128,7 +159,7 @@ function HistoryBrowserRow({
   const t = useTranslations('settings.historyImport');
   const timeLabel = useRelativeTimeLabel(entry.timestamp ?? 0);
   const meta = [
-    entry.cwd ? repositoryLabel(entry.cwd) : null,
+    showProject && entry.cwd ? repositoryLabel(entry.cwd) : null,
     entry.timestamp !== undefined ? timeLabel : null,
     entry.messageCount !== undefined ? t('messageCount', { count: entry.messageCount }) : null,
   ].filter(Boolean);

@@ -344,6 +344,7 @@ export const en = {
       sortByLatest: 'Latest first',
       sortByOldest: 'Oldest first',
       sortByProject: 'By project',
+      noProject: 'No project',
       importAction: 'Import',
       importedBadge: 'Imported',
       open: 'Open',

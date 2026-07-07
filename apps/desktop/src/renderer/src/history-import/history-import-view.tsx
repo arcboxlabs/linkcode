@@ -127,6 +127,7 @@ export function HistoryImportView(): React.ReactNode {
               <div className="mx-auto max-w-2xl p-6">
                 <HistoryBrowserList
                   entries={surface.entries}
+                  groupByProject={sort === 'project'}
                   isLoading={surface.isLoading}
                   loadError={surface.loadError}
                   importingId={surface.importingId}
