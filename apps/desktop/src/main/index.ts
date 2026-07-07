@@ -14,6 +14,11 @@ Sentry.init({
 });
 
 app.setName(APP_NAME);
+// setName alone is not enough: Electron pins userData from package.json's productName before
+// any app code runs, and electron-builder bakes the release productName ("LinkCode") into the
+// asar even for dev-shell packages. Without this, a packaged dev shell shares the release app's
+// settings and single-instance lock — the second one to start exits silently.
+app.setPath('userData', join(app.getPath('appData'), APP_NAME));
 
 // settings.ts caches settings in memory and rewrites the whole file on save, so two instances
 // would last-write-wins clobber each other. Only one instance may run; a second launch just
