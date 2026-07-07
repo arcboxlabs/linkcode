@@ -30,7 +30,16 @@ export const zhCN = {
       kindExecute: '执行',
       kindThink: '思考',
       kindFetch: '获取',
+      kindTask: '子代理',
       kindOther: '工具',
+    },
+    subagent: {
+      label: '子代理',
+      steps: '{count} 步',
+      viewTranscript: '查看完整转录',
+      viewerTitle: '子代理',
+      empty: '本会话还没有子代理',
+      failedBadge: '失败',
     },
     toolGroup: {
       explore: '探索',

@@ -30,11 +30,14 @@ export type ConversationItem =
       role: 'user' | 'assistant';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
+      parentToolCallId?: string;
     })
   | (ConversationItemBase & {
       kind: 'reasoning';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      parentToolCallId?: string;
     })
   | (ConversationItemBase & { kind: 'tool'; toolCall: ToolCall })
   | (ConversationItemBase & { kind: 'plan'; plan: Plan })

@@ -16,6 +16,7 @@ export const ToolKindSchema = z.enum([
   'execute',
   'think',
   'fetch',
+  'task',
   'other',
 ]);
 export type ToolKind = z.infer<typeof ToolKindSchema>;
@@ -49,6 +50,8 @@ export const ToolCallSchema = z.object({
   title: z.string(),
   kind: ToolKindSchema,
   status: ToolCallStatusSchema,
+  /** Set on calls a subagent made: the `task`-kind tool call that spawned it. */
+  parentToolCallId: z.string().min(1).optional(),
   content: z.array(ToolCallContentSchema).default([]),
   locations: z.array(ToolCallLocationSchema).optional(),
   rawInput: z.unknown().optional(),
@@ -62,6 +65,7 @@ export const ToolCallUpdateSchema = z.object({
   title: z.string().optional(),
   kind: ToolKindSchema.optional(),
   status: ToolCallStatusSchema.optional(),
+  parentToolCallId: z.string().min(1).optional(),
   content: z.array(ToolCallContentSchema).optional(),
   locations: z.array(ToolCallLocationSchema).optional(),
   rawInput: z.unknown().optional(),

@@ -147,6 +147,39 @@ describe('buildConversation', () => {
     }
   });
 
+  it('carries parentToolCallId on subagent chunks and tool snapshots', () => {
+    const c = buildConversation([
+      {
+        type: 'agent-message-chunk',
+        messageId: 'sub-m1' as MessageId,
+        parentToolCallId: 'toolu_task',
+        content: { type: 'text', text: 'nested narration' },
+      },
+      {
+        type: 'agent-thought-chunk',
+        messageId: 'sub-t1' as MessageId,
+        parentToolCallId: 'toolu_task',
+        content: { type: 'text', text: 'nested thought' },
+      },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 'toolu_sub',
+          parentToolCallId: 'toolu_task',
+          title: 'Read',
+          kind: 'read',
+          status: 'completed',
+          content: [],
+        },
+      },
+    ]);
+    expect(c.items).toHaveLength(3);
+    const [message, reasoning, tool] = c.items;
+    if (message.kind === 'message') expect(message.parentToolCallId).toBe('toolu_task');
+    if (reasoning.kind === 'reasoning') expect(reasoning.parentToolCallId).toBe('toolu_task');
+    if (tool.kind === 'tool') expect(tool.toolCall.parentToolCallId).toBe('toolu_task');
+  });
+
   it('keeps only the latest plan per turn', () => {
     const c = buildConversation([
       userText('first'),

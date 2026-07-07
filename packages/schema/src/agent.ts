@@ -103,12 +103,15 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('agent-message-chunk'),
     // Required: the grouping authority (chunks with the same id form one bubble).
     messageId: MessageIdSchema,
+    // Set on subagent narration: the `task`-kind tool call that spawned the subagent.
+    parentToolCallId: z.string().min(1).optional(),
     content: ContentBlockSchema,
   }),
   z.object({
     type: z.literal('agent-thought-chunk'),
     // Required: the grouping authority (must differ from the matching message's id).
     messageId: MessageIdSchema,
+    parentToolCallId: z.string().min(1).optional(),
     content: ContentBlockSchema,
   }),
 

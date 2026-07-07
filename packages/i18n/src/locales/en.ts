@@ -32,7 +32,16 @@ export const en = {
       kindExecute: 'Run',
       kindThink: 'Think',
       kindFetch: 'Fetch',
+      kindTask: 'Subagent',
       kindOther: 'Tool',
+    },
+    subagent: {
+      label: 'Subagent',
+      steps: '{count} steps',
+      viewTranscript: 'View full transcript',
+      viewerTitle: 'Subagents',
+      empty: 'No subagents in this conversation yet',
+      failedBadge: 'Failed',
     },
     toolGroup: {
       explore: 'Explored',

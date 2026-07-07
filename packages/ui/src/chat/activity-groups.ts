@@ -15,7 +15,9 @@ export type ToolTimelineItem = Extract<ConversationItem, { kind: 'tool' }>;
 export type TimelineEntry =
   | { type: 'item'; item: ConversationItem }
   | { type: 'single'; item: ToolTimelineItem }
-  | { type: 'group'; id: string; bucket: ActivityBucket; items: ToolTimelineItem[] };
+  | { type: 'group'; id: string; bucket: ActivityBucket; items: ToolTimelineItem[] }
+  /** A subagent spawn (`task`-kind tool call); renders as its own nested card, never in a streak. */
+  | { type: 'task'; item: ToolTimelineItem };
 
 /** Buckets tool kinds by review affordance, so summaries read "Explored" / "Ran commands" / "Edited files". */
 export function activityBucket(kind: ToolCall['kind']): ActivityBucket {
@@ -33,6 +35,7 @@ export function activityBucket(kind: ToolCall['kind']): ActivityBucket {
     case 'delete':
     case 'move':
       return 'files';
+    // 'task' never reaches this default: groupTimeline breaks it out as a `task` entry first.
     default:
       return 'other';
   }
@@ -65,6 +68,11 @@ export function groupTimeline(items: readonly ConversationItem[]): TimelineEntry
     if (item.kind !== 'tool') {
       flushStreak();
       entries.push({ type: 'item', item });
+      continue;
+    }
+    if (item.toolCall.kind === 'task') {
+      flushStreak();
+      entries.push({ type: 'task', item });
       continue;
     }
     if (approvalGated.has(item.toolCall.toolCallId)) {

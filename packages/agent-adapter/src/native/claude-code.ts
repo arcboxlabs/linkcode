@@ -39,6 +39,7 @@ import { invariant, nullthrow } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
+  asMessageId,
   boundedLimit,
   compactRecord,
   cursorFromFetched,
@@ -52,9 +53,18 @@ import {
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
-type AssistantMessage = Extract<SDKMessage, { type: 'assistant' }>['message'];
-type UserMessage = Extract<SDKMessage, { type: 'user' }>['message'];
+type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
+type AssistantMessage = AssistantSDKMessage['message'];
+type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
+
+/** Claude's subagent-spawning tool: named `Agent` in current CLIs (verified live against the
+ * vendored 0.3.x), `Task` in older transcripts — history replay still meets the old name. Exact
+ * match on purpose: the shared name-based classifier stays untouched so other adapters (e.g.
+ * opencode's lowercase `task`) opt in deliberately rather than by regex accident. */
+function claudeToolKind(name: string): ToolCall['kind'] {
+  return name === 'Task' || name === 'Agent' ? 'task' : toolKindFromName(name);
+}
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -301,19 +311,45 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
-    const [info, messages] = await Promise.all([
+    const [info, messages, subagentEvents] = await Promise.all([
       mod.getSessionInfo(opts.historyId),
       mod.getSessionMessages(opts.historyId, {
         limit: limit + 1,
         offset,
       }),
+      readSubagentTranscripts(mod, opts.historyId),
     ]);
     const historyId = opts.historyId;
+    const mapper = createClaudeHistoryEventMapper(historyId);
+    const events: AgentHistoryEvent[] = [];
+    // Splice each subagent's transcript in right after its spawn announce, so the seeded order
+    // matches the live stream and the children land inside the parent's turn (the UI's per-segment
+    // partition depends on that). Keyed off the announce (in_progress) only — the later settle
+    // re-emits the same tool-call id in a terminal state. Recursive: a subagent's own transcript
+    // can announce a further spawn, whose transcript must nest the same way (delete-before-recurse
+    // also guards against a malformed self-referential parent id looping forever).
+    const pushWithSubagents = (event: AgentHistoryEvent): void => {
+      events.push(event);
+      if (
+        event.event.type === 'tool-call' &&
+        event.event.toolCall.kind === 'task' &&
+        event.event.toolCall.status === 'in_progress'
+      ) {
+        const children = subagentEvents.get(event.event.toolCall.toolCallId);
+        if (children) {
+          subagentEvents.delete(event.event.toolCall.toolCallId);
+          for (const child of children) pushWithSubagents(child);
+        }
+      }
+    };
+    for (const message of messages.slice(0, limit)) {
+      for (const event of mapper(message)) pushWithSubagents(event);
+    }
     return {
       session: info
         ? mapClaudeHistorySession(info)
         : { historyId, kind: this.kind, title: historyId },
-      events: messages.slice(0, limit).flatMap(createClaudeHistoryEventMapper(historyId)),
+      events,
       cursor: cursorFromFetched(offset, messages.length, limit),
     };
   }
@@ -354,6 +390,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // apply through the switchable channel right after creation.
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
+        // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
+        // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
+        forwardSubagentText: true,
         canUseTool: this.canUseTool,
         // Resolved in onStart from settings.json `permissions.defaultMode` (see settingsDefaultMode)
         // — the SDK-driven CLI does not apply that setting itself. `undefined` only when neither the
@@ -499,7 +538,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       {
         toolCallId: options.toolUseID,
         title: options.title ?? toolName,
-        kind: toolKindFromName(toolName),
+        kind: claudeToolKind(toolName),
         rawInput: input,
       },
       PERMISSION_OPTIONS,
@@ -524,18 +563,21 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
-        this.handleStreamEvent(msg.event);
+        this.handleStreamEvent(msg.event, msg.parent_tool_use_id);
         break;
       case 'assistant':
-        this.handleAssistant(msg.message);
+        this.handleAssistant(msg);
         break;
       case 'user':
-        this.handleUser(msg.message);
+        this.handleUser(msg);
         break;
       case 'result':
         this.handleResult(msg);
         break;
       case 'system':
+        // task_started/task_updated/task_progress intentionally fall through: a card's state derives
+        // entirely from the Task tool_use/tool_result pair; consuming them (task_id ↔ tool_use_id
+        // correlation) only pays off once run_in_background tasks are supported.
         if (msg.subtype === 'permission_denied') this.handlePermissionDenied(msg);
         else if (msg.subtype === 'init') this.syncApprovalPolicy(msg.permissionMode);
         break;
@@ -555,7 +597,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitTool({
       toolCallId: msg.tool_use_id,
       title: msg.tool_name,
-      kind: toolKindFromName(msg.tool_name),
+      kind: claudeToolKind(msg.tool_name),
       status: 'failed',
       content: [
         ...diff,
@@ -564,14 +606,22 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
   }
 
-  private handleStreamEvent(event: StreamEvent): void {
+  private handleStreamEvent(event: StreamEvent, parentToolUseId: string | null): void {
+    // Subagent narration renders message-level from the forwarded assistant frames
+    // (handleSubagentAssistant); consuming its deltas here would render the same text twice.
+    if (parentToolUseId) return;
     if (event.type !== 'content_block_delta') return;
     const delta = event.delta;
     if (delta.type === 'text_delta') this.emitAssistantText(delta.text, this.messageId);
     else if (delta.type === 'thinking_delta') this.emitThought(delta.thinking, this.thoughtId);
   }
 
-  private handleAssistant(message: AssistantMessage): void {
+  private handleAssistant(msg: AssistantSDKMessage): void {
+    if (msg.parent_tool_use_id) {
+      this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id, msg.uuid);
+      return;
+    }
+    const message = msg.message;
     let calledTool = false;
     for (const block of message.content) {
       if (block.type === 'tool_use') {
@@ -581,7 +631,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         this.emitTool({
           toolCallId: block.id,
           title: block.name,
-          kind: toolKindFromName(block.name),
+          kind: claudeToolKind(block.name),
           status: 'in_progress',
           content: diff,
           rawInput: block.input,
@@ -596,12 +646,42 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
+   * A subagent's assistant frame (`parent_tool_use_id` set): its tool calls carry the spawning Task's
+   * id, and its text/thinking — forwarded whole via `forwardSubagentText` — render message-level under
+   * the frame's own uuid. It never touches the main `messageId`/`thoughtId` cursors and never calls
+   * `freshSegment()`, so a subagent running mid-turn cannot break the main agent's streaming bubble.
+   * (The uuid doubles as the history mapper's id, so a live turn and a later cold-resume seed converge.)
+   */
+  private handleSubagentAssistant(message: AssistantMessage, parent: string, uuid: string): void {
+    for (const block of message.content) {
+      if (block.type === 'tool_use') {
+        const diff = editDiffContent(block.name, block.input);
+        if (diff) this.pendingEditDiffs.set(block.id, diff);
+        this.emitTool({
+          toolCallId: block.id,
+          parentToolCallId: parent,
+          title: block.name,
+          kind: claudeToolKind(block.name),
+          status: 'in_progress',
+          content: diff,
+          rawInput: block.input,
+          locations: locationsFromToolInput(block.input),
+        });
+      } else if (block.type === 'text') {
+        this.emitAssistantText(block.text, asMessageId(uuid), parent);
+      } else if (block.type === 'thinking') {
+        this.emitThought(block.thinking, asMessageId(`${uuid}:think`), parent);
+      }
+    }
+  }
+
+  /**
    * Tool results come back on the *user* message (Claude's API pairs every `tool_use` with a
    * `tool_result`). This is also where a denied permission lands: the SDK synthesizes an `is_error`
    * result with "Denied by the user", so the same branch settles success, failure, and deny alike.
    */
-  private handleUser(message: UserMessage): void {
-    const content = message.content;
+  private handleUser(msg: UserSDKMessage): void {
+    const content = msg.message.content;
     if (typeof content === 'string') return;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
@@ -609,6 +689,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.pendingEditDiffs.delete(block.tool_use_id);
       this.emitTool({
         toolCallId: block.tool_use_id,
+        // Re-stated on settle so the parent link survives even if the announce was never seen
+        // (e.g. it sat beyond a history read's page window). Null for main-agent results.
+        parentToolCallId: msg.parent_tool_use_id ?? undefined,
         status: block.is_error === true ? 'failed' : 'completed',
         content: [...diff, ...toolResultContent(block.content)],
         rawOutput: block.content,
@@ -704,6 +787,30 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
 }
 
 /**
+ * Subagent transcripts live beside the main one (`subagents/agent-{id}.jsonl`) and are not part of
+ * `getSessionMessages`. Every row `getSubagentMessages` returns carries `parent_tool_use_id` — the
+ * spawning Task/Agent tool_use id (verified against the vendored SDK's on-disk format) — so a plain
+ * run through the history mapper reproduces the same parent-linked events the live stream emits.
+ * Keyed by that parent id for splicing in after the spawn announce.
+ */
+async function readSubagentTranscripts(
+  mod: typeof import('@anthropic-ai/claude-agent-sdk'),
+  sessionId: string,
+): Promise<Map<string, AgentHistoryEvent[]>> {
+  const agentIds = await mod.listSubagents(sessionId);
+  const byParent = new Map<string, AgentHistoryEvent[]>();
+  await Promise.all(
+    agentIds.map(async (agentId) => {
+      const rows = await mod.getSubagentMessages(sessionId, agentId, { limit: 1000 });
+      const parent = rows.find((row) => row.parent_tool_use_id !== null)?.parent_tool_use_id;
+      if (!parent) return;
+      byParent.set(parent, rows.flatMap(createClaudeHistoryEventMapper(asHistoryId(sessionId))));
+    }),
+  );
+  return byParent;
+}
+
+/**
  * Stateful per-read mapper: correlates each `tool_use` announce with the `tool_result` that later
  * settles it, replaying the same announce/settle full-snapshot pairs the live path emits — under
  * the provider's `toolu_` ids, so a seeded timeline and live re-emits of the same call converge
@@ -723,17 +830,27 @@ export function createClaudeHistoryEventMapper(
     if (message.type !== 'user' && message.type !== 'assistant') return [];
     const events: AgentHistoryEvent[] = [];
     const blocks = messageContentBlocks(message.message);
+    // Subagent transcript rows carry the spawning Task's tool_use id, same as live frames.
+    const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
-      const text = textHistoryEvent(historyId, 'assistant', message.uuid, message.message);
+      const text = textHistoryEvent(
+        historyId,
+        'assistant',
+        message.uuid,
+        message.message,
+        undefined,
+        parent,
+      );
       if (text) events.push(text);
       for (const block of blocks) {
         if (!isToolUseBlock(block)) continue;
         events.push(
           toolEvent({
             toolCallId: block.id,
+            parentToolCallId: parent,
             title: block.name,
-            kind: toolKindFromName(block.name),
+            kind: claudeToolKind(block.name),
             status: 'in_progress',
             content: editDiffContent(block.name, block.input) ?? [],
             rawInput: block.input,
@@ -749,6 +866,7 @@ export function createClaudeHistoryEventMapper(
       events.push(
         toolEvent({
           toolCallId: block.tool_use_id,
+          parentToolCallId: parent ?? existing?.parentToolCallId,
           // The announce can sit beyond this read's page window; fall back to emitTool's
           // first-sight defaults rather than dropping the settle.
           title: existing?.title ?? block.tool_use_id,
@@ -761,6 +879,9 @@ export function createClaudeHistoryEventMapper(
         }),
       );
     }
+    // A subagent's user rows are only tool_results plus its injected prompt — never something the
+    // user typed; emitting that prompt would fake a user turn inside the nested transcript.
+    if (parent) return events;
     // Tool-result rows are synthetic user messages; only what remains after removing the
     // tool_results is a prompt the user actually typed.
     const promptValue =

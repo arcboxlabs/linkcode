@@ -41,12 +41,13 @@ function row(
   type: 'user' | 'assistant',
   uuid: string,
   content: string | unknown[],
+  parentToolUseId: string | null = null,
 ): SessionMessage {
   return {
     type,
     uuid,
     session_id: 'h1',
-    parent_tool_use_id: null,
+    parent_tool_use_id: parentToolUseId,
     message: { content },
   };
 }
@@ -140,6 +141,59 @@ describe('createClaudeHistoryEventMapper', () => {
 
     const reply = map(row('assistant', 'u2', [{ type: 'text', text: 'done' }]));
     expect(reply.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+  });
+
+  it('stamps parentToolCallId on subagent rows and classifies Task as task-kind', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const announce = map(
+      row('assistant', 'u1', [
+        { type: 'tool_use', id: 'toolu_task', name: 'Task', input: { description: 'explore' } },
+      ]),
+    );
+    if (announce[0].event.type === 'tool-call') {
+      expect(announce[0].event.toolCall).toMatchObject({ kind: 'task', toolCallId: 'toolu_task' });
+    }
+
+    const subText = map(
+      row('assistant', 'u2', [{ type: 'text', text: 'looking around' }], 'toolu_task'),
+    );
+    expect(subText[0].event).toMatchObject({
+      type: 'agent-message-chunk',
+      parentToolCallId: 'toolu_task',
+    });
+
+    const subTool = map(
+      row(
+        'assistant',
+        'u3',
+        [{ type: 'tool_use', id: 'toolu_sub', name: 'Read', input: {} }],
+        'toolu_task',
+      ),
+    );
+    if (subTool[0].event.type === 'tool-call') {
+      expect(subTool[0].event.toolCall.parentToolCallId).toBe('toolu_task');
+    }
+
+    const subSettle = map(
+      row(
+        'user',
+        'u4',
+        [{ type: 'tool_result', tool_use_id: 'toolu_sub', content: 'ok' }],
+        'toolu_task',
+      ),
+    );
+    if (subSettle[0].event.type === 'tool-call') {
+      expect(subSettle[0].event.toolCall).toMatchObject({
+        status: 'completed',
+        parentToolCallId: 'toolu_task',
+      });
+    }
+  });
+
+  it('skips the injected subagent prompt on subagent user rows', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const events = map(row('user', 'u1', 'map the repo structure', 'toolu_task'));
+    expect(events).toEqual([]);
   });
 });
 
