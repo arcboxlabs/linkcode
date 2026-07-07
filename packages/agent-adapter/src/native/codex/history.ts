@@ -16,7 +16,7 @@ import {
   textFromUnknown,
   textHistoryEvent,
   timestampMs,
-} from '../history-util';
+} from '../../history-util';
 
 const WHITESPACE_RUN_RE = /\s+/g;
 

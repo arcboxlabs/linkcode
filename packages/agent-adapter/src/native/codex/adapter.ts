@@ -33,6 +33,7 @@ import {
   stringField,
 } from '../../history-util';
 import { contentToText } from '../../util';
+import { CodexAppServer } from './app-server';
 import {
   codexIndexEntryToSession,
   codexSummaryToSession,
@@ -41,8 +42,7 @@ import {
   readCodexIndex,
   readCodexTranscriptSummaries,
   readJsonlFile,
-} from '../codex-history';
-import { CodexAppServer } from './app-server';
+} from './history';
 import { diffContentFromUnified } from './unified-diff';
 
 const PERMISSION_OPTIONS: PermissionOption[] = [

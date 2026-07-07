@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { isRecord } from '../../history-util';
-import { codexHome } from '../codex-history';
+import { codexHome } from './history';
 
 export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
