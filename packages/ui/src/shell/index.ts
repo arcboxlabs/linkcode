@@ -6,6 +6,7 @@ export * from './composer';
 export * from './conversation-surface';
 export * from './error-banner';
 export * from './general-settings-panel';
+export * from './history/history-browser';
 export * from './new-session-surface';
 export * from './session-sidebar';
 export * from './settings-sidebar-nav';
