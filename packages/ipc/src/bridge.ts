@@ -43,5 +43,16 @@ export interface SystemBridge {
      * Synchronous — safe to read during first render.
      */
     resolveUrl(): string;
+    /**
+     * Whether this app supervises the daemon's lifecycle (packaged build, no endpoint override).
+     * Drives the connection-failure copy: a managed host restarts itself, an unmanaged one is the
+     * user's to run.
+     */
+    isManaged(): Promise<boolean>;
+    /**
+     * Subscribe to daemon runtime-file changes pushed from main (fs.watch on ~/.linkcode).
+     * Fired when a daemon (re)starts or stops — re-run `resolveUrl` on it.
+     */
+    onRuntimeChanged(cb: () => void): () => void;
   };
 }

@@ -33,6 +33,13 @@ files:
   - out/**
   - package.json
 
+# The PTY sidecar (crates/linkcode-pty), staged per arch by scripts/stage-sidecar.mjs. It is a
+# real executable, so it must live outside the asar; the daemon supervisor points
+# LINKCODE_PTY_SIDECAR_PATH at it under process.resourcesPath (src/main/daemon-supervisor.ts).
+extraResources:
+  - from: sidecar/${arch}
+    to: .
+
 # The electron-updater feed, served from Cloudflare R2 (uploads in release-desktop.yml). The
 # /desktop prefix namespaces the bucket for future artifact families (agent runtime, daemon).
 # This URL ships inside every released app — never change it.

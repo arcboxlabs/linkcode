@@ -29,6 +29,8 @@ export interface SystemContext {
   daemon: {
     /** Effective daemon endpoint: explicit setting, else runtime-file discovery, else default. */
     resolveUrl(): string;
+    /** Whether this app supervises the daemon's lifecycle (packaged build, no endpoint override). */
+    isManaged(): boolean;
   };
 }
 
