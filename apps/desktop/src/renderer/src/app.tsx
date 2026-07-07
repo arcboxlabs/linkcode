@@ -25,7 +25,7 @@ const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHost
 export function DesktopApp(): React.ReactNode {
   const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
-  const settingsOpen = useNavigationHistoryStore((state) => state.settingsOpen);
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>

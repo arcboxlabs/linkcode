@@ -90,14 +90,14 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const travelHistory = useNavigationHistoryStore((state) => state.travel);
   const canGoBack = useNavigationHistoryStore((state) => state.back.length > 0);
   const canGoForward = useNavigationHistoryStore((state) => state.forward.length > 0);
-  const settingsOpen = useNavigationHistoryStore((state) => state.settingsOpen);
-  const setSettingsOpen = useNavigationHistoryStore((state) => state.setSettingsOpen);
+  const overlay = useNavigationHistoryStore((state) => state.overlay);
+  const setOverlay = useNavigationHistoryStore((state) => state.setOverlay);
 
-  // What the surface currently renders, as a history location: the settings overlay covers the
+  // What the surface currently renders, as a history location: an overlay surface covers the
   // draft page, which wins over the fallback-resolved thread (mirroring the `active` derivation
   // above).
-  const currentLocation: NavLocation | null = settingsOpen
-    ? { surface: 'settings' }
+  const currentLocation: NavLocation | null = overlay
+    ? { surface: overlay }
     : draft
       ? { surface: 'new-thread', workspaceId: draft.workspaceId }
       : activeId
@@ -106,7 +106,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   /** The non-recording apply path, shared by explicit selection and history traversal. */
   function applySelection(id: SessionId): void {
-    setSettingsOpen(false);
+    setOverlay(null);
     setExplicitDraft(null);
     setSelectedId(id);
     // Selecting a cold session wakes it on the daemon, keeping the same Link Code id.
@@ -125,25 +125,25 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   function startDraft(workspaceId?: WorkspaceId): void {
     recordNavigation(currentLocation, { surface: 'new-thread', workspaceId: workspaceId ?? null });
-    setSettingsOpen(false);
+    setOverlay(null);
     setExplicitDraft({ workspaceId: workspaceId ?? null });
   }
 
   // Threads must still exist in the list to be traversal targets (closed ones drop out of the
-  // stacks on the way); the draft page and the settings surface are always reachable.
+  // stacks on the way); the draft page and the overlay surfaces are always reachable.
   function traverse(dir: 'back' | 'forward'): void {
     const target = travelHistory(dir, currentLocation, (location) =>
       location.surface === 'thread' ? sessionById(sessions, location.sessionId) !== null : true,
     );
     if (target === null) return;
-    if (target.surface === 'settings') {
-      // The overlay covers the current selection — raising it is the whole apply.
-      setSettingsOpen(true);
-    } else if (target.surface === 'thread') {
+    if (target.surface === 'thread') {
       applySelection(target.sessionId);
-    } else {
-      setSettingsOpen(false);
+    } else if (target.surface === 'new-thread') {
+      setOverlay(null);
       setExplicitDraft({ workspaceId: target.workspaceId });
+    } else {
+      // An overlay surface covers the current selection — raising it is the whole apply.
+      setOverlay(target.surface);
     }
   }
 

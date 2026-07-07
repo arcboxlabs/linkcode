@@ -30,7 +30,7 @@ const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
  */
 export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
-  const backFromSettings = useNavigationHistoryStore((state) => state.backFromSettings);
+  const backFromOverlay = useNavigationHistoryStore((state) => state.backFromOverlay);
   const [category, setCategory] = useState<SettingsCategory>('general');
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
@@ -45,11 +45,11 @@ export function SettingsView(): React.ReactNode {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') backFromSettings();
+      if (event.key === 'Escape') backFromOverlay();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [backFromSettings]);
+  }, [backFromOverlay]);
 
   return (
     <div
@@ -86,7 +86,7 @@ export function SettingsView(): React.ReactNode {
             >
               <SettingsSidebarNav
                 backLabel={t('back')}
-                onBack={backFromSettings}
+                onBack={backFromOverlay}
                 searchPlaceholder={t('searchPlaceholder')}
                 items={[
                   {

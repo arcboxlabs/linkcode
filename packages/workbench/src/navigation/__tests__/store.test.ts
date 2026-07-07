@@ -13,82 +13,104 @@ function thread(id: string): NavLocation {
 }
 
 const SETTINGS: NavLocation = { surface: 'settings' };
+const HISTORY_IMPORT: NavLocation = { surface: 'history-import' };
 
 beforeEach(() => {
-  useNavigationHistoryStore.setState({ back: [], forward: [], settingsOpen: false });
+  useNavigationHistoryStore.setState({ back: [], forward: [], overlay: null });
   useSessionSelectionStore.setState({ selectedId: null });
 });
 
-describe('openSettings', () => {
+describe('openOverlay', () => {
   it('records the explicit selection as the origin and raises the overlay', () => {
     useSessionSelectionStore.getState().setSelectedId(sid('a'));
-    useNavigationHistoryStore.getState().openSettings();
+    useNavigationHistoryStore.getState().openOverlay('settings');
 
     const state = useNavigationHistoryStore.getState();
-    expect(state.settingsOpen).toBe(true);
+    expect(state.overlay).toBe('settings');
     expect(state.back).toEqual([thread('a')]);
     expect(state.forward).toEqual([]);
   });
 
   it('records no origin without a selection', () => {
-    useNavigationHistoryStore.getState().openSettings();
+    useNavigationHistoryStore.getState().openOverlay('settings');
 
     const state = useNavigationHistoryStore.getState();
-    expect(state.settingsOpen).toBe(true);
+    expect(state.overlay).toBe('settings');
     expect(state.back).toEqual([]);
   });
 
-  it('is a no-op while already open', () => {
+  it('records the current overlay as the origin when switching surfaces', () => {
     useSessionSelectionStore.getState().setSelectedId(sid('a'));
-    useNavigationHistoryStore.getState().openSettings();
-    useNavigationHistoryStore.getState().openSettings();
+    useNavigationHistoryStore.getState().openOverlay('settings');
+    useNavigationHistoryStore.getState().openOverlay('history-import');
+
+    const state = useNavigationHistoryStore.getState();
+    expect(state.overlay).toBe('history-import');
+    expect(state.back).toEqual([thread('a'), SETTINGS]);
+  });
+
+  it('is a no-op while the same surface is already up', () => {
+    useSessionSelectionStore.getState().setSelectedId(sid('a'));
+    useNavigationHistoryStore.getState().openOverlay('settings');
+    useNavigationHistoryStore.getState().openOverlay('settings');
 
     expect(useNavigationHistoryStore.getState().back).toEqual([thread('a')]);
   });
 });
 
-describe('backFromSettings', () => {
-  it('applies a thread target to the selection store and pushes settings onto forward', () => {
-    useNavigationHistoryStore.setState({ back: [thread('a')], settingsOpen: true });
+describe('backFromOverlay', () => {
+  it('applies a thread target to the selection store and pushes the overlay onto forward', () => {
+    useNavigationHistoryStore.setState({ back: [thread('a')], overlay: 'settings' });
     useSessionSelectionStore.getState().setSelectedId(sid('b'));
 
-    useNavigationHistoryStore.getState().backFromSettings();
+    useNavigationHistoryStore.getState().backFromOverlay();
 
     expect(useSessionSelectionStore.getState().selectedId).toBe(sid('a'));
     const state = useNavigationHistoryStore.getState();
-    expect(state.settingsOpen).toBe(false);
+    expect(state.overlay).toBeNull();
     expect(state.back).toEqual([]);
     expect(state.forward).toEqual([SETTINGS]);
   });
 
-  it('closes without a forward entry when the back stack is empty', () => {
-    useNavigationHistoryStore.setState({ settingsOpen: true });
+  it('re-raises a popped overlay surface instead of closing', () => {
+    useNavigationHistoryStore.setState({ back: [SETTINGS], overlay: 'history-import' });
 
-    useNavigationHistoryStore.getState().backFromSettings();
+    useNavigationHistoryStore.getState().backFromOverlay();
 
     const state = useNavigationHistoryStore.getState();
-    expect(state.settingsOpen).toBe(false);
+    expect(state.overlay).toBe('settings');
+    expect(state.back).toEqual([]);
+    expect(state.forward).toEqual([HISTORY_IMPORT]);
+  });
+
+  it('closes without a forward entry when the back stack is empty', () => {
+    useNavigationHistoryStore.setState({ overlay: 'settings' });
+
+    useNavigationHistoryStore.getState().backFromOverlay();
+
+    const state = useNavigationHistoryStore.getState();
+    expect(state.overlay).toBeNull();
     expect(state.forward).toEqual([]);
   });
 
   it('closes without touching selection for a draft target', () => {
     useNavigationHistoryStore.setState({
       back: [{ surface: 'new-thread', workspaceId: null }],
-      settingsOpen: true,
+      overlay: 'settings',
     });
 
-    useNavigationHistoryStore.getState().backFromSettings();
+    useNavigationHistoryStore.getState().backFromOverlay();
 
     expect(useSessionSelectionStore.getState().selectedId).toBeNull();
     const state = useNavigationHistoryStore.getState();
-    expect(state.settingsOpen).toBe(false);
+    expect(state.overlay).toBeNull();
     expect(state.forward).toEqual([SETTINGS]);
   });
 
-  it('is a no-op while settings is closed', () => {
+  it('is a no-op while no overlay is up', () => {
     useNavigationHistoryStore.setState({ back: [thread('a')] });
 
-    useNavigationHistoryStore.getState().backFromSettings();
+    useNavigationHistoryStore.getState().backFromOverlay();
 
     expect(useNavigationHistoryStore.getState().back).toEqual([thread('a')]);
   });

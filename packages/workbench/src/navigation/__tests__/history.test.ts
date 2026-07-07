@@ -25,6 +25,8 @@ describe('locationsEqual', () => {
     expect(locationsEqual(SETTINGS, { surface: 'settings' })).toBe(true);
     expect(locationsEqual(SETTINGS, thread('a'))).toBe(false);
     expect(locationsEqual(draft(), SETTINGS)).toBe(false);
+    expect(locationsEqual({ surface: 'history-import' }, { surface: 'history-import' })).toBe(true);
+    expect(locationsEqual({ surface: 'history-import' }, SETTINGS)).toBe(false);
   });
 });
 

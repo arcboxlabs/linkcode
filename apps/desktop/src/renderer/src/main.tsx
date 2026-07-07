@@ -20,7 +20,7 @@ if (import.meta.hot) import.meta.hot.dispose(uninstallAdaptiveTheme);
 
 // Menubar / Cmd+, opens Settings even while the daemon is unreachable.
 const unsubscribeOpenSettings = systemBridge.app.onOpenSettings(() => {
-  useNavigationHistoryStore.getState().openSettings();
+  useNavigationHistoryStore.getState().openOverlay('settings');
 });
 if (import.meta.hot) import.meta.hot.dispose(unsubscribeOpenSettings);
 

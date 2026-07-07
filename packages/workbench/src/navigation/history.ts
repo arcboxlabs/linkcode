@@ -4,7 +4,8 @@ import type { SessionId, WorkspaceId } from '@linkcode/schema';
 export type NavLocation =
   | { surface: 'thread'; sessionId: SessionId }
   | { surface: 'new-thread'; workspaceId: WorkspaceId | null }
-  | { surface: 'settings' };
+  | { surface: 'settings' }
+  | { surface: 'history-import' };
 
 export interface NavHistoryStacks {
   back: NavLocation[];
@@ -21,7 +22,7 @@ export function locationsEqual(a: NavLocation, b: NavLocation): boolean {
   if (a.surface === 'new-thread') {
     return b.surface === 'new-thread' && a.workspaceId === b.workspaceId;
   }
-  return b.surface === 'settings';
+  return a.surface === b.surface;
 }
 
 /**
