@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron';
 import { app, dialog } from 'electron';
 import { applyThemePreference } from './appearance';
 import { resolveDaemonUrl } from './daemon-discovery';
+import { isDaemonManaged } from './daemon-supervisor';
 import { ensureDefaultPickerDirectory } from './default-picker-directory';
 import { getSettings, setSettings } from './settings';
 import { checkForUpdates } from './updater';
@@ -45,6 +46,7 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
     },
     daemon: {
       resolveUrl: () => resolveDaemonUrl(),
+      isManaged: () => isDaemonManaged(),
     },
   };
 }

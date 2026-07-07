@@ -74,6 +74,7 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
       resolveUrl: () =>
         (ipcRenderer.sendSync(DAEMON_URL_SNAPSHOT_CHANNEL) as string | undefined) ??
         DAEMON_DEFAULT_URL,
+      isManaged: () => invoke.daemonIsManaged(),
     },
   };
 }

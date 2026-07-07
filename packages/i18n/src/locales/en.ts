@@ -10,6 +10,8 @@ export const en = {
       connected: 'Connected',
       connecting: 'Connecting to the daemon…',
       error: 'Unable to connect to the daemon ({url}). Run {command} first.',
+      errorManaged:
+        'Unable to connect to the daemon ({url}). It starts automatically with the app — retry, and restart the app if this keeps failing.',
       retry: 'Retry',
     },
     conversation: {

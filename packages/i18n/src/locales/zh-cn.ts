@@ -8,6 +8,8 @@ export const zhCN = {
       connected: '已连接',
       connecting: '正在连接 daemon…',
       error: '无法连接到 daemon（{url}）。请先运行 {command}。',
+      errorManaged:
+        '无法连接到 daemon（{url}）。它会随应用自动启动——请重试，若持续失败请重启应用。',
       retry: '重试',
     },
     conversation: {

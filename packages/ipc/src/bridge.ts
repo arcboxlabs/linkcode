@@ -43,5 +43,11 @@ export interface SystemBridge {
      * Synchronous — safe to read during first render.
      */
     resolveUrl(): string;
+    /**
+     * Whether this app supervises the daemon's lifecycle (packaged build, no endpoint override).
+     * Drives the connection-failure copy: a managed host restarts itself, an unmanaged one is the
+     * user's to run.
+     */
+    isManaged(): Promise<boolean>;
   };
 }

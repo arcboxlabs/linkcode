@@ -22,6 +22,7 @@ export const systemIpcEvents = {
   appVersion: defineInvokeEventa<string>('linkcode.system.app.version'),
   appPlatform: defineInvokeEventa<NodeJS.Platform>('linkcode.system.app.platform'),
   appCheckForUpdates: defineInvokeEventa<void>('linkcode.system.app.checkForUpdates'),
+  daemonIsManaged: defineInvokeEventa<boolean>('linkcode.system.daemon.isManaged'),
   settingsGet: defineInvokeEventa<DesktopSettings>('linkcode.system.settings.get'),
   settingsSet: defineInvokeEventa<DesktopSettings, DesktopSettingsPatch>(
     'linkcode.system.settings.set',
