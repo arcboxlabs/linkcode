@@ -31,6 +31,7 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 - `git/` — daemon-backed git status/PR polling hooks (`useGitStatus`, `useGitPullRequestStatus`)
   and the Diff-section container (`GitPanel`) that assembles them for `packages/ui`'s
   `GitOverview`.
+- `palette/` — the ⌘K command palette's client state: `useCommandPaletteStore` (`open`/`toggle`/`setOpen` + imperative `openCommandPalette()`, and `commandsByOwner` keyed by owner so a surface registers/unregisters only its own commands via `registerCommands`/`unregisterCommands`) plus a sibling pure-function `match` module. Plain **non-persisted** zustand — no `zodPersist`; there is no `cmdk` dependency (the UI renders through coss-ui's `command` component).
 - `lib/` — small framework-adjacent utilities shared by both apps' forms, e.g.
   `rhfErrorsToFormErrors` (react-hook-form `FieldErrors` → coss-ui `<Form errors>` shape) and the
   zod human-readable error map it activates as a side effect. Exported only through the `./form`
