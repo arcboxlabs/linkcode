@@ -50,8 +50,8 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
+import { resolveAgentBinary } from '../runtime-probe';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
-import { vendoredAgentBinary } from './agent-bin';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
@@ -384,12 +384,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       options: {
         cwd: opts.cwd,
         model: opts.model,
-        // Vendored CLI staged by the packaged host (real path outside the asar); undefined in
-        // dev/standalone daemons, where the SDK resolves its own platform package instead.
-        pathToClaudeCodeExecutable: vendoredAgentBinary(
-          'claude-code',
-          process.platform === 'win32' ? 'claude.exe' : 'claude',
-        ),
+        // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
+        // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
+        pathToClaudeCodeExecutable: resolveAgentBinary('claude-code'),
         // `options.effort` becomes the CLI's `--effort` flag, which outranks the flag-settings
         // layer for the process's whole lifetime — passing it would pin the level and turn every
         // later applyFlagSettings switch into a silent no-op. Only `max` goes in here (the

@@ -9,6 +9,7 @@
  */
 
 export * from './agent';
+export * from './agent-runtime';
 export * from './artifact';
 export * from './common';
 export * from './content';

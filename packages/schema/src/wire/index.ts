@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AgentEventSchema, AgentInputSchema } from '../agent';
 import { MessageIdSchema, SessionIdSchema, TimestampSchema } from '../common';
+import { agentRuntimeWireVariants } from './agent-runtime';
 import { artifactWireVariants } from './artifact';
 import { configWireVariants } from './config';
 import { fileWireVariants } from './file';
@@ -35,13 +36,14 @@ export {
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 13 as const;
+export const WIRE_PROTOCOL_VERSION = 14 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...sessionWireVariants,
   ...historyWireVariants,
   ...configWireVariants,
+  ...agentRuntimeWireVariants,
   ...workspaceWireVariants,
   ...gitWireVariants,
   ...fileWireVariants,
