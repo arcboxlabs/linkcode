@@ -21,6 +21,7 @@
     "@better-auth/electron": "1.7.0-rc.1",
     "@hookform/resolvers": "^5.4.0",
     "@linkcode/common": "workspace:*",
+    "@linkcode/daemon": "workspace:*",
     "@linkcode/ipc": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",

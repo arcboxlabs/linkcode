@@ -220,6 +220,9 @@ importers:
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@linkcode/daemon':
+        specifier: workspace:*
+        version: link:../daemon
       '@linkcode/ipc':
         specifier: workspace:*
         version: link:../../packages/ipc
