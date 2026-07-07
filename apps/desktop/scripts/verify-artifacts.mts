@@ -17,7 +17,7 @@ import process, { argv } from 'node:process';
  * - the unpacked apps carry the bundled daemon (asar: out/daemon + migrations) and the PTY
  *   sidecar (Resources), so a build can never again ship a client with no host runtime (CODE-86/87).
  */
-import { statFile } from '@electron/asar';
+import { listPackage, statFile } from '@electron/asar';
 
 const RELEASE_DIR = 'release';
 const FEED_URL_LINE = /^ {2}- url: (.+)$/;
@@ -76,12 +76,23 @@ const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.js
 /** The packed app must carry the host runtime: bundled daemon in the asar, sidecar beside it. */
 function verifyHostRuntime(resourceDir: string, problems: string[]): void {
   const asarPath = join(RELEASE_DIR, resourceDir, 'app.asar');
+  let missing = false;
   for (const inner of ASAR_HOST_RUNTIME) {
     try {
       statFile(asarPath, inner);
     } catch {
+      missing = true;
       problems.push(`${resourceDir}/app.asar: missing ${inner}`);
+      const unpacked = join(RELEASE_DIR, resourceDir, 'app.asar.unpacked', inner);
+      if (existsSync(unpacked)) problems.push(`  …but present in app.asar.unpacked (smartUnpack?)`);
     }
+  }
+  // Diagnostics for the CI log: what did this asar actually get under out/?
+  if (missing) {
+    const outEntries = listPackage(asarPath, { isPack: false })
+      .filter((entry) => entry.replaceAll('\\', '/').startsWith('/out/'))
+      .slice(0, 40);
+    console.error(`${resourceDir}/app.asar out/ contents (first 40):\n${outEntries.join('\n')}`);
   }
   if (!existsSync(join(RELEASE_DIR, resourceDir, SIDECAR_BINARY))) {
     problems.push(`${resourceDir}: missing PTY sidecar ${SIDECAR_BINARY}`);
