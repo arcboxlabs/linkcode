@@ -17,8 +17,11 @@ export interface DetectedAgentRuntime {
 
 export type DetectedAgentRuntimes = Partial<Record<AgentKind, DetectedAgentRuntime>>;
 
+/** The agent kinds that spawn an external CLI (pi is in-process; opencode is PATH-based until CODE-76). */
+type ProbeableKind = 'claude-code' | 'codex';
+
 /** Platform binary name for the agent kinds that spawn an external CLI. */
-export function agentBinaryName(kind: 'claude-code' | 'codex'): string {
+export function agentBinaryName(kind: ProbeableKind): string {
   const base = kind === 'claude-code' ? 'claude' : 'codex';
   return process.platform === 'win32' ? `${base}.exe` : base;
 }
@@ -62,7 +65,7 @@ export function parseCodexVersion(stdout: string): string | undefined {
 }
 
 interface ProbeSpec {
-  kind: 'claude-code' | 'codex';
+  kind: ProbeableKind;
   parseVersion: (stdout: string) => string | undefined;
 }
 
@@ -90,72 +93,81 @@ export async function probeRuntimeAt(
   }
 }
 
-let detected: DetectedAgentRuntimes = {};
-
 /**
- * Probe the known install locations for user-installed agent CLIs. The daemon runs this once per
- * boot — user CLIs self-update, so results must not persist across boots — and adapters read the
- * outcome synchronously via `detectedRuntime()` when building spawn options.
+ * Which agent CLIs this host can spawn. Holds the boot-time detection state: the daemon calls
+ * `probe()` (directly or via `collect()`) once per boot — user CLIs self-update, so results must
+ * not outlive a boot — and adapters resolve spawn paths synchronously through the same instance
+ * when building spawn options.
  */
-export async function probeDetectedRuntimes(
-  locationsFor: (binary: string) => string[] = knownLocations,
-): Promise<DetectedAgentRuntimes> {
-  const next: DetectedAgentRuntimes = {};
-  await Promise.all(
-    PROBES.map(async ({ kind, parseVersion }) => {
-      for (const location of locationsFor(agentBinaryName(kind))) {
-        const runtime = await probeRuntimeAt(location, parseVersion);
-        if (runtime) {
-          next[kind] = runtime;
-          return;
+export class AgentRuntimeProber {
+  private detected: DetectedAgentRuntimes = {};
+
+  /** @param locationsFor test seam — overrides the per-platform known install locations. */
+  constructor(private readonly locationsFor: (binary: string) => string[] = knownLocations) {}
+
+  /** Probe the known install locations for user-installed agent CLIs. */
+  async probe(): Promise<DetectedAgentRuntimes> {
+    const next: DetectedAgentRuntimes = {};
+    await Promise.all(
+      PROBES.map(async ({ kind, parseVersion }) => {
+        for (const location of this.locationsFor(agentBinaryName(kind))) {
+          // eslint-disable-next-line no-await-in-loop -- locations are a precedence list; the first verified install wins
+          const runtime = await probeRuntimeAt(location, parseVersion);
+          if (runtime) {
+            next[kind] = runtime;
+            return;
+          }
         }
-      }
-    }),
-  );
-  detected = next;
-  return next;
-}
-
-export function detectedRuntime(kind: AgentKind): DetectedAgentRuntime | undefined {
-  return detected[kind];
-}
-
-/**
- * Resolution order for the CLI an adapter spawns: bundled (the exact SDK-paired binary staged by
- * the packaged host) → detected (user-installed, version-verified at boot) → `undefined` (the SDK
- * resolves its own platform package out of node_modules — dev and standalone daemons). Bundled
- * outranks detected because it is the CI-tested pair; detected outranks SDK self-resolution
- * because in packaged hosts the latter lands inside the asar (spawn-hostile and host-arch only).
- * Once the compat manifest (CODE-77) lands, detected runtimes are additionally gated by version
- * range here.
- */
-export function resolveAgentBinary(kind: 'claude-code' | 'codex'): string | undefined {
-  return vendoredAgentBinary(kind, agentBinaryName(kind)) ?? detectedRuntime(kind)?.path;
-}
-
-/**
- * Availability of every agent runtime this host has evaluated, for the `agent-runtime.list` wire
- * resource. Runs the detection probe; call once at daemon boot. opencode is absent until it moves
- * off PATH-spawning (CODE-76); `source: 'sdk'` entries carry no binary facts — the SDK's own
- * resolution is attempted only at session start.
- */
-export async function collectAgentRuntimes(
-  locationsFor?: (binary: string) => string[],
-): Promise<AgentRuntimes> {
-  const detectedRuntimes = await probeDetectedRuntimes(locationsFor);
-  const runtimes: AgentRuntimes = { pi: { status: 'available', source: 'builtin' } };
-  for (const { kind, parseVersion } of PROBES) {
-    const bundled = vendoredAgentBinary(kind, agentBinaryName(kind));
-    if (bundled) {
-      // Version is probed (not read from a stamp) so bundled and detected report the same fact.
-      const probed = await probeRuntimeAt(bundled, parseVersion);
-      runtimes[kind] = { status: 'available', source: 'bundled', path: bundled, ...probed };
-    } else {
-      const found = detectedRuntimes[kind];
-      runtimes[kind] = found
-        ? { status: 'available', source: 'detected', ...found }
-        : { status: 'available', source: 'sdk' };
-    }
+      }),
+    );
+    this.detected = next;
+    return next;
   }
-  return runtimes;
+
+  detectedRuntime(kind: AgentKind): DetectedAgentRuntime | undefined {
+    return this.detected[kind];
+  }
+
+  /**
+   * Resolution order for the CLI an adapter spawns: bundled (the exact SDK-paired binary staged by
+   * the packaged host) → detected (user-installed, version-verified at boot) → `undefined` (the SDK
+   * resolves its own platform package out of node_modules — dev and standalone daemons). Bundled
+   * outranks detected because it is the CI-tested pair; detected outranks SDK self-resolution
+   * because in packaged hosts the latter lands inside the asar (spawn-hostile and host-arch only).
+   * Once the compat manifest (CODE-77) lands, detected runtimes are additionally gated by version
+   * range here.
+   */
+  resolveBinary(kind: ProbeableKind): string | undefined {
+    return vendoredAgentBinary(kind, agentBinaryName(kind)) ?? this.detected[kind]?.path;
+  }
+
+  /**
+   * Availability of every agent runtime this host has evaluated, for the `agent-runtime.list` wire
+   * resource. Re-runs the detection probe. opencode is absent until it moves off PATH-spawning
+   * (CODE-76); `source: 'sdk'` entries carry no binary facts — the SDK's own resolution is
+   * attempted only at session start.
+   */
+  async collect(): Promise<AgentRuntimes> {
+    const detected = await this.probe();
+    const runtimes: AgentRuntimes = { pi: { status: 'available', source: 'builtin' } };
+    await Promise.all(
+      PROBES.map(async ({ kind, parseVersion }) => {
+        const bundled = vendoredAgentBinary(kind, agentBinaryName(kind));
+        if (bundled) {
+          // Version is probed (not read from a stamp) so bundled and detected report the same fact.
+          const probed = await probeRuntimeAt(bundled, parseVersion);
+          runtimes[kind] = { status: 'available', source: 'bundled', path: bundled, ...probed };
+        } else {
+          const found = detected[kind];
+          runtimes[kind] = found
+            ? { status: 'available', source: 'detected', ...found }
+            : { status: 'available', source: 'sdk' };
+        }
+      }),
+    );
+    return runtimes;
+  }
 }
+
+/** The host-wide instance: the daemon probes it at boot; adapters resolve spawn paths through it. */
+export const agentRuntimeProber = new AgentRuntimeProber();

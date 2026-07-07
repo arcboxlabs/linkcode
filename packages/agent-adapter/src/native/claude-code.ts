@@ -50,7 +50,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
-import { resolveAgentBinary } from '../runtime-probe';
+import { agentRuntimeProber } from '../runtime-probe';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
@@ -178,6 +178,7 @@ class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
         continue;
       }
       if (this.closed) return;
+      // eslint-disable-next-line no-await-in-loop -- queue iterator: the await IS the next-message signal
       const next = await new Promise<SDKUserMessage | null>((resolve) => {
         this.waiting = resolve;
       });
@@ -386,7 +387,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         model: opts.model,
         // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
         // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
-        pathToClaudeCodeExecutable: resolveAgentBinary('claude-code'),
+        pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),
         // `options.effort` becomes the CLI's `--effort` flag, which outranks the flag-settings
         // layer for the process's whole lifetime — passing it would pin the level and turn every
         // later applyFlagSettings switch into a silent no-op. Only `max` goes in here (the
@@ -658,6 +659,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    */
   private handleSubagentAssistant(message: AssistantMessage, parent: string, uuid: string): void {
     for (const block of message.content) {
+      // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'tool_use') {
         const diff = editDiffContent(block.name, block.input);
         if (diff) this.pendingEditDiffs.set(block.id, diff);

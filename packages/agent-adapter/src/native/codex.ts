@@ -25,7 +25,7 @@ import {
   cursorOffset,
   isRecord,
 } from '../history-util';
-import { resolveAgentBinary } from '../runtime-probe';
+import { agentRuntimeProber } from '../runtime-probe';
 import { contentToText } from '../util';
 import {
   codexHome,
@@ -195,7 +195,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     const apiKey = this.configString('apiKey');
     // Detected user install (runtime-probe); undefined lets the SDK resolve its own platform
     // package — which in packaged hosts sits inside the asar and only works via the spawn shim.
-    const binary = resolveAgentBinary('codex');
+    const binary = agentRuntimeProber.resolveBinary('codex');
     this.codex = new mod.Codex({
       ...(apiKey && { apiKey }),
       ...(binary && { codexPathOverride: binary }),

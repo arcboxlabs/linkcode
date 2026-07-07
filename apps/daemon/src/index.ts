@@ -1,4 +1,4 @@
-import { collectAgentRuntimes } from '@linkcode/agent-adapter';
+import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
   const previewRoutes = new PreviewRouteRegistry();
   // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
   // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
-  const agentRuntimes = await collectAgentRuntimes();
+  const agentRuntimes = await agentRuntimeProber.collect();
   const engine = new Engine(hub, {
     providerStore: store,
     ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),

@@ -3,12 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  collectAgentRuntimes,
+  AgentRuntimeProber,
   parseClaudeVersion,
   parseCodexVersion,
-  probeDetectedRuntimes,
   probeRuntimeAt,
-  resolveAgentBinary,
 } from '../runtime-probe';
 
 function fakeCli(dir: string, name: string, versionLine: string): string {
@@ -18,10 +16,12 @@ function fakeCli(dir: string, name: string, versionLine: string): string {
   return file;
 }
 
-afterEach(async () => {
+function proberAt(dir: string): AgentRuntimeProber {
+  return new AgentRuntimeProber((binary) => [join(dir, binary)]);
+}
+
+afterEach(() => {
   vi.unstubAllEnvs();
-  // Reset the module-level detection state so a test's fake CLIs don't leak into the next.
-  await probeDetectedRuntimes(() => []);
 });
 
 describe('version parsers', () => {
@@ -57,20 +57,20 @@ describe('probeRuntimeAt', () => {
   });
 });
 
-describe('probeDetectedRuntimes / resolveAgentBinary', () => {
+describe('AgentRuntimeProber probe/resolveBinary', () => {
   it('detects per kind from the first verified location and resolves through it', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'runtime-probe-'));
     const claude = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
     const codex = fakeCli(dir, 'codex', 'codex-cli 8.8.8');
     vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
 
-    const detected = await probeDetectedRuntimes((binary) => [join(dir, binary)]);
-    expect(detected).toEqual({
+    const prober = proberAt(dir);
+    await expect(prober.probe()).resolves.toEqual({
       'claude-code': { path: claude, version: '9.9.9' },
       codex: { path: codex, version: '8.8.8' },
     });
-    expect(resolveAgentBinary('claude-code')).toBe(claude);
-    expect(resolveAgentBinary('codex')).toBe(codex);
+    expect(prober.resolveBinary('claude-code')).toBe(claude);
+    expect(prober.resolveBinary('codex')).toBe(codex);
   });
 
   it('prefers the bundled binary over a detected one', async () => {
@@ -81,24 +81,26 @@ describe('probeDetectedRuntimes / resolveAgentBinary', () => {
     const bundled = fakeCli(join(bundledDir, 'claude-code'), 'claude', '1.1.1 (Claude Code)');
     vi.stubEnv('LINKCODE_AGENT_BIN_DIR', bundledDir);
 
-    await probeDetectedRuntimes((binary) => [join(dir, binary)]);
-    expect(resolveAgentBinary('claude-code')).toBe(bundled);
+    const prober = proberAt(dir);
+    await prober.probe();
+    expect(prober.resolveBinary('claude-code')).toBe(bundled);
   });
 
   it('resolves undefined when nothing is bundled or detected', async () => {
     vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
-    await probeDetectedRuntimes(() => []);
-    expect(resolveAgentBinary('claude-code')).toBeUndefined();
+    const prober = new AgentRuntimeProber(() => []);
+    await prober.probe();
+    expect(prober.resolveBinary('claude-code')).toBeUndefined();
   });
 });
 
-describe('collectAgentRuntimes', () => {
+describe('AgentRuntimeProber collect', () => {
   it('reports bundled > detected > sdk sources plus builtin pi', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'runtime-probe-'));
     const claude = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
     vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
 
-    const runtimes = await collectAgentRuntimes((binary) => [join(dir, binary)]);
+    const runtimes = await proberAt(dir).collect();
     expect(runtimes['claude-code']).toEqual({
       status: 'available',
       source: 'detected',
@@ -116,7 +118,7 @@ describe('collectAgentRuntimes', () => {
     const bundled = fakeCli(join(bundledDir, 'claude-code'), 'claude', '1.1.1 (Claude Code)');
     vi.stubEnv('LINKCODE_AGENT_BIN_DIR', bundledDir);
 
-    const runtimes = await collectAgentRuntimes(() => []);
+    const runtimes = await new AgentRuntimeProber(() => []).collect();
     expect(runtimes['claude-code']).toEqual({
       status: 'available',
       source: 'bundled',
