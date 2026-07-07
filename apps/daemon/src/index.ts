@@ -5,6 +5,7 @@ import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { once } from 'foxts/once';
+import { installAsarSpawnFix } from './asar-spawn';
 import { chatWorkspaceRoot, databasePath, loadConfig } from './config';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
@@ -44,6 +45,9 @@ process.on('unhandledRejection', (reason) => {
  * they spawn CLI subprocesses and hold credentials, so they cannot run inside a browser tab.
  */
 async function main(): Promise<void> {
+  // Before the engine starts: agent adapters spawn vendored CLI binaries that resolve inside the
+  // desktop app's asar (no-op outside Electron — see asar-spawn.ts).
+  installAsarSpawnFix();
   const config = loadConfig();
 
   // One daemon per machine — a second instance would share ~/.linkcode/daemon.db and split sessions.

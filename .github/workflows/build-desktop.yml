@@ -114,6 +114,12 @@ jobs:
       - name: Build PTY sidecar (both arches)
         uses: ./.github/actions/build-sidecar
 
+      # Vendored agent CLI binaries ship per arch under Resources (extraResources: agent-bin/${arch}),
+      # pulled from the npm registry at the SDK-pinned version — never from node_modules, which only
+      # carries the runner's own platform package.
+      - name: Stage agent runtimes (both arches)
+        run: node apps/desktop/scripts/stage-agent-runtimes.mts --all
+
       # OIDC exchange for Windows Trusted Signing; Invoke-TrustedSigning (spawned by
       # electron-builder below) picks it up via DefaultAzureCredential's Azure CLI entry.
       - name: Azure login (Trusted Signing, OIDC)

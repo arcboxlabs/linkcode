@@ -39,6 +39,11 @@ files:
 extraResources:
   - from: sidecar/${arch}
     to: .
+  # Vendored agent CLI binaries (scripts/stage-agent-runtimes.mts), one dir per agent kind.
+  # Real executables spawned by the daemon — they must live outside the asar (the OS cannot
+  # exec an asar member); the daemon supervisor points LINKCODE_AGENT_BIN_DIR here.
+  - from: agent-bin/${arch}
+    to: agent-bin
 
 # The electron-updater feed, served from Cloudflare R2 (uploads in release-desktop.yml). The
 # /desktop prefix namespaces the bucket for future artifact families (agent runtime, daemon).
