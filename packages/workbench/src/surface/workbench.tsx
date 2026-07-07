@@ -43,7 +43,6 @@ import { useSidebarOrderStore } from '../sidebar/order-store';
 import { applyThreadDrag, orderGroups, orderThreads } from '../sidebar/ordering';
 import { useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
-import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
 import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
@@ -165,13 +164,11 @@ function WorkbenchSessionSurface({
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
-  const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
     const groups = groupThreadsByWorkspace(sessions.sessions, workspaces ?? []);
     return orderGroups(groups, groupOrder).map((group) => {
       const collapsed = collapsedKeys.includes(group.collapseKey);
       const previewExpanded = previewExpandedKeys.has(group.key);
-      const historyOpen = historyOpenKeys.has(group.key);
       const ordered = orderThreads(
         group.sessions,
         pinnedSessionIds,
@@ -189,7 +186,6 @@ function WorkbenchSessionSurface({
         hasOverflow,
         collapsed,
         previewExpanded,
-        historyOpen,
       };
     });
   }, [
@@ -201,7 +197,6 @@ function WorkbenchSessionSurface({
     groupOrder,
     threadOrder,
     previewExpandedKeys,
-    historyOpenKeys,
   ]);
 
   function handleSend(text: string): void {
@@ -269,11 +264,6 @@ function WorkbenchSessionSurface({
     return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
   }
 
-  function handleImportedSession(sessionId: SessionId): void {
-    sessions.refresh();
-    sessions.select(sessionId);
-  }
-
   // Every workspace-mutating request revalidates the workspace list the same way afterward.
   function afterWorkspacesChange<T>(pending: Promise<T>): Promise<T> {
     return pending.then((result) => {
@@ -298,11 +288,6 @@ function WorkbenchSessionSurface({
   function handleTogglePreviewExpanded(groupKey: string): void {
     if (previewExpandedKeys.has(groupKey)) removePreviewExpanded(groupKey);
     else addPreviewExpanded(groupKey);
-  }
-
-  function handleToggleImportHistory(groupKey: string): void {
-    if (historyOpenKeys.has(groupKey)) removeHistoryOpen(groupKey);
-    else addHistoryOpen(groupKey);
   }
 
   function handleReorderGroups(orderedCollapseKeys: string[]): void {
@@ -430,13 +415,11 @@ function WorkbenchSessionSurface({
       onReorderThreads={handleReorderThreads}
       onStartDraft={sessions.startDraft}
       onSubmitDraft={handleSubmitDraft}
-      onImportSession={handleImportedSession}
       onRegisterWorkspace={handleRegisterWorkspace}
       onRenameWorkspace={handleRenameWorkspace}
       onArchiveWorkspace={handleArchiveWorkspace}
       onToggleGroupCollapsed={toggleGroupCollapsed}
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
-      onToggleImportHistory={handleToggleImportHistory}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
@@ -446,7 +429,6 @@ function WorkbenchSessionSurface({
       searchShortcut={paletteShortcut}
       TerminalBlockComponent={RuntimeTerminalBlock}
       BranchStatusComponent={RuntimeBranchStatus}
-      HistoryComponent={RuntimeWorkspaceHistory}
       onDismissError={onClearError}
       onModeChange={handleModeChange}
       onApprovalPolicyChange={handleApprovalPolicyChange}

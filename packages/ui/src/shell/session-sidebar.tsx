@@ -83,7 +83,6 @@ export function SessionSidebar({
   onReorderGroups,
   onReorderThreads,
   onStartDraft,
-  onImportSession,
   onPickDirectory,
   onOpenSearch,
   searchShortcut,
@@ -92,9 +91,7 @@ export function SessionSidebar({
   onArchiveWorkspace,
   onToggleGroupCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   BranchStatusComponent,
-  HistoryComponent,
 }: SessionSidebarProps): React.ReactNode {
   return (
     <ShellSidebar
@@ -134,16 +131,13 @@ export function SessionSidebar({
             onReorderGroups={onReorderGroups}
             onReorderThreads={onReorderThreads}
             onStartDraft={onStartDraft}
-            onImportSession={onImportSession}
             onPickDirectory={onPickDirectory}
             onRegisterWorkspace={onRegisterWorkspace}
             onRenameWorkspace={onRenameWorkspace}
             onArchiveWorkspace={onArchiveWorkspace}
             onToggleGroupCollapsed={onToggleGroupCollapsed}
             onTogglePreviewExpanded={onTogglePreviewExpanded}
-            onToggleImportHistory={onToggleImportHistory}
             BranchStatusComponent={BranchStatusComponent}
-            HistoryComponent={HistoryComponent}
           />
         </div>
       </div>

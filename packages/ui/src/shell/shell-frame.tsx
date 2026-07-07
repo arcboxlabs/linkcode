@@ -107,13 +107,11 @@ export function ShellFrame({
   onReorderThreads,
   onStartDraft,
   onSubmitDraft,
-  onImportSession,
   onRegisterWorkspace,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -123,7 +121,6 @@ export function ShellFrame({
   searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
-  HistoryComponent,
   onDismissError,
   onModeChange,
   onApprovalPolicyChange,
@@ -149,17 +146,14 @@ export function ShellFrame({
           onReorderGroups={onReorderGroups}
           onReorderThreads={onReorderThreads}
           onStartDraft={onStartDraft}
-          onImportSession={onImportSession}
           onRegisterWorkspace={onRegisterWorkspace}
           onRenameWorkspace={onRenameWorkspace}
           onArchiveWorkspace={onArchiveWorkspace}
           onToggleGroupCollapsed={onToggleGroupCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
-          onToggleImportHistory={onToggleImportHistory}
           onOpenSearch={onOpenSearch}
           searchShortcut={searchShortcut}
           BranchStatusComponent={BranchStatusComponent}
-          HistoryComponent={HistoryComponent}
         />
       </div>
       <main className="flex min-w-0 flex-1 flex-col">

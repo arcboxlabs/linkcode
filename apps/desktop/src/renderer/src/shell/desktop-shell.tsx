@@ -84,13 +84,11 @@ export function DesktopShell({
   onReorderThreads,
   onStartDraft,
   onSubmitDraft,
-  onImportSession,
   onRegisterWorkspace,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -99,7 +97,6 @@ export function DesktopShell({
   onOpenSearch,
   TerminalBlockComponent,
   BranchStatusComponent,
-  HistoryComponent,
   onDismissError,
   onApprovalPolicyChange,
   onModelChange,
@@ -612,7 +609,6 @@ export function DesktopShell({
                     onOpenSettings={onOpenSettings}
                   />
                 }
-                onImportSession={onImportSession}
                 onPickDirectory={pickDirectory}
                 onOpenSearch={onOpenSearch}
                 searchShortcut={panelShortcuts.palette}
@@ -621,9 +617,7 @@ export function DesktopShell({
                 onArchiveWorkspace={onArchiveWorkspace}
                 onToggleGroupCollapsed={onToggleGroupCollapsed}
                 onTogglePreviewExpanded={onTogglePreviewExpanded}
-                onToggleImportHistory={onToggleImportHistory}
                 BranchStatusComponent={BranchStatusComponent}
-                HistoryComponent={HistoryComponent}
                 onSelect={onSelectSession}
                 onClose={onCloseSession}
                 onToggleSessionPinned={onToggleSessionPinned}
