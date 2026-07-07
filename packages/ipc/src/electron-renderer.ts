@@ -5,6 +5,7 @@ import type { IpcRenderer } from 'electron';
 import type { SystemBridge } from './bridge';
 import type { DesktopSettings, UpdaterStatus } from './context';
 import {
+  DAEMON_RUNTIME_CHANGED_CHANNEL,
   DAEMON_URL_SNAPSHOT_CHANNEL,
   SETTINGS_OPEN_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
@@ -75,6 +76,11 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
         (ipcRenderer.sendSync(DAEMON_URL_SNAPSHOT_CHANNEL) as string | undefined) ??
         DAEMON_DEFAULT_URL,
       isManaged: () => invoke.daemonIsManaged(),
+      onRuntimeChanged(cb) {
+        const handler: IpcRendererListener = () => cb();
+        ipcRenderer.on(DAEMON_RUNTIME_CHANGED_CHANNEL, handler);
+        return () => ipcRenderer.removeListener(DAEMON_RUNTIME_CHANGED_CHANNEL, handler);
+      },
     },
   };
 }

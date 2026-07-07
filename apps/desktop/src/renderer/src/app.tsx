@@ -51,13 +51,12 @@ function DaemonConnection({
   );
 }
 
-const REDISCOVER_INTERVAL_MS = 2000;
-
 /**
  * Desktop connection gate: the shared `ConnectionState` plus endpoint rediscovery. The transport
  * retries a fixed URL, but the daemon port-hunts (apps/daemon/src/runtime.ts) — a daemon that
- * (re)started on another port is only reachable by re-resolving discovery. Mounted only while the
- * gate is closed, so polling stops as soon as the transport connects.
+ * (re)started on another port is only reachable by re-resolving discovery. Main pushes a
+ * runtime-file change event (fs.watch on ~/.linkcode); mounted only while the gate is closed, so
+ * the subscription ends as soon as the transport connects.
  */
 function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.ReactNode {
   const hasOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride !== null);
@@ -67,11 +66,13 @@ function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.
   useAbortableEffect(
     (signal) => {
       if (hasOverride) return;
-      const timer = setInterval(() => {
+      const rediscover = (): void => {
         const url = systemBridge.daemon.resolveUrl();
         if (url !== daemonUrl) adoptDiscoveredUrl(url);
-      }, REDISCOVER_INTERVAL_MS);
-      signal.addEventListener('abort', () => clearInterval(timer));
+      };
+      // Catch a change that happened before this mount (e.g. the daemon moved while connected).
+      rediscover();
+      signal.addEventListener('abort', systemBridge.daemon.onRuntimeChanged(rediscover));
     },
     [hasOverride, daemonUrl, adoptDiscoveredUrl],
   );
