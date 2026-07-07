@@ -10,10 +10,9 @@ import {
 } from 'coss-ui/components/empty';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
-import { HistoryIcon, RotateCwIcon } from 'lucide-react';
+import { HistoryIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { repositoryLabel } from '../repository-label';
-import { ShellIconButton } from '../shell-control';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
 
 /** One provider-local conversation, pre-resolved by the workbench container. */
@@ -27,8 +26,7 @@ export interface HistoryBrowserEntry {
   imported: boolean;
 }
 
-export interface HistoryBrowserPaneProps {
-  providerLabel: string;
+export interface HistoryBrowserListProps {
   entries: readonly HistoryBrowserEntry[];
   isLoading: boolean;
   /** The list fetch failure message, when there is nothing to show. */
@@ -38,12 +36,12 @@ export interface HistoryBrowserPaneProps {
   importError?: string | null;
   onImport: (historyId: AgentHistoryId) => void;
   onOpen: (historyId: AgentHistoryId) => void;
+  /** Backs the error state's Retry; the primary refresh control lives in the host's chrome. */
   onRefresh: () => void;
 }
 
-/** One provider's history: header + importable conversation rows (settings portal main pane). */
-export function HistoryBrowserPane({
-  providerLabel,
+/** One provider's importable conversation rows (settings portal main pane). */
+export function HistoryBrowserList({
   entries,
   isLoading,
   loadError,
@@ -52,46 +50,7 @@ export function HistoryBrowserPane({
   onImport,
   onOpen,
   onRefresh,
-}: HistoryBrowserPaneProps): React.ReactNode {
-  const t = useTranslations('settings.historyImport');
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <h2 className="font-semibold text-sm">{t('title', { provider: providerLabel })}</h2>
-        {entries.length > 0 && (
-          <span className="text-muted-foreground text-xs">
-            {t('conversationCount', { count: entries.length })}
-          </span>
-        )}
-        <ShellIconButton className="ml-auto" label={t('refresh')} onClick={onRefresh}>
-          <RotateCwIcon className="size-3.5" />
-        </ShellIconButton>
-      </div>
-      <HistoryBrowserBody
-        entries={entries}
-        isLoading={isLoading}
-        loadError={loadError}
-        importingId={importingId}
-        importError={importError}
-        onImport={onImport}
-        onOpen={onOpen}
-        onRefresh={onRefresh}
-      />
-    </div>
-  );
-}
-
-function HistoryBrowserBody({
-  entries,
-  isLoading,
-  loadError,
-  importingId,
-  importError,
-  onImport,
-  onOpen,
-  onRefresh,
-}: Omit<HistoryBrowserPaneProps, 'providerLabel'>): React.ReactNode {
+}: HistoryBrowserListProps): React.ReactNode {
   const t = useTranslations('settings.historyImport');
 
   if (isLoading && entries.length === 0) {

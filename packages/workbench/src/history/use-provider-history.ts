@@ -31,6 +31,15 @@ export function useProviderHistory(kind: AgentKind): ProviderHistory {
   const [importingId, setImportingId] = useState<AgentHistoryId | null>(null);
   const [importError, setImportError] = useState<unknown>(null);
 
+  // Switching provider must not carry the previous provider's import state over — reset during
+  // render (the sanctioned adjust-state-on-prop-change pattern; an effect would flash it stale).
+  const [stateKind, setStateKind] = useState(kind);
+  if (stateKind !== kind) {
+    setStateKind(kind);
+    setImportingId(null);
+    setImportError(null);
+  }
+
   const entries = useMemo(
     () =>
       [...(data?.sessions ?? [])].sort(
