@@ -1,11 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { daemonRuntimeFilePath, isPidAlive, readJsonFileSync } from '@linkcode/common/node';
-import {
-  DAEMON_IDENTITY_PATH,
-  DaemonIdentitySchema,
-  DaemonRuntimeInfoSchema,
-} from '@linkcode/schema';
+import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
 import type { UtilityProcess } from 'electron';
 import { app, utilityProcess } from 'electron';
 import log from 'electron-log';
@@ -15,11 +10,13 @@ import { getSettings } from './settings';
  * Supervises the bundled daemon (out/daemon/index.mjs, see electron.vite.config.ts): forks it
  * under Electron's Node via `utilityProcess` and ties its lifetime to the app — started when the
  * app is ready, SIGTERMed on quit (Cmd+Q). Closing windows (Cmd+W on macOS) leaves it running.
- * An externally managed daemon (a dev `pnpm -F @linkcode/daemon dev`, another shell's supervisor)
- * always wins: the daemon is one-per-machine, so the supervisor adopts it instead of spawning.
+ *
+ * The supervisor just spawns; the one-daemon-per-machine contract lives in the daemon itself
+ * (apps/daemon/src/runtime.ts). When another daemon already serves this machine the child exits
+ * with DAEMON_EXIT_ALREADY_RUNNING and the supervisor stands down — which daemon clients dial is
+ * discovery's job (runtime.json), not the supervisor's.
  */
 
-const PROBE_TIMEOUT_MS = 1000;
 const RESPAWN_DELAY_MS = 1000;
 /** A child that lived at least this long resets the crash-loop counter. */
 const HEALTHY_AFTER_MS = 30000;
@@ -44,19 +41,11 @@ export function startDaemonSupervisor(): void {
     if (respawnTimer !== null) clearTimeout(respawnTimer);
     child?.kill();
   });
-  void ensureDaemon();
-}
-
-async function ensureDaemon(): Promise<void> {
-  if (quitting) return;
-  if (await findLiveDaemon()) {
-    log.info('[linkcode/desktop] adopting the already-running daemon');
-    return;
-  }
   spawnDaemon();
 }
 
 function spawnDaemon(): void {
+  if (quitting) return;
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = { ...process.env };
   const sidecar = sidecarPath();
@@ -74,6 +63,10 @@ function spawnDaemon(): void {
   proc.on('exit', (code) => {
     child = null;
     if (quitting) return;
+    if (code === DAEMON_EXIT_ALREADY_RUNNING) {
+      log.info('[linkcode/desktop] another daemon already serves this machine; standing down');
+      return;
+    }
     fastExits = Date.now() - startedAt < HEALTHY_AFTER_MS ? fastExits + 1 : 1;
     if (fastExits >= MAX_CONSECUTIVE_FAST_EXITS) {
       log.error(`[linkcode/desktop] daemon keeps exiting (last code ${code}); giving up`);
@@ -82,32 +75,9 @@ function spawnDaemon(): void {
     log.warn(`[linkcode/desktop] daemon exited (code ${code}); restarting`);
     respawnTimer = setTimeout(() => {
       respawnTimer = null;
-      void ensureDaemon();
+      spawnDaemon();
     }, RESPAWN_DELAY_MS);
   });
-}
-
-/**
- * Whether a live daemon is already serving this machine — same contract as the daemon's own
- * `findRunningDaemon` (apps/daemon/src/runtime.ts): runtime file present, advertised pid alive,
- * and the endpoint answering `GET /linkcode` as that pid. `false` covers "no daemon" by contract,
- * not as a swallowed error — any probe failure means there is nothing to adopt.
- */
-async function findLiveDaemon(): Promise<boolean> {
-  const parsed = DaemonRuntimeInfoSchema.safeParse(readJsonFileSync(daemonRuntimeFilePath()));
-  if (!parsed.success || !isPidAlive(parsed.data.pid)) return false;
-  try {
-    const probeBase = new URL(parsed.data.listeners[0].url);
-    probeBase.protocol = probeBase.protocol === 'wss:' ? 'https:' : 'http:';
-    const res = await fetch(new URL(DAEMON_IDENTITY_PATH, probeBase), {
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    if (!res.ok) return false;
-    const identity = DaemonIdentitySchema.safeParse(await res.json());
-    return identity.success && identity.data.pid === parsed.data.pid;
-  } catch {
-    return false;
-  }
 }
 
 function sidecarPath(): string {
