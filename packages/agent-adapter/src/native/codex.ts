@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type {
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
@@ -14,10 +16,18 @@ import type {
 import type { ThreadEvent, ThreadItem, ThreadOptions, Usage } from '@openai/codex-sdk';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
+import { parse as parseToml } from 'smol-toml';
 import { BaseAgentAdapter } from '../base';
-import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../history-util';
+import {
+  asHistoryId,
+  boundedLimit,
+  cursorFromTotal,
+  cursorOffset,
+  isRecord,
+} from '../history-util';
 import { contentToText } from '../util';
 import {
+  codexHome,
   codexIndexEntryToSession,
   codexSummaryToSession,
   findCodexTranscript,
@@ -26,6 +36,38 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './codex-history';
+
+type SandboxMode = NonNullable<ThreadOptions['sandboxMode']>;
+const SANDBOX_MODES: readonly SandboxMode[] = [
+  'read-only',
+  'workspace-write',
+  'danger-full-access',
+];
+
+function asSandboxMode(value: unknown): SandboxMode | undefined {
+  return SANDBOX_MODES.find((mode) => mode === value);
+}
+
+/**
+ * The sandbox the user configured in `~/.codex/config.toml` — the active profile's `sandbox_mode`
+ * if a `profile` is selected and defines one, else the top-level `sandbox_mode`. Returns undefined
+ * when unset or the file is absent/malformed. codex resolves this itself once the SDK omits
+ * `--sandbox`; we read it only to decide whether we must inject a default (see `threadOptions`).
+ */
+export async function codexConfiguredSandbox(): Promise<SandboxMode | undefined> {
+  let config: unknown;
+  try {
+    config = parseToml(await readFile(join(codexHome(), 'config.toml'), 'utf8'));
+  } catch {
+    return undefined; // No config, unreadable, or invalid TOML — treat as unconfigured.
+  }
+  if (!isRecord(config)) return undefined;
+  const profileName = typeof config.profile === 'string' ? config.profile : undefined;
+  const profiles = isRecord(config.profiles) ? config.profiles : undefined;
+  const profile =
+    profileName && isRecord(profiles?.[profileName]) ? profiles[profileName] : undefined;
+  return asSandboxMode(profile?.sandbox_mode) ?? asSandboxMode(config.sandbox_mode);
+}
 
 type CodexModule = typeof import('@openai/codex-sdk');
 type CodexInstance = InstanceType<CodexModule['Codex']>;
@@ -65,7 +107,7 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const codex = await this.createCodex();
-    const threadOptions = this.threadOptions(opts);
+    const threadOptions = await this.threadOptions(opts);
     this.thread = this.resumeThreadId
       ? codex.resumeThread(this.resumeThreadId, threadOptions)
       : codex.startThread(threadOptions);
@@ -154,12 +196,19 @@ export class CodexAdapter extends BaseAgentAdapter {
     return this.codex;
   }
 
-  private threadOptions(opts: StartOptions): ThreadOptions {
+  private async threadOptions(opts: StartOptions): Promise<ThreadOptions> {
     return {
       workingDirectory: opts.cwd,
       model: opts.model,
       additionalDirectories: opts.additionalDirectories,
-      sandboxMode: 'workspace-write',
+      // When the user configured a sandbox in config.toml, omit `--sandbox` so codex's own
+      // resolution (config.toml + profile + precedence) wins — never silently loosen a stricter
+      // choice like read-only. Only when they left it unset do we inject workspace-write, so the
+      // coding agent can write out of the box (codex's built-in default is the stricter read-only).
+      sandboxMode: (await codexConfiguredSandbox()) ? undefined : 'workspace-write',
+      // codex-sdk exposes no interactive approval callback, so a blocking policy would strand the
+      // turn awaiting an unanswerable prompt. Run autonomously; extending the approval-policy axis
+      // to codex (honoring config.toml `approval_policy`) is tracked as a CODE-85 follow-up.
       approvalPolicy: 'never',
       skipGitRepoCheck: true,
     };
