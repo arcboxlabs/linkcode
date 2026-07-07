@@ -1,5 +1,4 @@
 import type { AgentHistoryId } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
   Empty,
@@ -10,7 +9,7 @@ import {
 } from 'coss-ui/components/empty';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
-import { FolderIcon, HistoryIcon } from 'lucide-react';
+import { CheckIcon, FolderIcon, HistoryIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
@@ -175,9 +174,15 @@ function HistoryBrowserRow({
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {entry.imported ? (
-          <Badge size="sm" variant="secondary">
-            {t('importedBadge')}
-          </Badge>
+          <>
+            <span className="flex items-center" title={t('importedBadge')}>
+              <CheckIcon aria-hidden className="size-3.5 text-muted-foreground" />
+              <span className="sr-only">{t('importedBadge')}</span>
+            </span>
+            <Button size="xs" variant="ghost" onClick={() => onOpen(entry.historyId)}>
+              {t('open')}
+            </Button>
+          </>
         ) : (
           <Button
             size="xs"
@@ -188,14 +193,6 @@ function HistoryBrowserRow({
             {t('importAction')}
           </Button>
         )}
-        <Button
-          size="xs"
-          variant="ghost"
-          disabled={importing}
-          onClick={() => onOpen(entry.historyId)}
-        >
-          {t('open')}
-        </Button>
       </div>
     </li>
   );
