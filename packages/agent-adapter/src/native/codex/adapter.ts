@@ -5,6 +5,8 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  ApprovalPolicy,
+  ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
   PermissionOption,
@@ -49,10 +51,62 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ];
 
-/** Commands escalate through approval requests instead of failing silently (`'never'`) — the
- * policy that makes the app-server's per-tool approval round-trip fire at all. */
-const APPROVAL_POLICY = 'on-request';
-const SANDBOX_MODE = 'workspace-write';
+/**
+ * The approval-policy axis codex advertises — the shared ids (claude-code's permission-mode
+ * names, see `ApprovalPolicyIdSchema`) translated onto codex's `approval_policy` + sandbox pair.
+ * Unlike claude-code, codex's plan mode is a workflow mode (the `set-mode` axis), so only the
+ * three permission tiers ride this channel.
+ */
+const APPROVAL_POLICIES = [
+  {
+    policyId: 'default',
+    name: 'Ask permissions',
+    description: "Ask before running commands outside codex's safe list.",
+  },
+  {
+    policyId: 'acceptEdits',
+    name: 'Sandboxed auto',
+    description: 'Work autonomously inside the workspace sandbox; ask only to escalate.',
+  },
+  {
+    policyId: 'bypassPermissions',
+    name: 'Full access',
+    description: 'No sandbox and no approval prompts in this workspace.',
+  },
+] as const satisfies readonly ApprovalPolicy[];
+
+type CodexPolicyId = (typeof APPROVAL_POLICIES)[number]['policyId'];
+
+/** codex's launch parameters per policy. `acceptEdits` is the initial tier — sandboxed autonomy
+ * with escalation approvals, codex's conventional interactive setup and this adapter's behavior
+ * before the axis existed. `never` under full access keeps commands from failing silently only
+ * because the sandbox is off too — nothing is blocked, so nothing needs asking. */
+const POLICY_PRESETS: Record<CodexPolicyId, { approvalPolicy: string; sandboxMode: string }> = {
+  default: { approvalPolicy: 'untrusted', sandboxMode: 'workspace-write' },
+  acceptEdits: { approvalPolicy: 'on-request', sandboxMode: 'workspace-write' },
+  bypassPermissions: { approvalPolicy: 'never', sandboxMode: 'danger-full-access' },
+};
+const INITIAL_POLICY_ID: CodexPolicyId = 'acceptEdits';
+
+function isCodexPolicyId(id: string): id is CodexPolicyId {
+  return id in POLICY_PRESETS;
+}
+
+/** `turn/start` takes the full SandboxPolicy object (unlike `thread/start`'s SandboxMode string),
+ * and a turn-level override replaces the thread policy wholesale — so the writable roots must be
+ * carried here too or an override would silently drop them. */
+function sandboxPolicyFor(policyId: CodexPolicyId, writableRoots: string[]): unknown {
+  if (POLICY_PRESETS[policyId].sandboxMode === 'danger-full-access') {
+    return { type: 'dangerFullAccess' };
+  }
+  return {
+    type: 'workspaceWrite',
+    writableRoots,
+    networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
+  };
+}
 
 /** Map an app-server item status (`inProgress`/`completed`/`failed`/`declined`) to ours;
  * `declined` (approval denied) lands on `failed`, same as claude-code's denied tool_result. */
@@ -140,6 +194,8 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Model/effort for the next `turn/start`; `turn/start` overrides stick for subsequent turns. */
   private model: string | undefined;
   private effort: EffortLevel | undefined;
+  /** Active approval/sandbox tier; switches ride the next `turn/start` like model/effort. */
+  private policyId: CodexPolicyId = INITIAL_POLICY_ID;
   /** Streamed text length per item id: converts `item/completed` full texts into the missing
    * remainder (delta backstop), and suppresses re-emitting reasoning that already streamed. */
   private readonly streamedTextLen = new Map<string, number>();
@@ -271,6 +327,21 @@ export class CodexAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
+  private approvalPolicyState(): ApprovalPolicyState {
+    return { availablePolicies: [...APPROVAL_POLICIES], currentPolicyId: this.policyId };
+  }
+
+  /** Approval/sandbox switching, same next-turn channel: the pair rides the next `turn/start`
+   * (an in-flight turn keeps its policy — the protocol cannot alter it). */
+  protected override onSetApprovalPolicy(policyId: string): Promise<void> {
+    if (!isCodexPolicyId(policyId)) {
+      return Promise.reject(new Error(`codex: unknown approval policy '${policyId}'`));
+    }
+    this.policyId = policyId;
+    this.emitApprovalPolicy(this.approvalPolicyState());
+    return Promise.resolve();
+  }
+
   protected override onStop(): Promise<void> {
     this.server?.close();
     this.server = null;
@@ -312,11 +383,12 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.server = server;
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
+    const preset = POLICY_PRESETS[this.policyId];
     const params = {
       cwd: opts.cwd,
       model: this.model,
-      approvalPolicy: APPROVAL_POLICY,
-      sandbox: SANDBOX_MODE,
+      approvalPolicy: preset.approvalPolicy,
+      sandbox: preset.sandboxMode,
       ...(opts.additionalDirectories?.length && {
         config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
       }),
@@ -337,6 +409,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       const threadId = thread ? stringField(thread, 'id') : undefined;
       this.threadId = threadId ?? null;
       if (threadId && !this.holdSessionRef) this.emitSessionRef(asHistoryId(threadId));
+      // Advertise the axis so the composer's picker appears with the session's real state.
+      this.emitApprovalPolicy(this.approvalPolicyState());
     } catch (err) {
       // Re-arm the resume point: a transient thread/resume failure must not silently downgrade
       // the next attempt into a brand-new thread that abandons the conversation.
@@ -358,6 +432,9 @@ export class CodexAdapter extends BaseAgentAdapter {
         input: [{ type: 'text', text: contentToText(content), text_elements: [] }],
         ...(this.model !== undefined && { model: this.model }),
         ...(this.effort !== undefined && { effort: this.effort }),
+        // Idempotent policy override — this is how a set-approval-policy lands on codex.
+        approvalPolicy: POLICY_PRESETS[this.policyId].approvalPolicy,
+        sandboxPolicy: sandboxPolicyFor(this.policyId, this.opts?.additionalDirectories ?? []),
       });
       // turn/started usually carries the id first; the response is the fallback. A turn that
       // already completed (lastCompletedTurnId) must not be re-activated by a late response.

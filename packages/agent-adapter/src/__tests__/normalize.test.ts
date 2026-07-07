@@ -327,6 +327,31 @@ describe('codex mappers', () => {
   });
 });
 
+describe('CodexAdapter approval-policy switching', () => {
+  it('broadcasts the advertised tiers with the new current id on an accepted switch', async () => {
+    const adapter = new CodexAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+
+    // The switch itself needs no live server: it is stored and rides the next turn/start.
+    await adapter.send({ type: 'set-approval-policy', policyId: 'bypassPermissions' });
+    const update = events.find((e) => e.type === 'approval-policy-update');
+    expect(update?.state.currentPolicyId).toBe('bypassPermissions');
+    expect(update?.state.availablePolicies.map((p) => p.policyId)).toEqual([
+      'default',
+      'acceptEdits',
+      'bypassPermissions',
+    ]);
+  });
+
+  it('rejects ids with no codex translation (claude-only tiers included)', async () => {
+    const adapter = new CodexAdapter();
+    await expect(adapter.send({ type: 'set-approval-policy', policyId: 'auto' })).rejects.toThrow(
+      "codex: unknown approval policy 'auto'",
+    );
+  });
+});
+
 describe('diffContentFromUnified', () => {
   it('splits hunks into old/new sides with context', () => {
     const diff = [
