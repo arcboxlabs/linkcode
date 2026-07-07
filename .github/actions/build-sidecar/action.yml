@@ -1,0 +1,30 @@
+# Builds the PTY sidecar (crates/linkcode-pty) for both release arches of the current platform
+# and stages the binaries under apps/desktop/sidecar/${arch}, where electron-builder's
+# extraResources expects them. Must run in the same job as the packaging step — the staged files
+# feed it directly. The per-platform cross-target matrix lives in stage-sidecar.mts.
+name: Build PTY sidecar
+description: Cargo-build linkcode-pty for both arches and stage it for electron-builder
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        # The cross target per platform (the native target ships with the toolchain). Keep in
+        # sync with CROSS_BUILDS in apps/desktop/scripts/stage-sidecar.mts.
+        targets: ${{ runner.os == 'macOS' && 'x86_64-apple-darwin' || runner.os == 'Windows' && 'aarch64-pc-windows-msvc' || 'aarch64-unknown-linux-gnu' }}
+
+    - name: Cache Rust build
+      uses: Swatinem/rust-cache@v2
+
+    - name: Install aarch64 cross linker
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -yq gcc-aarch64-linux-gnu
+
+    - name: Build and stage both arches
+      shell: bash
+      run: node apps/desktop/scripts/stage-sidecar.mts --all

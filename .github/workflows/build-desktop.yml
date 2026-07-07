@@ -111,35 +111,8 @@ jobs:
           MAIN_VITE_SENTRY_DSN: ${{ inputs.sign && secrets.SENTRY_DSN_DESKTOP || '' }}
 
       # The PTY sidecar ships per arch under Resources (extraResources: sidecar/${arch}).
-      # Each runner builds its native arch plus the cross arch so both installers carry it.
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'mac' && 'x86_64-apple-darwin' || matrix.platform == 'win' && 'aarch64-pc-windows-msvc' || 'aarch64-unknown-linux-gnu' }}
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
       - name: Build PTY sidecar (both arches)
-        shell: bash
-        run: |
-          case "${{ matrix.platform }}" in
-            mac)
-              node "$DESKTOP_DIR/scripts/stage-sidecar.mjs" --arch arm64
-              node "$DESKTOP_DIR/scripts/stage-sidecar.mjs" --target x86_64-apple-darwin --arch x64
-              ;;
-            win)
-              node "$DESKTOP_DIR/scripts/stage-sidecar.mjs" --arch x64
-              node "$DESKTOP_DIR/scripts/stage-sidecar.mjs" --target aarch64-pc-windows-msvc --arch arm64
-              ;;
-            linux)
-              sudo apt-get update -q
-              sudo apt-get install -yq gcc-aarch64-linux-gnu
-              node "$DESKTOP_DIR/scripts/stage-sidecar.mjs" --arch x64
-              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
-                node "$DESKTOP_DIR/scripts/stage-sidecar.mjs" --target aarch64-unknown-linux-gnu --arch arm64
-              ;;
-          esac
+        uses: ./.github/actions/build-sidecar
 
       # OIDC exchange for Windows Trusted Signing; Invoke-TrustedSigning (spawned by
       # electron-builder below) picks it up via DefaultAzureCredential's Azure CLI entry.
@@ -201,7 +174,7 @@ jobs:
       - name: Verify packaged artifacts
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash
-        run: node scripts/verify-artifacts.mjs ${{ matrix.platform }}
+        run: node scripts/verify-artifacts.mts ${{ matrix.platform }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

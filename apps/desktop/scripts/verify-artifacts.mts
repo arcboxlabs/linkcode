@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import process, { argv } from 'node:process';
 /**
  * Post-pack assertions for the desktop release artifacts. Runs in CI right after
- * electron-builder (and locally: `node scripts/verify-artifacts.mjs <mac|win|linux>` from
+ * electron-builder (and locally: `node scripts/verify-artifacts.mts <mac|win|linux>` from
  * apps/desktop). Catches packaging regressions before they reach the update feed:
  *
  * - the per-arch artifact set is complete for the platform;
@@ -23,10 +23,17 @@ const RELEASE_DIR = 'release';
 const FEED_URL_LINE = /^ {2}- url: (.+)$/;
 const FEED_SHA_LINE = /^ {4}sha512: (.+)$/;
 
-const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
 
-/** feeds map channel file -> arch markers whose entries the channel must carry. */
-const EXPECTED = {
+interface PlatformExpectation {
+  artifacts: string[];
+  /** channel file -> arch markers whose entries the channel must carry. */
+  feeds: Record<string, string[]>;
+  /** Resources dir of each unpacked app, relative to the release dir. */
+  resourceDirs: string[];
+}
+
+const EXPECTED: Partial<Record<string, PlatformExpectation>> = {
   mac: {
     artifacts: ['x64', 'arm64'].flatMap((arch) =>
       ['dmg', 'zip'].flatMap((ext) => [
@@ -67,7 +74,7 @@ const SIDECAR_BINARY = argv[2] === 'win' ? 'linkcode-pty.exe' : 'linkcode-pty';
 const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.json'];
 
 /** The packed app must carry the host runtime: bundled daemon in the asar, sidecar beside it. */
-function verifyHostRuntime(resourceDir, problems) {
+function verifyHostRuntime(resourceDir: string, problems: string[]): void {
   const asarPath = join(RELEASE_DIR, resourceDir, 'app.asar');
   for (const inner of ASAR_HOST_RUNTIME) {
     try {
@@ -81,10 +88,15 @@ function verifyHostRuntime(resourceDir, problems) {
   }
 }
 
+interface FeedEntry {
+  url: string;
+  sha512: string;
+}
+
 /** electron-builder's feed ymls are flat generated documents; a scoped line scan beats a yaml dep. */
-function parseFeedEntries(text) {
-  const entries = [];
-  let current = null;
+function parseFeedEntries(text: string): FeedEntry[] {
+  const entries: FeedEntry[] = [];
+  let current: FeedEntry | null = null;
   for (const line of text.split('\n')) {
     const url = FEED_URL_LINE.exec(line);
     const sha = FEED_SHA_LINE.exec(line);
@@ -94,7 +106,7 @@ function parseFeedEntries(text) {
   return entries;
 }
 
-function sha512(file) {
+function sha512(file: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash('sha512');
     createReadStream(file)
@@ -104,7 +116,7 @@ function sha512(file) {
   });
 }
 
-function readOrNull(path) {
+function readOrNull(path: string): string | null {
   try {
     return readFileSync(path, 'utf8');
   } catch {
@@ -112,7 +124,7 @@ function readOrNull(path) {
   }
 }
 
-async function verifyFeed(feed, archTokens, problems) {
+async function verifyFeed(feed: string, archTokens: string[], problems: string[]): Promise<void> {
   const text = readOrNull(join(RELEASE_DIR, feed));
   if (text === null) {
     problems.push(`missing feed manifest: ${feed}`);
@@ -143,14 +155,15 @@ async function verifyFeed(feed, archTokens, problems) {
   );
 }
 
-async function main() {
-  const expected = EXPECTED[argv[2]];
+async function main(): Promise<number> {
+  const platform = argv[2];
+  const expected = EXPECTED[platform];
   if (!expected) {
-    console.error(`usage: verify-artifacts.mjs <${Object.keys(EXPECTED).join('|')}>`);
+    console.error(`usage: verify-artifacts.mts <${Object.keys(EXPECTED).join('|')}>`);
     return 2;
   }
 
-  const problems = [];
+  const problems: string[] = [];
   for (const name of expected.artifacts) {
     if (readOrNull(join(RELEASE_DIR, name)) === null) problems.push(`missing artifact: ${name}`);
   }
@@ -166,7 +179,7 @@ async function main() {
     return 1;
   }
   console.log(
-    `✓ ${argv[2]}: ${expected.artifacts.length} artifacts + ${Object.keys(expected.feeds).length} feed manifest(s) + host runtime in ${expected.resourceDirs.length} app(s) verified`,
+    `✓ ${platform}: ${expected.artifacts.length} artifacts + ${Object.keys(expected.feeds).length} feed manifest(s) + host runtime in ${expected.resourceDirs.length} app(s) verified`,
   );
   return 0;
 }
@@ -175,7 +188,7 @@ main()
   .then((code) => {
     process.exitCode = code;
   })
-  .catch((error) => {
+  .catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });
