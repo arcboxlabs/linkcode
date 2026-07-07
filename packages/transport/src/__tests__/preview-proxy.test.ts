@@ -10,6 +10,7 @@ import { createWsServer } from '../ws-server';
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterAll(async () => {
+  // eslint-disable-next-line no-await-in-loop -- teardown must run one at a time in LIFO order
   for (const cleanup of cleanups.reverse()) await cleanup();
 });
 

@@ -28,6 +28,7 @@ async function readConversationSeed(
   const events: AgentEvent[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAX_SEED_PAGES; page += 1) {
+    // eslint-disable-next-line no-await-in-loop -- cursor pagination: each page's cursor comes from the previous reply
     const { data } = await client.readHistory(options.agentKind, {
       historyId: options.historyId,
       cursor,
