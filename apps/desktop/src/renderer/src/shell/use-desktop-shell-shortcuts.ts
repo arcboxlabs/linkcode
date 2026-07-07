@@ -1,7 +1,6 @@
 import type { PanelSide } from '@linkcode/ui/shell/panels';
-import { useCommandPaletteStore } from '@linkcode/workbench';
+import { useCommandPaletteStore, useNavigationHistoryStore } from '@linkcode/workbench';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
-import { useDesktopSettingsStore } from '../settings/store';
 
 export function getPanelToggleShortcuts(platform: NodeJS.Platform | null): {
   sidebar?: string;
@@ -51,7 +50,7 @@ export function useDesktopShellShortcuts({
           // `inert` on the hidden workbench doesn't stop window-level listeners, so Settings
           // being open must be checked here at event time — not in the effect deps, or the
           // listener would re-register on every open/close.
-          if (useDesktopSettingsStore.getState().settingsOpen) return;
+          if (useNavigationHistoryStore.getState().settingsOpen) return;
           const modifier = isMac
             ? event.metaKey && !event.ctrlKey
             : event.ctrlKey && !event.metaKey;

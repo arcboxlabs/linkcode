@@ -3,6 +3,7 @@ import {
   CloudHostsProvider,
   ConnectionState,
   createDaemonTransport,
+  useNavigationHistoryStore,
   useWorkbenchRuntimeStatus,
   Workbench,
   WorkbenchAppProviders,
@@ -24,7 +25,7 @@ const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHost
 export function DesktopApp(): React.ReactNode {
   const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
-  const settingsOpen = useDesktopSettingsStore((state) => state.settingsOpen);
+  const settingsOpen = useNavigationHistoryStore((state) => state.settingsOpen);
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>

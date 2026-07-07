@@ -1,4 +1,5 @@
 import { SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
+import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { BotIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
@@ -13,7 +14,6 @@ import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
-import { useDesktopSettingsStore } from './store';
 
 type SettingsCategory = 'general' | 'connection' | 'about' | 'agents';
 
@@ -30,7 +30,7 @@ const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
  */
 export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
-  const closeSettings = useDesktopSettingsStore((state) => state.closeSettings);
+  const backFromSettings = useNavigationHistoryStore((state) => state.backFromSettings);
   const [category, setCategory] = useState<SettingsCategory>('general');
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
@@ -45,11 +45,11 @@ export function SettingsView(): React.ReactNode {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closeSettings();
+      if (event.key === 'Escape') backFromSettings();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [closeSettings]);
+  }, [backFromSettings]);
 
   return (
     <div
@@ -86,7 +86,7 @@ export function SettingsView(): React.ReactNode {
             >
               <SettingsSidebarNav
                 backLabel={t('back')}
-                onBack={closeSettings}
+                onBack={backFromSettings}
                 searchPlaceholder={t('searchPlaceholder')}
                 items={[
                   {
