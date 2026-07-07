@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import process, { argv } from 'node:process';
 /**
  * Post-pack assertions for the desktop release artifacts. Runs in CI right after
@@ -79,7 +79,8 @@ function verifyHostRuntime(resourceDir: string, problems: string[]): void {
   let missing = false;
   for (const inner of ASAR_HOST_RUNTIME) {
     try {
-      statFile(asarPath, inner);
+      // asar's lookup splits on the platform separator — normalize or Windows never matches.
+      statFile(asarPath, inner.replaceAll('/', sep));
     } catch {
       missing = true;
       problems.push(`${resourceDir}/app.asar: missing ${inner}`);
