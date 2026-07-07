@@ -11,7 +11,7 @@
     "dev:mock": "electron-vite dev --mode mock",
     "build": "electron-vite build",
     "build:sidecar": "node scripts/stage-sidecar.mts",
-    "package": "pnpm run build:sidecar && electron-vite build --mode devshell && electron-builder --dir -c.mac.identity=null -c.appId=com.arcboxlabs.linkcode.desktop.dev -c.productName=\"LinkCode Dev\"",
+    "package": "pnpm run build:sidecar && pnpm -F @linkcode/daemon build && electron-vite build --mode devshell && electron-builder --dir -c.mac.identity=null -c.appId=com.arcboxlabs.linkcode.desktop.dev -c.productName=\"LinkCode Dev\"",
     "dist": "pnpm run build && electron-builder",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",

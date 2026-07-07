@@ -33,14 +33,27 @@ export function isDaemonManaged(): boolean {
 }
 
 export function startDaemonSupervisor(): void {
-  // Dev shells run the daemon from the repo; an explicit endpoint override means the user
-  // manages the daemon themselves.
-  if (!isDaemonManaged()) return;
+  // Dev shells run the daemon from the repo.
+  if (!app.isPackaged) return;
   app.on('before-quit', () => {
     quitting = true;
     if (respawnTimer !== null) clearTimeout(respawnTimer);
     child?.kill();
   });
+  syncDaemonSupervisor();
+}
+
+/**
+ * Spawn the daemon if this app should be managing one and is not already. Called at startup and
+ * again when settings change: clearing the endpoint override mid-session must start the daemon,
+ * not wait for an app restart. Setting an override leaves a running child alone — it dies with
+ * the app and the one-daemon-per-machine contract keeps it harmless. A user-driven sync also
+ * resets the crash-loop counter, giving a deliberate retry a fresh start.
+ */
+export function syncDaemonSupervisor(): void {
+  if (quitting || !isDaemonManaged()) return;
+  if (child !== null || respawnTimer !== null) return;
+  fastExits = 0;
   spawnDaemon();
 }
 
