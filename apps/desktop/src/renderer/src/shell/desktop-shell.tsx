@@ -59,6 +59,7 @@ import { getPanelToggleShortcuts, useDesktopShellShortcuts } from './use-desktop
 export function DesktopShell({
   systemBridge,
   header,
+  navigation,
   threadGroups,
   workspaces,
   workspacesLoading,
@@ -522,6 +523,7 @@ export function DesktopShell({
     >
       <DesktopChrome
         header={header}
+        navigation={navigation}
         sidebarOpen={sidebarOpen}
         rightPanelOpen={rightPanel.open}
         bottomPanelOpen={bottomPanel.open}

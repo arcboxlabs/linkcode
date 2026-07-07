@@ -51,6 +51,30 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
   const appCommands = Object.keys(commandsByOwner)
     .sort()
     .flatMap((owner) => commandsByOwner[owner]);
+  // Included only while traversal is possible — a listed command must always be runnable.
+  // TODO(keybinds): surface `shortcut` hints here once the global keybind registry exists.
+  const navigationCommands: PaletteCommand[] = [
+    ...(sessions.canGoBack
+      ? [
+          {
+            id: 'workbench.go-back',
+            label: t('goBack'),
+            keywords: ['back', 'history'],
+            run: sessions.goBack,
+          },
+        ]
+      : []),
+    ...(sessions.canGoForward
+      ? [
+          {
+            id: 'workbench.go-forward',
+            label: t('goForward'),
+            keywords: ['forward', 'history'],
+            run: sessions.goForward,
+          },
+        ]
+      : []),
+  ];
   let targetWorkspace: WorkspaceRecord | null = null;
   for (const workspace of workspaces ?? []) {
     if (workspaceKind(workspace) !== 'chat') {
@@ -71,9 +95,10 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
             });
           },
         },
+        ...navigationCommands,
         ...appCommands,
       ]
-    : [...appCommands];
+    : [...navigationCommands, ...appCommands];
 
   const matchedThreads = matchPaletteThreads(candidates, query);
   const matchedCommands = matchPaletteCommands(commands, query);

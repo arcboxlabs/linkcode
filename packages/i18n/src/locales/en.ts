@@ -277,6 +277,8 @@ export const en = {
       commandsGroup: 'Commands',
       empty: 'No matches.',
       newThread: 'New thread in {workspace}',
+      goBack: 'Go back',
+      goForward: 'Go forward',
       openFolder: 'Open folder…',
       openSettings: 'Open settings',
       toggleSidebar: 'Toggle sidebar',

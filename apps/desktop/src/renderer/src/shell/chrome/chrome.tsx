@@ -1,5 +1,5 @@
 import { cn, ShellIconButton } from '@linkcode/ui';
-import type { WorkbenchShellHeader } from '@linkcode/workbench';
+import type { WorkbenchShellHeader, WorkbenchShellNavigation } from '@linkcode/workbench';
 import { nullthrow } from 'foxact/nullthrow';
 import {
   ChevronLeftIcon,
@@ -33,6 +33,8 @@ export interface DesktopChromeProps {
   onHideSidebar: () => void;
   onToggleRight: () => void;
   onToggleBottom: () => void;
+  /** Drives the default left-rail ‹ › controls; absent (e.g. Settings) keeps them disabled. */
+  navigation?: WorkbenchShellNavigation;
   /** Pre-formatted shortcut hints for the default sidebar/panel toggles (e.g. "⌘J"). */
   sidebarShortcut?: string;
   rightPanelShortcut?: string;
@@ -146,6 +148,7 @@ export function DesktopChrome({
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
+  navigation,
   sidebarShortcut,
   rightPanelShortcut,
   bottomPanelShortcut,
@@ -195,6 +198,7 @@ export function DesktopChrome({
             <DefaultLeftChromeControls
               sidebarOpen={sidebarOpen}
               sidebarShortcut={sidebarShortcut}
+              navigation={navigation}
               onShowSidebar={onShowSidebar}
               onHideSidebar={onHideSidebar}
             />
@@ -387,11 +391,13 @@ function StableLeftChrome({
 function DefaultLeftChromeControls({
   sidebarOpen,
   sidebarShortcut,
+  navigation,
   onShowSidebar,
   onHideSidebar,
 }: {
   sidebarOpen: boolean;
   sidebarShortcut?: string;
+  navigation?: WorkbenchShellNavigation;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
 }): React.ReactNode {
@@ -405,10 +411,18 @@ function DefaultLeftChromeControls({
       >
         <PanelLeftIcon className="size-4" />
       </ShellIconButton>
-      <ShellIconButton label="Back" disabled>
+      <ShellIconButton
+        label="Back"
+        disabled={navigation?.canGoBack !== true}
+        onClick={navigation?.onBack}
+      >
         <ChevronLeftIcon className="size-4" />
       </ShellIconButton>
-      <ShellIconButton label="Forward" disabled>
+      <ShellIconButton
+        label="Forward"
+        disabled={navigation?.canGoForward !== true}
+        onClick={navigation?.onForward}
+      >
         <ChevronRightIcon className="size-4" />
       </ShellIconButton>
     </>

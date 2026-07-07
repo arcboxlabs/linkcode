@@ -8,14 +8,29 @@ export interface WorkbenchShellHeader {
   usage?: TokenUsage | null;
 }
 
+/** History traversal for the shell's ‹ › controls (VS Code-style back/forward). */
+export interface WorkbenchShellNavigation {
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onBack: () => void;
+  onForward: () => void;
+}
+
 /** The contract between the workbench surface and an app-provided shell (e.g. desktop's). */
 export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
+  navigation: WorkbenchShellNavigation;
 }
 
 export type WorkbenchShellComponent = (props: WorkbenchShellProps) => React.ReactNode;
 
-export function DefaultWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
+// `navigation` is deliberately dropped here: the bare fallback shell renders no chrome controls —
+// app shells (the desktop chrome, the webview title strip) own the ‹ › buttons.
+export function DefaultWorkbenchShell({
+  header,
+  navigation,
+  ...props
+}: WorkbenchShellProps): React.ReactNode {
   return <ShellFrame {...props} header={<DefaultTitleStrip header={header} />} />;
 }
 

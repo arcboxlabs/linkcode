@@ -8,6 +8,8 @@ import type {
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
 import { useMemo, useState } from 'react';
+import type { NavLocation } from '../navigation/history';
+import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
 import { useSessionSelectionStore } from './selection-store';
 
@@ -28,6 +30,11 @@ export interface WorkbenchSessions {
   draft: WorkbenchSessionDraft | null;
   select: (id: SessionId) => void;
   startDraft: (workspaceId?: WorkspaceId) => void;
+  /** VS Code-style history traversal across threads and the new-thread draft. */
+  canGoBack: boolean;
+  canGoForward: boolean;
+  goBack: () => void;
+  goForward: () => void;
   /** Starts the session and selects it; the returned id lets the caller chain the first prompt. */
   create: (opts: {
     kind: AgentKind;
@@ -79,7 +86,21 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }, [draft, selectedId, sessions]);
   const activeId = active?.sessionId ?? null;
 
-  function select(id: SessionId): void {
+  const recordNavigation = useNavigationHistoryStore((state) => state.record);
+  const travelHistory = useNavigationHistoryStore((state) => state.travel);
+  const canGoBack = useNavigationHistoryStore((state) => state.back.length > 0);
+  const canGoForward = useNavigationHistoryStore((state) => state.forward.length > 0);
+
+  // What the surface currently renders, as a history location: the draft page wins over the
+  // fallback-resolved thread, mirroring the `active` derivation above.
+  const currentLocation: NavLocation | null = draft
+    ? { surface: 'new-thread', workspaceId: draft.workspaceId }
+    : activeId
+      ? { surface: 'thread', sessionId: activeId }
+      : null;
+
+  /** The non-recording apply path, shared by explicit selection and history traversal. */
+  function applySelection(id: SessionId): void {
     setExplicitDraft(null);
     setSelectedId(id);
     // Selecting a cold session wakes it on the daemon, keeping the same Link Code id.
@@ -91,8 +112,33 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     }
   }
 
+  function select(id: SessionId): void {
+    recordNavigation(currentLocation, { surface: 'thread', sessionId: id });
+    applySelection(id);
+  }
+
   function startDraft(workspaceId?: WorkspaceId): void {
+    recordNavigation(currentLocation, { surface: 'new-thread', workspaceId: workspaceId ?? null });
     setExplicitDraft({ workspaceId: workspaceId ?? null });
+  }
+
+  // Threads must still exist in the list to be traversal targets (closed ones drop out of the
+  // stacks on the way); the draft page is always reachable.
+  function traverse(dir: 'back' | 'forward'): void {
+    const target = travelHistory(dir, currentLocation, (location) =>
+      location.surface === 'thread' ? sessionById(sessions, location.sessionId) !== null : true,
+    );
+    if (target === null) return;
+    if (target.surface === 'thread') applySelection(target.sessionId);
+    else setExplicitDraft({ workspaceId: target.workspaceId });
+  }
+
+  function goBack(): void {
+    traverse('back');
+  }
+
+  function goForward(): void {
+    traverse('forward');
   }
 
   async function create(opts: {
@@ -101,12 +147,16 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     model?: string;
     modeId?: SessionModeId;
   }): Promise<SessionId> {
+    // Captured now: by resolve time the surface still shows the draft, and the recorded
+    // transition should be draft → new thread.
+    const from = currentLocation;
     // Rejections propagate to the caller (the new-session page stays up); onError above still
     // reports them via the error banner.
     const sessionId = await createMutation.trigger({ opts });
     // The list must contain the new session before selection flips: otherwise `active` falls
     // back to the previous session for a render and its conversation flashes (CODE-103).
     await mutate().catch(noop);
+    recordNavigation(from, { surface: 'thread', sessionId });
     setExplicitDraft(null);
     setSelectedId(sessionId);
     return sessionId;
@@ -133,6 +183,10 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     draft,
     select,
     startDraft,
+    canGoBack,
+    canGoForward,
+    goBack,
+    goForward,
     create,
     close,
     refresh,

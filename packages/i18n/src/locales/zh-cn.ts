@@ -272,6 +272,8 @@ export const zhCN = {
       commandsGroup: '命令',
       empty: '没有匹配的结果',
       newThread: '在 {workspace} 新建线程',
+      goBack: '后退',
+      goForward: '前进',
       openFolder: '打开文件夹…',
       openSettings: '打开设置',
       toggleSidebar: '切换侧边栏',

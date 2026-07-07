@@ -415,6 +415,12 @@ function WorkbenchSessionSurface({
         subtitle: active?.cwd,
         usage: conversation.usage,
       }}
+      navigation={{
+        canGoBack: sessions.canGoBack,
+        canGoForward: sessions.canGoForward,
+        onBack: sessions.goBack,
+        onForward: sessions.goForward,
+      }}
       errorMessage={errorMessage}
       pinnedSessionIds={pinnedSessionIds}
       onSelectSession={sessions.select}
