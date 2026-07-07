@@ -50,7 +50,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
-import { agentRuntimeProber } from '../runtime-probe';
+import { agentRuntimeProber } from '../probe';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];

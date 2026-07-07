@@ -14,6 +14,6 @@ export { ClaudeCodeAdapter } from './native/claude-code';
 export { CodexAdapter } from './native/codex';
 export { OpenCodeAdapter } from './native/opencode';
 export { PiAdapter } from './native/pi';
+export * from './probe';
 export * from './registry';
-export * from './runtime-probe';
 export * from './util';

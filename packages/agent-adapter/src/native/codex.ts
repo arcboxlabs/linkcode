@@ -25,7 +25,7 @@ import {
   cursorOffset,
   isRecord,
 } from '../history-util';
-import { agentRuntimeProber } from '../runtime-probe';
+import { agentRuntimeProber } from '../probe';
 import { contentToText } from '../util';
 import {
   codexHome,
