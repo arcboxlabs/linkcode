@@ -352,6 +352,8 @@ export const en = {
       emptyHint: 'This provider has no local conversation history on this machine.',
       loadFailedTitle: 'Failed to load history',
       retry: 'Retry',
+      showingLatest:
+        'Showing the latest {count, plural, one {# conversation} other {# conversations}}',
       importError: 'Failed to import: {message}',
       messageCount: '{count, plural, one {# message} other {# messages}}',
     },

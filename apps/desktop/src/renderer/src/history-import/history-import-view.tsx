@@ -128,6 +128,7 @@ export function HistoryImportView(): React.ReactNode {
                 <HistoryBrowserList
                   entries={surface.entries}
                   groupByProject={sort === 'project'}
+                  truncated={surface.truncated}
                   isLoading={surface.isLoading}
                   loadError={surface.loadError}
                   importingId={surface.importingId}

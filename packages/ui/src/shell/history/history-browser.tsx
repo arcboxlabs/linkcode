@@ -31,6 +31,8 @@ export interface HistoryBrowserListProps {
   entries: readonly HistoryBrowserEntry[];
   /** Renders sidebar-style project section headers (folder + name + count) between clusters. */
   groupByProject?: boolean;
+  /** The provider has more history beyond these entries — renders a truncation hint. */
+  truncated?: boolean;
   isLoading: boolean;
   /** The list fetch failure message, when there is nothing to show. */
   loadError?: string | null;
@@ -47,6 +49,7 @@ export interface HistoryBrowserListProps {
 export function HistoryBrowserList({
   entries,
   groupByProject,
+  truncated,
   isLoading,
   loadError,
   importingId,
@@ -137,6 +140,11 @@ export function HistoryBrowserList({
         </div>
       ) : (
         rows(entries)
+      )}
+      {truncated && (
+        <p className="pt-3 text-center text-muted-foreground text-xs">
+          {t('showingLatest', { count: entries.length })}
+        </p>
       )}
     </div>
   );

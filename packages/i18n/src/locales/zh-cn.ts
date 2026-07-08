@@ -347,6 +347,7 @@ export const zhCN = {
       emptyHint: '该提供方在本机还没有历史对话。',
       loadFailedTitle: '无法加载历史记录',
       retry: '重试',
+      showingLatest: '仅显示最近 {count} 条对话',
       importError: '导入失败：{message}',
       messageCount: '{count} 条消息',
     },

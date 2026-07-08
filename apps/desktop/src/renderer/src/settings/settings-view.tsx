@@ -53,7 +53,8 @@ export function SettingsView(): React.ReactNode {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') backFromOverlay();
+      // defaultPrevented: an open popup (select, menu) consumed this Esc to dismiss itself.
+      if (event.key === 'Escape' && !event.defaultPrevented) backFromOverlay();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

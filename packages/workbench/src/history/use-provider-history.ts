@@ -9,6 +9,8 @@ const HISTORY_PAGE_LIMIT = 200;
 export interface ProviderHistory {
   /** Provider-local sessions across every project, most recent first. */
   entries: AgentHistorySession[];
+  /** The provider returned a cursor — history continues beyond the fetched page. */
+  hasMore: boolean;
   isLoading: boolean;
   /** The list fetch failure (e.g. "history list is not supported" for agents without it). */
   loadError: unknown;
@@ -63,6 +65,7 @@ export function useProviderHistory(kind: AgentKind): ProviderHistory {
 
   return {
     entries,
+    hasMore: data?.cursor != null,
     isLoading,
     loadError: error,
     refresh() {
