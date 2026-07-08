@@ -21,7 +21,8 @@
     "@openai/codex": "^0.140.0",
     "@opencode-ai/sdk": "^1.17.7",
     "foxts": "^5.6.0",
-    "smol-toml": "^1.7.0"
+    "smol-toml": "^1.7.0",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

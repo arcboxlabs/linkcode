@@ -15,6 +15,8 @@ import type {
   MessageId,
   PermissionOption,
   PermissionOutcome,
+  Question,
+  QuestionOutcome,
   SessionStatus,
   StartOptions,
   StopReason,
@@ -30,6 +32,7 @@ import type { AgentAdapter } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
+type QuestionResolver = (outcome: QuestionOutcome) => void;
 
 /**
  * Adapter base class: consolidates event plumbing, lifecycle, tool-call normalization, and the permission
@@ -60,6 +63,8 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   private sessionRef: AgentHistoryId | null = null;
   /** Permission asks awaiting a reply, keyed by requestId. */
   private readonly pending = new Map<string, PermissionResolver>();
+  /** Question asks awaiting a reply, keyed by requestId. */
+  private readonly pendingQuestions = new Map<string, QuestionResolver>();
   /** Running tool-call snapshots, keyed by toolCallId — the source for `emitTool`'s full-snapshot emits. */
   private readonly toolCalls = new Map<string, ToolCall>();
   /** Current segment's ids, refreshed via `freshSegment()` at each turn/tool boundary so text /
@@ -112,6 +117,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
         return;
       case 'permission-response':
         this.resolvePending(input.requestId, input.outcome);
+        break;
+      case 'question-response':
+        this.resolvePendingQuestion(input.requestId, input.outcome);
         break;
       default:
         break;
@@ -283,15 +291,36 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     }
   }
 
+  // ── Question round-trip (resolved by a `question-response` AgentInput, by id) ──
+  protected requestQuestion(
+    toolCall: ToolCallUpdate,
+    questions: Question[],
+  ): Promise<QuestionOutcome> {
+    const requestId = nextRequestId();
+    return new Promise<QuestionOutcome>((resolve) => {
+      this.pendingQuestions.set(requestId, resolve);
+      this.emit({ type: 'question-request', requestId, toolCall, questions });
+    });
+  }
+  private resolvePendingQuestion(requestId: string, outcome: QuestionOutcome): void {
+    const resolve = this.pendingQuestions.get(requestId);
+    if (resolve) {
+      this.pendingQuestions.delete(requestId);
+      resolve(outcome);
+    }
+  }
+
   /**
-   * Liveness sweep on cancel / stop / abnormal turn end: resolve every still-pending permission ask with
-   * `cancelled` (a clean deny that unblocks the agent's awaiting callback) and force every non-terminal
-   * tool call to `failed`. Together these guarantee no tool stays `in_progress` and no agent hangs awaiting
-   * a permission reply. Idempotent — a no-op on a clean turn where everything is already settled.
+   * Liveness sweep on cancel / stop / abnormal turn end: resolve every still-pending permission or
+   * question ask with `cancelled` (a clean deny that unblocks the agent's awaiting callback) and force
+   * every non-terminal tool call to `failed`. Together these guarantee no tool stays `in_progress` and
+   * no agent hangs awaiting a reply. Idempotent — a no-op on a clean turn where everything is settled.
    */
   protected teardown(): void {
     for (const resolve of this.pending.values()) resolve({ outcome: 'cancelled' });
     this.pending.clear();
+    for (const resolve of this.pendingQuestions.values()) resolve({ outcome: 'cancelled' });
+    this.pendingQuestions.clear();
     for (const toolCall of this.toolCalls.values()) {
       if (toolCall.status === 'completed' || toolCall.status === 'failed') continue;
       this.emitTool({ toolCallId: toolCall.toolCallId, status: 'failed' });
