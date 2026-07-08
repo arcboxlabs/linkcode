@@ -421,6 +421,7 @@ export class Engine {
             kind: 'config.get.result',
             replyTo: p.clientReqId,
             providers: this.providerStore.get(),
+            accounts: this.providerStore.getAccounts(),
           }),
         );
         break;
@@ -428,6 +429,8 @@ export class Engine {
       case 'config.set': {
         await this.tryReply(p.clientReqId, async () => {
           await this.providerStore.set(p.providers);
+          // Only clients editing the pool send `accounts`; a provider-only set preserves it.
+          if (p.accounts !== undefined) await this.providerStore.setAccounts(p.accounts);
           this.sendSuccess(p.clientReqId);
         });
         break;

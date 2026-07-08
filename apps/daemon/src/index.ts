@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     startedAt: Date.now(),
   };
   const hub = new Hub();
-  const store = createProviderConfigStore(config.providers ?? {});
+  const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
   // Shared between the engine's script service (writer) and every listener's reverse
   // proxy (reader). Preview traffic bypasses daemon auth by decision — the boundary is
   // the loopback bind (see config.ts DEFAULT_HOST); remote exposure is the tunnel's job.

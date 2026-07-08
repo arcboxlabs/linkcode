@@ -1,4 +1,5 @@
 import type {
+  Accounts,
   AgentEvent,
   AgentHistoryId,
   AgentHistorySession,
@@ -87,6 +88,7 @@ export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
+  private accounts: Accounts = [];
   private readonly permissions = new Map<string, PendingPermission>();
   private history: AgentHistorySession[] = [];
   private readonly terminals = new Set<string>();
@@ -227,7 +229,12 @@ export class DevMockHost {
         break;
       case 'config.get':
         await wait(CONTROL_LATENCY_MS);
-        this.send({ kind: 'config.get.result', replyTo: p.clientReqId, providers: this.providers });
+        this.send({
+          kind: 'config.get.result',
+          replyTo: p.clientReqId,
+          providers: this.providers,
+          accounts: this.accounts,
+        });
         break;
       case 'agent-runtime.list':
         await wait(CONTROL_LATENCY_MS);
@@ -251,6 +258,7 @@ export class DevMockHost {
       case 'config.set':
         await wait(CONTROL_LATENCY_MS);
         this.providers = structuredClone(p.providers);
+        if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
         this.sendSuccess(p.clientReqId);
         break;
       case 'workspace.list':
