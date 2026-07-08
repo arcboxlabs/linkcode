@@ -13,7 +13,6 @@ function thread(id: string): NavLocation {
 }
 
 const SETTINGS: NavLocation = { surface: 'settings' };
-const HISTORY_IMPORT: NavLocation = { surface: 'history-import' };
 
 beforeEach(() => {
   useNavigationHistoryStore.setState({ back: [], forward: [], overlay: null });
@@ -37,16 +36,6 @@ describe('openOverlay', () => {
     const state = useNavigationHistoryStore.getState();
     expect(state.overlay).toBe('settings');
     expect(state.back).toEqual([]);
-  });
-
-  it('records the current overlay as the origin when switching surfaces', () => {
-    useSessionSelectionStore.getState().setSelectedId(sid('a'));
-    useNavigationHistoryStore.getState().openOverlay('settings');
-    useNavigationHistoryStore.getState().openOverlay('history-import');
-
-    const state = useNavigationHistoryStore.getState();
-    expect(state.overlay).toBe('history-import');
-    expect(state.back).toEqual([thread('a'), SETTINGS]);
   });
 
   it('is a no-op while the same surface is already up', () => {
@@ -73,14 +62,14 @@ describe('backFromOverlay', () => {
   });
 
   it('re-raises a popped overlay surface instead of closing', () => {
-    useNavigationHistoryStore.setState({ back: [SETTINGS], overlay: 'history-import' });
+    useNavigationHistoryStore.setState({ back: [SETTINGS], overlay: 'settings' });
 
     useNavigationHistoryStore.getState().backFromOverlay();
 
     const state = useNavigationHistoryStore.getState();
     expect(state.overlay).toBe('settings');
     expect(state.back).toEqual([]);
-    expect(state.forward).toEqual([HISTORY_IMPORT]);
+    expect(state.forward).toEqual([SETTINGS]);
   });
 
   it('closes without a forward entry when the back stack is empty', () => {

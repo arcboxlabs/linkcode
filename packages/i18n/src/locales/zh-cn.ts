@@ -332,7 +332,7 @@ export const zhCN = {
     },
     historyImport: {
       portalLabel: '导入聊天历史',
-      chromeTitle: '从 {provider} 导入聊天历史',
+      panelTitle: '从 {provider} 导入聊天历史',
       conversationCount: '{count} 条对话',
       refresh: '刷新',
       sortLabel: '排序方式',

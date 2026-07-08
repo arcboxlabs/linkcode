@@ -337,7 +337,7 @@ export const en = {
     },
     historyImport: {
       portalLabel: 'Import chat history',
-      chromeTitle: 'Import chat history from {provider}',
+      panelTitle: 'Import chat history from {provider}',
       conversationCount: '{count, plural, one {# conversation} other {# conversations}}',
       refresh: 'Refresh',
       sortLabel: 'Sort order',

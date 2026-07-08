@@ -1,15 +1,10 @@
-import { SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
+import type { AgentKind } from '@linkcode/schema';
+import { AgentKindSchema } from '@linkcode/schema';
+import { AGENT_LABELS, AgentIcon, SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
 import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import {
-  BotIcon,
-  HistoryIcon,
-  InfoIcon,
-  MoveUpRightIcon,
-  SettingsIcon,
-  WifiIcon,
-} from 'lucide-react';
+import { BotIcon, HistoryIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
@@ -21,8 +16,11 @@ import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
+import { HistoryImportTab } from './history-import-tab';
 
-type SettingsCategory = 'general' | 'connection' | 'about' | 'agents';
+type SettingsCategory = 'general' | 'connection' | 'about' | 'agents' | 'history-import';
+
+const AGENT_KINDS: readonly AgentKind[] = AgentKindSchema.options;
 
 const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
   ...DESKTOP_CHROME_METRICS_STYLE,
@@ -38,8 +36,8 @@ const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
 export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
   const backFromOverlay = useNavigationHistoryStore((state) => state.backFromOverlay);
-  const openOverlay = useNavigationHistoryStore((state) => state.openOverlay);
   const [category, setCategory] = useState<SettingsCategory>('general');
+  const [historyProvider, setHistoryProvider] = useState<AgentKind>('claude-code');
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
@@ -127,17 +125,21 @@ export function SettingsView(): React.ReactNode {
                     onClick: () => setCategory('agents'),
                   },
                   {
-                    // A portal, not a category: it leaves Settings for the import surface
-                    // (recorded in navigation history, so Esc there returns here).
                     key: 'history-import',
                     icon: <HistoryIcon className="size-4" />,
-                    label: (
-                      <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                        {t('historyImport.portalLabel')}
-                        <MoveUpRightIcon className="size-3.5 text-muted-foreground" />
-                      </span>
-                    ),
-                    onClick: () => openOverlay('history-import'),
+                    label: t('historyImport.portalLabel'),
+                    active: category === 'history-import',
+                    onClick: () => setCategory('history-import'),
+                    children: AGENT_KINDS.map((agentKind) => ({
+                      key: agentKind,
+                      icon: <AgentIcon kind={agentKind} variant="ghost" />,
+                      label: AGENT_LABELS[agentKind],
+                      active: category === 'history-import' && historyProvider === agentKind,
+                      onClick() {
+                        setCategory('history-import');
+                        setHistoryProvider(agentKind);
+                      },
+                    })),
                   },
                 ]}
               />
@@ -145,7 +147,9 @@ export function SettingsView(): React.ReactNode {
           </div>
           <main className="flex min-w-0 flex-1 flex-col bg-background">
             <div className="min-w-0 flex-1 overflow-y-auto pt-(--lc-chrome-h)">
-              <div className="mx-auto max-w-2xl p-6">{renderSettingsPanel(category)}</div>
+              <div className="mx-auto max-w-2xl p-6">
+                {renderSettingsPanel(category, historyProvider)}
+              </div>
             </div>
           </main>
         </div>
@@ -154,7 +158,10 @@ export function SettingsView(): React.ReactNode {
   );
 }
 
-function renderSettingsPanel(category: SettingsCategory): React.ReactNode {
+function renderSettingsPanel(
+  category: SettingsCategory,
+  historyProvider: AgentKind,
+): React.ReactNode {
   switch (category) {
     case 'general':
       return <GeneralTab />;
@@ -164,6 +171,8 @@ function renderSettingsPanel(category: SettingsCategory): React.ReactNode {
       return <AboutTab />;
     case 'agents':
       return <AgentsTab />;
+    case 'history-import':
+      return <HistoryImportTab kind={historyProvider} />;
     default:
       return null;
   }

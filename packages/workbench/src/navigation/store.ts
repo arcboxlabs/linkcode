@@ -5,7 +5,7 @@ import type { NavHistoryStacks, NavLocation } from './history';
 import { recordTransition, travel } from './history';
 
 /** Full-page surfaces that overlay the workbench and participate in navigation history. */
-export type WorkbenchOverlaySurface = 'settings' | 'history-import';
+export type WorkbenchOverlaySurface = 'settings';
 
 interface NavigationHistoryState extends NavHistoryStacks {
   /** The surface overlaying the workbench, or null when the workbench shows. Desktop renders
@@ -50,10 +50,10 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
   openOverlay(surface) {
     const { overlay } = get();
     if (overlay === surface) return;
-    // From another overlay the origin is that overlay (settings → history-import records
-    // {settings}). From the workbench, module-scope callers can't see the hook's
-    // fallback-resolved thread or draft, so the origin is the explicit selection or nothing —
-    // Esc still visually returns either way, the covered surface keeps its state.
+    // From another overlay the origin is that overlay. From the workbench, module-scope callers
+    // can't see the hook's fallback-resolved thread or draft, so the origin is the explicit
+    // selection or nothing — Esc still visually returns either way, the covered surface keeps
+    // its state.
     const { selectedId } = useSessionSelectionStore.getState();
     const from: NavLocation | null = overlay
       ? { surface: overlay }

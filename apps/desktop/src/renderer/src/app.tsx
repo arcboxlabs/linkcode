@@ -12,7 +12,6 @@ import {
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useState } from 'react';
-import { HistoryImportView } from './history-import/history-import-view';
 import { systemBridge } from './ipc';
 import { SettingsView } from './settings/settings-view';
 import { useDesktopSettingsStore } from './settings/store';
@@ -26,31 +25,27 @@ const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHost
 export function DesktopApp(): React.ReactNode {
   const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
-  const overlay = useNavigationHistoryStore((state) => state.overlay);
-  const settingsOpen = overlay === 'settings';
-  const historyImportOpen = overlay === 'history-import';
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
       <CloudHostsProvider source={listCloudHosts}>
-        {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over the
-            native backdrop, so any workbench pixels underneath would ghost through the settings
-            sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction. */}
-        <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
-          {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
-          <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-            <div
-              className={historyImportOpen ? 'invisible h-full' : 'h-full'}
-              inert={historyImportOpen}
-            >
-              <Workbench shellComponent={DesktopWorkbenchShell} />
-            </div>
-            {/* Inside the connection gate: browsing history needs the daemon, and while it is
-                unreachable the gate's fallback replaces this whole subtree. */}
-            {historyImportOpen ? <HistoryImportView /> : null}
-          </DaemonConnection>
-        </div>
-        {settingsOpen ? <SettingsView /> : null}
+        {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
+        <DaemonConnection
+          key={daemonUrl}
+          daemonUrl={daemonUrl}
+          // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
+          // URL), yet its history-import panel can still use the data plane once connected.
+          ungated={settingsOpen ? <SettingsView /> : null}
+        >
+          {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over
+              the native backdrop, so any workbench pixels underneath would ghost through the
+              settings sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks
+              focus/interaction. */}
+          <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+            <Workbench shellComponent={DesktopWorkbenchShell} />
+          </div>
+        </DaemonConnection>
         {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
             can always minimize/maximize/close — including while the daemon is connecting or down. */}
         <DesktopWindowControls />
@@ -62,14 +57,16 @@ export function DesktopApp(): React.ReactNode {
 /** The desktop renderer connects to the local daemon (apps/daemon) like every other client. */
 function DaemonConnection({
   daemonUrl,
+  ungated,
   children,
-}: React.PropsWithChildren<{ daemonUrl: string }>): React.ReactNode {
+}: React.PropsWithChildren<{ daemonUrl: string; ungated?: React.ReactNode }>): React.ReactNode {
   const { current: transport } = useSingleton(() => createDaemonTransport(daemonUrl));
   return (
     <WorkbenchProviders
       transport={transport}
       daemonUrl={daemonUrl}
       fallback={<DesktopConnectionFallback daemonUrl={daemonUrl} />}
+      ungated={ungated}
     >
       {children}
     </WorkbenchProviders>
@@ -95,6 +92,9 @@ function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.
   const hasOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride !== null);
   const adoptDiscoveredUrl = useDesktopSettingsStore((state) => state.adoptDiscoveredUrl);
   const managed = useDaemonIsManaged();
+  // Settings renders ungated above this fallback; hide (not unmount) so no pixels ghost through
+  // the translucent settings shell while the rediscovery subscription keeps running.
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
 
   const [withinStartupGrace, setWithinStartupGrace] = useState(true);
   useAbortableEffect((signal) => {
@@ -118,8 +118,15 @@ function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.
     [hasOverride, daemonUrl, adoptDiscoveredUrl],
   );
 
-  if (status === 'connecting' || (managed && withinStartupGrace)) return <ConnectionSkeleton />;
-  return <ConnectionState daemonUrl={daemonUrl} managedHost={managed} />;
+  return (
+    <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+      {status === 'connecting' || (managed && withinStartupGrace) ? (
+        <ConnectionSkeleton />
+      ) : (
+        <ConnectionState daemonUrl={daemonUrl} managedHost={managed} />
+      )}
+    </div>
+  );
 }
 
 /** Whether main supervises the daemon (packaged, no override) — picks the failure copy. */

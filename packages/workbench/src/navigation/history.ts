@@ -4,8 +4,7 @@ import type { SessionId, WorkspaceId } from '@linkcode/schema';
 export type NavLocation =
   | { surface: 'thread'; sessionId: SessionId }
   | { surface: 'new-thread'; workspaceId: WorkspaceId | null }
-  | { surface: 'settings' }
-  | { surface: 'history-import' };
+  | { surface: 'settings' };
 
 export interface NavHistoryStacks {
   back: NavLocation[];
