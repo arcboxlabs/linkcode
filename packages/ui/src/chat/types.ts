@@ -1,8 +1,10 @@
 import type {
   ApprovalPolicyState,
   ContentBlock,
+  EffortLevel,
   PermissionOption,
   Plan,
+  Question,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -30,11 +32,14 @@ export type ConversationItem =
       role: 'user' | 'assistant';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
+      parentToolCallId?: string;
     })
   | (ConversationItemBase & {
       kind: 'reasoning';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      parentToolCallId?: string;
     })
   | (ConversationItemBase & { kind: 'tool'; toolCall: ToolCall })
   | (ConversationItemBase & { kind: 'plan'; plan: Plan })
@@ -43,6 +48,12 @@ export type ConversationItem =
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
+    })
+  | (ConversationItemBase & {
+      kind: 'question';
+      requestId: string;
+      toolCall: ToolCallUpdate;
+      questions: Question[];
     })
   | (ConversationItemBase & {
       kind: 'error';
@@ -63,8 +74,14 @@ export interface ConversationViewModel {
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
    * null (or an empty list) hides the composer's policy menu. */
   approvalPolicy: ApprovalPolicyState | null;
+  /** The model the session is running on, from `model-update`; null until the adapter reports it. */
+  currentModel: string | null;
+  /** The reasoning-effort level the session is running at, from `effort-update`; null until reported. */
+  currentEffort: EffortLevel | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /** Permission requests still awaiting a decision. */
   pendingPermissionIds: string[];
+  /** Question requests still awaiting answers. */
+  pendingQuestionIds: string[];
 }

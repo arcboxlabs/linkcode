@@ -15,6 +15,8 @@ import type {
   MessageId,
   PermissionOption,
   PermissionOutcome,
+  Question,
+  QuestionOutcome,
   SessionStatus,
   StartOptions,
   StopReason,
@@ -30,6 +32,7 @@ import type { AgentAdapter } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
+type QuestionResolver = (outcome: QuestionOutcome) => void;
 
 /**
  * Adapter base class: consolidates event plumbing, lifecycle, tool-call normalization, and the permission
@@ -58,8 +61,13 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected opts: StartOptions | null = null;
   /** Last announced provider-local id — `emitSessionRef` dedupes against it. */
   private sessionRef: AgentHistoryId | null = null;
+  /** Last announced model / effort — `emitModel` / `emitEffort` dedupe against these. */
+  private reflectedModel: string | null = null;
+  private reflectedEffort: EffortLevel | null = null;
   /** Permission asks awaiting a reply, keyed by requestId. */
   private readonly pending = new Map<string, PermissionResolver>();
+  /** Question asks awaiting a reply, keyed by requestId. */
+  private readonly pendingQuestions = new Map<string, QuestionResolver>();
   /** Running tool-call snapshots, keyed by toolCallId — the source for `emitTool`'s full-snapshot emits. */
   private readonly toolCalls = new Map<string, ToolCall>();
   /** Current segment's ids, refreshed via `freshSegment()` at each turn/tool boundary so text /
@@ -112,6 +120,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
         return;
       case 'permission-response':
         this.resolvePending(input.requestId, input.outcome);
+        break;
+      case 'question-response':
+        this.resolvePendingQuestion(input.requestId, input.outcome);
         break;
       default:
         break;
@@ -174,13 +185,23 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.messageId = nextMessageId();
     this.thoughtId = nextMessageId();
   }
-  protected emitAssistantText(text: string, messageId: MessageId): void {
+  protected emitAssistantText(text: string, messageId: MessageId, parentToolCallId?: string): void {
     if (text.length === 0) return;
-    this.emit({ type: 'agent-message-chunk', messageId, content: textBlock(text) });
+    this.emit({
+      type: 'agent-message-chunk',
+      messageId,
+      parentToolCallId,
+      content: textBlock(text),
+    });
   }
-  protected emitThought(text: string, messageId: MessageId): void {
+  protected emitThought(text: string, messageId: MessageId, parentToolCallId?: string): void {
     if (text.length === 0) return;
-    this.emit({ type: 'agent-thought-chunk', messageId, content: textBlock(text) });
+    this.emit({
+      type: 'agent-thought-chunk',
+      messageId,
+      parentToolCallId,
+      content: textBlock(text),
+    });
   }
 
   /**
@@ -214,6 +235,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
           title: patch.title ?? existing.title,
           kind: patch.kind ?? existing.kind,
           status: patch.status ?? existing.status,
+          parentToolCallId: patch.parentToolCallId ?? existing.parentToolCallId,
           content: patch.content ?? existing.content,
           locations: patch.locations ?? existing.locations,
           rawInput: patch.rawInput ?? existing.rawInput,
@@ -224,6 +246,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
           title: patch.title ?? patch.toolCallId,
           kind: patch.kind ?? 'other',
           status: patch.status ?? 'in_progress',
+          parentToolCallId: patch.parentToolCallId,
           content: patch.content ?? [],
           locations: patch.locations,
           rawInput: patch.rawInput,
@@ -244,6 +267,18 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected emitApprovalPolicy(state: ApprovalPolicyState): void {
     this.emit({ type: 'approval-policy-update', state });
+  }
+  /** Announce the model the session is running on; re-emits only when it changes. */
+  protected emitModel(model: string): void {
+    if (this.reflectedModel === model) return;
+    this.reflectedModel = model;
+    this.emit({ type: 'model-update', model });
+  }
+  /** Announce the reasoning-effort level the session is running at; re-emits only when it changes. */
+  protected emitEffort(effort: EffortLevel): void {
+    if (this.reflectedEffort === effort) return;
+    this.reflectedEffort = effort;
+    this.emit({ type: 'effort-update', effort });
   }
   protected emitStop(stopReason: StopReason): void {
     this.emit({ type: 'stop', stopReason });
@@ -271,15 +306,36 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     }
   }
 
+  // ── Question round-trip (resolved by a `question-response` AgentInput, by id) ──
+  protected requestQuestion(
+    toolCall: ToolCallUpdate,
+    questions: Question[],
+  ): Promise<QuestionOutcome> {
+    const requestId = nextRequestId();
+    return new Promise<QuestionOutcome>((resolve) => {
+      this.pendingQuestions.set(requestId, resolve);
+      this.emit({ type: 'question-request', requestId, toolCall, questions });
+    });
+  }
+  private resolvePendingQuestion(requestId: string, outcome: QuestionOutcome): void {
+    const resolve = this.pendingQuestions.get(requestId);
+    if (resolve) {
+      this.pendingQuestions.delete(requestId);
+      resolve(outcome);
+    }
+  }
+
   /**
-   * Liveness sweep on cancel / stop / abnormal turn end: resolve every still-pending permission ask with
-   * `cancelled` (a clean deny that unblocks the agent's awaiting callback) and force every non-terminal
-   * tool call to `failed`. Together these guarantee no tool stays `in_progress` and no agent hangs awaiting
-   * a permission reply. Idempotent — a no-op on a clean turn where everything is already settled.
+   * Liveness sweep on cancel / stop / abnormal turn end: resolve every still-pending permission or
+   * question ask with `cancelled` (a clean deny that unblocks the agent's awaiting callback) and force
+   * every non-terminal tool call to `failed`. Together these guarantee no tool stays `in_progress` and
+   * no agent hangs awaiting a reply. Idempotent — a no-op on a clean turn where everything is settled.
    */
   protected teardown(): void {
     for (const resolve of this.pending.values()) resolve({ outcome: 'cancelled' });
     this.pending.clear();
+    for (const resolve of this.pendingQuestions.values()) resolve({ outcome: 'cancelled' });
+    this.pendingQuestions.clear();
     for (const toolCall of this.toolCalls.values()) {
       if (toolCall.status === 'completed' || toolCall.status === 'failed') continue;
       this.emitTool({ toolCallId: toolCall.toolCallId, status: 'failed' });

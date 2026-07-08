@@ -1,6 +1,14 @@
-import type { EffortLevel, SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  AgentKind,
+  EffortLevel,
+  QuestionOutcome,
+  SessionId,
+  SessionInfo,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
+import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import type { NewSessionDraft, NewSessionSubmission } from './new-session-surface';
@@ -26,9 +34,17 @@ export interface ShellFrameProps
   activeSession: SessionInfo | null;
   /** Non-null while the new-session page is up — it replaces the conversation column. */
   draft: NewSessionDraft | null;
+  /** Agent runtime availability cues for the new-session page's onboarding flow (CODE-112). */
+  runtimeCues?: AgentRuntimeCues;
+  /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
+  onDownloadAgent?: (kind: AgentKind) => void;
+  /** Accepts an out-of-range detected version for the current pick. */
+  onContinueUnverified?: (kind: AgentKind) => void;
   conversation: ConversationViewModel;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
+  answeredQuestionIds: ReadonlySet<string>;
+  respondingQuestions: ReadonlySet<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
@@ -50,6 +66,7 @@ export interface ShellFrameProps
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
+  onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
   /** Hosts inline artifact content on the daemon (sandboxed html previews, CODE-62). */
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Opens the command palette — the sidebar Search entry stays disabled without it. */
@@ -72,9 +89,14 @@ export function ShellFrame({
   chatWorkspace,
   activeSession,
   draft,
+  runtimeCues,
+  onDownloadAgent,
+  onContinueUnverified,
   conversation,
   permissionDecisions,
   respondingPermissions,
+  answeredQuestionIds,
+  respondingQuestions,
   header,
   errorMessage,
   pinnedSessionIds,
@@ -95,6 +117,7 @@ export function ShellFrame({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
   searchShortcut,
@@ -150,6 +173,9 @@ export function ShellFrame({
             draft={draft}
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}
+            runtimeCues={runtimeCues}
+            onContinueUnverified={onContinueUnverified}
+            onDownloadAgent={onDownloadAgent}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
           />
@@ -166,10 +192,13 @@ export function ShellFrame({
             cwd={active?.cwd}
             permissionDecisions={permissionDecisions}
             respondingPermissions={respondingPermissions}
+            answeredQuestionIds={answeredQuestionIds}
+            respondingQuestions={respondingQuestions}
             TerminalBlockComponent={TerminalBlockComponent}
             onSendPrompt={onSendPrompt}
             onStopTurn={onStopTurn}
             onRespondPermission={onRespondPermission}
+            onRespondQuestion={onRespondQuestion}
             onHostArtifact={onHostArtifact}
             onModeChange={onModeChange}
             onApprovalPolicyChange={onApprovalPolicyChange}

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent } from '@linkcode/schema';
+import type { AgentEvent, AgentInput, StartOptions } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
 import {
@@ -11,7 +11,15 @@ import {
   createClaudeHistoryEventMapper,
   mapClaudeStop,
 } from '../native/claude-code';
-import { CodexAdapter, mapCodexStatus, mapCodexUsage } from '../native/codex';
+import {
+  CodexAdapter,
+  decisionFromOutcome,
+  diffContentFromUnified,
+  mapCodexItemStatus,
+  mapCodexTokenUsage,
+} from '../native/codex';
+import type { CodexServerHandle } from '../native/codex/adapter';
+import type { CodexAppServerOptions } from '../native/codex/app-server';
 import { contentToText, toolKindFromName } from '../util';
 
 describe('contentToText', () => {
@@ -41,12 +49,13 @@ function row(
   type: 'user' | 'assistant',
   uuid: string,
   content: string | unknown[],
+  parentToolUseId: string | null = null,
 ): SessionMessage {
   return {
     type,
     uuid,
     session_id: 'h1',
-    parent_tool_use_id: null,
+    parent_tool_use_id: parentToolUseId,
     message: { content },
   };
 }
@@ -140,6 +149,59 @@ describe('createClaudeHistoryEventMapper', () => {
 
     const reply = map(row('assistant', 'u2', [{ type: 'text', text: 'done' }]));
     expect(reply.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+  });
+
+  it('stamps parentToolCallId on subagent rows and classifies Task as task-kind', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const announce = map(
+      row('assistant', 'u1', [
+        { type: 'tool_use', id: 'toolu_task', name: 'Task', input: { description: 'explore' } },
+      ]),
+    );
+    if (announce[0].event.type === 'tool-call') {
+      expect(announce[0].event.toolCall).toMatchObject({ kind: 'task', toolCallId: 'toolu_task' });
+    }
+
+    const subText = map(
+      row('assistant', 'u2', [{ type: 'text', text: 'looking around' }], 'toolu_task'),
+    );
+    expect(subText[0].event).toMatchObject({
+      type: 'agent-message-chunk',
+      parentToolCallId: 'toolu_task',
+    });
+
+    const subTool = map(
+      row(
+        'assistant',
+        'u3',
+        [{ type: 'tool_use', id: 'toolu_sub', name: 'Read', input: {} }],
+        'toolu_task',
+      ),
+    );
+    if (subTool[0].event.type === 'tool-call') {
+      expect(subTool[0].event.toolCall.parentToolCallId).toBe('toolu_task');
+    }
+
+    const subSettle = map(
+      row(
+        'user',
+        'u4',
+        [{ type: 'tool_result', tool_use_id: 'toolu_sub', content: 'ok' }],
+        'toolu_task',
+      ),
+    );
+    if (subSettle[0].event.type === 'tool-call') {
+      expect(subSettle[0].event.toolCall).toMatchObject({
+        status: 'completed',
+        parentToolCallId: 'toolu_task',
+      });
+    }
+  });
+
+  it('skips the injected subagent prompt on subagent user rows', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const events = map(row('user', 'u1', 'map the repo structure', 'toolu_task'));
+    expect(events).toEqual([]);
   });
 });
 
@@ -239,19 +301,229 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
 });
 
 describe('codex mappers', () => {
-  it('passes status through', () => {
-    expect(mapCodexStatus('in_progress')).toBe('in_progress');
-    expect(mapCodexStatus('failed')).toBe('failed');
+  it('maps item statuses, folding declined into failed', () => {
+    expect(mapCodexItemStatus('inProgress')).toBe('in_progress');
+    expect(mapCodexItemStatus('completed')).toBe('completed');
+    expect(mapCodexItemStatus('failed')).toBe('failed');
+    expect(mapCodexItemStatus('declined')).toBe('failed');
+    expect(mapCodexItemStatus(undefined)).toBe('in_progress');
   });
-  it('maps usage fields', () => {
+  it('maps token usage breakdown fields', () => {
     expect(
-      mapCodexUsage({
-        input_tokens: 10,
-        output_tokens: 20,
-        cached_input_tokens: 3,
-        reasoning_output_tokens: 5,
+      mapCodexTokenUsage({
+        totalTokens: 38,
+        inputTokens: 10,
+        cachedInputTokens: 3,
+        outputTokens: 20,
+        reasoningOutputTokens: 5,
       }),
     ).toEqual({ inputTokens: 10, outputTokens: 20, cacheReadTokens: 3 });
+  });
+  it('maps permission outcomes to approval decisions', () => {
+    expect(decisionFromOutcome({ outcome: 'selected', optionId: 'allow' })).toBe('accept');
+    expect(decisionFromOutcome({ outcome: 'selected', optionId: 'allow_always' })).toBe(
+      'acceptForSession',
+    );
+    expect(decisionFromOutcome({ outcome: 'selected', optionId: 'reject' })).toBe('decline');
+    expect(decisionFromOutcome({ outcome: 'cancelled' })).toBe('cancel');
+  });
+});
+
+describe('CodexAdapter approval-policy switching', () => {
+  it('broadcasts the advertised tiers with the new current id on an accepted switch', async () => {
+    const adapter = new CodexAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+
+    // The switch itself needs no live server: it is stored and rides the next turn/start.
+    await adapter.send({ type: 'set-approval-policy', policyId: 'bypassPermissions' });
+    const update = events.find((e) => e.type === 'approval-policy-update');
+    expect(update?.state.currentPolicyId).toBe('bypassPermissions');
+    expect(update?.state.availablePolicies.map((p) => p.policyId)).toEqual([
+      'default',
+      'acceptEdits',
+      'bypassPermissions',
+    ]);
+  });
+
+  it('rejects ids with no codex translation (claude-only tiers included)', async () => {
+    const adapter = new CodexAdapter();
+    await expect(adapter.send({ type: 'set-approval-policy', policyId: 'auto' })).rejects.toThrow(
+      "codex: unknown approval policy 'auto'",
+    );
+  });
+});
+
+/** Captures app-server traffic. By default turns settle synchronously so each prompt runs a full
+ * cycle; with `autoCompleteTurns` off, the test drives `turn/completed` and the `turn/start`
+ * reply separately to exercise their orderings. */
+class FakeCodexServer {
+  readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+  /** Manual mode: in-flight `turn/start` RPCs whose reply the test releases via `respond`. */
+  readonly pendingTurnStarts: Array<{ id: string; respond: () => void }> = [];
+  autoCompleteTurns = true;
+  constructor(private readonly opts: Omit<CodexAppServerOptions, 'binaryPath'>) {}
+  request(method: string, params: unknown): Promise<unknown> {
+    this.requests.push({ method, params: params as Record<string, unknown> });
+    if (method === 'thread/start' || method === 'thread/resume') {
+      return Promise.resolve({ thread: { id: 'thread-1' } });
+    }
+    if (method === 'turn/start') {
+      const id = `turn-${this.requests.length}`;
+      if (this.autoCompleteTurns) {
+        this.completeTurn(id);
+        return Promise.resolve({ turn: { id } });
+      }
+      return new Promise((resolve) => {
+        this.pendingTurnStarts.push({ id, respond: () => resolve({ turn: { id } }) });
+      });
+    }
+    return Promise.resolve({});
+  }
+  completeTurn(id: string): void {
+    this.opts.onNotification('turn/completed', { turn: { id, status: 'completed' } });
+  }
+  setRequestHandler(): void {
+    // Approvals are not exercised here.
+  }
+  close(): void {
+    // Nothing to reap.
+  }
+}
+
+class TestCodex extends CodexAdapter {
+  fakeServers: FakeCodexServer[] = [];
+  autoCompleteTurns = true;
+  configured: 'read-only' | 'workspace-write' | 'danger-full-access' | undefined;
+  protected override startAppServer(
+    opts: Omit<CodexAppServerOptions, 'binaryPath'>,
+  ): Promise<CodexServerHandle> {
+    const server = new FakeCodexServer(opts);
+    server.autoCompleteTurns = this.autoCompleteTurns;
+    this.fakeServers.push(server);
+    return Promise.resolve(server);
+  }
+  protected override readConfiguredSandbox() {
+    return Promise.resolve(this.configured);
+  }
+  turnStarts(): Array<Record<string, unknown>> {
+    return this.fakeServers.flatMap((s) =>
+      s.requests.flatMap((r) => (r.method === 'turn/start' ? [r.params] : [])),
+    );
+  }
+}
+
+describe('CodexAdapter sandbox deferral to config.toml', () => {
+  const start: StartOptions = { kind: 'codex', cwd: '/repo' };
+  const prompt: AgentInput = { type: 'prompt', content: [{ type: 'text', text: 'hi' }] };
+
+  it('omits sandbox overrides while the user has a configured sandbox and no tier was picked', async () => {
+    const adapter = new TestCodex();
+    adapter.configured = 'read-only';
+    await adapter.start(start);
+    const threadStart = adapter.fakeServers[0].requests.find((r) => r.method === 'thread/start');
+    expect(threadStart?.params).not.toHaveProperty('sandbox');
+    expect(threadStart?.params.approvalPolicy).toBe('on-request');
+
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[0]).not.toHaveProperty('sandboxPolicy');
+
+    // An explicit pick applies the preset exactly, config.toml notwithstanding.
+    await adapter.send({ type: 'set-approval-policy', policyId: 'acceptEdits' });
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[1].sandboxPolicy).toMatchObject({ type: 'workspaceWrite' });
+  });
+
+  it('injects the preset sandbox when config.toml leaves it unset', async () => {
+    const adapter = new TestCodex();
+    adapter.configured = undefined;
+    await adapter.start(start);
+    const threadStart = adapter.fakeServers[0].requests.find((r) => r.method === 'thread/start');
+    expect(threadStart?.params.sandbox).toBe('workspace-write');
+
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[0].sandboxPolicy).toMatchObject({ type: 'workspaceWrite' });
+  });
+});
+
+describe('CodexAdapter turn queueing', () => {
+  const start: StartOptions = { kind: 'codex', cwd: '/repo' };
+  const prompt: AgentInput = { type: 'prompt', content: [{ type: 'text', text: 'hi' }] };
+  const settle = () =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+  it("keeps queueing while a drained prompt's turn/start is still in flight", async () => {
+    const adapter = new TestCodex();
+    adapter.autoCompleteTurns = false;
+    await adapter.start(start);
+    const server = adapter.fakeServers[0];
+
+    // Turn A starts; its RPC reply is withheld. A second prompt queues behind it.
+    const firstSend = adapter.send(prompt);
+    await settle();
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()).toHaveLength(1);
+
+    // codex can settle a whole turn before replying to its turn/start: completing A drains the
+    // queued prompt into turn B while A's request is still awaiting its reply.
+    server.completeTurn(server.pendingTurnStarts[0].id);
+    await settle();
+    expect(adapter.turnStarts()).toHaveLength(2);
+
+    // A's late reply lands; its cleanup must not drop B's guard — a third prompt still queues.
+    server.pendingTurnStarts[0].respond();
+    await firstSend;
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()).toHaveLength(2);
+
+    // B settles and replies: the queued third prompt drains as turn C.
+    server.completeTurn(server.pendingTurnStarts[1].id);
+    server.pendingTurnStarts[1].respond();
+    await settle();
+    expect(adapter.turnStarts()).toHaveLength(3);
+  });
+});
+
+describe('diffContentFromUnified', () => {
+  it('splits hunks into old/new sides with context', () => {
+    const diff = [
+      'diff --git a/src/a.ts b/src/a.ts',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1,3 +1,3 @@',
+      ' const a = 1;',
+      '-const b = 2;',
+      '+const b = 3;',
+      ' const c = 4;',
+    ].join('\n');
+    expect(diffContentFromUnified('src/a.ts', diff)).toEqual([
+      {
+        type: 'diff',
+        path: 'src/a.ts',
+        oldText: 'const a = 1;\nconst b = 2;\nconst c = 4;',
+        newText: 'const a = 1;\nconst b = 3;\nconst c = 4;',
+      },
+    ]);
+  });
+  it('emits one block per hunk', () => {
+    const diff = ['@@ -1 +1 @@', '-a', '+b', '@@ -10 +10 @@', '-x', '+y'].join('\n');
+    expect(diffContentFromUnified('f', diff)).toEqual([
+      { type: 'diff', path: 'f', oldText: 'a', newText: 'b' },
+      { type: 'diff', path: 'f', oldText: 'x', newText: 'y' },
+    ]);
+  });
+  it('renders a pure insertion without oldText, like a Write', () => {
+    const diff = ['@@ -0,0 +1,2 @@', '+line 1', '+line 2', ''].join('\n');
+    expect(diffContentFromUnified('new.ts', diff)).toEqual([
+      { type: 'diff', path: 'new.ts', oldText: undefined, newText: 'line 1\nline 2' },
+    ]);
+  });
+  it('falls back to all-added content when no hunk header is present', () => {
+    expect(diffContentFromUnified('raw.txt', 'plain content')).toEqual([
+      { type: 'diff', path: 'raw.txt', newText: 'plain content' },
+    ]);
   });
 });
 
@@ -283,6 +555,22 @@ describe('CodexAdapter history', () => {
               model: 'gpt-test',
               cli_version: '1.2.3',
               git: { branch: 'main' },
+            },
+          },
+          {
+            // Machine-injected context codex persists as a user-role message; must not replay
+            // as a user bubble or count as a conversation message.
+            timestamp: '2026-06-17T01:00:30.000Z',
+            type: 'response_item',
+            payload: {
+              id: 'synthetic-1',
+              role: 'user',
+              content: [
+                {
+                  type: 'input_text',
+                  text: '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>',
+                },
+              ],
             },
           },
           {

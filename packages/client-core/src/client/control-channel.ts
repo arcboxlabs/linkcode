@@ -6,6 +6,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentRuntimes,
   ContentBlock,
   EffortLevel,
   GitDiff,
@@ -13,8 +14,11 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetId,
+  ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -180,6 +184,15 @@ export class ControlChannel {
     return this.send(sessionId, { type: 'permission-response', requestId, outcome });
   }
 
+  /** Answer a pending question-request. */
+  respondQuestion(
+    sessionId: SessionId,
+    requestId: string,
+    outcome: QuestionOutcome,
+  ): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'question-response', requestId, outcome });
+  }
+
   stopSession(sessionId: SessionId): Promise<RequestAck> {
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'session.stop',
@@ -250,6 +263,35 @@ export class ControlChannel {
     return this.sendCorrelated('configGet', (clientReqId) => ({
       kind: 'config.get',
       clientReqId,
+    }));
+  }
+
+  /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
+  listAgentRuntimes(): Promise<AgentRuntimes> {
+    return this.sendCorrelated('agentRuntimeList', (clientReqId) => ({
+      kind: 'agent-runtime.list',
+      clientReqId,
+    }));
+  }
+
+  /** Managed-asset store status: wanted versions and what is installed (CODE-111). */
+  listAssets(): Promise<ManagedAssetStatus[]> {
+    return this.sendCorrelated('assetList', (clientReqId) => ({
+      kind: 'asset.list',
+      clientReqId,
+    }));
+  }
+
+  /**
+   * Install the wanted version of a managed asset. Resolves when the install settles — minutes
+   * for a real download (no pending timeout exists; a disconnect rejects). Progress meanwhile
+   * streams via the `asset.progress` broadcast.
+   */
+  ensureAsset(id: ManagedAssetId): Promise<ManagedAssetStatus> {
+    return this.sendCorrelated('assetEnsure', (clientReqId) => ({
+      kind: 'asset.ensure',
+      clientReqId,
+      id,
     }));
   }
 

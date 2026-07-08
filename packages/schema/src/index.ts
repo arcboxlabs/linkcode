@@ -9,6 +9,7 @@
  */
 
 export * from './agent';
+export * from './agent-runtime';
 export * from './artifact';
 export * from './common';
 export * from './content';
@@ -16,9 +17,11 @@ export * from './daemon-runtime';
 export * from './file';
 export * from './git';
 export * from './history';
+export * from './managed-asset';
 export * from './permission';
 export * from './plan';
 export * from './provider-config';
+export * from './question';
 export * from './script';
 export * from './session';
 export * from './terminal';

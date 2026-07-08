@@ -39,6 +39,15 @@
     margin: 0;
   }
 
+  /* Native scrollbars: transparent track (the default opaque one clashes with the
+     translucent desktop shell) and a thin thumb matching coss-ui's ScrollArea
+     (`bg-foreground/20`). base-ui's own scrollbar-hiding style is unlayered, so it
+     still wins over this layered rule. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent) transparent;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);

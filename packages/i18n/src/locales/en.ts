@@ -10,6 +10,8 @@ export const en = {
       connected: 'Connected',
       connecting: 'Connecting to the daemon…',
       error: 'Unable to connect to the daemon ({url}). Run {command} first.',
+      errorManaged:
+        'Unable to connect to the daemon ({url}). It starts automatically with the app — retry, and restart the app if this keeps failing.',
       retry: 'Retry',
     },
     conversation: {
@@ -30,7 +32,16 @@ export const en = {
       kindExecute: 'Run',
       kindThink: 'Think',
       kindFetch: 'Fetch',
+      kindTask: 'Subagent',
       kindOther: 'Tool',
+    },
+    subagent: {
+      label: 'Subagent',
+      steps: '{count} steps',
+      viewTranscript: 'View full transcript',
+      viewerTitle: 'Subagents',
+      empty: 'No subagents in this conversation yet',
+      failedBadge: 'Failed',
     },
     toolGroup: {
       explore: 'Explored',
@@ -79,6 +90,35 @@ export const en = {
       previous: 'Previous prompt',
       next: 'Next prompt',
       customPlaceholder: 'Tell Codex what to do differently',
+    },
+    question: {
+      badge: 'Question',
+      progress: '{current}/{total}',
+      next: 'Next',
+      customPlaceholder: 'Type a custom answer',
+    },
+    agentRuntime: {
+      missingTitle: '{agent} is not ready yet',
+      missingBody:
+        'No usable {agent} CLI on this machine — download the paired version to get started.',
+      missingNoDownload:
+        'No usable {agent} CLI on this machine, and it cannot be downloaded automatically yet.',
+      download: 'Download',
+      downloadingTitle: 'Downloading {agent}…',
+      downloadedOf: '{received} / {total} MB',
+      downloadedSoFar: '{received} MB downloaded',
+      failedTitle: '{agent} download failed',
+      retry: 'Retry',
+      unverifiedTitle: '{agent} version is unverified',
+      unverifiedBody:
+        'The detected {version} has not been verified against this app. Download the paired version, or continue with the current one.',
+      unknownVersion: 'unknown version',
+      continueUnverified: 'Continue with current version',
+      downloadPaired: 'Download paired version',
+      badgeMissing: 'Not installed',
+      badgeDownloading: 'Downloading',
+      badgeFailed: 'Download failed',
+      badgeUnverified: 'Unverified',
     },
     composer: {
       placeholderDisconnected: 'Create or pick a thread first',

@@ -4,7 +4,14 @@ import { useTranslations } from 'use-intl';
 import { useWorkbenchRuntimeRetry, useWorkbenchRuntimeStatus } from '../runtime/provider';
 
 /** Default connection-gate fallback: shown while the transport connects or after it errored. */
-export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): React.ReactNode {
+export function ConnectionState({
+  daemonUrl,
+  managedHost = false,
+}: {
+  daemonUrl?: string;
+  /** The host restarts itself (desktop supervisor) — drop the "run this command" hint. */
+  managedHost?: boolean;
+}): React.ReactNode {
   const status = useWorkbenchRuntimeStatus();
   const retry = useWorkbenchRuntimeRetry();
   const t = useTranslations('workbench.connection');
@@ -18,10 +25,12 @@ export function ConnectionState({ daemonUrl }: { daemonUrl?: string }): React.Re
         ) : (
           <div className="space-y-3">
             <p className="text-destructive-foreground text-sm">
-              {t('error', {
-                url: daemonUrl ?? DAEMON_DEFAULT_URL,
-                command: common('daemonCommand'),
-              })}
+              {managedHost
+                ? t('errorManaged', { url: daemonUrl ?? DAEMON_DEFAULT_URL })
+                : t('error', {
+                    url: daemonUrl ?? DAEMON_DEFAULT_URL,
+                    command: common('daemonCommand'),
+                  })}
             </p>
             <Button variant="outline" size="sm" onClick={retry}>
               {t('retry')}

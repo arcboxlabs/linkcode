@@ -4,6 +4,7 @@ import path from 'node:path';
 import { env } from 'node:process';
 import type {
   CanUseTool,
+  HookCallback,
   PermissionMode,
   PermissionResult,
   Query,
@@ -33,12 +34,14 @@ import type {
   ToolCall,
   ToolCallContent,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { EffortLevelSchema, textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { z } from 'zod';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
+  asMessageId,
   boundedLimit,
   compactRecord,
   cursorFromFetched,
@@ -49,18 +52,45 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
+import { agentRuntimeProber } from '../probe';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
-type AssistantMessage = Extract<SDKMessage, { type: 'assistant' }>['message'];
-type UserMessage = Extract<SDKMessage, { type: 'user' }>['message'];
+type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
+type AssistantMessage = AssistantSDKMessage['message'];
+type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
+
+/** Claude's subagent-spawning tool: named `Agent` in current CLIs (verified live against the
+ * vendored 0.3.x), `Task` in older transcripts — history replay still meets the old name. Exact
+ * match on purpose: the shared name-based classifier stays untouched so other adapters (e.g.
+ * opencode's lowercase `task`) opt in deliberately rather than by regex accident. */
+function claudeToolKind(name: string): ToolCall['kind'] {
+  return name === 'Task' || name === 'Agent' ? 'task' : toolKindFromName(name);
+}
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
   { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ];
+
+/** AskUserQuestion's tool input (the CLI caps questions at 4 and options at 2–4; only what the
+ * client renders is required here, so benign vendor additions don't break the parse). */
+const ASK_USER_QUESTION_INPUT = z.object({
+  questions: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        header: z.string().optional(),
+        multiSelect: z.boolean().optional(),
+        options: z
+          .array(z.object({ label: z.string().min(1), description: z.string().optional() }))
+          .min(1),
+      }),
+    )
+    .min(1),
+});
 
 /**
  * The approval-policy axis claude-code advertises; ids map 1:1 onto the SDK's `PermissionMode` and
@@ -167,6 +197,7 @@ class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
         continue;
       }
       if (this.closed) return;
+      // eslint-disable-next-line no-await-in-loop -- queue iterator: the await IS the next-message signal
       const next = await new Promise<SDKUserMessage | null>((resolve) => {
         this.waiting = resolve;
       });
@@ -268,6 +299,26 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
+  /** Reflect the served model the CLI reports — the init message and every assistant frame carry it,
+   * so the client shows the true model even when the session started without a requested one. Dedup
+   * lives in `emitModel`. */
+  private syncModel(model: string | undefined): void {
+    if (model) this.emitModel(model);
+  }
+
+  /** Read-only `Stop` hook that learns the CLI's *resolved* effort (after any per-model downgrade)
+   * so a session the user never set an effort on still reflects a real value instead of a
+   * placeholder. Skipped once the user picks explicitly: that pick — including `ultracode`/`max`,
+   * which this hook's base-level field can't express — is authoritative and emitted by `onSetEffort`.
+   * The `effort` field is absent on models without effort support, in which case nothing is emitted. */
+  private readonly reflectEffortHook: HookCallback = (input) => {
+    if (this.effort === undefined && input.effort?.level) {
+      const parsed = EffortLevelSchema.safeParse(input.effort.level);
+      if (parsed.success) this.emitEffort(parsed.data);
+    }
+    return Promise.resolve({ continue: true });
+  };
+
   override async resumeHistory(
     opts: AgentHistoryResumeOptions,
     startOpts: StartOptions,
@@ -301,19 +352,45 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
-    const [info, messages] = await Promise.all([
+    const [info, messages, subagentEvents] = await Promise.all([
       mod.getSessionInfo(opts.historyId),
       mod.getSessionMessages(opts.historyId, {
         limit: limit + 1,
         offset,
       }),
+      readSubagentTranscripts(mod, opts.historyId),
     ]);
     const historyId = opts.historyId;
+    const mapper = createClaudeHistoryEventMapper(historyId);
+    const events: AgentHistoryEvent[] = [];
+    // Splice each subagent's transcript in right after its spawn announce, so the seeded order
+    // matches the live stream and the children land inside the parent's turn (the UI's per-segment
+    // partition depends on that). Keyed off the announce (in_progress) only — the later settle
+    // re-emits the same tool-call id in a terminal state. Recursive: a subagent's own transcript
+    // can announce a further spawn, whose transcript must nest the same way (delete-before-recurse
+    // also guards against a malformed self-referential parent id looping forever).
+    const pushWithSubagents = (event: AgentHistoryEvent): void => {
+      events.push(event);
+      if (
+        event.event.type === 'tool-call' &&
+        event.event.toolCall.kind === 'task' &&
+        event.event.toolCall.status === 'in_progress'
+      ) {
+        const children = subagentEvents.get(event.event.toolCall.toolCallId);
+        if (children) {
+          subagentEvents.delete(event.event.toolCall.toolCallId);
+          for (const child of children) pushWithSubagents(child);
+        }
+      }
+    };
+    for (const message of messages.slice(0, limit)) {
+      for (const event of mapper(message)) pushWithSubagents(event);
+    }
     return {
       session: info
         ? mapClaudeHistorySession(info)
         : { historyId, kind: this.kind, title: historyId },
-      events: messages.slice(0, limit).flatMap(createClaudeHistoryEventMapper(historyId)),
+      events,
       cursor: cursorFromFetched(offset, messages.length, limit),
     };
   }
@@ -347,6 +424,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       options: {
         cwd: opts.cwd,
         model: opts.model,
+        // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
+        // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
+        pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),
         // `options.effort` becomes the CLI's `--effort` flag, which outranks the flag-settings
         // layer for the process's whole lifetime — passing it would pin the level and turn every
         // later applyFlagSettings switch into a silent no-op. Only `max` goes in here (the
@@ -354,6 +434,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // apply through the switchable channel right after creation.
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
+        // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
+        // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
+        forwardSubagentText: true,
+        // Read-only Stop hook: learns the resolved effort level so a session the user never set an
+        // effort on reflects a real value instead of a placeholder (see `reflectEffortHook`).
+        hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
         canUseTool: this.canUseTool,
         // Resolved in onStart from settings.json `permissions.defaultMode` (see settingsDefaultMode)
         // — the SDK-driven CLI does not apply that setting itself. `undefined` only when neither the
@@ -435,9 +521,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (!this.q) {
       invariant(this.opts, 'claude-code: session not started');
       this.opts.model = model;
-      return;
+    } else {
+      await this.q.setModel(model);
     }
-    await this.q.setModel(model);
+    // Reflect the pick immediately (the CLI accepted it, or it will apply at the next Query
+    // creation); the served id off the next assistant frame reconciles it via `syncModel`.
+    this.emitModel(model);
   }
 
   /** Live switch rides the streaming-input control request `Query#setPermissionMode`; before the
@@ -465,6 +554,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (effort === previous) return;
     if (!this.q) {
       this.effort = effort; // No process yet; onPrompt's Query creation applies it.
+      this.emitEffort(effort);
       return;
     }
     if (effort !== 'max' && previous !== 'max') {
@@ -472,9 +562,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // Committed only after the CLI accepted the switch: a rejected one (ultracode without
       // dynamic workflows enabled) must not linger and get replayed onto a later rebuilt Query.
       this.effort = effort;
+      this.emitEffort(effort);
       return;
     }
     this.effort = effort;
+    this.emitEffort(effort);
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
     // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
     const q = this.q;
@@ -495,11 +587,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {
+    if (toolName === 'AskUserQuestion') {
+      const questions = ASK_USER_QUESTION_INPUT.safeParse(input);
+      // A parse failure means the pinned CLI's tool shape drifted; degrade to the generic
+      // allow/deny ask (allow then executes with empty answers) instead of failing the turn.
+      if (questions.success) {
+        return this.askUserQuestion(questions.data.questions, input, options.toolUseID);
+      }
+    }
     const outcome = await this.requestPermission(
       {
         toolCallId: options.toolUseID,
         title: options.title ?? toolName,
-        kind: toolKindFromName(toolName),
+        kind: claudeToolKind(toolName),
         rawInput: input,
       },
       PERMISSION_OPTIONS,
@@ -510,6 +610,55 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (allowed) return { behavior: 'allow', updatedInput: input } satisfies PermissionResult;
     return { behavior: 'deny', message: 'Denied by the user' } satisfies PermissionResult;
   };
+
+  /** AskUserQuestion executes with whatever answers the host writes into its input: the CLI's
+   * `checkPermissions` always asks, and an allow that carries no `answers` "succeeds" with every
+   * question reported as unanswered. So the ask surfaces as a structured question card, and the
+   * user's picks are folded back into `updatedInput.answers` keyed by the question's own text
+   * (the CLI's answer-record key; multi-select and free-text answers both ride the same record,
+   * multi-select joined with ', ' per the tool's output contract). */
+  private async askUserQuestion(
+    questions: z.infer<typeof ASK_USER_QUESTION_INPUT>['questions'],
+    input: Record<string, unknown>,
+    toolUseID: string,
+  ): Promise<PermissionResult> {
+    const outcome = await this.requestQuestion(
+      {
+        toolCallId: toolUseID,
+        title: 'AskUserQuestion',
+        kind: claudeToolKind('AskUserQuestion'),
+        rawInput: input,
+      },
+      questions.map((question, qi) => ({
+        questionId: `q${qi}`,
+        prompt: question.question,
+        header: question.header,
+        multiSelect: question.multiSelect ?? false,
+        options: question.options.map((option, oi) => ({
+          optionId: `o${oi}`,
+          label: option.label,
+          description: option.description,
+        })),
+      })),
+    );
+    if (outcome.outcome === 'cancelled') {
+      return { behavior: 'deny', message: 'User declined to answer questions' };
+    }
+    const byQuestionId = new Map(outcome.answers.map((answer) => [answer.questionId, answer]));
+    const answers: Record<string, string> = {};
+    for (const [qi, question] of questions.entries()) {
+      const answer = byQuestionId.get(`q${qi}`);
+      if (!answer) continue;
+      const selected = new Set(answer.selectedOptionIds);
+      const labels: string[] = [];
+      for (const [oi, option] of question.options.entries()) {
+        if (selected.has(`o${oi}`)) labels.push(option.label);
+      }
+      const value = answer.customText?.trim() || labels.join(', ');
+      if (value) answers[question.question] = value;
+    }
+    return { behavior: 'allow', updatedInput: { ...input, answers } };
+  }
 
   protected handleMessage(msg: SDKMessage): void {
     // Every SDK message carries the CLI's session id — the provider-local history id this live run
@@ -524,20 +673,26 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
-        this.handleStreamEvent(msg.event);
+        this.handleStreamEvent(msg.event, msg.parent_tool_use_id);
         break;
       case 'assistant':
-        this.handleAssistant(msg.message);
+        this.handleAssistant(msg);
         break;
       case 'user':
-        this.handleUser(msg.message);
+        this.handleUser(msg);
         break;
       case 'result':
         this.handleResult(msg);
         break;
       case 'system':
+        // task_started/task_updated/task_progress intentionally fall through: a card's state derives
+        // entirely from the Task tool_use/tool_result pair; consuming them (task_id ↔ tool_use_id
+        // correlation) only pays off once run_in_background tasks are supported.
         if (msg.subtype === 'permission_denied') this.handlePermissionDenied(msg);
-        else if (msg.subtype === 'init') this.syncApprovalPolicy(msg.permissionMode);
+        else if (msg.subtype === 'init') {
+          this.syncApprovalPolicy(msg.permissionMode);
+          this.syncModel(msg.model);
+        }
         break;
       default:
         break;
@@ -555,7 +710,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitTool({
       toolCallId: msg.tool_use_id,
       title: msg.tool_name,
-      kind: toolKindFromName(msg.tool_name),
+      kind: claudeToolKind(msg.tool_name),
       status: 'failed',
       content: [
         ...diff,
@@ -564,14 +719,25 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
   }
 
-  private handleStreamEvent(event: StreamEvent): void {
+  private handleStreamEvent(event: StreamEvent, parentToolUseId: string | null): void {
+    // Subagent narration renders message-level from the forwarded assistant frames
+    // (handleSubagentAssistant); consuming its deltas here would render the same text twice.
+    if (parentToolUseId) return;
     if (event.type !== 'content_block_delta') return;
     const delta = event.delta;
     if (delta.type === 'text_delta') this.emitAssistantText(delta.text, this.messageId);
     else if (delta.type === 'thinking_delta') this.emitThought(delta.thinking, this.thoughtId);
   }
 
-  private handleAssistant(message: AssistantMessage): void {
+  private handleAssistant(msg: AssistantSDKMessage): void {
+    if (msg.parent_tool_use_id) {
+      this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id, msg.uuid);
+      return;
+    }
+    const message = msg.message;
+    // Every assistant frame carries the served model — the source of truth for a mid-session switch
+    // (`init` fires only at Query creation, so it can't catch a live `setModel`).
+    this.syncModel(message.model);
     let calledTool = false;
     for (const block of message.content) {
       if (block.type === 'tool_use') {
@@ -581,7 +747,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         this.emitTool({
           toolCallId: block.id,
           title: block.name,
-          kind: toolKindFromName(block.name),
+          kind: claudeToolKind(block.name),
           status: 'in_progress',
           content: diff,
           rawInput: block.input,
@@ -596,12 +762,43 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
+   * A subagent's assistant frame (`parent_tool_use_id` set): its tool calls carry the spawning Task's
+   * id, and its text/thinking — forwarded whole via `forwardSubagentText` — render message-level under
+   * the frame's own uuid. It never touches the main `messageId`/`thoughtId` cursors and never calls
+   * `freshSegment()`, so a subagent running mid-turn cannot break the main agent's streaming bubble.
+   * (The uuid doubles as the history mapper's id, so a live turn and a later cold-resume seed converge.)
+   */
+  private handleSubagentAssistant(message: AssistantMessage, parent: string, uuid: string): void {
+    for (const block of message.content) {
+      // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
+      if (block.type === 'tool_use') {
+        const diff = editDiffContent(block.name, block.input);
+        if (diff) this.pendingEditDiffs.set(block.id, diff);
+        this.emitTool({
+          toolCallId: block.id,
+          parentToolCallId: parent,
+          title: block.name,
+          kind: claudeToolKind(block.name),
+          status: 'in_progress',
+          content: diff,
+          rawInput: block.input,
+          locations: locationsFromToolInput(block.input),
+        });
+      } else if (block.type === 'text') {
+        this.emitAssistantText(block.text, asMessageId(uuid), parent);
+      } else if (block.type === 'thinking') {
+        this.emitThought(block.thinking, asMessageId(`${uuid}:think`), parent);
+      }
+    }
+  }
+
+  /**
    * Tool results come back on the *user* message (Claude's API pairs every `tool_use` with a
    * `tool_result`). This is also where a denied permission lands: the SDK synthesizes an `is_error`
    * result with "Denied by the user", so the same branch settles success, failure, and deny alike.
    */
-  private handleUser(message: UserMessage): void {
-    const content = message.content;
+  private handleUser(msg: UserSDKMessage): void {
+    const content = msg.message.content;
     if (typeof content === 'string') return;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
@@ -609,6 +806,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.pendingEditDiffs.delete(block.tool_use_id);
       this.emitTool({
         toolCallId: block.tool_use_id,
+        // Re-stated on settle so the parent link survives even if the announce was never seen
+        // (e.g. it sat beyond a history read's page window). Null for main-agent results.
+        parentToolCallId: msg.parent_tool_use_id ?? undefined,
         status: block.is_error === true ? 'failed' : 'completed',
         content: [...diff, ...toolResultContent(block.content)],
         rawOutput: block.content,
@@ -704,6 +904,30 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
 }
 
 /**
+ * Subagent transcripts live beside the main one (`subagents/agent-{id}.jsonl`) and are not part of
+ * `getSessionMessages`. Every row `getSubagentMessages` returns carries `parent_tool_use_id` — the
+ * spawning Task/Agent tool_use id (verified against the vendored SDK's on-disk format) — so a plain
+ * run through the history mapper reproduces the same parent-linked events the live stream emits.
+ * Keyed by that parent id for splicing in after the spawn announce.
+ */
+async function readSubagentTranscripts(
+  mod: typeof import('@anthropic-ai/claude-agent-sdk'),
+  sessionId: string,
+): Promise<Map<string, AgentHistoryEvent[]>> {
+  const agentIds = await mod.listSubagents(sessionId);
+  const byParent = new Map<string, AgentHistoryEvent[]>();
+  await Promise.all(
+    agentIds.map(async (agentId) => {
+      const rows = await mod.getSubagentMessages(sessionId, agentId, { limit: 1000 });
+      const parent = rows.find((row) => row.parent_tool_use_id !== null)?.parent_tool_use_id;
+      if (!parent) return;
+      byParent.set(parent, rows.flatMap(createClaudeHistoryEventMapper(asHistoryId(sessionId))));
+    }),
+  );
+  return byParent;
+}
+
+/**
  * Stateful per-read mapper: correlates each `tool_use` announce with the `tool_result` that later
  * settles it, replaying the same announce/settle full-snapshot pairs the live path emits — under
  * the provider's `toolu_` ids, so a seeded timeline and live re-emits of the same call converge
@@ -723,17 +947,27 @@ export function createClaudeHistoryEventMapper(
     if (message.type !== 'user' && message.type !== 'assistant') return [];
     const events: AgentHistoryEvent[] = [];
     const blocks = messageContentBlocks(message.message);
+    // Subagent transcript rows carry the spawning Task's tool_use id, same as live frames.
+    const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
-      const text = textHistoryEvent(historyId, 'assistant', message.uuid, message.message);
+      const text = textHistoryEvent(
+        historyId,
+        'assistant',
+        message.uuid,
+        message.message,
+        undefined,
+        parent,
+      );
       if (text) events.push(text);
       for (const block of blocks) {
         if (!isToolUseBlock(block)) continue;
         events.push(
           toolEvent({
             toolCallId: block.id,
+            parentToolCallId: parent,
             title: block.name,
-            kind: toolKindFromName(block.name),
+            kind: claudeToolKind(block.name),
             status: 'in_progress',
             content: editDiffContent(block.name, block.input) ?? [],
             rawInput: block.input,
@@ -749,6 +983,7 @@ export function createClaudeHistoryEventMapper(
       events.push(
         toolEvent({
           toolCallId: block.tool_use_id,
+          parentToolCallId: parent ?? existing?.parentToolCallId,
           // The announce can sit beyond this read's page window; fall back to emitTool's
           // first-sight defaults rather than dropping the settle.
           title: existing?.title ?? block.tool_use_id,
@@ -761,6 +996,9 @@ export function createClaudeHistoryEventMapper(
         }),
       );
     }
+    // A subagent's user rows are only tool_results plus its injected prompt — never something the
+    // user typed; emitting that prompt would fake a user turn inside the nested transcript.
+    if (parent) return events;
     // Tool-result rows are synthetic user messages; only what remains after removing the
     // tool_results is a prompt the user actually typed.
     const promptValue =

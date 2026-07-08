@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { UPDATER_STATUS_CHANNEL } from '@linkcode/ipc';
+import { DAEMON_RUNTIME_CHANGED_CHANNEL, UPDATER_STATUS_CHANNEL } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
 import { BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -10,6 +10,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import icon from '../../../../assets/icon-dock.png?asset';
 import { desktopBackdropOptions, desktopBackgroundColor } from './appearance';
 import { APP_NAME } from './constants';
+import { watchDaemonRuntime } from './daemon-discovery';
 import { systemContextFor } from './system-context';
 import { onUpdaterStatus } from './updater';
 
@@ -25,6 +26,13 @@ export function createDesktopWindow(): BrowserWindow {
     if (!win.isDestroyed()) win.webContents.send(UPDATER_STATUS_CHANNEL, status);
   });
   win.once('closed', unsubscribeUpdater);
+
+  // Push daemon runtime-file changes so the renderer rediscovers the endpoint immediately —
+  // a daemon that restarts on a hunted port would otherwise be unreachable until app restart.
+  const unwatchRuntime = watchDaemonRuntime(() => {
+    if (!win.isDestroyed()) win.webContents.send(DAEMON_RUNTIME_CHANGED_CHANNEL);
+  });
+  win.once('closed', unwatchRuntime);
 
   return win;
 }

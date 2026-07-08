@@ -44,6 +44,7 @@ export function textHistoryEvent(
   itemId: string | undefined,
   value: unknown,
   ts?: Timestamp,
+  parentToolCallId?: string,
 ): AgentHistoryEvent | undefined {
   const text = textFromUnknown(value);
   if (text.trim().length === 0) return undefined;
@@ -56,7 +57,7 @@ export function textHistoryEvent(
     event:
       role === 'user'
         ? { type: 'user-message', messageId, content: [textBlock(text)] }
-        : { type: 'agent-message-chunk', messageId, content: textBlock(text) },
+        : { type: 'agent-message-chunk', messageId, parentToolCallId, content: textBlock(text) },
   };
 }
 

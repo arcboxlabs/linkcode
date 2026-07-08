@@ -1,15 +1,52 @@
 # apps/desktop — Electron shell
 
-Electron app: `src/main` (main process, Node), `src/preload` (context-isolated bridge),
-and `src/renderer` (the Vite + React Router renderer). The renderer connects to the
-`daemon` over `transport`, exactly like webview; the front-end conventions in
-[`.claude/rules/frontend.md`](../../.claude/rules/frontend.md) govern `src/renderer` —
-read them when touching the renderer. The rules below are desktop-only — the **system plane**.
+Electron app: `src/main` (main process, Node), `src/preload` (context-isolated, sandboxed bridge),
+and `src/renderer` (Vite + React Router SPA). The renderer connects to the `daemon` over
+`transport`, exactly like webview. Read [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md)
+when touching `src/renderer`; release/signing/notarization → [`docs/RELEASE.md`](../../docs/RELEASE.md);
+run/test/E2E, the dev-shell procedure, and daemon-log locations → [`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md).
+The rules below are desktop-only — the **system plane**.
+
+## System plane
 
 - **System plane = TypeSafe IPC only** (`@linkcode/ipc`; tRPC is the default impl). IPC carries window / OS / native-UI operations between main and renderer — **never business data**. Sessions, agent events, and everything in `@linkcode/schema` travel over the `transport`, never over IPC.
 - **Main vs renderer.** `src/main/**` is Node — no coss-ui / React conventions apply there. Only `src/renderer/**` is the SPA the front-end rule governs.
-- **The preload bridge stays dependency-light.** `src/preload/index.ts` wires `@linkcode/ipc/electron-renderer` over electron's `contextBridge`/`ipcRenderer` and nothing more; do **not** pull heavy runtime deps (e.g. `zod`) into the context-isolated preload. Verify any preload/IPC change by actually running the desktop app — type-checking alone won't catch a broken bridge.
 - **Desktop owns only desktop integration.** Keep native chrome, traffic-light/backdrop behavior, desktop-only layout adapters, desktop transport construction, and `SystemBridge` reads here. Move reusable workbench/sidebar/chat presentation to `packages/ui`; move data-plane/runtime containers to `packages/workbench`.
-- **Pass system data down as props.** If shared UI needs app version, platform, file paths from a picker, or another system-plane value, read it once in desktop and pass a plain value/callback to shared code. Do not keep a whole component in desktop just because one prop comes from IPC.
-- **Use Electron/Node as the system source of truth.** Platform checks should come from main-process `process.platform` through `SystemBridge`, not renderer browser heuristics such as `navigator.platform`.
-- **Do not import app code from desktop renderer through another app.** Desktop may depend on `packages/workbench` and `packages/ui`; it must not import `@linkcode/webview` to reuse app roots, providers, transports, or shells.
+- **Pass system data down as props.** If shared UI needs the app version, platform, a picked file path, or another system-plane value, read it once in desktop and pass a plain value/callback to shared code. Do not keep a whole component in desktop just because one prop comes from IPC.
+- **Use Electron/Node as the system source of truth.** Platform checks come from main-process `process.platform` through `SystemBridge`, not renderer heuristics such as `navigator.platform`.
+- **Do not import app code through another app.** Desktop may depend on `packages/workbench` and `packages/ui`; it must not import `@linkcode/webview` to reuse app roots, providers, transports, or shells.
+
+## Packaging & asar invariants
+
+- **`electron-builder.yml` is the packaging config** (YAML, not a `package.json` build key). `electron-vite build` compiles into `out/`; electron-builder only wraps `out/**` + `package.json`. `directories.output=release` must equal `OUTPUT_DIR` in `build-desktop.yml`; `buildResources=build-resources` (NOT `build/`, which is a gitignored turbo output). `electronVersion` is hardcoded (electron-builder can't read pnpm's `catalog:` protocol) — the pinned number and its sync rule live in [`docs/RELEASE.md`](../../docs/RELEASE.md). `package:devshell` packs with `electron-builder.devshell.yml`; there is no `dist` script (release packaging is CI-only).
+- **`extraResources` ship real executables OUTSIDE the asar — the OS cannot exec an asar member:** `sidecar/${arch}` (the `linkcode-pty` PTY sidecar). `sidecar/` and `release/` are gitignored, so a fresh clone has none until staged; `pnpm -F @linkcode/desktop stage:host-runtime` builds the daemon + stages the sidecar. **Agent CLI binaries do not ship** (CODE-114): `files` globs exclude the SDK platform packages from the asar (each is ~220 MB, host-arch only — broken cross-arch anyway), and the daemon spawns a detected user install or a managed download instead (resolution in [`packages/agent-adapter/AGENTS.md`](../../packages/agent-adapter/AGENTS.md)); `verify-artifacts.mts` fails the build if a platform package or `Resources/agent-bin` sneaks back in, or any artifact exceeds 200 MB.
+- **The bundled daemon comes from the `bundle-daemon-artifact` plugin** in `electron.vite.config.ts`: it copies `apps/daemon/dist/index.js` → `out/daemon/index.mjs` (renamed `.mjs` because it leaves the daemon's `type=module` scope) and `apps/daemon/drizzle` → `out/drizzle`. It throws `` apps/daemon/dist is missing — run `pnpm -F @linkcode/daemon build` first `` if the daemon wasn't built; turbo `^build` guarantees ordering. `instrument.js` (Sentry) is deliberately not shipped.
+- **`linkcode://` deep-link registration differs by build path.** Packaged builds register it via the `electron-builder.yml` `protocols` block (macOS Info.plist + Windows installer); dev shells register it at runtime via `setAsDefaultProtocolClient` (`cloud-auth/client.ts`). OAuth callback routing therefore depends on how the app was shipped.
+
+## Packaged-only launch crashes (CODE-101)
+
+Both fail only in packaged builds, produce no error, and are invisible to typecheck and `electron-vite build` — verify by launching the packaged app.
+
+- **Workspace packages export raw TS, so they MUST be bundled into main/preload, never externalized.** A leftover `require` resolves to a `.ts` file inside the asar and throws `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` at launch. `bundleWorkspace.exclude` in `electron.vite.config.ts` is derived from every `workspace:*` dep in `package.json` — do not hand-list packages (transitive ones get missed).
+- **electron-builder always writes the manifest's `productName` into the asar `package.json`** (no config, not even `-c.productName`, overrides it), and Electron pins `userData` by that name at startup so `app.setName` can't move it. A dev-shell pack that reuses `LinkCode` silently steals the release build's single-instance lock and exits 0. Main calls `app.setPath('userData', appData/APP_NAME)` explicitly.
+
+## Preload & CSP
+
+- **The preload runs `sandbox: true`; its `require` resolves ONLY Electron built-ins.** Any external dep bundled into the preload (e.g. `zod`) throws `module not found` at runtime, aborting the whole preload so `contextBridge.exposeInMainWorld` never runs and the first screen is blank. Keep `packages/ipc/src/electron-renderer.ts` free of heavy runtime deps: type-only imports and zod-free constant subpaths (e.g. `@linkcode/schema/daemon-runtime-constants` — those constants live on a separate subpath precisely for this) are fine; never import schema modules that execute `zod` (schema definitions, `.parse`/`.safeParse`) — validate in the main process instead. **Verify every preload/IPC change by running desktop — the build marks the dep external and emits the `require` regardless.**
+- **A preload dep that IS needed there is the opposite fix:** add it to `preload.externalizeDeps.exclude` in `electron.vite.config.ts` so it is bundled IN. This is why `@better-auth/electron` is listed there — externalizing it makes the auth bridge silently fail.
+- **The renderer enforces a locked-down `<meta>` CSP in `src/renderer/index.html`.** Every web-content feature needs an explicit minimal widening (a blank iframe/image/PDF with only a console CSP violation is the signature): `wasm-unsafe-eval` (the narrow token, NOT `unsafe-eval`) for shiki/restty WASM; `img-src data:/blob:` for inline file viewers; `frame-src … *.localhost:*` for hosted-artifact iframes; the `*.arcboxusercontent.com` avatar host for the sign-in footer. PDFs additionally need `webPreferences.plugins:true` (`window.ts`) and a `blob:` iframe. `apps/webview/index.html` has **no** CSP meta (browser-served; any CSP is server headers). The restty font-inlining recipe (black screen without `wasm-unsafe-eval`; ghosted glyphs from the CDN-blocked default font) lives in [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md).
+
+## Daemon supervisor
+
+- **`src/main/daemon-supervisor.ts` is PACKAGED-ONLY** (`if (!app.isPackaged) return`) — in dev the desktop app never starts a daemon; run it yourself (see DEVELOPMENT.md). It forks `out/daemon/index.mjs` under Electron's Node via `utilityProcess.fork` (Route A — not `ELECTRON_RUN_AS_NODE`, not a standalone binary), starts it on app-ready before the window, and SIGTERMs it on `before-quit` (Cmd+Q); closing windows (Cmd+W) leaves it running. Gate: `isDaemonManaged() = app.isPackaged && getSettings().daemonUrl === null`. It only spawns — no probe/adoption.
+- **Spawn env:** it spreads `process.env` (PATH/HOME survive), then injects `LINKCODE_PTY_SIDECAR_PATH` from `process.resourcesPath` (warns `pty sidecar missing …; terminals unavailable` if absent). Agent CLI paths need no env: the daemon owns its managed-asset store (`@linkcode/assets`, CODE-111) and resolves spawn paths managed → detected itself. Child stdout → `electron-log` info, stderr → warn; log-file locations are in DEVELOPMENT.md.
+- **Crash-loop giveup:** respawn after 1000ms; a child living <30000ms increments a fast-exit counter; 5 consecutive make it log `daemon keeps exiting (last code N); giving up` and stop. Exit code `DAEMON_EXIT_ALREADY_RUNNING` is not a crash — it logs `another daemon already serves this machine; standing down`.
+
+## Cloud auth
+
+- **Desktop login to LinkCode Cloud** uses `better-auth` `1.7.0-rc.1` + `@better-auth/electron` (both RC), wired in `src/main/cloud-auth/`. `createAuthClient({ baseURL: 'https://api.linkcode.ai' (override `LINKCODE_CLOUD_API_URL`), basePath: '/auth' })` — **not** the client default `/api/auth`; the API mounts better-auth at `/auth`, and a mismatch 404s every auth call. Sign-in runs in the system browser at `https://linkcode.ai/sign-in`, bounces through the central IdP, and deep-links back via `linkcode://`. The renderer never talks to the cloud API — only via preload IPC bridges; the account UI is the prop-driven `HostFooter` in `packages/ui`. Production endpoints are the default even in dev.
+- **Auth traps (real-device only, CI-green):** `setupMain` must run BEFORE `app` is ready (it calls `registerSchemesAsPrivileged`, which throws after ready) — not inside `whenReady().then()`. It is opt-in per feature: the call must be `{ csp:false, scheme:true, bridges:true, getWindow }` — passing only `{csp:false}` silently drops the protocol + IPC handlers, leaving `requestAuth`/`getUser` with no handler. A dev Electron build cannot decrypt a `cloud-auth.json` written by the packaged app (safeStorage/Keychain ACLs are per-binary).
+
+## Dev-shell isolation
+
+- **A local/unpackaged build must be isolated from an installed release on four axes** — app name, `userData` dir, single-instance lock, and OS keychain (safeStorage). `IS_DEV_SHELL` and `APP_NAME` (`LinkCode Dev` vs `LinkCode`) live in `src/main/constants.ts`; a production bundle run by the dev Electron binary is still a dev shell. Skipping any axis clobbers release settings, steals its lock, or poisons its keychain entry; dev and release share `~/.linkcode` and `~/LinkCode` on purpose. Full consequences, procedure, and the keychain cleanup command → [`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md).

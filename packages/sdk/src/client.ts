@@ -1,4 +1,9 @@
-import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
+import type {
+  AssetProgressEvent,
+  AssetSettledEvent,
+  HistoryListClientOptions,
+  HistoryReadClientOptions,
+} from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
   AgentHistoryId,
@@ -6,14 +11,18 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentRuntimes,
   EffortLevel,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetId,
+  ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -150,6 +159,14 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.respondPermission(sessionId, requestId, outcome));
   }
 
+  respondQuestion(
+    sessionId: SessionId,
+    requestId: string,
+    outcome: QuestionOutcome,
+  ): RequestResult<{ ok: true }> {
+    return toResult(this.raw.respondQuestion(sessionId, requestId, outcome));
+  }
+
   /** Read the daemon-owned provider config (data plane). */
   getProviderConfig(): RequestResult<ProvidersConfig> {
     return toResult(this.raw.getProviderConfig());
@@ -158,6 +175,36 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned provider config (data plane). */
   setProviderConfig(providers: ProvidersConfig): RequestResult<{ ok: true }> {
     return toResult(this.raw.setProviderConfig(providers));
+  }
+
+  /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
+  listAgentRuntimes(): RequestResult<AgentRuntimes> {
+    return toResult(this.raw.listAgentRuntimes());
+  }
+
+  /** Managed-asset store status: wanted versions and what is installed (CODE-111). */
+  listAssets(): RequestResult<ManagedAssetStatus[]> {
+    return toResult(this.raw.listAssets());
+  }
+
+  /** Install a managed asset; resolves when the install settles (progress via subscribeAssetProgress). */
+  ensureAsset(id: ManagedAssetId): RequestResult<ManagedAssetStatus> {
+    return toResult(this.raw.ensureAsset(id));
+  }
+
+  /** Broadcast download progress for every in-flight managed install (callers filter by id). */
+  subscribeAssetProgress(cb: (event: AssetProgressEvent) => void): () => void {
+    return this.raw.subscribeAssetProgress(cb);
+  }
+
+  /** Broadcast terminal state of managed installs, including boot-triggered background ones. */
+  subscribeAssetSettled(cb: (event: AssetSettledEvent) => void): () => void {
+    return this.raw.subscribeAssetSettled(cb);
+  }
+
+  /** Pushed whenever the daemon re-probes agent runtimes (a managed agent install landed). */
+  subscribeAgentRuntimesChanged(cb: (runtimes: AgentRuntimes) => void): () => void {
+    return this.raw.subscribeAgentRuntimesChanged(cb);
   }
 
   /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */

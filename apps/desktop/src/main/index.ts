@@ -4,6 +4,7 @@ import { app, BrowserWindow, Menu } from 'electron';
 import { applyThemePreference } from './appearance';
 import { setupCloudAuth } from './cloud-auth/client';
 import { APP_NAME } from './constants';
+import { startDaemonSupervisor } from './daemon-supervisor';
 import { buildAppMenu } from './menu';
 import { getSettings } from './settings';
 import { initAutoUpdates } from './updater';
@@ -14,6 +15,11 @@ Sentry.init({
 });
 
 app.setName(APP_NAME);
+// setName alone is not enough: Electron pins userData from package.json's productName before
+// any app code runs, and electron-builder bakes the release productName ("LinkCode") into the
+// asar even for dev-shell packages. Without this, a packaged dev shell shares the release app's
+// settings and single-instance lock — the second one to start exits silently.
+app.setPath('userData', join(app.getPath('appData'), APP_NAME));
 
 // settings.ts caches settings in memory and rewrites the whole file on save, so two instances
 // would last-write-wins clobber each other. Only one instance may run; a second launch just
@@ -43,6 +49,9 @@ if (app.requestSingleInstanceLock()) {
       if (process.platform === 'darwin' && !app.isPackaged) {
         app.dock?.setIcon(join(__dirname, '../../../../assets/icon-dock.png'));
       }
+      // Before the window: the renderer's first connection attempt then races a daemon that is
+      // already starting instead of one that doesn't exist yet.
+      startDaemonSupervisor();
       // Apply the stored color scheme before the window exists so its chrome paints correctly first time.
       applyThemePreference(getSettings().theme);
       Menu.setApplicationMenu(buildAppMenu());

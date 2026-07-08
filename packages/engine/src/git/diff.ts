@@ -73,6 +73,7 @@ async function resolveBaseRef(cwd: string): Promise<string> {
     if (base.length > 0) return base;
   }
   for (const candidate of ['origin/main', 'origin/master']) {
+    // eslint-disable-next-line no-await-in-loop -- candidates are a precedence list; the first hit wins
     const verify = await git(cwd, 'rev-parse', '--verify', '--quiet', `refs/remotes/${candidate}`);
     if (verify.exitCode === 0) return candidate;
   }
@@ -92,6 +93,7 @@ async function readUntrackedDiff(cwd: string): Promise<{ patch: string; truncate
 
   const parts: string[] = [];
   for (const relPath of capped) {
+    // eslint-disable-next-line no-await-in-loop -- one git subprocess at a time: up to 200 files; unbounded concurrent spawns would thrash
     const part = await readUntrackedFileDiff(cwd, relPath);
     if (part) parts.push(part);
   }

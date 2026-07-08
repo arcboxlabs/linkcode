@@ -1,0 +1,103 @@
+# packages/agent-adapter — vendor coding-agent adapters
+
+`@linkcode/agent-adapter` drives four coding agents through one normalized `AgentAdapter`. It is the deepest vendor-specific layer in the repo: the agent SDKs are fast-moving (claude/pi are 0.x; opencode is 1.x), so read the installed `.d.ts` under `node_modules`, not vendor docs, and verify behavior against the installed SDK — never re-derive it from memory. codex has no JS SDK since the app-server rewrite — its protocol facts must be verified against a live `codex app-server` (the adapter's comments record what codex-cli 0.140.0 actually does).
+
+## Layout
+
+- One native adapter per agent under `src/native/`: `claude-code.ts`, `opencode.ts`, `pi.ts`, and the `codex/` directory module — `adapter.ts`, `app-server.ts` (JSON-RPC client + node_modules binary resolution), `config.ts` (config.toml read), `history.ts` (rollout reads), `unified-diff.ts`. Shared spine: `src/adapter.ts` (the `AgentAdapter` interface + id generators), `src/base.ts` (`BaseAgentAdapter`), `src/registry.ts`, `src/util.ts`, `src/history-util.ts`.
+- CLI runtime probing under `src/probe/`: one `AgentCliProbe` subclass per external-CLI agent (`ClaudeCodeProbe`, `CodexProbe` — known install locations + `--version` vendor-marker verification), orchestrated by `AgentRuntimeProber` (`prober.ts`). The daemon probes the shared `agentRuntimeProber` instance once per boot and serves the result as the `agent-runtime.list` wire resource; adapters resolve their spawn path through `resolveBinary(kind)`.
+- `createAdapter(kind)` in `registry.ts` is the ONLY factory — a `switch` over `AgentKind` ending in foxts `never(kind, 'agent kind')`, so an unhandled kind fails typecheck. **Adding an agent** = new native adapter class + registry case + extend the `AgentKind` enum.
+- Id generators (`adapter.ts`): `nextMessageId()`→`msg-`, `nextToolCallId()`→`tool-`, `nextRequestId()`→`req-` (module counter + `Date.now().toString(36)`). These are the FALLBACK — adapters prefer provider-native ids (claude `toolu_`/message uuid; codex/opencode item/part ids) so live turns and cold-resume history converge by id.
+- Each SDK is lazy-loaded via `loadSdk(name, () => import(...))`; on import failure the adapter emits `AgentEvent {type:'error', code:'sdk-unavailable', recoverable:false}` and rethrows — a missing SDK degrades to a clear error, it does not crash the daemon. codex spawns `codex app-server` instead of importing an SDK; a failed resolution/spawn/handshake emits the same `sdk-unavailable` shape (and reaps the half-started child).
+
+## SDK ↔ vendored-CLI lockstep (hard invariant)
+
+An SDK (or, for codex, this adapter itself) and the native CLI binary form a PAIR speaking a vendor stdio protocol — the exact pair must never drift *silently*. claude-code's SDK↔binary protocol is private, unversioned, and handshake-free; codex's app-server protocol has an `initialize` handshake but no version negotiation, so a drifted binary fails per-method, not up front. The JS package version alone identifies the exact pair (platform `optionalDependencies` are exact-pinned: `@anthropic-ai/claude-agent-sdk-<platform>-<arch>`, `@openai/codex-<platform>-<arch>`).
+
+Spawn-path resolution (`AgentRuntimeProber.resolveBinary`, CODE-110/111/114): **managed** (the daemon's `@linkcode/assets` store install — SDK-pinned exact pair, injected via `setManagedResolver`; a live function, so a background install wins as soon as it lands) → **detected** (user-installed CLI at a known location, version-verified at boot — deliberately a *drifted* pair; forward drift is smoke-verified, e.g. SDK 0.3.179 × claude 2.1.202) → **SDK self-resolution** out of node_modules (dev / standalone daemons; no PATH fallback, resolution failure throws). Packaged apps ship **no** agent binaries since CODE-114 — the compat manifest (CODE-77) will gate detected versions; nightly smoke (CODE-113) keeps the drift window honest.
+
+Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin):
+
+| agent | JS package | version |
+| --- | --- | --- |
+| claude-code | `@anthropic-ai/claude-agent-sdk` | 0.3.179 |
+| codex | `@openai/codex` (CLI carrier — no JS SDK) | 0.140.0 |
+| opencode | `@opencode-ai/sdk` | 1.17.7 |
+| pi | `@earendil-works/pi-coding-agent` | 0.79.6 |
+
+- **Bumping a JS package** moves the exact pair self-resolved in dev; detected user installs are unaffected (their drift is the compat manifest's problem, CODE-77/113). Nothing is staged at package time anymore (CODE-114).
+- Quirk: `@openai/codex-<arch>` is an npm alias for `@openai/codex@<ver>-<arch>`, so querying the registry by the alias name 404s — resolve via the `@openai/codex` version.
+
+## BaseAgentAdapter contract
+
+Every new adapter MUST honor these (`base.ts`); downstream relies on them, they are not conventions:
+
+- **`emitTool(patch)`** merges partial `ToolCallUpdate` patches into a per-`toolCallId` snapshot and emits a COMPLETE `ToolCall` on every change (so downstream can replace-by-id). A tool at `completed`/`failed` is terminal — late updates are ignored; a stray post-teardown event can't revive it.
+- **`teardown()`** (idempotent) sweeps liveness on cancel/stop/abnormal-end: resolves every pending permission ask `{outcome:'cancelled'}` and forces every non-terminal tool to `failed`. A cancelled turn never leaves a stuck tool or a hung permission.
+- **`streamDelta(id, fullText, kind)`** turns a provider's CUMULATIVE per-item text into incremental deltas keyed by item id. opencode reports cumulative and MUST use it; claude/pi/codex emit true incremental deltas and call `emitAssistantText`/`emitThought` directly (codex additionally keeps a per-item length ledger so `item/completed` can backstop deltas the stream dropped). Mixing the two double-renders or drops text.
+- **`freshSegment()`** opens fresh `messageId` AND `thoughtId` cursors; call it at turn start and after EVERY tool call (`buildConversation` buckets `agent-message-chunk` by `messageId`; `message-grouping.test.ts` guards it). A message's `messageId` must stay STABLE across all its deltas (the Pi adapter once minted a new id per delta and broke dedup).
+
+## claude-code (richest adapter)
+
+- **Streaming-input mode** (one persistent `Query` fed by an `AsyncMessageQueue`): the older single-message-per-turn + resume design silently ignored a changed model option on resume, so live model/permission/effort switching is ONLY possible in streaming mode — do not revert to `query()`+resume. Live switches: `Query#setModel`, `Query#setPermissionMode`, `Query#applyFlagSettings`. State is emitted only AFTER the CLI accepts a switch; a rejected one is not rolled back optimistically.
+- **Approval policies** (CODE-78) map 1:1 onto the SDK `PermissionMode` in Claude Desktop's menu order: `default` (Ask), `acceptEdits` (Accept edits), `plan` (Plan mode), `auto` (Auto mode), `bypassPermissions` (Bypass). The SDK's `dontAsk` tier is deliberately off the menu. Claude models permissions and plan as ONE axis, so `plan` rides the approval-policy channel (not the generic set-mode axis codex uses). approval-policy is a locked, orthogonal SECOND axis; the engine caches the latest state and replays it on `session.attach` — without the replay the menu vanishes after reconnect.
+- **Startup permissionMode trap**: the SDK-driven CLI pins startup `permissionMode` to `'default'` unless `options.permissionMode` is passed — unlike the interactive CLI it does NOT read `settings.json` `permissions.defaultMode` itself (verified on the 0.3.179 CLI even with explicit `settingSources`). The adapter resolves the default via `settingsDefaultMode(cwd)` (`.claude/settings.local.json` > `.claude/settings.json` > `~/.claude/settings.json`) and passes it as `options.permissionMode` when the Query is built — never hardcode a default. `allowDangerouslySkipPermissions:true` must ALWAYS be set at startup: it is only the gate for `--allow-dangerously-skip-permissions`, and a later live switch to Bypass is rejected if the gate was off.
+- **Effort** (`low|medium|high|xhigh|max|ultracode`) has two channels: `low`–`xhigh` and `ultracode` switch LIVE via `applyFlagSettings`; `max` cannot travel flag-settings and enters ONLY via the `--effort` startup flag, which then outranks flag-settings for the process lifetime. Pass `options.effort` ONLY for `max` — passing it for any other level pins that level and makes every later live switch a silent no-op. Any transition into or out of `max` closes and rebuilds the Query (resuming under the sniffed session id).
+- **Subagent** (CODE-80): the vendored CLI's spawn tool is named `Agent`, NOT `Task` (only old transcripts use `Task`) — match both exactly or you miss real spawns. Frames carry `parent_tool_use_id`; the adapter forwards subagent text via `forwardSubagentText:true` at message level and DROPS subagent stream deltas to avoid double-render. Cold recovery reads on-disk `subagents/agent-{id}.jsonl`, spliced right AFTER the parent Agent announce (children live in the SAME turn as the parent).
+- **File mutations surface structurally**: an `Edit` tool_use → `{type:'diff', path, oldText, newText}`; `Write` → whole-file `{type:'diff', path, newText}`. The announce-time diff is stashed in `pendingEditDiffs` and re-attached at settle because `emitTool`'s merge replaces content wholesale (else the result text wipes the diff). Auto-denied tools never reach `canUseTool` — the ONLY carrier of the reason is the SDK system message subtype `permission_denied` (`decision_reason`), dropped onto the tool-call as `failed`.
+- **Auth**: `query()` has no `apiKey` option; `config.apiKey` reaches the CLI as `ANTHROPIC_API_KEY` via `options.env`. Because env REPLACES the subprocess environment, the adapter spreads `{...env, ANTHROPIC_API_KEY}` so PATH/HOME survive; omitting env entirely = inherit parent = the login/ChatGPT-auth path. Observed on the 0.3.x CLI (no repo code sets or proves it — re-verify before relying): auto mode needs `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on Bedrock/gateway setups and is free on direct API-key/OAuth.
+
+## codex (CODE-97: app-server)
+
+- **Driven over `codex app-server`** — line-delimited JSON-RPC on stdio, the protocol behind the official VS Code extension; framing carries no `jsonrpc` field (verified against codex-cli 0.140.0). `@openai/codex-sdk` was dropped: its one-shot `codex exec` wrapper had no approval callback, no mid-turn input, no structured diffs, no per-turn overrides. One persistent process per session: prompts are `turn/start` on a single thread; prompts during a running turn QUEUE and drain one per `turn/completed`; `turn/completed` status maps failed→error event, interrupted→`stop:cancelled`, else `stop:end_turn`.
+- **Spawn resolution**: `agentRuntimeProber.resolveBinary('codex')` (managed dir → detected user install) with `resolveCodexBinaryPath()` — the node_modules vendor of `@openai/codex` — as the dev/standalone fallback; packaged apps ship no codex binary (CODE-114). Both live behind the `startAppServer` test seam; `readConfiguredSandbox` is the other seam.
+- **Approvals**: server→client requests `item/commandExecution|fileChange/requestApproval` answer through the shared `requestPermission` round-trip — Allow→`accept`, Always allow→`acceptForSession` (real session-scoped grant), Reject→`decline`, teardown/cancel→`cancel`. The `declined` item status folds into `failed`, like claude-code's denied tool_result.
+- **Approval-policy axis** (three tiers; claude-only ids like `plan`/`auto` reject): `default`→untrusted + workspace-write, `acceptEdits` (initial)→on-request + workspace-write, `bypassPermissions`→never + danger-full-access. Applied per `turn/start` — next-turn semantics, same channel as model/effort; nothing can alter an in-flight turn.
+- **config.toml contract**: `codexConfiguredSandbox()` (`codex/config.ts`; exercised via a throwaway `CODEX_HOME` in `codex-config.test.ts`) reads the active profile's or top-level `sandbox_mode`. Until the user EXPLICITLY picks a tier, a configured sandbox is never overridden — thread/turn requests omit their sandbox override so codex's own resolution wins (NEVER silently loosen a stricter read-only); the preset's approval posture still rides, which is safe now that approvals are answerable. An explicit pick applies the preset exactly, config.toml notwithstanding. Honoring config.toml `approval_policy` stays an unfinished follow-up.
+- **set-model / set-effort** are stored and sent as `turn/start` overrides (they stick for subsequent turns). Effort accepts `low`–`xhigh`; `max`/`ultracode` are claude-only and reject. The picker entries are the static UI tables (`agent-models.ts` / `agent-efforts.ts`), each verified live via `turn_context` readback; app-server also exposes `model/list` + `supportedReasoningEfforts` if a dynamic catalog is ever wanted (the CODE-104 attempt was cancelled).
+- **File changes surface structurally**: `fileChange.changes[].diff` (unified) → per-hunk `{type:'diff', path, oldText, newText}` via `diffContentFromUnified`; a rename rides `kind.move_path` and is cited by destination. Command output arrives only at `item/completed` (`aggregatedOutput`). Tool kinds: `fileChange`→edit, `commandExecution`→execute, `webSearch`→fetch, `mcpToolCall`→other, `turn/plan/updated`→ a distinct `{type:'plan'}` event.
+- **Lifecycle races are handled explicitly** (`codex/adapter.ts` field docs are the reference): `turnStartsInFlight` (a COUNT — `turn/completed` can precede the `turn/start` reply, so a drained queue prompt overlaps the settled frame, whose cleanup must not drop the newer frame's guard) gates the send→turn-id window, a cancel inside it is armed and fired the moment the id lands; `lastCompletedTurnId` stops a late `turn/start` response from re-activating a settled turn; an unexpected app-server exit finalizes the turn, re-arms `resumeFrom`, and the next prompt respawns + `thread/resume`s in place.
+- **Session-ref is DEFERRED for fresh threads** until the first turn is accepted — announcing at `thread/start` triggers the client's transcript seed against an empty rollout and the seed's uptoSeq cut swallows the first prompt. Resumed threads announce immediately.
+- **Usage**: `thread/tokenUsage/updated` fires once per model call; emit the thread-cumulative `total`, not `last` (consumers replace usage wholesale). No cost data on any codex surface.
+- **History** stays on direct rollout-JSONL reads (`sessions/` + `archived_sessions/` + `session_index.jsonl`, filtered by cwd), skipping corrupt lines, independent of the live process. Machine-injected user-role rows (`<environment_context>`, `<user_instructions>`, `<turn_aborted>`) are filtered from replay and title previews; `turn_context.summary` is a reasoning-summary mode, NOT a title. Reasoning cannot replay from rollouts (`encrypted_content` only).
+- Known provider limits (recorded on CODE-97): `turn/steer` unused (queueing is turn-boundary by design); app-server writes `trust_level = "trusted"` for every thread cwd into `~/.codex/config.toml`; enterprise `clientInfo` registration with OpenAI.
+
+## opencode & pi
+
+- **opencode** — `consumeEvents()` runs one long-lived `event.subscribe()`. A clean SSE close is EXPECTED at normal turn end (`session.idle`) or on cancel (abort closes without a matching `session.idle`); it is fatal ONLY while a turn is active with no cancel pending, and the fatal path emits status `stopped` (NOT `idle`) so the UI disables the composer — misclassifying it (the pre-fix bug) stranded the composer enabled against a dead adapter. Each event has its own try/catch. A resubscribe loop is the intended recovery but is NOT built yet (CODE-9). Do NOT teach opencode to accept `set-model` from code-reading alone — it rejects via base pending live provider verification (claude's own "looks live-switchable" read was wrong).
+- **pi** — pure JS in-process (`createAgentSession()`), no binary spawn, unaffected by asar-spawn, not staged. auth via `authStorage.setRuntimeApiKey(provider, apiKey)` overriding `~/.pi/agent/auth.json` + env; model `provider/rest`, falls back to `modelRegistry.getAvailable()[0]`.
+
+## Capability, auth & cancel matrices
+
+Product code must branch on `historyCapabilities` — never assume an op is supported. Unsupported `read`/`resume` reject clearly (`'<kind>: history read is not supported'`); unsupported `list` returns empty `{sessions:[]}`.
+
+| agent | list/read/resume | set-model | set-effort | set-approval-policy | packaged binary (CODE-114) |
+| --- | --- | --- | --- | --- | --- |
+| claude-code | ✓ | ✓ (live) | ✓ (live) | ✓ | detected user install / managed dir |
+| codex | ✓ | ✓ (next turn) | ✓ (next turn, low–xhigh) | ✓ (3 tiers) | detected user install / managed dir |
+| opencode | ✗ | ✗ | ✗ | ✗ | self-spawns server via PATH (CODE-76) |
+| pi | ✗ | ✗ | ✗ | ✗ | in-process JS |
+
+- **apiKey injection** (all read `StartOptions.config.apiKey`, four shapes): claude-code → `ANTHROPIC_API_KEY` in spawned env; codex → `CODEX_API_KEY` in the app-server env (the CLI still honors `CODEX_HOME`/config.toml auth); opencode → nested `config.provider[providerID].options.apiKey` (providerID = before `/` in model); pi → `authStorage.setRuntimeApiKey`.
+- **Cancellation**: codex `turn/interrupt` (queued prompts dropped; a cancel before the turn id is known is armed and fired on arrival); pi `session.abort()`; opencode `client.session.abort({sessionID})`; claude-code `Query#interrupt()` with a `cancelling` flag suppressing the interrupt-induced stream error. After any cancel, base `send()` also calls `teardown()`.
+- **MCP gap**: `StartOptions.mcpServers` is DEFINED in `schema/agent.ts` but consumed by NO native adapter (claude `query()` doesn't forward it) — a ready-but-unwired slot blocking all MCP passthrough (CODE-93 prerequisite). Pi's SDK has no `mcpServers` support at all; the other three could inject stdio MCP once wired.
+
+## Version seams
+
+Three compatibility seams move independently and must be kept in sync: **SDK/adapter↔binary** (claude: private protocol, no handshake; codex: app-server JSON-RPC, handshake but no version gate — above), **SDK↔adapter** (0.x compile-time types; codex has no SDK, its protocol assumptions live in the adapter), **client↔daemon** (the wire validates a per-message `z.literal(WIRE_PROTOCOL_VERSION)` with no negotiation). The safe update unit is an SDK/adapter+binary pair kept in sync with client/daemon; in-flight sessions can only be DRAINED across an update, not migrated live.
+
+## Traps
+
+- **Agent produces no text, 0 tokens, no error event** → a 401/auth failure (e.g. a Claude Code process started with a fake HOME whose credentials live in the real Keychain) is SWALLOWED into an empty turn — the adapter emits no error. When an agent "produces nothing," suspect auth, not an empty response. (Known bug, memory-only — re-verify against current claude-code error handling.)
+- **Deny reason lost** → auto-denied tools never reach `canUseTool`; consume the `permission_denied` system message or the reason vanishes.
+- **claude diff wiped by result text** → `emitTool`'s merge replaces content wholesale; keep the `pendingEditDiffs` stash/re-attach.
+- **Composer stuck enabled after opencode error** → the stream-end fatal path must emit `stopped`, not `idle`.
+
+## Design constraint (forward-looking)
+
+Do NOT hard-weld "agent runs bare in the local cwd." Agents today run directly on the real machine (`query({cwd})`, `~/.codex`, local `AuthStorage`) and can `rm -rf` the host — an unmitigated hazard. Keep room for an `executionBackend` dimension (local-direct / arcbox-sandbox / cloud): `AgentSession` + `StartOptions` do not block inserting it later, so it need not be built before arcbox's sandbox tier ships. There is no `executionBackend` field yet and cwd is always local.
+
+## Elsewhere
+
+- Packaging (no agent binaries ship; platform packages are excluded from the asar) lives in `apps/desktop/AGENTS.md` and `docs/RELEASE.md`; the asar-spawn fix (defense-in-depth for any SDK-internal spawn) lives in `apps/daemon/AGENTS.md`.
+- tayori / front-end consumption of these events is NOT this package's concern.

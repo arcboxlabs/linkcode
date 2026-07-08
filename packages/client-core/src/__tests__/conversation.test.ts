@@ -147,6 +147,39 @@ describe('buildConversation', () => {
     }
   });
 
+  it('carries parentToolCallId on subagent chunks and tool snapshots', () => {
+    const c = buildConversation([
+      {
+        type: 'agent-message-chunk',
+        messageId: 'sub-m1' as MessageId,
+        parentToolCallId: 'toolu_task',
+        content: { type: 'text', text: 'nested narration' },
+      },
+      {
+        type: 'agent-thought-chunk',
+        messageId: 'sub-t1' as MessageId,
+        parentToolCallId: 'toolu_task',
+        content: { type: 'text', text: 'nested thought' },
+      },
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 'toolu_sub',
+          parentToolCallId: 'toolu_task',
+          title: 'Read',
+          kind: 'read',
+          status: 'completed',
+          content: [],
+        },
+      },
+    ]);
+    expect(c.items).toHaveLength(3);
+    const [message, reasoning, tool] = c.items;
+    if (message.kind === 'message') expect(message.parentToolCallId).toBe('toolu_task');
+    if (reasoning.kind === 'reasoning') expect(reasoning.parentToolCallId).toBe('toolu_task');
+    if (tool.kind === 'tool') expect(tool.toolCall.parentToolCallId).toBe('toolu_task');
+  });
+
   it('keeps only the latest plan per turn', () => {
     const c = buildConversation([
       userText('first'),
@@ -215,6 +248,46 @@ describe('buildConversation', () => {
     expect(settled.pendingPermissionIds).toEqual([]);
   });
 
+  it('tracks a question as pending until its tool call settles', () => {
+    const question = {
+      questionId: 'q0',
+      prompt: 'Which one?',
+      multiSelect: false,
+      options: [
+        { optionId: 'o0', label: 'A' },
+        { optionId: 'o1', label: 'B' },
+      ],
+    };
+    const base: AgentEvent[] = [
+      userText('ask'),
+      {
+        type: 'question-request',
+        requestId: 'ask1',
+        toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+        questions: [question],
+      },
+    ];
+    const open = buildConversation(base);
+    expect(open.pendingQuestionIds).toEqual(['ask1']);
+    const item = open.items.find((i) => i.kind === 'question');
+    expect(item).toMatchObject({ requestId: 'ask1', questions: [question] });
+
+    const settled = buildConversation([
+      ...base,
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'AskUserQuestion',
+          kind: 'other',
+          status: 'completed',
+          content: [],
+        },
+      },
+    ]);
+    expect(settled.pendingQuestionIds).toEqual([]);
+  });
+
   it('captures lifecycle state (status / usage / mode / stop / error)', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },
@@ -249,6 +322,21 @@ describe('buildConversation', () => {
       },
     ]);
     expect(c.approvalPolicy).toEqual({ availablePolicies: policies, currentPolicyId: 'auto' });
+    expect(c.items).toHaveLength(0);
+  });
+
+  it('reflects the latest model/effort without adding timeline items', () => {
+    const empty = buildConversation([]);
+    expect(empty.currentModel).toBeNull();
+    expect(empty.currentEffort).toBeNull();
+    const c = buildConversation([
+      { type: 'model-update', model: 'claude-opus-4-8' },
+      { type: 'effort-update', effort: 'high' },
+      { type: 'model-update', model: 'claude-sonnet-5' },
+      { type: 'effort-update', effort: 'xhigh' },
+    ]);
+    expect(c.currentModel).toBe('claude-sonnet-5');
+    expect(c.currentEffort).toBe('xhigh');
     expect(c.items).toHaveLength(0);
   });
 });

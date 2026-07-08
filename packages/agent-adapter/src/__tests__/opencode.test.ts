@@ -50,6 +50,7 @@ class FakeEventStream {
   async *[Symbol.asyncIterator](): AsyncGenerator<Event> {
     while (true) {
       if (this.queued.length === 0) {
+        // eslint-disable-next-line no-await-in-loop -- queue iterator: the await IS the next-event signal
         await new Promise<void>((resolve) => {
           this.waiting = resolve;
         });
