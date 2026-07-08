@@ -13,6 +13,7 @@ import {
 import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
+import { WindowControls } from './window-controls';
 
 type DesktopPanelSide = 'right' | 'bottom';
 
@@ -27,6 +28,8 @@ export interface DesktopChromeProps {
   expandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
   hasNativeTrafficLights: boolean;
+  /** Draw renderer window controls (minimize/maximize/close) — non-macOS, once the platform is known. */
+  showWindowControls: boolean;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
   onToggleRight: () => void;
@@ -139,6 +142,7 @@ export function DesktopChrome({
   expandedPanel,
   hasNativeBackdrop,
   hasNativeTrafficLights,
+  showWindowControls,
   onShowSidebar,
   onHideSidebar,
   onToggleRight,
@@ -199,7 +203,7 @@ export function DesktopChrome({
             leftControls
           )}
         </StableLeftChrome>
-        <StableRightChrome contentRef={rightRailContentRef}>
+        <StableRightChrome contentRef={rightRailContentRef} showWindowControls={showWindowControls}>
           {rightControls === undefined ? (
             <DefaultRightChromeControls
               rightPanelOpen={rightPanelOpen}
@@ -437,9 +441,11 @@ function MainChromeTitle({
 
 function StableRightChrome({
   contentRef,
+  showWindowControls,
   children,
 }: {
   contentRef: React.Ref<HTMLDivElement>;
+  showWindowControls: boolean;
   children: React.ReactNode;
 }): React.ReactNode {
   return (
@@ -449,6 +455,7 @@ function StableRightChrome({
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
         {children}
+        {showWindowControls ? <WindowControls /> : null}
       </div>
     </div>
   );
