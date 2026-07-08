@@ -3,6 +3,7 @@ import type {
   AmpOptions,
   AssistantMessage,
   ErrorResultMessage,
+  ExecuteOptions,
   ResultMessage,
   StreamMessage,
   Usage,
@@ -205,14 +206,19 @@ export class AmpAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
+  /** Test seam — the real thing resolves the SDK and spawns the per-turn CLI process. */
+  protected async startExecute(request: ExecuteOptions): Promise<AsyncIterable<StreamMessage>> {
+    const sdk = await this.loadSdk('@ampcode/sdk', () => import('@ampcode/sdk'));
+    return sdk.execute(request);
+  }
+
   private async runTurn(content: ContentBlock[]): Promise<void> {
     const opts = nullthrow(this.opts, 'amp: session not started');
-    const sdk = await this.loadSdk('@ampcode/sdk', () => import('@ampcode/sdk'));
     const abort = new AbortController();
     this.abortTurn = abort;
     this.emitStatus('running');
     try {
-      const stream = sdk.execute({
+      const stream = await this.startExecute({
         prompt: contentToText(content),
         signal: abort.signal,
         options: this.executeOptions(opts),
