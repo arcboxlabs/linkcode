@@ -24,6 +24,8 @@ import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { PresentSessionNotification } from '../notifications/use-session-notifications';
+import { useSessionNotifications } from '../notifications/use-session-notifications';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -49,6 +51,8 @@ export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
   /** Platform-formatted hint for the palette trigger (e.g. `⌘K`); apps own the label. */
   paletteShortcut?: string;
+  /** OS-notification presenter; omitted (e.g. before permission is granted) disables notifying. */
+  presentNotification?: PresentSessionNotification;
 }
 
 /**
@@ -62,6 +66,7 @@ export interface WorkbenchProps {
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
   paletteShortcut,
+  presentNotification,
 }: WorkbenchProps): React.ReactNode {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
@@ -70,6 +75,7 @@ export function Workbench({
 
   const sessions = useWorkbenchSessions(handleError);
   const conversation = useSeededConversation(sessions.active, handleError);
+  useSessionNotifications(presentNotification, sessions.active?.sessionId ?? null);
 
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
   // sidebar, panels, terminals), which must stay permanently mounted across session switches —

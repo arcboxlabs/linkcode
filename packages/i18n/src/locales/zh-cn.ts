@@ -291,6 +291,11 @@ export const zhCN = {
       opencode: 'OpenCode',
       pi: 'Pi',
     },
+    notifications: {
+      turnCompleted: '回复完成',
+      awaitingApproval: '等待你的审批',
+      awaitingApprovalTool: '等待审批：{tool}',
+    },
   },
   settings: {
     title: '设置',
@@ -299,6 +304,7 @@ export const zhCN = {
     tabs: {
       general: '通用',
       connection: '连接',
+      notifications: '通知',
       about: '关于',
       agents: '智能体',
     },
@@ -342,6 +348,20 @@ export const zhCN = {
       apiKey: 'API 密钥',
       apiKeyPlaceholder: '保存在 daemon 上',
       save: '保存',
+    },
+    notifications: {
+      title: '通知',
+      hint: '会话在后台完成回复或需要审批时发送系统通知。',
+      enable: '启用通知',
+      enableHint: '关闭后不再发送任何系统通知。',
+      turnCompleted: '回复完成',
+      turnCompletedHint: '会话完成一轮回复时通知。',
+      awaitingApproval: '等待审批',
+      awaitingApprovalHint: '智能体请求工具权限时通知。',
+      error: '会话出错',
+      errorHint: '会话发生错误时通知。',
+      permissionRequest: '需要浏览器授权后才能显示通知。',
+      permissionDenied: '浏览器已拦截通知。请在浏览器的站点设置中重新允许。',
     },
   },
   mobile: {
