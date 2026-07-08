@@ -483,6 +483,12 @@ export class DevMockHost {
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
+    // Reflect a concrete model/effort like a real adapter, so the composer shows them not placeholders.
+    this.emit(sessionId, {
+      type: 'model-update',
+      model: model ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
+    });
+    this.emit(sessionId, { type: 'effort-update', effort: 'high' });
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
@@ -603,9 +609,11 @@ export class DevMockHost {
         break;
       case 'set-model':
         session.model = input.model;
+        this.emit(sessionId, { type: 'model-update', model: input.model });
         this.sendSuccess(replyTo);
         break;
       case 'set-effort':
+        this.emit(sessionId, { type: 'effort-update', effort: input.effort });
         this.sendSuccess(replyTo);
         break;
       case 'set-mode':
