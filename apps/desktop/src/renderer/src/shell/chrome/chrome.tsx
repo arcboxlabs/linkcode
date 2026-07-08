@@ -13,7 +13,6 @@ import {
 import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
-import { WindowControls } from './window-controls';
 
 type DesktopPanelSide = 'right' | 'bottom';
 
@@ -455,7 +454,9 @@ function StableRightChrome({
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
         {children}
-        {showWindowControls ? <WindowControls /> : null}
+        {/* Reserve the space the persistent window-controls layer (DesktopWindowControls, mounted at
+            the app root) floats over, so the panel toggles never sit under it. */}
+        {showWindowControls ? <WindowControlsInset /> : null}
       </div>
     </div>
   );
@@ -504,6 +505,10 @@ function DefaultRightChromeControls({
 
 function NativeTrafficLightInset(): React.ReactNode {
   return <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />;
+}
+
+function WindowControlsInset(): React.ReactNode {
+  return <div aria-hidden className="w-(--lc-chrome-window-controls-inset) shrink-0" />;
 }
 
 function createChromeSlotKey(
