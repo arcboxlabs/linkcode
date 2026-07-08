@@ -5,11 +5,13 @@ import { useHistoryImportSurface } from '@linkcode/workbench';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { DesktopChromePortal } from '../shell/chrome/chrome';
 
 /**
  * The Settings "Import chat history" panel for one provider (picked in the sidebar accordion).
- * Settings renders ungated, so while the daemon is unreachable the list degrades to its
- * loading/error states instead of unmounting.
+ * Its header lives in the window chrome via portals — provider title + count on the left, the
+ * refresh/sort controls on the right — so the pane itself is just the list. Settings renders
+ * ungated, so while the daemon is unreachable the list degrades to its loading/error states.
  */
 export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode {
   const t = useTranslations('settings.historyImport');
@@ -17,23 +19,27 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
   const surface = useHistoryImportSurface(kind, sort);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <h2 className="min-w-0 truncate font-semibold text-sm">
-          {t('panelTitle', { provider: AGENT_LABELS[kind] })}
-        </h2>
-        {surface.count > 0 && (
-          <span className="shrink-0 text-muted-foreground text-xs">
-            {t('conversationCount', { count: surface.count })}
+    <>
+      <DesktopChromePortal segment="main" position="left">
+        <div className="flex h-full min-w-0 items-center gap-2 px-2">
+          <span className="min-w-0 truncate font-semibold text-sm">
+            {t('panelTitle', { provider: AGENT_LABELS[kind] })}
           </span>
-        )}
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {surface.count > 0 && (
+            <span className="shrink-0 text-muted-foreground text-xs">
+              {t('conversationCount', { count: surface.count })}
+            </span>
+          )}
+        </div>
+      </DesktopChromePortal>
+      <DesktopChromePortal segment="main" position="right">
+        <div className="flex items-center gap-1.5 [-webkit-app-region:no-drag]">
           <ShellIconButton label={t('refresh')} onClick={surface.refresh}>
             <RotateCwIcon className="size-3.5" />
           </ShellIconButton>
           <HistorySortSelect value={sort} onChange={setSort} />
         </div>
-      </div>
+      </DesktopChromePortal>
       <HistoryBrowserList
         entries={surface.entries}
         groupByProject={sort === 'project'}
@@ -46,6 +52,6 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
         onOpen={surface.openEntry}
         onRefresh={surface.refresh}
       />
-    </div>
+    </>
   );
 }
