@@ -6,16 +6,16 @@ import { valid } from 'semver';
 import type { VersionPolicy } from './catalog';
 
 /**
- * Reads the versions the installed SDKs pin their CLI binaries to. Undefined always means
- * "cannot pin" — the SDK is absent or the pin is not exact — and callers must then leave the
- * asset alone (no install, no GC of what is already on disk). Package dirs are located along
- * the module's node_modules chain instead of `require.resolve`: the SDKs' `exports` maps
- * reject bare CJS resolution outright.
+ * Reads the versions the installed carrier packages pin their CLI binaries to (claude: the
+ * agent SDK; codex: the `@openai/codex` meta package; opencode: its SDK). Undefined always
+ * means "cannot pin" — the package is absent or its version is not exact — and callers must
+ * then leave the asset alone (no install, no GC of what is already on disk). Package dirs are
+ * located along the module's node_modules chain instead of `require.resolve`: the SDKs'
+ * `exports` maps reject bare CJS resolution outright.
  */
 
 interface PackageManifest {
   version?: string;
-  dependencies?: Record<string, string>;
 }
 
 export function installedPackageDir(pkg: string, from?: string): string | undefined {
@@ -45,8 +45,6 @@ export function wantedVersion(policy: VersionPolicy, from?: string): string | un
       return policy.version;
     case 'sdk-version':
       return exact(readManifest(policy.package, from)?.version);
-    case 'sdk-dependency':
-      return exact(readManifest(policy.package, from)?.dependencies?.[policy.dependency]);
     // no default
   }
 }

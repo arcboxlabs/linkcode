@@ -28,29 +28,14 @@ describe('wantedVersion', () => {
     expect(wantedVersion({ kind: 'sdk-version', package: 'fake-sdk' }, from)).toBe('1.2.3');
   });
 
-  it('reads an exact dependency pin, resolving scoped packages', () => {
-    const from = fixture('@scope/sdk', {
-      name: '@scope/sdk',
-      version: '9.9.9',
-      dependencies: { '@scope/cli': '0.140.0' },
-    });
-    expect(
-      wantedVersion(
-        { kind: 'sdk-dependency', package: '@scope/sdk', dependency: '@scope/cli' },
-        from,
-      ),
-    ).toBe('0.140.0');
+  it('resolves scoped packages along the node_modules chain', () => {
+    const from = fixture('@scope/sdk', { name: '@scope/sdk', version: '9.9.9' });
+    expect(wantedVersion({ kind: 'sdk-version', package: '@scope/sdk' }, from)).toBe('9.9.9');
   });
 
-  it('rejects range pins — a pair install needs an exact version', () => {
-    const from = fixture('fake-sdk', {
-      name: 'fake-sdk',
-      version: '1.2.3',
-      dependencies: { cli: '^2.0.0' },
-    });
-    expect(
-      wantedVersion({ kind: 'sdk-dependency', package: 'fake-sdk', dependency: 'cli' }, from),
-    ).toBeUndefined();
+  it('rejects a manifest whose version is not a valid exact semver', () => {
+    const from = fixture('fake-sdk', { name: 'fake-sdk', version: 'not.a.version' });
+    expect(wantedVersion({ kind: 'sdk-version', package: 'fake-sdk' }, from)).toBeUndefined();
   });
 
   it('returns undefined when the SDK is not installed', () => {

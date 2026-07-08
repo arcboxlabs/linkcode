@@ -16,10 +16,11 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
 - **claude platform packages are proprietary** (© Anthropic PBC, all rights reserved): their
   URLs must always point at the npm registry — never mirror them to our own hosting. codex is
   Apache-2.0, opencode/tectonic MIT — mirrorable.
-- **Version pins come from the installed SDKs** (`version-pin.ts`): claude = SDK version,
-  codex = codex-sdk's exact `@openai/codex` dependency, opencode = its SDK version; tectonic is
-  a catalog constant. "Cannot pin" (`undefined`) means hands off: no install, and GC skips that
-  asset entirely rather than risk deleting a working install.
+- **Version pins come from the installed carrier packages** (`version-pin.ts`): claude = its
+  agent SDK's version, codex = the `@openai/codex` meta package's version (no JS SDK since the
+  app-server rewrite), opencode = its SDK version; tectonic is a catalog constant. "Cannot pin"
+  (`undefined`) means hands off: no install, and GC skips that asset entirely rather than risk
+  deleting a working install.
 - **Store layout** `<root>/<namespace>/<name>/<version>/<binary>` under the platform data dir
   (darwin `~/Library/Application Support/LinkCode/assets`; `LINKCODE_ASSETS_DIR` overrides —
   tests and E2E must set it). All paths resolve at call time so a fake `$HOME` redirects them.

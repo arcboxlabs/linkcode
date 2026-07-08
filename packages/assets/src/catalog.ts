@@ -11,10 +11,8 @@ import type { PlatformKey } from './platform';
 
 /** How an asset's wanted version is decided. */
 export type VersionPolicy =
-  /** The installed SDK's own version (its platform packages are pinned to the same version). */
+  /** The installed carrier package's own version (platform artifacts are pinned to the same). */
   | { kind: 'sdk-version'; package: string }
-  /** An exact dependency pin inside the installed SDK's manifest. */
-  | { kind: 'sdk-dependency'; package: string; dependency: string }
   /** A catalog constant, until the compat manifest (CODE-77) serves recommendations. */
   | { kind: 'pinned'; version: string };
 
@@ -115,7 +113,9 @@ export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
   'agent:codex': {
     id: 'agent:codex',
     binaryBase: 'codex',
-    version: { kind: 'sdk-dependency', package: '@openai/codex-sdk', dependency: '@openai/codex' },
+    // codex has no JS SDK since the app-server rewrite; the installed `@openai/codex` meta
+    // package (the CLI carrier agent-adapter depends on) is the pair version source.
+    version: { kind: 'sdk-version', package: '@openai/codex' },
     // `@openai/codex-<platform>` package names are npm aliases that 404 on the registry; the
     // real versions live under `@openai/codex` with a platform-suffixed version key. The bare
     // binary spawns fine without its vendored rg/zsh siblings (drift smoke, 2026-07-08).
