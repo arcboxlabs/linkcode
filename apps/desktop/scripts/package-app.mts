@@ -25,9 +25,9 @@
  * so no `pnpm --workspace-root` detection kicks in) makes appDir === projectDir === workspaceRoot:
  * the rebuild walker finds better-sqlite3 on step one regardless of platform, and the module
  * collector sees exactly one importer (pnpm reports it has no lockfile there and electron-builder
- * falls through to its filesystem-traversal collector). The app-builder-lib collector patch and
- * the .pnpmfile.cjs dedup workaround both exist only to paper over the multi-importer path and are
- * removed alongside this.
+ * falls through to its filesystem-traversal collector). This retired the former app-builder-lib
+ * collector patch; the .pnpmfile.cjs drizzle-orm↔expo-sqlite sever stays — it keeps the expo tree
+ * out of this deploy closure, which is orthogonal to the collector.
  */
 import { cpSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
