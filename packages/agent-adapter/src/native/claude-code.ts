@@ -36,6 +36,7 @@ import type {
 import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { z } from 'zod';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -72,6 +73,23 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ];
+
+/** AskUserQuestion's tool input (the CLI caps questions at 4 and options at 2–4; only what the
+ * client renders is required here, so benign vendor additions don't break the parse). */
+const ASK_USER_QUESTION_INPUT = z.object({
+  questions: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        header: z.string().optional(),
+        multiSelect: z.boolean().optional(),
+        options: z
+          .array(z.object({ label: z.string().min(1), description: z.string().optional() }))
+          .min(1),
+      }),
+    )
+    .min(1),
+});
 
 /**
  * The approval-policy axis claude-code advertises; ids map 1:1 onto the SDK's `PermissionMode` and
@@ -539,6 +557,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {
+    if (toolName === 'AskUserQuestion') {
+      const questions = ASK_USER_QUESTION_INPUT.safeParse(input);
+      // A parse failure means the pinned CLI's tool shape drifted; degrade to the generic
+      // allow/deny ask (allow then executes with empty answers) instead of failing the turn.
+      if (questions.success) {
+        return this.askUserQuestion(questions.data.questions, input, options.toolUseID);
+      }
+    }
     const outcome = await this.requestPermission(
       {
         toolCallId: options.toolUseID,
@@ -554,6 +580,55 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (allowed) return { behavior: 'allow', updatedInput: input } satisfies PermissionResult;
     return { behavior: 'deny', message: 'Denied by the user' } satisfies PermissionResult;
   };
+
+  /** AskUserQuestion executes with whatever answers the host writes into its input: the CLI's
+   * `checkPermissions` always asks, and an allow that carries no `answers` "succeeds" with every
+   * question reported as unanswered. So the ask surfaces as a structured question card, and the
+   * user's picks are folded back into `updatedInput.answers` keyed by the question's own text
+   * (the CLI's answer-record key; multi-select and free-text answers both ride the same record,
+   * multi-select joined with ', ' per the tool's output contract). */
+  private async askUserQuestion(
+    questions: z.infer<typeof ASK_USER_QUESTION_INPUT>['questions'],
+    input: Record<string, unknown>,
+    toolUseID: string,
+  ): Promise<PermissionResult> {
+    const outcome = await this.requestQuestion(
+      {
+        toolCallId: toolUseID,
+        title: 'AskUserQuestion',
+        kind: claudeToolKind('AskUserQuestion'),
+        rawInput: input,
+      },
+      questions.map((question, qi) => ({
+        questionId: `q${qi}`,
+        prompt: question.question,
+        header: question.header,
+        multiSelect: question.multiSelect ?? false,
+        options: question.options.map((option, oi) => ({
+          optionId: `o${oi}`,
+          label: option.label,
+          description: option.description,
+        })),
+      })),
+    );
+    if (outcome.outcome === 'cancelled') {
+      return { behavior: 'deny', message: 'User declined to answer questions' };
+    }
+    const byQuestionId = new Map(outcome.answers.map((answer) => [answer.questionId, answer]));
+    const answers: Record<string, string> = {};
+    for (const [qi, question] of questions.entries()) {
+      const answer = byQuestionId.get(`q${qi}`);
+      if (!answer) continue;
+      const selected = new Set(answer.selectedOptionIds);
+      const labels: string[] = [];
+      for (const [oi, option] of question.options.entries()) {
+        if (selected.has(`o${oi}`)) labels.push(option.label);
+      }
+      const value = answer.customText?.trim() || labels.join(', ');
+      if (value) answers[question.question] = value;
+    }
+    return { behavior: 'allow', updatedInput: { ...input, answers } };
+  }
 
   protected handleMessage(msg: SDKMessage): void {
     // Every SDK message carries the CLI's session id — the provider-local history id this live run
