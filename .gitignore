@@ -66,4 +66,4 @@ devenv.local.yaml
 .pre-commit-config.yaml
 
 # Claude Code local state (plans, worktrees) — never tracked or linted
-.claude/
+.claude/worktrees/
