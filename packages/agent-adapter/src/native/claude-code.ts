@@ -23,6 +23,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentHistorySession,
+  AgentModelOption,
   ApprovalPolicy,
   ApprovalPolicyState,
   ContentBlock,
@@ -36,6 +37,7 @@ import type {
 import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { wait } from 'foxts/wait';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -66,6 +68,9 @@ type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
 function claudeToolKind(name: string): ToolCall['kind'] {
   return name === 'Task' || name === 'Agent' ? 'task' : toolKindFromName(name);
 }
+
+/** How long the transient catalog probe waits for the CLI's `initialize` response. */
+const MODEL_PROBE_TIMEOUT_MS = 30000;
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -278,6 +283,50 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (!policy || policy.policyId === this.approvalPolicy) return;
     this.approvalPolicy = policy.policyId;
     this.emitApprovalPolicy(this.approvalPolicyState());
+  }
+
+  /**
+   * The vendor's live model catalog, read off the CLI's `initialize` control response — the same
+   * entitlement-aware registry backing its own `/model` menu, so it tracks new releases and the
+   * account's access without a hand-maintained list. In streaming-input mode `initialize` fires at
+   * `Query` construction, before any prompt, so a transient never-prompted `Query` is enough; it is
+   * closed as soon as the catalog arrives. Plain `query()` applies no timeout to initialization
+   * (only the v2 session API does), so an unresponsive CLI is cut off here instead of hanging the
+   * caller's request forever.
+   */
+  override async listModels(config?: StartOptions['config']): Promise<AgentModelOption[]> {
+    const { query } = await this.loadSdk(
+      '@anthropic-ai/claude-agent-sdk',
+      () => import('@anthropic-ai/claude-agent-sdk'),
+    );
+    const queue = new AsyncMessageQueue();
+    const apiKey = typeof config?.apiKey === 'string' ? config.apiKey : undefined;
+    const q = query({
+      prompt: queue,
+      options: {
+        pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),
+        ...(apiKey && { env: { ...env, ANTHROPIC_API_KEY: apiKey } }),
+      },
+    });
+    try {
+      const models = await Promise.race([
+        q.supportedModels(),
+        wait(MODEL_PROBE_TIMEOUT_MS, true).then(() => {
+          throw new Error('claude-code: model catalog probe timed out');
+        }),
+      ]);
+      // An empty id/label would fail the wire schema's min(1) and take the whole reply down with
+      // it; a blank displayName degrades to the raw id instead.
+      return models.reduce<AgentModelOption[]>((options, model) => {
+        if (model.value.length > 0) {
+          options.push({ id: model.value, label: model.displayName || model.value });
+        }
+        return options;
+      }, []);
+    } finally {
+      q.close();
+      queue.close();
+    }
   }
 
   override async resumeHistory(

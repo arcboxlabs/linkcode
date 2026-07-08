@@ -9,6 +9,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -74,6 +75,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.emitStatus('starting');
     await this.onStart(opts);
     this.emitStatus('idle');
+  }
+
+  listModels(_config?: StartOptions['config']): Promise<AgentModelOption[]> {
+    return Promise.resolve([]);
   }
 
   listHistory(_opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {

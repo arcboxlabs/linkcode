@@ -8,6 +8,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
+  AgentModelOption,
   SessionId,
   StartOptions,
   WireMessage,
@@ -39,6 +40,10 @@ class FakeAdapter implements AgentAdapter {
   start(opts: StartOptions): Promise<void> {
     this.startedWith = opts;
     return Promise.resolve();
+  }
+
+  listModels(): Promise<AgentModelOption[]> {
+    return Promise.resolve([]);
   }
 
   listHistory(): Promise<AgentHistoryListResult> {

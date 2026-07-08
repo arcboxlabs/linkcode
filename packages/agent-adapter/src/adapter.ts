@@ -8,6 +8,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
+  AgentModelOption,
   MessageId,
   StartOptions,
 } from '@linkcode/schema';
@@ -25,6 +26,11 @@ export interface AgentAdapter {
   /** History support advertised by this adapter. Unsupported operations must reject clearly. */
   readonly historyCapabilities: AgentHistoryCapabilities;
   start(opts: StartOptions): Promise<void>;
+  /** The vendor's own model catalog — what `set-model` accepts. Empty when the agent has no
+   * catalog (or no verified live switch path); callable without a started session. `config` is
+   * the same adapter-specific bag sessions get (`StartOptions.config`, e.g. `apiKey`), so the
+   * probe authenticates the same way a session would. */
+  listModels(config?: StartOptions['config']): Promise<AgentModelOption[]>;
   /** List provider-local historical sessions, if supported. */
   listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult>;
   /** Read a provider-local historical session as normalized events, if supported. */
