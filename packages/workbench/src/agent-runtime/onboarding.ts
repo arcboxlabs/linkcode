@@ -5,15 +5,16 @@ import type {
   AgentRuntimes,
   ManagedAssetId,
   ManagedAssetStatus,
+  ProvidersConfig,
 } from '@linkcode/schema';
-import { ensureAsset } from '@linkcode/sdk';
+import { ensureAsset, getProviderConfig } from '@linkcode/sdk';
 import type { AgentRuntimeCue, AgentRuntimeCues } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useRef, useState } from 'react';
 import { useAssets } from '../assets/hooks';
-import { useMutation } from '../runtime/tayori';
+import { useData, useMutation } from '../runtime/tayori';
 import { useAgentRuntimes } from './hooks';
 import { useUnverifiedRuntimesStore } from './unverified-store';
 
@@ -65,13 +66,14 @@ export function deriveAgentRuntimeCues(
   activity: AssetActivityMap,
   acknowledged: Partial<Record<AgentKind, string>>,
   loginActivity: LoginActivityMap = {},
+  providers: ProvidersConfig = {},
 ): AgentRuntimeCues {
   const cues: AgentRuntimeCues = {};
   if (!runtimes) return cues;
   for (const [kind, runtime] of Object.entries(runtimes) as Array<
     [AgentKind, AgentRuntimeAvailability]
   >) {
-    const cue = deriveCue(kind, runtime, assets, activity, acknowledged, loginActivity);
+    const cue = deriveCue(kind, runtime, assets, activity, acknowledged, loginActivity, providers);
     if (cue) cues[kind] = cue;
   }
   return cues;
@@ -116,12 +118,17 @@ function deriveCue(
   activity: AssetActivityMap,
   acknowledged: Partial<Record<AgentKind, string>>,
   loginActivity: LoginActivityMap,
+  providers: ProvidersConfig,
 ): AgentRuntimeCue | undefined {
   switch (runtime.status) {
     case 'available':
       // Installed but signed out — offer the login flow. `auth` absent means unprobed (pi/opencode)
-      // or a fail-open probe: don't block. An in-flight login overrides while it runs.
-      return runtime.auth?.loggedIn === false ? loginCue(loginActivity[kind]) : undefined;
+      // or a fail-open probe: don't block. A configured API key is injected as ANTHROPIC_API_KEY at
+      // spawn (applyProviderDefaults), so it makes a signed-out CLI runnable — skip the cue then. An
+      // in-flight login overrides while it runs.
+      return runtime.auth?.loggedIn === false && !providers[kind]?.apiKey
+        ? loginCue(loginActivity[kind])
+        : undefined;
     case 'out-of-range': {
       // "Download paired version" runs the same install as the missing flow — its activity must
       // win over the probed status here too, or the card never shows progress and a settled
@@ -164,6 +171,8 @@ export function useAgentRuntimeOnboarding(): {
   const client = useLinkCodeClient();
   const { data: runtimes } = useAgentRuntimes();
   const { data: assets } = useAssets();
+  // A saved API key makes a signed-out CLI runnable, so it suppresses the login cue.
+  const { data: providers } = useData(getProviderConfig, {});
   const [activity, setActivity] = useState<AssetActivityMap>({});
   const [loginActivity, setLoginActivity] = useState<LoginActivityMap>({});
   // The in-flight loginId per kind (+ a cancel flag so a user-aborted login settles to idle, not
@@ -295,7 +304,14 @@ export function useAgentRuntimeOnboarding(): {
   }
 
   return {
-    cues: deriveAgentRuntimeCues(runtimes, assets, activity, acknowledged, loginActivity),
+    cues: deriveAgentRuntimeCues(
+      runtimes,
+      assets,
+      activity,
+      acknowledged,
+      loginActivity,
+      providers,
+    ),
     download,
     acknowledgeUnverified,
     login,
