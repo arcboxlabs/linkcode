@@ -13,6 +13,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -164,6 +165,11 @@ export class LinkCodeSdkClient {
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
   listAgentRuntimes(): RequestResult<AgentRuntimes> {
     return toResult(this.raw.listAgentRuntimes());
+  }
+
+  /** Managed-asset store status: wanted versions and what is installed (CODE-111). */
+  listAssets(): RequestResult<ManagedAssetStatus[]> {
+    return toResult(this.raw.listAssets());
   }
 
   /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */

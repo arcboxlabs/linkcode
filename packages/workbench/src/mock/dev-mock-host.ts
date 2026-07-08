@@ -163,6 +163,26 @@ export class DevMockHost {
           },
         });
         break;
+      case 'asset.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'asset.listed',
+          replyTo: p.clientReqId,
+          assets: [
+            {
+              id: 'agent:codex',
+              wantedVersion: '0.140.0',
+              installed: {
+                id: 'agent:codex',
+                version: '0.140.0',
+                path: '/mock/assets/agent/codex/0.140.0/codex',
+              },
+            },
+            { id: 'agent:claude-code', wantedVersion: '0.3.179' },
+            { id: 'tool:tectonic', wantedVersion: '0.16.9' },
+          ],
+        });
+        break;
       case 'config.set':
         await wait(CONTROL_LATENCY_MS);
         this.providers = structuredClone(p.providers);

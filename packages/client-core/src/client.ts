@@ -13,6 +13,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -107,6 +108,9 @@ export class LinkCodeClient {
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
+        break;
+      case 'asset.listed':
+        this.pending.resolve('assetList', p.replyTo, p.assets);
         break;
       case 'git.status.get.result':
         this.pending.resolve('gitStatus', p.replyTo, p.status);
@@ -263,6 +267,10 @@ export class LinkCodeClient {
 
   listAgentRuntimes(): Promise<AgentRuntimes> {
     return this.control.listAgentRuntimes();
+  }
+
+  listAssets(): Promise<ManagedAssetStatus[]> {
+    return this.control.listAssets();
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {

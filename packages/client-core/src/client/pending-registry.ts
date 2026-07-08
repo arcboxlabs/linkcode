@@ -6,6 +6,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetStatus,
   ProvidersConfig,
   SessionId,
   SessionInfo,
@@ -41,6 +42,7 @@ export interface PendingValueMap {
   historyRead: AgentHistoryReadResult;
   configGet: ProvidersConfig;
   agentRuntimeList: AgentRuntimes;
+  assetList: ManagedAssetStatus[];
   gitStatus: GitStatus;
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
@@ -75,6 +77,7 @@ export class PendingRegistry {
     historyRead: new Map(),
     configGet: new Map(),
     agentRuntimeList: new Map(),
+    assetList: new Map(),
     gitStatus: new Map(),
     gitPrStatus: new Map(),
     gitDiff: new Map(),

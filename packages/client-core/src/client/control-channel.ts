@@ -14,6 +14,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -258,6 +259,14 @@ export class ControlChannel {
   listAgentRuntimes(): Promise<AgentRuntimes> {
     return this.sendCorrelated('agentRuntimeList', (clientReqId) => ({
       kind: 'agent-runtime.list',
+      clientReqId,
+    }));
+  }
+
+  /** Managed-asset store status: wanted versions and what is installed (CODE-111). */
+  listAssets(): Promise<ManagedAssetStatus[]> {
+    return this.sendCorrelated('assetList', (clientReqId) => ({
+      kind: 'asset.list',
       clientReqId,
     }));
   }
