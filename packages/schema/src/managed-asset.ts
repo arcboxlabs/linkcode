@@ -46,3 +46,13 @@ export const InstalledAssetSchema = z.object({
   path: z.string().min(1),
 });
 export type InstalledAsset = z.infer<typeof InstalledAssetSchema>;
+
+/** Per-asset status served on `asset.listed`; download trigger/progress land with CODE-112. */
+export const ManagedAssetStatusSchema = z.object({
+  id: ManagedAssetIdSchema,
+  /** The version this host wants; absent when the pin cannot be determined (SDK missing). */
+  wantedVersion: z.string().optional(),
+  /** Present when the wanted version is installed and spawnable. */
+  installed: InstalledAssetSchema.optional(),
+});
+export type ManagedAssetStatus = z.infer<typeof ManagedAssetStatusSchema>;
