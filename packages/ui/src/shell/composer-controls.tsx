@@ -1,4 +1,10 @@
-import type { AgentKind, ApprovalPolicy, EffortLevel, SessionMode } from '@linkcode/schema';
+import type {
+  AgentKind,
+  AgentModelOption,
+  ApprovalPolicy,
+  EffortLevel,
+  SessionMode,
+} from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -25,7 +31,6 @@ import {
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
-import type { ModelOption } from './agent-models';
 
 // Linear lookup: the policy/model/effort lists are a handful of entries at most.
 function optionById<T extends { id: string }>(
@@ -176,7 +181,7 @@ export function ModelSelectorMenu({
   provider?: AgentKind;
   /** Providers offered for selection; absent/empty when the session's provider is fixed. */
   selectableProviders?: AgentKind[];
-  modelOptions?: ModelOption[];
+  modelOptions?: AgentModelOption[];
   effortOptions?: EffortOption[];
   selectedModelId: string | null;
   selectedEffortId: EffortLevel | null;

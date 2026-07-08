@@ -58,6 +58,7 @@ export function DesktopShell({
   chatWorkspace,
   activeSession,
   draft,
+  agentModels,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -307,6 +308,7 @@ export function DesktopShell({
           draft={draft}
           workspaces={workspaces}
           chatWorkspace={chatWorkspace}
+          agentModels={agentModels}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
@@ -320,6 +322,7 @@ export function DesktopShell({
           conversation={conversation}
           agentKind={active?.kind}
           agentLabel={agentLabel}
+          modelOptions={active ? agentModels?.[active.kind] : undefined}
           cwd={active?.cwd}
           permissionDecisions={permissionDecisions}
           respondingPermissions={respondingPermissions}

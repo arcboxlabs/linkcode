@@ -24,6 +24,7 @@ import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useAgentModels } from '../agent-model/hooks';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -124,6 +125,9 @@ function WorkbenchSessionSurface({
     () => new Map<string, PermissionDecision>(),
   );
   const [responding, addResponding, removeResponding] = useSet<string>();
+  // Fetched at mount so the host's lazy catalog probe warms up before a model menu ever opens;
+  // undefined while loading, which simply hides the pickers' model section until it lands.
+  const { data: agentModels } = useAgentModels();
   const active = sessions.active;
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
@@ -375,6 +379,7 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      agentModels={agentModels}
       conversation={conversation}
       permissionDecisions={permissionDecisions}
       respondingPermissions={responding}

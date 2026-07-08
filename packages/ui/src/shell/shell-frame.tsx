@@ -1,4 +1,10 @@
-import type { EffortLevel, SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  AgentModels,
+  EffortLevel,
+  SessionId,
+  SessionInfo,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationSurface } from './conversation-surface';
@@ -26,6 +32,9 @@ export interface ShellFrameProps
   activeSession: SessionInfo | null;
   /** Non-null while the new-session page is up — it replaces the conversation column. */
   draft: NewSessionDraft | null;
+  /** Per-agent model catalogs (host-probed via `agent-model.list`), feeding both composers'
+   * model pickers; undefined while the catalog request is in flight. */
+  agentModels?: AgentModels;
   conversation: ConversationViewModel;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
@@ -72,6 +81,7 @@ export function ShellFrame({
   chatWorkspace,
   activeSession,
   draft,
+  agentModels,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -150,6 +160,7 @@ export function ShellFrame({
             draft={draft}
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}
+            agentModels={agentModels}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
           />
@@ -161,6 +172,7 @@ export function ShellFrame({
             conversation={conversation}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
+            modelOptions={active ? agentModels?.[active.kind] : undefined}
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}
             cwd={active?.cwd}

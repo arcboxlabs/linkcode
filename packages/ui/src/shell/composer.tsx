@@ -1,4 +1,10 @@
-import type { AgentKind, ApprovalPolicyState, EffortLevel, SessionMode } from '@linkcode/schema';
+import type {
+  AgentKind,
+  AgentModelOption,
+  ApprovalPolicyState,
+  EffortLevel,
+  SessionMode,
+} from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Command } from 'coss-ui/components/command';
 import { noop } from 'foxact/noop';
@@ -13,7 +19,6 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
-import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type {
   ComposerCommandEntry,
   ComposerCommandSource,
@@ -50,8 +55,11 @@ export interface ComposerProps {
   /** Receives the imperative handle (React 19 ref-as-prop). */
   handleRef?: React.Ref<ComposerHandle>;
   agentLabel?: string;
-  /** Which adapter is running the active session; picks the model list to show (if any). */
+  /** Which adapter is running the active session; shown as the provider glyph. */
   agentKind?: AgentKind;
+  /** The active agent's model catalog (host-probed via `agent-model.list`). Absent or empty
+   * hides the model picker — the agent then runs its own default. */
+  modelOptions?: AgentModelOption[];
   /** No active session: the composer is inert. */
   disabled: boolean;
   /** A turn is in flight: show Stop instead of Send. */
@@ -95,6 +103,7 @@ export function Composer({
   handleRef,
   agentLabel,
   agentKind,
+  modelOptions,
   disabled,
   isRunning,
   mentionItems = EMPTY_MENTION_ITEMS,
@@ -303,7 +312,6 @@ export function Composer({
   }
 
   const placeholderAgent = agentLabel ?? 'agent';
-  const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
   const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
 
   // Workflow modes and approval policy are two orthogonal axes (see session-modes.ts and

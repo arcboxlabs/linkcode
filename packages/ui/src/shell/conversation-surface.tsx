@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import type { AgentKind, AgentModelOption, EffortLevel } from '@linkcode/schema';
 import { useRef } from 'react';
 import { ArtifactHostActionsProvider } from '../chat/artifacts';
 import type { PermissionDecision } from '../chat/conversation-prompts';
@@ -13,6 +13,8 @@ export interface ConversationSurfaceProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   agentLabel?: string;
+  /** The active agent's model catalog, fed to the composer's model picker. */
+  modelOptions?: AgentModelOption[];
   cwd?: string;
   /** TODO(backend): thread the session's active model here once the daemon reflects it. */
   modelName?: string;
@@ -44,6 +46,7 @@ export function ConversationSurface({
   conversation,
   agentKind,
   agentLabel,
+  modelOptions,
   cwd,
   modelName,
   permissionDecisions,
@@ -102,6 +105,7 @@ export function ConversationSurface({
         handleRef={composerRef}
         agentLabel={agentLabel}
         agentKind={agentKind}
+        modelOptions={modelOptions}
         disabled={disabled}
         isRunning={isRunning}
         currentModeId={conversation.currentModeId}

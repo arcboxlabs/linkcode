@@ -1,4 +1,10 @@
-import type { AgentKind, SessionModeId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  AgentKind,
+  AgentModels,
+  SessionModeId,
+  WorkspaceId,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -24,7 +30,6 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
-import { AGENT_MODEL_OPTIONS } from './agent-models';
 import { Composer } from './composer';
 import { repositoryLabel } from './repository-label';
 import { DEFAULT_MODE_ID } from './session-modes';
@@ -50,6 +55,8 @@ export interface NewSessionSurfaceProps {
   /** Project workspaces offered by the picker; the chat workspace arrives separately. */
   workspaces: WorkspaceRecord[];
   chatWorkspace: WorkspaceRecord | null;
+  /** Per-agent model catalogs (host-probed); the composer shows the picked provider's list. */
+  agentModels?: AgentModels;
   className?: string;
   topContent?: React.ReactNode;
   /** Starts the session and sends the prompt. A rejection keeps the page up — the caller's error
@@ -71,6 +78,7 @@ export function NewSessionSurface({
   draft,
   workspaces,
   chatWorkspace,
+  agentModels,
   className,
   topContent,
   onSubmit,
@@ -93,7 +101,7 @@ export function NewSessionSurface({
     if (!selected) return;
     // The model rides only when it belongs to the submitted provider — mirroring what the
     // composer's trigger displays (a pick made under another provider shows as "Default").
-    const providerModels = AGENT_MODEL_OPTIONS[provider];
+    const providerModels = agentModels?.[provider];
     const validModel =
       model != null && providerModels?.some((option) => option.id === model) ? model : undefined;
     setPending(true);
@@ -140,6 +148,7 @@ export function NewSessionSurface({
           <Composer
             agentLabel={AGENT_LABELS[provider]}
             agentKind={provider}
+            modelOptions={agentModels?.[provider]}
             disabled={pending || !selected}
             isRunning={false}
             currentModeId={modeId}

@@ -163,6 +163,20 @@ export class DevMockHost {
           },
         });
         break;
+      case 'agent-model.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'agent-model.listed',
+          replyTo: p.clientReqId,
+          models: {
+            'claude-code': [
+              { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+              { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+              { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+            ],
+          },
+        });
+        break;
       case 'config.set':
         await wait(CONTROL_LATENCY_MS);
         this.providers = structuredClone(p.providers);

@@ -6,8 +6,9 @@ export interface EffortOption {
 }
 
 /**
- * Reasoning-effort choices, keyed by adapter — same discipline as `AGENT_MODEL_OPTIONS`: only
- * adapters with a working effort switch get an entry.
+ * Reasoning-effort choices, keyed by adapter — only adapters with a *verified* working effort
+ * switch get an entry. Unlike models (each agent's own catalog, served via `agent-model.list`),
+ * efforts stay a static table until per-model effort advertising lands (CODE-104's codex task).
  *
  * claude-code switches low–xhigh and ultracode live via the SDK's flag-settings control channel
  * (`Query#applyFlagSettings`, streaming-input-mode-only) — the same layer the CLI's `/effort`

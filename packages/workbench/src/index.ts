@@ -1,3 +1,4 @@
+export * from './agent-model/hooks';
 export * from './agent-runtime/hooks';
 export * from './app/app-providers';
 export * from './app/connection-state';
