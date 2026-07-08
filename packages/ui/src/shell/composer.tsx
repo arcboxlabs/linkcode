@@ -70,6 +70,12 @@ export interface ComposerProps {
   /** The agent-advertised approval-policy state (the permission/safety axis), reflected from the
    * session's `approval-policy-update` event. Absent or empty hides the policy menu. */
   approvalPolicy?: ApprovalPolicyState | null;
+  /** The model the session is actually running on, reflected from the session's `model-update`
+   * event. `null` until the adapter reports it — the picker then shows a placeholder. */
+  currentModel?: string | null;
+  /** The reasoning-effort level the session is running at, reflected from `effort-update`; same
+   * placeholder rule as `currentModel`. */
+  currentEffort?: EffortLevel | null;
   onSend: (text: string) => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
@@ -78,10 +84,10 @@ export interface ComposerProps {
   /** Sends the approval-policy switch (`set-approval-policy`); like `onModeChange`, the pick is
    * reflected back via `approval-policy-update` — a rejected switch keeps the previous policy. */
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
-  /** Called when the user picks a model from the (adapter-specific) list. The picker only reflects
-   * the pick once this resolves — it stays on the previous model if the switch is rejected. */
+  /** Sends the model switch (`set-model`); the active model is reflected from `model-update`, not
+   * locally — a rejected switch keeps the previous model. */
   onModelChange?: (model: string) => Promise<void>;
-  /** Called when the user picks a reasoning-effort level; same confirm-then-reflect contract. */
+  /** Sends the reasoning-effort switch (`set-effort`); reflected from `effort-update`, same contract. */
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
   /** Providers offered for selection (the new-session composer). Absent or empty means the
    * provider is fixed — the trigger then hides the provider glyph and submenu. */
@@ -108,6 +114,8 @@ export function Composer({
   currentModeId,
   availableModes = STUB_SESSION_MODES,
   approvalPolicy,
+  currentModel,
+  currentEffort,
   onSend,
   onStop,
   onModeChange,
@@ -121,8 +129,6 @@ export function Composer({
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const [value, setValue] = useState('');
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-  const [selectedEffortId, setSelectedEffortId] = useState<EffortLevel | null>(null);
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
@@ -352,25 +358,16 @@ export function Composer({
   // No deps: the handle re-binds every render so insertText always sees the current draft.
   useImperativeHandle(handleRef, () => ({ insertText }));
 
-  async function selectModel(modelId: string): Promise<void> {
-    try {
-      await onModelChange?.(modelId);
-      // Only reflect the pick once the switch is confirmed — otherwise the picker would show a
-      // model that isn't actually the one the session is running.
-      setSelectedModelId(modelId);
-    } catch {
-      // The workbench's error banner already reports the failure; nothing else to do here.
-    }
+  // Server-reflected like the workflow mode and approval policy: the pick shows once the session's
+  // `model-update` / `effort-update` echoes it back (the adapter emits optimistically on accept, so
+  // the round-trip is fast), and a rejected switch simply leaves the previous value — the failure
+  // lands in the error banner.
+  function selectModel(modelId: string): void {
+    void onModelChange?.(modelId).catch(noop);
   }
 
-  async function selectEffort(effort: EffortLevel): Promise<void> {
-    try {
-      await onEffortChange?.(effort);
-      // Confirm-then-reflect, same as selectModel.
-      setSelectedEffortId(effort);
-    } catch {
-      // The workbench's error banner already reports the failure; nothing else to do here.
-    }
+  function selectEffort(effort: EffortLevel): void {
+    void onEffortChange?.(effort).catch(noop);
   }
 
   const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
@@ -445,14 +442,10 @@ export function Composer({
                   provider={agentKind}
                   runtimeCues={runtimeCues}
                   selectableProviders={selectableProviders}
-                  selectedEffortId={selectedEffortId}
-                  selectedModelId={selectedModelId}
-                  onSelectEffort={(effort) => {
-                    void selectEffort(effort);
-                  }}
-                  onSelectModel={(model) => {
-                    void selectModel(model);
-                  }}
+                  selectedEffortId={currentEffort ?? null}
+                  selectedModelId={currentModel ?? null}
+                  onSelectEffort={selectEffort}
+                  onSelectModel={selectModel}
                   onSelectProvider={
                     onProviderChange
                       ? (provider) => {
