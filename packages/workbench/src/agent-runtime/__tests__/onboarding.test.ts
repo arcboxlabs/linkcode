@@ -163,4 +163,27 @@ describe('deriveAgentRuntimeCues', () => {
     const unprobed: AgentRuntimes = { pi: { status: 'available', source: 'builtin' } };
     expect(deriveAgentRuntimeCues(unprobed, ASSETS, {}, {}, {})).toEqual({});
   });
+
+  it('suppresses the login cue when the agent has a configured API key', () => {
+    const runtimes: AgentRuntimes = {
+      'claude-code': { status: 'available', source: 'detected', auth: { loggedIn: false } },
+    };
+    // Signed out but a key is saved — the daemon injects it as ANTHROPIC_API_KEY, so no login needed.
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        {},
+        {},
+        {},
+        {
+          'claude-code': { enabled: true, apiKey: 'sk-x' },
+        },
+      ),
+    ).toEqual({});
+    // No key configured → the login cue still shows.
+    expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {})).toEqual({
+      'claude-code': { state: 'needs-login', phase: 'idle' },
+    });
+  });
 });
