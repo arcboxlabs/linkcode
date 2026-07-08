@@ -1,4 +1,6 @@
+import type { CloudHost } from '@linkcode/workbench';
 import {
+  CloudHostsProvider,
   ConnectionState,
   createDaemonTransport,
   SessionNotifier,
@@ -17,6 +19,9 @@ import { useDesktopSettingsStore } from './settings/store';
 import { ConnectionSkeleton } from './shell/connection-skeleton';
 import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
 
+/** The cloud host list comes from main (it holds the keychain session); see preload's bridge. */
+const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHosts();
+
 export function DesktopApp(): React.ReactNode {
   const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
@@ -24,17 +29,19 @@ export function DesktopApp(): React.ReactNode {
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
-      {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over the
-          native backdrop, so any workbench pixels underneath would ghost through the settings
-          sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction. */}
-      <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
-        {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
-        <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-          <SessionNotifier present={presentDesktopNotification} />
-          <Workbench shellComponent={DesktopWorkbenchShell} />
-        </DaemonConnection>
-      </div>
-      {settingsOpen ? <SettingsView /> : null}
+      <CloudHostsProvider source={listCloudHosts}>
+        {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over the
+            native backdrop, so any workbench pixels underneath would ghost through the settings
+            sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction. */}
+        <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+          {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
+          <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
+            <SessionNotifier present={presentDesktopNotification} />
+            <Workbench shellComponent={DesktopWorkbenchShell} />
+          </DaemonConnection>
+        </div>
+        {settingsOpen ? <SettingsView /> : null}
+      </CloudHostsProvider>
     </WorkbenchAppProviders>
   );
 }
