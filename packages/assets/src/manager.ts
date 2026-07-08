@@ -1,4 +1,4 @@
-import type { InstalledAsset, ManagedAssetId } from '@linkcode/schema';
+import type { InstalledAsset, ManagedAssetId, ManagedAssetStatus } from '@linkcode/schema';
 import type { AssetDescriptor } from './catalog';
 import { CATALOG } from './catalog';
 import type { DownloadProgress } from './download';
@@ -42,6 +42,19 @@ export class AssetManager {
   /** Drop superseded versions and tmp orphans. Best-effort; never throws. */
   gcAtBoot(): GcReport {
     return collectGarbage(this.wanted);
+  }
+
+  /** Live snapshot for the `asset.list` wire resource. */
+  statuses(): ManagedAssetStatus[] {
+    return [...this.descriptors.values()].map((descriptor) => {
+      const version = this.wanted.get(descriptor.id);
+      const path = version ? installedPath(descriptor, version) : undefined;
+      return {
+        id: descriptor.id,
+        wantedVersion: version,
+        installed: version && path ? { id: descriptor.id, version, path } : undefined,
+      };
+    });
   }
 
   /** Synchronous: the managed executable path when the wanted version is fully installed. */
