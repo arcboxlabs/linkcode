@@ -43,6 +43,7 @@ export interface PendingValueMap {
   configGet: ProvidersConfig;
   agentRuntimeList: AgentRuntimes;
   assetList: ManagedAssetStatus[];
+  assetEnsure: ManagedAssetStatus;
   gitStatus: GitStatus;
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
@@ -78,6 +79,7 @@ export class PendingRegistry {
     configGet: new Map(),
     agentRuntimeList: new Map(),
     assetList: new Map(),
+    assetEnsure: new Map(),
     gitStatus: new Map(),
     gitPrStatus: new Map(),
     gitDiff: new Map(),

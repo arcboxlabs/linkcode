@@ -13,6 +13,8 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  InstalledAsset,
+  ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
@@ -46,6 +48,24 @@ type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 
+/** One `asset.progress` broadcast: bytes received so far for an in-flight managed install. */
+export interface AssetProgressEvent {
+  id: ManagedAssetId;
+  receivedBytes: number;
+  totalBytes?: number;
+}
+
+/** One `asset.settled` broadcast: `installed` on success, `error` message on failure. */
+export interface AssetSettledEvent {
+  id: ManagedAssetId;
+  installed?: InstalledAsset;
+  error?: string;
+}
+
+type AssetProgressCb = (event: AssetProgressEvent) => void;
+type AssetSettledCb = (event: AssetSettledEvent) => void;
+type AgentRuntimesChangedCb = (runtimes: AgentRuntimes) => void;
+
 /**
  * LinkCodeClient: the data-plane client shared across all platforms
  * (docs/ARCHITECTURE.md#packages--repo-layout).
@@ -64,6 +84,9 @@ export class LinkCodeClient {
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
+  private readonly assetProgressSubs = new Set<AssetProgressCb>();
+  private readonly assetSettledSubs = new Set<AssetSettledCb>();
+  private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
   private closed = false;
@@ -110,8 +133,24 @@ export class LinkCodeClient {
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
         break;
+      case 'agent-runtime.changed':
+        for (const cb of this.agentRuntimesChangedSubs) cb(p.runtimes);
+        break;
       case 'asset.listed':
         this.pending.resolve('assetList', p.replyTo, p.assets);
+        break;
+      case 'asset.ensured':
+        this.pending.resolve('assetEnsure', p.replyTo, p.status);
+        break;
+      case 'asset.progress':
+        for (const cb of this.assetProgressSubs) {
+          cb({ id: p.id, receivedBytes: p.receivedBytes, totalBytes: p.totalBytes });
+        }
+        break;
+      case 'asset.settled':
+        for (const cb of this.assetSettledSubs) {
+          cb({ id: p.id, installed: p.installed, error: p.error });
+        }
         break;
       case 'git.status.get.result':
         this.pending.resolve('gitStatus', p.replyTo, p.status);
@@ -280,6 +319,29 @@ export class LinkCodeClient {
 
   listAssets(): Promise<ManagedAssetStatus[]> {
     return this.control.listAssets();
+  }
+
+  /** Install a managed asset; resolves when the install settles (see ControlChannel.ensureAsset). */
+  ensureAsset(id: ManagedAssetId): Promise<ManagedAssetStatus> {
+    return this.control.ensureAsset(id);
+  }
+
+  /** Broadcast download progress for every in-flight managed install (callers filter by id). */
+  subscribeAssetProgress(cb: AssetProgressCb): Unsubscribe {
+    this.assetProgressSubs.add(cb);
+    return () => this.assetProgressSubs.delete(cb);
+  }
+
+  /** Broadcast terminal state of managed installs, including boot-triggered background ones. */
+  subscribeAssetSettled(cb: AssetSettledCb): Unsubscribe {
+    this.assetSettledSubs.add(cb);
+    return () => this.assetSettledSubs.delete(cb);
+  }
+
+  /** Pushed whenever the daemon re-probes agent runtimes (a managed agent install landed). */
+  subscribeAgentRuntimesChanged(cb: AgentRuntimesChangedCb): Unsubscribe {
+    this.agentRuntimesChangedSubs.add(cb);
+    return () => this.agentRuntimesChangedSubs.delete(cb);
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {

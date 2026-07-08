@@ -14,6 +14,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
@@ -278,6 +279,19 @@ export class ControlChannel {
     return this.sendCorrelated('assetList', (clientReqId) => ({
       kind: 'asset.list',
       clientReqId,
+    }));
+  }
+
+  /**
+   * Install the wanted version of a managed asset. Resolves when the install settles — minutes
+   * for a real download (no pending timeout exists; a disconnect rejects). Progress meanwhile
+   * streams via the `asset.progress` broadcast.
+   */
+  ensureAsset(id: ManagedAssetId): Promise<ManagedAssetStatus> {
+    return this.sendCorrelated('assetEnsure', (clientReqId) => ({
+      kind: 'asset.ensure',
+      clientReqId,
+      id,
     }));
   }
 
