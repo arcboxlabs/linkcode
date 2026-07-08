@@ -60,7 +60,10 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   (`noExternal: [/^@linkcode\//]`) — never externalize `@linkcode/*`. The agent SDKs and `ws` stay
   `external` (native binaries / subprocesses break when bundled). A `createRequire` banner supplies the
   `require` inlined CJS deps call — a boot crash `Dynamic require of … is not supported` means that
-  broke. `apps/daemon/dist` must build before the desktop bundle.
+  broke. `splitting: false` is required: the desktop packaging copies only `dist/index.js` into the
+  asar (electron.vite.config.ts `bundle-daemon-artifact`), so a split bundle boots to
+  `ERR_MODULE_NOT_FOUND` on a missing `chunk-*.js` (a dynamic `import()` reached via `@linkcode/assets`
+  is what started the split). `apps/daemon/dist` must build before the desktop bundle.
 
 ## Engine wiring, errors & lifecycle
 
