@@ -26,9 +26,10 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
 import type { ModelOption } from './agent-models';
+import { resolveModel } from './agent-models';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
 
-// Linear lookup: the policy/model/effort lists are a handful of entries at most.
+// Linear lookup: the policy/effort lists are a handful of entries at most.
 function optionById<T extends { id: string }>(
   options: readonly T[] | undefined,
   id: string | null,
@@ -204,7 +205,7 @@ export function ModelSelectorMenu({
   onSelectProvider?: (provider: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const selectedModel = optionById(modelOptions, selectedModelId);
+  const selectedModel = resolveModel(modelOptions, selectedModelId);
   const selectedEffort = optionById(effortOptions, selectedEffortId);
   const providers = selectableProviders ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
@@ -252,7 +253,7 @@ export function ModelSelectorMenu({
               <MenuSubTrigger>{selectedModel?.label ?? t('modelDefault')}</MenuSubTrigger>
               <MenuSubPopup className="w-56">
                 <MenuRadioGroup
-                  value={selectedModelId ?? ''}
+                  value={selectedModel?.id ?? selectedModelId ?? ''}
                   onValueChange={(value) => onSelectModel(String(value))}
                 >
                   {modelOptions?.map((option) => (
