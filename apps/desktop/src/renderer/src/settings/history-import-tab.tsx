@@ -20,25 +20,25 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
 
   return (
     <>
-      <DesktopChromePortal segment="main" position="left">
-        <div className="flex h-full min-w-0 items-center gap-2 px-2">
-          <span className="min-w-0 truncate font-semibold text-sm">
-            {t('panelTitle', { provider: AGENT_LABELS[kind] })}
+      <DesktopChromePortal segment="main" position="left" className="gap-2 px-2">
+        <span className="min-w-0 truncate font-semibold text-sm">
+          {t('panelTitle', { provider: AGENT_LABELS[kind] })}
+        </span>
+        {surface.count > 0 && (
+          <span className="shrink-0 text-muted-foreground text-xs">
+            {t('conversationCount', { count: surface.count })}
           </span>
-          {surface.count > 0 && (
-            <span className="shrink-0 text-muted-foreground text-xs">
-              {t('conversationCount', { count: surface.count })}
-            </span>
-          )}
-        </div>
+        )}
       </DesktopChromePortal>
-      <DesktopChromePortal segment="main" position="right">
-        <div className="flex items-center gap-1.5 [-webkit-app-region:no-drag]">
-          <ShellIconButton label={t('refresh')} onClick={surface.refresh}>
-            <RotateCwIcon className="size-3.5" />
-          </ShellIconButton>
-          <HistorySortSelect value={sort} onChange={setSort} />
-        </div>
+      <DesktopChromePortal
+        segment="main"
+        position="right"
+        className="gap-1.5 [-webkit-app-region:no-drag]"
+      >
+        <ShellIconButton label={t('refresh')} onClick={surface.refresh}>
+          <RotateCwIcon className="size-3.5" />
+        </ShellIconButton>
+        <HistorySortSelect value={sort} onChange={setSort} />
       </DesktopChromePortal>
       <HistoryBrowserList
         entries={surface.entries}

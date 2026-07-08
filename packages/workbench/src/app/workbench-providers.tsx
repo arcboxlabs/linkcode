@@ -22,7 +22,13 @@ export interface WorkbenchProvidersProps extends React.PropsWithChildren {
   /**
    * Rendered inside the runtime contexts but OUTSIDE the connection gate — for surfaces that must
    * stay mounted while the daemon is unreachable (desktop Settings) yet still use the data plane.
-   * Their requests fail or pend until the transport is ready; no conversation context here.
+   * Their requests fail or pend until the transport is ready (revalidated once it is); no
+   * conversation context here.
+   *
+   * Stacking contract: this renders as a DOM sibling AFTER the gate's output, so it only covers
+   * the gated tree if it paints above it (a fixed full-viewport overlay, like Settings). This
+   * slot is the canonical way to compose an ungated surface; `WorkbenchConnectionGate` is the
+   * lower-level piece for apps assembling the providers themselves.
    */
   ungated?: React.ReactNode;
 }

@@ -80,16 +80,17 @@ export function SettingsView(): React.ReactNode {
         // Back lives in the settings sidebar, so suppress the workbench navigation controls.
         leftControls={null}
         rightControls={null}
-        // Immersive title: the chrome names the active panel; the history-import tab supplies its
-        // own richer header (provider title + count + controls) through DesktopChromePortal.
+        // Immersive title: the chrome names the active panel. A tab that portals its own header
+        // into main:left (history import) suppresses this default via the chrome's portal-wins
+        // rule — no per-tab special case here.
         titleContent={
-          category === 'history-import' ? null : (
-            <div className="pointer-events-none flex h-full min-w-0 items-center px-2">
-              <span className="min-w-0 truncate font-semibold text-sm">
-                {t(`tabs.${category}`)}
-              </span>
-            </div>
-          )
+          <div className="pointer-events-none flex h-full min-w-0 items-center px-2">
+            <span className="min-w-0 truncate font-semibold text-sm">
+              {category === 'history-import'
+                ? t('historyImport.portalLabel')
+                : t(`tabs.${category}`)}
+            </span>
+          </div>
         }
         onShowSidebar={noop}
         onHideSidebar={noop}
