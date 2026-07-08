@@ -19,8 +19,6 @@ import type {
   ContentBlock,
   EffortLevel,
   StartOptions,
-  ToolCall,
-  ToolCallContent,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -33,11 +31,10 @@ import {
   boundedLimit,
   cursorFromTotal,
   cursorOffset,
-  isRecord,
 } from '../../history-util';
-import { diffContentFromUnified } from '../../unified-diff';
-import { contentToText, locationsFromToolInput, toolKindFromName } from '../../util';
+import { contentToText, locationsFromToolInput } from '../../util';
 import { listAmpHistory, readAmpHistory } from './history';
+import { ampToolKind, diffResultContent } from './tool';
 
 /**
  * Amp has no user-facing model axis: `mode` selects the model + system-prompt bundle (per
@@ -59,43 +56,6 @@ function isAmpMode(value: string): value is AmpMode {
  * not enforced here. */
 const AMP_EFFORTS = new Set<EffortLevel>(['low', 'medium', 'high', 'xhigh', 'max']);
 type AmpEffort = Exclude<EffortLevel, 'ultracode'>;
-
-/** Amp's subagent-spawning tool is `Task`; exact match (not the shared regex classifier) for the
- * same reason claude-code matches its `Agent`/`Task` exactly — see `claudeToolKind`. */
-function ampToolKind(name: string): ToolCall['kind'] {
-  return name === 'Task' ? 'task' : toolKindFromName(name);
-}
-
-/** `+++ <path>` (a `\t<label>` may trail it); a deletion's `+++ /dev/null` falls back to `---`. */
-const DIFF_NEW_FILE_RE = /^\+{3} ([^\t\n]+)/m;
-const DIFF_OLD_FILE_RE = /^-{3} ([^\t\n]+)/m;
-
-function pathFromUnifiedDiff(diff: string): string | undefined {
-  const newPath = DIFF_NEW_FILE_RE.exec(diff)?.[1];
-  const path =
-    newPath === undefined || newPath === '/dev/null' ? DIFF_OLD_FILE_RE.exec(diff)?.[1] : newPath;
-  return path === undefined || path === '/dev/null' ? undefined : path;
-}
-
-/** Amp's file-mutation tools return their result as a JSON payload
- * `{"diff": "<unified diff>", "lineRange": [start, end]}` (observed live). Surface it as
- * structured diff content so the UI renders a diff card instead of the raw JSON text; anything
- * that doesn't match stays a plain text result. */
-function diffResultContent(content: string): ToolCallContent[] | undefined {
-  if (content[0] !== '{') return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(parsed) || typeof parsed.diff !== 'string' || parsed.diff.length === 0) {
-    return undefined;
-  }
-  const path = pathFromUnifiedDiff(parsed.diff);
-  if (path === undefined) return undefined;
-  return diffContentFromUnified(path, parsed.diff);
-}
 
 /** `thinking: true` (`--stream-json-thinking`) adds thinking blocks the shipped SDK types do not
  * declare — `AssistantMessage`'s content union is text|tool_use only (SDK/CLI schema drift,

@@ -6,7 +6,14 @@ import { dirname, join } from 'node:path';
 import process, { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { AgentHistoryEvent, AgentHistoryId, AgentHistorySession } from '@linkcode/schema';
+import type {
+  AgentHistoryEvent,
+  AgentHistoryId,
+  AgentHistorySession,
+  ToolCall,
+  ToolCallContent,
+} from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import {
   asHistoryId,
   compactRecord,
@@ -21,6 +28,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
+import { ampToolKind, diffContentFromResult } from './tool';
 
 const execFileAsync = promisify(execFile);
 
@@ -34,8 +42,12 @@ const execFileAsync = promisify(execFile);
  * CLI's own login state or an ambient `AMP_API_KEY` (history ops run without `StartOptions`, so
  * the per-session config key cannot reach them).
  *
- * Replay is text-only for now, like codex's: the export's message/content block shapes have not
- * been verified against a live paid account, so tool-call replay stays off until they are.
+ * The export's messages are Anthropic-shaped (`text`/`thinking`/`tool_use`/`tool_result` blocks),
+ * verified live against @ampcode/cli 0.0.1783401425: a `tool_use` carries `id`/`name`/`input`; its
+ * `tool_result` carries `toolUseID` (the SAME `TU-` id the live path keys on) and a `run.result`
+ * payload — `{ diff, lineRange }` for file edits, `{ output, exitCode }` for shell — under
+ * `run.status`. So replay reproduces the announce/settle tool-call pairs the live stream emits,
+ * converging by id. Exports omit `parent_tool_use_id`, so nested subagent tools replay flat.
  */
 
 /** Mirrors the SDK's own `findAmpCommand` order exactly — node_modules pair → `AMP_CLI_PATH` →
@@ -157,9 +169,28 @@ export async function listAmpHistory(opts: {
   };
 }
 
+interface AmpToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input?: unknown;
+}
+
+function isToolUseBlock(block: unknown): block is AmpToolUseBlock {
+  return (
+    isRecord(block) &&
+    block.type === 'tool_use' &&
+    typeof block.id === 'string' &&
+    block.id.length > 0 &&
+    typeof block.name === 'string' &&
+    block.name.length > 0
+  );
+}
+
 interface AmpToolResultBlock {
   type: 'tool_result';
-  tool_use_id: string;
+  toolUseID: string;
+  run?: unknown;
 }
 
 /** A user row's tool_result payloads must not replay (or preview) as something the user typed. */
@@ -167,8 +198,8 @@ function isToolResultBlock(block: unknown): block is AmpToolResultBlock {
   return (
     isRecord(block) &&
     block.type === 'tool_result' &&
-    typeof block.tool_use_id === 'string' &&
-    block.tool_use_id.length > 0
+    typeof block.toolUseID === 'string' &&
+    block.toolUseID.length > 0
   );
 }
 
@@ -176,6 +207,31 @@ function userTypedValue(message: Record<string, unknown>): unknown {
   const content = message.content;
   if (!Array.isArray(content)) return message;
   return content.filter((block) => !isToolResultBlock(block));
+}
+
+/** Only `done` is seen on live exports; treat an explicit error/aborted status as a failure and
+ * default everything else to completed — a settled history tool almost always ran. */
+const AMP_RESULT_ERROR_STATUSES = new Set(['error', 'failed', 'aborted', 'cancelled', 'canceled']);
+
+function ampResultStatus(run: unknown): 'completed' | 'failed' {
+  const status = isRecord(run) ? run.status : undefined;
+  return typeof status === 'string' && AMP_RESULT_ERROR_STATUSES.has(status)
+    ? 'failed'
+    : 'completed';
+}
+
+/** Turn a `tool_result.run` into tool-call content: a file edit's `{ diff }` becomes a structured
+ * diff card, a shell tool's `{ output }` becomes plain text, and any other shape salvages whatever
+ * text it can. */
+function ampResultContent(run: unknown): ToolCallContent[] {
+  const result = isRecord(run) ? run.result : undefined;
+  const diff = diffContentFromResult(result);
+  if (diff) return diff;
+  const text =
+    isRecord(result) && typeof result.output === 'string'
+      ? result.output
+      : textFromUnknown(result ?? run);
+  return text.trim().length > 0 ? [{ type: 'content', content: textBlock(text) }] : [];
 }
 
 export async function readAmpHistory(
@@ -211,18 +267,78 @@ export function mapAmpHistoryEvents(
   historyId: AgentHistoryId,
   messages: Array<Record<string, unknown>>,
 ): AgentHistoryEvent[] {
-  const events: AgentHistoryEvent[] = [];
-  messages.forEach((message, index) => {
+  const mapper = createAmpHistoryEventMapper(historyId);
+  return messages.flatMap((message, index) => mapper(message, index));
+}
+
+/**
+ * Stateful per-read mapper: correlates each `tool_use` announce with the `tool_result` that later
+ * settles it (linked by amp's `TU-` id — `tool_use.id` === `tool_result.toolUseID`, the SAME id the
+ * live path keys on), replaying the announce/settle full-snapshot pairs the live stream emits so a
+ * seeded timeline and live re-emits of the same call converge by id (`buildConversation` replaces
+ * tool calls by id) instead of duplicating.
+ */
+function createAmpHistoryEventMapper(
+  historyId: AgentHistoryId,
+): (message: Record<string, unknown>, index: number) => AgentHistoryEvent[] {
+  const announced = new Map<string, ToolCall>();
+
+  const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+    announced.set(toolCall.toolCallId, toolCall);
+    return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
+  };
+
+  return (message, index) => {
     const role = stringField(message, 'role');
-    if (role !== 'user' && role !== 'assistant') return;
+    if (role !== 'user' && role !== 'assistant') return [];
+    const events: AgentHistoryEvent[] = [];
     const ts = timestampMs(message.created) ?? timestampMs(message.timestamp);
     const itemId =
       stringField(message, 'protocolMessageID') ??
       stringField(message, 'id') ??
       `${role}-${index.toString(36)}`;
-    const value = role === 'user' ? userTypedValue(message) : message;
-    const event = textHistoryEvent(historyId, role, itemId, value, ts);
-    if (event) events.push(event);
-  });
-  return events;
+    const blocks = Array.isArray(message.content) ? message.content : [];
+
+    if (role === 'assistant') {
+      const text = textHistoryEvent(historyId, 'assistant', itemId, message, ts);
+      if (text) events.push(text);
+      for (const block of blocks) {
+        if (!isToolUseBlock(block)) continue;
+        events.push(
+          toolEvent({
+            toolCallId: block.id,
+            title: block.name,
+            kind: ampToolKind(block.name),
+            status: 'in_progress',
+            content: [],
+            rawInput: block.input,
+          }),
+        );
+      }
+      return events;
+    }
+
+    for (const block of blocks) {
+      if (!isToolResultBlock(block)) continue;
+      const existing = announced.get(block.toolUseID);
+      events.push(
+        toolEvent({
+          toolCallId: block.toolUseID,
+          // The announce can sit beyond this read's page window; fall back to first-sight defaults.
+          title: existing?.title ?? block.toolUseID,
+          kind: existing?.kind ?? 'other',
+          status: ampResultStatus(block.run),
+          // Announce-time content is empty for amp (the diff arrives with the result); keep any
+          // existing content ahead of it anyway to mirror claude's ordering.
+          content: [...(existing?.content ?? []), ...ampResultContent(block.run)],
+          rawInput: existing?.rawInput,
+          rawOutput: block.run,
+        }),
+      );
+    }
+    // Tool-result rows are plumbing; only what remains after removing them is a real typed prompt.
+    const text = textHistoryEvent(historyId, 'user', itemId, userTypedValue(message), ts);
+    if (text) events.push(text);
+    return events;
+  };
 }

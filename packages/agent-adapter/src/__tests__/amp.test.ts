@@ -430,7 +430,7 @@ describe('AmpAdapter turn mapping', () => {
 });
 
 describe('amp history mapping', () => {
-  it('replays typed text and drops tool_result-only user rows', () => {
+  it('replays text, tool announce/settle pairs, and drops tool_result-only user rows', () => {
     const events = mapAmpHistoryEvents(asHistoryId(SID), [
       {
         role: 'user',
@@ -442,19 +442,30 @@ describe('amp history mapping', () => {
         role: 'assistant',
         content: [
           { type: 'text', text: 'hi there' },
-          { type: 'tool_use', id: 't1', name: 'Bash', input: {} },
+          { type: 'tool_use', id: 'TU-1', name: 'Bash', input: { command: 'ls' } },
         ],
         protocolMessageID: 'm2',
       },
-      // A tool_result-only user row is plumbing, not something the user typed.
+      // A tool_result-only user row is plumbing, not something the user typed: it settles the tool
+      // (`toolUseID`/`run` is the real export shape) but emits no user message.
       {
         role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'out', is_error: false }],
+        content: [
+          {
+            type: 'tool_result',
+            toolUseID: 'TU-1',
+            run: { result: { output: 'out' }, status: 'done' },
+          },
+        ],
       },
       {
         role: 'user',
         content: [
-          { type: 'tool_result', tool_use_id: 't1', content: 'out', is_error: false },
+          {
+            type: 'tool_result',
+            toolUseID: 'TU-1',
+            run: { result: { output: 'out' }, status: 'done' },
+          },
           { type: 'text', text: 'typed too' },
         ],
       },
@@ -463,9 +474,78 @@ describe('amp history mapping', () => {
     expect(events.map((event) => [event.event.type, event.itemId])).toEqual([
       ['user-message', 'm1'],
       ['agent-message-chunk', 'm2'],
+      ['tool-call', 'TU-1'],
+      ['tool-call', 'TU-1'],
+      ['tool-call', 'TU-1'],
       ['user-message', 'user-3'],
     ]);
     expect(events[0].ts).toBe(Date.parse('2026-07-01T00:00:00Z'));
+  });
+
+  it('correlates the announce and settle by amp TU- id, carrying a file-edit diff', () => {
+    const diff =
+      '```diff\n--- /tmp/greet.py\toriginal\n+++ /tmp/greet.py\tmodified\n@@ -1,2 +1,2 @@\n def greet():\n-    print("goodbye")\n+    print("hello")\n```';
+    const events = mapAmpHistoryEvents(asHistoryId(SID), [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'TU-9', name: 'edit_file', input: { path: '/tmp/greet.py' } },
+        ],
+        protocolMessageID: 'a1',
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            toolUseID: 'TU-9',
+            run: { result: { diff, lineRange: [2, 2] }, status: 'done' },
+          },
+        ],
+      },
+    ]);
+    const tools = events.flatMap((event) =>
+      event.event.type === 'tool-call' ? [event.event.toolCall] : [],
+    );
+    expect(tools).toHaveLength(2);
+    // Same id for announce and settle → buildConversation replaces by id, no duplicate card.
+    expect(tools[0]).toMatchObject({
+      toolCallId: 'TU-9',
+      title: 'edit_file',
+      kind: 'edit',
+      status: 'in_progress',
+    });
+    expect(tools[1]).toMatchObject({ toolCallId: 'TU-9', kind: 'edit', status: 'completed' });
+    expect(tools[1].content).toContainEqual(
+      expect.objectContaining({ type: 'diff', path: '/tmp/greet.py' }),
+    );
+  });
+
+  it('marks a settle failed on an error run status', () => {
+    const events = mapAmpHistoryEvents(asHistoryId(SID), [
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'TU-2', name: 'Bash', input: {} }],
+        protocolMessageID: 'a1',
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            toolUseID: 'TU-2',
+            run: { result: { output: 'boom' }, status: 'error' },
+          },
+        ],
+      },
+    ]);
+    const settle = events.flatMap((event) =>
+      event.event.type === 'tool-call' && event.event.toolCall.status !== 'in_progress'
+        ? [event.event.toolCall]
+        : [],
+    );
+    expect(settle).toHaveLength(1);
+    expect(settle[0].status).toBe('failed');
   });
 });
 
