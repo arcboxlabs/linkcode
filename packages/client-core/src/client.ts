@@ -16,6 +16,7 @@ import type {
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -243,6 +244,14 @@ export class LinkCodeClient {
     outcome: PermissionOutcome,
   ): Promise<RequestAck> {
     return this.control.respondPermission(sessionId, requestId, outcome);
+  }
+
+  respondQuestion(
+    sessionId: SessionId,
+    requestId: string,
+    outcome: QuestionOutcome,
+  ): Promise<RequestAck> {
+    return this.control.respondQuestion(sessionId, requestId, outcome);
   }
 
   /** Stop a session and drop its buffered events (its receive counter survives, see {@link EventBuffer}). */

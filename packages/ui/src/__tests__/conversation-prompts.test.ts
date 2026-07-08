@@ -36,6 +36,7 @@ function conversation(
     approvalPolicy: null,
     stopReason: null,
     pendingPermissionIds: [],
+    pendingQuestionIds: [],
     ...overrides,
   };
 }

@@ -20,6 +20,7 @@ const EMPTY_CONVERSATION: Conversation = {
   approvalPolicy: null,
   stopReason: null,
   pendingPermissionIds: [],
+  pendingQuestionIds: [],
 };
 
 /**

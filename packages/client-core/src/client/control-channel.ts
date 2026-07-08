@@ -17,6 +17,7 @@ import type {
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -180,6 +181,15 @@ export class ControlChannel {
     outcome: PermissionOutcome,
   ): Promise<RequestAck> {
     return this.send(sessionId, { type: 'permission-response', requestId, outcome });
+  }
+
+  /** Answer a pending question-request. */
+  respondQuestion(
+    sessionId: SessionId,
+    requestId: string,
+    outcome: QuestionOutcome,
+  ): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'question-response', requestId, outcome });
   }
 
   stopSession(sessionId: SessionId): Promise<RequestAck> {

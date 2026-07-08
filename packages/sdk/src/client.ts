@@ -16,6 +16,7 @@ import type {
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -150,6 +151,14 @@ export class LinkCodeSdkClient {
     outcome: PermissionOutcome,
   ): RequestResult<{ ok: true }> {
     return toResult(this.raw.respondPermission(sessionId, requestId, outcome));
+  }
+
+  respondQuestion(
+    sessionId: SessionId,
+    requestId: string,
+    outcome: QuestionOutcome,
+  ): RequestResult<{ ok: true }> {
+    return toResult(this.raw.respondQuestion(sessionId, requestId, outcome));
   }
 
   /** Read the daemon-owned provider config (data plane). */
