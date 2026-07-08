@@ -72,7 +72,7 @@ export abstract class AgentCliProbe {
    * `require.resolve` — the SDKs' `exports` maps reject bare CJS resolution outright.
    */
   sdkPlatformPackagePresent(): boolean {
-    const scope = this.sdkPackage.split('/')[0];
+    const scope = this.sdkPackage.split('/', 1)[0];
     const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
     return paths.some((dir) => existsSync(join(dir, scope, this.platformPackageBase())));
   }

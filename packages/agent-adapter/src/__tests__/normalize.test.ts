@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent } from '@linkcode/schema';
+import type { AgentEvent, AgentInput, StartOptions } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
 import {
@@ -18,6 +18,8 @@ import {
   mapCodexItemStatus,
   mapCodexTokenUsage,
 } from '../native/codex';
+import type { CodexServerHandle } from '../native/codex/adapter';
+import type { CodexAppServerOptions } from '../native/codex/app-server';
 import { contentToText, toolKindFromName } from '../util';
 
 describe('contentToText', () => {
@@ -349,6 +351,83 @@ describe('CodexAdapter approval-policy switching', () => {
     await expect(adapter.send({ type: 'set-approval-policy', policyId: 'auto' })).rejects.toThrow(
       "codex: unknown approval policy 'auto'",
     );
+  });
+});
+
+/** Captures app-server traffic; turns settle synchronously so each prompt runs a full cycle. */
+class FakeCodexServer {
+  readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+  constructor(private readonly opts: Omit<CodexAppServerOptions, 'binaryPath'>) {}
+  request(method: string, params: unknown): Promise<unknown> {
+    this.requests.push({ method, params: params as Record<string, unknown> });
+    if (method === 'thread/start' || method === 'thread/resume') {
+      return Promise.resolve({ thread: { id: 'thread-1' } });
+    }
+    if (method === 'turn/start') {
+      const id = `turn-${this.requests.length}`;
+      this.opts.onNotification('turn/completed', { turn: { id, status: 'completed' } });
+      return Promise.resolve({ turn: { id } });
+    }
+    return Promise.resolve({});
+  }
+  setRequestHandler(): void {
+    // Approvals are not exercised here.
+  }
+  close(): void {
+    // Nothing to reap.
+  }
+}
+
+class TestCodex extends CodexAdapter {
+  fakeServers: FakeCodexServer[] = [];
+  configured: 'read-only' | 'workspace-write' | 'danger-full-access' | undefined;
+  protected override startAppServer(
+    opts: Omit<CodexAppServerOptions, 'binaryPath'>,
+  ): Promise<CodexServerHandle> {
+    const server = new FakeCodexServer(opts);
+    this.fakeServers.push(server);
+    return Promise.resolve(server);
+  }
+  protected override readConfiguredSandbox() {
+    return Promise.resolve(this.configured);
+  }
+  turnStarts(): Array<Record<string, unknown>> {
+    return this.fakeServers.flatMap((s) =>
+      s.requests.flatMap((r) => (r.method === 'turn/start' ? [r.params] : [])),
+    );
+  }
+}
+
+describe('CodexAdapter sandbox deferral to config.toml', () => {
+  const start: StartOptions = { kind: 'codex', cwd: '/repo' };
+  const prompt: AgentInput = { type: 'prompt', content: [{ type: 'text', text: 'hi' }] };
+
+  it('omits sandbox overrides while the user has a configured sandbox and no tier was picked', async () => {
+    const adapter = new TestCodex();
+    adapter.configured = 'read-only';
+    await adapter.start(start);
+    const threadStart = adapter.fakeServers[0].requests.find((r) => r.method === 'thread/start');
+    expect(threadStart?.params).not.toHaveProperty('sandbox');
+    expect(threadStart?.params.approvalPolicy).toBe('on-request');
+
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[0]).not.toHaveProperty('sandboxPolicy');
+
+    // An explicit pick applies the preset exactly, config.toml notwithstanding.
+    await adapter.send({ type: 'set-approval-policy', policyId: 'acceptEdits' });
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[1].sandboxPolicy).toMatchObject({ type: 'workspaceWrite' });
+  });
+
+  it('injects the preset sandbox when config.toml leaves it unset', async () => {
+    const adapter = new TestCodex();
+    adapter.configured = undefined;
+    await adapter.start(start);
+    const threadStart = adapter.fakeServers[0].requests.find((r) => r.method === 'thread/start');
+    expect(threadStart?.params.sandbox).toBe('workspace-write');
+
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[0].sandboxPolicy).toMatchObject({ type: 'workspaceWrite' });
   });
 });
 
