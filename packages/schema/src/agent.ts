@@ -130,6 +130,17 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('current-mode-update'), currentModeId: SessionModeIdSchema }),
   /** Full approval-policy state (advertised list + current), at session start and after switches. */
   z.object({ type: z.literal('approval-policy-update'), state: ApprovalPolicyStateSchema }),
+  /** The model the session is actually running on, so clients reflect the true value instead of a
+   * placeholder. The available list is the static UI catalog (not adapter-advertised, unlike
+   * approval policies), so only the current id travels. Emitted once the adapter learns the served
+   * model (claude-code's init/assistant frames report it even when no model was requested) and on
+   * every switch. Adapters that can't observe their model never emit it. */
+  z.object({ type: z.literal('model-update'), model: z.string().min(1) }),
+  /** The reasoning-effort level the session is actually running at. Same rationale as `model-update`.
+   * Emitted on every switch and, for adapters that can observe the resolved default (claude-code via
+   * a Stop hook's `effort.level`), once the default is learned. `undefined`/never-emitted keeps the
+   * client showing a placeholder rather than a guessed value. */
+  z.object({ type: z.literal('effort-update'), effort: EffortLevelSchema }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),

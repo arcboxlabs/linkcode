@@ -5,7 +5,11 @@ import type {
   AgentHistoryId,
   AgentRuntimes,
   ApprovalPolicyState,
+  AssetInstallEvent,
   ContentBlock,
+  EffortLevel,
+  InstalledAsset,
+  ManagedAssetId,
   ManagedAssetStatus,
   SessionId,
   SessionInfo,
@@ -45,6 +49,11 @@ interface Session {
    * ask event is its only carrier (history reads reproduce no ephemeral events), so without the
    * replay a client that (re)connects mid-ask has no card to answer and the turn hangs. */
   pendingAsks: Map<string, PendingAskEvent>;
+  /** Latest model/effort the adapter reported, replayed to freshly-attached clients for the same
+   * reason as `approvalPolicy` — a reconnecting client missed the emit and would otherwise show a
+   * placeholder instead of the value the session is actually running on. */
+  currentModel?: string;
+  currentEffort?: EffortLevel;
 }
 
 type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
@@ -61,14 +70,21 @@ export interface EngineDeps {
   previewRoutes?: PreviewRouteRegistry;
   /** Boot-time probe result (`collectAgentRuntimes()`), served to clients on `agent-runtime.list`. */
   agentRuntimes?: AgentRuntimes;
-  /** Managed-asset store status, served to clients on `asset.list`. */
+  /** Managed-asset store, served on `asset.list` and driven by `asset.ensure`. */
   assets?: AssetService;
+  /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands. */
+  collectAgentRuntimes?: () => Promise<AgentRuntimes>;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
 export interface AssetService {
   statuses(): ManagedAssetStatus[];
+  ensure(id: ManagedAssetId): Promise<InstalledAsset | undefined>;
+  subscribe(listener: (event: AssetInstallEvent) => void): () => void;
 }
+
+/** Progress broadcasts are throttled per asset so a fast download can't flood the wire. */
+const ASSET_PROGRESS_INTERVAL_MS = 150;
 
 /**
  * Engine: the local core engine — the "host" that runs the agents
@@ -94,8 +110,11 @@ export class Engine {
   private readonly git: GitService;
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
-  private readonly agentRuntimes: AgentRuntimes;
+  /** Boot snapshot, replaced by {@link refreshAgentRuntimes} when a managed install lands. */
+  private agentRuntimes: AgentRuntimes;
   private readonly assets?: AssetService;
+  private readonly collectAgentRuntimes?: () => Promise<AgentRuntimes>;
+  private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
 
   constructor(
@@ -123,6 +142,9 @@ export class Engine {
     this.artifactHost = new ArtifactHostService(routes);
     this.agentRuntimes = deps.agentRuntimes ?? {};
     this.assets = deps.assets;
+    this.collectAgentRuntimes = deps.collectAgentRuntimes;
+    // Lifetime = the daemon's: the engine is never disposed, so the subscription is never torn down.
+    this.assets?.subscribe((event) => this.onAssetInstallEvent(event));
   }
 
   async start(): Promise<void> {
@@ -355,6 +377,33 @@ export class Engine {
         );
         break;
       }
+      case 'asset.ensure': {
+        const assets = this.assets;
+        if (!assets) {
+          this.sendFailure(p.clientReqId, new Error('managed assets are unavailable on this host'));
+          break;
+        }
+        // Rides the promise instead of awaiting: the reply lands only when the install settles
+        // (minutes for a download), and this message's handling must finish before then.
+        assets
+          .ensure(p.id)
+          .then((installed) => {
+            if (!installed) {
+              // Unknown asset or no version pin (e.g. the backing SDK is absent on this host).
+              this.sendFailure(p.clientReqId, new Error(`asset ${p.id} cannot be installed here`));
+              return;
+            }
+            const status = nullthrow(
+              assets.statuses().find((candidate) => candidate.id === p.id),
+              `installed asset ${p.id} missing from statuses`,
+            );
+            this.transport.send(
+              createWireMessage({ kind: 'asset.ensured', replyTo: p.clientReqId, status }),
+            );
+          })
+          .catch((err: unknown) => this.sendFailure(p.clientReqId, err));
+        break;
+      }
       case 'config.get': {
         this.transport.send(
           createWireMessage({
@@ -523,6 +572,12 @@ export class Engine {
         if (attached.approvalPolicy) {
           replay({ type: 'approval-policy-update', state: attached.approvalPolicy });
         }
+        if (attached.currentModel) {
+          replay({ type: 'model-update', model: attached.currentModel });
+        }
+        if (attached.currentEffort) {
+          replay({ type: 'effort-update', effort: attached.currentEffort });
+        }
         for (const ask of attached.pendingAsks.values()) replay(ask);
         break;
       }
@@ -631,6 +686,12 @@ export class Engine {
               }
             }
             break;
+          case 'model-update':
+            session.currentModel = event.model;
+            break;
+          case 'effort-update':
+            session.currentEffort = event.effort;
+            break;
           default:
             break;
         }
@@ -731,6 +792,58 @@ export class Engine {
       await fn();
     } catch (err) {
       this.sendFailure(replyTo, err);
+    }
+  }
+
+  /** Forward AssetManager lifecycle to the wire, whoever triggered the install (client or boot). */
+  private onAssetInstallEvent(event: AssetInstallEvent): void {
+    switch (event.kind) {
+      case 'progress': {
+        const now = Date.now();
+        if (now - (this.assetProgressSentAt.get(event.id) ?? 0) < ASSET_PROGRESS_INTERVAL_MS) {
+          return;
+        }
+        this.assetProgressSentAt.set(event.id, now);
+        this.transport.send(
+          createWireMessage({
+            kind: 'asset.progress',
+            id: event.id,
+            receivedBytes: event.receivedBytes,
+            totalBytes: event.totalBytes,
+          }),
+        );
+        break;
+      }
+      case 'installed': {
+        this.assetProgressSentAt.delete(event.id);
+        this.transport.send(
+          createWireMessage({ kind: 'asset.settled', id: event.id, installed: event.installed }),
+        );
+        // A freshly installed agent binary changes what this host can spawn — re-probe so
+        // `agent-runtime.list` stops serving the stale boot snapshot, and push the new truth.
+        if (event.id.startsWith('agent:')) void this.refreshAgentRuntimes();
+        break;
+      }
+      case 'failed': {
+        this.assetProgressSentAt.delete(event.id);
+        this.transport.send(
+          createWireMessage({ kind: 'asset.settled', id: event.id, error: event.error }),
+        );
+        break;
+      }
+      // no default
+    }
+  }
+
+  private async refreshAgentRuntimes(): Promise<void> {
+    if (!this.collectAgentRuntimes) return;
+    try {
+      this.agentRuntimes = await this.collectAgentRuntimes();
+      this.transport.send(
+        createWireMessage({ kind: 'agent-runtime.changed', runtimes: this.agentRuntimes }),
+      );
+    } catch (err) {
+      console.error('Re-probing agent runtimes after a managed install failed:', err);
     }
   }
 

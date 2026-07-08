@@ -354,6 +354,21 @@ describe('buildConversation', () => {
     expect(c.approvalPolicy).toEqual({ availablePolicies: policies, currentPolicyId: 'auto' });
     expect(c.items).toHaveLength(0);
   });
+
+  it('reflects the latest model/effort without adding timeline items', () => {
+    const empty = buildConversation([]);
+    expect(empty.currentModel).toBeNull();
+    expect(empty.currentEffort).toBeNull();
+    const c = buildConversation([
+      { type: 'model-update', model: 'claude-opus-4-8' },
+      { type: 'effort-update', effort: 'high' },
+      { type: 'model-update', model: 'claude-sonnet-5' },
+      { type: 'effort-update', effort: 'xhigh' },
+    ]);
+    expect(c.currentModel).toBe('claude-sonnet-5');
+    expect(c.currentEffort).toBe('xhigh');
+    expect(c.items).toHaveLength(0);
+  });
 });
 
 describe('createConversationBuilder', () => {

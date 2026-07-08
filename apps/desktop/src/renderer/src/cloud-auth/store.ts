@@ -12,12 +12,12 @@ interface CloudAuthState {
 
 /**
  * Renderer-side view of the cloud auth session. The main process owns the actual session (keychain,
- * browser flow, deep-link callback); this store seeds from `window.getUser()` on boot and stays in
- * sync via the plugin's `onAuthenticated` / `onUserUpdated` / `onAuthError` bridges — never a
- * `useEffect` watcher. The subscriptions are wired once when the store is created.
+ * browser flow, deep-link callback); this store stays in sync via the plugin's `onAuthenticated` /
+ * `onUserUpdated` / `onAuthError` bridges — never a `useEffect` watcher. The subscriptions are wired
+ * once when the store is created; the initial seed and focus refresh of `user` come from the
+ * `getUser()` SWR resource in `useCloudAccount`.
  */
 export const useCloudAuthStore = create<CloudAuthState>((set) => {
-  void window.getUser().then((user) => set({ user: user ?? null }));
   window.onAuthenticated((user) => set({ user, authenticating: false }));
   window.onUserUpdated((user) => set({ user: user ?? null }));
   window.onAuthError(() => set({ authenticating: false }));

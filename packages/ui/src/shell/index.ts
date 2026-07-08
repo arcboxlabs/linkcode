@@ -1,5 +1,6 @@
 export * from './agent-efforts';
 export * from './agent-models';
+export * from './agent-onboarding-card';
 export * from './command-palette';
 export * from './composer';
 export * from './conversation-surface';

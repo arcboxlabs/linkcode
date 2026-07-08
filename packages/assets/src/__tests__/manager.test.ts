@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AssetDescriptor } from '../catalog';
+import type { AssetInstallEvent } from '../manager';
 import { AssetManager } from '../manager';
 import { assetDir } from '../paths';
 import { currentPlatformKey } from '../platform';
@@ -91,5 +92,53 @@ describe('AssetManager', () => {
     expect(manager.managedBinary('agent:opencode')).toBeUndefined();
     expect(manager.gcAtBoot()).toEqual({ removed: [], skipped: [] });
     expect(existsSync(join(dir, '9.9.9'))).toBe(true);
+  });
+
+  it('fans install lifecycle out to subscribers: progress, then installed', async () => {
+    freshStore();
+    const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });
+    const events: AssetInstallEvent[] = [];
+    manager.subscribe((event) => events.push(event));
+
+    const installed = await manager.ensure('tool:tectonic');
+
+    const progress = events.filter((event) => event.kind === 'progress');
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress[0]).toMatchObject({ id: 'tool:tectonic' });
+    expect(progress.at(-1)?.receivedBytes).toBeGreaterThan(0);
+    expect(events.at(-1)).toEqual({ kind: 'installed', id: 'tool:tectonic', installed });
+  });
+
+  it('emits failed (and keeps the caller rejection) when the install cannot complete', async () => {
+    freshStore();
+    const descriptor = await servedDescriptor('2.0.0');
+    const broken: AssetDescriptor = {
+      ...descriptor,
+      artifacts: {
+        [platform]: {
+          ...descriptor.artifacts[platform]!,
+          integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        },
+      },
+    };
+    const manager = new AssetManager({ catalog: [broken], retry: 0 });
+    const events: AssetInstallEvent[] = [];
+    manager.subscribe((event) => events.push(event));
+
+    await expect(manager.ensure('tool:tectonic')).rejects.toThrow();
+    const last = events.at(-1);
+    expect(last?.kind).toBe('failed');
+    expect(last && 'error' in last && last.error.length > 0).toBe(true);
+  });
+
+  it('stops notifying after unsubscribe', async () => {
+    freshStore();
+    const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });
+    const events: AssetInstallEvent[] = [];
+    const unsubscribe = manager.subscribe((event) => events.push(event));
+    unsubscribe();
+
+    await manager.ensure('tool:tectonic');
+    expect(events).toEqual([]);
   });
 });

@@ -26,8 +26,10 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
 import type { ModelOption } from './agent-models';
+import { resolveModel } from './agent-models';
+import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
 
-// Linear lookup: the policy/model/effort lists are a handful of entries at most.
+// Linear lookup: the policy/effort lists are a handful of entries at most.
 function optionById<T extends { id: string }>(
   options: readonly T[] | undefined,
   id: string | null,
@@ -159,11 +161,27 @@ export function SessionModeChip({
   );
 }
 
+/** Muted availability badge on a provider submenu item; nothing renders for a ready runtime. */
+function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
+  const t = useTranslations('workbench.agentRuntime');
+  if (!cue) return null;
+  const label =
+    cue.state === 'missing'
+      ? t('badgeMissing')
+      : cue.state === 'downloading'
+        ? t('badgeDownloading')
+        : cue.state === 'failed'
+          ? t('badgeFailed')
+          : t('badgeUnverified');
+  return <span className="ml-auto shrink-0 text-muted-foreground text-xs">{label}</span>;
+}
+
 /** Codex-style model trigger: [provider glyph] model + effort, opening reasoning/model/provider menus. */
 export function ModelSelectorMenu({
   disabled,
   provider,
   selectableProviders,
+  runtimeCues,
   modelOptions,
   effortOptions,
   selectedModelId,
@@ -176,6 +194,8 @@ export function ModelSelectorMenu({
   provider?: AgentKind;
   /** Providers offered for selection; absent/empty when the session's provider is fixed. */
   selectableProviders?: AgentKind[];
+  /** Runtime availability per provider: a cue renders as a muted badge on the submenu item. */
+  runtimeCues?: AgentRuntimeCues;
   modelOptions?: ModelOption[];
   effortOptions?: EffortOption[];
   selectedModelId: string | null;
@@ -185,7 +205,7 @@ export function ModelSelectorMenu({
   onSelectProvider?: (provider: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const selectedModel = optionById(modelOptions, selectedModelId);
+  const selectedModel = resolveModel(modelOptions, selectedModelId);
   const selectedEffort = optionById(effortOptions, selectedEffortId);
   const providers = selectableProviders ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
@@ -233,7 +253,7 @@ export function ModelSelectorMenu({
               <MenuSubTrigger>{selectedModel?.label ?? t('modelDefault')}</MenuSubTrigger>
               <MenuSubPopup className="w-56">
                 <MenuRadioGroup
-                  value={selectedModelId ?? ''}
+                  value={selectedModel?.id ?? selectedModelId ?? ''}
                   onValueChange={(value) => onSelectModel(String(value))}
                 >
                   {modelOptions?.map((option) => (
@@ -265,10 +285,11 @@ export function ModelSelectorMenu({
               >
                 {providers.map((kind) => (
                   <MenuRadioItem key={kind} closeOnClick value={kind}>
-                    <span className="flex items-center gap-2">
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
                       <AgentIcon kind={kind} variant="ghost" />
                       {AGENT_LABELS[kind]}
                     </span>
+                    <RuntimeCueBadge cue={runtimeCues?.[kind]} />
                   </MenuRadioItem>
                 ))}
               </MenuRadioGroup>
