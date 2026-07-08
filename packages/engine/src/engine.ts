@@ -1,5 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { createAdapter } from '@linkcode/agent-adapter';
+import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryId,
@@ -719,6 +719,12 @@ export class Engine {
             break;
           case 'effort-update':
             session.currentEffort = event.effort;
+            break;
+          case 'error':
+            // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
+            // `loggedIn: false` and the client surfaces the login cue, self-healing an out-of-band
+            // auth change the boot-time probe couldn't see.
+            if (event.code === AUTH_FAILED_ERROR_CODE) void this.refreshAgentRuntimes();
             break;
           default:
             break;
