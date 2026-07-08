@@ -10,6 +10,7 @@ import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useState } from 'react';
 import { systemBridge } from './ipc';
+import { presentDesktopNotification } from './notifications';
 import { SettingsView } from './settings/settings-view';
 import { useDesktopSettingsStore } from './settings/store';
 import { ConnectionSkeleton } from './shell/connection-skeleton';
@@ -28,7 +29,10 @@ export function DesktopApp(): React.ReactNode {
       <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
         {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
         <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-          <Workbench shellComponent={DesktopWorkbenchShell} />
+          <Workbench
+            shellComponent={DesktopWorkbenchShell}
+            presentNotification={presentDesktopNotification}
+          />
         </DaemonConnection>
       </div>
       {settingsOpen ? <SettingsView /> : null}

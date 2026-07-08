@@ -2,6 +2,7 @@ import type {
   DesktopSettings,
   DesktopSettingsPatch,
   PickFileOptions,
+  SystemNotification,
   UpdaterStatus,
 } from './context';
 
@@ -54,5 +55,11 @@ export interface SystemBridge {
      * Fired when a daemon (re)starts or stops — re-run `resolveUrl` on it.
      */
     onRuntimeChanged(cb: () => void): () => void;
+  };
+  notifications: {
+    /** Show an OS notification (main-process `Notification`); display params only. */
+    notify(notification: SystemNotification): Promise<void>;
+    /** Subscribe to notification clicks; main focuses the window, then pushes the `clickToken`. */
+    onClick(cb: (clickToken: string) => void): () => void;
   };
 }

@@ -1,6 +1,7 @@
 import type { SystemContext } from '@linkcode/ipc';
+import { NOTIFICATION_CLICKED_CHANNEL } from '@linkcode/ipc';
 import type { BrowserWindow } from 'electron';
-import { app, dialog } from 'electron';
+import { app, dialog, Notification } from 'electron';
 import { applyThemePreference } from './appearance';
 import { resolveDaemonUrl } from './daemon-discovery';
 import { isDaemonManaged, syncDaemonSupervisor } from './daemon-supervisor';
@@ -49,6 +50,21 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
     daemon: {
       resolveUrl: () => resolveDaemonUrl(),
       isManaged: () => isDaemonManaged(),
+    },
+    notifications: {
+      notify({ title, body, clickToken }) {
+        // Unsupported (e.g. Windows without a shortcut/AppUserModelID) degrades to a silent no-op.
+        if (!Notification.isSupported()) return;
+        const notification = new Notification({ title, body });
+        notification.on('click', () => {
+          if (win.isDestroyed()) return;
+          if (win.isMinimized()) win.restore();
+          win.show();
+          win.focus();
+          win.webContents.send(NOTIFICATION_CLICKED_CHANNEL, clickToken);
+        });
+        notification.show();
+      },
     },
   };
 }
