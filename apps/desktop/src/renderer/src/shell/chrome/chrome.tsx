@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslations } from 'use-intl';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
 
 type DesktopPanelSide = 'right' | 'bottom';
@@ -455,10 +456,12 @@ function DefaultLeftChromeControls({
   onShowSidebar: () => void;
   onHideSidebar: () => void;
 }): React.ReactNode {
+  const t = useTranslations('workbench.palette');
+
   return (
     <>
       <ShellIconButton
-        label="Toggle sidebar"
+        label={t('toggleSidebar')}
         shortcut={sidebarShortcut}
         aria-pressed={sidebarOpen}
         onClick={sidebarOpen ? onHideSidebar : onShowSidebar}
@@ -466,14 +469,14 @@ function DefaultLeftChromeControls({
         <PanelLeftIcon className="size-4" />
       </ShellIconButton>
       <ShellIconButton
-        label="Back"
+        label={t('goBack')}
         disabled={navigation?.canGoBack !== true}
         onClick={navigation?.onBack}
       >
         <ChevronLeftIcon className="size-4" />
       </ShellIconButton>
       <ShellIconButton
-        label="Forward"
+        label={t('goForward')}
         disabled={navigation?.canGoForward !== true}
         onClick={navigation?.onForward}
       >
