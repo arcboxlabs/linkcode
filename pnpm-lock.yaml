@@ -277,6 +277,9 @@ importers:
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.1(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.3
@@ -298,6 +301,9 @@ importers:
       coss-ui:
         specifier: workspace:*
         version: link:../../packages/coss-ui
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       electron:
         specifier: 'catalog:'
         version: 42.4.1
@@ -4223,6 +4229,9 @@ packages:
 
   '@types/cors@2.8.19':
     resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
+
+  '@types/cross-spawn@6.0.6':
+    resolution: {integrity: sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==}
 
   '@types/d3-array@3.2.2':
     resolution: {integrity: sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==}
@@ -13063,6 +13072,10 @@ snapshots:
       assertion-error: 2.0.1
 
   '@types/cors@2.8.19':
+    dependencies:
+      '@types/node': 26.0.1
+
+  '@types/cross-spawn@6.0.6':
     dependencies:
       '@types/node': 26.0.1
 
