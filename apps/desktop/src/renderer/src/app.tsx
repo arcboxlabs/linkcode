@@ -90,8 +90,12 @@ function DaemonConnection({
 /**
  * A supervised daemon needs a beat to boot (fork + engine + listener bind, ~250ms measured);
  * early dial failures within this window are startup, not an outage — keep the skeleton up.
+ * Measured from renderer boot, not from mount: the fallback remounts on every retry (the
+ * epoch-keyed runtime contexts), and restarting the grace there would hide the error screen —
+ * and its Retry button — for another window after each click.
  */
 const MANAGED_STARTUP_GRACE_MS = 10000;
+const RENDERER_BOOT_AT = Date.now();
 
 /**
  * Desktop connection gate: a shell-shaped skeleton while connecting (plus a startup grace window
@@ -107,11 +111,15 @@ function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.
   const adoptDiscoveredUrl = useDesktopSettingsStore((state) => state.adoptDiscoveredUrl);
   const managed = useDaemonIsManaged();
 
-  const [withinStartupGrace, setWithinStartupGrace] = useState(true);
+  const [withinStartupGrace, setWithinStartupGrace] = useState(
+    () => Date.now() - RENDERER_BOOT_AT < MANAGED_STARTUP_GRACE_MS,
+  );
   useAbortableEffect((signal) => {
+    const remaining = MANAGED_STARTUP_GRACE_MS - (Date.now() - RENDERER_BOOT_AT);
+    if (remaining <= 0) return;
     const timer = setTimeout(() => {
       if (!signal.aborted) setWithinStartupGrace(false);
-    }, MANAGED_STARTUP_GRACE_MS);
+    }, remaining);
     signal.addEventListener('abort', () => clearTimeout(timer));
   }, []);
 

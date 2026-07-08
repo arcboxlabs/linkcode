@@ -98,7 +98,12 @@ export function useHistoryImportSurface(
       history.loadError == null ? null : (extractErrorMessage(history.loadError, false) ?? ''),
     importingId: history.importingId,
     importError: inlineError == null ? null : (extractErrorMessage(inlineError, false) ?? ''),
-    refresh: history.refresh,
+    refresh() {
+      // Both keys: the imported badges derive from the session list, so refreshing only the
+      // provider history would leave the dedup map stale (and re-offer Import on imported rows).
+      history.refresh();
+      sessions.refresh();
+    },
     importEntry,
     openEntry,
   };

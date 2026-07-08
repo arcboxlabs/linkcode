@@ -6,11 +6,12 @@ import { createContextState } from 'foxact/context-state';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { trueFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import type * as React from 'react';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
-import { SWRConfig } from 'swr';
+import { SWRConfig, mutate as swrMutate } from 'swr';
 import { useDebug } from './debug';
 import { TayoriProvider } from './tayori';
 
@@ -138,7 +139,13 @@ function WorkbenchRuntimeConnection({
       client
         .connect()
         .then(() => {
-          if (!signal.aborted) setStatus('ready');
+          if (signal.aborted) return;
+          setStatus('ready');
+          // Ungated surfaces may hold requests that failed pre-connect in SWR error-backoff —
+          // kick every key now instead of waiting the backoff out. Gated children mount fresh
+          // and are unaffected; the SWRConfig below shares the default cache, so the global
+          // mutate reaches these keys.
+          void swrMutate(trueFn);
         })
         .catch(() => {
           if (!signal.aborted) setStatus('error');
