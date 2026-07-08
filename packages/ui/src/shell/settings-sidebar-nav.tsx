@@ -20,6 +20,8 @@ export interface SettingsSidebarNavItem {
   key: string;
   icon: React.ReactNode;
   label: React.ReactNode;
+  /** For items with `children`, drives the accordion expansion only — the row itself never
+   * takes the selected pill; the highlighted sub-item is the "you are here" signal. */
   active?: boolean;
   onClick?: () => void;
   /** Navigation-backed row (e.g. `<Link to="…" />`); mutually exclusive with `onClick`. */
@@ -83,9 +85,10 @@ export function SettingsSidebarNav({
               {item.label}
             </ShellSidebarItem>
           ) : (
-            // Accordion category: selecting it reveals its sub-items until another category takes over.
+            // Accordion category: a disclosure row (never the selected pill) whose expansion +
+            // single highlighted sub-item carry the selection signal.
             <Collapsible key={item.key} open={Boolean(item.active)}>
-              <ShellSidebarItem active={item.active} onClick={item.onClick} render={item.render}>
+              <ShellSidebarItem onClick={item.onClick} render={item.render}>
                 {item.icon}
                 <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
                 <ChevronDownIcon
@@ -96,9 +99,15 @@ export function SettingsSidebarNav({
                 />
               </ShellSidebarItem>
               <CollapsiblePanel>
-                <div className="flex flex-col gap-1 pt-1 pl-6">
+                {/* Guide line under the parent's icon column anchors the subtree. */}
+                <div className="my-1 ml-4 flex flex-col gap-0.5 border-sidebar-border border-l pl-2">
                   {item.children.map((child) => (
-                    <ShellSidebarItem key={child.key} active={child.active} onClick={child.onClick}>
+                    <ShellSidebarItem
+                      key={child.key}
+                      active={child.active}
+                      className="h-7"
+                      onClick={child.onClick}
+                    >
                       {child.icon}
                       {child.label}
                     </ShellSidebarItem>

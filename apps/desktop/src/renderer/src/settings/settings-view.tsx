@@ -21,6 +21,7 @@ import { HistoryImportTab } from './history-import-tab';
 type SettingsCategory = 'general' | 'connection' | 'about' | 'agents' | 'history-import';
 
 const AGENT_KINDS: readonly AgentKind[] = AgentKindSchema.options;
+const DEFAULT_HISTORY_PROVIDER: AgentKind = 'claude-code';
 
 const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
   ...DESKTOP_CHROME_METRICS_STYLE,
@@ -37,7 +38,7 @@ export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
   const backFromOverlay = useNavigationHistoryStore((state) => state.backFromOverlay);
   const [category, setCategory] = useState<SettingsCategory>('general');
-  const [historyProvider, setHistoryProvider] = useState<AgentKind>('claude-code');
+  const [historyProvider, setHistoryProvider] = useState<AgentKind>(DEFAULT_HISTORY_PROVIDER);
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
@@ -129,7 +130,12 @@ export function SettingsView(): React.ReactNode {
                     icon: <HistoryIcon className="size-4" />,
                     label: t('historyImport.portalLabel'),
                     active: category === 'history-import',
-                    onClick: () => setCategory('history-import'),
+                    // The disclosure row selects the section's first provider (the accordion
+                    // opens via `active`); it is never highlighted itself.
+                    onClick() {
+                      setCategory('history-import');
+                      setHistoryProvider(DEFAULT_HISTORY_PROVIDER);
+                    },
                     children: AGENT_KINDS.map((agentKind) => ({
                       key: agentKind,
                       icon: <AgentIcon kind={agentKind} variant="ghost" />,
