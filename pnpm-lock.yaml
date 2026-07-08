@@ -164,6 +164,9 @@ importers:
       '@linkcode/agent-adapter':
         specifier: workspace:*
         version: link:../../packages/agent-adapter
+      '@linkcode/assets':
+        specifier: workspace:*
+        version: link:../../packages/assets
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../packages/common

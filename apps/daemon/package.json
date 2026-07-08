@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@linkcode/agent-adapter": "workspace:*",
+    "@linkcode/assets": "workspace:*",
     "@linkcode/common": "workspace:*",
     "@linkcode/engine": "workspace:*",
     "@linkcode/schema": "workspace:*",
