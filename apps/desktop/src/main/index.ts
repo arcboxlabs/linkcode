@@ -4,7 +4,7 @@ import { app, BrowserWindow, Menu } from 'electron';
 import { applyThemePreference } from './appearance';
 import { setupCloudAuth } from './cloud-auth/client';
 import { registerCloudTunnelBridge } from './cloud-auth/tunnel';
-import { APP_NAME } from './constants';
+import { APP_ID, APP_NAME } from './constants';
 import { startDaemonSupervisor } from './daemon-supervisor';
 import { buildAppMenu } from './menu';
 import { getSettings } from './settings';
@@ -21,6 +21,10 @@ app.setName(APP_NAME);
 // asar even for dev-shell packages. Without this, a packaged dev shell shares the release app's
 // settings and single-instance lock — the second one to start exits silently.
 app.setPath('userData', join(app.getPath('appData'), APP_NAME));
+
+// Windows keys the taskbar icon, pinning, and notification identity off the AppUserModelID; without
+// this the taskbar shows a blank/default icon. No-op on macOS/Linux.
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 // settings.ts caches settings in memory and rewrites the whole file on save, so two instances
 // would last-write-wins clobber each other. Only one instance may run; a second launch just
