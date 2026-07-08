@@ -25,6 +25,8 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
+import type { AgentRuntimeCues } from './agent-onboarding-card';
+import { AgentOnboardingCard } from './agent-onboarding-card';
 import { Composer } from './composer';
 import { repositoryLabel } from './repository-label';
 import { DEFAULT_MODE_ID } from './session-modes';
@@ -52,6 +54,13 @@ export interface NewSessionSurfaceProps {
   chatWorkspace: WorkspaceRecord | null;
   className?: string;
   topContent?: React.ReactNode;
+  /** Runtime availability per agent (CODE-112): a cue renders the onboarding card for the picked
+   * provider and blocks sending until the runtime is ready; badges ride the provider submenu. */
+  runtimeCues?: AgentRuntimeCues;
+  /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
+  onDownloadAgent?: (kind: AgentKind) => void;
+  /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
+  onContinueUnverified?: (kind: AgentKind) => void;
   /** Starts the session and sends the prompt. A rejection keeps the page up — the caller's error
    * banner reports the failure, same contract as the conversation composer. */
   onSubmit: (submission: NewSessionSubmission) => Promise<void>;
@@ -73,6 +82,9 @@ export function NewSessionSurface({
   chatWorkspace,
   className,
   topContent,
+  runtimeCues,
+  onDownloadAgent,
+  onContinueUnverified,
   onSubmit,
   onPickDirectory,
   onRegisterWorkspace,
@@ -128,6 +140,7 @@ export function NewSessionSurface({
     selected && !isChatSelected
       ? t('headingIn', { name: selected.name ?? repositoryLabel(selected.cwd) })
       : t('heading');
+  const cue = runtimeCues?.[provider];
 
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
@@ -137,11 +150,25 @@ export function NewSessionSurface({
           <h1 className="px-4 pb-8 text-center font-semibold text-2xl text-foreground">
             {heading}
           </h1>
+          {cue && (
+            <div className="px-4 pb-3">
+              <div className="mx-auto max-w-3xl">
+                <AgentOnboardingCard
+                  cue={cue}
+                  kind={provider}
+                  onContinueUnverified={onContinueUnverified}
+                  onDownload={onDownloadAgent}
+                />
+              </div>
+            </div>
+          )}
           <Composer
             agentLabel={AGENT_LABELS[provider]}
             agentKind={provider}
             disabled={pending || !selected}
             isRunning={false}
+            runtimeCues={runtimeCues}
+            sendBlocked={cue !== undefined}
             currentModeId={modeId}
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}

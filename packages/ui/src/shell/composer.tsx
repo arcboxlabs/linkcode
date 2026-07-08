@@ -14,6 +14,7 @@ import {
 } from '../chat/prompt-input';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
+import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type {
   ComposerCommandEntry,
   ComposerCommandSource,
@@ -54,6 +55,9 @@ export interface ComposerProps {
   agentKind?: AgentKind;
   /** No active session: the composer is inert. */
   disabled: boolean;
+  /** Blocks sending only (agent runtime not ready — CODE-112): typing and every menu, including
+   * the provider picker needed to switch away, stay usable. */
+  sendBlocked?: boolean;
   /** A turn is in flight: show Stop instead of Send. */
   isRunning: boolean;
   /** Entries for the `@` menu (default: none). */
@@ -82,6 +86,8 @@ export interface ComposerProps {
   /** Providers offered for selection (the new-session composer). Absent or empty means the
    * provider is fixed — the trigger then hides the provider glyph and submenu. */
   selectableProviders?: AgentKind[];
+  /** Runtime availability badges for the provider submenu (CODE-112). */
+  runtimeCues?: AgentRuntimeCues;
   onProviderChange?: (provider: AgentKind) => Promise<void>;
   /** Strip rendered at the bottom of the composer card (e.g. the new-session workspace bar). */
   contextBar?: React.ReactNode;
@@ -96,6 +102,7 @@ export function Composer({
   agentLabel,
   agentKind,
   disabled,
+  sendBlocked = false,
   isRunning,
   mentionItems = EMPTY_MENTION_ITEMS,
   currentModeId,
@@ -108,6 +115,7 @@ export function Composer({
   onModelChange,
   onEffortChange,
   selectableProviders,
+  runtimeCues,
   onProviderChange,
   contextBar,
 }: ComposerProps): React.ReactNode {
@@ -208,7 +216,7 @@ export function Composer({
 
   function submit(): void {
     const text = value.trim();
-    if (!text || disabled) return;
+    if (!text || disabled || sendBlocked) return;
     onSend(text);
     setValue('');
     setCaret(0);
@@ -435,6 +443,7 @@ export function Composer({
                   effortOptions={effortOptions}
                   modelOptions={modelOptions}
                   provider={agentKind}
+                  runtimeCues={runtimeCues}
                   selectableProviders={selectableProviders}
                   selectedEffortId={selectedEffortId}
                   selectedModelId={selectedModelId}
@@ -454,7 +463,7 @@ export function Composer({
                 />
                 <PromptInputSubmit
                   aria-label={isRunning ? t('stop') : t('send')}
-                  disabled={!isRunning && (disabled || value.trim().length === 0)}
+                  disabled={!isRunning && (disabled || sendBlocked || value.trim().length === 0)}
                   onStop={onStop}
                   status={isRunning ? 'streaming' : 'ready'}
                   className="rounded-full"
