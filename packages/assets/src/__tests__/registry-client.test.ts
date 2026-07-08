@@ -23,7 +23,9 @@ describe('fetchNpmDist', () => {
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify({ dist }));
     });
-    await expect(fetchNpmDist('@scope/pkg', '1.0.0', [server.url])).resolves.toEqual(dist);
+    await expect(
+      fetchNpmDist('@scope/pkg', '1.0.0', { registries: [server.url], retry: 0 }),
+    ).resolves.toEqual(dist);
     expect(server.requests).toEqual(['/@scope/pkg/1.0.0']);
   });
 
@@ -37,7 +39,7 @@ describe('fetchNpmDist', () => {
     });
     const unreachable = 'http://127.0.0.1:1';
     await expect(
-      fetchNpmDist('pkg', '1.0.0', [unreachable, failing.url, good.url]),
+      fetchNpmDist('pkg', '1.0.0', { registries: [unreachable, failing.url, good.url], retry: 0 }),
     ).resolves.toEqual(dist);
   });
 
@@ -45,7 +47,9 @@ describe('fetchNpmDist', () => {
     const malformed = await registry((_req, res) => {
       res.end(JSON.stringify({ dist: { tarball: '' } }));
     });
-    await expect(fetchNpmDist('pkg', '1.0.0', [malformed.url])).rejects.toThrow(DownloadError);
+    await expect(
+      fetchNpmDist('pkg', '1.0.0', { registries: [malformed.url], retry: 0 }),
+    ).rejects.toThrow(DownloadError);
   });
 
   it('reports every attempted source when all registries fail', async () => {
@@ -53,6 +57,8 @@ describe('fetchNpmDist', () => {
       res.statusCode = 500;
       res.end();
     });
-    await expect(fetchNpmDist('pkg', '2.0.0', [failing.url])).rejects.toThrow('HTTP 500');
+    await expect(
+      fetchNpmDist('pkg', '2.0.0', { registries: [failing.url], retry: 0 }),
+    ).rejects.toThrow('HTTP 500');
   });
 });

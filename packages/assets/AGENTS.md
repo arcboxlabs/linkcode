@@ -30,9 +30,16 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   real artifacts are `@openai/codex` versions keyed `<ver>-<platform>-<arch>`, with the binary
   at `package/vendor/<rust-triple>/bin/codex`. All members in `catalog.ts` were read off real
   tarballs; re-verify against a fresh tarball when bumping an SDK.
-- Extraction shells out to the system `tar` (bsdtar on macOS/Windows reads zip too; linux
-  artifacts stay `.tar.gz` for GNU tar) and extracts exactly the declared member — no archive
-  content is trusted beyond it.
+- **The fetch/verify/extract stack is npm's own, taken at the right layer**: `make-fetch-happen`
+  (per-source retry + `HTTPS_PROXY`/`NO_PROXY` env support), `ssri` (integrity streams), `tar`
+  (node-tar, pure JS — tgz extraction assumes no system tar), `semver`. This is deliberately
+  pacote's engine *without* pacote: its extra layers (sigstore, run-script, git, packlist) are
+  npm-CLI semantics that would enter the binary-installing path unused. `env-paths` was
+  evaluated and rejected — it hardcodes a `\Data` level on win32 and captures `homedir` at
+  module load, breaking call-time path resolution.
+- Extraction takes exactly the declared member — no archive content is trusted beyond it. The
+  one zip artifact (tectonic win32) shells out to the system bsdtar (System32 since Win10 1809;
+  macOS tar is bsdtar too, keeping the branch testable on darwin).
 
 ## Consumers
 

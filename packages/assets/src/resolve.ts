@@ -9,6 +9,8 @@ export interface ResolveArtifactOptions {
   /** Defaults to the running host; a test seam and a future cross-platform hook. */
   platform?: PlatformKey;
   registries?: readonly string[];
+  /** Per-source fetch retry count, forwarded to make-fetch-happen. */
+  retry?: number;
 }
 
 /** Resolve the concrete downloadable artifact for one asset version on one platform. */
@@ -28,11 +30,10 @@ export async function resolveArtifact(
     const { url, integrity, size, format, member } = source;
     return { urls: [url], integrity, size, format, member };
   }
-  const dist = await fetchNpmDist(
-    source.packageName,
-    source.versionKey?.(version) ?? version,
-    options.registries,
-  );
+  const dist = await fetchNpmDist(source.packageName, source.versionKey?.(version) ?? version, {
+    registries: options.registries,
+    retry: options.retry,
+  });
   return {
     urls: [dist.tarball],
     integrity: dist.integrity,

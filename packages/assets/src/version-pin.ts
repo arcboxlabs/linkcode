@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { valid } from 'semver';
 import type { VersionPolicy } from './catalog';
 
 /**
@@ -16,9 +17,6 @@ interface PackageManifest {
   version?: string;
   dependencies?: Record<string, string>;
 }
-
-/** A pair install must target an exact version — any range means the manifest is not a pin. */
-const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-\S+)?$/;
 
 export function installedPackageDir(pkg: string, from?: string): string | undefined {
   const paths = createRequire(from ?? import.meta.url).resolve.paths(pkg) ?? [];
@@ -35,8 +33,9 @@ function readManifest(pkg: string, from?: string): PackageManifest | undefined {
   }
 }
 
+/** A pair install must target an exact version — a range is not a valid semver version. */
 function exact(version: string | undefined): string | undefined {
-  return version && EXACT_VERSION.test(version) ? version : undefined;
+  return version && valid(version) !== null ? version : undefined;
 }
 
 /** @param from test seam — resolve node_modules relative to this file instead of this module. */

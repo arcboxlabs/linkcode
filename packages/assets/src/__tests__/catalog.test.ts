@@ -1,6 +1,6 @@
+import ssri from 'ssri';
 import { describe, expect, it } from 'vitest';
 import { CATALOG } from '../catalog';
-import { strongestSriDigest } from '../sri';
 
 const descriptors = Object.values(CATALOG);
 const HTTPS = /^https:\/\//;
@@ -12,7 +12,7 @@ describe('CATALOG', () => {
         if (source.kind !== 'baked') continue;
         expect(source.url).toMatch(HTTPS);
         expect(source.size).toBeGreaterThan(0);
-        expect(strongestSriDigest(source.integrity).algorithm).toBeDefined();
+        expect(Object.keys(ssri.parse(source.integrity))).not.toHaveLength(0);
       }
     }
   });

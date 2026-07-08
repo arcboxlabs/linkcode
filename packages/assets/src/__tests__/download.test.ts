@@ -40,7 +40,9 @@ describe('downloadVerified', () => {
     });
     const file = dest();
     const progress: DownloadProgress[] = [];
-    await downloadVerified(artifact([url]), file, (update) => progress.push(update));
+    await downloadVerified(artifact([url]), file, {
+      onProgress: (update) => progress.push(update),
+    });
     expect(readFileSync(file).equals(payload)).toBe(true);
     const last = progress.at(-1);
     expect(last).toEqual({ receivedBytes: payload.length, totalBytes: payload.length });
@@ -60,7 +62,7 @@ describe('downloadVerified', () => {
       res.end(payload);
     });
     const file = dest();
-    await downloadVerified(artifact([missing, truncating, good]), file);
+    await downloadVerified(artifact([missing, truncating, good]), file, { retry: 0 });
     expect(readFileSync(file).equals(payload)).toBe(true);
   });
 
@@ -69,7 +71,9 @@ describe('downloadVerified', () => {
       res.end(Buffer.concat([payload.subarray(1), Buffer.from([0])]));
     });
     const file = dest();
-    await expect(downloadVerified(artifact([tampered]), file)).rejects.toThrow(IntegrityError);
+    await expect(downloadVerified(artifact([tampered]), file, { retry: 0 })).rejects.toThrow(
+      IntegrityError,
+    );
     expect(existsSync(file)).toBe(false);
   });
 
@@ -80,7 +84,9 @@ describe('downloadVerified', () => {
       res.destroy();
     });
     const file = dest();
-    await expect(downloadVerified(artifact([truncating]), file)).rejects.toThrow(DownloadError);
+    await expect(downloadVerified(artifact([truncating]), file, { retry: 0 })).rejects.toThrow(
+      DownloadError,
+    );
     expect(existsSync(file)).toBe(false);
   });
 });

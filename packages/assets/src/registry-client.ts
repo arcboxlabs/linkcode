@@ -1,11 +1,14 @@
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import fetch from 'make-fetch-happen';
 import { z } from 'zod';
+import './mfh-augment';
 import { DownloadError } from './errors';
 
 /** Default ordered registry list; a mirror (e.g. npmmirror for CN hosts) can be appended later. */
 const DEFAULT_REGISTRIES = ['https://registry.npmjs.org'] as const;
 
 const MANIFEST_TIMEOUT_MS = 10000;
+const DEFAULT_RETRY = 2;
 
 /** The slice of an npm single-version manifest we consume. */
 const NpmVersionManifestSchema = z.object({
@@ -20,30 +23,44 @@ export interface NpmDist {
   integrity: string;
 }
 
+export interface FetchNpmDistOptions {
+  registries?: readonly string[];
+  /** Per-registry retry count (network/5xx; 4xx fails fast to the next registry). */
+  retry?: number;
+}
+
 /**
  * Resolve a package version's tarball URL + SRI integrity via the single-version manifest
  * (`<registry>/<pkg>/<version>` — a few hundred bytes; the full packument for the agent CLIs
  * runs to megabytes). Scoped names go in the path unencoded; the registry accepts them.
- * Registries are an ordered fallback list: the first one that answers wins.
+ * Registries are an ordered fallback list: the first one that answers wins. Fetching goes
+ * through make-fetch-happen (retry + proxy env support).
  */
 export async function fetchNpmDist(
   pkg: string,
   version: string,
-  registries: readonly string[] = DEFAULT_REGISTRIES,
+  options: FetchNpmDistOptions = {},
 ): Promise<NpmDist> {
+  const registries = options.registries ?? DEFAULT_REGISTRIES;
+  const retry = options.retry ?? DEFAULT_RETRY;
   const failures: string[] = [];
   for (const registry of registries) {
     // eslint-disable-next-line no-await-in-loop -- registries are an ordered fallback list
-    const dist = await fetchDist(`${registry}/${pkg}/${version}`, failures);
+    const dist = await fetchDist(`${registry}/${pkg}/${version}`, retry, failures);
     if (dist) return dist;
   }
   throw new DownloadError(`no registry answered for ${pkg}@${version}: ${failures.join('; ')}`);
 }
 
-async function fetchDist(url: string, failures: string[]): Promise<NpmDist | undefined> {
+async function fetchDist(
+  url: string,
+  retry: number,
+  failures: string[],
+): Promise<NpmDist | undefined> {
   try {
     const res = await fetch(url, {
       headers: { accept: 'application/json' },
+      retry,
       signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
     });
     if (!res.ok) {

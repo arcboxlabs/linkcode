@@ -63,7 +63,10 @@ async function doInstall(
   const tmp = makeTmpDir(descriptor.id);
   try {
     const archive = join(tmp, 'artifact');
-    await downloadVerified(artifact, archive, options.onProgress);
+    await downloadVerified(artifact, archive, {
+      onProgress: options.onProgress,
+      retry: options.retry,
+    });
     const stage = join(tmp, 'install');
     await extractMember(
       archive,

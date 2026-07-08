@@ -16,5 +16,4 @@ export * from './paths';
 export * from './platform';
 export * from './registry-client';
 export * from './resolve';
-export * from './sri';
 export * from './version-pin';

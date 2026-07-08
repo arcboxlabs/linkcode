@@ -6,17 +6,19 @@ import process from 'node:process';
 import { promisify } from 'node:util';
 import type { ManagedAssetFormat } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { extract as tarExtract } from 'tar';
 import { ExtractError, UnsupportedPlatformError } from './errors';
 
 const execFileAsync = promisify(execFile);
 
 /**
- * Single-member extraction via the system `tar`: bsdtar on macOS and Windows (bundled since
- * Win10 1809; reads zip too), GNU tar on linux — our linux artifacts are always `.tar.gz`.
- * Extracting exactly one declared member sidesteps zip-slip entirely. On win32 tar is invoked
- * by absolute System32 path so a polluted PATH cannot substitute it.
+ * Single-member extraction: tgz goes through node-tar (pure JS — no system-tar assumption on
+ * any platform). zip exists only for the tectonic win32 artifact and shells out to the system
+ * bsdtar, which the OS guarantees where that artifact can run (System32 since Win10 1809;
+ * macOS `tar` is bsdtar too, which keeps the branch testable on darwin). Extracting exactly
+ * one declared member sidesteps zip-slip entirely.
  */
-function tarBinary(): string {
+function zipTarBinary(): string {
   if (process.platform !== 'win32') return 'tar';
   return join(process.env.SystemRoot ?? String.raw`C:\Windows`, 'System32', 'tar.exe');
 }
@@ -36,14 +38,27 @@ export async function extractMember(
   }
   if (!member) throw new ExtractError(`no archive member declared for ${archive}`);
   const workDir = dirname(archive);
-  const flags = format === 'zip' ? '-xf' : '-xzf';
-  try {
-    await execFileAsync(tarBinary(), [flags, archive, '-C', workDir, member]);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new UnsupportedPlatformError('system tar is unavailable', { cause: error });
+  if (format === 'tgz') {
+    try {
+      await tarExtract({ file: archive, cwd: workDir }, [member]);
+    } catch (error) {
+      throw new ExtractError(`extracting ${member}: ${extractErrorMessage(error)}`, {
+        cause: error,
+      });
     }
-    throw new ExtractError(`extracting ${member}: ${extractErrorMessage(error)}`, { cause: error });
+  } else {
+    try {
+      await execFileAsync(zipTarBinary(), ['-xf', archive, '-C', workDir, member]);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new UnsupportedPlatformError('system tar is unavailable for zip extraction', {
+          cause: error,
+        });
+      }
+      throw new ExtractError(`extracting ${member}: ${extractErrorMessage(error)}`, {
+        cause: error,
+      });
+    }
   }
   const extracted = join(workDir, member);
   if (!existsSync(extracted)) throw new ExtractError(`member ${member} missing from archive`);
