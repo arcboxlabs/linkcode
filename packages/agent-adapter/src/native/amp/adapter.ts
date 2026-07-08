@@ -24,6 +24,7 @@ import type {
 import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { nextMessageId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import {
   asHistoryId,
@@ -308,15 +309,26 @@ export class AmpAdapter extends BaseAgentAdapter {
     // Subagent frames carry the spawning Task's tool_use id; their text renders message-level
     // under the frame's own message id and their tools nest via parentToolCallId.
     const parent = msg.parent_tool_use_id ?? undefined;
-    const messageId = asMessageId(msg.message.id);
+    // The shipped types declare message.id, but the CLI's real serializer omits it (verified in
+    // the bundle: `{type:"message",role:"assistant",content,stop_reason,usage}` — no id/model).
+    // messageId is REQUIRED on chunks — an undefined one fails wire validation and every chunk is
+    // silently dropped — so mint a per-message id when the provider doesn't supply one (one
+    // assistant message = one bubble either way).
+    const providerId =
+      typeof (msg.message as { id?: unknown }).id === 'string' && msg.message.id.length > 0
+        ? msg.message.id
+        : undefined;
+    const messageId = providerId === undefined ? nextMessageId() : asMessageId(providerId);
+    const thoughtId =
+      providerId === undefined ? nextMessageId() : asMessageId(`${providerId}:think`);
     for (const block of msg.message.content as readonly AmpAssistantBlock[]) {
       // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (redacted_thinking is ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'text') {
-        // Message-level grouping under the provider's message id: one assistant message, one
-        // bubble. There is no delta stream to accumulate, so the base segment cursors are unused.
+        // Message-level grouping: one assistant message, one bubble. There is no delta stream to
+        // accumulate, so the base segment cursors are unused.
         this.emitAssistantText(block.text, messageId, parent);
       } else if (block.type === 'thinking') {
-        this.emitThought(block.thinking, asMessageId(`${msg.message.id}:think`), parent);
+        this.emitThought(block.thinking, thoughtId, parent);
       } else if (block.type === 'tool_use') {
         // Announce when Amp requests the tool; the matching tool_result settles it.
         this.emitTool({

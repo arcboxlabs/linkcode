@@ -135,6 +135,20 @@ function usage(input: number, output: number): Usage {
   return { input_tokens: input, output_tokens: output };
 }
 
+type AssistantStreamMessage = Extract<StreamMessage, { type: 'assistant' }>;
+
+/** The CLI's actual serializer sends `{type:"message",role:"assistant",content,stop_reason,
+ * usage}` with NO id/model/stop_sequence, despite the SDK types declaring them. */
+function idlessAssistantText(text: string): StreamMessage {
+  const typed = assistantText('ignored', text) as AssistantStreamMessage;
+  const { id: _id, model: _model, stop_sequence: _stop, ...message } = typed.message;
+  const raw: Omit<AssistantStreamMessage, 'message'> & { message: typeof message } = {
+    ...typed,
+    message,
+  };
+  return raw as StreamMessage;
+}
+
 async function startedAdapter(): Promise<{ adapter: TestAmpAdapter; events: AgentEvent[] }> {
   const adapter = new TestAmpAdapter();
   const events: AgentEvent[] = [];
@@ -277,6 +291,23 @@ describe('AmpAdapter turn mapping', () => {
     const swept = ofType(events, 'tool-call').at(-1)?.toolCall;
     expect(swept).toMatchObject({ toolCallId: 'toolu_1', status: 'failed' });
     expect(ofType(events, 'status').at(-1)?.status).toBe('idle');
+  });
+
+  it('mints per-message ids when the CLI omits message.id (real wire shape)', async () => {
+    const { adapter, events } = await startedAdapter();
+    adapter.script(() =>
+      streamOf(init(), idlessAssistantText('first'), idlessAssistantText('second'), success()),
+    );
+    await adapter.send({ type: 'prompt', content: [textBlock('go')] });
+
+    const chunks = ofType(events, 'agent-message-chunk');
+    expect(chunks.map((chunk) => chunk.content)).toEqual([textBlock('first'), textBlock('second')]);
+    for (const chunk of chunks) {
+      expect(typeof chunk.messageId).toBe('string');
+      expect(chunk.messageId.length).toBeGreaterThan(0);
+    }
+    // Distinct messages must not merge into one bubble.
+    expect(chunks[0].messageId).not.toBe(chunks[1].messageId);
   });
 
   it('does not emit a second stop when a cancel races the post-result exit await', async () => {
