@@ -42,6 +42,22 @@ function fakeChild(): PassThrough & {
   return child;
 }
 
+function platformed<T>(platform: NodeJS.Platform, run: () => T): T {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  Object.defineProperty(process, 'platform', { value: platform });
+  try {
+    return run();
+  } finally {
+    Object.defineProperty(process, 'platform', original);
+  }
+}
+
+/** Decode the OPEN frame the backend just wrote to the sidecar's stdin. */
+function writtenOpenBody(child: ReturnType<typeof fakeChild>): { cmd: string; args: string[] } {
+  const written = child.stdin.read() as Buffer;
+  return JSON.parse(written.subarray(5).toString('utf8'));
+}
+
 describe('SidecarPtyBackend', () => {
   it('rejects an open with an unconfigured binary path instead of spawning it', async () => {
     const { SidecarPtyBackend } = await import('../sidecar');
@@ -97,6 +113,37 @@ describe('SidecarPtyBackend', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('starts the default shell as a login shell on macOS only', async () => {
+    const { SidecarPtyBackend } = await import('../sidecar');
+    const child = fakeChild();
+    mocks.spawn.mockReturnValueOnce(child);
+    const backend = new SidecarPtyBackend('/bin/linkcode-pty');
+
+    const darwinOpen = platformed('darwin', () => backend.open('term-1', { cols: 80, rows: 24 }));
+    expect(writtenOpenBody(child).args).toEqual(['-l']);
+    const linuxOpen = platformed('linux', () => backend.open('term-2', { cols: 80, rows: 24 }));
+    expect(writtenOpenBody(child).args).toEqual([]);
+
+    backend.shutdown();
+    await expect(darwinOpen).rejects.toThrow('pty backend shutdown');
+    await expect(linuxOpen).rejects.toThrow('pty backend shutdown');
+  });
+
+  it('never adds login args to an explicitly requested shell', async () => {
+    const { SidecarPtyBackend } = await import('../sidecar');
+    const child = fakeChild();
+    mocks.spawn.mockReturnValueOnce(child);
+    const backend = new SidecarPtyBackend('/bin/linkcode-pty');
+
+    const pending = platformed('darwin', () =>
+      backend.open('term-1', { cols: 80, rows: 24, shell: '/bin/sh' }),
+    );
+    expect(writtenOpenBody(child)).toMatchObject({ cmd: '/bin/sh', args: [] });
+
+    backend.shutdown();
+    await expect(pending).rejects.toThrow('pty backend shutdown');
   });
 
   it('kills the sidecar and exits live terminals after a malformed frame', async () => {

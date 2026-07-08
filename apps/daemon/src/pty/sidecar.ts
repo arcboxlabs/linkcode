@@ -78,7 +78,7 @@ export class SidecarPtyBackend implements PtyBackend {
         cols: opts.cols,
         rows: opts.rows,
         cmd: opts.shell ?? defaultShell(),
-        args: opts.args ?? [],
+        args: opts.args ?? (opts.shell === undefined ? defaultShellArgs() : []),
         // The daemon's own cwd is an implementation accident (wherever it was launched from) —
         // an unspecified shell belongs in the user's home, like a fresh terminal app tab.
         cwd: opts.cwd ?? homedir(),
@@ -261,4 +261,15 @@ export function binaryName(): string {
 function defaultShell(): string {
   if (process.platform === 'win32') return process.env.COMSPEC ?? 'cmd.exe';
   return process.env.SHELL ?? '/bin/bash';
+}
+
+/**
+ * macOS terminal apps (Terminal.app, iTerm, VS Code) start the default shell as a *login* shell:
+ * a Finder-launched app inherits launchd's bare PATH, and only the login files (`/etc/zprofile`
+ * path_helper, then `~/.zprofile` where Homebrew's shellenv lives) restore the user's real one.
+ * A non-login interactive shell reads `.zshrc` alone, leaving brew-installed tools unresolvable
+ * in packaged builds. Other platforms keep their convention of a plain interactive shell.
+ */
+function defaultShellArgs(): string[] {
+  return process.platform === 'darwin' ? ['-l'] : [];
 }
