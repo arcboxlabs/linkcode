@@ -3,7 +3,13 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { env } from 'node:process';
-import type { AgentHistoryEvent, AgentHistoryId, AgentHistorySession } from '@linkcode/schema';
+import type {
+  AgentHistoryEvent,
+  AgentHistoryId,
+  AgentHistorySession,
+  ToolCall,
+} from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { not } from 'foxts/guard';
 import {
@@ -17,6 +23,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
+import { toolKindFromName } from '../../util';
 
 const WHITESPACE_RUN_RE = /\s+/g;
 
@@ -264,15 +271,96 @@ export function codexIndexEntryToSession(entry: CodexIndexEntry): AgentHistorySe
   };
 }
 
+/** Rollout tool rows come in announce/settle pairs linked by `call_id`: `function_call` (JSON
+ * `arguments`) and `custom_tool_call` (raw string `input`, e.g. apply_patch) announce, their
+ * `*_output` rows settle. `local_shell_call` is the older shell announce shape (an `action`
+ * object), kept for pre-0.140 transcripts. */
+const CODEX_TOOL_ANNOUNCE_TYPES = new Set([
+  'function_call',
+  'custom_tool_call',
+  'local_shell_call',
+]);
+const CODEX_TOOL_OUTPUT_TYPES = new Set([
+  'function_call_output',
+  'custom_tool_call_output',
+  'local_shell_call_output',
+]);
+
+function codexToolInput(payload: JsonRecord): unknown {
+  const args = stringField(payload, 'arguments');
+  if (args !== undefined) {
+    try {
+      return JSON.parse(args) as unknown;
+    } catch {
+      return args;
+    }
+  }
+  return payload.input ?? payload.action;
+}
+
+/**
+ * Replays the rollout as the event stream the live turn emitted: text messages plus tool-call
+ * announce/settle pairs correlated by `call_id` (mirrors the claude/amp history mappers). History
+ * ids are NOT converged with the live app-server item ids — the rollout persists only `call_id`
+ * and message rows carry no id at all — so the seed relies on the `uptoSeq` cut, same as text
+ * always has for codex. Known lossiness, documented on CODE-97: edits replay as text results (the
+ * unified diff is computed live by the app-server and never persisted; the rollout stores codex's
+ * `*** Begin Patch` envelope), output rows carry no failure marker (settle is `completed`), and
+ * reasoning stays unreplayable (`encrypted_content` only).
+ */
 export function mapCodexHistoryEvents(
   historyId: AgentHistoryId,
   rows: JsonRecord[],
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
+  const announced = new Map<string, ToolCall>();
+
+  const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+    announced.set(toolCall.toolCallId, toolCall);
+    return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
+  };
+
   rows.forEach((row, index) => {
     if (stringField(row, 'type') !== 'response_item') return;
     const payload = recordField(row, 'payload');
     if (!payload) return;
+
+    const payloadType = stringField(payload, 'type');
+    const callId = stringField(payload, 'call_id');
+    if (payloadType !== undefined && callId !== undefined) {
+      if (CODEX_TOOL_ANNOUNCE_TYPES.has(payloadType)) {
+        const name = stringField(payload, 'name');
+        events.push(
+          toolEvent({
+            toolCallId: callId,
+            title: name ?? 'tool',
+            kind: name === undefined ? 'other' : toolKindFromName(name),
+            status: 'in_progress',
+            content: [],
+            rawInput: codexToolInput(payload),
+          }),
+        );
+        return;
+      }
+      if (CODEX_TOOL_OUTPUT_TYPES.has(payloadType)) {
+        const existing = announced.get(callId);
+        const output = stringField(payload, 'output') ?? textFromUnknown(payload.output);
+        events.push(
+          toolEvent({
+            toolCallId: callId,
+            // The announce can sit beyond this read's page window; fall back to first-sight defaults.
+            title: existing?.title ?? callId,
+            kind: existing?.kind ?? 'other',
+            status: 'completed',
+            content: output.length > 0 ? [{ type: 'content', content: textBlock(output) }] : [],
+            rawInput: existing?.rawInput,
+            rawOutput: payload.output,
+          }),
+        );
+        return;
+      }
+    }
+
     const role = stringField(payload, 'role');
     if (role !== 'user' && role !== 'assistant') return;
     if (role === 'user' && isSyntheticCodexUserText(textFromUnknown(payload))) return;
