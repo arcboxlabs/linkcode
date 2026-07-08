@@ -1,4 +1,10 @@
-import type { EffortLevel, SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  EffortLevel,
+  QuestionOutcome,
+  SessionId,
+  SessionInfo,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationSurface } from './conversation-surface';
@@ -29,6 +35,8 @@ export interface ShellFrameProps
   conversation: ConversationViewModel;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
+  answeredQuestionIds: ReadonlySet<string>;
+  respondingQuestions: ReadonlySet<string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
@@ -50,6 +58,7 @@ export interface ShellFrameProps
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
+  onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
   /** Hosts inline artifact content on the daemon (sandboxed html previews, CODE-62). */
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Opens the command palette — the sidebar Search entry stays disabled without it. */
@@ -75,6 +84,8 @@ export function ShellFrame({
   conversation,
   permissionDecisions,
   respondingPermissions,
+  answeredQuestionIds,
+  respondingQuestions,
   header,
   errorMessage,
   pinnedSessionIds,
@@ -95,6 +106,7 @@ export function ShellFrame({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
   searchShortcut,
@@ -166,10 +178,13 @@ export function ShellFrame({
             cwd={active?.cwd}
             permissionDecisions={permissionDecisions}
             respondingPermissions={respondingPermissions}
+            answeredQuestionIds={answeredQuestionIds}
+            respondingQuestions={respondingQuestions}
             TerminalBlockComponent={TerminalBlockComponent}
             onSendPrompt={onSendPrompt}
             onStopTurn={onStopTurn}
             onRespondPermission={onRespondPermission}
+            onRespondQuestion={onRespondQuestion}
             onHostArtifact={onHostArtifact}
             onModeChange={onModeChange}
             onApprovalPolicyChange={onApprovalPolicyChange}

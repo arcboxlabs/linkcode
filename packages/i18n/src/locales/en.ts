@@ -91,6 +91,12 @@ export const en = {
       next: 'Next prompt',
       customPlaceholder: 'Tell Codex what to do differently',
     },
+    question: {
+      badge: 'Question',
+      progress: '{current}/{total}',
+      next: 'Next',
+      customPlaceholder: 'Type a custom answer',
+    },
     composer: {
       placeholderDisconnected: 'Create or pick a thread first',
       send: 'Send',

@@ -2,7 +2,6 @@ import type { PermissionOption, Plan } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import {
   isConversationPromptResponseSubmittable,
-  STUB_AGENT_QUESTION_PROMPTS,
   STUB_PLAN_REVIEW_PROMPTS,
 } from '../chat/conversation-prompt';
 import type { PermissionConversationItem, PermissionDecision } from '../chat/conversation-prompts';
@@ -14,6 +13,7 @@ import {
   resolvePromptPageIndex,
   selectCurrentPlan,
   selectPendingPermissionItems,
+  selectPendingQuestionItems,
 } from '../chat/conversation-prompts';
 import type { ConversationItem, ConversationViewModel } from '../chat/types';
 
@@ -237,7 +237,38 @@ describe('conversation prompt selectors', () => {
   });
 
   it('leaves future prompt stubs empty until the backend schema exists', () => {
-    expect(STUB_AGENT_QUESTION_PROMPTS).toEqual([]);
     expect(STUB_PLAN_REVIEW_PROMPTS).toEqual([]);
+  });
+
+  it('selects pending question items only while the turn is live', () => {
+    const question: ConversationItem = {
+      kind: 'question',
+      id: 'ask1',
+      turnId: 'turn-1',
+      requestId: 'ask1',
+      toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+      questions: [
+        {
+          questionId: 'q0',
+          prompt: 'Which one?',
+          multiSelect: false,
+          options: [
+            { optionId: 'o0', label: 'A' },
+            { optionId: 'o1', label: 'B' },
+          ],
+        },
+      ],
+    };
+    const live = conversation([question], { pendingQuestionIds: ['ask1'] });
+    expect(selectPendingQuestionItems(live)).toHaveLength(1);
+
+    const settled = conversation([question], { pendingQuestionIds: [] });
+    expect(selectPendingQuestionItems(settled)).toHaveLength(0);
+
+    const ended = conversation([question], {
+      pendingQuestionIds: ['ask1'],
+      status: 'idle',
+    });
+    expect(selectPendingQuestionItems(ended)).toHaveLength(0);
   });
 });

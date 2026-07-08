@@ -33,10 +33,6 @@ export function isConversationPromptResponseSubmittable(
   return selected.length === 1;
 }
 
-// TODO(backend): replace with prompts emitted by an agent-question event once the schema carries
-// question text, answer mode, choices, and reply correlation.
-export const STUB_AGENT_QUESTION_PROMPTS: ConversationPromptDefinition[] = [];
-
 // TODO(backend): replace with prompts emitted by a plan-review permission event once plans can ask
 // for explicit user approval before execution.
 export const STUB_PLAN_REVIEW_PROMPTS: ConversationPromptDefinition[] = [];
