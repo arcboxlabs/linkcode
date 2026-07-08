@@ -60,7 +60,21 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   (`noExternal: [/^@linkcode\//]`) — never externalize `@linkcode/*`. The agent SDKs and `ws` stay
   `external` (native binaries / subprocesses break when bundled). A `createRequire` banner supplies the
   `require` inlined CJS deps call — a boot crash `Dynamic require of … is not supported` means that
-  broke. `apps/daemon/dist` must build before the desktop bundle.
+  broke. `splitting: false` is required: the desktop packaging copies only `dist/index.js` into the
+  asar (electron.vite.config.ts `bundle-daemon-artifact`), so a split bundle boots to
+  `ERR_MODULE_NOT_FOUND` on a missing `chunk-*.js` (a dynamic `import()` reached via `@linkcode/assets`
+  is what started the split). `apps/daemon/dist` must build before the desktop bundle.
+- **Standalone distribution:** `pnpm -F @linkcode/daemon package` (`scripts/package-daemon.mts`)
+  materializes a self-contained dir at `apps/daemon/standalone` (gitignored; pass an explicit path as
+  argv for CI) via `pnpm --prod deploy` — the tsup bundle plus its runtime externals flat in the dir's
+  own `node_modules`, runnable anywhere as `node --import ./dist/instrument.js dist/index.js`. This is
+  distinct from the desktop bundle: it targets **plain Node** (better-sqlite3 keeps its prebuild-install
+  binary — a **same-platform** artifact, build per target), and it prunes the host-arch agent CLI
+  platform packages (the daemon downloads them at runtime via `@linkcode/assets`, as the desktop does).
+  Terminals need `LINKCODE_PTY_SIDECAR_PATH` pointed at a built `linkcode-pty`, else they degrade.
+  The package `files: ["dist", "drizzle"]` keeps the deploy (and any pack) to runtime files only —
+  no `src`/configs — while the `dependencies` field still drives the full runtime closure; this is
+  also why the standalone dir carries no test files for the root vitest runner to pick up.
 
 ## Engine wiring, errors & lifecycle
 

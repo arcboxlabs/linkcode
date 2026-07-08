@@ -136,20 +136,18 @@ jobs:
       - name: Package with electron-builder
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash # unify quoting across runners for the conditional signing args below
-        # azureSignOptions is injected via -c only on signed Windows builds so unsigned builds skip
-        # signing instead of failing. ulimit: electron-builder's node-module-collector EMFILEs
-        # walking this monorepo's node_modules even at 10240 — raise it hard.
+        # package-app.mts materializes a single-importer staging dir and points electron-builder's
+        # --projectDir at it (see the script header): fixes the Windows native-rebuild miss and the
+        # module-collector drops without the app-builder-lib patch. azureSignOptions is forwarded via
+        # -c only on signed Windows builds so unsigned builds skip signing instead of failing.
         run: |
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            ulimit -n 65536
-          fi
           # electron-builder treats a *set but empty* CSC_LINK as a certificate path and dies on
           # "<projectDir> not a file". Actions cannot conditionally unset an env key, so the cert
           # lands under MACOS_* names and CSC_* only exist when there is a real value.
           if [ -n "$MACOS_CSC_LINK" ]; then
             export CSC_LINK="$MACOS_CSC_LINK" CSC_KEY_PASSWORD="$MACOS_CSC_KEY_PASSWORD"
           fi
-          pnpm exec electron-builder --${{ matrix.platform }} --publish never \
+          node scripts/package-app.mts ${{ matrix.platform }} --publish never \
             ${{ (runner.os == 'Windows' && inputs.sign) && format('-c.win.azureSignOptions.publisherName="{0}" -c.win.azureSignOptions.endpoint="{1}" -c.win.azureSignOptions.codeSigningAccountName="{2}" -c.win.azureSignOptions.certificateProfileName="{3}"', env.AZURE_PUBLISHER_NAME, env.AZURE_SIGN_ENDPOINT, env.AZURE_CODE_SIGNING_ACCOUNT, env.AZURE_CERTIFICATE_PROFILE) || '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

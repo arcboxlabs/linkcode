@@ -109,9 +109,6 @@ overrides:
 
 pnpmfileChecksum: sha256-jBMo+bhoXC713F2QowCc1QQpUW4EUdZL1ztMCyn+uD0=
 
-patchedDependencies:
-  app-builder-lib@26.15.3: 6326ba88f18639231c48d1c4c5bbbc3d7e40904596c63d357d705fad59f2154c
-
 importers:
 
   .:
@@ -198,9 +195,15 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.3
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
@@ -280,6 +283,9 @@ importers:
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.1(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.3
@@ -301,6 +307,9 @@ importers:
       coss-ui:
         specifier: workspace:*
         version: link:../../packages/coss-ui
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       electron:
         specifier: 'catalog:'
         version: 42.4.1
@@ -4229,6 +4238,9 @@ packages:
 
   '@types/cors@2.8.19':
     resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
+
+  '@types/cross-spawn@6.0.6':
+    resolution: {integrity: sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==}
 
   '@types/d3-array@3.2.2':
     resolution: {integrity: sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==}
@@ -13077,6 +13089,10 @@ snapshots:
     dependencies:
       '@types/node': 26.0.1
 
+  '@types/cross-spawn@6.0.6':
+    dependencies:
+      '@types/node': 26.0.1
+
   '@types/d3-array@3.2.2': {}
 
   '@types/d3-axis@3.0.6':
@@ -13653,7 +13669,7 @@ snapshots:
 
   anynum@1.0.0: {}
 
-  app-builder-lib@26.15.3(patch_hash=6326ba88f18639231c48d1c4c5bbbc3d7e40904596c63d357d705fad59f2154c)(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3):
+  app-builder-lib@26.15.3(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3):
     dependencies:
       '@electron/asar': 3.4.1
       '@electron/fuses': 1.8.0
@@ -14576,7 +14592,7 @@ snapshots:
 
   dmg-builder@26.15.3(electron-builder-squirrel-windows@26.15.3):
     dependencies:
-      app-builder-lib: 26.15.3(patch_hash=6326ba88f18639231c48d1c4c5bbbc3d7e40904596c63d357d705fad59f2154c)(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
+      app-builder-lib: 26.15.3(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
       builder-util: 26.15.3
       fs-extra: 10.1.0
       js-yaml: 4.3.0
@@ -14659,7 +14675,7 @@ snapshots:
 
   electron-builder-squirrel-windows@26.15.3(dmg-builder@26.15.3):
     dependencies:
-      app-builder-lib: 26.15.3(patch_hash=6326ba88f18639231c48d1c4c5bbbc3d7e40904596c63d357d705fad59f2154c)(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
+      app-builder-lib: 26.15.3(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
       builder-util: 26.15.3
       electron-winstaller: 5.4.0
     transitivePeerDependencies:
@@ -14668,7 +14684,7 @@ snapshots:
 
   electron-builder@26.15.3(electron-builder-squirrel-windows@26.15.3):
     dependencies:
-      app-builder-lib: 26.15.3(patch_hash=6326ba88f18639231c48d1c4c5bbbc3d7e40904596c63d357d705fad59f2154c)(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
+      app-builder-lib: 26.15.3(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
       builder-util: 26.15.3
       builder-util-runtime: 9.7.0
       chalk: 4.1.2

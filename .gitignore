@@ -27,6 +27,9 @@ expo-export/
 release/
 apps/desktop/sidecar/
 
+# standalone daemon distribution (pnpm --prod deploy output)
+apps/daemon/standalone/
+
 # logs
 *.log
 npm-debug.log*
