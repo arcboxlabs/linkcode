@@ -228,7 +228,10 @@ export function DesktopChrome({
               leftControls
             )}
           </StableLeftChrome>
-          <StableRightChrome contentRef={rightRailContentRef} showWindowControls={showWindowControls}>
+          <StableRightChrome
+            contentRef={rightRailContentRef}
+            showWindowControls={showWindowControls}
+          >
             {rightControls === undefined ? (
               <DefaultRightChromeControls
                 rightPanelOpen={rightPanelOpen}

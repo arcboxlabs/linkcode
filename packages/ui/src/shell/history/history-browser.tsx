@@ -167,8 +167,8 @@ function HistoryBrowserRow({
   const timeLabel = useRelativeTimeLabel(entry.timestamp ?? 0);
   const meta = [
     showProject && entry.cwd ? repositoryLabel(entry.cwd) : null,
-    entry.timestamp !== undefined ? timeLabel : null,
-    entry.messageCount !== undefined ? t('messageCount', { count: entry.messageCount }) : null,
+    entry.timestamp === undefined ? null : timeLabel,
+    entry.messageCount === undefined ? null : t('messageCount', { count: entry.messageCount }),
   ].filter(Boolean);
 
   return (

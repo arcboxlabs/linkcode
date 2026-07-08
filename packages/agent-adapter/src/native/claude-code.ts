@@ -518,11 +518,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * ignores a changed `model` option once a session is resumed. Before the first prompt, the `Query`
    * doesn't exist yet; fall back to updating `opts.model`, which `onPrompt` reads when it creates it. */
   protected override async onSetModel(model: string): Promise<void> {
-    if (!this.q) {
+    if (this.q) {
+      await this.q.setModel(model);
+    } else {
       invariant(this.opts, 'claude-code: session not started');
       this.opts.model = model;
-    } else {
-      await this.q.setModel(model);
     }
     // Reflect the pick immediately (the CLI accepted it, or it will apply at the next Query
     // creation); the served id off the next assistant frame reconciles it via `syncModel`.
