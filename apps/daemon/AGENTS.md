@@ -40,13 +40,15 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   then `syncBuiltinESMExports()` so SDKs that `import { spawn }` see it. No-op outside Electron.
   **Never guess a spawnable path by walking parents or from `node_modules`** (a tsup bundle sits at a
   different depth than `tsx` src) — hand it in via env, and keep real executables unpacked (`asarUnpack`).
-- **Agent binaries do not ship in the app (CODE-114).** claude/codex resolve at boot via the
-  runtime probe (`packages/agent-adapter/src/probe/`): managed dir (`LINKCODE_AGENT_BIN_DIR`,
-  set by the desktop supervisor when `<userData>/agent-bin` exists — CODE-111's download target,
-  layout `<binDir>/<agent-kind>/<binary>`) → detected user install at known locations (brew,
-  `~/.local/bin`; version-verified) → SDK self-resolution from node_modules (dev/standalone).
-  opencode self-spawns the `opencode` command via PATH (CODE-76); pi runs in-process and spawns
-  nothing. A machine with neither a managed nor a detected CLI has only pi until CODE-111/112 land.
+- **Agent binaries do not ship in the app (CODE-114); the daemon provisions them (CODE-111).**
+  claude/codex resolve via the runtime probe (`packages/agent-adapter/src/probe/`): managed
+  install from the daemon's asset store (`@linkcode/assets` — platform data dir, e.g.
+  `~/Library/Application Support/LinkCode/assets`, `LINKCODE_ASSETS_DIR` override for tests/E2E;
+  SDK-pinned exact pair, SRI-verified, GC'd at boot) → detected user install at known locations
+  (brew, `~/.local/bin`; version-verified) → SDK self-resolution from node_modules
+  (dev/standalone). Boot never waits on a download: missing agent pairs warm in the background
+  and win resolution as soon as they land. opencode self-spawns the `opencode` command via PATH
+  (CODE-76); pi runs in-process and spawns nothing.
 - **PTY sidecar** is a Rust binary (`linkcode-pty`, `pnpm -F @linkcode/daemon run build:rust`);
   the resolution order and degradation strings live in `docs/DEVELOPMENT.md` (Rust PTY sidecar +
   terminal triage). Treat the framed-stdio protocol as hostile; its design lives in
