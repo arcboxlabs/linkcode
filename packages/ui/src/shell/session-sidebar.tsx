@@ -8,6 +8,7 @@ import {
   BotIcon,
   ChevronDownIcon,
   CloudIcon,
+  ExternalLinkIcon,
   FilePlus2Icon,
   LogOutIcon,
   SearchIcon,
@@ -212,6 +213,7 @@ export function HostFooter({
   authPending = false,
   onSignIn,
   onSignOut,
+  onManageAccount,
   onOpenSettings,
 }: {
   state?: string;
@@ -223,6 +225,8 @@ export function HostFooter({
   authPending?: boolean;
   onSignIn?: () => void;
   onSignOut?: () => void;
+  /** Opens the IdP account center (profile/avatar) in the system browser; shown when signed in. */
+  onManageAccount?: () => void;
   onOpenSettings?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
@@ -286,6 +290,15 @@ export function HostFooter({
                 <div className="truncate font-medium">{account.name}</div>
                 <div className="truncate text-muted-foreground text-xs">{account.email}</div>
               </div>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t('manageAccount')}
+                disabled={!onManageAccount}
+                onClick={onManageAccount}
+              >
+                <ExternalLinkIcon />
+              </Button>
               <Button size="icon-sm" variant="ghost" aria-label={t('signOut')} onClick={onSignOut}>
                 <LogOutIcon />
               </Button>

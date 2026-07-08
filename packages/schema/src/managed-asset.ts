@@ -47,7 +47,7 @@ export const InstalledAssetSchema = z.object({
 });
 export type InstalledAsset = z.infer<typeof InstalledAssetSchema>;
 
-/** Per-asset status served on `asset.listed`; download trigger/progress land with CODE-112. */
+/** Per-asset status served on `asset.listed`; installs are triggered via `asset.ensure`. */
 export const ManagedAssetStatusSchema = z.object({
   id: ManagedAssetIdSchema,
   /** The version this host wants; absent when the pin cannot be determined (SDK missing). */
@@ -56,3 +56,13 @@ export const ManagedAssetStatusSchema = z.object({
   installed: InstalledAssetSchema.optional(),
 });
 export type ManagedAssetStatus = z.infer<typeof ManagedAssetStatusSchema>;
+
+/**
+ * Install lifecycle the asset store fans out to observers (AssetManager.subscribe → the engine,
+ * which forwards it as the `asset.progress` / `asset.settled` broadcasts). In-process contract,
+ * not a wire shape — plain types, nothing to validate at a boundary.
+ */
+export type AssetInstallEvent =
+  | { kind: 'progress'; id: ManagedAssetId; receivedBytes: number; totalBytes?: number }
+  | { kind: 'installed'; id: ManagedAssetId; installed: InstalledAsset }
+  | { kind: 'failed'; id: ManagedAssetId; error: string };

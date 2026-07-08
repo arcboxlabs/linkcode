@@ -1,4 +1,5 @@
 import type { WorkspaceFile } from '@linkcode/schema';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useTranslations } from 'use-intl';
 import { artifactKindForPath } from '../../chat/artifacts';
 import { Markdown } from '../../chat/markdown';
@@ -32,7 +33,11 @@ export function FileViewer({
 
   if (error !== undefined && error !== null && !file) {
     return (
-      <FileViewerNotice className={className} title={t('loadFailed')}>
+      <FileViewerNotice
+        className={className}
+        title={t('loadFailed')}
+        detail={extractErrorMessage(error) ?? undefined}
+      >
         {path}
       </FileViewerNotice>
     );
@@ -123,10 +128,13 @@ function PdfView({
 
 function FileViewerNotice({
   title,
+  detail,
   children,
   className,
 }: {
   title: string;
+  /** The underlying failure reason (daemon error message), shown under the path. */
+  detail?: string;
   children?: React.ReactNode;
   className?: string;
 }): React.ReactNode {
@@ -142,6 +150,9 @@ function FileViewerNotice({
         <div className="max-w-full truncate font-mono text-muted-foreground text-xs">
           {children}
         </div>
+      ) : null}
+      {detail ? (
+        <div className="max-w-full truncate text-muted-foreground/80 text-xs">{detail}</div>
       ) : null}
     </div>
   );

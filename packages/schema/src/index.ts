@@ -21,6 +21,7 @@ export * from './managed-asset';
 export * from './permission';
 export * from './plan';
 export * from './provider-config';
+export * from './question';
 export * from './script';
 export * from './session';
 export * from './terminal';

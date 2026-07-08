@@ -222,6 +222,9 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model;
+    // Reflect a model chosen at new-session time; codex has no live channel to observe the
+    // config.toml default when none was picked, so a fresh unset session shows a placeholder.
+    if (this.model) this.emitModel(this.model);
     await this.ensureThread();
   }
 
@@ -332,6 +335,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     invariant(this.opts, 'codex: session not started');
     this.opts.model = model;
     this.model = model;
+    // Reflect the pick now; it applies from the next turn/start.
+    this.emitModel(model);
     return Promise.resolve();
   }
 
@@ -344,6 +349,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       );
     }
     this.effort = effort;
+    // Reflect the pick now; it applies from the next turn/start.
+    this.emitEffort(effort);
     return Promise.resolve();
   }
 

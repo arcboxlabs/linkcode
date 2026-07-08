@@ -12,9 +12,11 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -122,6 +124,16 @@ export function respondPermission(
   );
 }
 
+export function respondQuestion(
+  options: Options<{ sessionId: SessionId; requestId: string; outcome: QuestionOutcome }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).respondQuestion(
+    options.sessionId,
+    options.requestId,
+    options.outcome,
+  );
+}
+
 export function getProviderConfig(options?: Options): RequestResult<ProvidersConfig> {
   return resolveClient(options).getProviderConfig();
 }
@@ -140,6 +152,13 @@ export function listAgentRuntimes(options?: Options): RequestResult<AgentRuntime
 /** Managed-asset store status: wanted versions and what is installed (CODE-111). */
 export function listAssets(options?: Options): RequestResult<ManagedAssetStatus[]> {
   return resolveClient(options).listAssets();
+}
+
+/** Install a managed asset; resolves when the install settles (progress rides `asset.progress`). */
+export function ensureAsset(
+  options: Options<{ id: ManagedAssetId }>,
+): RequestResult<ManagedAssetStatus> {
+  return resolveClient(options).ensureAsset(options.id);
 }
 
 /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */

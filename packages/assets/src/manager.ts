@@ -1,4 +1,10 @@
-import type { InstalledAsset, ManagedAssetId, ManagedAssetStatus } from '@linkcode/schema';
+import type {
+  AssetInstallEvent,
+  InstalledAsset,
+  ManagedAssetId,
+  ManagedAssetStatus,
+} from '@linkcode/schema';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { AssetDescriptor } from './catalog';
 import { CATALOG } from './catalog';
 import type { DownloadProgress } from './download';
@@ -15,6 +21,12 @@ export interface AssetManagerOptions extends InstallOptions {
   pinFrom?: string;
 }
 
+// Install lifecycle events (`AssetInstallEvent`, defined in @linkcode/schema) fan out to every
+// subscriber regardless of which caller triggered the install. Per-call `onProgress` is
+// unreliable for observers: the in-flight dedupe in install.ts keeps only the first caller's
+// callback, so anything that must see every install (the engine's wire broadcasts) subscribes.
+export type { AssetInstallEvent } from '@linkcode/schema';
+
 /**
  * The daemon-facing facade: one instance per daemon owns pin → GC → ensure orchestration and
  * answers the prober's synchronous managed-binary lookups. Wanted versions are resolved once
@@ -25,6 +37,7 @@ export interface AssetManagerOptions extends InstallOptions {
 export class AssetManager {
   private readonly descriptors: ReadonlyMap<ManagedAssetId, AssetDescriptor>;
   private readonly wanted = new Map<ManagedAssetId, string | undefined>();
+  private readonly subscribers = new Set<(event: AssetInstallEvent) => void>();
 
   constructor(private readonly options: AssetManagerOptions = {}) {
     const catalog = options.catalog ?? Object.values(CATALOG);
@@ -76,6 +89,38 @@ export class AssetManager {
     const descriptor = this.descriptors.get(id);
     const version = this.wanted.get(id);
     if (!descriptor || !version) return undefined;
-    return installAsset(descriptor, version, { ...this.options, onProgress });
+    const emitProgress = (progress: DownloadProgress) => {
+      onProgress?.(progress);
+      this.emit({ kind: 'progress', id, ...progress });
+    };
+    try {
+      const installed = await installAsset(descriptor, version, {
+        ...this.options,
+        onProgress: emitProgress,
+      });
+      // Concurrent ensures for the same id share one install but emit `installed` once each —
+      // subscribers revalidate idempotently, so the duplicate is harmless.
+      this.emit({ kind: 'installed', id, installed });
+      return installed;
+    } catch (err) {
+      this.emit({ kind: 'failed', id, error: extractErrorMessage(err) ?? 'install failed' });
+      throw err;
+    }
+  }
+
+  /** Observe every install this manager runs (see {@link AssetInstallEvent}). */
+  subscribe(listener: (event: AssetInstallEvent) => void): () => void {
+    this.subscribers.add(listener);
+    return () => this.subscribers.delete(listener);
+  }
+
+  private emit(event: AssetInstallEvent): void {
+    for (const listener of this.subscribers) {
+      try {
+        listener(event);
+      } catch {
+        // A failing observer must not fail the install it is watching (same stance as Hub.send).
+      }
+    }
   }
 }

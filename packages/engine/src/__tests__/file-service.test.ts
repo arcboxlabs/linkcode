@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { readWorkspaceFile } from '../file-service';
 
@@ -75,24 +75,32 @@ describe('readWorkspaceFile', () => {
     expect(absolute.path).toBe(relative.path);
   });
 
-  it('rejects .. traversal out of the workspace', async () => {
+  it('reads files outside the workspace (agents write anywhere the user can)', async () => {
     const root = makeTempDir();
     const outside = makeTempDir();
-    writeFileSync(join(outside, 'secret.txt'), 'nope');
+    writeFileSync(join(outside, 'note.txt'), 'outside');
 
-    await expect(
-      readWorkspaceFile(join(root), join('..', outside, 'secret.txt')),
-    ).rejects.toThrow();
-    await expect(readWorkspaceFile(root, '../secret.txt')).rejects.toThrow();
+    const absolute = await readWorkspaceFile(root, join(outside, 'note.txt'));
+    expect(absolute.content).toBe('outside');
+
+    const traversal = await readWorkspaceFile(root, relative(root, join(outside, 'note.txt')));
+    expect(traversal.content).toBe('outside');
+    expect(traversal.path).toBe(join(outside, 'note.txt'));
   });
 
-  it('rejects symlinks that escape the workspace', async () => {
+  it('follows symlinks out of the workspace', async () => {
     const root = makeTempDir();
     const outside = makeTempDir();
-    writeFileSync(join(outside, 'secret.txt'), 'nope');
-    symlinkSync(join(outside, 'secret.txt'), join(root, 'innocent.md'));
+    writeFileSync(join(outside, 'target.txt'), 'linked');
+    symlinkSync(join(outside, 'target.txt'), join(root, 'link.md'));
 
-    await expect(readWorkspaceFile(root, 'innocent.md')).rejects.toThrow(/escapes/);
+    const file = await readWorkspaceFile(root, 'link.md');
+    expect(file.content).toBe('linked');
+  });
+
+  it('propagates a missing-file error with the resolved path', async () => {
+    const root = makeTempDir();
+    await expect(readWorkspaceFile(root, 'absent.pdf')).rejects.toThrow(/ENOENT/);
   });
 
   it('rejects directories', async () => {

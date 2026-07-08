@@ -1,4 +1,4 @@
-import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
+import type { PermissionOption, QuestionOutcome, ToolCallUpdate } from '@linkcode/schema';
 import {
   Pagination,
   PaginationContent,
@@ -20,15 +20,18 @@ import type {
   PermissionConversationItem,
   PermissionDecision,
   PromptPageCursor,
+  QuestionConversationItem,
 } from '../chat/conversation-prompts';
 import {
   resolvePromptPageIndex,
   selectCurrentPlan,
   selectPendingPermissionItems,
+  selectPendingQuestionItems,
 } from '../chat/conversation-prompts';
 import { Step, StepContent, StepHeader, StepItem } from '../chat/step';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
+import { QuestionPrompt } from './question-prompt';
 
 interface MockConversationPrompt {
   promptId: string;
@@ -42,6 +45,7 @@ interface MockConversationPrompt {
 
 type PromptQueueItem =
   | { kind: 'permission'; promptId: string; item: PermissionConversationItem }
+  | { kind: 'question'; promptId: string; item: QuestionConversationItem }
   | { kind: 'mock'; promptId: string; prompt: MockConversationPrompt };
 
 const EMPTY_MOCK_PROMPTS: MockConversationPrompt[] = [];
@@ -78,21 +82,30 @@ const MOCK_SHOWCASE_PROMPTS: MockConversationPrompt[] = [
   },
 ];
 
-/** Actionable prompts pinned above the composer: the current plan and pending permission asks. */
+/** Actionable prompts pinned above the composer: the current plan and pending permission/question asks. */
 export function ConversationPromptDock({
   conversation,
   permissionDecisions,
   respondingPermissions,
+  answeredQuestionIds,
+  respondingQuestions,
   onRespondPermission,
+  onRespondQuestion,
 }: {
   conversation: ConversationViewModel;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
+  answeredQuestionIds: ReadonlySet<string>;
+  respondingQuestions: ReadonlySet<string>;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
+  onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
 }): React.ReactNode {
   const plan = selectCurrentPlan(conversation);
   const pendingPermissions = selectPendingPermissionItems(conversation).filter(
     (item) => !permissionDecisions.has(item.requestId),
+  );
+  const pendingQuestions = selectPendingQuestionItems(conversation).filter(
+    (item) => !answeredQuestionIds.has(item.requestId),
   );
   const [dismissedMockPromptIds, setDismissedMockPromptIds] = useState<string[]>([]);
   const [promptCursor, setPromptCursor] = useState<PromptPageCursor>({
@@ -109,6 +122,13 @@ export function ConversationPromptDock({
       (item): PromptQueueItem => ({
         kind: 'permission',
         promptId: `permission:${item.requestId}`,
+        item,
+      }),
+    ),
+    ...pendingQuestions.map(
+      (item): PromptQueueItem => ({
+        kind: 'question',
+        promptId: `question:${item.requestId}`,
         item,
       }),
     ),
@@ -159,6 +179,14 @@ export function ConversationPromptDock({
             item={currentPrompt.item}
             respondingPermissions={respondingPermissions}
             onRespondPermission={onRespondPermission}
+          />
+        ) : currentPrompt?.kind === 'question' ? (
+          <QuestionPrompt
+            key={currentPrompt.promptId}
+            action={pager}
+            item={currentPrompt.item}
+            responding={respondingQuestions.has(currentPrompt.item.requestId)}
+            onRespond={onRespondQuestion}
           />
         ) : currentPrompt ? (
           <ConversationPromptAlert

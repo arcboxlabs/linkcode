@@ -4,6 +4,7 @@ import path from 'node:path';
 import { env } from 'node:process';
 import type {
   CanUseTool,
+  HookCallback,
   PermissionMode,
   PermissionResult,
   Query,
@@ -33,9 +34,10 @@ import type {
   ToolCall,
   ToolCallContent,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { EffortLevelSchema, textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { z } from 'zod';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -72,6 +74,23 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ];
+
+/** AskUserQuestion's tool input (the CLI caps questions at 4 and options at 2–4; only what the
+ * client renders is required here, so benign vendor additions don't break the parse). */
+const ASK_USER_QUESTION_INPUT = z.object({
+  questions: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        header: z.string().optional(),
+        multiSelect: z.boolean().optional(),
+        options: z
+          .array(z.object({ label: z.string().min(1), description: z.string().optional() }))
+          .min(1),
+      }),
+    )
+    .min(1),
+});
 
 /**
  * The approval-policy axis claude-code advertises; ids map 1:1 onto the SDK's `PermissionMode` and
@@ -280,6 +299,26 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
+  /** Reflect the served model the CLI reports — the init message and every assistant frame carry it,
+   * so the client shows the true model even when the session started without a requested one. Dedup
+   * lives in `emitModel`. */
+  private syncModel(model: string | undefined): void {
+    if (model) this.emitModel(model);
+  }
+
+  /** Read-only `Stop` hook that learns the CLI's *resolved* effort (after any per-model downgrade)
+   * so a session the user never set an effort on still reflects a real value instead of a
+   * placeholder. Skipped once the user picks explicitly: that pick — including `ultracode`/`max`,
+   * which this hook's base-level field can't express — is authoritative and emitted by `onSetEffort`.
+   * The `effort` field is absent on models without effort support, in which case nothing is emitted. */
+  private readonly reflectEffortHook: HookCallback = (input) => {
+    if (this.effort === undefined && input.effort?.level) {
+      const parsed = EffortLevelSchema.safeParse(input.effort.level);
+      if (parsed.success) this.emitEffort(parsed.data);
+    }
+    return Promise.resolve({ continue: true });
+  };
+
   override async resumeHistory(
     opts: AgentHistoryResumeOptions,
     startOpts: StartOptions,
@@ -398,6 +437,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
         // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
         forwardSubagentText: true,
+        // Read-only Stop hook: learns the resolved effort level so a session the user never set an
+        // effort on reflects a real value instead of a placeholder (see `reflectEffortHook`).
+        hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
         canUseTool: this.canUseTool,
         // Resolved in onStart from settings.json `permissions.defaultMode` (see settingsDefaultMode)
         // — the SDK-driven CLI does not apply that setting itself. `undefined` only when neither the
@@ -479,9 +521,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (!this.q) {
       invariant(this.opts, 'claude-code: session not started');
       this.opts.model = model;
-      return;
+    } else {
+      await this.q.setModel(model);
     }
-    await this.q.setModel(model);
+    // Reflect the pick immediately (the CLI accepted it, or it will apply at the next Query
+    // creation); the served id off the next assistant frame reconciles it via `syncModel`.
+    this.emitModel(model);
   }
 
   /** Live switch rides the streaming-input control request `Query#setPermissionMode`; before the
@@ -509,6 +554,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (effort === previous) return;
     if (!this.q) {
       this.effort = effort; // No process yet; onPrompt's Query creation applies it.
+      this.emitEffort(effort);
       return;
     }
     if (effort !== 'max' && previous !== 'max') {
@@ -516,9 +562,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // Committed only after the CLI accepted the switch: a rejected one (ultracode without
       // dynamic workflows enabled) must not linger and get replayed onto a later rebuilt Query.
       this.effort = effort;
+      this.emitEffort(effort);
       return;
     }
     this.effort = effort;
+    this.emitEffort(effort);
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
     // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
     const q = this.q;
@@ -539,6 +587,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   private readonly canUseTool: CanUseTool = async (toolName, input, options) => {
+    if (toolName === 'AskUserQuestion') {
+      const questions = ASK_USER_QUESTION_INPUT.safeParse(input);
+      // A parse failure means the pinned CLI's tool shape drifted; degrade to the generic
+      // allow/deny ask (allow then executes with empty answers) instead of failing the turn.
+      if (questions.success) {
+        return this.askUserQuestion(questions.data.questions, input, options.toolUseID);
+      }
+    }
     const outcome = await this.requestPermission(
       {
         toolCallId: options.toolUseID,
@@ -554,6 +610,55 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (allowed) return { behavior: 'allow', updatedInput: input } satisfies PermissionResult;
     return { behavior: 'deny', message: 'Denied by the user' } satisfies PermissionResult;
   };
+
+  /** AskUserQuestion executes with whatever answers the host writes into its input: the CLI's
+   * `checkPermissions` always asks, and an allow that carries no `answers` "succeeds" with every
+   * question reported as unanswered. So the ask surfaces as a structured question card, and the
+   * user's picks are folded back into `updatedInput.answers` keyed by the question's own text
+   * (the CLI's answer-record key; multi-select and free-text answers both ride the same record,
+   * multi-select joined with ', ' per the tool's output contract). */
+  private async askUserQuestion(
+    questions: z.infer<typeof ASK_USER_QUESTION_INPUT>['questions'],
+    input: Record<string, unknown>,
+    toolUseID: string,
+  ): Promise<PermissionResult> {
+    const outcome = await this.requestQuestion(
+      {
+        toolCallId: toolUseID,
+        title: 'AskUserQuestion',
+        kind: claudeToolKind('AskUserQuestion'),
+        rawInput: input,
+      },
+      questions.map((question, qi) => ({
+        questionId: `q${qi}`,
+        prompt: question.question,
+        header: question.header,
+        multiSelect: question.multiSelect ?? false,
+        options: question.options.map((option, oi) => ({
+          optionId: `o${oi}`,
+          label: option.label,
+          description: option.description,
+        })),
+      })),
+    );
+    if (outcome.outcome === 'cancelled') {
+      return { behavior: 'deny', message: 'User declined to answer questions' };
+    }
+    const byQuestionId = new Map(outcome.answers.map((answer) => [answer.questionId, answer]));
+    const answers: Record<string, string> = {};
+    for (const [qi, question] of questions.entries()) {
+      const answer = byQuestionId.get(`q${qi}`);
+      if (!answer) continue;
+      const selected = new Set(answer.selectedOptionIds);
+      const labels: string[] = [];
+      for (const [oi, option] of question.options.entries()) {
+        if (selected.has(`o${oi}`)) labels.push(option.label);
+      }
+      const value = answer.customText?.trim() || labels.join(', ');
+      if (value) answers[question.question] = value;
+    }
+    return { behavior: 'allow', updatedInput: { ...input, answers } };
+  }
 
   protected handleMessage(msg: SDKMessage): void {
     // Every SDK message carries the CLI's session id — the provider-local history id this live run
@@ -584,7 +689,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // entirely from the Task tool_use/tool_result pair; consuming them (task_id ↔ tool_use_id
         // correlation) only pays off once run_in_background tasks are supported.
         if (msg.subtype === 'permission_denied') this.handlePermissionDenied(msg);
-        else if (msg.subtype === 'init') this.syncApprovalPolicy(msg.permissionMode);
+        else if (msg.subtype === 'init') {
+          this.syncApprovalPolicy(msg.permissionMode);
+          this.syncModel(msg.model);
+        }
         break;
       default:
         break;
@@ -627,6 +735,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return;
     }
     const message = msg.message;
+    // Every assistant frame carries the served model — the source of truth for a mid-session switch
+    // (`init` fires only at Query creation, so it can't catch a live `setModel`).
+    this.syncModel(message.model);
     let calledTool = false;
     for (const block of message.content) {
       if (block.type === 'tool_use') {

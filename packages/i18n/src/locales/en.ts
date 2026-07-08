@@ -91,6 +91,35 @@ export const en = {
       next: 'Next prompt',
       customPlaceholder: 'Tell Codex what to do differently',
     },
+    question: {
+      badge: 'Question',
+      progress: '{current}/{total}',
+      next: 'Next',
+      customPlaceholder: 'Type a custom answer',
+    },
+    agentRuntime: {
+      missingTitle: '{agent} is not ready yet',
+      missingBody:
+        'No usable {agent} CLI on this machine — download the paired version to get started.',
+      missingNoDownload:
+        'No usable {agent} CLI on this machine, and it cannot be downloaded automatically yet.',
+      download: 'Download',
+      downloadingTitle: 'Downloading {agent}…',
+      downloadedOf: '{received} / {total} MB',
+      downloadedSoFar: '{received} MB downloaded',
+      failedTitle: '{agent} download failed',
+      retry: 'Retry',
+      unverifiedTitle: '{agent} version is unverified',
+      unverifiedBody:
+        'The detected {version} has not been verified against this app. Download the paired version, or continue with the current one.',
+      unknownVersion: 'unknown version',
+      continueUnverified: 'Continue with current version',
+      downloadPaired: 'Download paired version',
+      badgeMissing: 'Not installed',
+      badgeDownloading: 'Downloading',
+      badgeFailed: 'Download failed',
+      badgeUnverified: 'Unverified',
+    },
     composer: {
       placeholderDisconnected: 'Create or pick a thread first',
       send: 'Send',
@@ -212,6 +241,7 @@ export const en = {
       importHistoryTitle: 'Import history',
       organization: 'Organization',
       signInCloud: 'Sign in to LinkCode Cloud',
+      manageAccount: 'Manage account',
       signOut: 'Sign out',
       historyEmptyTitle: 'No history to import',
       historyEmptyHint: 'This workspace has no saved conversations yet.',

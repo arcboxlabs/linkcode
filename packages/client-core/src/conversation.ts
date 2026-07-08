@@ -2,8 +2,10 @@ import type {
   AgentEvent,
   ApprovalPolicyState,
   ContentBlock,
+  EffortLevel,
   PermissionOption,
   Plan,
+  Question,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -54,6 +56,14 @@ export type ConversationItem = (
       options: PermissionOption[];
     }
   | {
+      kind: 'question';
+      id: string;
+      turnId: ConversationTurnId;
+      requestId: string;
+      toolCall: ToolCallUpdate;
+      questions: Question[];
+    }
+  | {
       kind: 'error';
       id: string;
       turnId: ConversationTurnId;
@@ -75,6 +85,13 @@ export interface ConversationViewModel {
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
    * null (or an empty list) means the agent has no switchable policies and the UI hides the menu. */
   approvalPolicy: ApprovalPolicyState | null;
+  /** The model the session is actually running on, from `model-update`. `null` until the adapter
+   * reports it (before the first turn, or for adapters that can't observe their model) — the composer
+   * then shows a placeholder rather than a guess. */
+  currentModel: string | null;
+  /** The reasoning-effort level the session is running at, from `effort-update`. `null` until the
+   * adapter reports it — same placeholder rule as `currentModel`. */
+  currentEffort: EffortLevel | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -82,6 +99,8 @@ export interface ConversationViewModel {
    * terminal status. The UI additionally hides ones the user already answered in this client.
    */
   pendingPermissionIds: string[];
+  /** requestIds of question asks that are still open, tracked the same way as permission asks. */
+  pendingQuestionIds: string[];
 }
 
 export type Conversation = ConversationViewModel;
@@ -125,12 +144,17 @@ export function createConversationBuilder(): ConversationBuilder {
   const planIndexByTurn = new Map<ConversationTurnId, number>();
   /** Asks in arrival order; each stays "pending" until its tool call reaches a terminal status. */
   const approvals: Array<{ requestId: string; toolCallId: string }> = [];
+  const questionAsks: Array<{ requestId: string; toolCallId: string }> = [];
+  /** Every ask requestId ever folded — attach-replayed duplicates are dropped. */
+  const seenAskIds = new Set<string>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
   let currentModeId: string | null = null;
   let approvalPolicy: ApprovalPolicyState | null = null;
+  let currentModel: string | null = null;
+  let currentEffort: EffortLevel | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
 
@@ -272,6 +296,12 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'approval-policy-update':
         approvalPolicy = event.state;
         break;
+      case 'model-update':
+        currentModel = event.model;
+        break;
+      case 'effort-update':
+        currentEffort = event.effort;
+        break;
       case 'status':
         status = event.status;
         break;
@@ -295,6 +325,9 @@ export function createConversationBuilder(): ConversationBuilder {
         break;
 
       case 'permission-request':
+        // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
+        if (seenAskIds.has(event.requestId)) break;
+        seenAskIds.add(event.requestId);
         items.push({
           kind: 'approval',
           id: event.requestId,
@@ -305,6 +338,20 @@ export function createConversationBuilder(): ConversationBuilder {
           receivedAt,
         });
         approvals.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
+        break;
+      case 'question-request':
+        if (seenAskIds.has(event.requestId)) break;
+        seenAskIds.add(event.requestId);
+        items.push({
+          kind: 'question',
+          id: event.requestId,
+          turnId: currentTurnId,
+          requestId: event.requestId,
+          toolCall: event.toolCall,
+          questions: event.questions,
+          receivedAt,
+        });
+        questionAsks.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
         break;
       default:
         break;
@@ -323,16 +370,21 @@ export function createConversationBuilder(): ConversationBuilder {
       }
     }
 
-    // A permission ask is "pending" until its referenced tool call reaches a terminal status.
-    const pendingPermissionIds: string[] = [];
-    for (const approval of approvals) {
-      const toolItemIndex = toolIndex.get(approval.toolCallId);
-      const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
-      const settled =
-        toolItem?.kind === 'tool' &&
-        (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
-      if (!settled) pendingPermissionIds.push(approval.requestId);
-    }
+    // An ask (permission or question) is "pending" until its tool call reaches a terminal status.
+    const pendingIds = (
+      asks: ReadonlyArray<{ requestId: string; toolCallId: string }>,
+    ): string[] => {
+      const pending: string[] = [];
+      for (const ask of asks) {
+        const toolItemIndex = toolIndex.get(ask.toolCallId);
+        const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
+        const settled =
+          toolItem?.kind === 'tool' &&
+          (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
+        if (!settled) pending.push(ask.requestId);
+      }
+      return pending;
+    };
 
     cached = {
       items: out,
@@ -340,8 +392,11 @@ export function createConversationBuilder(): ConversationBuilder {
       usage,
       currentModeId,
       approvalPolicy,
+      currentModel,
+      currentEffort,
       stopReason,
-      pendingPermissionIds,
+      pendingPermissionIds: pendingIds(approvals),
+      pendingQuestionIds: pendingIds(questionAsks),
     };
     return cached;
   };

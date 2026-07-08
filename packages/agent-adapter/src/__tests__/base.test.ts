@@ -27,6 +27,19 @@ class TestAdapter extends BaseAgentAdapter {
       { optionId: 'ok', name: 'Allow', kind: 'allow_once' },
     ]);
   }
+  askQuestion(): Promise<unknown> {
+    return this.requestQuestion({ toolCallId: 't1' }, [
+      {
+        questionId: 'q0',
+        prompt: 'Which one?',
+        multiSelect: false,
+        options: [
+          { optionId: 'o0', label: 'A' },
+          { optionId: 'o1', label: 'B' },
+        ],
+      },
+    ]);
+  }
 }
 
 function toolEvents(a: TestAdapter): Array<Extract<AgentEvent, { type: 'tool-call' }>> {
@@ -103,6 +116,45 @@ describe('BaseAgentAdapter teardown', () => {
     const pending = a.ask();
     expect(a.seen.some((e) => e.type === 'permission-request')).toBe(true);
 
+    await a.send({ type: 'cancel' });
+    await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
+  });
+
+  it('on cancel: resolves a pending question ask with cancelled (no hang/leak)', async () => {
+    const a = new TestAdapter();
+    const pending = a.askQuestion();
+    expect(a.seen.some((e) => e.type === 'question-request')).toBe(true);
+
+    await a.send({ type: 'cancel' });
+    await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
+  });
+});
+
+describe('BaseAgentAdapter question round-trip', () => {
+  it('resolves the pending ask with the answers from a question-response, by requestId', async () => {
+    const a = new TestAdapter();
+    const pending = a.askQuestion();
+    const request = a.seen.find((e) => e.type === 'question-request');
+    expect(request?.questions[0]).toMatchObject({ questionId: 'q0', prompt: 'Which one?' });
+
+    const outcome = {
+      outcome: 'answered' as const,
+      answers: [{ questionId: 'q0', selectedOptionIds: ['o1'] }],
+    };
+    await a.send({ type: 'question-response', requestId: request!.requestId, outcome });
+    await expect(pending).resolves.toEqual(outcome);
+  });
+
+  it('ignores a response for an unknown requestId', async () => {
+    const a = new TestAdapter();
+    const pending = a.askQuestion();
+    await a.send({
+      type: 'question-response',
+      requestId: 'req-unknown',
+      outcome: { outcome: 'cancelled' },
+    });
+
+    // Still pending: only teardown resolves it now.
     await a.send({ type: 'cancel' });
     await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
   });

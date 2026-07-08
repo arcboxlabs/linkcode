@@ -1,5 +1,11 @@
 import type { Conversation } from '@linkcode/client-core';
-import type { EffortLevel, SessionId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  EffortLevel,
+  QuestionOutcome,
+  SessionId,
+  WorkspaceId,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import { workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
@@ -8,6 +14,7 @@ import {
   promptText,
   registerWorkspace,
   respondPermission,
+  respondQuestion,
   sendInput,
   setEffort,
   setModel,
@@ -24,6 +31,7 @@ import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import type { PresentSessionNotification } from '../notifications/use-session-notifications';
 import { useSessionNotifications } from '../notifications/use-session-notifications';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
@@ -121,6 +129,7 @@ function WorkbenchSessionSurface({
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
+  const questionMutation = useMutation(respondQuestion, { onError });
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
   // Workflow-mode and approval-policy switches ride the generic input op; each reflects back via
@@ -130,6 +139,8 @@ function WorkbenchSessionSurface({
     () => new Map<string, PermissionDecision>(),
   );
   const [responding, addResponding, removeResponding] = useSet<string>();
+  const [answeredQuestions, addAnsweredQuestion] = useSet<string>();
+  const [respondingQuestions, addRespondingQuestion, removeRespondingQuestion] = useSet<string>();
   const active = sessions.active;
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
@@ -157,6 +168,7 @@ function WorkbenchSessionSurface({
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
   const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
+  const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
@@ -372,6 +384,21 @@ function WorkbenchSessionSurface({
       });
   }
 
+  function handleRespondQuestion(requestId: string, outcome: QuestionOutcome): void {
+    if (!sessions.activeId) return;
+    onClearError();
+    addRespondingQuestion(requestId);
+    void questionMutation
+      .trigger({ sessionId: sessions.activeId, requestId, outcome })
+      .then(() => {
+        addAnsweredQuestion(requestId);
+      })
+      .catch(noop)
+      .finally(() => {
+        removeRespondingQuestion(requestId);
+      });
+  }
+
   return (
     <ShellComponent
       threadGroups={threadGroups}
@@ -381,9 +408,14 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      runtimeCues={onboarding.cues}
+      onDownloadAgent={onboarding.download}
+      onContinueUnverified={onboarding.acknowledgeUnverified}
       conversation={conversation}
       permissionDecisions={permissionDecisions}
       respondingPermissions={responding}
+      answeredQuestionIds={answeredQuestions}
+      respondingQuestions={respondingQuestions}
       header={{
         title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
         subtitle: active?.cwd,
@@ -408,6 +440,7 @@ function WorkbenchSessionSurface({
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
+      onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
       onOpenSearch={openCommandPalette}
       searchShortcut={paletteShortcut}

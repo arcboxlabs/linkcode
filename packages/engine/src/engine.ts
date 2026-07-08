@@ -5,7 +5,11 @@ import type {
   AgentHistoryId,
   AgentRuntimes,
   ApprovalPolicyState,
+  AssetInstallEvent,
   ContentBlock,
+  EffortLevel,
+  InstalledAsset,
+  ManagedAssetId,
   ManagedAssetStatus,
   SessionId,
   SessionInfo,
@@ -42,7 +46,18 @@ interface Session {
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
+  /** Open permission/question asks by requestId, replayed on attach like the approval policy: the
+   * ask event is its only carrier (history reads reproduce no ephemeral events), so without the
+   * replay a client that (re)connects mid-ask has no card to answer and the turn hangs. */
+  pendingAsks: Map<string, PendingAskEvent>;
+  /** Latest model/effort the adapter reported, replayed to freshly-attached clients for the same
+   * reason as `approvalPolicy` — a reconnecting client missed the emit and would otherwise show a
+   * placeholder instead of the value the session is actually running on. */
+  currentModel?: string;
+  currentEffort?: EffortLevel;
 }
+
+type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
@@ -56,14 +71,21 @@ export interface EngineDeps {
   previewRoutes?: PreviewRouteRegistry;
   /** Boot-time probe result (`collectAgentRuntimes()`), served to clients on `agent-runtime.list`. */
   agentRuntimes?: AgentRuntimes;
-  /** Managed-asset store status, served to clients on `asset.list`. */
+  /** Managed-asset store, served on `asset.list` and driven by `asset.ensure`. */
   assets?: AssetService;
+  /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands. */
+  collectAgentRuntimes?: () => Promise<AgentRuntimes>;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
 export interface AssetService {
   statuses(): ManagedAssetStatus[];
+  ensure(id: ManagedAssetId): Promise<InstalledAsset | undefined>;
+  subscribe(listener: (event: AssetInstallEvent) => void): () => void;
 }
+
+/** Progress broadcasts are throttled per asset so a fast download can't flood the wire. */
+const ASSET_PROGRESS_INTERVAL_MS = 150;
 
 /**
  * Engine: the local core engine — the "host" that runs the agents
@@ -89,8 +111,11 @@ export class Engine {
   private readonly git: GitService;
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
-  private readonly agentRuntimes: AgentRuntimes;
+  /** Boot snapshot, replaced by {@link refreshAgentRuntimes} when a managed install lands. */
+  private agentRuntimes: AgentRuntimes;
   private readonly assets?: AssetService;
+  private readonly collectAgentRuntimes?: () => Promise<AgentRuntimes>;
+  private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
 
   constructor(
@@ -118,6 +143,9 @@ export class Engine {
     this.artifactHost = new ArtifactHostService(routes);
     this.agentRuntimes = deps.agentRuntimes ?? {};
     this.assets = deps.assets;
+    this.collectAgentRuntimes = deps.collectAgentRuntimes;
+    // Lifetime = the daemon's: the engine is never disposed, so the subscription is never torn down.
+    this.assets?.subscribe((event) => this.onAssetInstallEvent(event));
   }
 
   async start(): Promise<void> {
@@ -185,6 +213,11 @@ export class Engine {
               }),
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
+          }
+          // The answer settles the ask the moment it arrives; drop it before awaiting send so a
+          // concurrent session.attach (handlers aren't serialized) can't replay an already-answered ask.
+          if (p.input.type === 'permission-response' || p.input.type === 'question-response') {
+            session.pendingAsks.delete(p.input.requestId);
           }
           await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
@@ -345,6 +378,33 @@ export class Engine {
         );
         break;
       }
+      case 'asset.ensure': {
+        const assets = this.assets;
+        if (!assets) {
+          this.sendFailure(p.clientReqId, new Error('managed assets are unavailable on this host'));
+          break;
+        }
+        // Rides the promise instead of awaiting: the reply lands only when the install settles
+        // (minutes for a download), and this message's handling must finish before then.
+        assets
+          .ensure(p.id)
+          .then((installed) => {
+            if (!installed) {
+              // Unknown asset or no version pin (e.g. the backing SDK is absent on this host).
+              this.sendFailure(p.clientReqId, new Error(`asset ${p.id} cannot be installed here`));
+              return;
+            }
+            const status = nullthrow(
+              assets.statuses().find((candidate) => candidate.id === p.id),
+              `installed asset ${p.id} missing from statuses`,
+            );
+            this.transport.send(
+              createWireMessage({ kind: 'asset.ensured', replyTo: p.clientReqId, status }),
+            );
+          })
+          .catch((err: unknown) => this.sendFailure(p.clientReqId, err));
+        break;
+      }
       case 'config.get': {
         this.transport.send(
           createWireMessage({
@@ -496,19 +556,30 @@ export class Engine {
         break;
       }
       case 'session.attach': {
-        // Multi-device attach is implicit: events are broadcast to all clients. The one buffered
-        // state an attaching client can't recover otherwise is the approval-policy advertisement
-        // (emitted at adapter start); re-broadcast it — clients fold it idempotently.
+        // Multi-device attach is implicit: events are broadcast to all clients. What gets
+        // re-broadcast here is the buffered state an attaching client can't recover from a
+        // history read: the live status (gates the pending-ask cards and the Stop affordance),
+        // the approval-policy advertisement (emitted once at adapter start), and any open
+        // permission/question asks (ephemeral — their event is the only carrier). Clients fold
+        // status/policy idempotently and dedupe ask events by requestId.
         const attached = this.sessions.get(p.sessionId);
-        if (attached?.approvalPolicy) {
+        if (!attached) break;
+        const replay = (event: AgentEvent): void => {
           this.transport.send(
-            createWireMessage({
-              kind: 'agent.event',
-              sessionId: p.sessionId,
-              event: { type: 'approval-policy-update', state: attached.approvalPolicy },
-            }),
+            createWireMessage({ kind: 'agent.event', sessionId: p.sessionId, event }),
           );
+        };
+        replay({ type: 'status', status: attached.status });
+        if (attached.approvalPolicy) {
+          replay({ type: 'approval-policy-update', state: attached.approvalPolicy });
         }
+        if (attached.currentModel) {
+          replay({ type: 'model-update', model: attached.currentModel });
+        }
+        if (attached.currentEffort) {
+          replay({ type: 'effort-update', effort: attached.currentEffort });
+        }
+        for (const ask of attached.pendingAsks.values()) replay(ask);
         break;
       }
       case 'session.detach': {
@@ -581,7 +652,7 @@ export class Engine {
   ): Promise<void> {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
-    const session: Session = { adapter, unsub: noop, status: 'starting' };
+    const session: Session = { adapter, unsub: noop, status: 'starting', pendingAsks: new Map() };
     session.unsub = adapter.onEvent((event) => {
       // The adapter invokes this synchronously; an uncaught throw here would bubble out of
       // whatever triggered the event (the adapter's own internals, in most cases) instead of
@@ -590,6 +661,9 @@ export class Engine {
         switch (event.type) {
           case 'status':
             session.status = event.status;
+            // A turn boundary settles every ask: the adapter's teardown has resolved them
+            // (cancelled) — replaying one after this would present an unanswerable card.
+            if (event.status === 'idle' || event.status === 'stopped') session.pendingAsks.clear();
             if (event.status === 'stopped') this.sealCurrentRun(sessionId);
             break;
           case 'session-ref':
@@ -597,6 +671,27 @@ export class Engine {
             break;
           case 'approval-policy-update':
             session.approvalPolicy = event.state;
+            break;
+          case 'permission-request':
+          case 'question-request':
+            session.pendingAsks.set(event.requestId, event);
+            break;
+          case 'tool-call':
+            // Mirrors the client's pending semantics: an ask is open until its tool call reaches
+            // a terminal status (also catches teardown's forced-failed sweep on cancel).
+            if (event.toolCall.status === 'completed' || event.toolCall.status === 'failed') {
+              for (const [requestId, ask] of session.pendingAsks) {
+                if (ask.toolCall.toolCallId === event.toolCall.toolCallId) {
+                  session.pendingAsks.delete(requestId);
+                }
+              }
+            }
+            break;
+          case 'model-update':
+            session.currentModel = event.model;
+            break;
+          case 'effort-update':
+            session.currentEffort = event.effort;
             break;
           default:
             break;
@@ -724,6 +819,58 @@ export class Engine {
     }
   }
 
+  /** Forward AssetManager lifecycle to the wire, whoever triggered the install (client or boot). */
+  private onAssetInstallEvent(event: AssetInstallEvent): void {
+    switch (event.kind) {
+      case 'progress': {
+        const now = Date.now();
+        if (now - (this.assetProgressSentAt.get(event.id) ?? 0) < ASSET_PROGRESS_INTERVAL_MS) {
+          return;
+        }
+        this.assetProgressSentAt.set(event.id, now);
+        this.transport.send(
+          createWireMessage({
+            kind: 'asset.progress',
+            id: event.id,
+            receivedBytes: event.receivedBytes,
+            totalBytes: event.totalBytes,
+          }),
+        );
+        break;
+      }
+      case 'installed': {
+        this.assetProgressSentAt.delete(event.id);
+        this.transport.send(
+          createWireMessage({ kind: 'asset.settled', id: event.id, installed: event.installed }),
+        );
+        // A freshly installed agent binary changes what this host can spawn — re-probe so
+        // `agent-runtime.list` stops serving the stale boot snapshot, and push the new truth.
+        if (event.id.startsWith('agent:')) void this.refreshAgentRuntimes();
+        break;
+      }
+      case 'failed': {
+        this.assetProgressSentAt.delete(event.id);
+        this.transport.send(
+          createWireMessage({ kind: 'asset.settled', id: event.id, error: event.error }),
+        );
+        break;
+      }
+      // no default
+    }
+  }
+
+  private async refreshAgentRuntimes(): Promise<void> {
+    if (!this.collectAgentRuntimes) return;
+    try {
+      this.agentRuntimes = await this.collectAgentRuntimes();
+      this.transport.send(
+        createWireMessage({ kind: 'agent-runtime.changed', runtimes: this.agentRuntimes }),
+      );
+    } catch (err) {
+      console.error('Re-probing agent runtimes after a managed install failed:', err);
+    }
+  }
+
   private sendFailure(replyTo: string, err: unknown): void {
     const message = extractErrorMessage(err) ?? 'Unknown error';
     this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
@@ -744,13 +891,15 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
 }
 
 /** The notification-worthy subset of adapter events. `stop` is the turn boundary (`status: 'idle'`
- * also fires at session start, so it can't be the trigger); `permission-request` is the only real
- * "awaiting input" signal — no adapter emits an `awaiting-input` status. */
+ * also fires at session start, so it can't be the trigger); a `permission-request` or
+ * `question-request` ask is the only real "awaiting input" signal — no adapter emits an
+ * `awaiting-input` status. */
 function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
   switch (event.type) {
     case 'stop':
       return { type: 'turn-completed', stopReason: event.stopReason };
     case 'permission-request':
+    case 'question-request':
       return { type: 'awaiting-approval', toolTitle: event.toolCall.title };
     case 'error':
       return { type: 'error', message: event.message };

@@ -14,7 +14,13 @@ import {
   PanelTabContentStack,
 } from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
-import { AttachedTerminalPanel, TerminalPanel, WorkspaceServicesMenu } from '@linkcode/workbench';
+import {
+  AttachedTerminalPanel,
+  isAbsoluteFilePath,
+  locateFileArtifact,
+  TerminalPanel,
+  WorkspaceServicesMenu,
+} from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
@@ -23,7 +29,7 @@ import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
-import { useCloudAuthStore } from '../cloud-auth/store';
+import { useCloudAccount } from '../cloud-auth/use-cloud-account';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
@@ -58,9 +64,14 @@ export function DesktopShell({
   chatWorkspace,
   activeSession,
   draft,
+  runtimeCues,
+  onDownloadAgent,
+  onContinueUnverified,
   conversation,
   permissionDecisions,
   respondingPermissions,
+  answeredQuestionIds,
+  respondingQuestions,
   errorMessage,
   pinnedSessionIds,
   onSelectSession,
@@ -80,6 +91,7 @@ export function DesktopShell({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
   TerminalBlockComponent,
@@ -126,14 +138,7 @@ export function DesktopShell({
       resetBottomPanelSize: state.resetBottomPanelSize,
     })),
   );
-  const cloudAuth = useCloudAuthStore(
-    useShallow((state) => ({
-      user: state.user,
-      authenticating: state.authenticating,
-      signIn: state.signIn,
-      signOut: state.signOut,
-    })),
-  );
+  const cloudAuth = useCloudAccount();
   const shellRootRef = useRef<HTMLDivElement | null>(null);
   const { current: shellStyle } = useSingleton<DesktopShellStyle>(() =>
     createDesktopShellStyle(shellState),
@@ -288,12 +293,16 @@ export function DesktopShell({
     resetBottomPanelLayoutSize();
   }
 
-  // File-artifact clicks land in the right panel's files section; relative paths are
-  // anchored to the active session's cwd (the same root the daemon reads against).
+  // File-artifact clicks land in the right panel's files section. The clicked text may
+  // be a bare filename from agent prose whose file lives outside the session cwd, so
+  // the locator probes candidate directories from the conversation's tool calls.
   function openFileArtifact(path: string): void {
     const cwd = active?.cwd;
-    const anchored = path[0] === '/' ? path : cwd ? `${cwd}/${path}` : null;
-    if (anchored !== null) openRightFileTab(anchored);
+    if (!cwd) {
+      if (isAbsoluteFilePath(path)) openRightFileTab(path);
+      return;
+    }
+    void locateFileArtifact(path, cwd, conversation.items).then(openRightFileTab);
   }
 
   const main = (
@@ -307,7 +316,10 @@ export function DesktopShell({
           draft={draft}
           workspaces={workspaces}
           chatWorkspace={chatWorkspace}
+          runtimeCues={runtimeCues}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
+          onContinueUnverified={onContinueUnverified}
+          onDownloadAgent={onDownloadAgent}
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
@@ -323,6 +335,8 @@ export function DesktopShell({
           cwd={active?.cwd}
           permissionDecisions={permissionDecisions}
           respondingPermissions={respondingPermissions}
+          answeredQuestionIds={answeredQuestionIds}
+          respondingQuestions={respondingQuestions}
           TerminalBlockComponent={TerminalBlockComponent}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
@@ -330,6 +344,7 @@ export function DesktopShell({
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
+          onRespondQuestion={onRespondQuestion}
           onOpenFileArtifact={openFileArtifact}
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}
@@ -567,10 +582,11 @@ export function DesktopShell({
                     state={tConnection('connected')}
                     appVersion={appVersion}
                     pendingPermissionCount={conversation.pendingPermissionIds.length}
-                    account={cloudAuth.user}
+                    account={cloudAuth.account}
                     authPending={cloudAuth.authenticating}
                     onSignIn={cloudAuth.signIn}
                     onSignOut={cloudAuth.signOut}
+                    onManageAccount={cloudAuth.manageAccount}
                     onOpenSettings={onOpenSettings}
                   />
                 }
