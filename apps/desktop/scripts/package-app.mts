@@ -29,11 +29,11 @@
  * the .pnpmfile.cjs dedup workaround both exist only to paper over the multi-importer path and are
  * removed alongside this.
  */
-import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import process from 'node:process';
+import crossSpawn from 'cross-spawn';
 
 const HOST_PLATFORM: Partial<Record<NodeJS.Platform, BuilderPlatform>> = {
   darwin: 'mac',
@@ -56,24 +56,19 @@ const releaseDir = join(desktopDir, 'release');
 const stagingDir = join(tmpdir(), 'linkcode-desktop-staging');
 
 /**
- * Absolute path to a PATH executable. Node's `execFileSync` does not do Windows PATHEXT resolution
- * without a shell, so a bare `'pnpm'` is `spawnSync pnpm ENOENT` on the Windows runner (pnpm is a
- * `.cmd`/`.exe` shim there). Resolve it explicitly and keep `shell: false` so forwarded electron-
- * builder args (signing `-c…` values that may contain spaces) reach the child unmangled.
+ * Run a command, inheriting stdio, throwing on failure. cross-spawn handles what plain
+ * `execFileSync` cannot on Windows: resolving `pnpm` to its `.cmd` shim via PATHEXT and executing
+ * it through the shell wrapper — a bare `execFileSync('pnpm', …)` is `spawnSync pnpm ENOENT`, and
+ * even a resolved `pnpm.cmd` path is not a directly-spawnable image. `spawn.sync` reports failures
+ * on its result rather than throwing, so surface them here.
  */
-function resolveExecutable(name: string): string {
-  if (process.platform !== 'win32') return name;
-  const dirs = (process.env.PATH ?? '').split(delimiter);
-  for (const dir of dirs) {
-    for (const ext of ['.cmd', '.exe', '.bat', '']) {
-      const candidate = join(dir, name + ext);
-      if (existsSync(candidate)) return candidate;
-    }
+function run(command: string, commandArgs: string[], cwd: string): void {
+  const result = crossSpawn.sync(command, commandArgs, { cwd, stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`${command} exited with ${result.status ?? `signal ${result.signal}`}`);
   }
-  return name; // not found on PATH — let execFileSync surface the ENOENT loudly
 }
-
-const PNPM = resolveExecutable('pnpm');
 
 const platformTokens = new Set<string>(BUILDER_PLATFORMS);
 const args = process.argv.slice(2);
@@ -88,10 +83,10 @@ const passthrough = args.filter((arg) => arg !== '--devshell' && !platformTokens
 function materializeStaging(): void {
   rmSync(stagingDir, { recursive: true, force: true });
   // --legacy: deploy without pnpm's inject-workspace-packages requirement (v10+ default refusal).
-  execFileSync(
-    PNPM,
+  run(
+    'pnpm',
     ['--filter', '@linkcode/desktop', '--prod', 'deploy', '--legacy', stagingDir],
-    { cwd: repoRoot, stdio: 'inherit' },
+    repoRoot,
   );
   // deploy's file selection skips .gitignore'd paths inconsistently across pnpm versions; sync the
   // build outputs in explicitly so `files: out/**` and `extraResources: sidecar/${arch}` resolve.
@@ -122,7 +117,7 @@ function build(): void {
     ...(devshell ? ['--dir'] : []),
     ...passthrough,
   ];
-  execFileSync(PNPM, builderArgs, { cwd: desktopDir, stdio: 'inherit' });
+  run('pnpm', builderArgs, desktopDir);
 }
 
 materializeStaging();
