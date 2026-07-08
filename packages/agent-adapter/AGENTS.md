@@ -5,13 +5,16 @@
 ## Layout
 
 - One native adapter per agent under `src/native/`: `claude-code.ts`, `codex.ts`, `opencode.ts`, `pi.ts` (+ `codex-history.ts`, `agent-bin.ts`). Shared spine: `src/adapter.ts` (the `AgentAdapter` interface + id generators), `src/base.ts` (`BaseAgentAdapter`), `src/registry.ts`, `src/util.ts`, `src/history-util.ts`.
+- CLI runtime probing under `src/probe/`: one `AgentCliProbe` subclass per external-CLI agent (`ClaudeCodeProbe`, `CodexProbe` — known install locations + `--version` vendor-marker verification), orchestrated by `AgentRuntimeProber` (`prober.ts`). The daemon probes the shared `agentRuntimeProber` instance once per boot and serves the result as the `agent-runtime.list` wire resource; adapters resolve their spawn path through `resolveBinary(kind)`.
 - `createAdapter(kind)` in `registry.ts` is the ONLY factory — a `switch` over `AgentKind` ending in foxts `never(kind, 'agent kind')`, so an unhandled kind fails typecheck. **Adding an agent** = new native adapter class + registry case + extend the `AgentKind` enum.
 - Id generators (`adapter.ts`): `nextMessageId()`→`msg-`, `nextToolCallId()`→`tool-`, `nextRequestId()`→`req-` (module counter + `Date.now().toString(36)`). These are the FALLBACK — adapters prefer provider-native ids (claude `toolu_`/message uuid; codex/opencode item/part ids) so live turns and cold-resume history converge by id.
 - Each SDK is lazy-loaded via `loadSdk(name, () => import(...))`; on import failure the adapter emits `AgentEvent {type:'error', code:'sdk-unavailable', recoverable:false}` and rethrows — a missing SDK degrades to a clear error, it does not crash the daemon.
 
 ## SDK ↔ vendored-CLI lockstep (hard invariant)
 
-An SDK and its native CLI binary ship as a PAIR speaking a **private, unversioned stdio protocol with no handshake** — they must never drift. claude-code and codex do NOT use a machine-installed CLI: the binary is vendored through the SDK's platform `optionalDependencies` (`@anthropic-ai/claude-agent-sdk-<platform>-<arch>`, `@openai/codex-<platform>-<arch>`); resolution failure throws with **no PATH fallback**. The SDK version alone identifies the pair.
+An SDK and its native CLI binary ship as a PAIR speaking a **private, unversioned stdio protocol with no handshake** — the exact pair must never drift *silently*. The SDK version alone identifies the pair (platform `optionalDependencies` are exact-pinned: `@anthropic-ai/claude-agent-sdk-<platform>-<arch>`, `@openai/codex-<platform>-<arch>`).
+
+Spawn-path resolution (`AgentRuntimeProber.resolveBinary`, CODE-110/114): **managed/bundled** (`LINKCODE_AGENT_BIN_DIR`, exact pair) → **detected** (user-installed CLI at a known location, version-verified at boot — deliberately a *drifted* pair; forward drift is smoke-verified, e.g. SDK 0.3.179 × claude 2.1.202) → **SDK self-resolution** out of node_modules (dev / standalone daemons; no PATH fallback, resolution failure throws). Packaged apps ship **no** agent binaries since CODE-114 — the compat manifest (CODE-77) will gate detected versions; nightly smoke (CODE-113) keeps the drift window honest.
 
 Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin):
 
@@ -22,7 +25,7 @@ Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin)
 | opencode | `@opencode-ai/sdk` | 1.17.7 |
 | pi | `@earendil-works/pi-coding-agent` | 0.79.6 |
 
-- **Bumping an SDK** = update the package.json pin AND re-run staging so the downloaded CLI matches (`stage-agent-runtimes.mts` pins the binary to the installed SDK version). Bump one without the other and the stdio protocol breaks.
+- **Bumping an SDK** moves the exact pair the SDK self-resolves in dev; detected user installs are unaffected (their drift is the compat manifest's problem, CODE-77/113). Nothing is staged at package time anymore (CODE-114).
 - Quirk: `@openai/codex-<arch>` is an npm alias for `@openai/codex@<ver>-<arch>`, so querying the registry by the alias name 404s — resolve via the `@openai/codex` version.
 
 ## BaseAgentAdapter contract
@@ -59,11 +62,11 @@ Every new adapter MUST honor these (`base.ts`); downstream relies on them, they 
 
 Product code must branch on `historyCapabilities` — never assume an op is supported. Unsupported `read`/`resume` reject clearly (`'<kind>: history read is not supported'`); unsupported `list` returns empty `{sessions:[]}`.
 
-| agent | list/read/resume | set-model | set-effort | set-approval-policy | staged binary |
+| agent | list/read/resume | set-model | set-effort | set-approval-policy | packaged binary (CODE-114) |
 | --- | --- | --- | --- | --- | --- |
-| claude-code | ✓ | ✓ | ✓ | ✓ | outside asar |
-| codex | ✓ | ✗ | ✗ | ✗ | in asar (needs spawn-fix) |
-| opencode | ✗ | ✗ | ✗ | ✗ | self-spawns server via PATH |
+| claude-code | ✓ | ✓ | ✓ | ✓ | detected user install / managed dir |
+| codex | ✓ | ✗ | ✗ | ✗ | detected user install / managed dir |
+| opencode | ✗ | ✗ | ✗ | ✗ | self-spawns server via PATH (CODE-76) |
 | pi | ✗ | ✗ | ✗ | ✗ | in-process JS |
 
 - **apiKey injection** (all read `StartOptions.config.apiKey`, four shapes): claude-code → `ANTHROPIC_API_KEY` in spawned env; codex → `new Codex({apiKey})` (honors `CODEX_HOME`); opencode → nested `config.provider[providerID].options.apiKey` (providerID = before `/` in model); pi → `authStorage.setRuntimeApiKey`.
@@ -87,5 +90,5 @@ Do NOT hard-weld "agent runs bare in the local cwd." Agents today run directly o
 
 ## Elsewhere
 
-- Vendored-binary staging and packaging (`stage-agent-runtimes.mts`, extraResources/asarUnpack) live in `apps/desktop/AGENTS.md` and `docs/RELEASE.md`; the asar-spawn fix codex depends on in packaged builds lives in `apps/daemon/AGENTS.md`.
+- Packaging (no agent binaries ship; platform packages are excluded from the asar) lives in `apps/desktop/AGENTS.md` and `docs/RELEASE.md`; the asar-spawn fix (defense-in-depth for any SDK-internal spawn) lives in `apps/daemon/AGENTS.md`.
 - tayori / front-end consumption of these events is NOT this package's concern.
