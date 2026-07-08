@@ -67,6 +67,31 @@ describe('deriveAgentRuntimeCues', () => {
     ).toEqual({});
   });
 
+  it('activity also overrides out-of-range: downloading the paired version shows progress', () => {
+    const runtimes: AgentRuntimes = {
+      codex: { status: 'out-of-range', source: 'detected', version: '0.99.0' },
+    };
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        { 'agent:codex': { kind: 'downloading', receivedBytes: 7, totalBytes: 10 } },
+        {},
+      ),
+    ).toEqual({ codex: { state: 'downloading', receivedBytes: 7, totalBytes: 10 } });
+    expect(
+      deriveAgentRuntimeCues(runtimes, ASSETS, { 'agent:codex': { kind: 'installed' } }, {}),
+    ).toEqual({});
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        { 'agent:codex': { kind: 'failed', error: 'offline' } },
+        {},
+      ),
+    ).toEqual({ codex: { state: 'failed', error: 'offline' } });
+  });
+
   it('prompts for out-of-range versions until that exact version is acknowledged', () => {
     const runtimes: AgentRuntimes = {
       codex: { status: 'out-of-range', source: 'detected', version: '0.99.0' },

@@ -63,6 +63,26 @@ export function deriveAgentRuntimeCues(
   return cues;
 }
 
+/**
+ * The cue for an install in flight (or just settled) for this asset, whatever the probed status
+ * said: `downloading` shows progress, `failed` offers retry, and `installed` bridges the gap to
+ * the `agent-runtime.changed` re-probe by clearing the cue (probe truth wins once it arrives).
+ */
+function activityCue(
+  current: AssetActivity | undefined,
+): AgentRuntimeCue | 'installed' | undefined {
+  if (current?.kind === 'downloading') {
+    return {
+      state: 'downloading',
+      receivedBytes: current.receivedBytes,
+      totalBytes: current.totalBytes,
+    };
+  }
+  if (current?.kind === 'failed') return { state: 'failed', error: current.error };
+  if (current?.kind === 'installed') return 'installed';
+  return undefined;
+}
+
 function deriveCue(
   kind: AgentKind,
   runtime: AgentRuntimeAvailability,
@@ -73,24 +93,24 @@ function deriveCue(
   switch (runtime.status) {
     case 'available':
       return undefined;
-    case 'out-of-range':
+    case 'out-of-range': {
+      // "Download paired version" runs the same install as the missing flow — its activity must
+      // win over the probed status here too, or the card never shows progress and a settled
+      // install stays blocked until the re-probe push lands.
+      const assetId = AGENT_ASSET_IDS[kind];
+      const fromActivity = activityCue(assetId ? activity[assetId] : undefined);
+      if (fromActivity === 'installed') return undefined;
+      if (fromActivity) return fromActivity;
       return acknowledged[kind] === versionKey(runtime)
         ? undefined
         : { state: 'unverified', version: runtime.version };
+    }
     case 'missing': {
       const assetId = AGENT_ASSET_IDS[kind];
       if (!assetId) return { state: 'missing', downloadable: false };
-      const current = activity[assetId];
-      if (current?.kind === 'downloading') {
-        return {
-          state: 'downloading',
-          receivedBytes: current.receivedBytes,
-          totalBytes: current.totalBytes,
-        };
-      }
-      if (current?.kind === 'failed') return { state: 'failed', error: current.error };
-      // A settle already landed; trust it until the runtime re-probe push corrects the snapshot.
-      if (current?.kind === 'installed') return undefined;
+      const fromActivity = activityCue(activity[assetId]);
+      if (fromActivity === 'installed') return undefined;
+      if (fromActivity) return fromActivity;
       const status = assets?.find((candidate) => candidate.id === assetId);
       // Optimistic while `assets` is still loading; a pinless ensure fails into the failed cue.
       return { state: 'missing', downloadable: status ? status.wantedVersion !== undefined : true };
