@@ -89,6 +89,12 @@ export const zhCN = {
       next: '下一个提示',
       customPlaceholder: '告诉 Codex 要如何调整',
     },
+    question: {
+      badge: '提问',
+      progress: '{current}/{total}',
+      next: '下一题',
+      customPlaceholder: '输入自定义回答',
+    },
     composer: {
       placeholderDisconnected: '请先创建或选择线程',
       send: '发送',

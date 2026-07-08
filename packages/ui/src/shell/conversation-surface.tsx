@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import type { AgentKind, EffortLevel, QuestionOutcome } from '@linkcode/schema';
 import { useRef } from 'react';
 import { ArtifactHostActionsProvider } from '../chat/artifacts';
 import type { PermissionDecision } from '../chat/conversation-prompts';
@@ -18,6 +18,8 @@ export interface ConversationSurfaceProps {
   modelName?: string;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
+  answeredQuestionIds: ReadonlySet<string>;
+  respondingQuestions: ReadonlySet<string>;
   disabled?: boolean;
   isRunning: boolean;
   topContent?: React.ReactNode;
@@ -27,6 +29,7 @@ export interface ConversationSurfaceProps {
   onSendPrompt: (text: string) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
+  onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
   /** Opens a produced-file artifact in the shell's viewer (desktop right panel). Absent
    * when the shell has no viewer — file cards then render without the open affordance. */
   onOpenFileArtifact?: (path: string) => void;
@@ -48,6 +51,8 @@ export function ConversationSurface({
   modelName,
   permissionDecisions,
   respondingPermissions,
+  answeredQuestionIds,
+  respondingQuestions,
   disabled = false,
   isRunning,
   topContent,
@@ -57,6 +62,7 @@ export function ConversationSurface({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onRespondQuestion,
   onOpenFileArtifact,
   onHostArtifact,
   onOpenPreviewUrl,
@@ -94,7 +100,10 @@ export function ConversationSurface({
         conversation={conversation}
         permissionDecisions={permissionDecisions}
         respondingPermissions={respondingPermissions}
+        answeredQuestionIds={answeredQuestionIds}
+        respondingQuestions={respondingQuestions}
         onRespondPermission={onRespondPermission}
+        onRespondQuestion={onRespondQuestion}
       />
       {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) once the daemon
           emits it; the composer stubs the workflow-mode list today. */}

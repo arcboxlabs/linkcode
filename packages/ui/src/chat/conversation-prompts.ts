@@ -3,6 +3,7 @@ import type { ConversationItem, ConversationViewModel } from './types';
 
 export type PlanConversationItem = Extract<ConversationItem, { kind: 'plan' }>;
 export type PermissionConversationItem = Extract<ConversationItem, { kind: 'approval' }>;
+export type QuestionConversationItem = Extract<ConversationItem, { kind: 'question' }>;
 
 export type PermissionDecision =
   | {
@@ -68,6 +69,21 @@ export function selectPendingPermissionItems(
   return conversation.items.filter(
     (item): item is PermissionConversationItem =>
       item.kind === 'approval' && pending.has(item.requestId),
+  );
+}
+
+/**
+ * Question asks that still need answers — same live-turn gating as permission asks: once the turn
+ * ends, the agent is no longer awaiting, so a stale ask must not present an actionable card.
+ */
+export function selectPendingQuestionItems(
+  conversation: Pick<ConversationViewModel, 'items' | 'pendingQuestionIds' | 'status'>,
+): QuestionConversationItem[] {
+  if (conversation.status !== 'running' && conversation.status !== 'starting') return [];
+  const pending = new Set(conversation.pendingQuestionIds);
+  return conversation.items.filter(
+    (item): item is QuestionConversationItem =>
+      item.kind === 'question' && pending.has(item.requestId),
   );
 }
 

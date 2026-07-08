@@ -67,6 +67,8 @@ export function DesktopShell({
   conversation,
   permissionDecisions,
   respondingPermissions,
+  answeredQuestionIds,
+  respondingQuestions,
   errorMessage,
   pinnedSessionIds,
   onSelectSession,
@@ -86,6 +88,7 @@ export function DesktopShell({
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
+  onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
   TerminalBlockComponent,
@@ -333,6 +336,8 @@ export function DesktopShell({
           cwd={active?.cwd}
           permissionDecisions={permissionDecisions}
           respondingPermissions={respondingPermissions}
+          answeredQuestionIds={answeredQuestionIds}
+          respondingQuestions={respondingQuestions}
           TerminalBlockComponent={TerminalBlockComponent}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
@@ -340,6 +345,7 @@ export function DesktopShell({
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
+          onRespondQuestion={onRespondQuestion}
           onOpenFileArtifact={openFileArtifact}
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}
