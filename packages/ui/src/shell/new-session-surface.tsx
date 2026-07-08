@@ -170,6 +170,7 @@ export function NewSessionSurface({
             runtimeCues={runtimeCues}
             sendBlocked={cue !== undefined}
             currentModeId={modeId}
+            currentModel={model}
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
             onStop={noop}

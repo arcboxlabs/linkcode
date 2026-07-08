@@ -1,6 +1,7 @@
 import type {
   ApprovalPolicyState,
   ContentBlock,
+  EffortLevel,
   PermissionOption,
   Plan,
   Question,
@@ -73,6 +74,10 @@ export interface ConversationViewModel {
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
    * null (or an empty list) hides the composer's policy menu. */
   approvalPolicy: ApprovalPolicyState | null;
+  /** The model the session is running on, from `model-update`; null until the adapter reports it. */
+  currentModel: string | null;
+  /** The reasoning-effort level the session is running at, from `effort-update`; null until reported. */
+  currentEffort: EffortLevel | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /** Permission requests still awaiting a decision. */

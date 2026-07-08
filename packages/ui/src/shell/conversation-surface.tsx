@@ -115,6 +115,8 @@ export function ConversationSurface({
         isRunning={isRunning}
         currentModeId={conversation.currentModeId}
         approvalPolicy={conversation.approvalPolicy}
+        currentModel={conversation.currentModel}
+        currentEffort={conversation.currentEffort}
         onSend={onSendPrompt}
         onStop={onStopTurn}
         onModeChange={onModeChange}
