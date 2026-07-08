@@ -1,4 +1,9 @@
-import type { InstalledAsset, ManagedAssetId, ManagedAssetStatus } from '@linkcode/schema';
+import type {
+  AssetInstallEvent,
+  InstalledAsset,
+  ManagedAssetId,
+  ManagedAssetStatus,
+} from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { AssetDescriptor } from './catalog';
 import { CATALOG } from './catalog';
@@ -16,16 +21,11 @@ export interface AssetManagerOptions extends InstallOptions {
   pinFrom?: string;
 }
 
-/**
- * Install lifecycle, fanned out to every subscriber regardless of which caller triggered the
- * install. Per-call `onProgress` is unreliable for observers: the in-flight dedupe in install.ts
- * keeps only the first caller's callback, so anything that must see every install (the engine's
- * wire broadcasts) subscribes here instead.
- */
-export type AssetInstallEvent =
-  | { kind: 'progress'; id: ManagedAssetId; receivedBytes: number; totalBytes?: number }
-  | { kind: 'installed'; id: ManagedAssetId; installed: InstalledAsset }
-  | { kind: 'failed'; id: ManagedAssetId; error: string };
+// Install lifecycle events (`AssetInstallEvent`, defined in @linkcode/schema) fan out to every
+// subscriber regardless of which caller triggered the install. Per-call `onProgress` is
+// unreliable for observers: the in-flight dedupe in install.ts keeps only the first caller's
+// callback, so anything that must see every install (the engine's wire broadcasts) subscribes.
+export type { AssetInstallEvent } from '@linkcode/schema';
 
 /**
  * The daemon-facing facade: one instance per daemon owns pin → GC → ensure orchestration and
