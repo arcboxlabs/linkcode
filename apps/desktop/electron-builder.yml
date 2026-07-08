@@ -35,7 +35,8 @@ files:
   # Agent CLI platform binaries are NOT shipped (CODE-114): the daemon spawns a detected user
   # install (agent-adapter runtime probe) or a managed download (CODE-111); only the SDK JS
   # stays. Shipping them would smartUnpack ~450 MB per app, host-arch only — broken cross-arch.
-  # `@openai/codex-sdk` must survive these globs; only the platform-suffixed packages match.
+  # `@openai/codex` (the CLI carrier's JS entry) must survive these globs; only the
+  # platform-suffixed packages match.
   - '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'
   - '!node_modules/@openai/codex-darwin-*/**'
   - '!node_modules/@openai/codex-linux-*/**'

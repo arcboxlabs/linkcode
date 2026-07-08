@@ -75,7 +75,7 @@ const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.js
 /**
  * Agent CLI platform packages must NOT ship (CODE-114): the daemon spawns a detected user
  * install or a managed download instead. These prefixes match only the platform-suffixed
- * binary packages — the SDK JS packages (`claude-agent-sdk`, `codex-sdk`) stay in the asar.
+ * binary packages — the JS entry packages (`claude-agent-sdk`, `@openai/codex`) stay in the asar.
  */
 const EXCLUDED_MODULE_PREFIXES = [
   'node_modules/@anthropic-ai/claude-agent-sdk-',

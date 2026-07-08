@@ -32,8 +32,9 @@ import {
   recordField,
   stringField,
 } from '../../history-util';
+import { agentRuntimeProber } from '../../probe';
 import { contentToText } from '../../util';
-import { CodexAppServer } from './app-server';
+import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import {
   codexIndexEntryToSession,
   codexSummaryToSession,
@@ -364,7 +365,11 @@ export class CodexAdapter extends BaseAgentAdapter {
     const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
     let server: CodexAppServer;
     try {
+      // Managed dir / detected user install first (CODE-110/114 — packaged apps ship no agent
+      // binaries), node_modules self-resolution as the dev/standalone fallback.
+      const binaryPath = agentRuntimeProber.resolveBinary('codex') ?? resolveCodexBinaryPath();
       server = await CodexAppServer.start({
+        binaryPath,
         env: apiKey ? { CODEX_API_KEY: apiKey } : undefined,
         onNotification: (method, params) => this.handleNotification(method, params),
         onExit: (_code, stderrTail) => this.handleServerExit(stderrTail),
