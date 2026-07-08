@@ -9,6 +9,7 @@ import {
 import { ContentBlockSchema } from './content';
 import { PermissionOutcomeSchema, PermissionRequestSchema } from './permission';
 import { PlanSchema } from './plan';
+import { QuestionOutcomeSchema, QuestionRequestSchema } from './question';
 import {
   ApprovalPolicyIdSchema,
   ApprovalPolicyStateSchema,
@@ -78,6 +79,12 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
     requestId: z.string().min(1),
     outcome: PermissionOutcomeSchema,
   }),
+  /** The user's answers for a pending question-request (correlated by requestId). */
+  z.object({
+    type: z.literal('question-response'),
+    requestId: z.string().min(1),
+    outcome: QuestionOutcomeSchema,
+  }),
 ]);
 export type AgentInput = z.infer<typeof AgentInputSchema>;
 
@@ -139,9 +146,13 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     recoverable: z.boolean().default(true),
   }),
 
-  // ── Agent → client request (awaits a reply via AgentInput, correlated by requestId) ──
+  // ── Agent → client requests (await a reply via AgentInput, correlated by requestId) ──
   PermissionRequestSchema.extend({
     type: z.literal('permission-request'),
+    requestId: z.string().min(1),
+  }),
+  QuestionRequestSchema.extend({
+    type: z.literal('question-request'),
     requestId: z.string().min(1),
   }),
 ]);
