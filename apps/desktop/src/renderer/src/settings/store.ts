@@ -1,12 +1,19 @@
 import type { ThemePreference } from '@linkcode/ipc';
+import type { AgentKind } from '@linkcode/schema';
 import { create } from 'zustand';
 import { systemBridge } from '../ipc';
+
+export type SettingsCategory = 'general' | 'connection' | 'about' | 'agents' | 'history-import';
 
 /**
  * System-plane settings mirror, living above the connection gate. Seeded synchronously from the
  * main-process snapshot so first paint is correct; every change writes through to main, which owns
  * validation and persistence — nothing persists renderer-side. (The Settings surface open state
  * lives in the workbench navigation history store.)
+ *
+ * Also holds the renderer-only Settings *view* state: the surface renders inside the
+ * daemon-URL-keyed connection subtree, so component state would reset the moment a new URL is
+ * saved in the Connection tab (or auto-adopted by rediscovery) — module scope survives that.
  */
 export interface DesktopSettingsState {
   theme: ThemePreference;
@@ -16,12 +23,16 @@ export interface DesktopSettingsState {
   daemonUrl: string;
   /** Stored override, or null to discover the local daemon automatically. */
   daemonUrlOverride: string | null;
+  settingsCategory: SettingsCategory;
+  historyImportProvider: AgentKind;
   setTheme: (theme: ThemePreference) => void;
   setLocaleOverride: (locale: string | null) => void;
   /** Pass null to clear the override and fall back to auto-discovery. */
   setDaemonUrl: (url: string | null) => void;
   /** Adopt a rediscovered endpoint (connection-gate polling) without persisting an override. */
   adoptDiscoveredUrl: (url: string) => void;
+  setSettingsCategory: (category: SettingsCategory) => void;
+  setHistoryImportProvider: (provider: AgentKind) => void;
 }
 
 const initial = systemBridge.settings.snapshot();
@@ -31,6 +42,8 @@ export const useDesktopSettingsStore = create<DesktopSettingsState>()((set) => (
   localeOverride: initial.locale,
   daemonUrl: initial.daemonUrl ?? systemBridge.daemon.resolveUrl(),
   daemonUrlOverride: initial.daemonUrl,
+  settingsCategory: 'general',
+  historyImportProvider: 'claude-code',
 
   setTheme(theme) {
     void systemBridge.settings.set({ theme });
@@ -56,4 +69,7 @@ export const useDesktopSettingsStore = create<DesktopSettingsState>()((set) => (
   },
 
   adoptDiscoveredUrl: (url) => set({ daemonUrl: url }),
+
+  setSettingsCategory: (category) => set({ settingsCategory: category }),
+  setHistoryImportProvider: (provider) => set({ historyImportProvider: provider }),
 }));

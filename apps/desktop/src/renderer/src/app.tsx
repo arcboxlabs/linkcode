@@ -38,19 +38,29 @@ export function DesktopApp(): React.ReactNode {
           // URL), yet its history-import panel can still use the data plane once connected.
           ungated={settingsOpen ? <SettingsView /> : null}
         >
-          {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over
-              the native backdrop, so any workbench pixels underneath would ghost through the
-              settings sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks
-              focus/interaction. */}
-          <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+          <SettingsUnderlay>
             <Workbench shellComponent={DesktopWorkbenchShell} />
-          </div>
+          </SettingsUnderlay>
         </DaemonConnection>
         {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
             can always minimize/maximize/close — including while the daemon is connecting or down. */}
         <DesktopWindowControls />
       </CloudHostsProvider>
     </WorkbenchAppProviders>
+  );
+}
+
+/**
+ * Hides (never unmounts) the workbench-side layer while Settings covers it: both shells are
+ * translucent over the native backdrop, so painted pixels underneath ghost through the settings
+ * sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction.
+ */
+function SettingsUnderlay({ children }: React.PropsWithChildren): React.ReactNode {
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
+  return (
+    <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+      {children}
+    </div>
   );
 }
 
@@ -65,7 +75,11 @@ function DaemonConnection({
     <WorkbenchProviders
       transport={transport}
       daemonUrl={daemonUrl}
-      fallback={<DesktopConnectionFallback daemonUrl={daemonUrl} />}
+      fallback={
+        <SettingsUnderlay>
+          <DesktopConnectionFallback daemonUrl={daemonUrl} />
+        </SettingsUnderlay>
+      }
       ungated={ungated}
     >
       {children}
@@ -92,9 +106,6 @@ function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.
   const hasOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride !== null);
   const adoptDiscoveredUrl = useDesktopSettingsStore((state) => state.adoptDiscoveredUrl);
   const managed = useDaemonIsManaged();
-  // Settings renders ungated above this fallback; hide (not unmount) so no pixels ghost through
-  // the translucent settings shell while the rediscovery subscription keeps running.
-  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
 
   const [withinStartupGrace, setWithinStartupGrace] = useState(true);
   useAbortableEffect((signal) => {
@@ -118,15 +129,8 @@ function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.
     [hasOverride, daemonUrl, adoptDiscoveredUrl],
   );
 
-  return (
-    <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
-      {status === 'connecting' || (managed && withinStartupGrace) ? (
-        <ConnectionSkeleton />
-      ) : (
-        <ConnectionState daemonUrl={daemonUrl} managedHost={managed} />
-      )}
-    </div>
-  );
+  if (status === 'connecting' || (managed && withinStartupGrace)) return <ConnectionSkeleton />;
+  return <ConnectionState daemonUrl={daemonUrl} managedHost={managed} />;
 }
 
 /** Whether main supervises the daemon (packaged, no override) — picks the failure copy. */

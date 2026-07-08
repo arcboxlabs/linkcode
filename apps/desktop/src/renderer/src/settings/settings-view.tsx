@@ -17,8 +17,8 @@ import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
-
-type SettingsCategory = 'general' | 'connection' | 'about' | 'agents' | 'history-import';
+import type { SettingsCategory } from './store';
+import { useDesktopSettingsStore } from './store';
 
 const AGENT_KINDS: readonly AgentKind[] = AgentKindSchema.options;
 const DEFAULT_HISTORY_PROVIDER: AgentKind = 'claude-code';
@@ -37,8 +37,12 @@ const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
 export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
   const backFromOverlay = useNavigationHistoryStore((state) => state.backFromOverlay);
-  const [category, setCategory] = useState<SettingsCategory>('general');
-  const [historyProvider, setHistoryProvider] = useState<AgentKind>(DEFAULT_HISTORY_PROVIDER);
+  // Store-held (not component state): the view lives inside the daemon-URL-keyed connection
+  // subtree, and saving a new URL in the Connection tab must not reset the pane under the user.
+  const category = useDesktopSettingsStore((state) => state.settingsCategory);
+  const setCategory = useDesktopSettingsStore((state) => state.setSettingsCategory);
+  const historyProvider = useDesktopSettingsStore((state) => state.historyImportProvider);
+  const setHistoryProvider = useDesktopSettingsStore((state) => state.setHistoryImportProvider);
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
