@@ -7,16 +7,14 @@ import type {
 } from '@linkcode/schema';
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
+import type { WorkbenchSessionDraft } from './selection-store';
 import { useSessionSelectionStore } from './selection-store';
 
-export interface WorkbenchSessionDraft {
-  /** Explicit workspace preselection (group "+", Chats "+"); null = resolve the default. */
-  workspaceId: WorkspaceId | null;
-}
+export type { WorkbenchSessionDraft } from './selection-store';
 
 export interface WorkbenchSessions {
   sessions: SessionInfo[];
@@ -63,7 +61,10 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const resumeMutation = useMutation(resumeSession, { onError });
   const selectedId = useSessionSelectionStore((state) => state.selectedId);
   const setSelectedId = useSessionSelectionStore((state) => state.setSelectedId);
-  const [explicitDraft, setExplicitDraft] = useState<WorkbenchSessionDraft | null>(null);
+  // Shared, not hook-local: a selection applied from another instance (palette, history import)
+  // must clear the draft the visible workbench renders, or the draft page wins over it.
+  const explicitDraft = useSessionSelectionStore((state) => state.draft);
+  const setExplicitDraft = useSessionSelectionStore((state) => state.setDraft);
 
   const sessions = useMemo(
     () => [...(remoteSessions ?? [])].sort((a, b) => a.createdAt - b.createdAt),
