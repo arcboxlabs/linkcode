@@ -3,6 +3,7 @@ import type {
   ContentBlock,
   PermissionOption,
   Plan,
+  Question,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -48,6 +49,12 @@ export type ConversationItem =
       options: PermissionOption[];
     })
   | (ConversationItemBase & {
+      kind: 'question';
+      requestId: string;
+      toolCall: ToolCallUpdate;
+      questions: Question[];
+    })
+  | (ConversationItemBase & {
       kind: 'error';
       message: string;
       code?: string;
@@ -70,4 +77,6 @@ export interface ConversationViewModel {
   stopReason: StopReason | null;
   /** Permission requests still awaiting a decision. */
   pendingPermissionIds: string[];
+  /** Question requests still awaiting answers. */
+  pendingQuestionIds: string[];
 }

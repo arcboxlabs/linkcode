@@ -4,6 +4,7 @@ import type {
   ContentBlock,
   PermissionOption,
   Plan,
+  Question,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -54,6 +55,14 @@ export type ConversationItem = (
       options: PermissionOption[];
     }
   | {
+      kind: 'question';
+      id: string;
+      turnId: ConversationTurnId;
+      requestId: string;
+      toolCall: ToolCallUpdate;
+      questions: Question[];
+    }
+  | {
       kind: 'error';
       id: string;
       turnId: ConversationTurnId;
@@ -82,6 +91,8 @@ export interface ConversationViewModel {
    * terminal status. The UI additionally hides ones the user already answered in this client.
    */
   pendingPermissionIds: string[];
+  /** requestIds of question asks that are still open, tracked the same way as permission asks. */
+  pendingQuestionIds: string[];
 }
 
 export type Conversation = ConversationViewModel;
@@ -125,6 +136,7 @@ export function createConversationBuilder(): ConversationBuilder {
   const planIndexByTurn = new Map<ConversationTurnId, number>();
   /** Asks in arrival order; each stays "pending" until its tool call reaches a terminal status. */
   const approvals: Array<{ requestId: string; toolCallId: string }> = [];
+  const questionAsks: Array<{ requestId: string; toolCallId: string }> = [];
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   let status: SessionStatus | null = null;
@@ -306,6 +318,18 @@ export function createConversationBuilder(): ConversationBuilder {
         });
         approvals.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
         break;
+      case 'question-request':
+        items.push({
+          kind: 'question',
+          id: event.requestId,
+          turnId: currentTurnId,
+          requestId: event.requestId,
+          toolCall: event.toolCall,
+          questions: event.questions,
+          receivedAt,
+        });
+        questionAsks.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
+        break;
       default:
         break;
     }
@@ -323,16 +347,21 @@ export function createConversationBuilder(): ConversationBuilder {
       }
     }
 
-    // A permission ask is "pending" until its referenced tool call reaches a terminal status.
-    const pendingPermissionIds: string[] = [];
-    for (const approval of approvals) {
-      const toolItemIndex = toolIndex.get(approval.toolCallId);
-      const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
-      const settled =
-        toolItem?.kind === 'tool' &&
-        (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
-      if (!settled) pendingPermissionIds.push(approval.requestId);
-    }
+    // An ask (permission or question) is "pending" until its tool call reaches a terminal status.
+    const pendingIds = (
+      asks: ReadonlyArray<{ requestId: string; toolCallId: string }>,
+    ): string[] => {
+      const pending: string[] = [];
+      for (const ask of asks) {
+        const toolItemIndex = toolIndex.get(ask.toolCallId);
+        const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
+        const settled =
+          toolItem?.kind === 'tool' &&
+          (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
+        if (!settled) pending.push(ask.requestId);
+      }
+      return pending;
+    };
 
     cached = {
       items: out,
@@ -341,7 +370,8 @@ export function createConversationBuilder(): ConversationBuilder {
       currentModeId,
       approvalPolicy,
       stopReason,
-      pendingPermissionIds,
+      pendingPermissionIds: pendingIds(approvals),
+      pendingQuestionIds: pendingIds(questionAsks),
     };
     return cached;
   };

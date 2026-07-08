@@ -248,6 +248,46 @@ describe('buildConversation', () => {
     expect(settled.pendingPermissionIds).toEqual([]);
   });
 
+  it('tracks a question as pending until its tool call settles', () => {
+    const question = {
+      questionId: 'q0',
+      prompt: 'Which one?',
+      multiSelect: false,
+      options: [
+        { optionId: 'o0', label: 'A' },
+        { optionId: 'o1', label: 'B' },
+      ],
+    };
+    const base: AgentEvent[] = [
+      userText('ask'),
+      {
+        type: 'question-request',
+        requestId: 'ask1',
+        toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+        questions: [question],
+      },
+    ];
+    const open = buildConversation(base);
+    expect(open.pendingQuestionIds).toEqual(['ask1']);
+    const item = open.items.find((i) => i.kind === 'question');
+    expect(item).toMatchObject({ requestId: 'ask1', questions: [question] });
+
+    const settled = buildConversation([
+      ...base,
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't1',
+          title: 'AskUserQuestion',
+          kind: 'other',
+          status: 'completed',
+          content: [],
+        },
+      },
+    ]);
+    expect(settled.pendingQuestionIds).toEqual([]);
+  });
+
   it('captures lifecycle state (status / usage / mode / stop / error)', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },

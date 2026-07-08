@@ -15,6 +15,7 @@ import type {
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -116,6 +117,16 @@ export function respondPermission(
   options: Options<{ sessionId: SessionId; requestId: string; outcome: PermissionOutcome }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).respondPermission(
+    options.sessionId,
+    options.requestId,
+    options.outcome,
+  );
+}
+
+export function respondQuestion(
+  options: Options<{ sessionId: SessionId; requestId: string; outcome: QuestionOutcome }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).respondQuestion(
     options.sessionId,
     options.requestId,
     options.outcome,
