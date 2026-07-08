@@ -96,6 +96,17 @@ class GatedStartAdapter extends FakeAdapter {
   }
 }
 
+/** An adapter whose send() blocks until released, to interleave an attach with an in-flight response. */
+class GatedSendAdapter extends FakeAdapter {
+  releaseSend: () => void = noop;
+
+  override send(_input: AgentInput): Promise<void> {
+    return new Promise((resolve) => {
+      this.releaseSend = resolve;
+    });
+  }
+}
+
 /** Let the fire-and-forget handle()/persist chains settle. */
 function tick(): Promise<void> {
   return new Promise((resolve) => {
@@ -353,5 +364,140 @@ describe('engine session persistence', () => {
     const resumed = adapters.at(-1);
     expect(resumed?.resumedFrom).toBeNull();
     expect(resumed?.startedWith).toMatchObject({ kind: 'claude-code', cwd: '/repo' });
+  });
+});
+
+describe('engine attach replay', () => {
+  const QUESTION_ASK: AgentEvent = {
+    type: 'question-request',
+    requestId: 'ask-1',
+    toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+    questions: [
+      {
+        questionId: 'q0',
+        prompt: 'Which one?',
+        multiSelect: false,
+        options: [
+          { optionId: 'o0', label: 'A' },
+          { optionId: 'o1', label: 'B' },
+        ],
+      },
+    ],
+  };
+  const PERMISSION_ASK: AgentEvent = {
+    type: 'permission-request',
+    requestId: 'perm-1',
+    toolCall: { toolCallId: 't2', title: 'Run' },
+    options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+  };
+
+  function eventsAfter(sent: WirePayload[], mark: number): AgentEvent[] {
+    return sent.slice(mark).flatMap((p) => (p.kind === 'agent.event' ? [p.event] : []));
+  }
+
+  async function startedHarness() {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    return { ...h, sessionId: startedId(h.sent, 'r1'), adapter: nullthrow(h.adapters[0]) };
+  }
+
+  it('replays the live status and open asks to an attaching client', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(PERMISSION_ASK);
+    adapter.emit(QUESTION_ASK);
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const replayed = eventsAfter(sent, mark);
+    expect(replayed[0]).toEqual({ type: 'status', status: 'running' });
+    expect(replayed).toContainEqual(PERMISSION_ASK);
+    expect(replayed).toContainEqual(QUESTION_ASK);
+  });
+
+  it('stops replaying an ask once its response arrived', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: {
+        type: 'question-response',
+        requestId: 'ask-1',
+        outcome: { outcome: 'cancelled' },
+      },
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(sent, mark).some((e) => e.type === 'question-request')).toBe(false);
+  });
+
+  it('stops replaying an ask while its response send is still in flight', async () => {
+    const h = harness(new InMemorySessionStore(), () => new GatedSendAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const adapter = nullthrow(h.adapters[0]) as GatedSendAdapter;
+
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    // The response's send() blocks; the handler is suspended past the point where the ask is cleared.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: { type: 'question-response', requestId: 'ask-1', outcome: { outcome: 'cancelled' } },
+    });
+
+    const mark = h.sent.length;
+    await h.inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(h.sent, mark).some((e) => e.type === 'question-request')).toBe(false);
+
+    adapter.releaseSend();
+  });
+
+  it('stops replaying an ask once its tool call settled', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    adapter.emit({
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 't1',
+        title: 'AskUserQuestion',
+        kind: 'other',
+        status: 'failed',
+        content: [],
+      },
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(sent, mark).some((e) => e.type === 'question-request')).toBe(false);
+  });
+
+  it('clears open asks at a turn boundary (idle)', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(PERMISSION_ASK);
+    adapter.emit({ type: 'status', status: 'idle' });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const replayed = eventsAfter(sent, mark);
+    expect(replayed[0]).toEqual({ type: 'status', status: 'idle' });
+    expect(replayed.some((e) => e.type === 'permission-request')).toBe(false);
   });
 });

@@ -145,6 +145,8 @@ export function createConversationBuilder(): ConversationBuilder {
   /** Asks in arrival order; each stays "pending" until its tool call reaches a terminal status. */
   const approvals: Array<{ requestId: string; toolCallId: string }> = [];
   const questionAsks: Array<{ requestId: string; toolCallId: string }> = [];
+  /** Every ask requestId ever folded — attach-replayed duplicates are dropped. */
+  const seenAskIds = new Set<string>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   let status: SessionStatus | null = null;
@@ -323,6 +325,9 @@ export function createConversationBuilder(): ConversationBuilder {
         break;
 
       case 'permission-request':
+        // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
+        if (seenAskIds.has(event.requestId)) break;
+        seenAskIds.add(event.requestId);
         items.push({
           kind: 'approval',
           id: event.requestId,
@@ -335,6 +340,8 @@ export function createConversationBuilder(): ConversationBuilder {
         approvals.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
         break;
       case 'question-request':
+        if (seenAskIds.has(event.requestId)) break;
+        seenAskIds.add(event.requestId);
         items.push({
           kind: 'question',
           id: event.requestId,
