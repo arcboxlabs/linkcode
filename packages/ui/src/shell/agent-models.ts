@@ -6,6 +6,24 @@ export interface ModelOption {
 }
 
 /**
+ * Resolve a reflected model id (from `model-update`) to its catalog entry. The daemon emits the
+ * *served* id, which for some aliases is a pinned snapshot — e.g. `claude-haiku-4-5` is served as
+ * `claude-haiku-4-5-20251001` — so an exact lookup would miss and the picker would fall back to the
+ * placeholder. Match a snapshot back to its alias by prefix, but only after an exact match fails, so
+ * an id that is itself a prefix of another (`gpt-5.4` vs `gpt-5.4-mini`) never mis-resolves.
+ */
+export function resolveModel(
+  options: readonly ModelOption[] | undefined,
+  id: string | null,
+): ModelOption | undefined {
+  if (id === null) return undefined;
+  return (
+    options?.find((option) => option.id === id) ??
+    options?.find((option) => id.startsWith(`${option.id}-`))
+  );
+}
+
+/**
  * Curated model choices, keyed by adapter — only for adapters with a *verified* live model switch
  * (`BaseAgentAdapter#onSetModel` actually changing the vendor's behavior end-to-end against a real
  * session, not just read from source — claude-code's first attempt looked live-switchable from its
