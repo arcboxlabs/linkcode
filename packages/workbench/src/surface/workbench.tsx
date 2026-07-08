@@ -31,6 +31,7 @@ import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -161,6 +162,7 @@ function WorkbenchSessionSurface({
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
   const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
+  const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
@@ -400,6 +402,9 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      runtimeCues={onboarding.cues}
+      onDownloadAgent={onboarding.download}
+      onContinueUnverified={onboarding.acknowledgeUnverified}
       conversation={conversation}
       permissionDecisions={permissionDecisions}
       respondingPermissions={responding}

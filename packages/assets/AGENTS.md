@@ -47,4 +47,11 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
 The daemon constructs one `AssetManager` at boot: GC → `setManagedResolver` into
 `agentRuntimeProber` (managed wins over detected the moment an install lands) → background
 `ensure()` for agent pairs the probe found unusable. The engine serves `statuses()` on
-`asset.list` via the injected `AssetService`. Tectonic consumers (CODE-81) resolve by asset id.
+`asset.list`, triggers `ensure()` on `asset.ensure`, and forwards install lifecycle to the wire
+via the injected `AssetService`. Tectonic consumers (CODE-81) resolve by asset id.
+
+Observers use `subscribe()` (progress / installed / failed events), never a per-call
+`onProgress`: install.ts's in-flight dedupe keeps only the first caller's callback, so per-call
+progress silently vanishes for the second concurrent caller. The flip side: each concurrent
+`ensure()` emits its own `installed` event for the shared install — subscribers must revalidate
+idempotently. A throwing subscriber is swallowed (an observer must not fail the install).

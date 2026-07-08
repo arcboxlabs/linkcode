@@ -4,7 +4,10 @@ import type {
   AgentHistorySession,
   AgentInput,
   AgentKind,
+  AgentRuntimes,
   ContentBlock,
+  ManagedAssetId,
+  ManagedAssetStatus,
   MessageId,
   PermissionOutcome,
   ProvidersConfig,
@@ -61,6 +64,9 @@ import {
   SHOWCASE_USER_CONTENT,
 } from './data/showcase';
 
+/** Pace of the mock download's staged `asset.progress` broadcasts. */
+const ASSET_PROGRESS_LATENCY_MS = 400;
+
 interface MockSession extends SessionInfo {
   /** Host-only state: keep it off `session.list` so the mock still crosses the schema boundary cleanly. */
   model?: string;
@@ -89,8 +95,80 @@ export class DevMockHost {
   private messageSeq = 0;
   private workspaceSeq = 0;
   private terminalSeq = 0;
+  /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
+  private readonly installedAssets = new Set<ManagedAssetId>();
 
   constructor(private readonly transport: Transport) {}
+
+  /**
+   * Onboarding fixtures (CODE-112), one kind per state: claude-code is missing (downloadable),
+   * codex is detected out-of-range (both "continue unverified" and "download paired" apply),
+   * pi is builtin, opencode is unevaluated (absent) until CODE-76.
+   */
+  private agentRuntimes(): AgentRuntimes {
+    return {
+      'claude-code': this.installedAssets.has('agent:claude-code')
+        ? {
+            status: 'available',
+            source: 'managed',
+            version: '2.1.179',
+            path: '/mock/assets/agent/claude-code/0.3.179/claude',
+          }
+        : { status: 'missing' },
+      codex: this.installedAssets.has('agent:codex')
+        ? {
+            status: 'available',
+            source: 'managed',
+            version: '0.140.0',
+            path: '/mock/assets/agent/codex/0.140.0/codex',
+          }
+        : { status: 'out-of-range', source: 'detected', version: '0.99.0' },
+      pi: { status: 'available', source: 'builtin' },
+    };
+  }
+
+  private assetStatuses(): ManagedAssetStatus[] {
+    return (
+      [
+        { id: 'agent:claude-code', wantedVersion: '0.3.179' },
+        { id: 'agent:codex', wantedVersion: '0.140.0' },
+        { id: 'tool:tectonic', wantedVersion: '0.16.9' },
+      ] as const
+    ).map(({ id, wantedVersion }) => ({
+      id,
+      wantedVersion,
+      installed: this.installedAssets.has(id)
+        ? {
+            id,
+            version: wantedVersion,
+            path: `/mock/assets/${id.replace(':', '/')}/${wantedVersion}/bin`,
+          }
+        : undefined,
+    }));
+  }
+
+  /** Staged download: throttled progress → settled → correlated reply → runtime re-probe push. */
+  private async ensureAsset(clientReqId: string, id: ManagedAssetId): Promise<void> {
+    const totalBytes = 66 * 1_048_576;
+    for (const fraction of [0.04, 0.19, 0.42, 0.68, 0.91]) {
+      this.send({
+        kind: 'asset.progress',
+        id,
+        receivedBytes: Math.round(totalBytes * fraction),
+        totalBytes,
+      });
+      // eslint-disable-next-line no-await-in-loop -- staged progress is deliberately sequential
+      await wait(ASSET_PROGRESS_LATENCY_MS);
+    }
+    this.installedAssets.add(id);
+    const status = this.assetStatuses().find((candidate) => candidate.id === id) ?? {
+      id,
+      wantedVersion: '0.0.0',
+    };
+    this.send({ kind: 'asset.settled', id, installed: status.installed });
+    this.send({ kind: 'asset.ensured', replyTo: clientReqId, status });
+    this.send({ kind: 'agent-runtime.changed', runtimes: this.agentRuntimes() });
+  }
 
   private scriptsFor(cwd: string): Map<string, WorkspaceScript> {
     let scripts = this.scripts.get(cwd);
@@ -156,11 +234,7 @@ export class DevMockHost {
         this.send({
           kind: 'agent-runtime.listed',
           replyTo: p.clientReqId,
-          runtimes: {
-            'claude-code': { status: 'available', source: 'detected', version: '2.1.202' },
-            codex: { status: 'available', source: 'sdk' },
-            pi: { status: 'available', source: 'builtin' },
-          },
+          runtimes: this.agentRuntimes(),
         });
         break;
       case 'asset.list':
@@ -168,20 +242,11 @@ export class DevMockHost {
         this.send({
           kind: 'asset.listed',
           replyTo: p.clientReqId,
-          assets: [
-            {
-              id: 'agent:codex',
-              wantedVersion: '0.140.0',
-              installed: {
-                id: 'agent:codex',
-                version: '0.140.0',
-                path: '/mock/assets/agent/codex/0.140.0/codex',
-              },
-            },
-            { id: 'agent:claude-code', wantedVersion: '0.3.179' },
-            { id: 'tool:tectonic', wantedVersion: '0.16.9' },
-          ],
+          assets: this.assetStatuses(),
         });
+        break;
+      case 'asset.ensure':
+        await this.ensureAsset(p.clientReqId, p.id);
         break;
       case 'config.set':
         await wait(CONTROL_LATENCY_MS);

@@ -47,7 +47,10 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   SDK-pinned exact pair, SRI-verified, GC'd at boot) → detected user install at known locations
   (brew, `~/.local/bin`; version-verified) → SDK self-resolution from node_modules
   (dev/standalone). Boot never waits on a download: missing agent pairs warm in the background
-  and win resolution as soon as they land. opencode self-spawns the `opencode` command via PATH
+  and win resolution as soon as they land. The engine must be constructed **before** that warm
+  loop kicks off — it subscribes to the AssetManager and forwards install progress to clients
+  (`asset.progress`/`asset.settled`), re-probing and pushing `agent-runtime.changed` when an
+  agent install completes (CODE-112). opencode self-spawns the `opencode` command via PATH
   (CODE-76); pi runs in-process and spawns nothing.
 - **PTY sidecar** is a Rust binary (`linkcode-pty`, `pnpm -F @linkcode/daemon run build:rust`);
   the resolution order and degradation strings live in `docs/DEVELOPMENT.md` (Rust PTY sidecar +

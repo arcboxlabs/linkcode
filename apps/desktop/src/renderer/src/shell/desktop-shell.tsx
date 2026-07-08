@@ -64,6 +64,9 @@ export function DesktopShell({
   chatWorkspace,
   activeSession,
   draft,
+  runtimeCues,
+  onDownloadAgent,
+  onContinueUnverified,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -320,7 +323,10 @@ export function DesktopShell({
           draft={draft}
           workspaces={workspaces}
           chatWorkspace={chatWorkspace}
+          runtimeCues={runtimeCues}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
+          onContinueUnverified={onContinueUnverified}
+          onDownloadAgent={onDownloadAgent}
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
