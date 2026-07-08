@@ -15,7 +15,7 @@ export interface DetectedAgentRuntime {
 }
 
 /** The agent kinds that spawn an external CLI (pi is in-process; opencode is PATH-based until CODE-76). */
-export type ProbeableKind = 'claude-code' | 'codex';
+export type ProbeableKind = 'claude-code' | 'codex' | 'amp';
 
 /**
  * Absolute install locations probed in order. PATH is deliberately not searched: a probe both
@@ -24,7 +24,7 @@ export type ProbeableKind = 'claude-code' | 'codex';
  * unverified — detection degrades to "nothing detected" there (bundled/SDK resolution still
  * applies) until CODE-113's win runner pins them down.
  */
-function defaultInstallLocations(binary: string): string[] {
+export function defaultInstallLocations(binary: string): string[] {
   const home = homedir();
   switch (process.platform) {
     case 'darwin':

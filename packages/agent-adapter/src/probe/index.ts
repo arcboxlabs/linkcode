@@ -1,3 +1,4 @@
+export { AmpProbe } from './amp';
 export type { DetectedAgentRuntime, ProbeableKind } from './base';
 export { AgentCliProbe } from './base';
 export { ClaudeCodeProbe } from './claude-code';

@@ -83,7 +83,12 @@ async function main(): Promise<void> {
   if (gc.skipped.length > 0) {
     console.warn(`[linkcode/daemon] assets gc: skipped ${gc.skipped.join(', ')}`);
   }
-  agentRuntimeProber.setManagedResolver((kind) => assets.managedBinary(`agent:${kind}`));
+  // amp has no managed asset yet: the SDK resolves its own binary chain (node_modules pair →
+  // AMP_CLI_PATH → ~/.amp/bin → PATH) and offers no per-call path override to hand a store
+  // install to, so a managed amp download would not be consumed even if it existed.
+  agentRuntimeProber.setManagedResolver((kind) =>
+    kind === 'amp' ? undefined : assets.managedBinary(`agent:${kind}`),
+  );
   // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
   // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
   const agentRuntimes = await agentRuntimeProber.collect();

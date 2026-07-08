@@ -9,6 +9,11 @@ import type {
   UserMessage,
 } from '@ampcode/sdk';
 import type {
+  AgentHistoryCapabilities,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   ContentBlock,
   EffortLevel,
@@ -19,8 +24,15 @@ import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
-import { asHistoryId, asMessageId } from '../../history-util';
+import {
+  asHistoryId,
+  asMessageId,
+  boundedLimit,
+  cursorFromTotal,
+  cursorOffset,
+} from '../../history-util';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../../util';
+import { listAmpHistory, readAmpHistory } from './history';
 
 /**
  * Amp has no user-facing model axis: `mode` selects the model + system-prompt bundle (per
@@ -78,6 +90,11 @@ type AmpAssistantBlock =
  */
 export class AmpAdapter extends BaseAgentAdapter {
   readonly kind = 'amp' as const;
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: true,
+    read: true,
+    resume: true,
+  };
 
   /** Thread id captured off the live stream. Every `StreamMessage.session_id` is the `T-…`
    * thread id (verified live: it round-trips into `threads continue`/`threads markdown`), but the
@@ -114,6 +131,25 @@ export class AmpAdapter extends BaseAgentAdapter {
   ): Promise<void> {
     this.resumeFrom = opts.historyId;
     await this.start(startOpts);
+  }
+
+  override listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
+    return listAmpHistory({
+      offset: cursorOffset(opts?.cursor),
+      limit: boundedLimit(opts?.limit, 50, 200),
+      cwd: opts?.cwd,
+    });
+  }
+
+  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    const offset = cursorOffset(opts.cursor);
+    const limit = boundedLimit(opts.limit, 1000, 1000);
+    const { session, events } = await readAmpHistory(opts.historyId);
+    return {
+      session,
+      events: events.slice(offset, offset + limit),
+      cursor: cursorFromTotal(offset, events.length, limit),
+    };
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
