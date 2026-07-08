@@ -76,7 +76,11 @@ export class AgentRuntimeProber {
           const found = detected[probe.kind];
           runtimes[probe.kind] = found
             ? { status: 'available', source: 'detected', ...found }
-            : { status: 'available', source: 'sdk' };
+            : probe.sdkPlatformPackagePresent()
+              ? { status: 'available', source: 'sdk' }
+              : // Packaged hosts exclude the platform packages (CODE-114): with no detected
+                // install either, this agent genuinely cannot run — do not advertise it.
+                { status: 'missing' };
         }
       }),
     );

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -52,12 +53,29 @@ function defaultInstallLocations(binary: string): string[] {
 export abstract class AgentCliProbe {
   abstract readonly kind: ProbeableKind;
   protected abstract readonly binaryBase: string;
+  /** The SDK JS package; its platform CLI package installs as a same-scope sibling. */
+  protected abstract readonly sdkPackage: string;
 
   /** @param locations test seam — overrides the per-platform known install locations. */
   constructor(private readonly locations?: string[]) {}
 
   /** Extract the CLI version from `--version` output; `undefined` rejects an impostor binary. */
   abstract parseVersion(stdout: string): string | undefined;
+
+  /** Basename of the npm package carrying this platform's CLI binary. */
+  protected abstract platformPackageBase(): string;
+
+  /**
+   * Whether the SDK's own resolution would find a CLI in node_modules — true in dev and
+   * standalone daemons, false in packaged apps where the platform packages are excluded
+   * (CODE-114). Checks directory presence along the module's node_modules chain instead of
+   * `require.resolve` — the SDKs' `exports` maps reject bare CJS resolution outright.
+   */
+  sdkPlatformPackagePresent(): boolean {
+    const scope = this.sdkPackage.split('/')[0];
+    const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
+    return paths.some((dir) => existsSync(join(dir, scope, this.platformPackageBase())));
+  }
 
   binaryName(): string {
     return process.platform === 'win32' ? `${this.binaryBase}.exe` : this.binaryBase;

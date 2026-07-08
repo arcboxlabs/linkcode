@@ -120,6 +120,17 @@ describe('AgentRuntimeProber.collect', () => {
     expect(runtimes.opencode).toBeUndefined();
   });
 
+  it('reports missing when nothing is bundled, detected, or SDK-resolvable', async () => {
+    class NoSdkClaudeProbe extends ClaudeCodeProbe {
+      override sdkPlatformPackagePresent(): boolean {
+        return false;
+      }
+    }
+    vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
+    const runtimes = await new AgentRuntimeProber([new NoSdkClaudeProbe([])]).collect();
+    expect(runtimes['claude-code']).toEqual({ status: 'missing' });
+  });
+
   it('reports the bundled binary with its probed version', async () => {
     const bundledDir = mkdtempSync(join(tmpdir(), 'agent-bin-'));
     mkdirSync(join(bundledDir, 'claude-code'), { recursive: true });
