@@ -119,6 +119,18 @@ export const en = {
       badgeDownloading: 'Downloading',
       badgeFailed: 'Download failed',
       badgeUnverified: 'Unverified',
+      badgeNeedsLogin: 'Sign in',
+      needsLoginTitle: '{agent} needs you to sign in',
+      needsLoginBody: 'Sign in to your Claude account to get started.',
+      login: 'Sign in to Claude',
+      loginOpening: 'Opening the browser to sign in to {agent}…',
+      loginAwaitingCode:
+        'A sign-in page opened in your browser. After authorizing, paste the code from that page below.',
+      loginCodePlaceholder: 'Paste the authorization code',
+      loginSubmit: 'Finish sign-in',
+      loginReopenUrl: "Didn't open? Open the sign-in page",
+      loginCancel: 'Cancel',
+      loginFailedTitle: '{agent} sign-in failed',
     },
     composer: {
       placeholderDisconnected: 'Create or pick a thread first',
