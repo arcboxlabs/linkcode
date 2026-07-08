@@ -52,8 +52,10 @@ function targetTriple(): string | null {
 
 /**
  * Locate the native `codex` binary shipped by `@openai/codex`'s platform-specific optional
- * dependency (vendor/<triple>/bin/codex). Mirrors `@openai/codex-sdk`'s resolution so the
- * app-server client needs no JS SDK at all.
+ * dependency (vendor/<triple>/bin/codex) — the node_modules self-resolution tier for dev shells
+ * and standalone daemons, mirroring what `@openai/codex-sdk` used to do. Packaged apps exclude
+ * the platform packages (CODE-114), so callers must prefer `agentRuntimeProber.resolveBinary`
+ * (managed dir / detected user install) and fall back here only when it yields nothing.
  */
 export function resolveCodexBinaryPath(): string {
   const triple = targetTriple();
@@ -93,6 +95,9 @@ export type ServerRequestHandler = (params: unknown) => Promise<unknown>;
 const STDERR_TAIL_LIMIT = 2048;
 
 export interface CodexAppServerOptions {
+  /** Absolute path of the `codex` binary to spawn — resolved by the caller (runtime prober
+   * first, node_modules fallback) so this client stays free of resolution policy. */
+  binaryPath: string;
   /** Extra environment for the subprocess (e.g. CODEX_API_KEY); merged over the inherited env. */
   env?: Record<string, string>;
   onNotification: (method: string, params: unknown) => void;
@@ -133,18 +138,24 @@ export class CodexAppServer {
 
   /** Spawn the app-server and complete the `initialize`/`initialized` handshake. */
   static async start(this: void, opts: CodexAppServerOptions): Promise<CodexAppServer> {
-    const binary = resolveCodexBinaryPath();
-    const child = spawn(binary, ['app-server'], {
+    const child = spawn(opts.binaryPath, ['app-server'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...processEnv, ...opts.env },
     });
     const server = new CodexAppServer(child, opts);
-    await server.request('initialize', {
-      clientInfo: { name: 'linkcode', title: 'Link Code', version: '0.0.0' },
-      // Experimental opt-in matches what established app-server clients negotiate; the methods
-      // this client consumes are the stable thread/turn/item core.
-      capabilities: { experimentalApi: true, requestAttestation: false },
-    });
+    try {
+      await server.request('initialize', {
+        clientInfo: { name: 'linkcode', title: 'Link Code', version: '0.0.0' },
+        // Experimental opt-in matches what established app-server clients negotiate; the methods
+        // this client consumes are the stable thread/turn/item core.
+        capabilities: { experimentalApi: true, requestAttestation: false },
+      });
+    } catch (err) {
+      // A binary that answers `initialize` with an error (e.g. a detected install too old to
+      // speak app-server) leaves a live child behind — reap it before surfacing the failure.
+      server.close();
+      throw err;
+    }
     server.notify('initialized', {});
     return server;
   }
