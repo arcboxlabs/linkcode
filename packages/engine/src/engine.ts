@@ -187,7 +187,11 @@ export class Engine {
     switch (p.kind) {
       case 'session.start': {
         await this.tryReply(p.clientReqId, async () => {
-          const opts = applyProviderDefaults(p.opts, this.providerStore.get());
+          const opts = applyProviderDefaults(
+            p.opts,
+            this.providerStore.get(),
+            this.providerStore.getAccounts(),
+          );
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -291,6 +295,7 @@ export class Engine {
           const startOpts = applyProviderDefaults(
             { kind: record.kind, cwd: record.cwd },
             this.providerStore.get(),
+            this.providerStore.getAccounts(),
           );
           record.runs.push({ historyId, startedAt: Date.now() });
           await this.startLiveSession(p.clientReqId, record, (adapter) =>
@@ -350,6 +355,7 @@ export class Engine {
           const startOpts = applyProviderDefaults(
             { ...p.startOpts, kind: p.agentKind },
             this.providerStore.get(),
+            this.providerStore.getAccounts(),
           );
           const now = Date.now();
           const record: SessionRecord = {
