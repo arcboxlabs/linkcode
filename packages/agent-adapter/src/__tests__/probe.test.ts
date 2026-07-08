@@ -1,7 +1,7 @@
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { AgentRuntimeProber, ClaudeCodeProbe, CodexProbe } from '../probe';
 
 function fakeCli(dir: string, name: string, versionLine: string): string {
@@ -17,10 +17,6 @@ function proberAt(dir: string): AgentRuntimeProber {
     new CodexProbe([join(dir, 'codex')]),
   ]);
 }
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe('version parsers', () => {
   it('accepts real CLI output and rejects impostors', () => {
@@ -70,7 +66,6 @@ describe('AgentRuntimeProber probe/resolveBinary', () => {
     const dir = mkdtempSync(join(tmpdir(), 'probe-'));
     const claude = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
     const codex = fakeCli(dir, 'codex', 'codex-cli 8.8.8');
-    vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
 
     const prober = proberAt(dir);
     await expect(prober.probe()).resolves.toEqual({
@@ -81,21 +76,22 @@ describe('AgentRuntimeProber probe/resolveBinary', () => {
     expect(prober.resolveBinary('codex')).toBe(codex);
   });
 
-  it('prefers the bundled binary over a detected one', async () => {
+  it('prefers a managed binary over a detected one, live as installs land', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'probe-'));
-    fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
-    const bundledDir = mkdtempSync(join(tmpdir(), 'agent-bin-'));
-    mkdirSync(join(bundledDir, 'claude-code'), { recursive: true });
-    const bundled = fakeCli(join(bundledDir, 'claude-code'), 'claude', '1.1.1 (Claude Code)');
-    vi.stubEnv('LINKCODE_AGENT_BIN_DIR', bundledDir);
+    const detected = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
+    const managedDir = mkdtempSync(join(tmpdir(), 'managed-'));
+    const managed = fakeCli(managedDir, 'claude', '1.1.1 (Claude Code)');
 
+    let installed: string | undefined;
     const prober = proberAt(dir);
+    prober.setManagedResolver((kind) => (kind === 'claude-code' ? installed : undefined));
     await prober.probe();
-    expect(prober.resolveBinary('claude-code')).toBe(bundled);
+    expect(prober.resolveBinary('claude-code')).toBe(detected);
+    installed = managed;
+    expect(prober.resolveBinary('claude-code')).toBe(managed);
   });
 
-  it('resolves undefined when nothing is bundled or detected', async () => {
-    vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
+  it('resolves undefined when nothing is managed or detected', async () => {
     const prober = new AgentRuntimeProber([new ClaudeCodeProbe([])]);
     await prober.probe();
     expect(prober.resolveBinary('claude-code')).toBeUndefined();
@@ -103,10 +99,9 @@ describe('AgentRuntimeProber probe/resolveBinary', () => {
 });
 
 describe('AgentRuntimeProber.collect', () => {
-  it('reports bundled > detected > sdk sources plus builtin pi', async () => {
+  it('reports managed > detected > sdk sources plus builtin pi', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'probe-'));
     const claude = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
-    vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
 
     const runtimes = await proberAt(dir).collect();
     expect(runtimes['claude-code']).toEqual({
@@ -120,28 +115,27 @@ describe('AgentRuntimeProber.collect', () => {
     expect(runtimes.opencode).toBeUndefined();
   });
 
-  it('reports missing when nothing is bundled, detected, or SDK-resolvable', async () => {
+  it('reports missing when nothing is managed, detected, or SDK-resolvable', async () => {
     class NoSdkClaudeProbe extends ClaudeCodeProbe {
       override sdkPlatformPackagePresent(): boolean {
         return false;
       }
     }
-    vi.stubEnv('LINKCODE_AGENT_BIN_DIR', '');
     const runtimes = await new AgentRuntimeProber([new NoSdkClaudeProbe([])]).collect();
     expect(runtimes['claude-code']).toEqual({ status: 'missing' });
   });
 
-  it('reports the bundled binary with its probed version', async () => {
-    const bundledDir = mkdtempSync(join(tmpdir(), 'agent-bin-'));
-    mkdirSync(join(bundledDir, 'claude-code'), { recursive: true });
-    const bundled = fakeCli(join(bundledDir, 'claude-code'), 'claude', '1.1.1 (Claude Code)');
-    vi.stubEnv('LINKCODE_AGENT_BIN_DIR', bundledDir);
+  it('reports a managed binary with its probed version', async () => {
+    const managedDir = mkdtempSync(join(tmpdir(), 'managed-'));
+    const managed = fakeCli(managedDir, 'claude', '1.1.1 (Claude Code)');
 
-    const runtimes = await new AgentRuntimeProber([new ClaudeCodeProbe([])]).collect();
+    const prober = new AgentRuntimeProber([new ClaudeCodeProbe([])]);
+    prober.setManagedResolver(() => managed);
+    const runtimes = await prober.collect();
     expect(runtimes['claude-code']).toEqual({
       status: 'available',
-      source: 'bundled',
-      path: bundled,
+      source: 'managed',
+      path: managed,
       version: '1.1.1',
     });
   });

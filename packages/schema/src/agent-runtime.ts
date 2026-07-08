@@ -3,12 +3,12 @@ import { AgentKindSchema } from './common';
 
 /**
  * Where the spawnable CLI behind an agent kind comes from, in resolution order:
- * `bundled` — the exact SDK-paired binary staged by the packaged host (`LINKCODE_AGENT_BIN_DIR`);
+ * `managed` — the exact SDK-paired binary the daemon's asset store installed (CODE-111);
  * `detected` — a user-installed CLI found at a known install location and version-probed;
  * `sdk` — the SDK resolves its own platform package out of node_modules (dev / standalone daemon);
  * `builtin` — no external binary at all (pi runs in-process).
  */
-export const AgentRuntimeSourceSchema = z.enum(['bundled', 'detected', 'sdk', 'builtin']);
+export const AgentRuntimeSourceSchema = z.enum(['managed', 'detected', 'sdk', 'builtin']);
 export type AgentRuntimeSource = z.infer<typeof AgentRuntimeSourceSchema>;
 
 export const AgentRuntimeAvailabilitySchema = z.object({
