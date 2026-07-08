@@ -31,6 +31,8 @@ import type {
   WorkspaceScript,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
+import type { AgentLoginHandlers } from './client/agent-login-channel';
+import { AgentLoginChannel } from './client/agent-login-channel';
 import type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
@@ -39,6 +41,7 @@ import type { RequestAck } from './client/pending-registry';
 import { PendingRegistry } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
+export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
 
@@ -83,6 +86,7 @@ export class LinkCodeClient {
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
+  private readonly agentLogin: AgentLoginChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
@@ -94,6 +98,7 @@ export class LinkCodeClient {
   constructor(private readonly transport: Transport) {
     this.control = new ControlChannel(transport, this.pending);
     this.terminals = new TerminalChannel(transport, this.pending);
+    this.agentLogin = new AgentLoginChannel(transport, this.pending);
   }
 
   async connect(): Promise<void> {
@@ -195,6 +200,11 @@ export class LinkCodeClient {
       case 'terminal.output':
       case 'terminal.exit':
         this.terminals.handleMessage(p);
+        break;
+      case 'agent-login.started':
+      case 'agent-login.url':
+      case 'agent-login.settled':
+        this.agentLogin.handleMessage(p);
         break;
       default:
         break;
@@ -463,6 +473,25 @@ export class LinkCodeClient {
     return this.terminals.subscribeOutputSnapshot(terminalId, cb);
   }
 
+  /** Begin an interactive provider login (claude-code); resolves the loginId to subscribe against. */
+  startAgentLogin(agent: AgentKind): Promise<string> {
+    return this.agentLogin.start(agent);
+  }
+
+  /** Observe the browser URL and terminal outcome of a login started with {@link startAgentLogin}. */
+  subscribeAgentLogin(loginId: string, handlers: AgentLoginHandlers): Unsubscribe {
+    return this.agentLogin.subscribe(loginId, handlers);
+  }
+
+  /** Feed the authorization code the user pasted from the browser back to the login. */
+  submitLoginCode(loginId: string, code: string): void {
+    this.agentLogin.submitCode(loginId, code);
+  }
+
+  cancelAgentLogin(loginId: string): void {
+    this.agentLogin.cancel(loginId);
+  }
+
   dispose(): void {
     this.closed = true;
     this.unsub?.();
@@ -472,6 +501,7 @@ export class LinkCodeClient {
     this.pending.failAll(new Error('client disposed'));
     this.events.clearAll();
     this.terminals.disposeAll();
+    this.agentLogin.disposeAll();
     this.transport.close();
   }
 
