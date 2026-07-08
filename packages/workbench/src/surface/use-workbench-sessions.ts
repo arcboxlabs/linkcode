@@ -95,7 +95,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     setExplicitDraft({ workspaceId: workspaceId ?? null });
   }
 
-  function create(opts: {
+  async function create(opts: {
     kind: AgentKind;
     cwd: string;
     model?: string;
@@ -103,12 +103,13 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }): Promise<SessionId> {
     // Rejections propagate to the caller (the new-session page stays up); onError above still
     // reports them via the error banner.
-    return createMutation.trigger({ opts }).then((sessionId) => {
-      setExplicitDraft(null);
-      setSelectedId(sessionId);
-      void mutate();
-      return sessionId;
-    });
+    const sessionId = await createMutation.trigger({ opts });
+    // The list must contain the new session before selection flips: otherwise `active` falls
+    // back to the previous session for a render and its conversation flashes (CODE-103).
+    await mutate().catch(noop);
+    setExplicitDraft(null);
+    setSelectedId(sessionId);
+    return sessionId;
   }
 
   function close(id: SessionId): void {
