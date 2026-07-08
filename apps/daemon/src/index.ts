@@ -87,8 +87,20 @@ async function main(): Promise<void> {
   // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
   // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
   const agentRuntimes = await agentRuntimeProber.collect();
+  const engine = new Engine(hub, {
+    providerStore: store,
+    ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
+    sessionStore: createSessionStore(databasePath()),
+    workspaceStore: createWorkspaceStore(databasePath()),
+    previewRoutes,
+    agentRuntimes,
+    assets,
+    // Lets the engine refresh (and push) the runtime snapshot after a managed install lands.
+    collectAgentRuntimes: () => agentRuntimeProber.collect(),
+  });
   // Warm missing agent pairs in the background — boot never waits on a download. Anything the
-  // probe already found usable (detected CLI, SDK platform package) is left alone.
+  // probe already found usable (detected CLI, SDK platform package) is left alone. Runs after
+  // the engine exists so its asset subscription sees the whole install lifecycle.
   for (const kind of ['claude-code', 'codex'] as const) {
     if (agentRuntimes[kind]?.status === 'available') continue;
     void assets
@@ -106,15 +118,6 @@ async function main(): Promise<void> {
         }
       });
   }
-  const engine = new Engine(hub, {
-    providerStore: store,
-    ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
-    sessionStore: createSessionStore(databasePath()),
-    workspaceStore: createWorkspaceStore(databasePath()),
-    previewRoutes,
-    agentRuntimes,
-    assets,
-  });
   await engine.start();
   // Runs before any listener binds, so `workspace.list` always includes the chat workspace by the
   // time a client can connect.
