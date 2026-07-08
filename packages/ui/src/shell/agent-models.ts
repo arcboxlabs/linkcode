@@ -16,6 +16,11 @@ export interface ModelOption {
  * alongside current ones — the choice belongs to the user — but every entry below was individually
  * confirmed by reading the actual served model back off the live message stream after switching:
  *
+ *   claude-fable-5     current Fable (Mythos-class tier above Opus; verified 2026-07-08 — served
+ *                      model read back as claude-fable-5). Accounts WITHOUT Fable access get a hard
+ *                      CLI error ("Claude Fable 5 is currently unavailable"); that surfaces in the
+ *                      error banner and the picker keeps the previous model (confirm-then-reflect),
+ *                      so offering it to everyone is safe.
  *   claude-opus-4-8    current Opus
  *   claude-opus-4-7    legacy, switches correctly
  *   claude-opus-4-6    legacy, switches correctly
@@ -23,17 +28,20 @@ export interface ModelOption {
  *   claude-sonnet-4-6  legacy ("Previous Sonnet version" in the CLI's own /model menu), switches correctly
  *   claude-haiku-4-5   current Haiku (resolves to the pinned claude-haiku-4-5-20251001 snapshot)
  *
- * Two models from the CLI's own registry are deliberately left out because they demonstrably don't
+ * One model from the CLI's own registry is deliberately left out because it demonstrably doesn't
  * work as requested, not because of a guess:
- *   - claude-fable-5: the CLI returns a hard error, "Claude Fable 5 is currently unavailable" — this
- *     account has no Fable access.
  *   - claude-opus-4-1: setModel() accepts it with no error, but the model actually served afterward
  *     (read back from the live stream) was claude-opus-4-8 — a silent substitution, not a real switch.
+ *
+ * Keeping this table static (instead of reading the CLI's catalog via Query#supportedModels) is a
+ * deliberate CODE-104 decision — models change rarely, so refresh it by hand under the discipline
+ * above; the dynamic reference implementation lives in closed PR #52.
  *
  * opencode and pi have no entry here — see their adapters' comments for why.
  */
 export const AGENT_MODEL_OPTIONS: Partial<Record<AgentKind, ModelOption[]>> = {
   'claude-code': [
+    { id: 'claude-fable-5', label: 'Fable 5' },
     { id: 'claude-opus-4-8', label: 'Opus 4.8' },
     { id: 'claude-opus-4-7', label: 'Opus 4.7 (Legacy)' },
     { id: 'claude-opus-4-6', label: 'Opus 4.6 (Legacy)' },
