@@ -5,6 +5,8 @@
  * see assets through the wire contract in @linkcode/schema.
  */
 
+export * from './catalog';
 export * from './errors';
 export * from './paths';
+export * from './platform';
 export * from './sri';
