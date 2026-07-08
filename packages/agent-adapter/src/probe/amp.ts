@@ -18,11 +18,18 @@ export class AmpProbe extends AgentCliProbe {
   protected readonly sdkPackage = '@ampcode/sdk';
 
   constructor(locations?: string[]) {
-    // Amp's own installer targets $AMP_HOME/bin (default ~/.amp/bin) — the SDK's fallback chain
-    // checks it too; probe it ahead of the shared installer locations.
+    // Mirror the SDK's own $AMP_HOME lookup order (sdk/bin before bin, matching history.ts's
+    // resolveAmpCli) ahead of the shared installer locations, so the probe reports availability
+    // for the same binary a live turn / history read would actually resolve.
     const binary = process.platform === 'win32' ? 'amp.exe' : 'amp';
     const ampHome = env.AMP_HOME ?? join(homedir(), '.amp');
-    super(locations ?? [join(ampHome, 'bin', binary), ...defaultInstallLocations(binary)]);
+    super(
+      locations ?? [
+        join(ampHome, 'sdk', 'bin', binary),
+        join(ampHome, 'bin', binary),
+        ...defaultInstallLocations(binary),
+      ],
+    );
   }
 
   /** `amp --version` prints `0.0.1783401425-gc7fcc1 (released 2026-07-07T05:17:05.000Z, 1d ago)`;

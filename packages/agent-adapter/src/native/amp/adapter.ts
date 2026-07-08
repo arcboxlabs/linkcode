@@ -156,8 +156,11 @@ export class AmpAdapter extends BaseAgentAdapter {
    * granularity the natural (and only possible) switching channel. */
   private mode: AmpMode | undefined;
   private effort: AmpEffort | undefined;
-  /** Session-cumulative usage: Amp reports per-API-call usage on each assistant message and
-   * consumers replace usage wholesale, so emit running totals (same reasoning as codex). */
+  /** Running usage total for THIS adapter instance (consumers replace usage wholesale, so a
+   * per-message value would flicker): Amp reports per-API-call usage on each assistant message and
+   * these accumulate. Unlike codex's thread-cumulative figure (which the app-server reports fresh),
+   * this is only per-session-since-(re)start — a resumed thread's earlier turns are NOT re-added,
+   * so the number restarts from zero on resume. Amp exposes no thread-total to seed from. */
   private readonly usageTotals = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
 
   protected async onStart(opts: StartOptions): Promise<void> {
