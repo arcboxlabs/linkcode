@@ -8,6 +8,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
+  MessageId,
   SessionId,
   StartOptions,
   WireMessage,
@@ -353,5 +354,74 @@ describe('engine session persistence', () => {
     const resumed = adapters.at(-1);
     expect(resumed?.resumedFrom).toBeNull();
     expect(resumed?.startedWith).toMatchObject({ kind: 'claude-code', cwd: '/repo' });
+  });
+});
+
+describe('engine session notifications', () => {
+  async function startedSession() {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('Fix the flaky test')] },
+    });
+    return { ...h, sessionId };
+  }
+
+  function notifications(sent: WirePayload[]) {
+    return sent.flatMap((p) => (p.kind === 'session.notification' ? [p.notification] : []));
+  }
+
+  it('broadcasts turn-completed with the record display fields on stop', async () => {
+    const { sent, adapters, sessionId } = await startedSession();
+    adapters[0].emit({ type: 'stop', stopReason: 'end_turn' });
+
+    expect(notifications(sent)).toEqual([
+      {
+        sessionId,
+        kind: 'claude-code',
+        cwd: '/repo',
+        title: 'Fix the flaky test',
+        reason: { type: 'turn-completed', stopReason: 'end_turn' },
+      },
+    ]);
+  });
+
+  it('broadcasts awaiting-approval on permission-request and error on error', async () => {
+    const { sent, adapters, sessionId } = await startedSession();
+    adapters[0].emit({
+      type: 'permission-request',
+      requestId: 'perm-1',
+      toolCall: { toolCallId: 'tc-1', title: 'Bash: rm -rf node_modules' },
+      options: [],
+    });
+    adapters[0].emit({ type: 'error', message: 'agent crashed', recoverable: false });
+
+    expect(notifications(sent).map((n) => n.reason)).toEqual([
+      { type: 'awaiting-approval', toolTitle: 'Bash: rm -rf node_modules' },
+      { type: 'error', message: 'agent crashed' },
+    ]);
+    expect(notifications(sent).every((n) => n.sessionId === sessionId)).toBe(true);
+  });
+
+  it('stays silent for non-notification events', async () => {
+    const { sent, adapters } = await startedSession();
+    adapters[0].emit({ type: 'status', status: 'running' });
+    adapters[0].emit({ type: 'status', status: 'idle' });
+    adapters[0].emit({
+      type: 'agent-message-chunk',
+      messageId: 'msg-1' as MessageId,
+      content: textBlock('hi'),
+    });
+
+    expect(notifications(sent)).toEqual([]);
   });
 });
