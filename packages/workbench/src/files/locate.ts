@@ -1,8 +1,14 @@
 import type { Conversation } from '@linkcode/client-core';
 import { readWorkspaceFile } from '@linkcode/sdk';
+import { dirname, isAbsolute, join, normalize } from 'pathe';
 
 /** Probing is bounded: candidates beyond this are dropped (dirs are deduped first). */
 const MAX_CANDIDATES = 8;
+
+/** Path predicates/joins go through `pathe`: the daemon may sit on either platform
+ * (POSIX `/`, Windows drive or UNC), and pathe recognizes all of them while
+ * normalizing output to forward slashes — which win32 Node accepts as-is. */
+export { isAbsolute as isAbsoluteFilePath } from 'pathe';
 
 /**
  * Absolute paths a clicked file reference may resolve to, most likely first.
@@ -16,9 +22,10 @@ export function fileArtifactCandidates(
   cwd: string,
   items: Conversation['items'],
 ): string[] {
-  if (requestPath[0] === '/') return [requestPath];
+  if (isAbsolute(requestPath)) return [requestPath];
 
-  const suffix = `/${requestPath}`;
+  const relative = normalize(requestPath);
+  const suffix = `/${relative}`;
   const exactHits: string[] = [];
   const touchedDirs: string[] = [];
   for (const item of items) {
@@ -29,10 +36,10 @@ export function fileArtifactCandidates(
     }
     for (const touched of paths) {
       // Relative locations (adapter-dependent) have no reliable anchor; skip them.
-      if (touched[0] !== '/') continue;
-      if (touched.endsWith(suffix)) exactHits.push(touched);
-      const dir = touched.slice(0, touched.lastIndexOf('/'));
-      if (dir) touchedDirs.push(dir);
+      if (!isAbsolute(touched)) continue;
+      const normalized = normalize(touched);
+      if (normalized.endsWith(suffix)) exactHits.push(normalized);
+      touchedDirs.push(dirname(normalized));
     }
   }
 
@@ -41,8 +48,8 @@ export function fileArtifactCandidates(
   touchedDirs.reverse();
   const candidates = new Set<string>([
     ...exactHits,
-    `${cwd}${suffix}`,
-    ...touchedDirs.map((dir) => `${dir}${suffix}`),
+    join(cwd, relative),
+    ...touchedDirs.map((dir) => join(dir, relative)),
   ]);
   return [...candidates].slice(0, MAX_CANDIDATES);
 }

@@ -16,6 +16,7 @@ import {
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
   AttachedTerminalPanel,
+  isAbsoluteFilePath,
   locateFileArtifact,
   TerminalPanel,
   WorkspaceServicesMenu,
@@ -299,7 +300,7 @@ export function DesktopShell({
   function openFileArtifact(path: string): void {
     const cwd = active?.cwd;
     if (!cwd) {
-      if (path[0] === '/') openRightFileTab(path);
+      if (isAbsoluteFilePath(path)) openRightFileTab(path);
       return;
     }
     void locateFileArtifact(path, cwd, conversation.items).then(openRightFileTab);
