@@ -141,7 +141,7 @@ export function DesktopShell({
     })),
   );
   const cloudAuth = useCloudAccount();
-  const remoteHosts = useCloudHosts(!!cloudAuth.account);
+  const remoteHosts = useCloudHosts(cloudAuth.account?.email ?? null);
   const { selectedHostId, selectHost } = useSelectedHostStore(
     useShallow((state) => ({ selectedHostId: state.selectedHostId, selectHost: state.selectHost })),
   );
