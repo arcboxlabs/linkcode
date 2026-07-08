@@ -191,11 +191,12 @@ export class Engine {
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
           }
-          await session.adapter.send(p.input);
-          // The answer settles the ask; a later attach must not replay it as still-open.
+          // The answer settles the ask the moment it arrives; drop it before awaiting send so a
+          // concurrent session.attach (handlers aren't serialized) can't replay an already-answered ask.
           if (p.input.type === 'permission-response' || p.input.type === 'question-response') {
             session.pendingAsks.delete(p.input.requestId);
           }
+          await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
         });
         break;

@@ -96,6 +96,17 @@ class GatedStartAdapter extends FakeAdapter {
   }
 }
 
+/** An adapter whose send() blocks until released, to interleave an attach with an in-flight response. */
+class GatedSendAdapter extends FakeAdapter {
+  releaseSend: () => void = noop;
+
+  override send(_input: AgentInput): Promise<void> {
+    return new Promise((resolve) => {
+      this.releaseSend = resolve;
+    });
+  }
+}
+
 /** Let the fire-and-forget handle()/persist chains settle. */
 function tick(): Promise<void> {
   return new Promise((resolve) => {
@@ -427,6 +438,34 @@ describe('engine attach replay', () => {
     const mark = sent.length;
     await inject({ kind: 'session.attach', sessionId });
     expect(eventsAfter(sent, mark).some((e) => e.type === 'question-request')).toBe(false);
+  });
+
+  it('stops replaying an ask while its response send is still in flight', async () => {
+    const h = harness(new InMemorySessionStore(), () => new GatedSendAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const adapter = nullthrow(h.adapters[0]) as GatedSendAdapter;
+
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    // The response's send() blocks; the handler is suspended past the point where the ask is cleared.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: { type: 'question-response', requestId: 'ask-1', outcome: { outcome: 'cancelled' } },
+    });
+
+    const mark = h.sent.length;
+    await h.inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(h.sent, mark).some((e) => e.type === 'question-request')).toBe(false);
+
+    adapter.releaseSend();
   });
 
   it('stops replaying an ask once its tool call settled', async () => {
