@@ -34,7 +34,10 @@ import {
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
 import { contentToText } from '../../util';
+import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
+import type { CodexSandboxMode } from './config';
+import { codexConfiguredSandbox } from './config';
 import {
   codexIndexEntryToSession,
   codexSummaryToSession,
@@ -45,6 +48,10 @@ import {
   readJsonlFile,
 } from './history';
 import { diffContentFromUnified } from './unified-diff';
+
+/** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
+ * structurally (the class's private fields would otherwise force a top-type cast). */
+export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHandler' | 'close'>;
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -171,7 +178,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     resume: true,
   };
 
-  private server: CodexAppServer | null = null;
+  private server: CodexServerHandle | null = null;
   /** In-flight spawn+thread-open, shared by concurrent callers so two prompts racing into a dead
    * session cannot double-spawn app-server processes. */
   private starting: Promise<void> | null = null;
@@ -197,6 +204,15 @@ export class CodexAdapter extends BaseAgentAdapter {
   private effort: EffortLevel | undefined;
   /** Active approval/sandbox tier; switches ride the next `turn/start` like model/effort. */
   private policyId: CodexPolicyId = INITIAL_POLICY_ID;
+  /** True once the user explicitly picked a tier this session; only then may a preset override
+   * a sandbox the user configured in config.toml. */
+  private policyExplicit = false;
+  /** Sandbox from `~/.codex/config.toml`, re-read at each thread open. Until the tier is an
+   * explicit pick, a configured sandbox is never overridden — thread/turn requests omit their
+   * sandbox override so codex's own config resolution wins (never silently loosen a stricter
+   * choice like read-only). The preset's approval posture still rides: unlike the old SDK path,
+   * approvals are answerable over app-server, so `on-request` cannot strand a turn. */
+  private configuredSandbox: CodexSandboxMode | undefined;
   /** Streamed text length per item id: converts `item/completed` full texts into the missing
    * remainder (delta backstop), and suppresses re-emitting reasoning that already streamed. */
   private readonly streamedTextLen = new Map<string, number>();
@@ -339,8 +355,15 @@ export class CodexAdapter extends BaseAgentAdapter {
       return Promise.reject(new Error(`codex: unknown approval policy '${policyId}'`));
     }
     this.policyId = policyId;
+    this.policyExplicit = true;
     this.emitApprovalPolicy(this.approvalPolicyState());
     return Promise.resolve();
+  }
+
+  /** Whether requests may carry a sandbox override — never while an un-picked tier would
+   * trample a sandbox the user configured themselves (see `configuredSandbox`). */
+  private sandboxOverrideAllowed(): boolean {
+    return this.policyExplicit || this.configuredSandbox === undefined;
   }
 
   protected override onStop(): Promise<void> {
@@ -360,16 +383,28 @@ export class CodexAdapter extends BaseAgentAdapter {
     return this.starting;
   }
 
+  /** Test seam — the real thing resolves the codex binary and spawns it. Resolution prefers the
+   * managed dir / detected user install (CODE-110/114 — packaged apps ship no agent binaries)
+   * and falls back to node_modules self-resolution for dev shells and standalone daemons. */
+  protected startAppServer(
+    opts: Omit<CodexAppServerOptions, 'binaryPath'>,
+  ): Promise<CodexServerHandle> {
+    const binaryPath = agentRuntimeProber.resolveBinary('codex') ?? resolveCodexBinaryPath();
+    return CodexAppServer.start({ ...opts, binaryPath });
+  }
+
+  /** Test seam — the real thing reads `~/.codex/config.toml`. */
+  protected readConfiguredSandbox(): Promise<CodexSandboxMode | undefined> {
+    return codexConfiguredSandbox();
+  }
+
   private async openThread(): Promise<void> {
     const opts = nullthrow(this.opts, 'codex: session not started');
     const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
-    let server: CodexAppServer;
+    this.configuredSandbox = await this.readConfiguredSandbox();
+    let server: CodexServerHandle;
     try {
-      // Managed dir / detected user install first (CODE-110/114 — packaged apps ship no agent
-      // binaries), node_modules self-resolution as the dev/standalone fallback.
-      const binaryPath = agentRuntimeProber.resolveBinary('codex') ?? resolveCodexBinaryPath();
-      server = await CodexAppServer.start({
-        binaryPath,
+      server = await this.startAppServer({
         env: apiKey ? { CODEX_API_KEY: apiKey } : undefined,
         onNotification: (method, params) => this.handleNotification(method, params),
         onExit: (_code, stderrTail) => this.handleServerExit(stderrTail),
@@ -393,7 +428,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       cwd: opts.cwd,
       model: this.model,
       approvalPolicy: preset.approvalPolicy,
-      sandbox: preset.sandboxMode,
+      ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
       ...(opts.additionalDirectories?.length && {
         config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
       }),
@@ -439,7 +474,9 @@ export class CodexAdapter extends BaseAgentAdapter {
         ...(this.effort !== undefined && { effort: this.effort }),
         // Idempotent policy override — this is how a set-approval-policy lands on codex.
         approvalPolicy: POLICY_PRESETS[this.policyId].approvalPolicy,
-        sandboxPolicy: sandboxPolicyFor(this.policyId, this.opts?.additionalDirectories ?? []),
+        ...(this.sandboxOverrideAllowed() && {
+          sandboxPolicy: sandboxPolicyFor(this.policyId, this.opts?.additionalDirectories ?? []),
+        }),
       });
       // turn/started usually carries the id first; the response is the fallback. A turn that
       // already completed (lastCompletedTurnId) must not be re-activated by a late response.
