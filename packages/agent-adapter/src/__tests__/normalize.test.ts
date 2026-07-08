@@ -354,9 +354,14 @@ describe('CodexAdapter approval-policy switching', () => {
   });
 });
 
-/** Captures app-server traffic; turns settle synchronously so each prompt runs a full cycle. */
+/** Captures app-server traffic. By default turns settle synchronously so each prompt runs a full
+ * cycle; with `autoCompleteTurns` off, the test drives `turn/completed` and the `turn/start`
+ * reply separately to exercise their orderings. */
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+  /** Manual mode: in-flight `turn/start` RPCs whose reply the test releases via `respond`. */
+  readonly pendingTurnStarts: Array<{ id: string; respond: () => void }> = [];
+  autoCompleteTurns = true;
   constructor(private readonly opts: Omit<CodexAppServerOptions, 'binaryPath'>) {}
   request(method: string, params: unknown): Promise<unknown> {
     this.requests.push({ method, params: params as Record<string, unknown> });
@@ -365,10 +370,18 @@ class FakeCodexServer {
     }
     if (method === 'turn/start') {
       const id = `turn-${this.requests.length}`;
-      this.opts.onNotification('turn/completed', { turn: { id, status: 'completed' } });
-      return Promise.resolve({ turn: { id } });
+      if (this.autoCompleteTurns) {
+        this.completeTurn(id);
+        return Promise.resolve({ turn: { id } });
+      }
+      return new Promise((resolve) => {
+        this.pendingTurnStarts.push({ id, respond: () => resolve({ turn: { id } }) });
+      });
     }
     return Promise.resolve({});
+  }
+  completeTurn(id: string): void {
+    this.opts.onNotification('turn/completed', { turn: { id, status: 'completed' } });
   }
   setRequestHandler(): void {
     // Approvals are not exercised here.
@@ -380,11 +393,13 @@ class FakeCodexServer {
 
 class TestCodex extends CodexAdapter {
   fakeServers: FakeCodexServer[] = [];
+  autoCompleteTurns = true;
   configured: 'read-only' | 'workspace-write' | 'danger-full-access' | undefined;
   protected override startAppServer(
     opts: Omit<CodexAppServerOptions, 'binaryPath'>,
   ): Promise<CodexServerHandle> {
     const server = new FakeCodexServer(opts);
+    server.autoCompleteTurns = this.autoCompleteTurns;
     this.fakeServers.push(server);
     return Promise.resolve(server);
   }
@@ -428,6 +443,46 @@ describe('CodexAdapter sandbox deferral to config.toml', () => {
 
     await adapter.send(prompt);
     expect(adapter.turnStarts()[0].sandboxPolicy).toMatchObject({ type: 'workspaceWrite' });
+  });
+});
+
+describe('CodexAdapter turn queueing', () => {
+  const start: StartOptions = { kind: 'codex', cwd: '/repo' };
+  const prompt: AgentInput = { type: 'prompt', content: [{ type: 'text', text: 'hi' }] };
+  const settle = () =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+  it("keeps queueing while a drained prompt's turn/start is still in flight", async () => {
+    const adapter = new TestCodex();
+    adapter.autoCompleteTurns = false;
+    await adapter.start(start);
+    const server = adapter.fakeServers[0];
+
+    // Turn A starts; its RPC reply is withheld. A second prompt queues behind it.
+    const firstSend = adapter.send(prompt);
+    await settle();
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()).toHaveLength(1);
+
+    // codex can settle a whole turn before replying to its turn/start: completing A drains the
+    // queued prompt into turn B while A's request is still awaiting its reply.
+    server.completeTurn(server.pendingTurnStarts[0].id);
+    await settle();
+    expect(adapter.turnStarts()).toHaveLength(2);
+
+    // A's late reply lands; its cleanup must not drop B's guard — a third prompt still queues.
+    server.pendingTurnStarts[0].respond();
+    await firstSend;
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()).toHaveLength(2);
+
+    // B settles and replies: the queued third prompt drains as turn C.
+    server.completeTurn(server.pendingTurnStarts[1].id);
+    server.pendingTurnStarts[1].respond();
+    await settle();
+    expect(adapter.turnStarts()).toHaveLength(3);
   });
 });
 

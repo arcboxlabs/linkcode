@@ -184,10 +184,13 @@ export class CodexAdapter extends BaseAgentAdapter {
   private starting: Promise<void> | null = null;
   private threadId: string | null = null;
   private activeTurnId: string | null = null;
-  /** Guards the window between sending `turn/start` and learning the turn id, so a second prompt
-   * queues instead of racing a second `turn/start` into the same thread. */
-  private turnStarting = false;
-  /** A cancel that arrived inside the turnStarting window, before the turn id was known; honored
+  /** Frames between sending `turn/start` and its reply — while > 0, prompts queue instead of
+   * racing another `turn/start` into the same thread. A COUNT, not a boolean: `turn/completed`
+   * can precede the `turn/start` reply, so a drained queue prompt starts while the settled
+   * turn's frame is still in flight, and that frame's cleanup must not drop the newer frame's
+   * guard. */
+  private turnStartsInFlight = 0;
+  /** A cancel that arrived inside the turn-start window, before the turn id was known; honored
    * by `activateTurn` the moment the id lands instead of being silently dropped. */
   private cancelRequested = false;
   /** True while a fresh thread's session-ref announcement is deferred to its first turn. */
@@ -270,7 +273,7 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     await this.ensureThread();
-    if (this.activeTurnId !== null || this.turnStarting) {
+    if (this.activeTurnId !== null || this.turnStartsInFlight > 0) {
       // A turn is running: queue, mirroring claude-code's streaming-input queueing. Drained
       // one prompt per turn/completed.
       this.pendingPrompts.push(content);
@@ -288,7 +291,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (!turnId) {
       // turn/start's round trip is still in flight and the turn id is unknown; arm the cancel so
       // activateTurn interrupts the moment the id lands, instead of letting the turn run on.
-      if (this.turnStarting) this.cancelRequested = true;
+      if (this.turnStartsInFlight > 0) this.cancelRequested = true;
       return;
     }
     await this.interruptTurn(turnId);
@@ -464,7 +467,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   private async startTurn(content: ContentBlock[]): Promise<void> {
     const server = nullthrow(this.server, 'codex: session not started');
     const threadId = nullthrow(this.threadId, 'codex: thread not started');
-    this.turnStarting = true;
+    this.turnStartsInFlight += 1;
     this.emitStatus('running');
     try {
       const response = await server.request('turn/start', {
@@ -489,7 +492,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.teardown();
       this.emitStatus('idle');
     } finally {
-      this.turnStarting = false;
+      this.turnStartsInFlight -= 1;
     }
   }
 
@@ -498,7 +501,9 @@ export class CodexAdapter extends BaseAgentAdapter {
   private handleServerExit(detail: string): void {
     this.server = null;
     this.activeTurnId = null;
-    this.turnStarting = false;
+    // turnStartsInFlight is deliberately untouched: the exit already rejected any in-flight
+    // turn/start (failAllPending runs before onExit), so each frame's finally releases its own
+    // slot — resetting here would double-release against a late finally.
     this.cancelRequested = false;
     this.holdSessionRef = false;
     this.pendingPrompts = [];
