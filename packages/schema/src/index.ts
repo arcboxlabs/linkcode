@@ -9,6 +9,7 @@
  */
 
 export * from './agent';
+export * from './agent-model';
 export * from './agent-runtime';
 export * from './artifact';
 export * from './common';
