@@ -293,6 +293,37 @@ describe('AmpAdapter turn mapping', () => {
     expect(ofType(events, 'status').at(-1)?.status).toBe('idle');
   });
 
+  it('renders a file-tool result carrying {diff, lineRange} as structured diff content', async () => {
+    const { adapter, events } = await startedAdapter();
+    // Real edit_file result payload observed live.
+    const payload = JSON.stringify({
+      diff: 'diff\n--- /private/tmp/diff-test/greet.py\toriginal\n+++ /private/tmp/diff-test/greet.py\tmodified\n@@ -1,2 +1,2 @@\n def greet():\n- print("goodbye")\n+ print("hello")\n',
+      lineRange: [2, 2],
+    });
+    adapter.script(() =>
+      streamOf(
+        init(),
+        assistantToolUse('msg_1', 'toolu_1'),
+        toolResult('toolu_1', payload),
+        success(),
+      ),
+    );
+    await adapter.send({ type: 'prompt', content: [textBlock('edit it')] });
+
+    const settled = ofType(events, 'tool-call').at(-1)?.toolCall;
+    expect(settled?.status).toBe('completed');
+    expect(settled?.content).toEqual([
+      {
+        type: 'diff',
+        path: '/private/tmp/diff-test/greet.py',
+        oldText: 'def greet():\n print("goodbye")',
+        newText: 'def greet():\n print("hello")',
+      },
+    ]);
+    // The raw payload survives for consumers that want it.
+    expect(settled?.rawOutput).toBe(payload);
+  });
+
   it('mints per-message ids when the CLI omits message.id (real wire shape)', async () => {
     const { adapter, events } = await startedAdapter();
     adapter.script(() =>

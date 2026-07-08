@@ -33,6 +33,7 @@ import {
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
+import { diffContentFromUnified } from '../../unified-diff';
 import { contentToText } from '../../util';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
@@ -47,7 +48,6 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
-import { diffContentFromUnified } from './unified-diff';
 
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
  * structurally (the class's private fields would otherwise force a top-type cast). */

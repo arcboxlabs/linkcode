@@ -20,6 +20,7 @@ import type {
   EffortLevel,
   StartOptions,
   ToolCall,
+  ToolCallContent,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -32,7 +33,9 @@ import {
   boundedLimit,
   cursorFromTotal,
   cursorOffset,
+  isRecord,
 } from '../../history-util';
+import { diffContentFromUnified } from '../../unified-diff';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../../util';
 import { listAmpHistory, readAmpHistory } from './history';
 
@@ -61,6 +64,37 @@ type AmpEffort = Exclude<EffortLevel, 'ultracode'>;
  * same reason claude-code matches its `Agent`/`Task` exactly — see `claudeToolKind`. */
 function ampToolKind(name: string): ToolCall['kind'] {
   return name === 'Task' ? 'task' : toolKindFromName(name);
+}
+
+/** `+++ <path>` (a `\t<label>` may trail it); a deletion's `+++ /dev/null` falls back to `---`. */
+const DIFF_NEW_FILE_RE = /^\+{3} ([^\t\n]+)/m;
+const DIFF_OLD_FILE_RE = /^-{3} ([^\t\n]+)/m;
+
+function pathFromUnifiedDiff(diff: string): string | undefined {
+  const newPath = DIFF_NEW_FILE_RE.exec(diff)?.[1];
+  const path =
+    newPath === undefined || newPath === '/dev/null' ? DIFF_OLD_FILE_RE.exec(diff)?.[1] : newPath;
+  return path === undefined || path === '/dev/null' ? undefined : path;
+}
+
+/** Amp's file-mutation tools return their result as a JSON payload
+ * `{"diff": "<unified diff>", "lineRange": [start, end]}` (observed live). Surface it as
+ * structured diff content so the UI renders a diff card instead of the raw JSON text; anything
+ * that doesn't match stays a plain text result. */
+function diffResultContent(content: string): ToolCallContent[] | undefined {
+  if (content[0] !== '{') return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || typeof parsed.diff !== 'string' || parsed.diff.length === 0) {
+    return undefined;
+  }
+  const path = pathFromUnifiedDiff(parsed.diff);
+  if (path === undefined) return undefined;
+  return diffContentFromUnified(path, parsed.diff);
 }
 
 /** `thinking: true` (`--stream-json-thinking`) adds thinking blocks the shipped SDK types do not
@@ -351,12 +385,16 @@ export class AmpAdapter extends BaseAgentAdapter {
   private handleUser(msg: UserMessage): void {
     for (const block of msg.message.content) {
       if (block.type !== 'tool_result') continue;
+      const diff = diffResultContent(block.content);
       this.emitTool({
         toolCallId: block.tool_use_id,
         parentToolCallId: msg.parent_tool_use_id ?? undefined,
         status: block.is_error ? 'failed' : 'completed',
         content:
-          block.content.length > 0 ? [{ type: 'content', content: textBlock(block.content) }] : [],
+          diff ??
+          (block.content.length > 0
+            ? [{ type: 'content', content: textBlock(block.content) }]
+            : []),
         rawOutput: block.content,
       });
     }

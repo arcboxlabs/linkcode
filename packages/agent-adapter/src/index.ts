@@ -17,4 +17,5 @@ export { OpenCodeAdapter } from './native/opencode';
 export { PiAdapter } from './native/pi';
 export * from './probe';
 export * from './registry';
+export { diffContentFromUnified } from './unified-diff';
 export * from './util';

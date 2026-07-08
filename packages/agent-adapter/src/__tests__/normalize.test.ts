@@ -14,12 +14,12 @@ import {
 import {
   CodexAdapter,
   decisionFromOutcome,
-  diffContentFromUnified,
   mapCodexItemStatus,
   mapCodexTokenUsage,
 } from '../native/codex';
 import type { CodexServerHandle } from '../native/codex/adapter';
 import type { CodexAppServerOptions } from '../native/codex/app-server';
+import { diffContentFromUnified } from '../unified-diff';
 import { contentToText, toolKindFromName } from '../util';
 
 describe('contentToText', () => {

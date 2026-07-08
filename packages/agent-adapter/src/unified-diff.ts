@@ -3,11 +3,12 @@ import type { ToolCallContent } from '@linkcode/schema';
 const HUNK_HEADER_RE = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/;
 
 /**
- * Convert one file's unified diff (codex app-server `fileChange.changes[].diff`) into structured
- * diff content blocks, one per hunk: the hunk body is split into its old side (context + removed
- * lines) and new side (context + added lines), which is exactly the changed region the UI should
- * render — the same shape claude-code's Edit input produces. A pure-insertion hunk with no
- * context omits `oldText` so it renders as all-added, matching a Write.
+ * Convert one file's unified diff (codex app-server `fileChange.changes[].diff`, amp file-tool
+ * results) into structured diff content blocks, one per hunk: the hunk body is split into its
+ * old side (context + removed lines) and new side (context + added lines), which is exactly the
+ * changed region the UI should render — the same shape claude-code's Edit input produces. A
+ * pure-insertion hunk with no context omits `oldText` so it renders as all-added, matching a
+ * Write.
  *
  * Text without any hunk header (e.g. an `add` change carrying raw file content) falls back to a
  * single all-added block.
