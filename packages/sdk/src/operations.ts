@@ -5,6 +5,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentModels,
   AgentRuntimes,
   EffortLevel,
   GitDiff,
@@ -134,6 +135,11 @@ export function setProviderConfig(
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
 export function listAgentRuntimes(options?: Options): RequestResult<AgentRuntimes> {
   return resolveClient(options).listAgentRuntimes();
+}
+
+/** Each agent's own model catalog (host probes lazily on first request, cached per boot). */
+export function listAgentModels(options?: Options): RequestResult<AgentModels> {
+  return resolveClient(options).listAgentModels();
 }
 
 /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */

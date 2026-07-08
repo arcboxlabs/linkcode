@@ -6,6 +6,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentModels,
   AgentRuntimes,
   EffortLevel,
   GitDiff,
@@ -164,6 +165,11 @@ export class LinkCodeSdkClient {
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
   listAgentRuntimes(): RequestResult<AgentRuntimes> {
     return toResult(this.raw.listAgentRuntimes());
+  }
+
+  /** Each agent's own model catalog (host probes lazily on first request, cached per boot). */
+  listAgentModels(): RequestResult<AgentModels> {
+    return toResult(this.raw.listAgentModels());
   }
 
   /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */

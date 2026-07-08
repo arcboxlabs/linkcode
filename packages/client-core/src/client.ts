@@ -5,6 +5,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentModels,
   AgentRuntimes,
   ContentBlock,
   EffortLevel,
@@ -107,6 +108,9 @@ export class LinkCodeClient {
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
+        break;
+      case 'agent-model.listed':
+        this.pending.resolve('agentModelList', p.replyTo, p.models);
         break;
       case 'git.status.get.result':
         this.pending.resolve('gitStatus', p.replyTo, p.status);
@@ -263,6 +267,10 @@ export class LinkCodeClient {
 
   listAgentRuntimes(): Promise<AgentRuntimes> {
     return this.control.listAgentRuntimes();
+  }
+
+  listAgentModels(): Promise<AgentModels> {
+    return this.control.listAgentModels();
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {

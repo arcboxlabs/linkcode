@@ -2,6 +2,9 @@ import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryId,
+  AgentKind,
+  AgentModelOption,
+  AgentModels,
   AgentRuntimes,
   ApprovalPolicyState,
   ContentBlock,
@@ -11,6 +14,7 @@ import type {
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
+import { AgentKindSchema } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -80,6 +84,9 @@ export class Engine {
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
   private readonly agentRuntimes: AgentRuntimes;
+  /** Per-kind catalog probes, cached for the daemon's lifetime; a rejected probe is evicted so a
+   * later request retries (e.g. after the user installs or logs into the CLI). */
+  private readonly agentModelProbes = new Map<AgentKind, Promise<AgentModelOption[]>>();
   private seq = 0;
 
   constructor(
@@ -321,6 +328,15 @@ export class Engine {
             runtimes: this.agentRuntimes,
           }),
         );
+        break;
+      }
+      case 'agent-model.list': {
+        await this.tryReply(p.clientReqId, async () => {
+          const models = await this.listAgentModels();
+          this.transport.send(
+            createWireMessage({ kind: 'agent-model.listed', replyTo: p.clientReqId, models }),
+          );
+        });
         break;
       }
       case 'config.get': {
@@ -669,6 +685,36 @@ export class Engine {
     } catch (err) {
       console.error(`Failed to persist session record ${record.sessionId}:`, err);
     }
+  }
+
+  /**
+   * Every agent kind's own model catalog, probed lazily through the adapters (`listModels`) with
+   * the stored provider config applied, so the probe authenticates like a session would. Kinds
+   * that advertise nothing — or whose probe fails (CLI missing, not logged in) — are absent from
+   * the map, mirroring agent-runtime's absent kinds; the failure is logged, and evicting the
+   * cached rejection (see `agentModelProbes`) lets a later request retry.
+   */
+  private async listAgentModels(): Promise<AgentModels> {
+    const providers = this.providerStore.get();
+    const models: AgentModels = {};
+    await Promise.all(
+      AgentKindSchema.options.map(async (kind) => {
+        let probe = this.agentModelProbes.get(kind);
+        if (!probe) {
+          const apiKey = providers[kind]?.apiKey;
+          probe = this.factory(kind).listModels(apiKey === undefined ? undefined : { apiKey });
+          this.agentModelProbes.set(kind, probe);
+          probe.catch(() => this.agentModelProbes.delete(kind));
+        }
+        try {
+          const list = await probe;
+          if (list.length > 0) models[kind] = list;
+        } catch (err) {
+          console.error(`Model catalog probe failed for ${kind}:`, err);
+        }
+      }),
+    );
+    return models;
   }
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {

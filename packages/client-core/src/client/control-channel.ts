@@ -6,6 +6,7 @@ import type {
   AgentHistoryReadResult,
   AgentInput,
   AgentKind,
+  AgentModels,
   AgentRuntimes,
   ContentBlock,
   EffortLevel,
@@ -258,6 +259,14 @@ export class ControlChannel {
   listAgentRuntimes(): Promise<AgentRuntimes> {
     return this.sendCorrelated('agentRuntimeList', (clientReqId) => ({
       kind: 'agent-runtime.list',
+      clientReqId,
+    }));
+  }
+
+  /** Each agent's own model catalog (host probes lazily on first request, cached per boot). */
+  listAgentModels(): Promise<AgentModels> {
+    return this.sendCorrelated('agentModelList', (clientReqId) => ({
+      kind: 'agent-model.list',
       clientReqId,
     }));
   }
