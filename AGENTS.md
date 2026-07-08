@@ -96,7 +96,7 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 - **LinkCode Cloud is a separate repository, `linkcodehq`**: the production API at `api.linkcode.ai` (Hono on Cloudflare Workers) plus auth, IM, and connectors. Any cloud/server/tunnel/auth-provider work happens there, not here.
 - **`apps/server` (`@linkcode/server`) is a placeholder** — a bare `ws` relay that room-broadcasts host↔client for the future mobile tunnel; it runs no agent, and its auth/storage are TODO. It is **not** LinkCode Cloud.
 - **Central identity is a separate ArcBox service** (`auth.arcbox.dev`); `linkcodehq`'s better-auth is a *client* of it, not the provider.
-- Desktop auto-updates read the Cloudflare R2 feed at `releases.linkcode.ai/desktop`; vendored agent CLIs (e.g. `claude`) ship as real executables **outside** the asar — detail in [`docs/RELEASE.md`](docs/RELEASE.md) and [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md).
+- Desktop auto-updates read the Cloudflare R2 feed at `releases.linkcode.ai/desktop`; agent CLI binaries do **not** ship in the app (CODE-114) — the daemon spawns a detected user install (runtime probe) or a managed download — detail in [`docs/RELEASE.md`](docs/RELEASE.md) and [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md).
 
 ## Process
 

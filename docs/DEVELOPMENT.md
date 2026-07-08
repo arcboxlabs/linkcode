@@ -165,9 +165,9 @@ Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/Lin
 ### Agent will not spawn
 
 1. Confirm `installAsarSpawnFix` ran — `spawn ENOTDIR` on an `app.asar` path means the child path wasn't unpacked/rewritten.
-2. claude-code: `LINKCODE_AGENT_BIN_DIR` set and `<resources>/agent-bin/claude-code/claude` exists.
-3. codex has no vendored binary — its SDK's platform binary in `node_modules` needs the asar-spawn rewrite; opencode self-spawns its server via PATH; pi runs in-process and spawns nothing.
-4. In dev there is no `agent-bin`; the SDK self-resolves, so a missing SDK dependency is the usual cause.
+2. claude-code/codex resolve in order (CODE-110/114): managed dir (`LINKCODE_AGENT_BIN_DIR` = `<userData>/agent-bin`, only when it exists) → detected user install (brew / `~/.local/bin`, probed at daemon boot — check `agent-runtime.list` over the wire or re-run `--version` by hand) → SDK self-resolution from node_modules. **Packaged apps ship no agent binaries**: a machine with no local claude/codex CLI has only pi until the managed downloader (CODE-111) lands.
+3. opencode self-spawns its server via PATH; pi runs in-process and spawns nothing.
+4. Detection re-probes only at daemon boot — after installing/upgrading a CLI, restart the daemon.
 
 ### Terminals are broken
 

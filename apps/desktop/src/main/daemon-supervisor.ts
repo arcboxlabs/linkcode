@@ -64,15 +64,12 @@ function spawnDaemon(): void {
   const sidecar = sidecarPath();
   if (existsSync(sidecar)) env.LINKCODE_PTY_SIDECAR_PATH = sidecar;
   else log.warn(`[linkcode/desktop] pty sidecar missing at ${sidecar}; terminals unavailable`);
-  // Vendored agent CLI binaries (electron-builder.yml extraResources `agent-bin`, staged by
-  // scripts/stage-agent-runtimes.mts). Real on-disk executables — the agent adapters spawn
-  // from here instead of resolving binaries out of the asar's node_modules.
-  const agentBin = join(process.resourcesPath, 'agent-bin');
-  if (existsSync(agentBin)) {
-    env.LINKCODE_AGENT_BIN_DIR = agentBin;
-  } else {
-    log.warn(`[linkcode/desktop] agent binaries missing at ${agentBin}; using SDK-bundled paths`);
-  }
+  // Managed agent CLI binaries (CODE-111's downloader lands them here; nothing ships builtin
+  // since CODE-114). Real on-disk executables — when present, the agent adapters spawn from
+  // here ahead of a detected user install. Absent on most machines today; the adapters then
+  // fall back to the boot-time runtime probe's detected CLI.
+  const agentBin = join(app.getPath('userData'), 'agent-bin');
+  if (existsSync(agentBin)) env.LINKCODE_AGENT_BIN_DIR = agentBin;
 
   const proc = utilityProcess.fork(join(__dirname, '../daemon/index.mjs'), [], {
     serviceName: 'linkcode-daemon',

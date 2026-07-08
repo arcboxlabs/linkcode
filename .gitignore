@@ -26,7 +26,6 @@ expo-export/
 # electron build artifacts
 release/
 apps/desktop/sidecar/
-apps/desktop/agent-bin/
 
 # logs
 *.log
