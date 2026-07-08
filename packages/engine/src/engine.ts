@@ -6,6 +6,7 @@ import type {
   ApprovalPolicyState,
   AssetInstallEvent,
   ContentBlock,
+  EffortLevel,
   InstalledAsset,
   ManagedAssetId,
   ManagedAssetStatus,
@@ -43,6 +44,11 @@ interface Session {
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
+  /** Latest model/effort the adapter reported, replayed to freshly-attached clients for the same
+   * reason as `approvalPolicy` — a reconnecting client missed the emit and would otherwise show a
+   * placeholder instead of the value the session is actually running on. */
+  currentModel?: string;
+  currentEffort?: EffortLevel;
 }
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
@@ -550,6 +556,24 @@ export class Engine {
             }),
           );
         }
+        if (attached?.currentModel) {
+          this.transport.send(
+            createWireMessage({
+              kind: 'agent.event',
+              sessionId: p.sessionId,
+              event: { type: 'model-update', model: attached.currentModel },
+            }),
+          );
+        }
+        if (attached?.currentEffort) {
+          this.transport.send(
+            createWireMessage({
+              kind: 'agent.event',
+              sessionId: p.sessionId,
+              event: { type: 'effort-update', effort: attached.currentEffort },
+            }),
+          );
+        }
         break;
       }
       case 'session.detach': {
@@ -638,6 +662,12 @@ export class Engine {
             break;
           case 'approval-policy-update':
             session.approvalPolicy = event.state;
+            break;
+          case 'model-update':
+            session.currentModel = event.model;
+            break;
+          case 'effort-update':
+            session.currentEffort = event.effort;
             break;
           default:
             break;
