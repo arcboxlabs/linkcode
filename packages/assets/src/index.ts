@@ -6,6 +6,7 @@
  */
 
 export * from './catalog';
+export * from './download';
 export * from './errors';
 export * from './paths';
 export * from './platform';
