@@ -18,6 +18,7 @@ import type {
   ProvidersConfig,
   SessionId,
   SessionInfo,
+  SessionNotification,
   SessionRecord,
   StartOptions,
   WorkspaceFile,
@@ -208,6 +209,11 @@ export class LinkCodeSdkClient {
   /** Broadcast `script.status` updates for every workspace (callers filter by cwd). */
   subscribeScriptStatus(cb: (cwd: string, script: WorkspaceScript) => void): () => void {
     return this.raw.subscribeScriptStatus(cb);
+  }
+
+  /** Broadcast `session.notification` moments for every session, foreground or background. */
+  subscribeSessionNotification(cb: (notification: SessionNotification) => void): () => void {
+    return this.raw.subscribeSessionNotification(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
