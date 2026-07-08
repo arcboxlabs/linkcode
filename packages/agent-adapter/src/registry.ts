@@ -1,6 +1,7 @@
 import type { AgentKind } from '@linkcode/schema';
 import { never } from 'foxts/guard';
 import type { AgentAdapter } from './adapter';
+import { AmpAdapter } from './native/amp';
 import { ClaudeCodeAdapter } from './native/claude-code';
 import { CodexAdapter } from './native/codex';
 import { OpenCodeAdapter } from './native/opencode';
@@ -22,6 +23,8 @@ export function createAdapter(kind: AgentKind): AgentAdapter {
       return new OpenCodeAdapter();
     case 'pi':
       return new PiAdapter();
+    case 'amp':
+      return new AmpAdapter();
     default:
       return never(kind, 'agent kind');
   }

@@ -10,6 +10,7 @@
 export * from './adapter';
 export * from './base';
 export { asHistoryId, boundedLimit, cursorOffset } from './history-util';
+export { AmpAdapter } from './native/amp';
 export { ClaudeCodeAdapter } from './native/claude-code';
 export { CodexAdapter } from './native/codex';
 export { OpenCodeAdapter } from './native/opencode';

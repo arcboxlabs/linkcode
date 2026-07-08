@@ -577,6 +577,9 @@ importers:
 
   packages/agent-adapter:
     dependencies:
+      '@ampcode/sdk':
+        specifier: 0.1.0-20260605144103-g77da114
+        version: 0.1.0-20260605144103-g77da114
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.179
         version: 0.3.179(@anthropic-ai/sdk@0.104.2(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
@@ -1020,6 +1023,42 @@ packages:
 
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
+
+  '@ampcode/cli-darwin-arm64@0.0.1783401425-gc7fcc1':
+    resolution: {integrity: sha512-CnFfYJ5gEmPIfmMYhrk1oqIU5GU/y/hf5hdAdOKgNV60op890rWb3PCnFx+69xomkXlWPzXhm4yCDp0jS9DNDQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@ampcode/cli-darwin-x64@0.0.1783401425-gc7fcc1':
+    resolution: {integrity: sha512-oQ0taXbM2CO9ykGzphoqXgx5E47/RqqJ6O1bmFu1xZpdXB2SbX8NgWcJO/doDHz1BXR4FvdvPH+PdDDUj3pc7w==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@ampcode/cli-linux-arm64@0.0.1783401425-gc7fcc1':
+    resolution: {integrity: sha512-IGMG3J8kLZJ1G9oFuq5uj9HjZxcRxADysgqleOBRrjQ3GogwShAwE5BsLyG+mz6MoxtLC4C5dGokwbdsRciCFg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@ampcode/cli-linux-x64@0.0.1783401425-gc7fcc1':
+    resolution: {integrity: sha512-LZMBDHzKoj7yJrZSL7T7zP9+eKV29BylBBxemOCKHz/LnMpCQY6nJ0qT6OVzjoo05OW+JR+RDgpMS1GbGyCh0Q==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@ampcode/cli-win32-x64@0.0.1783401425-gc7fcc1':
+    resolution: {integrity: sha512-709Jvj95QqSi3tBlroLrsvD4WkHjOi+naj72i9V22+GELKaGZ41Z9OqFJjaByY7Le311vBGZWmrHFJhK2neXUg==}
+    cpu: [x64]
+    os: [win32]
+
+  '@ampcode/cli@0.0.1783401425-gc7fcc1':
+    resolution: {integrity: sha512-/wx34qhZq3Cd+krspGRTQWaPW8qXLmHGaw8aiY4euIYZgxAXJ/6Dav+MfEtkqgbDhB8XfDnS6W63YXIz3mn7RA==}
+    hasBin: true
+
+  '@ampcode/sdk@0.1.0-20260605144103-g77da114':
+    resolution: {integrity: sha512-EIo9xy/qQMSNWKKmID2sOGUCVEPtnE3mMKgtw5LInedCy3U99LVK83BB45rqWGaqaCnzu99GkPruoqgIE/kyvw==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
@@ -9623,6 +9662,34 @@ packages:
 snapshots:
 
   '@adobe/css-tools@4.5.0': {}
+
+  '@ampcode/cli-darwin-arm64@0.0.1783401425-gc7fcc1':
+    optional: true
+
+  '@ampcode/cli-darwin-x64@0.0.1783401425-gc7fcc1':
+    optional: true
+
+  '@ampcode/cli-linux-arm64@0.0.1783401425-gc7fcc1':
+    optional: true
+
+  '@ampcode/cli-linux-x64@0.0.1783401425-gc7fcc1':
+    optional: true
+
+  '@ampcode/cli-win32-x64@0.0.1783401425-gc7fcc1':
+    optional: true
+
+  '@ampcode/cli@0.0.1783401425-gc7fcc1':
+    optionalDependencies:
+      '@ampcode/cli-darwin-arm64': 0.0.1783401425-gc7fcc1
+      '@ampcode/cli-darwin-x64': 0.0.1783401425-gc7fcc1
+      '@ampcode/cli-linux-arm64': 0.0.1783401425-gc7fcc1
+      '@ampcode/cli-linux-x64': 0.0.1783401425-gc7fcc1
+      '@ampcode/cli-win32-x64': 0.0.1783401425-gc7fcc1
+
+  '@ampcode/sdk@0.1.0-20260605144103-g77da114':
+    dependencies:
+      '@ampcode/cli': 0.0.1783401425-gc7fcc1
+      zod: 3.25.76
 
   '@antfu/install-pkg@1.1.0':
     dependencies:

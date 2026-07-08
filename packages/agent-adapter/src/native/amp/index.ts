@@ -1,0 +1,1 @@
+export { AmpAdapter } from './adapter';

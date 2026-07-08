@@ -40,6 +40,9 @@ allowBuilds:
   electron-winstaller: false
   # sentry-cli binary backing @sentry/react-native (mobile) — fetched to upload source maps at build time.
   '@sentry/cli': true
+  # Amp CLI carrier (@ampcode/sdk dependency): postinstall resolves this platform's binary package;
+  # without it the SDK's own node_modules fallback has no `amp` binary and fails at session start.
+  "@ampcode/cli": true
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.

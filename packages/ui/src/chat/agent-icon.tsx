@@ -1,15 +1,18 @@
 /// <reference types="unplugin-icons/types/react" />
 import type { AgentKind } from '@linkcode/schema';
+import AmpGlyph from '~icons/lobe-icons/amp';
 import ClaudeCodeGlyph from '~icons/lobe-icons/claudecode';
 import CodexGlyph from '~icons/lobe-icons/codex';
 import OpenCodeGlyph from '~icons/lobe-icons/opencode';
 import { cn } from '../lib/cn';
 
+// Key order is picker order (SELECTABLE_PROVIDERS derives from Object.keys): amp stays last.
 export const AGENT_LABELS: Record<AgentKind, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
   opencode: 'OpenCode',
   pi: 'Pi',
+  amp: 'Amp',
 };
 
 // Fallback for kinds without a brand glyph (e.g. `pi`).
@@ -18,12 +21,14 @@ const AGENT_INITIALS: Record<AgentKind, string> = {
   codex: 'CX',
   opencode: 'OC',
   pi: 'PI',
+  amp: 'AM',
 };
 
 const AGENT_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeGlyph>> = {
   'claude-code': ClaudeCodeGlyph,
   codex: CodexGlyph,
   opencode: OpenCodeGlyph,
+  amp: AmpGlyph,
 };
 
 export function AgentIcon({

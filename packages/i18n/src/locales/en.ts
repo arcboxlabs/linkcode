@@ -322,6 +322,7 @@ export const en = {
       codex: 'Codex',
       opencode: 'OpenCode',
       pi: 'Pi',
+      amp: 'Amp',
     },
   },
   settings: {
