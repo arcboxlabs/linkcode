@@ -70,4 +70,21 @@ describe('fileArtifactCandidates', () => {
       '/abs/dir/sub/report.pdf',
     ]);
   });
+
+  it('recognizes Windows drive locations and joins with forward slashes', () => {
+    const items = [toolItem({ locations: [{ path: String.raw`C:\Users\me\docs\qingjia.tex` }] })];
+    expect(fileArtifactCandidates('qingjia.pdf', String.raw`C:\Users\me\proj`, items)).toEqual([
+      'C:/Users/me/proj/qingjia.pdf',
+      'C:/Users/me/docs/qingjia.pdf',
+    ]);
+  });
+
+  it('treats Windows drive and UNC clicked paths as final candidates', () => {
+    expect(fileArtifactCandidates(String.raw`C:\out\report.pdf`, '/w', [])).toEqual([
+      String.raw`C:\out\report.pdf`,
+    ]);
+    expect(fileArtifactCandidates(String.raw`\\server\share\a.md`, '/w', [])).toEqual([
+      String.raw`\\server\share\a.md`,
+    ]);
+  });
 });

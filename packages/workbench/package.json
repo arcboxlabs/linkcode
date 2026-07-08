@@ -25,6 +25,7 @@
     "coss-ui": "workspace:*",
     "foxact": "^0.3.7",
     "foxts": "^5.6.0",
+    "pathe": "^2.0.3",
     "react-hook-form": "^7.80.0",
     "swr": "catalog:",
     "tayori": "^0.3.8",
