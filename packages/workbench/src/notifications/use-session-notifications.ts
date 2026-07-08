@@ -2,6 +2,7 @@ import { useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId, SessionNotification } from '@linkcode/schema';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useTranslations } from 'use-intl';
+import { useSessionSelectionStore } from '../surface/selection-store';
 import { useNotificationPrefsStore } from './prefs-store';
 import { shouldPresent } from './should-present';
 
@@ -18,12 +19,11 @@ export type PresentSessionNotification = (display: SessionNotificationDisplay) =
 /**
  * The shared decision layer: folds daemon-classified `session.notification` broadcasts through
  * presentation policy ({@link shouldPresent}) and hands the survivors to the app's presenter.
- * Mounts inside `Workbench` so the active-session identity is exact; without a presenter it's inert.
+ * Suppression keys on the explicitly selected session (the selection store), so this can mount in
+ * a persistent layer instead of the routed workbench — otherwise a webview navigating to Settings
+ * would unmount the subscription and drop background notifications. Inert without a presenter.
  */
-export function useSessionNotifications(
-  present: PresentSessionNotification | undefined,
-  activeSessionId: SessionId | null,
-): void {
+export function useSessionNotifications(present: PresentSessionNotification | undefined): void {
   const client = useLinkCodeClient();
   const t = useTranslations('workbench.notifications');
   const tk = useTranslations('workbench.agentKind');
@@ -34,7 +34,8 @@ export function useSessionNotifications(
       return client.subscribeSessionNotification((notification) => {
         if (signal.aborted) return;
         const prefs = useNotificationPrefsStore.getState();
-        if (!shouldPresent(prefs, notification, activeSessionId, document.hasFocus())) return;
+        const selectedId = useSessionSelectionStore.getState().selectedId;
+        if (!shouldPresent(prefs, notification, selectedId, document.hasFocus())) return;
         present({
           sessionId: notification.sessionId,
           title: notification.title ?? tk(notification.kind),
@@ -42,8 +43,22 @@ export function useSessionNotifications(
         });
       });
     },
-    [client, present, activeSessionId, t, tk],
+    [client, present, t, tk],
   );
+}
+
+/**
+ * Headless mount of {@link useSessionNotifications} for a persistent layer (desktop's permanent
+ * shell, webview's root layout below the connection gate) so the subscription outlives route
+ * changes. Renders nothing.
+ */
+export function SessionNotifier({
+  present,
+}: {
+  present?: PresentSessionNotification;
+}): React.ReactNode {
+  useSessionNotifications(present);
+  return null;
 }
 
 type NotificationsT = ReturnType<typeof useTranslations<'workbench.notifications'>>;

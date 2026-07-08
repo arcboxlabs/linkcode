@@ -7,7 +7,8 @@ import type {
 } from '@linkcode/schema';
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
-import { useMemo } from 'react';
+import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useMemo, useRef } from 'react';
 import { useData, useMutation } from '../runtime/tayori';
 import type { WorkbenchSessionDraft } from './selection-store';
 import { useSessionSelectionStore } from './selection-store';
@@ -67,14 +68,28 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   const active = useMemo(() => {
     if (draft) return null;
-    if (selectedId) {
-      const selected = sessionById(sessions, selectedId);
-      if (selected) return selected;
-    }
-
+    // An explicit selection absent from the loaded list (e.g. a session another client created,
+    // reached via a notification click) must NOT fall back to a different thread — that would show
+    // the wrong conversation. Hold null; the effect below refreshes the list so it resolves.
+    if (selectedId) return sessionById(sessions, selectedId);
     return preferredActiveSession(sessions) ?? sessions.at(-1) ?? null;
   }, [draft, selectedId, sessions]);
   const activeId = active?.sessionId ?? null;
+
+  // Refresh the list once when an explicit selection isn't in it yet, so a click-through to a
+  // not-yet-listed session resolves instead of leaving the surface blank. Deduped per id so a
+  // genuinely gone session doesn't spin.
+  const refreshedForRef = useRef<SessionId | null>(null);
+  useAbortableEffect(() => {
+    if (selectedId == null || draft) return;
+    if (sessionById(sessions, selectedId)) {
+      refreshedForRef.current = null;
+      return;
+    }
+    if (refreshedForRef.current === selectedId) return;
+    refreshedForRef.current = selectedId;
+    void mutate().catch(noop);
+  }, [selectedId, draft, sessions, mutate]);
 
   function select(id: SessionId): void {
     setSelectedId(id);

@@ -1,6 +1,7 @@
 import {
   ConnectionState,
   createDaemonTransport,
+  SessionNotifier,
   useWorkbenchRuntimeStatus,
   Workbench,
   WorkbenchAppProviders,
@@ -29,10 +30,8 @@ export function DesktopApp(): React.ReactNode {
       <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
         {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
         <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-          <Workbench
-            shellComponent={DesktopWorkbenchShell}
-            presentNotification={presentDesktopNotification}
-          />
+          <SessionNotifier present={presentDesktopNotification} />
+          <Workbench shellComponent={DesktopWorkbenchShell} />
         </DaemonConnection>
       </div>
       {settingsOpen ? <SettingsView /> : null}

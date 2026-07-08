@@ -1,8 +1,10 @@
 import {
   createDaemonTransport,
+  SessionNotifier,
   WorkbenchAppProviders,
   WorkbenchProviders,
 } from '@linkcode/workbench';
+import { presentWebNotification } from '@webview/notifications';
 import { useSettingsStore } from '@webview/settings/store';
 import { useSingleton } from 'foxact/use-singleton';
 import { Outlet } from 'react-router';
@@ -32,6 +34,9 @@ function DaemonConnection({
   const { current: transport } = useSingleton(() => createDaemonTransport(daemonUrl));
   return (
     <WorkbenchProviders transport={transport} daemonUrl={daemonUrl}>
+      {/* Persistent across route changes, so background notifications keep arriving while the user
+          is on a non-workbench route such as Settings. */}
+      <SessionNotifier present={presentWebNotification} />
       {children}
     </WorkbenchProviders>
   );
