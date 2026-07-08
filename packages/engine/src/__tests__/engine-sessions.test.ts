@@ -355,3 +355,110 @@ describe('engine session persistence', () => {
     expect(resumed?.startedWith).toMatchObject({ kind: 'claude-code', cwd: '/repo' });
   });
 });
+
+describe('engine attach replay', () => {
+  const QUESTION_ASK: AgentEvent = {
+    type: 'question-request',
+    requestId: 'ask-1',
+    toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+    questions: [
+      {
+        questionId: 'q0',
+        prompt: 'Which one?',
+        multiSelect: false,
+        options: [
+          { optionId: 'o0', label: 'A' },
+          { optionId: 'o1', label: 'B' },
+        ],
+      },
+    ],
+  };
+  const PERMISSION_ASK: AgentEvent = {
+    type: 'permission-request',
+    requestId: 'perm-1',
+    toolCall: { toolCallId: 't2', title: 'Run' },
+    options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+  };
+
+  function eventsAfter(sent: WirePayload[], mark: number): AgentEvent[] {
+    return sent.slice(mark).flatMap((p) => (p.kind === 'agent.event' ? [p.event] : []));
+  }
+
+  async function startedHarness() {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    return { ...h, sessionId: startedId(h.sent, 'r1'), adapter: nullthrow(h.adapters[0]) };
+  }
+
+  it('replays the live status and open asks to an attaching client', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(PERMISSION_ASK);
+    adapter.emit(QUESTION_ASK);
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const replayed = eventsAfter(sent, mark);
+    expect(replayed[0]).toEqual({ type: 'status', status: 'running' });
+    expect(replayed).toContainEqual(PERMISSION_ASK);
+    expect(replayed).toContainEqual(QUESTION_ASK);
+  });
+
+  it('stops replaying an ask once its response arrived', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: {
+        type: 'question-response',
+        requestId: 'ask-1',
+        outcome: { outcome: 'cancelled' },
+      },
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(sent, mark).some((e) => e.type === 'question-request')).toBe(false);
+  });
+
+  it('stops replaying an ask once its tool call settled', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    adapter.emit({
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 't1',
+        title: 'AskUserQuestion',
+        kind: 'other',
+        status: 'failed',
+        content: [],
+      },
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(sent, mark).some((e) => e.type === 'question-request')).toBe(false);
+  });
+
+  it('clears open asks at a turn boundary (idle)', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(PERMISSION_ASK);
+    adapter.emit({ type: 'status', status: 'idle' });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const replayed = eventsAfter(sent, mark);
+    expect(replayed[0]).toEqual({ type: 'status', status: 'idle' });
+    expect(replayed.some((e) => e.type === 'permission-request')).toBe(false);
+  });
+});

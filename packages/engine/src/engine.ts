@@ -1,6 +1,7 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { createAdapter } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
   AgentHistoryId,
   AgentRuntimes,
   ApprovalPolicyState,
@@ -40,7 +41,13 @@ interface Session {
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
+  /** Open permission/question asks by requestId, replayed on attach like the approval policy: the
+   * ask event is its only carrier (history reads reproduce no ephemeral events), so without the
+   * replay a client that (re)connects mid-ask has no card to answer and the turn hangs. */
+  pendingAsks: Map<string, PendingAskEvent>;
 }
+
+type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
@@ -185,6 +192,10 @@ export class Engine {
             this.maybeSetTitle(p.sessionId, p.input.content);
           }
           await session.adapter.send(p.input);
+          // The answer settles the ask; a later attach must not replay it as still-open.
+          if (p.input.type === 'permission-response' || p.input.type === 'question-response') {
+            session.pendingAsks.delete(p.input.requestId);
+          }
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -494,19 +505,24 @@ export class Engine {
         break;
       }
       case 'session.attach': {
-        // Multi-device attach is implicit: events are broadcast to all clients. The one buffered
-        // state an attaching client can't recover otherwise is the approval-policy advertisement
-        // (emitted at adapter start); re-broadcast it — clients fold it idempotently.
+        // Multi-device attach is implicit: events are broadcast to all clients. What gets
+        // re-broadcast here is the buffered state an attaching client can't recover from a
+        // history read: the live status (gates the pending-ask cards and the Stop affordance),
+        // the approval-policy advertisement (emitted once at adapter start), and any open
+        // permission/question asks (ephemeral — their event is the only carrier). Clients fold
+        // status/policy idempotently and dedupe ask events by requestId.
         const attached = this.sessions.get(p.sessionId);
-        if (attached?.approvalPolicy) {
+        if (!attached) break;
+        const replay = (event: AgentEvent): void => {
           this.transport.send(
-            createWireMessage({
-              kind: 'agent.event',
-              sessionId: p.sessionId,
-              event: { type: 'approval-policy-update', state: attached.approvalPolicy },
-            }),
+            createWireMessage({ kind: 'agent.event', sessionId: p.sessionId, event }),
           );
+        };
+        replay({ type: 'status', status: attached.status });
+        if (attached.approvalPolicy) {
+          replay({ type: 'approval-policy-update', state: attached.approvalPolicy });
         }
+        for (const ask of attached.pendingAsks.values()) replay(ask);
         break;
       }
       case 'session.detach': {
@@ -579,7 +595,7 @@ export class Engine {
   ): Promise<void> {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
-    const session: Session = { adapter, unsub: noop, status: 'starting' };
+    const session: Session = { adapter, unsub: noop, status: 'starting', pendingAsks: new Map() };
     session.unsub = adapter.onEvent((event) => {
       // The adapter invokes this synchronously; an uncaught throw here would bubble out of
       // whatever triggered the event (the adapter's own internals, in most cases) instead of
@@ -588,6 +604,9 @@ export class Engine {
         switch (event.type) {
           case 'status':
             session.status = event.status;
+            // A turn boundary settles every ask: the adapter's teardown has resolved them
+            // (cancelled) — replaying one after this would present an unanswerable card.
+            if (event.status === 'idle' || event.status === 'stopped') session.pendingAsks.clear();
             if (event.status === 'stopped') this.sealCurrentRun(sessionId);
             break;
           case 'session-ref':
@@ -595,6 +614,21 @@ export class Engine {
             break;
           case 'approval-policy-update':
             session.approvalPolicy = event.state;
+            break;
+          case 'permission-request':
+          case 'question-request':
+            session.pendingAsks.set(event.requestId, event);
+            break;
+          case 'tool-call':
+            // Mirrors the client's pending semantics: an ask is open until its tool call reaches
+            // a terminal status (also catches teardown's forced-failed sweep on cancel).
+            if (event.toolCall.status === 'completed' || event.toolCall.status === 'failed') {
+              for (const [requestId, ask] of session.pendingAsks) {
+                if (ask.toolCall.toolCallId === event.toolCall.toolCallId) {
+                  session.pendingAsks.delete(requestId);
+                }
+              }
+            }
             break;
           default:
             break;

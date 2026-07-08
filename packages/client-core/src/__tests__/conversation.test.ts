@@ -288,6 +288,36 @@ describe('buildConversation', () => {
     expect(settled.pendingQuestionIds).toEqual([]);
   });
 
+  it('folds an attach-replayed duplicate ask only once, by requestId', () => {
+    const ask: AgentEvent = {
+      type: 'question-request',
+      requestId: 'ask1',
+      toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+      questions: [
+        {
+          questionId: 'q0',
+          prompt: 'Which one?',
+          multiSelect: false,
+          options: [
+            { optionId: 'o0', label: 'A' },
+            { optionId: 'o1', label: 'B' },
+          ],
+        },
+      ],
+    };
+    const perm: AgentEvent = {
+      type: 'permission-request',
+      requestId: 'p1',
+      toolCall: { toolCallId: 't2', title: 'Run' },
+      options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+    };
+    const c = buildConversation([userText('go'), ask, perm, ask, perm]);
+    expect(c.items.filter((i) => i.kind === 'question')).toHaveLength(1);
+    expect(c.items.filter((i) => i.kind === 'approval')).toHaveLength(1);
+    expect(c.pendingQuestionIds).toEqual(['ask1']);
+    expect(c.pendingPermissionIds).toEqual(['p1']);
+  });
+
   it('captures lifecycle state (status / usage / mode / stop / error)', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },
