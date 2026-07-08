@@ -1,0 +1,31 @@
+{
+  "name": "@linkcode/assets",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --format=sukka ."
+  },
+  "dependencies": {
+    "@linkcode/schema": "workspace:*",
+    "foxts": "^5.6.0",
+    "make-fetch-happen": "^16.0.1",
+    "semver": "^7.8.5",
+    "ssri": "^14.0.0",
+    "tar": "^7.5.19",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/make-fetch-happen": "^10.0.4",
+    "@types/node": "catalog:",
+    "@types/semver": "^7.7.1",
+    "@types/ssri": "^7.1.5",
+    "typescript": "catalog:"
+  }
+}

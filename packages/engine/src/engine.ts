@@ -5,6 +5,7 @@ import type {
   AgentRuntimes,
   ApprovalPolicyState,
   ContentBlock,
+  ManagedAssetStatus,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -53,6 +54,13 @@ export interface EngineDeps {
   previewRoutes?: PreviewRouteRegistry;
   /** Boot-time probe result (`collectAgentRuntimes()`), served to clients on `agent-runtime.list`. */
   agentRuntimes?: AgentRuntimes;
+  /** Managed-asset store status, served to clients on `asset.list`. */
+  assets?: AssetService;
+}
+
+/** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
+export interface AssetService {
+  statuses(): ManagedAssetStatus[];
 }
 
 /**
@@ -80,6 +88,7 @@ export class Engine {
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
   private readonly agentRuntimes: AgentRuntimes;
+  private readonly assets?: AssetService;
   private seq = 0;
 
   constructor(
@@ -106,6 +115,7 @@ export class Engine {
       : undefined;
     this.artifactHost = new ArtifactHostService(routes);
     this.agentRuntimes = deps.agentRuntimes ?? {};
+    this.assets = deps.assets;
   }
 
   async start(): Promise<void> {
@@ -319,6 +329,16 @@ export class Engine {
             kind: 'agent-runtime.listed',
             replyTo: p.clientReqId,
             runtimes: this.agentRuntimes,
+          }),
+        );
+        break;
+      }
+      case 'asset.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'asset.listed',
+            replyTo: p.clientReqId,
+            assets: this.assets?.statuses() ?? [],
           }),
         );
         break;

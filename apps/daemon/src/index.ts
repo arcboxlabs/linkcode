@@ -1,4 +1,5 @@
 import { agentRuntimeProber } from '@linkcode/agent-adapter';
+import { AssetManager } from '@linkcode/assets';
 import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
@@ -72,9 +73,39 @@ async function main(): Promise<void> {
   // proxy (reader). Preview traffic bypasses daemon auth by decision — the boundary is
   // the loopback bind (see config.ts DEFAULT_HOST); remote exposure is the tunnel's job.
   const previewRoutes = new PreviewRouteRegistry();
+  // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
+  // store into spawn resolution — managed wins over detected as soon as an install lands on disk.
+  const assets = new AssetManager();
+  const gc = assets.gcAtBoot();
+  if (gc.removed.length > 0) {
+    console.log(`[linkcode/daemon] assets gc: removed ${gc.removed.join(', ')}`);
+  }
+  if (gc.skipped.length > 0) {
+    console.warn(`[linkcode/daemon] assets gc: skipped ${gc.skipped.join(', ')}`);
+  }
+  agentRuntimeProber.setManagedResolver((kind) => assets.managedBinary(`agent:${kind}`));
   // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
   // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
   const agentRuntimes = await agentRuntimeProber.collect();
+  // Warm missing agent pairs in the background — boot never waits on a download. Anything the
+  // probe already found usable (detected CLI, SDK platform package) is left alone.
+  for (const kind of ['claude-code', 'codex'] as const) {
+    if (agentRuntimes[kind]?.status === 'available') continue;
+    void assets
+      .ensure(`agent:${kind}`)
+      .catch((err) => {
+        console.warn(
+          `[linkcode/daemon] managed install failed for ${kind}: ${extractErrorMessage(err)}`,
+        );
+      })
+      .then((installed) => {
+        if (installed) {
+          console.log(
+            `[linkcode/daemon] managed runtime ready: ${installed.id}@${installed.version}`,
+          );
+        }
+      });
+  }
   const engine = new Engine(hub, {
     providerStore: store,
     ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
@@ -82,6 +113,7 @@ async function main(): Promise<void> {
     workspaceStore: createWorkspaceStore(databasePath()),
     previewRoutes,
     agentRuntimes,
+    assets,
   });
   await engine.start();
   // Runs before any listener binds, so `workspace.list` always includes the chat workspace by the

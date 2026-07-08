@@ -38,7 +38,7 @@ All signing and R2 secrets live in the repo's GitHub **`release` Environment** (
 
 ## Packaging inputs (staging & version pins)
 
-- **Cross-arch staging.** Each platform build stages *both* arches' sidecar trees before packaging so `extraResources: sidecar/${arch}` resolves: "Build PTY sidecar (both arches)" (`.github/actions/build-sidecar`). **Agent CLI binaries do not ship** (CODE-114): `files` globs in `electron-builder.yml` exclude the SDK platform packages from the asar, and the daemon spawns a detected user install or a managed download instead. The runtime `LINKCODE_PTY_SIDECAR_PATH` / `LINKCODE_AGENT_BIN_DIR` contract is desktop-owned — see [`apps/desktop/AGENTS.md`](../apps/desktop/AGENTS.md).
+- **Cross-arch staging.** Each platform build stages *both* arches' sidecar trees before packaging so `extraResources: sidecar/${arch}` resolves: "Build PTY sidecar (both arches)" (`.github/actions/build-sidecar`). **Agent CLI binaries do not ship** (CODE-114): `files` globs in `electron-builder.yml` exclude the SDK platform packages from the asar, and the daemon spawns a detected user install or a managed download from its own asset store (`@linkcode/assets`, CODE-111). The runtime `LINKCODE_PTY_SIDECAR_PATH` contract is desktop-owned — see [`apps/desktop/AGENTS.md`](../apps/desktop/AGENTS.md).
 - **Electron version.** `electron-builder.yml` pins `electronVersion: 42.4.1` because electron-builder can't read pnpm's `catalog:` protocol and downloads per-platform Electron by exact version. Keep it in sync with the `electron: ^42.4.1` catalog entry in `pnpm-workspace.yaml`, or a drift silently packages the wrong Electron.
 
 ## Post-pack verification

@@ -3,6 +3,7 @@ export * from './app/app-providers';
 export * from './app/connection-state';
 export * from './app/workbench-app';
 export * from './app/workbench-providers';
+export * from './assets/hooks';
 export * from './files/hooks';
 export * from './files/panel';
 export * from './git/hooks';

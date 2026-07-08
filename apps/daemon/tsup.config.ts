@@ -9,9 +9,11 @@ export default defineConfig({
   clean: true,
   // Inlined CJS deps (socket.io's tree) call `require()` at runtime; esbuild's ESM output has no
   // implicit require, so provide one or the bundle dies on boot with "Dynamic require of ... is
-  // not supported".
+  // not supported". The import binding carries a private alias: the banner is prepended AFTER
+  // esbuild, so a bundled module's own preserved `import { createRequire }` would otherwise
+  // redeclare the identifier and kill the boot.
   banner: {
-    js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+    js: "import { createRequire as __linkcodeCreateRequire } from 'node:module'; const require = __linkcodeCreateRequire(import.meta.url);",
   },
   // Workspace packages are exported as TS source and must be bundled in.
   noExternal: [/^@linkcode\//],

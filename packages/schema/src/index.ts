@@ -17,6 +17,7 @@ export * from './daemon-runtime';
 export * from './file';
 export * from './git';
 export * from './history';
+export * from './managed-asset';
 export * from './permission';
 export * from './plan';
 export * from './provider-config';

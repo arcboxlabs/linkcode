@@ -1,0 +1,95 @@
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AssetDescriptor } from '../catalog';
+import { AssetManager } from '../manager';
+import { assetDir } from '../paths';
+import { currentPlatformKey } from '../platform';
+import type { TgzFixture } from './helpers/fixtures';
+import { makeTgz } from './helpers/fixtures';
+import type { LocalServer } from './helpers/local-server';
+import { startLocalServer } from './helpers/local-server';
+
+const platform = currentPlatformKey();
+if (!platform) throw new Error('tests require a catalog-supported platform');
+
+const servers: LocalServer[] = [];
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await Promise.all(servers.splice(0).map((server) => server.close()));
+});
+
+function freshStore(): void {
+  vi.stubEnv('LINKCODE_ASSETS_DIR', mkdtempSync(join(tmpdir(), 'manager-store-')));
+}
+
+async function servedDescriptor(version: string): Promise<AssetDescriptor> {
+  const fixture: TgzFixture = makeTgz('package/tool', `#!/bin/sh\necho ${version}\n`);
+  const server = await startLocalServer((_req, res) => {
+    res.end(fixture.bytes);
+  });
+  servers.push(server);
+  return {
+    id: 'tool:tectonic',
+    binaryBase: 'tool',
+    version: { kind: 'pinned', version },
+    artifacts: {
+      [platform!]: {
+        kind: 'baked',
+        url: `${server.url}/a.tgz`,
+        integrity: fixture.integrity,
+        size: fixture.bytes.length,
+        member: 'package/tool',
+        format: 'tgz',
+      },
+    },
+  };
+}
+
+describe('AssetManager', () => {
+  it('answers managed lookups synchronously once ensure() has installed', async () => {
+    freshStore();
+    const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });
+    expect(manager.wantedVersionOf('tool:tectonic')).toBe('2.0.0');
+    expect(manager.managedBinary('tool:tectonic')).toBeUndefined();
+
+    const installed = await manager.ensure('tool:tectonic');
+    expect(installed?.version).toBe('2.0.0');
+    expect(manager.managedBinary('tool:tectonic')).toBe(installed?.path);
+  });
+
+  it('gcAtBoot removes superseded versions and tmp orphans but keeps the wanted version', async () => {
+    freshStore();
+    const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });
+    await manager.ensure('tool:tectonic');
+    const dir = assetDir('tool:tectonic');
+    mkdirSync(join(dir, '1.0.0'), { recursive: true });
+    writeFileSync(join(dir, '1.0.0', 'tool'), 'old');
+    mkdirSync(join(dir, '.tmp-orphan'), { recursive: true });
+
+    const report = manager.gcAtBoot();
+    expect(report.removed.sort()).toEqual([join(dir, '.tmp-orphan'), join(dir, '1.0.0')]);
+    expect(existsSync(join(dir, '2.0.0'))).toBe(true);
+  });
+
+  it('leaves unpinnable assets alone: ensure() is undefined and GC does not touch their dirs', async () => {
+    freshStore();
+    const unpinnable: AssetDescriptor = {
+      id: 'agent:opencode',
+      binaryBase: 'opencode',
+      version: { kind: 'sdk-version', package: 'absent-sdk' },
+      artifacts: {},
+    };
+    const anchor = join(mkdtempSync(join(tmpdir(), 'no-sdk-')), 'anchor.js');
+    writeFileSync(anchor, '');
+    const manager = new AssetManager({ catalog: [unpinnable], pinFrom: anchor });
+
+    const dir = assetDir('agent:opencode');
+    mkdirSync(join(dir, '9.9.9'), { recursive: true });
+    await expect(manager.ensure('agent:opencode')).resolves.toBeUndefined();
+    expect(manager.managedBinary('agent:opencode')).toBeUndefined();
+    expect(manager.gcAtBoot()).toEqual({ removed: [], skipped: [] });
+    expect(existsSync(join(dir, '9.9.9'))).toBe(true);
+  });
+});

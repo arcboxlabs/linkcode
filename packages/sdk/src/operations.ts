@@ -12,6 +12,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
   SessionId,
@@ -134,6 +135,11 @@ export function setProviderConfig(
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
 export function listAgentRuntimes(options?: Options): RequestResult<AgentRuntimes> {
   return resolveClient(options).listAgentRuntimes();
+}
+
+/** Managed-asset store status: wanted versions and what is installed (CODE-111). */
+export function listAssets(options?: Options): RequestResult<ManagedAssetStatus[]> {
+  return resolveClient(options).listAssets();
 }
 
 /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */

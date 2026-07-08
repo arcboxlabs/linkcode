@@ -1,5 +1,4 @@
 import type { AgentKind, AgentRuntimes } from '@linkcode/schema';
-import { vendoredAgentBinary } from '../native/agent-bin';
 import type { AgentCliProbe, DetectedAgentRuntime, ProbeableKind } from './base';
 import { ClaudeCodeProbe } from './claude-code';
 import { CodexProbe } from './codex';
@@ -14,10 +13,20 @@ export type DetectedAgentRuntimes = Partial<Record<AgentKind, DetectedAgentRunti
  */
 export class AgentRuntimeProber {
   private detected: DetectedAgentRuntimes = {};
+  private managedResolver: ((kind: ProbeableKind) => string | undefined) | undefined;
 
   constructor(
     private readonly probes: AgentCliProbe[] = [new ClaudeCodeProbe(), new CodexProbe()],
   ) {}
+
+  /**
+   * Wire the daemon's managed-asset store into spawn resolution. A live function, not a
+   * snapshot: managed installs complete in the background after boot and must win as soon
+   * as they land on disk.
+   */
+  setManagedResolver(resolver: (kind: ProbeableKind) => string | undefined): void {
+    this.managedResolver = resolver;
+  }
 
   /** Probe the known install locations for user-installed agent CLIs. */
   async probe(): Promise<DetectedAgentRuntimes> {
@@ -37,18 +46,17 @@ export class AgentRuntimeProber {
   }
 
   /**
-   * Resolution order for the CLI an adapter spawns: bundled (the exact SDK-paired binary staged by
-   * the packaged host) → detected (user-installed, version-verified at boot) → `undefined` (the SDK
-   * resolves its own platform package out of node_modules — dev and standalone daemons). Bundled
-   * outranks detected because it is the CI-tested pair; detected outranks SDK self-resolution
-   * because in packaged hosts the latter lands inside the asar (spawn-hostile and host-arch only).
-   * Once the compat manifest (CODE-77) lands, detected runtimes are additionally gated by version
-   * range here.
+   * Resolution order for the CLI an adapter spawns: managed (the exact SDK-paired binary the
+   * daemon's asset store installed) → detected (user-installed, version-verified at boot) →
+   * `undefined` (the SDK resolves its own platform package out of node_modules — dev and
+   * standalone daemons). Managed outranks detected because it is the SDK-pinned pair; detected
+   * outranks SDK self-resolution because in packaged hosts the latter lands inside the asar
+   * (spawn-hostile and host-arch only). Once the compat manifest (CODE-77) lands, detected
+   * runtimes are additionally gated by version range here.
    */
   resolveBinary(kind: ProbeableKind): string | undefined {
-    const probe = this.probes.find((candidate) => candidate.kind === kind);
-    if (!probe) return undefined;
-    return vendoredAgentBinary(kind, probe.binaryName()) ?? this.detected[kind]?.path;
+    if (!this.probes.some((candidate) => candidate.kind === kind)) return undefined;
+    return this.managedResolver?.(kind) ?? this.detected[kind]?.path;
   }
 
   /**
@@ -62,14 +70,14 @@ export class AgentRuntimeProber {
     const runtimes: AgentRuntimes = { pi: { status: 'available', source: 'builtin' } };
     await Promise.all(
       this.probes.map(async (probe) => {
-        const bundled = vendoredAgentBinary(probe.kind, probe.binaryName());
-        if (bundled) {
-          // Version is probed (not read from a stamp) so bundled and detected report the same fact.
-          const probed = await probe.probeAt(bundled);
+        const managed = this.managedResolver?.(probe.kind);
+        if (managed) {
+          // Version is probed (not read from the store) so managed and detected report the same fact.
+          const probed = await probe.probeAt(managed);
           runtimes[probe.kind] = {
             status: 'available',
-            source: 'bundled',
-            path: bundled,
+            source: 'managed',
+            path: managed,
             ...probed,
           };
         } else {
