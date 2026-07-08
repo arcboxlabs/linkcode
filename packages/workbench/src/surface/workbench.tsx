@@ -328,10 +328,18 @@ function WorkbenchSessionSurface({
     allWorkspaces.some((workspace) => workspace.workspaceId === lastWorkspaceId)
       ? lastWorkspaceId
       : null;
+  // Same validation as the persisted default: the store-held draft outlives daemon switches, so
+  // its preselection can name a workspace this daemon has never heard of.
+  const requestedDraftWorkspaceId = sessions.draft?.workspaceId ?? null;
+  const draftWorkspaceId =
+    requestedDraftWorkspaceId != null &&
+    allWorkspaces.some((workspace) => workspace.workspaceId === requestedDraftWorkspaceId)
+      ? requestedDraftWorkspaceId
+      : null;
   const draft: NewSessionDraft | null = sessions.draft
     ? {
         initialWorkspaceId:
-          sessions.draft.workspaceId ??
+          draftWorkspaceId ??
           persistedWorkspaceId ??
           chatWorkspace?.workspaceId ??
           projectWorkspaces[0]?.workspaceId ??

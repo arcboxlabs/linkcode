@@ -16,7 +16,7 @@ const SETTINGS: NavLocation = { surface: 'settings' };
 
 beforeEach(() => {
   useNavigationHistoryStore.setState({ back: [], forward: [], overlay: null });
-  useSessionSelectionStore.setState({ selectedId: null });
+  useSessionSelectionStore.setState({ selectedId: null, draft: null });
 });
 
 describe('openOverlay', () => {
@@ -28,6 +28,15 @@ describe('openOverlay', () => {
     expect(state.overlay).toBe('settings');
     expect(state.back).toEqual([thread('a')]);
     expect(state.forward).toEqual([]);
+  });
+
+  it('records the open draft as the origin, winning over the selection', () => {
+    useSessionSelectionStore.setState({ selectedId: sid('a'), draft: { workspaceId: null } });
+    useNavigationHistoryStore.getState().openOverlay('settings');
+
+    expect(useNavigationHistoryStore.getState().back).toEqual([
+      { surface: 'new-thread', workspaceId: null },
+    ]);
   });
 
   it('records no origin without a selection', () => {
@@ -50,11 +59,13 @@ describe('openOverlay', () => {
 describe('backFromOverlay', () => {
   it('applies a thread target to the selection store and pushes the overlay onto forward', () => {
     useNavigationHistoryStore.setState({ back: [thread('a')], overlay: 'settings' });
-    useSessionSelectionStore.getState().setSelectedId(sid('b'));
+    useSessionSelectionStore.setState({ selectedId: sid('b'), draft: { workspaceId: null } });
 
     useNavigationHistoryStore.getState().backFromOverlay();
 
     expect(useSessionSelectionStore.getState().selectedId).toBe(sid('a'));
+    // A thread target must also clear the draft, or the draft page wins the derivation.
+    expect(useSessionSelectionStore.getState().draft).toBeNull();
     const state = useNavigationHistoryStore.getState();
     expect(state.overlay).toBeNull();
     expect(state.back).toEqual([]);
@@ -82,15 +93,17 @@ describe('backFromOverlay', () => {
     expect(state.forward).toEqual([]);
   });
 
-  it('closes without touching selection for a draft target', () => {
+  it('applies a draft target through the selection store without touching the selection', () => {
     useNavigationHistoryStore.setState({
       back: [{ surface: 'new-thread', workspaceId: null }],
       overlay: 'settings',
     });
+    useSessionSelectionStore.getState().setSelectedId(sid('b'));
 
     useNavigationHistoryStore.getState().backFromOverlay();
 
-    expect(useSessionSelectionStore.getState().selectedId).toBeNull();
+    expect(useSessionSelectionStore.getState().selectedId).toBe(sid('b'));
+    expect(useSessionSelectionStore.getState().draft).toEqual({ workspaceId: null });
     const state = useNavigationHistoryStore.getState();
     expect(state.overlay).toBeNull();
     expect(state.forward).toEqual([SETTINGS]);

@@ -48,15 +48,13 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
   },
   setOverlay: (overlay) => set({ overlay }),
   openOverlay(surface) {
-    const { overlay } = get();
-    if (overlay === surface) return;
-    // From another overlay the origin is that overlay. From the workbench, module-scope callers
-    // can't see the hook's fallback-resolved thread or draft, so the origin is the explicit
-    // selection or nothing — Esc still visually returns either way, the covered surface keeps
-    // its state.
-    const { selectedId } = useSessionSelectionStore.getState();
-    const from: NavLocation | null = overlay
-      ? { surface: overlay }
+    if (get().overlay === surface) return;
+    // Module-scope callers can't see the hook's fallback-resolved thread, so the origin is the
+    // open draft, the explicit selection, or nothing — Esc still visually returns either way,
+    // the covered surface keeps its state.
+    const { selectedId, draft } = useSessionSelectionStore.getState();
+    const from: NavLocation | null = draft
+      ? { surface: 'new-thread', workspaceId: draft.workspaceId }
       : selectedId
         ? { surface: 'thread', sessionId: selectedId }
         : null;
@@ -68,16 +66,19 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
     if (overlay === null) return;
     // Pops exactly one entry; `travel` keeps the bookkeeping (the overlay location moves onto
     // forward on a hit; an empty stack leaves forward alone). Overlay-surface targets re-raise
-    // that overlay. Threads apply through the selection store — no cold-session resume, and a
-    // dead id resolves through the workbench's preferred/most-recent fallback. Draft targets
-    // apply as close-only: the draft underneath is still showing.
+    // that overlay. Thread and draft targets apply through the selection store — no cold-session
+    // resume, and a dead id resolves through the workbench's preferred/most-recent fallback.
     const target = get().travel('back', { surface: overlay }, trueFn);
     if (target !== null && target.surface !== 'thread' && target.surface !== 'new-thread') {
       set({ overlay: target.surface });
       return;
     }
+    const selection = useSessionSelectionStore.getState();
     if (target?.surface === 'thread') {
-      useSessionSelectionStore.getState().setSelectedId(target.sessionId);
+      selection.setDraft(null);
+      selection.setSelectedId(target.sessionId);
+    } else if (target?.surface === 'new-thread') {
+      selection.setDraft({ workspaceId: target.workspaceId });
     }
     set({ overlay: null });
   },
