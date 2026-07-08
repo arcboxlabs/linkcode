@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import process, { argv } from 'node:process';
 /**
@@ -72,6 +72,23 @@ const EXPECTED: Partial<Record<string, PlatformExpectation>> = {
 const SIDECAR_BINARY = argv[2] === 'win' ? 'linkcode-pty.exe' : 'linkcode-pty';
 /** Paths inside app.asar that the daemon supervisor and its migrator depend on at runtime. */
 const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.json'];
+/**
+ * Agent CLI platform packages must NOT ship (CODE-114): the daemon spawns a detected user
+ * install or a managed download instead. These prefixes match only the platform-suffixed
+ * binary packages — the SDK JS packages (`claude-agent-sdk`, `codex-sdk`) stay in the asar.
+ */
+const EXCLUDED_MODULE_PREFIXES = [
+  'node_modules/@anthropic-ai/claude-agent-sdk-',
+  'node_modules/@openai/codex-darwin-',
+  'node_modules/@openai/codex-linux-',
+  'node_modules/@openai/codex-win32-',
+];
+/**
+ * Ceiling per shipped artifact. Normal artifacts sit at ~120–165 MB since agent binaries stopped
+ * shipping (CODE-114); one reintroduced CLI adds ~66 MB compressed and trips this long before
+ * users download it.
+ */
+const MAX_ARTIFACT_BYTES = 200 * 1024 * 1024;
 
 /** The packed app must carry the host runtime: bundled daemon in the asar, sidecar beside it. */
 function verifyHostRuntime(resourceDir: string, problems: string[]): void {
@@ -97,6 +114,42 @@ function verifyHostRuntime(resourceDir: string, problems: string[]): void {
   }
   if (!existsSync(join(RELEASE_DIR, resourceDir, SIDECAR_BINARY))) {
     problems.push(`${resourceDir}: missing PTY sidecar ${SIDECAR_BINARY}`);
+  }
+  verifyNoAgentBinaries(resourceDir, asarPath, problems);
+}
+
+/** The packed app must NOT carry agent CLI binaries — builtin shipping ended with CODE-114. */
+function verifyNoAgentBinaries(resourceDir: string, asarPath: string, problems: string[]): void {
+  if (existsSync(join(RELEASE_DIR, resourceDir, 'agent-bin'))) {
+    problems.push(
+      `${resourceDir}: agent-bin shipped — builtin agent binaries were removed (CODE-114)`,
+    );
+  }
+  const shipped: string[] = [];
+  for (const raw of listPackage(asarPath, { isPack: false })) {
+    const normalized = raw.replaceAll('\\', '/');
+    const entry = normalized[0] === '/' ? normalized.slice(1) : normalized;
+    if (EXCLUDED_MODULE_PREFIXES.some((prefix) => entry.startsWith(prefix))) shipped.push(entry);
+  }
+  if (shipped.length > 0) {
+    problems.push(
+      `${resourceDir}/app.asar: agent platform packages shipped: ${shipped[0]} (+${shipped.length - 1} more)`,
+    );
+  }
+  for (const prefix of EXCLUDED_MODULE_PREFIXES) {
+    const dir = join(
+      RELEASE_DIR,
+      resourceDir,
+      'app.asar.unpacked',
+      ...prefix.split('/').slice(0, -1),
+    );
+    const base = prefix.split('/').at(-1)!;
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir)) {
+      if (entry.startsWith(base)) {
+        problems.push(`${resourceDir}/app.asar.unpacked: agent platform package shipped: ${entry}`);
+      }
+    }
   }
 }
 
@@ -177,7 +230,18 @@ async function main(): Promise<number> {
 
   const problems: string[] = [];
   for (const name of expected.artifacts) {
-    if (readOrNull(join(RELEASE_DIR, name)) === null) problems.push(`missing artifact: ${name}`);
+    let size: number;
+    try {
+      size = statSync(join(RELEASE_DIR, name)).size;
+    } catch {
+      problems.push(`missing artifact: ${name}`);
+      continue;
+    }
+    if (!name.endsWith('.blockmap') && size > MAX_ARTIFACT_BYTES) {
+      problems.push(
+        `${name}: ${Math.round(size / 1e6)} MB exceeds the ${Math.round(MAX_ARTIFACT_BYTES / 1e6)} MB ceiling — agent binaries must not ship (CODE-114)`,
+      );
+    }
   }
   await Promise.all(
     Object.entries(expected.feeds).map(([feed, archTokens]) =>
