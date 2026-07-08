@@ -1,4 +1,5 @@
 import type {
+  AgentKind,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -7,6 +8,7 @@ import type {
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
+import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import type { NewSessionDraft, NewSessionSubmission } from './new-session-surface';
@@ -32,6 +34,12 @@ export interface ShellFrameProps
   activeSession: SessionInfo | null;
   /** Non-null while the new-session page is up — it replaces the conversation column. */
   draft: NewSessionDraft | null;
+  /** Agent runtime availability cues for the new-session page's onboarding flow (CODE-112). */
+  runtimeCues?: AgentRuntimeCues;
+  /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
+  onDownloadAgent?: (kind: AgentKind) => void;
+  /** Accepts an out-of-range detected version for the current pick. */
+  onContinueUnverified?: (kind: AgentKind) => void;
   conversation: ConversationViewModel;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
@@ -81,6 +89,9 @@ export function ShellFrame({
   chatWorkspace,
   activeSession,
   draft,
+  runtimeCues,
+  onDownloadAgent,
+  onContinueUnverified,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -162,6 +173,9 @@ export function ShellFrame({
             draft={draft}
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}
+            runtimeCues={runtimeCues}
+            onContinueUnverified={onContinueUnverified}
+            onDownloadAgent={onDownloadAgent}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
           />
