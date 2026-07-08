@@ -30,9 +30,9 @@
  * removed alongside this.
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import process from 'node:process';
 
 const HOST_PLATFORM: Partial<Record<NodeJS.Platform, BuilderPlatform>> = {
@@ -55,6 +55,26 @@ const releaseDir = join(desktopDir, 'release');
  */
 const stagingDir = join(tmpdir(), 'linkcode-desktop-staging');
 
+/**
+ * Absolute path to a PATH executable. Node's `execFileSync` does not do Windows PATHEXT resolution
+ * without a shell, so a bare `'pnpm'` is `spawnSync pnpm ENOENT` on the Windows runner (pnpm is a
+ * `.cmd`/`.exe` shim there). Resolve it explicitly and keep `shell: false` so forwarded electron-
+ * builder args (signing `-c…` values that may contain spaces) reach the child unmangled.
+ */
+function resolveExecutable(name: string): string {
+  if (process.platform !== 'win32') return name;
+  const dirs = (process.env.PATH ?? '').split(delimiter);
+  for (const dir of dirs) {
+    for (const ext of ['.cmd', '.exe', '.bat', '']) {
+      const candidate = join(dir, name + ext);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return name; // not found on PATH — let execFileSync surface the ENOENT loudly
+}
+
+const PNPM = resolveExecutable('pnpm');
+
 const platformTokens = new Set<string>(BUILDER_PLATFORMS);
 const args = process.argv.slice(2);
 const devshell = args.includes('--devshell');
@@ -69,7 +89,7 @@ function materializeStaging(): void {
   rmSync(stagingDir, { recursive: true, force: true });
   // --legacy: deploy without pnpm's inject-workspace-packages requirement (v10+ default refusal).
   execFileSync(
-    'pnpm',
+    PNPM,
     ['--filter', '@linkcode/desktop', '--prod', 'deploy', '--legacy', stagingDir],
     { cwd: repoRoot, stdio: 'inherit' },
   );
@@ -102,7 +122,7 @@ function build(): void {
     ...(devshell ? ['--dir'] : []),
     ...passthrough,
   ];
-  execFileSync('pnpm', builderArgs, { cwd: desktopDir, stdio: 'inherit' });
+  execFileSync(PNPM, builderArgs, { cwd: desktopDir, stdio: 'inherit' });
 }
 
 materializeStaging();
