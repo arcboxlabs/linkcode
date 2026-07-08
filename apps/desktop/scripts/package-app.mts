@@ -29,7 +29,7 @@
  * collector patch; the .pnpmfile.cjs drizzle-orm↔expo-sqlite sever stays — it keeps the expo tree
  * out of this deploy closure, which is orthogonal to the collector.
  */
-import { cpSync, rmSync } from 'node:fs';
+import { cpSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -97,12 +97,28 @@ function materializeStaging(): void {
   }
 }
 
+/**
+ * Build only the arches whose PTY sidecar was staged. electron-builder.yml targets both x64 and
+ * arm64, but `extraResources: sidecar/${arch}` can only resolve an arch that was staged — CI stages
+ * both (`stage-sidecar --all`), a local `stage:host-runtime` stages just the host. Deriving the
+ * arch set from `sidecar/` keeps both paths correct without a bare invocation trying to pack an
+ * arch whose sidecar is missing.
+ */
+const KNOWN_ARCHES = new Set(['x64', 'arm64']);
+
+function stagedArches(): string[] {
+  const arches = readdirSync(join(desktopDir, 'sidecar')).filter((name) => KNOWN_ARCHES.has(name));
+  if (arches.length === 0) throw new Error('no staged sidecar arch; run stage:host-runtime first');
+  return arches;
+}
+
 function build(): void {
   const config = devshell ? 'electron-builder.devshell.yml' : 'electron-builder.yml';
   const builderArgs = [
     'exec',
     'electron-builder',
     `--${platform}`,
+    ...stagedArches().map((arch) => `--${arch}`),
     '--projectDir',
     stagingDir,
     '--config',

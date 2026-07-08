@@ -20,15 +20,14 @@
  * as the desktop app does since CODE-114 — shipping them would only bloat the artifact.
  */
 import { cpSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 import crossSpawn from 'cross-spawn';
 
 const daemonDir = join(import.meta.dirname, '..');
 const repoRoot = join(daemonDir, '..', '..');
-const outDir = process.argv[2]
-  ? join(process.cwd(), process.argv[2])
-  : join(daemonDir, 'standalone');
+// resolve() keeps an absolute argument absolute (a CI `/tmp/daemon`), only anchoring a relative one.
+const outDir = process.argv[2] ? resolve(process.argv[2]) : join(daemonDir, 'standalone');
 
 /**
  * Host-arch agent CLI packages the standalone daemon downloads on demand instead of shipping.
