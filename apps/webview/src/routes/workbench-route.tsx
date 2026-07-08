@@ -1,5 +1,6 @@
 import { useCommandPaletteHotkey, useCommandPaletteStore, Workbench } from '@linkcode/workbench';
 import { usePageTitle } from '@webview/hooks/use-page-title';
+import { presentWebNotification } from '@webview/notifications';
 import { WebWorkbenchShell } from '@webview/shell/web-workbench-shell';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
@@ -31,5 +32,11 @@ export function WorkbenchRoute(): React.ReactNode {
     return () => unregisterCommands('webview');
   }, [navigate, t]);
 
-  return <Workbench shellComponent={WebWorkbenchShell} paletteShortcut={PALETTE_SHORTCUT} />;
+  return (
+    <Workbench
+      shellComponent={WebWorkbenchShell}
+      paletteShortcut={PALETTE_SHORTCUT}
+      presentNotification={presentWebNotification}
+    />
+  );
 }

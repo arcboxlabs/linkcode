@@ -2,6 +2,7 @@ import { RootLayout } from '@webview/routes/root-layout';
 import { AgentsSettings } from '@webview/routes/settings/agents';
 import { ConnectionSettings } from '@webview/routes/settings/connection';
 import { GeneralSettings } from '@webview/routes/settings/general';
+import { NotificationsSettings } from '@webview/routes/settings/notifications';
 import { SettingsLayout } from '@webview/routes/settings/settings-layout';
 import { WorkbenchRoute } from '@webview/routes/workbench-route';
 import { createBrowserRouter } from 'react-router';
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <GeneralSettings /> },
           { path: 'connection', element: <ConnectionSettings /> },
+          { path: 'notifications', element: <NotificationsSettings /> },
           { path: 'agents', element: <AgentsSettings /> },
         ],
       },
