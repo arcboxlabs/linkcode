@@ -279,6 +279,50 @@ describe('AmpAdapter turn mapping', () => {
     expect(ofType(events, 'status').at(-1)?.status).toBe('idle');
   });
 
+  it('does not emit a second stop when a cancel races the post-result exit await', async () => {
+    const { adapter, events } = await startedAdapter();
+    adapter.script((request) =>
+      (async function* () {
+        yield init();
+        yield success();
+        // The SDK yields the result, then awaits process exit — an abort in that window
+        // rejects the stream after the turn already settled.
+        await new Promise<never>((_resolve, reject) => {
+          request.signal?.addEventListener('abort', () => {
+            reject(new Error('Operation was aborted'));
+          });
+        });
+      })(),
+    );
+    const turn = adapter.send({ type: 'prompt', content: [textBlock('quick')] });
+    await vi.waitFor(() => expect(ofType(events, 'stop')).toHaveLength(1));
+    await adapter.send({ type: 'cancel' });
+    await turn;
+    expect(ofType(events, 'stop').map((event) => event.stopReason)).toEqual(['end_turn']);
+    expect(ofType(events, 'error')).toHaveLength(0);
+  });
+
+  it('binds the session-ref after a first turn that never reached its result', async () => {
+    const { adapter, events } = await startedAdapter();
+    adapter.script((request) =>
+      (async function* () {
+        yield init(); // thread exists server-side from here on
+        await new Promise<never>((_resolve, reject) => {
+          const fail = (): void => reject(new Error('Amp CLI process was aborted'));
+          // The abort can land before this generator body runs (like the real SDK, which
+          // also checks the signal synchronously before waiting).
+          if (request.signal?.aborted) fail();
+          else request.signal?.addEventListener('abort', fail);
+        });
+      })(),
+    );
+    const turn = adapter.send({ type: 'prompt', content: [textBlock('doomed')] });
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(1));
+    await adapter.send({ type: 'cancel' });
+    await turn;
+    expect(ofType(events, 'session-ref').map((event) => event.historyId)).toEqual([SID]);
+  });
+
   it('surfaces an execution error without a stop, and maps max-turns to its stop reason', async () => {
     const { adapter, events } = await startedAdapter();
     adapter.script(() => streamOf(init(), errorResult('error_during_execution')));

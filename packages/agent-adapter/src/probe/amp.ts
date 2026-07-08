@@ -5,9 +5,10 @@ import { AgentCliProbe, defaultInstallLocations } from './base';
 
 /**
  * Unlike claude/codex, the detected path is NOT handed to the SDK at spawn time — `execute()`
- * resolves its own binary (node_modules pair → `AMP_CLI_PATH` → `~/.amp/bin` → PATH) and offers
- * no per-call override, so this probe only powers the `agent-runtime.list` availability surface
- * and the history module's direct CLI calls.
+ * resolves its own binary (node_modules pair → `AMP_CLI_PATH` → `$AMP_HOME` → PATH) and offers no
+ * per-call override, so this probe only powers the `agent-runtime.list` availability surface. The
+ * history module mirrors the SDK's own resolution instead of consulting the probe, keeping
+ * history reads and live turns on the same binary.
  */
 export class AmpProbe extends AgentCliProbe {
   readonly kind = 'amp' as const;

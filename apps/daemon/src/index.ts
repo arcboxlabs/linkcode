@@ -2,7 +2,7 @@ import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { AssetManager } from '@linkcode/assets';
 import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
-import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
+import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -83,12 +83,13 @@ async function main(): Promise<void> {
   if (gc.skipped.length > 0) {
     console.warn(`[linkcode/daemon] assets gc: skipped ${gc.skipped.join(', ')}`);
   }
-  // amp has no managed asset yet: the SDK resolves its own binary chain (node_modules pair →
-  // AMP_CLI_PATH → ~/.amp/bin → PATH) and offers no per-call path override to hand a store
-  // install to, so a managed amp download would not be consumed even if it existed.
-  agentRuntimeProber.setManagedResolver((kind) =>
-    kind === 'amp' ? undefined : assets.managedBinary(`agent:${kind}`),
-  );
+  // Probeable kinds without an `agent:<kind>` managed asset (amp today — its SDK resolves its
+  // own binary and takes no per-call path a store install could ride) parse-fail and resolve to
+  // undefined; the schema stays the single source of which agents have managed downloads.
+  agentRuntimeProber.setManagedResolver((kind) => {
+    const assetId = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
+    return assetId.success ? assets.managedBinary(assetId.data) : undefined;
+  });
   // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
   // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
   const agentRuntimes = await agentRuntimeProber.collect();

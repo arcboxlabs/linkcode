@@ -104,6 +104,15 @@ export function textFromUnknown(value: unknown): string {
   }
 }
 
+const WHITESPACE_RUN_RE = /\s+/g;
+
+/** Flatten a transcript text into a one-line, ≤120-char title/preview candidate. */
+export function previewText(text: string): string | undefined {
+  const flat = text.replaceAll(WHITESPACE_RUN_RE, ' ').trim();
+  if (flat.length === 0) return undefined;
+  return flat.length <= 120 ? flat : `${flat.slice(0, 117)}...`;
+}
+
 export function timestampMs(value: unknown): Timestamp | undefined {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
     return Math.trunc(value);

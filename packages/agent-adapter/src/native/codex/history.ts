@@ -11,14 +11,13 @@ import {
   compactRecord,
   firstText,
   isRecord,
+  previewText,
   recordField,
   stringField,
   textFromUnknown,
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
-
-const WHITESPACE_RUN_RE = /\s+/g;
 
 /** Codex persists machine-injected context into the rollout as ordinary user-role messages,
  * recognizable only by their wrapper tag. They are not conversation and must not replay as user
@@ -287,10 +286,4 @@ export function mapCodexHistoryEvents(
 function idFromFilename(path: string): string {
   const name = basename(path, '.jsonl');
   return name.length > 0 ? name : path;
-}
-
-function previewText(text: string): string {
-  const flat = text.replaceAll(WHITESPACE_RUN_RE, ' ').trim();
-  if (flat.length <= 120) return flat;
-  return `${flat.slice(0, 117)}...`;
 }

@@ -24,7 +24,7 @@ Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin)
 | codex | `@openai/codex` (CLI carrier — no JS SDK) | 0.140.0 |
 | opencode | `@opencode-ai/sdk` | 1.17.7 |
 | pi | `@earendil-works/pi-coding-agent` | 0.79.6 |
-| amp | `@ampcode/sdk` (CLI carrier `@ampcode/cli` rides as its dependency, pinned by the lockfile — the SDK declares it as floating `latest`) | 0.1.0-20260605144103 |
+| amp | `@ampcode/sdk` (CLI carrier `@ampcode/cli` rides as its dependency, pinned by the lockfile — the SDK declares it as floating `latest`) | 0.1.0-20260605144103-g77da114 |
 
 - **Bumping a JS package** moves the exact pair self-resolved in dev; detected user installs are unaffected (their drift is the compat manifest's problem, CODE-77/113). Nothing is staged at package time anymore (CODE-114).
 - Quirk: `@openai/codex-<arch>` is an npm alias for `@openai/codex@<ver>-<arch>`, so querying the registry by the alias name 404s — resolve via the `@openai/codex` version.

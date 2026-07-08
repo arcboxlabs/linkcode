@@ -15,12 +15,12 @@ import {
   firstText,
   isRecord,
   numberField,
+  previewText,
   stringField,
   textFromUnknown,
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
-import { agentRuntimeProber } from '../../probe';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,27 +28,30 @@ const execFileAsync = promisify(execFile);
  * Amp thread history lives on Sourcegraph's backend, not on disk (no local cache exists), and the
  * SDK wraps only `threads.new`/`threads.markdown`. Listing and structured reads exist solely as
  * CLI subcommands — `amp threads list --json` and `amp threads export <id>` — which are
- * UNDOCUMENTED in the public manual (verified live against @ampcode/cli 0.0.1783428245): pin the
- * CLI carrier and re-verify these on bumps, they can be renamed without notice. Every call here
- * is an authenticated network round-trip; auth comes from the CLI's own login state or an ambient
- * `AMP_API_KEY` (history ops run without `StartOptions`, so the per-session config key cannot
- * reach them).
+ * UNDOCUMENTED in the public manual (verified live against @ampcode/cli 0.0.1783428245; the
+ * lockfile pins a nearby build — re-verify the subcommands on every bump, they can be renamed
+ * without notice). Every call here is an authenticated network round-trip; auth comes from the
+ * CLI's own login state or an ambient `AMP_API_KEY` (history ops run without `StartOptions`, so
+ * the per-session config key cannot reach them).
  *
  * Replay is text-only for now, like codex's: the export's message/content block shapes have not
  * been verified against a live paid account, so tool-call replay stays off until they are.
  */
 
-/** Threads are server-side, so any authenticated binary reads the same data — resolution order
- * only needs to find one that runs: probe (managed/detected) → the node_modules pair →
- * `$AMP_HOME` locations the SDK itself falls back to → PATH. */
+/** Mirrors the SDK's own `findAmpCommand` order exactly — node_modules pair → `AMP_CLI_PATH` →
+ * `$AMP_HOME/sdk/bin` → `$AMP_HOME/bin` → PATH — so history reads and live turns land on the SAME
+ * binary (the lockstep invariant): a machine with both the pinned pair and a user install must not
+ * read history through a version-drifted CLI whose undocumented `threads` output may differ. The
+ * runtime probe is deliberately not consulted here for the same reason — `execute()` cannot be
+ * pointed at a probed path, so preferring one would guarantee divergence. */
 export function resolveAmpCli(): string {
-  const probed = agentRuntimeProber.resolveBinary('amp');
-  if (probed) return probed;
   const local = ampPackageBinary();
   if (local) return local;
   const binary = process.platform === 'win32' ? 'amp.exe' : 'amp';
+  const fromEnv = env.AMP_CLI_PATH;
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
   const ampHome = env.AMP_HOME ?? join(homedir(), '.amp');
-  for (const candidate of [join(ampHome, 'bin', binary), join(ampHome, 'sdk', 'bin', binary)]) {
+  for (const candidate of [join(ampHome, 'sdk', 'bin', binary), join(ampHome, 'bin', binary)]) {
     if (existsSync(candidate)) return candidate;
   }
   // Last resort: let execFile resolve `amp` from PATH, matching the SDK's own final fallback.
@@ -187,8 +190,9 @@ export async function readAmpHistory(
     kind: 'amp',
     title: firstText(
       stringField(parsed, 'title'),
-      firstUser ? previewText(userTypedValue(firstUser)) : undefined,
+      firstUser ? previewText(textFromUnknown(userTypedValue(firstUser))) : undefined,
     ),
+    cwd: cwdFromTree(parsed),
     // agentMode is the thread's mode — the axis this adapter surfaces as the model.
     model: stringField(parsed, 'agentMode'),
     createdAt: timestampMs(parsed.created),
@@ -221,12 +225,4 @@ export function mapAmpHistoryEvents(
     if (event) events.push(event);
   });
   return events;
-}
-
-const WHITESPACE_RUN_RE = /\s+/g;
-
-function previewText(value: unknown): string | undefined {
-  const flat = textFromUnknown(value).replaceAll(WHITESPACE_RUN_RE, ' ').trim();
-  if (flat.length === 0) return undefined;
-  return flat.length <= 120 ? flat : `${flat.slice(0, 117)}...`;
 }

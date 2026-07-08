@@ -110,6 +110,11 @@ export class AmpAdapter extends BaseAgentAdapter {
   private abortTurn: AbortController | null = null;
   /** Suppresses the abort error that onCancel/onStop trigger on purpose. */
   private cancelling = false;
+  /** True once the current turn emitted its terminal stop/error. Guards the post-result window:
+   * the SDK's generator yields the result message and only then awaits process exit, so an abort
+   * landing between the two rejects the stream AFTER the turn already stopped — without the guard
+   * that fallout would emit a second, contradictory `stop: cancelled` for a completed turn. */
+  private turnSettled = false;
   /** Prompts received while a turn is running; drained one per turn end (mirrors codex). */
   private pendingPrompts: ContentBlock[][] = [];
   /** Mode/effort for the next turn's spawn; each turn being its own process makes next-turn
@@ -121,9 +126,10 @@ export class AmpAdapter extends BaseAgentAdapter {
   private readonly usageTotals = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    if (opts.model !== undefined) await this.onSetModel(opts.model);
-    // The per-turn process spawns lazily at the first prompt; just verify the SDK is installed.
+    // SDK first: a missing SDK is the more fundamental failure and must not be masked by a
+    // bad model value. The per-turn process itself spawns lazily at the first prompt.
     await this.loadSdk('@ampcode/sdk', () => import('@ampcode/sdk'));
+    if (opts.model !== undefined) await this.onSetModel(opts.model);
   }
 
   override async resumeHistory(
@@ -173,13 +179,10 @@ export class AmpAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
+  /** Stopping the session has nothing extra to shut down — there is no persistent process, only
+   * the (possibly) in-flight turn, which cancel already covers. */
   protected override onStop(): Promise<void> {
-    this.pendingPrompts = [];
-    if (this.abortTurn) {
-      this.cancelling = true;
-      this.abortTurn.abort();
-    }
-    return Promise.resolve();
+    return this.onCancel();
   }
 
   /** Mode is the model axis (see AMP_MODES); stored and applied at the next turn's spawn. */
@@ -191,7 +194,6 @@ export class AmpAdapter extends BaseAgentAdapter {
         ),
       );
     }
-    if (this.opts) this.opts.model = model;
     this.mode = model;
     return Promise.resolve();
   }
@@ -216,6 +218,7 @@ export class AmpAdapter extends BaseAgentAdapter {
     const opts = nullthrow(this.opts, 'amp: session not started');
     const abort = new AbortController();
     this.abortTurn = abort;
+    this.turnSettled = false;
     this.emitStatus('running');
     try {
       const stream = await this.startExecute({
@@ -226,14 +229,24 @@ export class AmpAdapter extends BaseAgentAdapter {
       for await (const message of stream) this.handleMessage(message);
     } catch (err) {
       // The stream rejects on abort (the SDK SIGTERMs the process and rethrows) and on non-zero
-      // exit (auth failure, missing credits, bad thread id — stderr rides the message).
-      if (this.cancelling) this.emitStop('cancelled');
-      else this.emitError(extractErrorMessage(err) ?? 'amp: turn failed');
+      // exit (auth failure, missing credits, bad thread id — stderr rides the message). A turn
+      // that already settled (result seen; the rejection came from the post-result exit await)
+      // must not stop twice — see `turnSettled`.
+      if (this.cancelling) {
+        if (!this.turnSettled) this.emitStop('cancelled');
+      } else {
+        this.emitError(extractErrorMessage(err) ?? 'amp: turn failed');
+      }
     } finally {
       this.cancelling = false;
       this.abortTurn = null;
       // The turn's process is gone; nothing will settle what it left dangling.
       this.teardown();
+      // A turn that never reached its result (cancelled/failed first turn) still ran against a
+      // real server-side thread — bind it now that the turn is over, or the session record would
+      // lose its resume point. Post-turn, so the transcript-seed race the in-turn hold avoids
+      // (see handleThreadRef) cannot occur mid-first-turn.
+      if (this.threadId !== null) this.emitSessionRef(asHistoryId(this.threadId));
       const next = this.pendingPrompts.shift();
       if (next) void this.runTurn(next);
       else this.emitStatus('idle');
@@ -338,6 +351,7 @@ export class AmpAdapter extends BaseAgentAdapter {
   }
 
   private handleResult(msg: ResultMessage | ErrorResultMessage): void {
+    this.turnSettled = true;
     // msg.usage is skipped: its aggregation window is undocumented, and the per-call usage on
     // assistant messages already accumulated this turn — adding it would risk double counting.
     if (msg.is_error) {
