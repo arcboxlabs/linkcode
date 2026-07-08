@@ -2,6 +2,7 @@ import type {
   AgentEvent,
   ApprovalPolicyState,
   ContentBlock,
+  EffortLevel,
   PermissionOption,
   Plan,
   Question,
@@ -84,6 +85,13 @@ export interface ConversationViewModel {
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
    * null (or an empty list) means the agent has no switchable policies and the UI hides the menu. */
   approvalPolicy: ApprovalPolicyState | null;
+  /** The model the session is actually running on, from `model-update`. `null` until the adapter
+   * reports it (before the first turn, or for adapters that can't observe their model) — the composer
+   * then shows a placeholder rather than a guess. */
+  currentModel: string | null;
+  /** The reasoning-effort level the session is running at, from `effort-update`. `null` until the
+   * adapter reports it — same placeholder rule as `currentModel`. */
+  currentEffort: EffortLevel | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -143,6 +151,8 @@ export function createConversationBuilder(): ConversationBuilder {
   let usage: TokenUsage | null = null;
   let currentModeId: string | null = null;
   let approvalPolicy: ApprovalPolicyState | null = null;
+  let currentModel: string | null = null;
+  let currentEffort: EffortLevel | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
 
@@ -284,6 +294,12 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'approval-policy-update':
         approvalPolicy = event.state;
         break;
+      case 'model-update':
+        currentModel = event.model;
+        break;
+      case 'effort-update':
+        currentEffort = event.effort;
+        break;
       case 'status':
         status = event.status;
         break;
@@ -369,6 +385,8 @@ export function createConversationBuilder(): ConversationBuilder {
       usage,
       currentModeId,
       approvalPolicy,
+      currentModel,
+      currentEffort,
       stopReason,
       pendingPermissionIds: pendingIds(approvals),
       pendingQuestionIds: pendingIds(questionAsks),
