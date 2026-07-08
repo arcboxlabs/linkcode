@@ -1,4 +1,4 @@
-import { open, realpath } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import path from 'node:path';
 import type { WorkspaceFile } from '@linkcode/schema';
 
@@ -26,19 +26,15 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 };
 
 /**
- * Read a file for a client, contained to the workspace directory. Containment is
- * enforced on the *realpath* of both ends, so a symlink inside the workspace cannot
- * escape it (the paseo file-explorer precedent). Throws (→ `sendFailure`) on escape,
- * oversize, or a non-file target.
+ * Read a file for a client's viewer. `requestPath` resolves against the session's
+ * workspace directory but may point anywhere the daemon user can read — agents
+ * legitimately write outside the workspace, and the daemon serves same-user loopback
+ * clients (remote access must gate reads in its own authz layer, not here). Throws
+ * (→ `sendFailure`) on a missing or non-file target or an oversized read.
  */
 export async function readWorkspaceFile(cwd: string, requestPath: string): Promise<WorkspaceFile> {
-  const root = await realpath(cwd);
-  const resolved = await realpath(path.resolve(root, requestPath));
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-    throw new Error(`Path escapes the workspace: ${requestPath}`);
-  }
+  const resolved = path.resolve(cwd, requestPath);
 
-  // Open first, stat the handle: no window between the containment check and the read.
   const handle = await open(resolved, 'r');
   try {
     const stat = await handle.stat();

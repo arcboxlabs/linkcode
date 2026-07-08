@@ -6,9 +6,9 @@ export const fileWireVariants = [
   z.object({
     kind: z.literal('file.read'),
     clientReqId: z.string().min(1),
-    /** Workspace root the read is anchored to; `path` must resolve inside it. */
+    /** Directory a relative `path` resolves against (the session's workspace root). */
     cwd: z.string().min(1),
-    /** Absolute, or relative to `cwd`. */
+    /** Absolute, or relative to `cwd`; may point outside the workspace. */
     path: z.string().min(1),
   }),
   z.object({
