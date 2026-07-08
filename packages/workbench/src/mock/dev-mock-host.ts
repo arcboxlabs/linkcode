@@ -151,6 +151,18 @@ export class DevMockHost {
         await wait(CONTROL_LATENCY_MS);
         this.send({ kind: 'config.get.result', replyTo: p.clientReqId, providers: this.providers });
         break;
+      case 'agent-runtime.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'agent-runtime.listed',
+          replyTo: p.clientReqId,
+          runtimes: {
+            'claude-code': { status: 'available', source: 'detected', version: '2.1.202' },
+            codex: { status: 'available', source: 'sdk' },
+            pi: { status: 'available', source: 'builtin' },
+          },
+        });
+        break;
       case 'config.set':
         await wait(CONTROL_LATENCY_MS);
         this.providers = structuredClone(p.providers);

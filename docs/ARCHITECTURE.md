@@ -177,7 +177,7 @@ asks). Adapters advertise their `historyCapabilities` (list / read / resume), an
 unsupported operation rejects clearly rather than silently degrading.
 
 **Abstraction layer.** Adapters normalize each agent's native events into the zod
-`AgentEvent` contract, aligned with the Agent Client Protocol (ACP), and accept the
+`AgentEvent` contract, and accept the
 normalized `AgentInput`. The agent data vocabulary — content, tool calls, plans,
 permissions, sessions, usage, history — is tailored to the four supported agents and
 the front-end, not to any particular wire format.
@@ -314,7 +314,7 @@ These are genuinely undecided. Do not invent answers — raise them first.
 | Engine            | The host implementation: session lifecycle + agent orchestration (`@linkcode/engine`).   |
 | daemon            | The runnable local process that hosts the Engine and serves clients on `127.0.0.1`.      |
 | Agent adapter     | Per-agent integration that hides an SDK behind the unified `AgentAdapter` interface.     |
-| Abstraction layer | Normalizes native agent events into the zod contract (ACP-aligned).                      |
+| Abstraction layer | Normalizes native agent events into the zod contract.                                    |
 | Hub               | Fan-out that composes many client connections into one `Transport` and broadcasts events. |
 | transport         | The carrier-agnostic message layer (local / ws / Socket.IO).                              |
 | Wire protocol     | The versioned envelope + `kind`-keyed payload union transmitted over the transport.       |
@@ -325,4 +325,4 @@ These are genuinely undecided. Do not invent answers — raise them first.
 | coss-ui           | The desktop/webview UI primitive library (vendored from cal.com's COSS UI).              |
 | HeroUI            | The mobile UI library.                                                                    |
 | Thread (UI)       | The user-facing term for a Session. Product copy only — code and the wire protocol keep `Session`. |
-| ACP               | Agent Client Protocol — the shape the normalized `AgentEvent` contract is aligned with.  |
+| ACP               | Agent Client Protocol — an early influence on `AgentEvent`, since dropped for a shape tailored to the four supported agents. |

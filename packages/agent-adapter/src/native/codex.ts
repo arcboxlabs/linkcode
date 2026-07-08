@@ -25,6 +25,7 @@ import {
   cursorOffset,
   isRecord,
 } from '../history-util';
+import { agentRuntimeProber } from '../probe';
 import { contentToText } from '../util';
 import {
   codexHome,
@@ -192,7 +193,13 @@ export class CodexAdapter extends BaseAgentAdapter {
   private async createCodex(): Promise<CodexInstance> {
     const mod = await this.loadSdk('@openai/codex-sdk', () => import('@openai/codex-sdk'));
     const apiKey = this.configString('apiKey');
-    this.codex = new mod.Codex(apiKey ? { apiKey } : undefined);
+    // Detected user install (runtime-probe); undefined lets the SDK resolve its own platform
+    // package — which in packaged hosts sits inside the asar and only works via the spawn shim.
+    const binary = agentRuntimeProber.resolveBinary('codex');
+    this.codex = new mod.Codex({
+      ...(apiKey && { apiKey }),
+      ...(binary && { codexPathOverride: binary }),
+    });
     return this.codex;
   }
 

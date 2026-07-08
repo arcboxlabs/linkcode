@@ -28,6 +28,7 @@ async function eventually<T>(
   while (Date.now() - startedAt < timeoutMs) {
     const value = read();
     if (value) return value;
+    // eslint-disable-next-line no-await-in-loop -- polling: each check must wait out the interval
     await wait(50);
   }
   throw new Error('timed out waiting for mock event');

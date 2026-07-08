@@ -1,3 +1,4 @@
+import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
@@ -71,12 +72,16 @@ async function main(): Promise<void> {
   // proxy (reader). Preview traffic bypasses daemon auth by decision — the boundary is
   // the loopback bind (see config.ts DEFAULT_HOST); remote exposure is the tunnel's job.
   const previewRoutes = new PreviewRouteRegistry();
+  // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
+  // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
+  const agentRuntimes = await agentRuntimeProber.collect();
   const engine = new Engine(hub, {
     providerStore: store,
     ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
     sessionStore: createSessionStore(databasePath()),
     workspaceStore: createWorkspaceStore(databasePath()),
     previewRoutes,
+    agentRuntimes,
   });
   await engine.start();
   // Runs before any listener binds, so `workspace.list` always includes the chat workspace by the

@@ -145,6 +145,7 @@ async function main(): Promise<void> {
     archs.push(cross);
   }
   for (const runtime of RUNTIMES) {
+    // eslint-disable-next-line no-await-in-loop -- staged one at a time so tar's inherited stdio stays readable
     for (const arch of archs) await stage(runtime, arch);
   }
 }
