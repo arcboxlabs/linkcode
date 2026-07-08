@@ -3,10 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist",
+    "drizzle"
+  ],
   "scripts": {
     "dev": "tsx watch --import ./src/instrument.ts src/index.ts",
     "dev:clean": "rm -f ~/.linkcode/daemon.db ~/.linkcode/runtime.json && pnpm run dev",
     "build": "tsup",
+    "package": "pnpm run build && node scripts/package-daemon.mts",
     "build:rust": "cargo build -p linkcode-pty --release",
     "bench:pty": "pnpm run build:rust && tsx src/pty/bench-throughput.mts",
     "start": "node --import ./dist/instrument.js dist/index.js",
@@ -28,7 +33,9 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "catalog:",
+    "cross-spawn": "^7.0.6",
     "drizzle-kit": "^0.31.10",
     "tsup": "catalog:",
     "tsx": "catalog:",

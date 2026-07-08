@@ -195,9 +195,15 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.3
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
