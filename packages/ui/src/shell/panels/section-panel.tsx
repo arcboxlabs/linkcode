@@ -146,21 +146,28 @@ function SectionTabStrip({
 
   return (
     <div className="flex h-full min-w-0 items-center gap-1">
-      {PANEL_SECTIONS.map((section) => (
-        <button
-          key={section}
-          type="button"
-          aria-pressed={section === activeSection}
-          className={cn(
-            'flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring',
-            section === activeSection ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
-          )}
-          onClick={() => onSelectSection(section)}
-        >
-          <span className="shrink-0 [&_svg]:size-3.5">{PANEL_WINDOW_ICONS[section]}</span>
-          <span>{tWindow(section)}</span>
-        </button>
-      ))}
+      {PANEL_SECTIONS.map((section) => {
+        const label = tWindow(section);
+        return (
+          <button
+            key={section}
+            type="button"
+            aria-label={label}
+            title={label}
+            aria-pressed={section === activeSection}
+            className={cn(
+              'flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring',
+              section === activeSection ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
+            )}
+            onClick={() => onSelectSection(section)}
+          >
+            <span className="shrink-0 [&_svg]:size-3.5">{PANEL_WINDOW_ICONS[section]}</span>
+            {/* Collapse to icon-only when the host chrome segment is too narrow to fit
+                labels without overlapping the panel's maximize control. */}
+            <span className="@max-[480px]/chrome-segment:hidden">{label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

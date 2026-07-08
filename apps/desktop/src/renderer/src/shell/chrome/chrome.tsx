@@ -296,8 +296,13 @@ function ChromeSegment({
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
   return (
+    // Size container so portaled panel chrome (e.g. the section tab strip) can collapse
+    // its labels to icons when its host segment gets narrow (`@max-*/chrome-segment`).
     <div
-      className={cn('relative min-w-0 overflow-hidden backdrop-blur-xl', className)}
+      className={cn(
+        '@container/chrome-segment relative min-w-0 overflow-hidden backdrop-blur-xl',
+        className,
+      )}
       data-chrome-divider={divider}
     >
       <div
