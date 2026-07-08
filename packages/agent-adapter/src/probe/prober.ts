@@ -60,6 +60,18 @@ export class AgentRuntimeProber {
   }
 
   /**
+   * Binary path for an interactive `auth login`: the same managed/detected spawn path, falling back
+   * to the SDK's platform binary in dev/standalone daemons — where {@link resolveBinary} is
+   * `undefined` (the SDK self-resolves at session start) but the CLI still ships in node_modules and
+   * a login needs a concrete executable to spawn.
+   */
+  loginBinaryPath(kind: ProbeableKind): string | undefined {
+    const probe = this.probes.find((candidate) => candidate.kind === kind);
+    if (!probe) return undefined;
+    return this.resolveBinary(kind) ?? probe.sdkPlatformBinaryPath();
+  }
+
+  /**
    * Availability of every agent runtime this host has evaluated, for the `agent-runtime.list` wire
    * resource. Re-runs the detection probe. opencode is absent until it moves off PATH-spawning
    * (CODE-76); `source: 'sdk'` entries carry no binary facts — the SDK's own resolution is
