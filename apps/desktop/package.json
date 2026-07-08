@@ -12,7 +12,8 @@
     "start": "electron-vite preview",
     "build": "electron-vite build",
     "stage:host-runtime": "pnpm -F @linkcode/daemon build && node scripts/stage-sidecar.mts",
-    "package:devshell": "pnpm run stage:host-runtime && electron-vite build --mode devshell && electron-builder --dir --config electron-builder.devshell.yml",
+    "package": "pnpm run stage:host-runtime && electron-vite build && node scripts/package-app.mts",
+    "package:devshell": "pnpm run stage:host-runtime && electron-vite build --mode devshell && node scripts/package-app.mts --devshell",
     "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
