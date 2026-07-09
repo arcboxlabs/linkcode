@@ -69,7 +69,7 @@ describe('createAiGatewaySidecar', () => {
       queueMicrotask(() => child.emitStdout('listening on http://127.0.0.1:5123\n'));
       return child;
     });
-    const sidecar = createAiGatewaySidecar(spawn);
+    const sidecar = createAiGatewaySidecar({ spawn });
     expect(await sidecar.ensure(upstream)).toBe('http://127.0.0.1:5123');
     expect(spawn).toHaveBeenCalledTimes(1);
   });
@@ -80,7 +80,7 @@ describe('createAiGatewaySidecar', () => {
       queueMicrotask(() => child.emitStdout('listening on http://127.0.0.1:5123\n'));
       return child;
     });
-    const sidecar = createAiGatewaySidecar(spawn);
+    const sidecar = createAiGatewaySidecar({ spawn });
     await sidecar.ensure(upstream);
     await sidecar.ensure(upstream);
     expect(spawn).toHaveBeenCalledTimes(1);
@@ -92,15 +92,29 @@ describe('createAiGatewaySidecar', () => {
       queueMicrotask(() => child.emitExit(1));
       return child;
     };
-    await expect(createAiGatewaySidecar(spawn).ensure(upstream)).rejects.toThrow(
+    await expect(createAiGatewaySidecar({ spawn }).ensure(upstream)).rejects.toThrow(
       /before listening/,
     );
   });
 
-  it('rejects with a clear error when the binary path is unset', async () => {
+  it('installs the binary on demand when the env override is unset', async () => {
     delete process.env.LINKCODE_AIGATEWAY_PATH;
-    await expect(createAiGatewaySidecar(() => new FakeChild()).ensure(upstream)).rejects.toThrow(
-      /LINKCODE_AIGATEWAY_PATH/,
-    );
+    const spawn: SidecarSpawn = vi.fn(() => {
+      const child = new FakeChild();
+      queueMicrotask(() => child.emitStdout('listening on http://127.0.0.1:5123\n'));
+      return child;
+    });
+    const ensureBinary = vi.fn(() => Promise.resolve('/managed/aigateway'));
+    const sidecar = createAiGatewaySidecar({ spawn, ensureBinary });
+    expect(await sidecar.ensure(upstream)).toBe('http://127.0.0.1:5123');
+    expect(ensureBinary).toHaveBeenCalled();
+    expect(spawn).toHaveBeenCalledWith('/managed/aigateway', expect.any(Array));
+  });
+
+  it('rejects with a clear error when no binary is available', async () => {
+    delete process.env.LINKCODE_AIGATEWAY_PATH;
+    await expect(
+      createAiGatewaySidecar({ spawn: () => new FakeChild() }).ensure(upstream),
+    ).rejects.toThrow(/no aigateway binary/);
   });
 });

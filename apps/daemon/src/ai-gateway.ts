@@ -27,6 +27,15 @@ export interface SidecarChildProcess {
 }
 export type SidecarSpawn = (command: string, args: string[]) => SidecarChildProcess;
 
+export interface AiGatewaySidecarOptions {
+  spawn?: SidecarSpawn;
+  /**
+   * Resolve (installing on demand) the aigateway binary path — wired to the managed-asset store
+   * (`assets.ensure('tool:aigateway')`). `LINKCODE_AIGATEWAY_PATH` overrides it for dev / standalone.
+   */
+  ensureBinary?: () => Promise<string | undefined>;
+}
+
 interface Sidecar {
   url: string;
   child: SidecarChildProcess;
@@ -47,16 +56,16 @@ export function upstreamToToml(upstream: TranslatorUpstream): string {
   return `${lines.join('\n')}\n`;
 }
 
-export function createAiGatewaySidecar(spawn: SidecarSpawn = defaultSpawn): TranslatorService {
+export function createAiGatewaySidecar(options: AiGatewaySidecarOptions = {}): TranslatorService {
+  const { spawn = defaultSpawn, ensureBinary } = options;
   const running = new Map<string, Promise<Sidecar>>();
 
-  const start = (upstream: TranslatorUpstream, key: string): Promise<Sidecar> => {
-    const binary = process.env.LINKCODE_AIGATEWAY_PATH;
+  const start = async (upstream: TranslatorUpstream, key: string): Promise<Sidecar> => {
+    // Env override (dev / standalone) wins; otherwise install-on-demand from the managed-asset store.
+    const binary = process.env.LINKCODE_AIGATEWAY_PATH ?? (await ensureBinary?.());
     if (!binary) {
-      return Promise.reject(
-        new Error(
-          'translation sidecar unavailable: set LINKCODE_AIGATEWAY_PATH to the aigateway binary',
-        ),
+      throw new Error(
+        'translation sidecar unavailable: no aigateway binary (set LINKCODE_AIGATEWAY_PATH or install the managed asset)',
       );
     }
     const dir = mkdtempSync(join(tmpdir(), 'linkcode-aigw-'));
