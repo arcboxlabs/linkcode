@@ -1,14 +1,31 @@
-import type { ContentBlock, StartOptions, ToolCallContent, ToolCallStatus } from '@linkcode/schema';
+import type {
+  ContentBlock,
+  PermissionOption,
+  Question,
+  StartOptions,
+  ToolCallContent,
+  ToolCallStatus,
+} from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
-import { AUTH_FAILED_ERROR_CODE } from '../adapter';
+import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
+type PermissionAsked = Extract<Event, { type: 'permission.asked' }>['properties'];
+type QuestionAsked = Extract<Event, { type: 'question.asked' }>['properties'];
 type SessionErrored = Extract<Event, { type: 'session.error' }>['properties'];
+
+/** Same three-way menu as claude-code's tool asks; `allow_always` maps onto opencode's `always`
+ * reply, which the server persists as a saved allow rule for the ask's matched pattern. */
+const PERMISSION_OPTIONS: PermissionOption[] = [
+  { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+  { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
+  { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+];
 
 /** Cap on how long `onCancel` waits for `session.abort`: opencode has blocked the abort RPC until
  * the running tool actually exits (tens of seconds, observed on 1.14.42+ by paseo; 1.17.11 returns
@@ -71,6 +88,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** True once a `session.error` failed the active turn — the idle settle then skips the `end_turn`
    * stop (the error event already told the story) and sweeps unsettled tools. */
   private turnFailed = false;
+  /** Announced tool part id by provider `callID`: permission/question asks cite the tool they gate
+   * via `tool.callID`, but the tool card was announced under the PART id — this map re-joins them
+   * so the ask lands on the visible card. Cleared at each turn settle. */
+  private readonly toolPartIdByCallId = new Map<string, string>();
+
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
     let started: Awaited<ReturnType<OpencodeModule['createOpencode']>>;
@@ -221,6 +243,20 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         case 'message.part.updated':
           if (ev.properties.sessionID === this.sessionId) this.handlePart(ev.properties.part);
           break;
+        case 'permission.asked':
+          if (ev.properties.sessionID === this.sessionId) {
+            void this.handlePermissionAsked(ev.properties).catch((err: unknown) => {
+              this.emitError(extractErrorMessage(err) ?? 'opencode: permission reply failed');
+            });
+          }
+          break;
+        case 'question.asked':
+          if (ev.properties.sessionID === this.sessionId) {
+            void this.handleQuestionAsked(ev.properties).catch((err: unknown) => {
+              this.emitError(extractErrorMessage(err) ?? 'opencode: question reply failed');
+            });
+          }
+          break;
         case 'session.error':
           if (ev.properties.sessionID === this.sessionId) this.handleSessionError(ev.properties);
           break;
@@ -244,6 +280,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.turnActive = false;
     this.cancelling = false;
     this.turnFailed = false;
+    this.toolPartIdByCallId.clear();
     // A cancelled or failed turn never delivers its remaining tool settles; sweep them (idempotent
     // after the base cancel-path teardown).
     if (cancelled || failed) this.teardown();
@@ -281,6 +318,107 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.emitError(message);
   }
 
+  /** Answer a `permission.asked` through the shared permission round-trip: Allow→`once`,
+   * Always allow→`always` (persisted server-side), Reject→`reject`. A teardown-cancelled ask also
+   * replies `reject` — an unanswered ask would otherwise gate the turn server-side forever. */
+  private async handlePermissionAsked(props: PermissionAsked): Promise<void> {
+    const toolCallId =
+      (props.tool && this.toolPartIdByCallId.get(props.tool.callID)) ??
+      props.tool?.callID ??
+      nextToolCallId();
+    const outcome = await this.requestPermission(
+      {
+        toolCallId,
+        title: props.permission,
+        kind: toolKindFromName(props.permission),
+        rawInput: props.metadata,
+      },
+      PERMISSION_OPTIONS,
+    );
+    if (!this.client) return;
+    const allowed = outcome.outcome === 'selected';
+    const reply =
+      allowed && outcome.optionId === 'allow'
+        ? 'once'
+        : allowed && outcome.optionId === 'allow_always'
+          ? 'always'
+          : 'reject';
+    try {
+      await this.client.permission.reply({
+        requestID: props.id,
+        directory: this.opts?.cwd,
+        reply,
+      });
+    } catch (err) {
+      // A teardown-cancelled reject races the abort that triggered it — the server may already
+      // have discarded the ask, and that failure carries no signal.
+      if (outcome.outcome !== 'cancelled') throw err;
+    }
+  }
+
+  /** Surface `question.asked` as a structured question card (the analogue of claude-code's
+   * AskUserQuestion): answers reply as one label array per question — `question.replied` echoes
+   * exactly that shape — and a decline (or teardown cancel) rejects so the asking tool settles. */
+  private async handleQuestionAsked(props: QuestionAsked): Promise<void> {
+    const requestID = props.id;
+    const directory = this.opts?.cwd;
+    if (props.questions.length === 0 || props.questions.some((q) => q.options.length === 0)) {
+      // The Question schema requires ≥1 option per question; an ask we can't render must still be
+      // answered or it gates the turn server-side forever.
+      await this.client?.question.reject({ requestID, directory });
+      this.emitError('opencode: question ask carried no options; rejected');
+      return;
+    }
+    const toolCallId =
+      (props.tool && this.toolPartIdByCallId.get(props.tool.callID)) ??
+      props.tool?.callID ??
+      nextToolCallId();
+    const outcome = await this.requestQuestion(
+      {
+        toolCallId,
+        title: 'question',
+        kind: toolKindFromName('question'),
+        rawInput: { questions: props.questions },
+      },
+      props.questions.map(
+        (q, qi): Question => ({
+          questionId: `q${qi}`,
+          prompt: q.question,
+          header: q.header,
+          multiSelect: q.multiple ?? false,
+          options: q.options.map((option, oi) => ({
+            optionId: `o${oi}`,
+            label: option.label,
+            description: option.description,
+          })),
+        }),
+      ),
+    );
+    if (!this.client) return;
+    if (outcome.outcome === 'cancelled') {
+      try {
+        await this.client.question.reject({ requestID, directory });
+      } catch {
+        // The cancel races the abort that triggered it — the ask may already be gone server-side.
+      }
+      return;
+    }
+    const byQuestionId = new Map(outcome.answers.map((answer) => [answer.questionId, answer]));
+    const answers = props.questions.map((q, qi) => {
+      const answer = byQuestionId.get(`q${qi}`);
+      if (!answer) return [];
+      const selected = new Set(answer.selectedOptionIds);
+      const labels: string[] = [];
+      for (const [oi, option] of q.options.entries()) {
+        if (selected.has(`o${oi}`)) labels.push(option.label);
+      }
+      const custom = answer.customText?.trim();
+      if (custom) labels.push(custom);
+      return labels;
+    });
+    await this.client.question.reply({ requestID, directory, answers });
+  }
+
   private handlePart(part: Part): void {
     switch (part.type) {
       case 'text': {
@@ -294,6 +432,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         break;
       }
       case 'tool': {
+        this.toolPartIdByCallId.set(part.callID, part.id);
         this.emitTool({
           toolCallId: part.id,
           title: part.tool,

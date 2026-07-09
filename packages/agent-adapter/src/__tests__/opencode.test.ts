@@ -73,6 +73,13 @@ class FakeClient {
     promptAsync: vi.fn(() => ({ data: null })),
     abort: vi.fn(() => ({ data: true })),
   };
+  readonly permission = {
+    reply: vi.fn(() => ({ data: true })),
+  };
+  readonly question = {
+    reply: vi.fn(() => ({ data: true })),
+    reject: vi.fn(() => ({ data: true })),
+  };
   readonly event = {
     subscribe: vi.fn(() => {
       if (this.subscribeError) throw this.subscribeError;
@@ -105,8 +112,41 @@ function errors(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 'error'
   return events.filter((e): e is Extract<AgentEvent, { type: 'error' }> => e.type === 'error');
 }
 
+function permissionAsks(
+  events: AgentEvent[],
+): Array<Extract<AgentEvent, { type: 'permission-request' }>> {
+  return events.filter(
+    (e): e is Extract<AgentEvent, { type: 'permission-request' }> =>
+      e.type === 'permission-request',
+  );
+}
+
+function questionAsks(
+  events: AgentEvent[],
+): Array<Extract<AgentEvent, { type: 'question-request' }>> {
+  return events.filter(
+    (e): e is Extract<AgentEvent, { type: 'question-request' }> => e.type === 'question-request',
+  );
+}
+
 function stops(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 'stop' }>> {
   return events.filter((e): e is Extract<AgentEvent, { type: 'stop' }> => e.type === 'stop');
+}
+
+function pushPermissionAsked(withTool: boolean): void {
+  client.stream.push({
+    id: 'e-perm',
+    type: 'permission.asked',
+    properties: {
+      id: 'per-1',
+      sessionID: 'sess-1',
+      permission: 'bash',
+      patterns: ['echo hi'],
+      metadata: { command: 'echo hi' },
+      always: ['echo *'],
+      ...(withTool && { tool: { messageID: 'msg-1', callID: 'call-1' } }),
+    },
+  });
 }
 
 function pushIdle(): void {
@@ -313,6 +353,184 @@ describe('OpenCodeAdapter prompt dispatch', () => {
       directory: '/tmp/repo',
       model: { providerID: 'openai', modelID: 'gpt-5.5' },
       parts: [{ type: 'text', text: 'hi' }],
+    });
+  });
+});
+
+describe('OpenCodeAdapter permission round-trip', () => {
+  it('surfaces permission.asked joined to the announced tool part and replies per the picked option', async () => {
+    const { adapter, events } = await makeAdapter();
+
+    // The gated tool part is announced first (observed live: pending → running → permission.asked);
+    // the ask cites it by callID and must land on the same card id.
+    client.stream.push({
+      id: 'e-tool',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          id: 'prt-1',
+          sessionID: 'sess-1',
+          messageID: 'msg-1',
+          type: 'tool',
+          callID: 'call-1',
+          tool: 'bash',
+          state: { status: 'running', input: { command: 'echo hi' }, time: { start: 0 } },
+        },
+      },
+    });
+    pushPermissionAsked(true);
+
+    await vi.waitFor(() => {
+      expect(permissionAsks(events)).toHaveLength(1);
+    });
+    const ask = permissionAsks(events)[0];
+    expect(ask.toolCall.toolCallId).toBe('prt-1');
+    expect(ask.options.map((o) => o.optionId)).toEqual(['allow', 'allow_always', 'reject']);
+
+    await adapter.send({
+      type: 'permission-response',
+      requestId: ask.requestId,
+      outcome: { outcome: 'selected', optionId: 'allow' },
+    });
+    await vi.waitFor(() => {
+      expect(client.permission.reply).toHaveBeenCalledWith({
+        requestID: 'per-1',
+        directory: '/tmp/repo',
+        reply: 'once',
+      });
+    });
+  });
+
+  it.each([
+    ['allow_always', 'always'],
+    ['reject', 'reject'],
+  ] as const)('maps the %s option onto the %s reply', async (optionId, reply) => {
+    const { adapter, events } = await makeAdapter();
+    pushPermissionAsked(false);
+    await vi.waitFor(() => {
+      expect(permissionAsks(events)).toHaveLength(1);
+    });
+
+    await adapter.send({
+      type: 'permission-response',
+      requestId: permissionAsks(events)[0].requestId,
+      outcome: { outcome: 'selected', optionId },
+    });
+    await vi.waitFor(() => {
+      expect(client.permission.reply).toHaveBeenCalledWith({
+        requestID: 'per-1',
+        directory: '/tmp/repo',
+        reply,
+      });
+    });
+  });
+
+  it('replies reject when a cancel tears down the pending ask, so the server-side gate never dangles', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    pushPermissionAsked(false);
+    await vi.waitFor(() => {
+      expect(permissionAsks(events)).toHaveLength(1);
+    });
+
+    await adapter.send({ type: 'cancel' });
+
+    await vi.waitFor(() => {
+      expect(client.permission.reply).toHaveBeenCalledWith({
+        requestID: 'per-1',
+        directory: '/tmp/repo',
+        reply: 'reject',
+      });
+    });
+  });
+
+  it('swallows a reply failure for a teardown-cancelled ask (the abort already discarded it)', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    client.permission.reply.mockRejectedValueOnce(new Error('ask already settled'));
+    pushPermissionAsked(false);
+    await vi.waitFor(() => {
+      expect(permissionAsks(events)).toHaveLength(1);
+    });
+    events.length = 0;
+
+    await adapter.send({ type: 'cancel' });
+
+    await vi.waitFor(() => {
+      expect(client.permission.reply).toHaveBeenCalled();
+    });
+    expect(errors(events)).toHaveLength(0);
+  });
+});
+
+describe('OpenCodeAdapter question round-trip', () => {
+  function pushQuestionAsked(): void {
+    client.stream.push({
+      id: 'e-question',
+      type: 'question.asked',
+      properties: {
+        id: 'que-1',
+        sessionID: 'sess-1',
+        questions: [
+          {
+            question: 'Proceed?',
+            header: 'Proceed',
+            options: [
+              { label: 'Yes', description: 'Go ahead.' },
+              { label: 'No', description: 'Stop here.' },
+            ],
+            multiple: false,
+          },
+        ],
+        tool: { messageID: 'msg-1', callID: 'call-1' },
+      },
+    });
+  }
+
+  it('surfaces question.asked as a question-request and replies with the selected labels', async () => {
+    const { adapter, events } = await makeAdapter();
+    pushQuestionAsked();
+    await vi.waitFor(() => {
+      expect(questionAsks(events)).toHaveLength(1);
+    });
+    const ask = questionAsks(events)[0];
+    expect(ask.questions[0].prompt).toBe('Proceed?');
+    expect(ask.questions[0].options.map((o) => o.label)).toEqual(['Yes', 'No']);
+
+    await adapter.send({
+      type: 'question-response',
+      requestId: ask.requestId,
+      outcome: { outcome: 'answered', answers: [{ questionId: 'q0', selectedOptionIds: ['o0'] }] },
+    });
+    await vi.waitFor(() => {
+      // One label array per question, in order — question.replied echoes exactly this shape.
+      expect(client.question.reply).toHaveBeenCalledWith({
+        requestID: 'que-1',
+        directory: '/tmp/repo',
+        answers: [['Yes']],
+      });
+    });
+  });
+
+  it('rejects the ask when the user declines', async () => {
+    const { adapter, events } = await makeAdapter();
+    pushQuestionAsked();
+    await vi.waitFor(() => {
+      expect(questionAsks(events)).toHaveLength(1);
+    });
+
+    await adapter.send({
+      type: 'question-response',
+      requestId: questionAsks(events)[0].requestId,
+      outcome: { outcome: 'cancelled' },
+    });
+    await vi.waitFor(() => {
+      expect(client.question.reject).toHaveBeenCalledWith({
+        requestID: 'que-1',
+        directory: '/tmp/repo',
+      });
     });
   });
 });
