@@ -197,6 +197,68 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     }
   });
 
+  it('skips parts of a user message, so the prompt text is not replayed as agent output', async () => {
+    const { events } = await makeAdapter();
+
+    // opencode streams message.part.updated for the user's own prompt too; the role arrives first
+    // on message.updated (observed live on 1.17.11).
+    client.stream.push({
+      id: 'e-user-msg',
+      type: 'message.updated',
+      properties: {
+        sessionID: 'sess-1',
+        info: {
+          id: 'msg-user',
+          sessionID: 'sess-1',
+          role: 'user',
+          time: { created: 0 },
+          agent: 'build',
+          model: { providerID: 'openai', modelID: 'gpt-5.5' },
+        },
+      },
+    });
+    client.stream.push({
+      id: 'e-user-part',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          id: 'p-user',
+          sessionID: 'sess-1',
+          messageID: 'msg-user',
+          type: 'text',
+          text: 'my prompt',
+        },
+      },
+    });
+    client.stream.push({
+      id: 'e-assistant-part',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          id: 'p-assist',
+          sessionID: 'sess-1',
+          messageID: 'msg-assist',
+          type: 'text',
+          text: 'reply',
+        },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'agent-message-chunk')).toBe(true);
+    });
+    const chunks = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'agent-message-chunk' }> =>
+        e.type === 'agent-message-chunk',
+    );
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].content).toEqual({ type: 'text', text: 'reply' });
+  });
+
   it('treats the stream ending after the turn already went idle as expected, not an error', async () => {
     const { adapter, events } = await makeAdapter();
 

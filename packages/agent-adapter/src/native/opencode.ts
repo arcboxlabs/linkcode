@@ -92,6 +92,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * via `tool.callID`, but the tool card was announced under the PART id — this map re-joins them
    * so the ask lands on the visible card. Cleared at each turn settle. */
   private readonly toolPartIdByCallId = new Map<string, string>();
+  /** Message ids opencode reported with `role: 'user'` — their parts must be skipped: the server
+   * streams `message.part.updated` for the user's own prompt text too (observed live on 1.17.11;
+   * `message.updated {role:'user'}` precedes its parts), and replaying that text would
+   * double-render the prompt as an agent bubble. Cleared at each turn settle. */
+  private readonly userMessageIds = new Set<string>();
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
@@ -240,8 +245,18 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private handleEvent(ev: Event): void {
     try {
       switch (ev.type) {
+        case 'message.updated':
+          if (ev.properties.sessionID === this.sessionId && ev.properties.info.role === 'user') {
+            this.userMessageIds.add(ev.properties.info.id);
+          }
+          break;
         case 'message.part.updated':
-          if (ev.properties.sessionID === this.sessionId) this.handlePart(ev.properties.part);
+          if (
+            ev.properties.sessionID === this.sessionId &&
+            !this.userMessageIds.has(ev.properties.part.messageID)
+          ) {
+            this.handlePart(ev.properties.part);
+          }
           break;
         case 'permission.asked':
           if (ev.properties.sessionID === this.sessionId) {
@@ -281,6 +296,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.cancelling = false;
     this.turnFailed = false;
     this.toolPartIdByCallId.clear();
+    this.userMessageIds.clear();
     // A cancelled or failed turn never delivers its remaining tool settles; sweep them (idempotent
     // after the base cancel-path teardown).
     if (cancelled || failed) this.teardown();
