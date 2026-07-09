@@ -2,6 +2,7 @@ import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 import type { PaletteThreadViewModel } from '@linkcode/ui';
 import { AGENT_LABELS, CommandPalette, repositoryLabel } from '@linkcode/ui';
+import { AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { WorkbenchSessions } from '../surface/use-workbench-sessions';
@@ -17,14 +18,18 @@ export interface WorkbenchCommandPaletteProps {
 /**
  * The palette container: mounted permanently by `Workbench`, but everything below — data
  * assembly, matching, the dialog — exists only while open, so the closed palette costs nothing
- * and the query resets on close for free.
+ * and the query resets on close for free. `AnimatePresence` defers the unmount until the
+ * dialog's motion exit transition finishes.
  */
 export function WorkbenchCommandPalette({
   sessions,
 }: WorkbenchCommandPaletteProps): React.ReactNode {
   const open = useCommandPaletteStore((state) => state.open);
-  if (!open) return null;
-  return <OpenCommandPalette sessions={sessions} />;
+  return (
+    <AnimatePresence>
+      {open && <OpenCommandPalette key="palette" sessions={sessions} />}
+    </AnimatePresence>
+  );
 }
 
 function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.ReactNode {
@@ -125,7 +130,6 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
 
   return (
     <CommandPalette
-      open
       onOpenChange={setOpen}
       query={query}
       onQueryChange={setQuery}

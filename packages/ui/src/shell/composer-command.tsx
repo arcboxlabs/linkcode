@@ -88,10 +88,6 @@ export function computeTextTrigger(value: string, caret: number): TextTriggerSta
   return null;
 }
 
-export function preventBaseUIHandler(event: React.SyntheticEvent): void {
-  (event as React.SyntheticEvent & { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
-}
-
 export function textControlFromEvent(event: Event): HTMLInputElement | HTMLTextAreaElement | null {
   return event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
     ? event.target

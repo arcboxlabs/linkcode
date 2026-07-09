@@ -4,6 +4,7 @@ import { useCommandPaletteStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useTranslations } from 'use-intl';
+import { openDesktopSettings } from '../settings/store';
 import { getPanelToggleShortcuts } from './use-desktop-shell-shortcuts';
 
 interface UseDesktopPaletteCommandsOptions {
@@ -16,9 +17,10 @@ interface UseDesktopPaletteCommandsOptions {
 }
 
 /**
- * Desktop-owned palette entries: native folder pick, the Settings overlay, and the panel
- * toggles. Registered into the shared palette store so the workbench-rendered palette lists
- * them without desktop threading props through the surface.
+ * Desktop-owned palette entries: native folder pick, the Settings overlay (plus a deep link to
+ * its Import-chat-history pane), and the panel toggles. Registered into the shared palette store
+ * so the workbench-rendered palette lists them without desktop threading props through the
+ * surface.
  */
 export function useDesktopPaletteCommands({
   desktopPlatform,
@@ -71,12 +73,24 @@ export function useDesktopPaletteCommands({
       },
     ];
     if (onOpenSettings) {
-      commands.splice(1, 0, {
-        id: 'desktop.settings',
-        label: tPalette('openSettings'),
-        shortcut: shortcuts.settings,
-        run: onOpenSettings,
-      });
+      commands.splice(
+        1,
+        0,
+        {
+          id: 'desktop.settings',
+          label: tPalette('openSettings'),
+          shortcut: shortcuts.settings,
+          run: onOpenSettings,
+        },
+        {
+          id: 'desktop.import-history',
+          label: tPalette('importHistory'),
+          keywords: ['history', 'import', 'chat'],
+          run() {
+            openDesktopSettings('history-import');
+          },
+        },
+      );
     }
     const { registerCommands, unregisterCommands } = useCommandPaletteStore.getState();
     registerCommands('desktop', commands);

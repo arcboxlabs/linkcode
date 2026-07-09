@@ -288,9 +288,13 @@ export const en = {
       goForward: 'Go forward',
       openFolder: 'Open folder…',
       openSettings: 'Open settings',
+      importHistory: 'Import chat history',
       toggleSidebar: 'Toggle sidebar',
       toggleBottomPanel: 'Toggle bottom panel',
       toggleRightPanel: 'Toggle right panel',
+      footerNavigate: 'Navigate',
+      footerOpen: 'Open',
+      footerClose: 'Close',
     },
     content: {
       audio: '[audio]',
