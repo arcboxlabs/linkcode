@@ -410,7 +410,6 @@ export const en = {
     agents: {
       title: 'Agents',
       hint: 'Per-agent provider configuration.',
-      unavailable: 'Connect to the daemon to configure agents.',
       enabled: 'Enabled',
       defaultModel: 'Default model',
       apiKey: 'API key',

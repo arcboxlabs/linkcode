@@ -402,7 +402,6 @@ export const zhCN = {
     agents: {
       title: '智能体',
       hint: '各智能体的 provider 配置。',
-      unavailable: '连接到 daemon 后即可配置智能体。',
       enabled: '启用',
       defaultModel: '默认模型',
       apiKey: 'API 密钥',

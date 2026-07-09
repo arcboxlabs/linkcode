@@ -1,15 +1,9 @@
-import { useTranslations } from 'use-intl';
+import { AgentAccountsSettings } from '@linkcode/workbench';
 
-// Placeholder: the real UI reads/writes per-agent config over the data-plane transport
-// (config.get / config.set), but this surface renders above the connection gate where the
-// workbench runtime is unavailable. The webview settings page has the full editor.
+// The provider × account editor is a transport-backed workbench container. The desktop Settings
+// overlay renders inside `WorkbenchProviders` (the `ungated` slot) but above the connection gate,
+// so — like the history-import panel — the editor is reachable here and degrades to loading/error
+// states while the daemon is unreachable.
 export function AgentsTab(): React.ReactNode {
-  const t = useTranslations('settings.agents');
-  return (
-    <div className="flex flex-col gap-2">
-      <h2 className="font-semibold text-sm">{t('title')}</h2>
-      <p className="text-muted-foreground text-xs">{t('hint')}</p>
-      <p className="mt-4 text-muted-foreground text-sm">{t('unavailable')}</p>
-    </div>
-  );
+  return <AgentAccountsSettings />;
 }
