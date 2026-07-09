@@ -102,7 +102,10 @@ async function main(): Promise<void> {
     resolveLoginBinary: (agent) =>
       agent === 'claude-code' ? agentRuntimeProber.loginBinaryPath(agent) : undefined,
     // Local Anthropic⇄OpenAI translation for cross-protocol accounts (arcboxlabs/aigateway sidecar).
-    translator: createAiGatewaySidecar(),
+    // The binary installs on demand from the managed-asset store; LINKCODE_AIGATEWAY_PATH overrides.
+    translator: createAiGatewaySidecar({
+      ensureBinary: async () => (await assets.ensure('tool:aigateway'))?.path,
+    }),
   });
   // Warm missing agent pairs in the background — boot never waits on a download. Anything the
   // probe already found usable (detected CLI, SDK platform package) is left alone. Runs after
