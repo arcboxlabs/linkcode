@@ -4,7 +4,7 @@ import { useCommandPaletteStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useTranslations } from 'use-intl';
-import { useDesktopSettingsStore } from '../settings/store';
+import { openDesktopSettings } from '../settings/store';
 import { getPanelToggleShortcuts } from './use-desktop-shell-shortcuts';
 
 interface UseDesktopPaletteCommandsOptions {
@@ -87,10 +87,7 @@ export function useDesktopPaletteCommands({
           label: tPalette('importHistory'),
           keywords: ['history', 'import', 'chat'],
           run() {
-            // Deep-link the Settings overlay to the Import-chat-history pane; the category is
-            // store-held, so it survives until SettingsView mounts.
-            useDesktopSettingsStore.getState().setSettingsCategory('history-import');
-            onOpenSettings();
+            openDesktopSettings('history-import');
           },
         },
       );

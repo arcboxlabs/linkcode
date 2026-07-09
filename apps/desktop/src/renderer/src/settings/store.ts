@@ -1,5 +1,6 @@
 import type { ThemePreference } from '@linkcode/ipc';
 import type { AgentKind } from '@linkcode/schema';
+import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { create } from 'zustand';
 import { systemBridge } from '../ipc';
 
@@ -79,3 +80,14 @@ export const useDesktopSettingsStore = create<DesktopSettingsState>()((set) => (
   setSettingsCategory: (category) => set({ settingsCategory: category }),
   setHistoryImportProvider: (provider) => set({ historyImportProvider: provider }),
 }));
+
+/**
+ * Open the Settings overlay at a category. Every entry point routes through here: generic ones
+ * (sidebar button, palette "Open settings", the native menu) take the `general` default so a
+ * previous deep link doesn't leak into the next open — the category is store-held and would
+ * otherwise stick across close/reopen.
+ */
+export function openDesktopSettings(category: SettingsCategory = 'general'): void {
+  useDesktopSettingsStore.getState().setSettingsCategory(category);
+  useNavigationHistoryStore.getState().openOverlay('settings');
+}
