@@ -405,6 +405,9 @@ function WorkbenchSessionSurface({
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
+      onLoginAgent={onboarding.login}
+      onSubmitLoginCode={onboarding.submitLoginCode}
+      onCancelLogin={onboarding.cancelLogin}
       conversation={conversation}
       permissionDecisions={permissionDecisions}
       respondingPermissions={responding}

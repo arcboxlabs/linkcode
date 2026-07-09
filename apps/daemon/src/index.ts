@@ -97,6 +97,9 @@ async function main(): Promise<void> {
     assets,
     // Lets the engine refresh (and push) the runtime snapshot after a managed install lands.
     collectAgentRuntimes: () => agentRuntimeProber.collect(),
+    // Spawn path for an interactive claude-code login (managed/detected/SDK platform binary).
+    resolveLoginBinary: (agent) =>
+      agent === 'claude-code' ? agentRuntimeProber.loginBinaryPath(agent) : undefined,
   });
   // Warm missing agent pairs in the background — boot never waits on a download. Anything the
   // probe already found usable (detected CLI, SDK platform package) is left alone. Runs after

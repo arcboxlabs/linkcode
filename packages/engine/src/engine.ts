@@ -1,5 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { createAdapter } from '@linkcode/agent-adapter';
+import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryId,
@@ -23,6 +23,8 @@ import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import type { LoginBinaryResolver } from './agent-login-service';
+import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
 import { readWorkspaceFile } from './file-service';
 import { GitService } from './git/git-service';
@@ -75,6 +77,8 @@ export interface EngineDeps {
   assets?: AssetService;
   /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands. */
   collectAgentRuntimes?: () => Promise<AgentRuntimes>;
+  /** Resolves the CLI to spawn for an interactive `agent-login`; absent hosts reject login requests. */
+  resolveLoginBinary?: LoginBinaryResolver;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
@@ -114,6 +118,7 @@ export class Engine {
   /** Boot snapshot, replaced by {@link refreshAgentRuntimes} when a managed install lands. */
   private agentRuntimes: AgentRuntimes;
   private readonly assets?: AssetService;
+  private readonly logins?: AgentLoginService;
   private readonly collectAgentRuntimes?: () => Promise<AgentRuntimes>;
   private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
@@ -144,6 +149,11 @@ export class Engine {
     this.agentRuntimes = deps.agentRuntimes ?? {};
     this.assets = deps.assets;
     this.collectAgentRuntimes = deps.collectAgentRuntimes;
+    this.logins = deps.resolveLoginBinary
+      ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
+          void this.refreshAgentRuntimes();
+        })
+      : undefined;
     // Lifetime = the daemon's: the engine is never disposed, so the subscription is never torn down.
     this.assets?.subscribe((event) => this.onAssetInstallEvent(event));
   }
@@ -607,6 +617,23 @@ export class Engine {
         this.terminals?.close(p.terminalId);
         break;
       }
+      case 'agent-login.start': {
+        const logins = this.logins;
+        if (!logins) {
+          this.sendFailure(p.clientReqId, new Error('Login is not supported on this host'));
+          break;
+        }
+        logins.start(p.clientReqId, p.agent);
+        break;
+      }
+      case 'agent-login.submit-code': {
+        this.logins?.submitCode(p.loginId, p.code);
+        break;
+      }
+      case 'agent-login.cancel': {
+        this.logins?.cancel(p.loginId);
+        break;
+      }
       case 'ping': {
         this.transport.send(createWireMessage({ kind: 'pong' }));
         break;
@@ -632,6 +659,7 @@ export class Engine {
     this.sessions.clear();
     this.scripts?.shutdown();
     this.terminals?.closeAll();
+    this.logins?.closeAll();
     this.transport.close();
   }
 
@@ -692,6 +720,12 @@ export class Engine {
             break;
           case 'effort-update':
             session.currentEffort = event.effort;
+            break;
+          case 'error':
+            // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
+            // `loggedIn: false` and the client surfaces the login cue, self-healing an out-of-band
+            // auth change the boot-time probe couldn't see.
+            if (event.code === AUTH_FAILED_ERROR_CODE) void this.refreshAgentRuntimes();
             break;
           default:
             break;

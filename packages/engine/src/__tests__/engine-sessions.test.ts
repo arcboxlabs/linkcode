@@ -1,5 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { asHistoryId } from '@linkcode/agent-adapter';
+import { AUTH_FAILED_ERROR_CODE, asHistoryId } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryCapabilities,
@@ -8,6 +8,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
+  AgentRuntimes,
   MessageId,
   SessionId,
   StartOptions,
@@ -19,7 +20,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
 import type { SessionStore } from '../session-store';
 import { InMemorySessionStore } from '../session-store';
@@ -118,6 +119,7 @@ function tick(): Promise<void> {
 function harness(
   store: SessionStore = new InMemorySessionStore(),
   makeAdapter: () => FakeAdapter = () => new FakeAdapter(),
+  collectAgentRuntimes?: () => Promise<AgentRuntimes>,
 ) {
   const sent: WirePayload[] = [];
   let handler: ((msg: WireMessage) => void) | null = null;
@@ -139,7 +141,7 @@ function harness(
     adapters.push(adapter);
     return adapter;
   };
-  const engine = new Engine(transport, { factory, sessionStore: store });
+  const engine = new Engine(transport, { factory, sessionStore: store, collectAgentRuntimes });
 
   async function inject(payload: WirePayload): Promise<void> {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
@@ -576,5 +578,37 @@ describe('engine session notifications', () => {
     });
 
     expect(notifications(sent)).toEqual([]);
+  });
+});
+
+describe('auth-failure re-probe', () => {
+  it('re-probes runtimes on an authentication-failure error, but not on other errors', async () => {
+    const signedOut: AgentRuntimes = {
+      'claude-code': { status: 'available', source: 'detected', auth: { loggedIn: false } },
+    };
+    const collect = vi.fn(() => Promise.resolve(signedOut));
+    const { engine, sent, inject, adapters } = harness(undefined, undefined, collect);
+    await engine.start();
+    await inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const adapter = nullthrow(adapters[0], 'no adapter started');
+
+    adapter.emit({
+      type: 'error',
+      message: 'Claude authentication failed',
+      code: AUTH_FAILED_ERROR_CODE,
+      recoverable: false,
+    });
+    await tick();
+    expect(collect).toHaveBeenCalledOnce();
+    expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: signedOut });
+
+    // A generic (non-auth) error must not trigger a re-probe.
+    adapter.emit({ type: 'error', message: 'boom', recoverable: true });
+    await tick();
+    expect(collect).toHaveBeenCalledOnce();
   });
 });

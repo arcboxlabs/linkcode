@@ -36,6 +36,7 @@ export function SettingsView(): React.ReactNode {
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
+  const showWindowControls = desktopPlatform !== null && desktopPlatform !== 'darwin';
 
   useAbortableEffect((signal) => {
     void systemBridge.app.platform().then((platform) => {
@@ -64,6 +65,7 @@ export function SettingsView(): React.ReactNode {
         expandedPanel={null}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
+        showWindowControls={showWindowControls}
         // Back lives in the settings sidebar, so suppress the workbench navigation controls.
         leftControls={null}
         rightControls={null}
