@@ -25,6 +25,8 @@ import { Switch } from 'coss-ui/components/switch';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
+import type { AccountPreset } from './account-presets';
+import { ACCOUNT_PRESETS } from './account-presets';
 
 const AGENT_KINDS = AgentKindSchema.options;
 
@@ -149,6 +151,16 @@ function AddAccountForm({
     { value: 'openai-responses', label: 'OpenAI Responses' },
   ];
 
+  const applyPreset = (preset: AccountPreset): void =>
+    reset({
+      label: preset.label,
+      type: preset.credentialType,
+      secret: '',
+      baseUrl: preset.baseUrl,
+      protocol: preset.protocol,
+      model: '',
+    });
+
   return (
     <form
       className="flex flex-col gap-3 rounded-lg border border-border border-dashed p-4"
@@ -157,6 +169,23 @@ function AddAccountForm({
         reset(ACCOUNT_DRAFT_DEFAULTS);
       })}
     >
+      <div className="flex flex-col gap-1">
+        <span className="text-muted-foreground text-xs">{t('presets')}</span>
+        <div className="flex flex-wrap gap-2">
+          {ACCOUNT_PRESETS.map((preset) => (
+            <Button
+              key={preset.id}
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => applyPreset(preset)}
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
+      </div>
       <Field>
         <FieldLabel>{t('accountLabel')}</FieldLabel>
         <Input className="w-full" autoComplete="off" disabled={disabled} {...register('label')} />

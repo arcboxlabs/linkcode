@@ -412,6 +412,7 @@ export const zhCN = {
       accountsHint: '为每个 provider 保存多份凭证并切换。',
       noAccounts: '还没有账号。',
       addAccount: '添加账号',
+      presets: '从预设填入',
       accountLabel: '名称',
       accountType: '类型',
       typeApiKey: 'API 密钥',

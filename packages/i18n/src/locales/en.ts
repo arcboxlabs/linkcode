@@ -420,6 +420,7 @@ export const en = {
       accountsHint: 'Keep several credentials per provider and switch between them.',
       noAccounts: 'No accounts yet.',
       addAccount: 'Add account',
+      presets: 'From a preset',
       accountLabel: 'Name',
       accountType: 'Type',
       typeApiKey: 'API key',
