@@ -7,6 +7,7 @@ import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { once } from 'foxts/once';
+import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
 import { chatWorkspaceRoot, databasePath, loadConfig } from './config';
 import { createProviderConfigStore } from './provider-store';
@@ -100,6 +101,8 @@ async function main(): Promise<void> {
     // Spawn path for an interactive claude-code login (managed/detected/SDK platform binary).
     resolveLoginBinary: (agent) =>
       agent === 'claude-code' ? agentRuntimeProber.loginBinaryPath(agent) : undefined,
+    // Local Anthropic⇄OpenAI translation for cross-protocol accounts (arcboxlabs/aigateway sidecar).
+    translator: createAiGatewaySidecar(),
   });
   // Warm missing agent pairs in the background — boot never waits on a download. Anything the
   // probe already found usable (detected CLI, SDK platform package) is left alone. Runs after
