@@ -1,4 +1,10 @@
-import type { AgentEvent, PermissionOutcome, SessionId, WirePayload } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  PermissionOutcome,
+  SessionId,
+  SessionNotification,
+  WirePayload,
+} from '@linkcode/schema';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
 import type { SequencedAgentEvent } from '../client';
@@ -50,6 +56,40 @@ describe('LinkCodeClient control API', () => {
     await expect(client.respondPermission(sessionId, 'perm-1', outcome)).rejects.toThrow(
       'permission request is no longer pending',
     );
+
+    client.dispose();
+    serverTransport.close();
+  });
+});
+
+describe('LinkCodeClient session notifications', () => {
+  it('fans session.notification broadcasts out to subscribers until unsubscribed', async () => {
+    const [clientTransport, serverTransport] = createLocalTransportPair();
+    const client = new LinkCodeClient(clientTransport);
+    await client.connect();
+    await serverTransport.connect();
+
+    const seen: SessionNotification[] = [];
+    const unsubscribe = client.subscribeSessionNotification((n) => seen.push(n));
+    const notification: SessionNotification = {
+      sessionId,
+      kind: 'claude-code',
+      cwd: '/repo',
+      title: 'Fix the flaky test',
+      reason: { type: 'turn-completed', stopReason: 'end_turn' },
+    };
+    serverTransport.send(createWireMessage({ kind: 'session.notification', notification }));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+    expect(seen).toEqual([notification]);
+
+    unsubscribe();
+    serverTransport.send(createWireMessage({ kind: 'session.notification', notification }));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+    expect(seen).toHaveLength(1);
 
     client.dispose();
     serverTransport.close();

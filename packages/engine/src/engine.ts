@@ -13,6 +13,7 @@ import type {
   ManagedAssetStatus,
   SessionId,
   SessionInfo,
+  SessionNotificationReason,
   SessionRecord,
   WireMessage,
   WorkspaceRecord,
@@ -730,6 +731,7 @@ export class Engine {
             break;
         }
         this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+        this.maybeNotify(sessionId, event);
       } catch (err) {
         console.error(`Error handling adapter event for session ${sessionId}:`, err);
       }
@@ -755,6 +757,28 @@ export class Engine {
       throw new Error(`Session was closed while starting: ${sessionId}`);
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  /** Broadcast `session.notification` for notification-worthy adapter events. Classification is
+   * daemon-side so clients never fold background sessions' event streams; whether to surface it
+   * (focus suppression, user prefs) is client-side presentation policy. Always a broadcast — even
+   * once per-connection subscription modes exist (CODE-72), this frame must reach every client. */
+  private maybeNotify(sessionId: SessionId, event: AgentEvent): void {
+    const reason = notificationReason(event);
+    const record = this.records.get(sessionId);
+    if (!reason || !record) return;
+    this.transport.send(
+      createWireMessage({
+        kind: 'session.notification',
+        notification: {
+          sessionId,
+          kind: record.kind,
+          cwd: record.cwd,
+          title: record.title,
+          reason,
+        },
+      }),
+    );
   }
 
   private toSessionInfo(record: SessionRecord): SessionInfo {
@@ -898,6 +922,24 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
     if (historyId !== undefined) return historyId;
   }
   return record.origin.type === 'imported' ? record.origin.historyId : undefined;
+}
+
+/** The notification-worthy subset of adapter events. `stop` is the turn boundary (`status: 'idle'`
+ * also fires at session start, so it can't be the trigger); a `permission-request` or
+ * `question-request` ask is the only real "awaiting input" signal — no adapter emits an
+ * `awaiting-input` status. */
+function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
+  switch (event.type) {
+    case 'stop':
+      return { type: 'turn-completed', stopReason: event.stopReason };
+    case 'permission-request':
+    case 'question-request':
+      return { type: 'awaiting-approval', toolTitle: event.toolCall.title };
+    case 'error':
+      return { type: 'error', message: event.message };
+    default:
+      return undefined;
+  }
 }
 
 const SESSION_TITLE_MAX_LENGTH = 80;

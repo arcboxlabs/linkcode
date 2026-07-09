@@ -1,5 +1,5 @@
 import { SettingsSidebarNav, ShellSidebar, TitleStrip } from '@linkcode/ui';
-import { BotIcon, SettingsIcon, WifiIcon } from 'lucide-react';
+import { BellIcon, BotIcon, SettingsIcon, WifiIcon } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { useTranslations } from 'use-intl';
 
@@ -31,6 +31,13 @@ export function SettingsLayout(): React.ReactNode {
                 render: <Link to="/settings/connection" />,
               },
               {
+                key: 'notifications',
+                icon: <BellIcon className="size-4" />,
+                label: t('tabs.notifications'),
+                active: isActive(pathname, 'notifications'),
+                render: <Link to="/settings/notifications" />,
+              },
+              {
                 key: 'agents',
                 icon: <BotIcon className="size-4" />,
                 label: t('tabs.agents'),
@@ -55,6 +62,9 @@ export function SettingsLayout(): React.ReactNode {
   );
 }
 
-function isActive(pathname: string, section: '' | 'connection' | 'agents'): boolean {
+function isActive(
+  pathname: string,
+  section: '' | 'connection' | 'notifications' | 'agents',
+): boolean {
   return pathname.replace(/\/$/, '') === `/settings${section ? `/${section}` : ''}`;
 }

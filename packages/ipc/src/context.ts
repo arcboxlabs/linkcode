@@ -32,6 +32,10 @@ export interface SystemContext {
     /** Whether this app supervises the daemon's lifecycle (packaged build, no endpoint override). */
     isManaged(): boolean;
   };
+  notifications: {
+    /** Show an OS notification; a click focuses the window and pushes `clickToken` back. */
+    notify(notification: SystemNotification): void;
+  };
 }
 
 export const PickFileOptionsSchema = z.object({
@@ -40,6 +44,18 @@ export const PickFileOptionsSchema = z.object({
   directory: z.boolean().optional(),
 });
 export type PickFileOptions = z.infer<typeof PickFileOptionsSchema>;
+
+/**
+ * Display parameters for one OS notification — a native-UI operation, not a data channel. The
+ * renderer decides whether/what to notify; `clickToken` is opaque to this layer and is echoed
+ * back verbatim on click so the renderer can route (e.g. select the matching session).
+ */
+export const SystemNotificationSchema = z.object({
+  title: z.string(),
+  body: z.string(),
+  clickToken: z.string(),
+});
+export type SystemNotification = z.infer<typeof SystemNotificationSchema>;
 
 /** Renderer color-scheme preference; `system` follows the OS via `nativeTheme.themeSource`. */
 export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark']);

@@ -21,6 +21,7 @@ import type {
   QuestionOutcome,
   SessionId,
   SessionInfo,
+  SessionNotification,
   SessionRecord,
   StartOptions,
   WireMessage,
@@ -48,6 +49,7 @@ export type { SequencedAgentEvent } from './client/event-buffer';
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
+type SessionNotificationCb = (notification: SessionNotification) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 
@@ -88,6 +90,7 @@ export class LinkCodeClient {
   private readonly terminals: TerminalChannel;
   private readonly agentLogin: AgentLoginChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
+  private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
@@ -177,6 +180,9 @@ export class LinkCodeClient {
         break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
+        break;
+      case 'session.notification':
+        for (const cb of this.sessionNotificationSubs) cb(p.notification);
         break;
       case 'workspace.listed':
         this.pending.resolve('workspaceList', p.replyTo, p.workspaces);
@@ -393,6 +399,12 @@ export class LinkCodeClient {
   subscribeScriptStatus(cb: ScriptStatusCb): Unsubscribe {
     this.scriptStatusSubs.add(cb);
     return () => this.scriptStatusSubs.delete(cb);
+  }
+
+  /** Broadcast `session.notification` moments for every session, foreground or background. */
+  subscribeSessionNotification(cb: SessionNotificationCb): Unsubscribe {
+    this.sessionNotificationSubs.add(cb);
+    return () => this.sessionNotificationSubs.delete(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
