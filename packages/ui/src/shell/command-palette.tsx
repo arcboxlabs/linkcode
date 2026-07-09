@@ -3,7 +3,9 @@ import {
   Command,
   CommandCollection,
   CommandDialog,
-  CommandDialogPopup,
+  CommandDialogPortal,
+  CommandDialogPrimitive,
+  CommandDialogViewport,
   CommandEmpty,
   CommandFooter,
   CommandGroup,
@@ -17,6 +19,7 @@ import {
 } from 'coss-ui/components/command';
 import { Kbd, KbdGroup } from 'coss-ui/components/kbd';
 import { ArrowDownIcon, ArrowUpIcon, CornerDownLeftIcon } from 'lucide-react';
+import type { Transition } from 'motion/react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Fragment, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -76,6 +79,17 @@ function paletteEntryToString(item: unknown): string {
   return entry.kind === 'thread' ? entry.thread.title : entry.command.label;
 }
 
+/**
+ * Dialog chrome forked from coss-ui's `CommandDialogBackdrop`/`CommandDialogPopup`: motion owns
+ * enter/exit here (the workbench container defers unmount via `AnimatePresence`), so the CSS
+ * `data-starting/ending-style` transition classes are dropped, and the backdrop loses
+ * `backdrop-blur-sm` — backdrop-filter cannot blur the native vibrancy behind the desktop's
+ * translucent sidebar, where it reads as a milky seam instead.
+ */
+const BACKDROP_CLASS = 'fixed inset-0 z-50 bg-black/32';
+const POPUP_CLASS =
+  'relative flex max-h-105 min-h-0 w-full min-w-0 max-w-xl flex-col rounded-2xl border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:bg-muted/72 before:shadow-[0_1px_--theme(--color-black/4%)] **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-1 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]';
+
 /** Intrinsic height of an element, observed so the list wrapper can animate to it. */
 function useMeasuredHeight(): [React.RefCallback<HTMLElement>, number | null] {
   const [height, setHeight] = useState<number | null>(null);
@@ -124,81 +138,112 @@ export function CommandPalette({
     });
   }
 
+  const dialogTransition: Transition = reducedMotion
+    ? { duration: 0 }
+    : { duration: 0.2, ease: 'easeInOut' };
+
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandDialogPopup>
-        <Command
-          mode="none"
-          items={groups}
-          itemToStringValue={paletteEntryToString}
-          value={query}
-          onValueChange={onQueryChange}
-        >
-          <CommandInput placeholder={t('placeholder')} />
-          <CommandPanel className="flex flex-col">
-            <CommandEmpty>{t('empty')}</CommandEmpty>
+      <CommandDialogPortal>
+        <CommandDialogPrimitive.Backdrop
+          className={BACKDROP_CLASS}
+          data-slot="command-dialog-backdrop"
+          render={
             <motion.div
-              className="min-h-0"
-              initial={false}
-              animate={listHeight === null ? undefined : { height: listHeight }}
-              transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: 'easeOut' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={dialogTransition}
+            />
+          }
+        />
+        <CommandDialogViewport>
+          <CommandDialogPrimitive.Popup
+            className={POPUP_CLASS}
+            data-slot="command-dialog-popup"
+            render={
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={dialogTransition}
+              />
+            }
+          >
+            <Command
+              mode="none"
+              items={groups}
+              itemToStringValue={paletteEntryToString}
+              value={query}
+              onValueChange={onQueryChange}
             >
-              <CommandList ref={listRef}>
-                {(group: PaletteGroup) => (
-                  <Fragment key={group.value}>
-                    <CommandGroup items={group.items}>
-                      <CommandGroupLabel>{group.label}</CommandGroupLabel>
-                      <CommandCollection>
-                        {(entry: PaletteEntry) =>
-                          entry.kind === 'thread' ? (
-                            <PaletteThreadRow
-                              key={entry.thread.sessionId}
-                              entry={entry}
-                              onSelect={onSelectThread}
-                            />
-                          ) : (
-                            <PaletteCommandRow
-                              key={entry.command.id}
-                              entry={entry}
-                              onRun={onRunCommand}
-                            />
-                          )
-                        }
-                      </CommandCollection>
-                    </CommandGroup>
-                    <CommandSeparator />
-                  </Fragment>
-                )}
-              </CommandList>
-            </motion.div>
-          </CommandPanel>
-          <CommandFooter>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <KbdGroup>
-                  <Kbd>
-                    <ArrowUpIcon />
-                  </Kbd>
-                  <Kbd>
-                    <ArrowDownIcon />
-                  </Kbd>
-                </KbdGroup>
-                <span>{t('footerNavigate')}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Kbd>
-                  <CornerDownLeftIcon />
-                </Kbd>
-                <span>{t('footerOpen')}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Kbd>Esc</Kbd>
-              <span>{t('footerClose')}</span>
-            </div>
-          </CommandFooter>
-        </Command>
-      </CommandDialogPopup>
+              <CommandInput placeholder={t('placeholder')} />
+              <CommandPanel className="flex flex-col">
+                <CommandEmpty>{t('empty')}</CommandEmpty>
+                <motion.div
+                  className="min-h-0"
+                  initial={false}
+                  animate={listHeight === null ? undefined : { height: listHeight }}
+                  transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: 'easeOut' }}
+                >
+                  <CommandList ref={listRef}>
+                    {(group: PaletteGroup) => (
+                      <Fragment key={group.value}>
+                        <CommandGroup items={group.items}>
+                          <CommandGroupLabel>{group.label}</CommandGroupLabel>
+                          <CommandCollection>
+                            {(entry: PaletteEntry) =>
+                              entry.kind === 'thread' ? (
+                                <PaletteThreadRow
+                                  key={entry.thread.sessionId}
+                                  entry={entry}
+                                  onSelect={onSelectThread}
+                                />
+                              ) : (
+                                <PaletteCommandRow
+                                  key={entry.command.id}
+                                  entry={entry}
+                                  onRun={onRunCommand}
+                                />
+                              )
+                            }
+                          </CommandCollection>
+                        </CommandGroup>
+                        <CommandSeparator />
+                      </Fragment>
+                    )}
+                  </CommandList>
+                </motion.div>
+              </CommandPanel>
+              <CommandFooter>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <KbdGroup>
+                      <Kbd>
+                        <ArrowUpIcon />
+                      </Kbd>
+                      <Kbd>
+                        <ArrowDownIcon />
+                      </Kbd>
+                    </KbdGroup>
+                    <span>{t('footerNavigate')}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Kbd>
+                      <CornerDownLeftIcon />
+                    </Kbd>
+                    <span>{t('footerOpen')}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Kbd>Esc</Kbd>
+                  <span>{t('footerClose')}</span>
+                </div>
+              </CommandFooter>
+            </Command>
+          </CommandDialogPrimitive.Popup>
+        </CommandDialogViewport>
+      </CommandDialogPortal>
     </CommandDialog>
   );
 }
