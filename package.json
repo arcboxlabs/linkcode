@@ -46,6 +46,7 @@
     "@proj-airi/lobe-icons": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "eslint": "^10.6.0",
     "eslint-config-sukka": "^8.13.2",
     "eslint-formatter-sukka": "^8.13.2",

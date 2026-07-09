@@ -46,7 +46,10 @@ allowBuilds:
 # apps/mobile's React version also comes from the catalog; react-native remains pinned by the Expo SDK.
 catalog:
   # Language / types
-  typescript: ^6.0.3
+  # typescript-eslint needs the TypeScript ≤6 compiler API, so the `typescript` package resolves to
+  # the 6.0 API re-export (ships a `tsc6` binary). Native TypeScript 7 provides the `tsc` binary used
+  # for typecheck/build via the root `@typescript/native` devDependency (npm:typescript@7).
+  typescript: "npm:@typescript/typescript6@^6.0.2"
   "@types/node": ^25.9.3
 
   # Data contracts
@@ -148,6 +151,27 @@ minimumReleaseAgeExclude:
   - undici@8.5.0
   - linkify-it@5.0.1
   - tayori@0.3.8
+  - '@typescript/typescript-aix-ppc64@7.0.2'
+  - '@typescript/typescript-darwin-arm64@7.0.2'
+  - '@typescript/typescript-darwin-x64@7.0.2'
+  - '@typescript/typescript-freebsd-arm64@7.0.2'
+  - '@typescript/typescript-freebsd-x64@7.0.2'
+  - '@typescript/typescript-linux-arm64@7.0.2'
+  - '@typescript/typescript-linux-arm@7.0.2'
+  - '@typescript/typescript-linux-loong64@7.0.2'
+  - '@typescript/typescript-linux-mips64el@7.0.2'
+  - '@typescript/typescript-linux-ppc64@7.0.2'
+  - '@typescript/typescript-linux-riscv64@7.0.2'
+  - '@typescript/typescript-linux-s390x@7.0.2'
+  - '@typescript/typescript-linux-x64@7.0.2'
+  - '@typescript/typescript-netbsd-arm64@7.0.2'
+  - '@typescript/typescript-netbsd-x64@7.0.2'
+  - '@typescript/typescript-openbsd-arm64@7.0.2'
+  - '@typescript/typescript-openbsd-x64@7.0.2'
+  - '@typescript/typescript-sunos-x64@7.0.2'
+  - '@typescript/typescript-win32-arm64@7.0.2'
+  - '@typescript/typescript-win32-x64@7.0.2'
+  - typescript@7.0.2
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
@@ -157,4 +181,3 @@ overrides:
   undici@>=8.0.0 <8.5.0: ^8.5.0
   uuid@<11.1.1: ^11.1.1
   ws@>=8.0.0 <8.21.0: ^8.21.0
-
