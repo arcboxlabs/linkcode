@@ -18,8 +18,9 @@ export const configWireVariants = [
   z.object({
     kind: z.literal('config.set'),
     clientReqId: z.string().min(1),
-    providers: ProvidersConfigSchema,
-    /** The global account pool; omitted by clients that only edit provider settings. */
+    /** Per-agent provider settings; omitted by a client editing only the account pool. */
+    providers: ProvidersConfigSchema.optional(),
+    /** The global account pool; omitted by a client editing only provider settings. */
     accounts: AccountsSchema.optional(),
   }),
 ] as const;

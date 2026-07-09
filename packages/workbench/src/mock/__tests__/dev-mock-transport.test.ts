@@ -1,5 +1,5 @@
 import { LinkCodeClient } from '@linkcode/client-core';
-import type { AgentEvent, ProvidersConfig, SessionId, ToolCall } from '@linkcode/schema';
+import type { Accounts, AgentEvent, ProvidersConfig, SessionId, ToolCall } from '@linkcode/schema';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../dev-mock-transport';
@@ -79,6 +79,14 @@ describe('dev mock transport', () => {
       codex: { enabled: true, defaultModel: 'mock-model' },
     } satisfies ProvidersConfig;
     await client.setProviderConfig(providers);
+    expect(await client.getProviderConfig()).toEqual(providers);
+
+    const accounts = [
+      { id: 'acc_1', label: 'Mock', credential: { type: 'api-key', key: 'sk-mock' }, createdAt: 0 },
+    ] satisfies Accounts;
+    await client.setAccounts(accounts);
+    expect(await client.getAccounts()).toEqual(accounts);
+    // Independent fields: writing accounts preserved the provider config.
     expect(await client.getProviderConfig()).toEqual(providers);
 
     client.dispose();

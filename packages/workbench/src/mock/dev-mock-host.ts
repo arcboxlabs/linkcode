@@ -257,7 +257,7 @@ export class DevMockHost {
         break;
       case 'config.set':
         await wait(CONTROL_LATENCY_MS);
-        this.providers = structuredClone(p.providers);
+        if (p.providers !== undefined) this.providers = structuredClone(p.providers);
         if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
         this.sendSuccess(p.clientReqId);
         break;

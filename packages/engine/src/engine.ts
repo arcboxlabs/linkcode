@@ -434,8 +434,9 @@ export class Engine {
       }
       case 'config.set': {
         await this.tryReply(p.clientReqId, async () => {
-          await this.providerStore.set(p.providers);
-          // Only clients editing the pool send `accounts`; a provider-only set preserves it.
+          // Each field is independent: a client editing only providers preserves the account pool,
+          // and one editing only accounts preserves the provider settings.
+          if (p.providers !== undefined) await this.providerStore.set(p.providers);
           if (p.accounts !== undefined) await this.providerStore.setAccounts(p.accounts);
           this.sendSuccess(p.clientReqId);
         });
