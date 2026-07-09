@@ -9,7 +9,6 @@ import type {
   AgentHistorySession,
   ToolCall,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { not } from 'foxts/guard';
 import {
@@ -23,7 +22,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
-import { toolKindFromName } from '../../util';
+import { codexToolAnnounce, codexToolSettle } from './history-tools';
 
 const WHITESPACE_RUN_RE = /\s+/g;
 
@@ -286,27 +285,16 @@ const CODEX_TOOL_OUTPUT_TYPES = new Set([
   'local_shell_call_output',
 ]);
 
-function codexToolInput(payload: JsonRecord): unknown {
-  const args = stringField(payload, 'arguments');
-  if (args !== undefined) {
-    try {
-      return JSON.parse(args) as unknown;
-    } catch {
-      return args;
-    }
-  }
-  return payload.input ?? payload.action;
-}
-
 /**
  * Replays the rollout as the event stream the live turn emitted: text messages plus tool-call
- * announce/settle pairs correlated by `call_id` (mirrors the claude/amp history mappers). History
- * ids are NOT converged with the live app-server item ids — the rollout persists only `call_id`
- * and message rows carry no id at all — so the seed relies on the `uptoSeq` cut, same as text
- * always has for codex. Known lossiness, documented on CODE-97: edits replay as text results (the
- * unified diff is computed live by the app-server and never persisted; the rollout stores codex's
- * `*** Begin Patch` envelope), output rows carry no failure marker (settle is `completed`), and
- * reasoning stays unreplayable (`encrypted_content` only).
+ * announce/settle pairs correlated by `call_id` (mirrors the claude/amp history mappers), mapped
+ * to the live adapter's presentation shapes by `history-tools.ts` (command titles, unwrapped
+ * outputs, apply_patch diffs, update_plan as a plan event). History ids are NOT converged with
+ * the live app-server item ids — the rollout persists only `call_id` and message rows carry no
+ * id at all — so the seed relies on the `uptoSeq` cut, same as text always has for codex. Known
+ * lossiness, documented on CODE-97: reasoning stays unreplayable (`encrypted_content` only), and
+ * replayed edit diffs are reconstructed from codex's `*** Begin Patch` envelope rather than the
+ * app-server's richer live unified diff.
  */
 export function mapCodexHistoryEvents(
   historyId: AgentHistoryId,
@@ -314,6 +302,8 @@ export function mapCodexHistoryEvents(
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
   const announced = new Map<string, ToolCall>();
+  /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
+  const planCalls = new Set<string>();
 
   const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
     announced.set(toolCall.toolCallId, toolCall);
@@ -329,34 +319,18 @@ export function mapCodexHistoryEvents(
     const callId = stringField(payload, 'call_id');
     if (payloadType !== undefined && callId !== undefined) {
       if (CODEX_TOOL_ANNOUNCE_TYPES.has(payloadType)) {
-        const name = stringField(payload, 'name');
-        events.push(
-          toolEvent({
-            toolCallId: callId,
-            title: name ?? 'tool',
-            kind: name === undefined ? 'other' : toolKindFromName(name),
-            status: 'in_progress',
-            content: [],
-            rawInput: codexToolInput(payload),
-          }),
-        );
+        const mapped = codexToolAnnounce(callId, payload);
+        if ('plan' in mapped) {
+          planCalls.add(callId);
+          events.push({ historyId, itemId: callId, event: { type: 'plan', plan: mapped.plan } });
+        } else {
+          events.push(toolEvent(mapped.toolCall));
+        }
         return;
       }
       if (CODEX_TOOL_OUTPUT_TYPES.has(payloadType)) {
-        const existing = announced.get(callId);
-        const output = stringField(payload, 'output') ?? textFromUnknown(payload.output);
-        events.push(
-          toolEvent({
-            toolCallId: callId,
-            // The announce can sit beyond this read's page window; fall back to first-sight defaults.
-            title: existing?.title ?? callId,
-            kind: existing?.kind ?? 'other',
-            status: 'completed',
-            content: output.length > 0 ? [{ type: 'content', content: textBlock(output) }] : [],
-            rawInput: existing?.rawInput,
-            rawOutput: payload.output,
-          }),
-        );
+        if (planCalls.has(callId)) return;
+        events.push(toolEvent(codexToolSettle(callId, payload, announced.get(callId))));
         return;
       }
     }

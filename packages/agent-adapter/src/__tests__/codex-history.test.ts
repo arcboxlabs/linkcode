@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
 import { mapCodexHistoryEvents } from '../native/codex/history';
+import { applyPatchToolView } from '../native/codex/history-tools';
 
 const HID = asHistoryId('019f0000-codex-test');
 
 // Row shapes below mirror real rollout lines (codex-cli 0.140.0, ~/.codex/sessions).
 function responseItem(payload: Record<string, unknown>, timestamp?: string) {
   return { type: 'response_item', payload, timestamp };
+}
+
+function toolCalls(events: ReturnType<typeof mapCodexHistoryEvents>) {
+  return events.flatMap((event) =>
+    event.event.type === 'tool-call' ? [event.event.toolCall] : [],
+  );
 }
 
 describe('mapCodexHistoryEvents', () => {
@@ -36,37 +43,38 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].ts).toBe(Date.parse('2026-07-01T00:00:00Z'));
   });
 
-  it('replays a function_call/function_call_output pair correlated by call_id', () => {
+  it('replays exec_command like the live commandExecution item: command title, unwrapped output', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
         type: 'function_call',
         name: 'exec_command',
-        arguments: '{"cmd": "cat greet.py", "workdir": "/tmp/diff-test"}',
+        arguments:
+          '{"cmd": "cat greet.py", "workdir": "/tmp/diff-test", "max_output_tokens": 2000}',
         call_id: 'call_exec1',
       }),
       responseItem({
         type: 'function_call_output',
         call_id: 'call_exec1',
-        output: 'def greet():\n    print("hello")\n',
+        output:
+          'Chunk ID: a2bed9\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 8\nOutput:\ndef greet():\n    print("hello")\n',
       }),
     ]);
-    const tools = events.flatMap((event) =>
-      event.event.type === 'tool-call' ? [event.event.toolCall] : [],
-    );
+    const tools = toolCalls(events);
     expect(tools).toHaveLength(2);
     // Same id for announce and settle → buildConversation replaces by id, no duplicate card.
     expect(tools[0]).toMatchObject({
       toolCallId: 'call_exec1',
-      title: 'exec_command',
+      title: 'cat greet.py',
       kind: 'execute',
       status: 'in_progress',
-      rawInput: { cmd: 'cat greet.py', workdir: '/tmp/diff-test' },
+      rawInput: { command: 'cat greet.py', cwd: '/tmp/diff-test' },
     });
     expect(tools[1]).toMatchObject({
       toolCallId: 'call_exec1',
-      title: 'exec_command',
+      title: 'cat greet.py',
       kind: 'execute',
       status: 'completed',
+      rawOutput: 0,
     });
     expect(tools[1].content).toEqual([
       {
@@ -76,8 +84,41 @@ describe('mapCodexHistoryEvents', () => {
     ]);
   });
 
-  it('replays a custom_tool_call apply_patch pair as an edit tool with the raw envelope input', () => {
-    const patch = '*** Begin Patch\n*** Update File: greet.py\n@@\n-a\n+b\n*** End Patch\n';
+  it('settles an aborted run and a declined run as failed with the raw text as the record', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        name: 'exec_command',
+        arguments: '{"cmd": "sleep 120"}',
+        call_id: 'call_abort',
+      }),
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_abort',
+        output: 'aborted by user after 89.0s',
+      }),
+      responseItem({
+        type: 'function_call',
+        name: 'exec_command',
+        arguments: '{"cmd": "touch /etc/hosts"}',
+        call_id: 'call_decline',
+      }),
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_decline',
+        output: 'exec_command failed for `touch /etc/hosts`: rejected by user',
+      }),
+    ]);
+    const settled = toolCalls(events).filter((tool) => tool.status !== 'in_progress');
+    expect(settled.map((tool) => tool.status)).toEqual(['failed', 'failed']);
+    expect(settled[0].content).toEqual([
+      { type: 'content', content: { type: 'text', text: 'aborted by user after 89.0s' } },
+    ]);
+  });
+
+  it('replays apply_patch like the live fileChange item: diff blocks kept through settle', () => {
+    const patch =
+      '*** Begin Patch\n*** Update File: greet.py\n@@\n-    print("hello")\n+    print("goodbye")\n*** End Patch\n';
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
         type: 'custom_tool_call',
@@ -89,34 +130,99 @@ describe('mapCodexHistoryEvents', () => {
       responseItem({
         type: 'custom_tool_call_output',
         call_id: 'call_patch1',
-        output: 'Exit code: 0\nOutput:\nSuccess. Updated the following files:\nM greet.py\n',
+        output:
+          'Exit code: 0\nWall time: 0.1 seconds\nOutput:\nSuccess. Updated the following files:\nM greet.py\n',
       }),
     ]);
-    const tools = events.flatMap((event) =>
-      event.event.type === 'tool-call' ? [event.event.toolCall] : [],
-    );
+    const tools = toolCalls(events);
     expect(tools).toHaveLength(2);
     expect(tools[0]).toMatchObject({
       toolCallId: 'call_patch1',
-      title: 'apply_patch',
+      title: 'Apply file changes',
       kind: 'edit',
       status: 'in_progress',
+      locations: [{ path: 'greet.py' }],
       rawInput: patch,
     });
-    expect(tools[1]).toMatchObject({
-      toolCallId: 'call_patch1',
-      kind: 'edit',
-      status: 'completed',
+    const diff = {
+      type: 'diff',
+      path: 'greet.py',
+      oldText: '    print("hello")',
+      newText: '    print("goodbye")',
+    };
+    expect(tools[0].content).toEqual([diff]);
+    // Settle keeps the announce's diff blocks — the receipt text is not the record.
+    expect(tools[1]).toMatchObject({ status: 'completed', kind: 'edit' });
+    expect(tools[1].content).toEqual([diff]);
+  });
+
+  it('appends the receipt text when an apply_patch settles with a nonzero exit code', () => {
+    const patch = '*** Begin Patch\n*** Update File: a.txt\n@@\n-x\n+y\n*** End Patch\n';
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'custom_tool_call',
+        call_id: 'call_patchfail',
+        name: 'apply_patch',
+        input: patch,
+      }),
+      responseItem({
+        type: 'custom_tool_call_output',
+        call_id: 'call_patchfail',
+        output: 'Exit code: 1\nWall time: 0.1 seconds\nOutput:\npatch does not apply\n',
+      }),
+    ]);
+    const settled = toolCalls(events)[1];
+    expect(settled.status).toBe('failed');
+    expect(settled.content).toEqual([
+      { type: 'diff', path: 'a.txt', oldText: 'x', newText: 'y' },
+      { type: 'content', content: { type: 'text', text: 'patch does not apply\n' } },
+    ]);
+  });
+
+  it('replays update_plan as a plan event and swallows its receipt output', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        name: 'update_plan',
+        arguments:
+          '{"plan":[{"step":"read the code","status":"completed"},{"step":"fix it","status":"in_progress"}]}',
+        call_id: 'call_plan1',
+      }),
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_plan1',
+        output: 'Plan updated',
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toEqual({
+      type: 'plan',
+      plan: {
+        entries: [
+          { content: 'read the code', priority: 'medium', status: 'completed' },
+          { content: 'fix it', priority: 'medium', status: 'in_progress' },
+        ],
+      },
     });
+  });
+
+  it('maps write_stdin to an execute step, not the edit the name heuristic would guess', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        name: 'write_stdin',
+        arguments: '{"session_id":1,"chars":"q"}',
+        call_id: 'call_stdin',
+      }),
+    ]);
+    expect(toolCalls(events)[0]).toMatchObject({ title: 'write_stdin', kind: 'execute' });
   });
 
   it('settles an output whose announce sits beyond the page window with first-sight defaults', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({ type: 'function_call_output', call_id: 'call_orphan', output: 'late' }),
     ]);
-    const tools = events.flatMap((event) =>
-      event.event.type === 'tool-call' ? [event.event.toolCall] : [],
-    );
+    const tools = toolCalls(events);
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
       toolCallId: 'call_orphan',
@@ -135,10 +241,7 @@ describe('mapCodexHistoryEvents', () => {
         call_id: 'call_raw',
       }),
     ]);
-    const tools = events.flatMap((event) =>
-      event.event.type === 'tool-call' ? [event.event.toolCall] : [],
-    );
-    expect(tools[0].rawInput).toBe('not-json');
+    expect(toolCalls(events)[0].rawInput).toBe('not-json');
   });
 
   it('interleaves tools with text in rollout order', () => {
@@ -167,5 +270,57 @@ describe('mapCodexHistoryEvents', () => {
       'tool-call',
       'agent-message-chunk',
     ]);
+  });
+});
+
+describe('applyPatchToolView', () => {
+  it('parses add, update-with-move, and delete sections into diffs and locations', () => {
+    const view = applyPatchToolView(
+      [
+        '*** Begin Patch',
+        '*** Add File: new.txt',
+        '+line one',
+        '+line two',
+        '*** Update File: old-name.txt',
+        '*** Move to: new-name.txt',
+        '@@ def main():',
+        ' context',
+        '-before',
+        '+after',
+        '*** Delete File: gone.txt',
+        '*** End Patch',
+      ].join('\n'),
+    );
+    expect(view).not.toBeNull();
+    expect(view?.locations).toEqual([
+      { path: 'new.txt' },
+      { path: 'new-name.txt' },
+      { path: 'gone.txt' },
+    ]);
+    expect(view?.content).toEqual([
+      { type: 'diff', path: 'new.txt', newText: 'line one\nline two' },
+      {
+        type: 'diff',
+        path: 'new-name.txt',
+        oldText: 'context\nbefore',
+        newText: 'context\nafter',
+      },
+      { type: 'content', content: { type: 'text', text: 'Deleted gone.txt' } },
+    ]);
+  });
+
+  it('splits multiple hunks of one file into one diff block per hunk', () => {
+    const view = applyPatchToolView(
+      '*** Begin Patch\n*** Update File: a.py\n@@\n-one\n+ONE\n@@\n-two\n+TWO\n*** End Patch\n',
+    );
+    expect(view?.content).toEqual([
+      { type: 'diff', path: 'a.py', oldText: 'one', newText: 'ONE' },
+      { type: 'diff', path: 'a.py', oldText: 'two', newText: 'TWO' },
+    ]);
+  });
+
+  it('returns null for input that is not a Begin Patch envelope', () => {
+    expect(applyPatchToolView('not a patch')).toBeNull();
+    expect(applyPatchToolView('*** Begin Patch\n*** End Patch\n')).toBeNull();
   });
 });
