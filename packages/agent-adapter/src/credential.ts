@@ -1,0 +1,84 @@
+import type { StartOptions } from '@linkcode/schema';
+
+/**
+ * The credential/endpoint bundle the engine resolves from a session's bound account
+ * (`@linkcode/engine`'s `applyProviderDefaults`) and hands to an adapter via `StartOptions.config`.
+ * Each adapter maps these onto its own auth / base-URL mechanism. All fields are optional — an
+ * `oauth` account contributes none, delegating to the agent CLI's own login store.
+ */
+export interface AgentCredential {
+  /** Provider key (x-api-key style). */
+  apiKey?: string;
+  /** Bearer token (e.g. a gateway token). */
+  authToken?: string;
+  /** Custom endpoint (gateway / relay / local translator). */
+  baseUrl?: string;
+  /** Extra environment for the agent process. */
+  extraEnv?: Record<string, string>;
+}
+
+/** Read the resolved credential bundle from a session's free-form `config` bag. */
+export function readAgentCredential(config: StartOptions['config']): AgentCredential {
+  if (!config) return {};
+  const extraEnv = readStringRecord(config.extraEnv);
+  return {
+    apiKey: readString(config.apiKey),
+    authToken: readString(config.authToken),
+    baseUrl: readString(config.baseUrl),
+    ...(extraEnv && { extraEnv }),
+  };
+}
+
+/**
+ * Build the `env` for the claude-code subprocess. The SDK `env` **replaces** the process
+ * environment, so `base` (usually `process.env`) is spread to preserve PATH/HOME. Returns undefined
+ * when the account contributes nothing, so the caller omits `env` and the CLI inherits the parent
+ * environment (the login / OAuth path).
+ *
+ * With an `authToken` the token goes to `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` is blanked:
+ * Claude Code prefers a non-empty `ANTHROPIC_API_KEY` over the token, so a leftover inherited key
+ * would silently defeat a gateway that authenticates by bearer token.
+ */
+export function claudeCodeEnv(
+  base: Record<string, string | undefined>,
+  cred: AgentCredential,
+): Record<string, string | undefined> | undefined {
+  const { apiKey, authToken, baseUrl, extraEnv } = cred;
+  if (!apiKey && !authToken && !baseUrl && !extraEnv) return undefined;
+  const env: Record<string, string | undefined> = { ...base };
+  if (authToken) {
+    env.ANTHROPIC_AUTH_TOKEN = authToken;
+    env.ANTHROPIC_API_KEY = '';
+  } else if (apiKey) {
+    env.ANTHROPIC_API_KEY = apiKey;
+  }
+  if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
+  if (extraEnv) Object.assign(env, extraEnv);
+  return env;
+}
+
+/**
+ * Build the extra `env` for the codex app-server subprocess. `CodexAppServer.start` **merges** this
+ * over the inherited env, so only the account's own keys are returned (no base spread). `CODEX_API_KEY`
+ * takes the account's key or bearer token; `OPENAI_BASE_URL` points codex's default provider at a
+ * custom endpoint. Returns undefined when nothing is contributed.
+ */
+export function codexEnv(cred: AgentCredential): Record<string, string> | undefined {
+  const env: Record<string, string> = {};
+  const key = cred.apiKey ?? cred.authToken;
+  if (key) env.CODEX_API_KEY = key;
+  if (cred.baseUrl) env.OPENAI_BASE_URL = cred.baseUrl;
+  if (cred.extraEnv) Object.assign(env, cred.extraEnv);
+  return Object.keys(env).length > 0 ? env : undefined;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readStringRecord(value: unknown): Record<string, string> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, val] of Object.entries(value)) if (typeof val === 'string') out[key] = val;
+  return Object.keys(out).length > 0 ? out : undefined;
+}

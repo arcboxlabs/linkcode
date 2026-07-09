@@ -2,6 +2,7 @@ import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-
 import type { ContentBlock, StartOptions } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
+import { readAgentCredential } from '../credential';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 /**
@@ -32,10 +33,18 @@ export class PiAdapter extends BaseAgentAdapter {
       }
     }
 
-    // Pi resolves auth through AuthStorage; inject the configured key as a runtime override for the
-    // selected model's provider so it takes precedence over ~/.pi/agent/auth.json and env vars.
-    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
-    if (apiKey) authStorage.setRuntimeApiKey(model.provider, apiKey);
+    // Pi resolves auth through AuthStorage; inject the account's key as a runtime override for the
+    // selected model's provider so it takes precedence over ~/.pi/agent/auth.json and env vars. A
+    // gateway account's base URL is registered on the model registry (it overrides the provider's URL).
+    const cred = readAgentCredential(opts.config);
+    const key = cred.apiKey ?? cred.authToken;
+    if (key) authStorage.setRuntimeApiKey(model.provider, key);
+    if (cred.baseUrl) {
+      modelRegistry.registerProvider(model.provider, {
+        baseUrl: cred.baseUrl,
+        ...(key && { apiKey: key }),
+      });
+    }
 
     const { session } = await pi.createAgentSession({
       cwd: opts.cwd,

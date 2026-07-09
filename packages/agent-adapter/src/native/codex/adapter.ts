@@ -21,6 +21,7 @@ import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
+import { codexEnv, readAgentCredential } from '../../credential';
 import {
   asHistoryId,
   asMessageId,
@@ -410,12 +411,13 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   private async openThread(): Promise<void> {
     const opts = nullthrow(this.opts, 'codex: session not started');
-    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    // Merged over the inherited env by the app-server: CODEX_API_KEY + optional OPENAI_BASE_URL.
+    const credentialEnv = codexEnv(readAgentCredential(opts.config));
     this.configuredSandbox = await this.readConfiguredSandbox();
     let server: CodexServerHandle;
     try {
       server = await this.startAppServer({
-        env: apiKey ? { CODEX_API_KEY: apiKey } : undefined,
+        env: credentialEnv,
         onNotification: (method, params) => this.handleNotification(method, params),
         onExit: (_code, stderrTail) => this.handleServerExit(stderrTail),
       });
