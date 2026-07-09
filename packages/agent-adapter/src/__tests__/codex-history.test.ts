@@ -206,6 +206,56 @@ describe('mapCodexHistoryEvents', () => {
     });
   });
 
+  it('replays the pre-0.140 local_shell_call pair as an execute step titled by its argv', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'local_shell_call',
+        call_id: 'call_shell1',
+        status: 'completed',
+        action: { type: 'exec', command: ['bash', '-lc', 'ls'], timeout_ms: 1000 },
+      }),
+      responseItem({ type: 'local_shell_call_output', call_id: 'call_shell1', output: 'file.txt' }),
+    ]);
+    const tools = toolCalls(events);
+    expect(tools).toHaveLength(2);
+    expect(tools[0]).toMatchObject({
+      title: 'bash -lc ls',
+      kind: 'execute',
+      status: 'in_progress',
+    });
+    expect(tools[1]).toMatchObject({ title: 'bash -lc ls', status: 'completed' });
+    expect(tools[1].content).toEqual([
+      { type: 'content', content: { type: 'text', text: 'file.txt' } },
+    ]);
+  });
+
+  it('does not misread envelope output whose body mentions the declined-run phrase', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        name: 'exec_command',
+        arguments: '{"cmd": "grep failed deploy.log"}',
+        call_id: 'call_grep',
+      }),
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_grep',
+        output:
+          'Chunk ID: abc123\nWall time: 0.1 seconds\nProcess exited with code 0\nOriginal token count: 9\nOutput:\ndeploy failed for `service-a`: timeout\n',
+      }),
+    ]);
+    // The declined marker is anchored to the very start of the output; a normal run's envelope
+    // starts with `Chunk ID:`, so a body line matching the phrase must not flip it to failed.
+    const settled = toolCalls(events)[1];
+    expect(settled.status).toBe('completed');
+    expect(settled.content).toEqual([
+      {
+        type: 'content',
+        content: { type: 'text', text: 'deploy failed for `service-a`: timeout\n' },
+      },
+    ]);
+  });
+
   it('maps write_stdin to an execute step, not the edit the name heuristic would guess', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({

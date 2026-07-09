@@ -11,7 +11,6 @@ import type {
   EffortLevel,
   PermissionOption,
   PermissionOutcome,
-  PlanEntry,
   StartOptions,
   TokenUsage,
   ToolCallContent,
@@ -47,6 +46,7 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
+import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
 import { diffContentFromUnified } from './unified-diff';
 
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
@@ -147,17 +147,6 @@ export function decisionFromOutcome(
   if (outcome.optionId === 'allow') return 'accept';
   if (outcome.optionId === 'allow_always') return 'acceptForSession';
   return 'decline';
-}
-
-function mapCodexPlanStatus(status: string | undefined): PlanEntry['status'] {
-  if (status === 'completed') return 'completed';
-  if (status === 'inProgress') return 'in_progress';
-  return 'pending';
-}
-
-function textContent(text: string): ToolCallContent[] {
-  if (text.length === 0) return [];
-  return [{ type: 'content', content: { type: 'text', text } }];
 }
 
 /**
@@ -585,19 +574,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'turn/plan/updated': {
         const plan = params.plan;
         if (!Array.isArray(plan)) break;
-        const entries = plan.reduce<PlanEntry[]>((acc, step) => {
-          if (!isRecord(step)) return acc;
-          const content = stringField(step, 'step');
-          if (content) {
-            acc.push({
-              content,
-              priority: 'medium',
-              status: mapCodexPlanStatus(stringField(step, 'status')),
-            });
-          }
-          return acc;
-        }, []);
-        this.emit({ type: 'plan', plan: { entries } });
+        this.emit({ type: 'plan', plan: { entries: codexPlanEntries(plan) } });
         break;
       }
       case 'thread/tokenUsage/updated': {
@@ -672,16 +649,16 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'commandExecution': {
-        const command = stringField(item, 'command');
-        this.emitTool({
-          toolCallId: id,
-          title: command ?? 'command',
-          kind: 'execute',
-          status: mapCodexItemStatus(stringField(item, 'status')),
-          content: textContent(stringField(item, 'aggregatedOutput') ?? ''),
-          rawInput: { command, cwd: stringField(item, 'cwd') },
-          rawOutput: numberField(item, 'exitCode'),
-        });
+        this.emitTool(
+          execToolCall({
+            toolCallId: id,
+            command: stringField(item, 'command'),
+            cwd: stringField(item, 'cwd'),
+            status: mapCodexItemStatus(stringField(item, 'status')),
+            output: stringField(item, 'aggregatedOutput'),
+            rawOutput: numberField(item, 'exitCode'),
+          }),
+        );
         break;
       }
       case 'fileChange': {
@@ -704,14 +681,14 @@ export class CodexAdapter extends BaseAgentAdapter {
             appendArrayInPlace(content, textContent(`Renamed ${path} → ${movePath}`));
           }
         }
-        this.emitTool({
-          toolCallId: id,
-          title: 'Apply file changes',
-          kind: 'edit',
-          status: mapCodexItemStatus(stringField(item, 'status')),
-          content,
-          locations,
-        });
+        this.emitTool(
+          fileChangeToolCall({
+            toolCallId: id,
+            status: mapCodexItemStatus(stringField(item, 'status')),
+            content,
+            locations,
+          }),
+        );
         break;
       }
       case 'mcpToolCall': {

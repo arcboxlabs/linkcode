@@ -1,13 +1,8 @@
-import type {
-  Plan,
-  PlanEntry,
-  ToolCall,
-  ToolCallContent,
-  ToolCallLocation,
-} from '@linkcode/schema';
+import type { Plan, ToolCall, ToolCallContent, ToolCallLocation } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { isRecord, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
+import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
 
 /**
  * Maps rollout tool rows to the same `ToolCall` shapes the live adapter emits (`adapter.ts`
@@ -33,16 +28,13 @@ export function codexToolAnnounce(
       const view = applyPatchToolView(input);
       if (view) {
         return {
-          toolCall: {
-            // Live parity: fileChange renders as 'Apply file changes' with per-file diff blocks.
+          toolCall: fileChangeToolCall({
             toolCallId: callId,
-            title: 'Apply file changes',
-            kind: 'edit',
             status: 'in_progress',
             content: view.content,
             locations: view.locations,
             rawInput: input,
-          },
+          }),
         };
       }
     }
@@ -83,17 +75,13 @@ export function codexToolAnnounce(
     if (plan) return { plan };
   }
   if (name === 'exec_command' && isRecord(args)) {
-    const cmd = stringField(args, 'cmd');
     return {
-      toolCall: {
+      toolCall: execToolCall({
         toolCallId: callId,
-        title: cmd ?? 'command',
-        kind: 'execute',
+        command: stringField(args, 'cmd'),
+        cwd: stringField(args, 'workdir'),
         status: 'in_progress',
-        content: [],
-        // Live parity: commandExecution reports { command, cwd }.
-        rawInput: { command: cmd, cwd: stringField(args, 'workdir') },
-      },
+      }),
     };
   }
   if (name === 'write_stdin') {
@@ -133,26 +121,37 @@ export function codexToolSettle(
   const output = typeof raw === 'string' ? raw : textFromUnknown(raw);
   const parsed = parseCodexToolOutput(output);
 
-  if (existing?.kind === 'edit' && existing.content.length > 0) {
-    // The diff blocks from the announce are the record; the receipt text only matters on failure.
-    const failed = parsed.failed || (parsed.exitCode !== undefined && parsed.exitCode !== 0);
+  if (existing) {
+    if (existing.content.length > 0) {
+      // A content-bearing announce (apply_patch's reconstructed diffs) is the record — live
+      // fileChange shows diffs, never the apply receipt. A nonzero exit here means the patch
+      // did NOT apply: fail the call and append the receipt text as the only explanation.
+      const failed = parsed.failed || (parsed.exitCode !== undefined && parsed.exitCode !== 0);
+      return {
+        ...existing,
+        status: failed ? 'failed' : 'completed',
+        content: failed ? [...existing.content, ...textContent(parsed.body)] : existing.content,
+        rawOutput: raw,
+      };
+    }
+    // A nonzero exit code deliberately stays 'completed' — live parity: the app-server marks a
+    // command that ran to completion 'completed' regardless of exit code ('failed' is reserved
+    // for declined/aborted runs), and the code travels as rawOutput for consumers that care.
     return {
       ...existing,
-      status: failed ? 'failed' : 'completed',
-      content: failed ? [...existing.content, ...textContent(parsed.body)] : existing.content,
-      rawOutput: raw,
+      status: parsed.failed ? 'failed' : 'completed',
+      content: textContent(parsed.body),
+      rawOutput: parsed.exitCode ?? raw,
     };
   }
 
+  // The announce can sit beyond this read's page window; settle with first-sight defaults.
   return {
     toolCallId: callId,
-    // The announce can sit beyond this read's page window; fall back to first-sight defaults.
-    title: existing?.title ?? callId,
-    kind: existing?.kind ?? 'other',
+    title: callId,
+    kind: 'other',
     status: parsed.failed ? 'failed' : 'completed',
     content: textContent(parsed.body),
-    rawInput: existing?.rawInput,
-    // Live parity: commandExecution reports the exit code as rawOutput.
     rawOutput: parsed.exitCode ?? raw,
   };
 }
@@ -167,13 +166,11 @@ function parseArguments(payload: Record<string, unknown>): unknown {
   }
 }
 
-function textContent(text: string): ToolCallContent[] {
-  if (text.length === 0) return [];
-  return [{ type: 'content', content: { type: 'text', text } }];
-}
-
 const EXIT_CODE_RE = /^(?:Process exited with code|Exit code:) (\d+)$/m;
 const OUTPUT_MARKER = '\nOutput:\n';
+/** Declined runs persist `<tool> failed for \`cmd\`: reason` — anchored so a command whose own
+ * output happens to contain the phrase is not misread as a decline. */
+const DECLINED_OUTPUT_RE = /^\w+ failed for `/;
 
 /**
  * Unwrap the freeform-exec output envelope (`Chunk ID: … / Wall time: … / Process exited with
@@ -186,7 +183,7 @@ function parseCodexToolOutput(output: string): {
   exitCode?: number;
   failed: boolean;
 } {
-  if (output.startsWith('aborted by user') || output.split('\n', 1)[0].includes(' failed for `')) {
+  if (output.startsWith('aborted by user') || DECLINED_OUTPUT_RE.test(output)) {
     return { body: output, failed: true };
   }
   if (output.startsWith('Chunk ID:') || output.startsWith('Exit code:')) {
@@ -200,23 +197,9 @@ function parseCodexToolOutput(output: string): {
 }
 
 function planFromArgs(args: unknown): Plan | null {
-  if (!isRecord(args) || !Array.isArray(args.plan)) return null;
-  const entries = args.plan.reduce<PlanEntry[]>((acc, step) => {
-    if (!isRecord(step)) return acc;
-    const content = stringField(step, 'step');
-    if (content) {
-      acc.push({ content, priority: 'medium', status: planStatus(stringField(step, 'status')) });
-    }
-    return acc;
-  }, []);
+  if (!isRecord(args)) return null;
+  const entries = codexPlanEntries(args.plan);
   return entries.length > 0 ? { entries } : null;
-}
-
-/** Rollout rows persist snake_case (`in_progress`); the live channel camelCases (`inProgress`). */
-function planStatus(status: string | undefined): PlanEntry['status'] {
-  if (status === 'completed') return 'completed';
-  if (status === 'in_progress' || status === 'inProgress') return 'in_progress';
-  return 'pending';
 }
 
 interface ApplyPatchView {

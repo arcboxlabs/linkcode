@@ -305,7 +305,9 @@ export function mapCodexHistoryEvents(
   /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
   const planCalls = new Set<string>();
 
-  const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+  // Records the snapshot as the call's latest state (settle reads it back as `existing`) AND
+  // builds the history event — both announce and settle go through it, so the latest wins.
+  const recordToolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
     announced.set(toolCall.toolCallId, toolCall);
     return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
   };
@@ -324,13 +326,13 @@ export function mapCodexHistoryEvents(
           planCalls.add(callId);
           events.push({ historyId, itemId: callId, event: { type: 'plan', plan: mapped.plan } });
         } else {
-          events.push(toolEvent(mapped.toolCall));
+          events.push(recordToolEvent(mapped.toolCall));
         }
         return;
       }
       if (CODEX_TOOL_OUTPUT_TYPES.has(payloadType)) {
         if (planCalls.has(callId)) return;
-        events.push(toolEvent(codexToolSettle(callId, payload, announced.get(callId))));
+        events.push(recordToolEvent(codexToolSettle(callId, payload, announced.get(callId))));
         return;
       }
     }
