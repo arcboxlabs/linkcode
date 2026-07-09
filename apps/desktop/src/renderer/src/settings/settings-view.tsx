@@ -4,7 +4,7 @@ import { AGENT_LABELS, AgentIcon, SettingsSidebarNav, ShellSidebar } from '@link
 import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import { BotIcon, HistoryIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
+import { BellIcon, BotIcon, HistoryIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
@@ -17,6 +17,7 @@ import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
+import { NotificationsTab } from './notifications-tab';
 import type { SettingsCategory } from './store';
 import { useDesktopSettingsStore } from './store';
 
@@ -123,6 +124,13 @@ export function SettingsView(): React.ReactNode {
                     onClick: () => setCategory('connection'),
                   },
                   {
+                    key: 'notifications',
+                    icon: <BellIcon className="size-4" />,
+                    label: t('tabs.notifications'),
+                    active: category === 'notifications',
+                    onClick: () => setCategory('notifications'),
+                  },
+                  {
                     key: 'about',
                     icon: <InfoIcon className="size-4" />,
                     label: t('tabs.about'),
@@ -184,6 +192,8 @@ function renderSettingsPanel(
       return <GeneralTab />;
     case 'connection':
       return <ConnectionTab />;
+    case 'notifications':
+      return <NotificationsTab />;
     case 'about':
       return <AboutTab />;
     case 'agents':

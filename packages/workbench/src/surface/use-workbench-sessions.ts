@@ -7,14 +7,13 @@ import type {
 } from '@linkcode/schema';
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
-import { useMemo } from 'react';
+import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useMemo, useRef } from 'react';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
 import type { WorkbenchSessionDraft } from './selection-store';
 import { useSessionSelectionStore } from './selection-store';
-
-export type { WorkbenchSessionDraft } from './selection-store';
 
 export interface WorkbenchSessions {
   sessions: SessionInfo[];
@@ -61,10 +60,11 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const resumeMutation = useMutation(resumeSession, { onError });
   const selectedId = useSessionSelectionStore((state) => state.selectedId);
   const setSelectedId = useSessionSelectionStore((state) => state.setSelectedId);
-  // Shared, not hook-local: a selection applied from another instance (palette, history import)
-  // must clear the draft the visible workbench renders, or the draft page wins over it.
+  // Shared, not hook-local: a selection applied from another instance (palette, notification
+  // click-through, history import) must clear the draft the visible workbench renders, or the
+  // draft page wins over it.
   const explicitDraft = useSessionSelectionStore((state) => state.draft);
-  const setExplicitDraft = useSessionSelectionStore((state) => state.setDraft);
+  const startExplicitDraft = useSessionSelectionStore((state) => state.startDraft);
 
   const sessions = useMemo(
     () => [...(remoteSessions ?? [])].sort((a, b) => a.createdAt - b.createdAt),
@@ -78,11 +78,10 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   const active = useMemo(() => {
     if (draft) return null;
-    if (selectedId) {
-      const selected = sessionById(sessions, selectedId);
-      if (selected) return selected;
-    }
-
+    // An explicit selection absent from the loaded list (e.g. a session another client created,
+    // reached via a notification click) must NOT fall back to a different thread — that would show
+    // the wrong conversation. Hold null; the effect below refreshes the list so it resolves.
+    if (selectedId) return sessionById(sessions, selectedId);
     return preferredActiveSession(sessions) ?? sessions.at(-1) ?? null;
   }, [draft, selectedId, sessions]);
   const activeId = active?.sessionId ?? null;
@@ -105,10 +104,25 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
         ? { surface: 'thread', sessionId: activeId }
         : null;
 
+  // Refresh the list once when an explicit selection isn't in it yet, so a click-through to a
+  // not-yet-listed session resolves instead of leaving the surface blank. Deduped per id so a
+  // genuinely gone session doesn't spin.
+  const refreshedForRef = useRef<SessionId | null>(null);
+  useAbortableEffect(() => {
+    if (selectedId == null || draft) return;
+    if (sessionById(sessions, selectedId)) {
+      refreshedForRef.current = null;
+      return;
+    }
+    if (refreshedForRef.current === selectedId) return;
+    refreshedForRef.current = selectedId;
+    void mutate().catch(noop);
+  }, [selectedId, draft, sessions, mutate]);
+
   /** The non-recording apply path, shared by explicit selection and history traversal. */
   function applySelection(id: SessionId): void {
     setOverlay(null);
-    setExplicitDraft(null);
+    // setSelectedId atomically exits any draft (see the selection store).
     setSelectedId(id);
     // Selecting a cold session wakes it on the daemon, keeping the same Link Code id.
     if (sessionById(sessions, id)?.status === 'stopped') {
@@ -127,7 +141,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   function startDraft(workspaceId?: WorkspaceId): void {
     recordNavigation(currentLocation, { surface: 'new-thread', workspaceId: workspaceId ?? null });
     setOverlay(null);
-    setExplicitDraft({ workspaceId: workspaceId ?? null });
+    startExplicitDraft({ workspaceId: workspaceId ?? null });
   }
 
   // Threads must still exist in the list to be traversal targets (closed ones drop out of the
@@ -141,7 +155,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
       applySelection(target.sessionId);
     } else if (target.surface === 'new-thread') {
       setOverlay(null);
-      setExplicitDraft({ workspaceId: target.workspaceId });
+      startExplicitDraft({ workspaceId: target.workspaceId });
     } else {
       // An overlay surface covers the current selection — raising it is the whole apply.
       setOverlay(target.surface);
@@ -172,7 +186,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     // back to the previous session for a render and its conversation flashes (CODE-103).
     await mutate().catch(noop);
     recordNavigation(from, { surface: 'thread', sessionId });
-    setExplicitDraft(null);
+    // setSelectedId atomically exits the draft (see the selection store).
     setSelectedId(sessionId);
     return sessionId;
   }

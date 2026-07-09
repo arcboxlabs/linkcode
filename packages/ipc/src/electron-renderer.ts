@@ -7,6 +7,7 @@ import type { DesktopSettings, UpdaterStatus } from './context';
 import {
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   DAEMON_URL_SNAPSHOT_CHANNEL,
+  NOTIFICATION_CLICKED_CHANNEL,
   SETTINGS_OPEN_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
   systemIpcEvents,
@@ -80,6 +81,16 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
         const handler: IpcRendererListener = () => cb();
         ipcRenderer.on(DAEMON_RUNTIME_CHANGED_CHANNEL, handler);
         return () => ipcRenderer.removeListener(DAEMON_RUNTIME_CHANGED_CHANNEL, handler);
+      },
+    },
+    notifications: {
+      notify: (notification) => invoke.notificationsNotify(notification),
+      onClick(cb) {
+        const handler: IpcRendererListener = (_event, value: unknown) => {
+          if (typeof value === 'string') cb(value);
+        };
+        ipcRenderer.on(NOTIFICATION_CLICKED_CHANNEL, handler);
+        return () => ipcRenderer.removeListener(NOTIFICATION_CLICKED_CHANNEL, handler);
       },
     },
   };

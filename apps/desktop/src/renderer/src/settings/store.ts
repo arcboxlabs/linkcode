@@ -3,7 +3,13 @@ import type { AgentKind } from '@linkcode/schema';
 import { create } from 'zustand';
 import { systemBridge } from '../ipc';
 
-export type SettingsCategory = 'general' | 'connection' | 'about' | 'agents' | 'history-import';
+export type SettingsCategory =
+  | 'general'
+  | 'connection'
+  | 'notifications'
+  | 'about'
+  | 'agents'
+  | 'history-import';
 
 /**
  * System-plane settings mirror, living above the connection gate. Seeded synchronously from the

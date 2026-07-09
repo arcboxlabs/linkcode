@@ -105,4 +105,85 @@ describe('deriveAgentRuntimeCues', () => {
       codex: { state: 'unverified', version: '0.99.0' },
     });
   });
+
+  it('offers login for a signed-out runtime, tracking the phase from login activity', () => {
+    const runtimes: AgentRuntimes = {
+      'claude-code': {
+        status: 'available',
+        source: 'detected',
+        version: '2.1.202',
+        auth: { loggedIn: false },
+      },
+    };
+    expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {})).toEqual({
+      'claude-code': { state: 'needs-login', phase: 'idle' },
+    });
+    expect(
+      deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, { 'claude-code': { kind: 'opening' } }),
+    ).toEqual({ 'claude-code': { state: 'needs-login', phase: 'opening' } });
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        {},
+        {},
+        {
+          'claude-code': { kind: 'awaiting-code', url: 'https://x/oauth/authorize' },
+        },
+      ),
+    ).toEqual({
+      'claude-code': {
+        state: 'needs-login',
+        phase: 'awaiting-code',
+        url: 'https://x/oauth/authorize',
+      },
+    });
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        {},
+        {},
+        {
+          'claude-code': { kind: 'failed', error: 'nope' },
+        },
+      ),
+    ).toEqual({ 'claude-code': { state: 'needs-login', phase: 'failed', error: 'nope' } });
+  });
+
+  it('shows no login cue when signed in, and none when auth is unprobed', () => {
+    const loggedIn: AgentRuntimes = {
+      'claude-code': {
+        status: 'available',
+        source: 'detected',
+        auth: { loggedIn: true, method: 'claude.ai' },
+      },
+    };
+    expect(deriveAgentRuntimeCues(loggedIn, ASSETS, {}, {}, {})).toEqual({});
+    const unprobed: AgentRuntimes = { pi: { status: 'available', source: 'builtin' } };
+    expect(deriveAgentRuntimeCues(unprobed, ASSETS, {}, {}, {})).toEqual({});
+  });
+
+  it('suppresses the login cue when the agent has a configured API key', () => {
+    const runtimes: AgentRuntimes = {
+      'claude-code': { status: 'available', source: 'detected', auth: { loggedIn: false } },
+    };
+    // Signed out but a key is saved — the daemon injects it as ANTHROPIC_API_KEY, so no login needed.
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        {},
+        {},
+        {},
+        {
+          'claude-code': { enabled: true, apiKey: 'sk-x' },
+        },
+      ),
+    ).toEqual({});
+    // No key configured → the login cue still shows.
+    expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {})).toEqual({
+      'claude-code': { state: 'needs-login', phase: 'idle' },
+    });
+  });
 });

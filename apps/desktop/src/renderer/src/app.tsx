@@ -3,6 +3,7 @@ import {
   CloudHostsProvider,
   ConnectionState,
   createDaemonTransport,
+  SessionNotifier,
   useNavigationHistoryStore,
   useWorkbenchRuntimeStatus,
   Workbench,
@@ -13,6 +14,7 @@ import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useState } from 'react';
 import { systemBridge } from './ipc';
+import { presentDesktopNotification } from './notifications';
 import { SettingsView } from './settings/settings-view';
 import { useDesktopSettingsStore } from './settings/store';
 import { DesktopWindowControls } from './shell/chrome/window-controls';
@@ -38,6 +40,7 @@ export function DesktopApp(): React.ReactNode {
           // URL), yet its history-import panel can still use the data plane once connected.
           ungated={settingsOpen ? <SettingsView /> : null}
         >
+          <SessionNotifier present={presentDesktopNotification} />
           <SettingsUnderlay>
             <Workbench shellComponent={DesktopWorkbenchShell} />
           </SettingsUnderlay>

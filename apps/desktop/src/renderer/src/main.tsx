@@ -4,6 +4,7 @@ import { init as reactInit } from '@sentry/react';
 import { createRoot } from 'react-dom/client';
 import { DesktopApp } from './app';
 import { systemBridge } from './ipc';
+import { installNotificationClickThrough } from './notifications';
 import { installAdaptiveTheme } from './theme';
 import 'allotment/dist/style.css';
 import './index.css';
@@ -23,5 +24,8 @@ const unsubscribeOpenSettings = systemBridge.app.onOpenSettings(() => {
   useNavigationHistoryStore.getState().openOverlay('settings');
 });
 if (import.meta.hot) import.meta.hot.dispose(unsubscribeOpenSettings);
+
+const unsubscribeNotificationClicks = installNotificationClickThrough();
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeNotificationClicks);
 
 createRoot(el).render(<DesktopApp />);

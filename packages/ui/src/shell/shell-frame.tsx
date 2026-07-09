@@ -40,6 +40,12 @@ export interface ShellFrameProps
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
   onContinueUnverified?: (kind: AgentKind) => void;
+  /** Starts (or retries) the interactive login for a signed-out agent. */
+  onLoginAgent?: (kind: AgentKind) => void;
+  /** Submits the authorization code pasted from the browser during a login. */
+  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
+  /** Aborts an in-flight login. */
+  onCancelLogin?: (kind: AgentKind) => void;
   conversation: ConversationViewModel;
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   respondingPermissions: ReadonlySet<string>;
@@ -92,6 +98,9 @@ export function ShellFrame({
   runtimeCues,
   onDownloadAgent,
   onContinueUnverified,
+  onLoginAgent,
+  onSubmitLoginCode,
+  onCancelLogin,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -170,6 +179,9 @@ export function ShellFrame({
             runtimeCues={runtimeCues}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}
+            onLoginAgent={onLoginAgent}
+            onSubmitLoginCode={onSubmitLoginCode}
+            onCancelLogin={onCancelLogin}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
           />

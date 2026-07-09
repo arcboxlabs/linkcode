@@ -1,5 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { createAdapter } from '@linkcode/agent-adapter';
+import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryId,
@@ -13,6 +13,7 @@ import type {
   ManagedAssetStatus,
   SessionId,
   SessionInfo,
+  SessionNotificationReason,
   SessionRecord,
   WireMessage,
   WorkspaceRecord,
@@ -22,6 +23,8 @@ import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import type { LoginBinaryResolver } from './agent-login-service';
+import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
 import { readWorkspaceFile } from './file-service';
 import { GitService } from './git/git-service';
@@ -74,6 +77,8 @@ export interface EngineDeps {
   assets?: AssetService;
   /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands. */
   collectAgentRuntimes?: () => Promise<AgentRuntimes>;
+  /** Resolves the CLI to spawn for an interactive `agent-login`; absent hosts reject login requests. */
+  resolveLoginBinary?: LoginBinaryResolver;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
@@ -113,6 +118,7 @@ export class Engine {
   /** Boot snapshot, replaced by {@link refreshAgentRuntimes} when a managed install lands. */
   private agentRuntimes: AgentRuntimes;
   private readonly assets?: AssetService;
+  private readonly logins?: AgentLoginService;
   private readonly collectAgentRuntimes?: () => Promise<AgentRuntimes>;
   private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
@@ -143,6 +149,11 @@ export class Engine {
     this.agentRuntimes = deps.agentRuntimes ?? {};
     this.assets = deps.assets;
     this.collectAgentRuntimes = deps.collectAgentRuntimes;
+    this.logins = deps.resolveLoginBinary
+      ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
+          void this.refreshAgentRuntimes();
+        })
+      : undefined;
     // Lifetime = the daemon's: the engine is never disposed, so the subscription is never torn down.
     this.assets?.subscribe((event) => this.onAssetInstallEvent(event));
   }
@@ -606,6 +617,23 @@ export class Engine {
         this.terminals?.close(p.terminalId);
         break;
       }
+      case 'agent-login.start': {
+        const logins = this.logins;
+        if (!logins) {
+          this.sendFailure(p.clientReqId, new Error('Login is not supported on this host'));
+          break;
+        }
+        logins.start(p.clientReqId, p.agent);
+        break;
+      }
+      case 'agent-login.submit-code': {
+        this.logins?.submitCode(p.loginId, p.code);
+        break;
+      }
+      case 'agent-login.cancel': {
+        this.logins?.cancel(p.loginId);
+        break;
+      }
       case 'ping': {
         this.transport.send(createWireMessage({ kind: 'pong' }));
         break;
@@ -631,6 +659,7 @@ export class Engine {
     this.sessions.clear();
     this.scripts?.shutdown();
     this.terminals?.closeAll();
+    this.logins?.closeAll();
     this.transport.close();
   }
 
@@ -692,10 +721,17 @@ export class Engine {
           case 'effort-update':
             session.currentEffort = event.effort;
             break;
+          case 'error':
+            // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
+            // `loggedIn: false` and the client surfaces the login cue, self-healing an out-of-band
+            // auth change the boot-time probe couldn't see.
+            if (event.code === AUTH_FAILED_ERROR_CODE) void this.refreshAgentRuntimes();
+            break;
           default:
             break;
         }
         this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+        this.maybeNotify(sessionId, event);
       } catch (err) {
         console.error(`Error handling adapter event for session ${sessionId}:`, err);
       }
@@ -721,6 +757,28 @@ export class Engine {
       throw new Error(`Session was closed while starting: ${sessionId}`);
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  /** Broadcast `session.notification` for notification-worthy adapter events. Classification is
+   * daemon-side so clients never fold background sessions' event streams; whether to surface it
+   * (focus suppression, user prefs) is client-side presentation policy. Always a broadcast — even
+   * once per-connection subscription modes exist (CODE-72), this frame must reach every client. */
+  private maybeNotify(sessionId: SessionId, event: AgentEvent): void {
+    const reason = notificationReason(event);
+    const record = this.records.get(sessionId);
+    if (!reason || !record) return;
+    this.transport.send(
+      createWireMessage({
+        kind: 'session.notification',
+        notification: {
+          sessionId,
+          kind: record.kind,
+          cwd: record.cwd,
+          title: record.title,
+          reason,
+        },
+      }),
+    );
   }
 
   private toSessionInfo(record: SessionRecord): SessionInfo {
@@ -864,6 +922,24 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
     if (historyId !== undefined) return historyId;
   }
   return record.origin.type === 'imported' ? record.origin.historyId : undefined;
+}
+
+/** The notification-worthy subset of adapter events. `stop` is the turn boundary (`status: 'idle'`
+ * also fires at session start, so it can't be the trigger); a `permission-request` or
+ * `question-request` ask is the only real "awaiting input" signal — no adapter emits an
+ * `awaiting-input` status. */
+function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
+  switch (event.type) {
+    case 'stop':
+      return { type: 'turn-completed', stopReason: event.stopReason };
+    case 'permission-request':
+    case 'question-request':
+      return { type: 'awaiting-approval', toolTitle: event.toolCall.title };
+    case 'error':
+      return { type: 'error', message: event.message };
+    default:
+      return undefined;
+  }
 }
 
 const SESSION_TITLE_MAX_LENGTH = 80;

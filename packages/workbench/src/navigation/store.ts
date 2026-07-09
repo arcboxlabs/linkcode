@@ -75,10 +75,10 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
     }
     const selection = useSessionSelectionStore.getState();
     if (target?.surface === 'thread') {
-      selection.setDraft(null);
+      // setSelectedId atomically exits any draft (see the selection store).
       selection.setSelectedId(target.sessionId);
     } else if (target?.surface === 'new-thread') {
-      selection.setDraft({ workspaceId: target.workspaceId });
+      selection.startDraft({ workspaceId: target.workspaceId });
     }
     set({ overlay: null });
   },

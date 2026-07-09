@@ -119,6 +119,18 @@ export const en = {
       badgeDownloading: 'Downloading',
       badgeFailed: 'Download failed',
       badgeUnverified: 'Unverified',
+      badgeNeedsLogin: 'Sign in',
+      needsLoginTitle: '{agent} needs you to sign in',
+      needsLoginBody: 'Sign in to your Claude account to get started.',
+      login: 'Sign in to Claude',
+      loginOpening: 'Opening the browser to sign in to {agent}…',
+      loginAwaitingCode:
+        'A sign-in page opened in your browser. After authorizing, paste the code from that page below.',
+      loginCodePlaceholder: 'Paste the authorization code',
+      loginSubmit: 'Finish sign-in',
+      loginReopenUrl: "Didn't open? Open the sign-in page",
+      loginCancel: 'Cancel',
+      loginFailedTitle: '{agent} sign-in failed',
     },
     composer: {
       placeholderDisconnected: 'Create or pick a thread first',
@@ -324,6 +336,11 @@ export const en = {
       opencode: 'OpenCode',
       pi: 'Pi',
     },
+    notifications: {
+      turnCompleted: 'Finished responding',
+      awaitingApproval: 'Waiting for your approval',
+      awaitingApprovalTool: 'Approval needed: {tool}',
+    },
   },
   settings: {
     title: 'Settings',
@@ -332,6 +349,7 @@ export const en = {
     tabs: {
       general: 'General',
       connection: 'Connection',
+      notifications: 'Notifications',
       about: 'About',
       agents: 'Agents',
     },
@@ -398,6 +416,21 @@ export const en = {
       apiKey: 'API key',
       apiKeyPlaceholder: 'Stored on the daemon',
       save: 'Save',
+    },
+    notifications: {
+      title: 'Notifications',
+      hint: 'Send system notifications when a session finishes a turn in the background or needs approval.',
+      enable: 'Enable notifications',
+      enableHint: 'Turn off to silence all system notifications.',
+      turnCompleted: 'Turn completed',
+      turnCompletedHint: 'Notify when a session finishes responding.',
+      awaitingApproval: 'Awaiting approval',
+      awaitingApprovalHint: 'Notify when the agent asks for tool permission.',
+      error: 'Session errors',
+      errorHint: 'Notify when a session hits an error.',
+      permissionRequest: 'Browser permission is required before notifications can be shown.',
+      permissionDenied:
+        'The browser has blocked notifications. Re-allow them in the browser site settings.',
     },
   },
   mobile: {

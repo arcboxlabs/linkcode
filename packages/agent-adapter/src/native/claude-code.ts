@@ -38,6 +38,7 @@ import { EffortLevelSchema, textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
+import { AUTH_FAILED_ERROR_CODE } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import {
   asHistoryId,
@@ -821,6 +822,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * loop ending *was* the turn ending). */
   private handleResult(msg: ResultMessage): void {
     if (msg.subtype === 'success') {
+      // A 401 comes back as a `success` result carrying `api_error_status` — without this it would be
+      // swallowed into an empty end_turn (CODE-75). Surface it as a non-recoverable auth error whose
+      // code drives the daemon's login re-probe, rather than emitting usage + a phantom stop.
+      if (msg.api_error_status === 401) {
+        this.emitError(
+          'Claude authentication failed — sign in to Claude',
+          AUTH_FAILED_ERROR_CODE,
+          false,
+        );
+        this.teardown();
+        this.emitStatus('idle');
+        return;
+      }
       const usage = isRecord(msg.usage) ? msg.usage : {};
       this.emitUsage({
         inputTokens: numberField(usage, 'input_tokens'),

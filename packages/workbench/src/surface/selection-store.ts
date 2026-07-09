@@ -9,10 +9,12 @@ export interface WorkbenchSessionDraft {
 interface SessionSelectionState {
   /** Explicit selection; null falls back to the preferred/most recent session. */
   selectedId: SessionId | null;
-  /** Non-null while the new-session page is explicitly open; selecting a session clears it. */
+  /** Explicit new-session draft; while set, no session is active. Selecting clears it. */
   draft: WorkbenchSessionDraft | null;
+  /** Select a session (or clear the selection); atomically exits any draft, or the new-session
+   * surface would keep masking the conversation an outside caller just selected. */
   setSelectedId: (id: SessionId | null) => void;
-  setDraft: (draft: WorkbenchSessionDraft | null) => void;
+  startDraft: (draft: WorkbenchSessionDraft) => void;
 }
 
 /**
@@ -26,6 +28,6 @@ interface SessionSelectionState {
 export const useSessionSelectionStore = create<SessionSelectionState>()((set) => ({
   selectedId: null,
   draft: null,
-  setSelectedId: (id) => set({ selectedId: id }),
-  setDraft: (draft) => set({ draft }),
+  setSelectedId: (id) => set({ selectedId: id, draft: null }),
+  startDraft: (draft) => set({ draft }),
 }));
