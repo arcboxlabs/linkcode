@@ -27,6 +27,8 @@ export interface DesktopChromeProps {
   expandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
   hasNativeTrafficLights: boolean;
+  /** Draw renderer window controls (minimize/maximize/close) — non-macOS, once the platform is known. */
+  showWindowControls: boolean;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
   onToggleRight: () => void;
@@ -139,6 +141,7 @@ export function DesktopChrome({
   expandedPanel,
   hasNativeBackdrop,
   hasNativeTrafficLights,
+  showWindowControls,
   onShowSidebar,
   onHideSidebar,
   onToggleRight,
@@ -199,7 +202,7 @@ export function DesktopChrome({
             leftControls
           )}
         </StableLeftChrome>
-        <StableRightChrome contentRef={rightRailContentRef}>
+        <StableRightChrome contentRef={rightRailContentRef} showWindowControls={showWindowControls}>
           {rightControls === undefined ? (
             <DefaultRightChromeControls
               rightPanelOpen={rightPanelOpen}
@@ -437,9 +440,11 @@ function MainChromeTitle({
 
 function StableRightChrome({
   contentRef,
+  showWindowControls,
   children,
 }: {
   contentRef: React.Ref<HTMLDivElement>;
+  showWindowControls: boolean;
   children: React.ReactNode;
 }): React.ReactNode {
   return (
@@ -449,6 +454,9 @@ function StableRightChrome({
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
         {children}
+        {/* Reserve the space the persistent window-controls layer (DesktopWindowControls, mounted at
+            the app root) floats over, so the panel toggles never sit under it. */}
+        {showWindowControls ? <WindowControlsInset /> : null}
       </div>
     </div>
   );
@@ -497,6 +505,10 @@ function DefaultRightChromeControls({
 
 function NativeTrafficLightInset(): React.ReactNode {
   return <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />;
+}
+
+function WindowControlsInset(): React.ReactNode {
+  return <div aria-hidden className="w-(--lc-chrome-window-controls-inset) shrink-0" />;
 }
 
 function createChromeSlotKey(

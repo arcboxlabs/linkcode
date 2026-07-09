@@ -7,14 +7,11 @@ import type {
 } from '@linkcode/schema';
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
-import { useMemo, useState } from 'react';
+import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useMemo, useRef } from 'react';
 import { useData, useMutation } from '../runtime/tayori';
+import type { WorkbenchSessionDraft } from './selection-store';
 import { useSessionSelectionStore } from './selection-store';
-
-export interface WorkbenchSessionDraft {
-  /** Explicit workspace preselection (group "+", Chats "+"); null = resolve the default. */
-  workspaceId: WorkspaceId | null;
-}
 
 export interface WorkbenchSessions {
   sessions: SessionInfo[];
@@ -56,7 +53,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const resumeMutation = useMutation(resumeSession, { onError });
   const selectedId = useSessionSelectionStore((state) => state.selectedId);
   const setSelectedId = useSessionSelectionStore((state) => state.setSelectedId);
-  const [explicitDraft, setExplicitDraft] = useState<WorkbenchSessionDraft | null>(null);
+  const explicitDraft = useSessionSelectionStore((state) => state.draft);
+  const startExplicitDraft = useSessionSelectionStore((state) => state.startDraft);
 
   const sessions = useMemo(
     () => [...(remoteSessions ?? [])].sort((a, b) => a.createdAt - b.createdAt),
@@ -70,17 +68,30 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   const active = useMemo(() => {
     if (draft) return null;
-    if (selectedId) {
-      const selected = sessionById(sessions, selectedId);
-      if (selected) return selected;
-    }
-
+    // An explicit selection absent from the loaded list (e.g. a session another client created,
+    // reached via a notification click) must NOT fall back to a different thread — that would show
+    // the wrong conversation. Hold null; the effect below refreshes the list so it resolves.
+    if (selectedId) return sessionById(sessions, selectedId);
     return preferredActiveSession(sessions) ?? sessions.at(-1) ?? null;
   }, [draft, selectedId, sessions]);
   const activeId = active?.sessionId ?? null;
 
+  // Refresh the list once when an explicit selection isn't in it yet, so a click-through to a
+  // not-yet-listed session resolves instead of leaving the surface blank. Deduped per id so a
+  // genuinely gone session doesn't spin.
+  const refreshedForRef = useRef<SessionId | null>(null);
+  useAbortableEffect(() => {
+    if (selectedId == null || draft) return;
+    if (sessionById(sessions, selectedId)) {
+      refreshedForRef.current = null;
+      return;
+    }
+    if (refreshedForRef.current === selectedId) return;
+    refreshedForRef.current = selectedId;
+    void mutate().catch(noop);
+  }, [selectedId, draft, sessions, mutate]);
+
   function select(id: SessionId): void {
-    setExplicitDraft(null);
     setSelectedId(id);
     // Selecting a cold session wakes it on the daemon, keeping the same Link Code id.
     if (sessionById(sessions, id)?.status === 'stopped') {
@@ -92,7 +103,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }
 
   function startDraft(workspaceId?: WorkspaceId): void {
-    setExplicitDraft({ workspaceId: workspaceId ?? null });
+    startExplicitDraft({ workspaceId: workspaceId ?? null });
   }
 
   async function create(opts: {
@@ -107,7 +118,6 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     // The list must contain the new session before selection flips: otherwise `active` falls
     // back to the previous session for a render and its conversation flashes (CODE-103).
     await mutate().catch(noop);
-    setExplicitDraft(null);
     setSelectedId(sessionId);
     return sessionId;
   }

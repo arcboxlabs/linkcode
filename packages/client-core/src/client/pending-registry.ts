@@ -54,6 +54,7 @@ export interface PendingValueMap {
   workspaceRegister: WorkspaceRecord;
   ack: RequestAck;
   terminalOpen: string;
+  agentLoginStart: string;
 }
 
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };
@@ -90,6 +91,7 @@ export class PendingRegistry {
     workspaceRegister: new Map(),
     ack: new Map(),
     terminalOpen: new Map(),
+    agentLoginStart: new Map(),
   };
 
   /** Register a new in-flight request and return the promise its eventual `resolve`/`reject` settles. */

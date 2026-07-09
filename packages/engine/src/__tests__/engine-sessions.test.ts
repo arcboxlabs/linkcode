@@ -1,5 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { asHistoryId } from '@linkcode/agent-adapter';
+import { AUTH_FAILED_ERROR_CODE, asHistoryId } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryCapabilities,
@@ -8,6 +8,8 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
+  AgentRuntimes,
+  MessageId,
   SessionId,
   StartOptions,
   WireMessage,
@@ -18,7 +20,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
 import type { SessionStore } from '../session-store';
 import { InMemorySessionStore } from '../session-store';
@@ -117,6 +119,7 @@ function tick(): Promise<void> {
 function harness(
   store: SessionStore = new InMemorySessionStore(),
   makeAdapter: () => FakeAdapter = () => new FakeAdapter(),
+  collectAgentRuntimes?: () => Promise<AgentRuntimes>,
 ) {
   const sent: WirePayload[] = [];
   let handler: ((msg: WireMessage) => void) | null = null;
@@ -138,7 +141,7 @@ function harness(
     adapters.push(adapter);
     return adapter;
   };
-  const engine = new Engine(transport, { factory, sessionStore: store });
+  const engine = new Engine(transport, { factory, sessionStore: store, collectAgentRuntimes });
 
   async function inject(payload: WirePayload): Promise<void> {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
@@ -499,5 +502,113 @@ describe('engine attach replay', () => {
     const replayed = eventsAfter(sent, mark);
     expect(replayed[0]).toEqual({ type: 'status', status: 'idle' });
     expect(replayed.some((e) => e.type === 'permission-request')).toBe(false);
+  });
+});
+
+describe('engine session notifications', () => {
+  async function startedSession() {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('Fix the flaky test')] },
+    });
+    return { ...h, sessionId };
+  }
+
+  function notifications(sent: WirePayload[]) {
+    return sent.flatMap((p) => (p.kind === 'session.notification' ? [p.notification] : []));
+  }
+
+  it('broadcasts turn-completed with the record display fields on stop', async () => {
+    const { sent, adapters, sessionId } = await startedSession();
+    adapters[0].emit({ type: 'stop', stopReason: 'end_turn' });
+
+    expect(notifications(sent)).toEqual([
+      {
+        sessionId,
+        kind: 'claude-code',
+        cwd: '/repo',
+        title: 'Fix the flaky test',
+        reason: { type: 'turn-completed', stopReason: 'end_turn' },
+      },
+    ]);
+  });
+
+  it('broadcasts awaiting-approval on permission-request, question-request, and error on error', async () => {
+    const { sent, adapters, sessionId } = await startedSession();
+    adapters[0].emit({
+      type: 'permission-request',
+      requestId: 'perm-1',
+      toolCall: { toolCallId: 'tc-1', title: 'Bash: rm -rf node_modules' },
+      options: [],
+    });
+    adapters[0].emit({
+      type: 'question-request',
+      requestId: 'ask-1',
+      toolCall: { toolCallId: 'tc-2', title: 'AskUserQuestion' },
+      questions: [],
+    });
+    adapters[0].emit({ type: 'error', message: 'agent crashed', recoverable: false });
+
+    expect(notifications(sent).map((n) => n.reason)).toEqual([
+      { type: 'awaiting-approval', toolTitle: 'Bash: rm -rf node_modules' },
+      { type: 'awaiting-approval', toolTitle: 'AskUserQuestion' },
+      { type: 'error', message: 'agent crashed' },
+    ]);
+    expect(notifications(sent).every((n) => n.sessionId === sessionId)).toBe(true);
+  });
+
+  it('stays silent for non-notification events', async () => {
+    const { sent, adapters } = await startedSession();
+    adapters[0].emit({ type: 'status', status: 'running' });
+    adapters[0].emit({ type: 'status', status: 'idle' });
+    adapters[0].emit({
+      type: 'agent-message-chunk',
+      messageId: 'msg-1' as MessageId,
+      content: textBlock('hi'),
+    });
+
+    expect(notifications(sent)).toEqual([]);
+  });
+});
+
+describe('auth-failure re-probe', () => {
+  it('re-probes runtimes on an authentication-failure error, but not on other errors', async () => {
+    const signedOut: AgentRuntimes = {
+      'claude-code': { status: 'available', source: 'detected', auth: { loggedIn: false } },
+    };
+    const collect = vi.fn(() => Promise.resolve(signedOut));
+    const { engine, sent, inject, adapters } = harness(undefined, undefined, collect);
+    await engine.start();
+    await inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const adapter = nullthrow(adapters[0], 'no adapter started');
+
+    adapter.emit({
+      type: 'error',
+      message: 'Claude authentication failed',
+      code: AUTH_FAILED_ERROR_CODE,
+      recoverable: false,
+    });
+    await tick();
+    expect(collect).toHaveBeenCalledOnce();
+    expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: signedOut });
+
+    // A generic (non-auth) error must not trigger a re-probe.
+    adapter.emit({ type: 'error', message: 'boom', recoverable: true });
+    await tick();
+    expect(collect).toHaveBeenCalledOnce();
   });
 });

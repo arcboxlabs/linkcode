@@ -13,5 +13,15 @@ export const IS_DEV_SHELL = import.meta.env.MODE !== 'production' || !app.isPack
 
 export const APP_NAME = IS_DEV_SHELL ? 'LinkCode Dev' : 'LinkCode';
 
+/**
+ * Windows AppUserModelID — mirrors the electron-builder `appId`. Windows keys the taskbar icon,
+ * pinning, and notification identity off this; without setting it at runtime the taskbar shows a
+ * blank/default icon. A dev shell gets a distinct id so it neither steals the installed release's
+ * taskbar slot nor its notifications (same isolation rationale as `APP_NAME`).
+ */
+export const APP_ID = IS_DEV_SHELL
+  ? 'com.arcboxlabs.linkcode.desktop.dev'
+  : 'com.arcboxlabs.linkcode.desktop';
+
 /** `~/LinkCode` holds user workspaces — shared between dev and release shells on purpose. */
 export const DEFAULT_WORKSPACES_DIRNAME = 'LinkCode';

@@ -1,7 +1,7 @@
 import { SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import { BotIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
+import { BellIcon, BotIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
@@ -13,9 +13,10 @@ import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
+import { NotificationsTab } from './notifications-tab';
 import { useDesktopSettingsStore } from './store';
 
-type SettingsCategory = 'general' | 'connection' | 'about' | 'agents';
+type SettingsCategory = 'general' | 'connection' | 'notifications' | 'about' | 'agents';
 
 const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
   ...DESKTOP_CHROME_METRICS_STYLE,
@@ -35,6 +36,7 @@ export function SettingsView(): React.ReactNode {
   const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
+  const showWindowControls = desktopPlatform !== null && desktopPlatform !== 'darwin';
 
   useAbortableEffect((signal) => {
     void systemBridge.app.platform().then((platform) => {
@@ -63,6 +65,7 @@ export function SettingsView(): React.ReactNode {
         expandedPanel={null}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
+        showWindowControls={showWindowControls}
         // Back lives in the settings sidebar, so suppress the workbench navigation controls.
         leftControls={null}
         rightControls={null}
@@ -102,6 +105,13 @@ export function SettingsView(): React.ReactNode {
                     onClick: () => setCategory('connection'),
                   },
                   {
+                    key: 'notifications',
+                    icon: <BellIcon className="size-4" />,
+                    label: t('tabs.notifications'),
+                    active: category === 'notifications',
+                    onClick: () => setCategory('notifications'),
+                  },
+                  {
                     key: 'about',
                     icon: <InfoIcon className="size-4" />,
                     label: t('tabs.about'),
@@ -136,6 +146,8 @@ function renderSettingsPanel(category: SettingsCategory): React.ReactNode {
       return <GeneralTab />;
     case 'connection':
       return <ConnectionTab />;
+    case 'notifications':
+      return <NotificationsTab />;
     case 'about':
       return <AboutTab />;
     case 'agents':

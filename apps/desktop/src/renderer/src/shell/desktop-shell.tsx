@@ -215,6 +215,9 @@ export function DesktopShell({
 
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
+  // Non-macOS gets renderer-drawn window controls; gate on a known platform so macOS never flashes
+  // them before `app.platform()` resolves.
+  const showWindowControls = desktopPlatform !== null && desktopPlatform !== 'darwin';
   // Hints mirror the window keydown bindings below; hidden until the platform is known.
   const panelShortcuts = getPanelToggleShortcuts(desktopPlatform);
   const sidebarClassName = hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar';
@@ -525,6 +528,7 @@ export function DesktopShell({
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
+        showWindowControls={showWindowControls}
         sidebarShortcut={panelShortcuts.sidebar}
         rightPanelShortcut={panelShortcuts.right}
         bottomPanelShortcut={panelShortcuts.bottom}

@@ -172,7 +172,9 @@ function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
         ? t('badgeDownloading')
         : cue.state === 'failed'
           ? t('badgeFailed')
-          : t('badgeUnverified');
+          : cue.state === 'needs-login'
+            ? t('badgeNeedsLogin')
+            : t('badgeUnverified');
   return <span className="ml-auto shrink-0 text-muted-foreground text-xs">{label}</span>;
 }
 

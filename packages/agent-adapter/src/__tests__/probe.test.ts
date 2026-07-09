@@ -2,11 +2,22 @@ import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AgentRuntimeProber, ClaudeCodeProbe, CodexProbe } from '../probe';
+import { AgentRuntimeProber, ClaudeCodeProbe, CodexProbe, parseClaudeAuthStatus } from '../probe';
 
 function fakeCli(dir: string, name: string, versionLine: string): string {
   const file = join(dir, name);
   writeFileSync(file, `#!/bin/sh\necho "${versionLine}"\n`);
+  chmodSync(file, 0o755);
+  return file;
+}
+
+/** A fake `claude` that answers `auth status` with `authJson` (and exit `authExit`), else the version. */
+function fakeAuthCli(dir: string, versionLine: string, authJson: string, authExit = 0): string {
+  const file = join(dir, 'claude');
+  writeFileSync(
+    file,
+    `#!/bin/sh\nif [ "$1" = "auth" ]; then echo '${authJson}'; exit ${authExit}; fi\necho "${versionLine}"\n`,
+  );
   chmodSync(file, 0o755);
   return file;
 }
@@ -27,6 +38,54 @@ describe('version parsers', () => {
     expect(claude.parseVersion('not a version')).toBeUndefined();
     expect(codex.parseVersion('codex-cli 0.142.4\n')).toBe('0.142.4');
     expect(codex.parseVersion('0.142.4')).toBeUndefined();
+  });
+});
+
+describe('parseClaudeAuthStatus', () => {
+  it('extracts login fields from a signed-in payload', () => {
+    expect(
+      parseClaudeAuthStatus('{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}'),
+    ).toEqual({ loggedIn: true, method: 'claude.ai', subscriptionType: 'max' });
+  });
+
+  it('preserves a signed-out status', () => {
+    expect(parseClaudeAuthStatus('{"loggedIn":false}')).toEqual({
+      loggedIn: false,
+      method: undefined,
+      subscriptionType: undefined,
+    });
+  });
+
+  it('fails open on non-JSON or a missing loggedIn field', () => {
+    expect(parseClaudeAuthStatus('not json')).toBeUndefined();
+    expect(parseClaudeAuthStatus('42')).toBeUndefined();
+    expect(parseClaudeAuthStatus('{"email":"x@y.z"}')).toBeUndefined();
+  });
+});
+
+describe('ClaudeCodeProbe.probeAuth', () => {
+  it('reads a signed-in status from `auth status --json`', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const file = fakeAuthCli(
+      dir,
+      '9.9.9 (Claude Code)',
+      '{"loggedIn":true,"authMethod":"claude.ai"}',
+    );
+    await expect(new ClaudeCodeProbe().probeAuth(file)).resolves.toEqual({
+      loggedIn: true,
+      method: 'claude.ai',
+      subscriptionType: undefined,
+    });
+  });
+
+  it('still reads a signed-out status when the command exits non-zero', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const file = fakeAuthCli(dir, '9.9.9 (Claude Code)', '{"loggedIn":false}', 1);
+    await expect(new ClaudeCodeProbe().probeAuth(file)).resolves.toEqual({
+      loggedIn: false,
+      method: undefined,
+      subscriptionType: undefined,
+    });
   });
 });
 
@@ -123,6 +182,19 @@ describe('AgentRuntimeProber.collect', () => {
     }
     const runtimes = await new AgentRuntimeProber([new NoSdkClaudeProbe([])]).collect();
     expect(runtimes['claude-code']).toEqual({ status: 'missing' });
+  });
+
+  it('attaches probed auth status to a detected runtime', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const claude = fakeAuthCli(dir, '9.9.9 (Claude Code)', '{"loggedIn":false}', 1);
+    const runtimes = await new AgentRuntimeProber([new ClaudeCodeProbe([claude])]).collect();
+    expect(runtimes['claude-code']).toEqual({
+      status: 'available',
+      source: 'detected',
+      path: claude,
+      version: '9.9.9',
+      auth: { loggedIn: false },
+    });
   });
 
   it('reports a managed binary with its probed version', async () => {

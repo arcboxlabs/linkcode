@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { StartOptionsSchema } from '../agent';
 import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema } from '../common';
-import { SessionInfoSchema, SessionRecordSchema } from '../session';
+import { SessionInfoSchema, SessionNotificationSchema, SessionRecordSchema } from '../session';
 
 /** Session control wire variants — starting, stopping, listing, and resuming sessions. */
 export const sessionWireVariants = [
@@ -51,5 +51,13 @@ export const sessionWireVariants = [
     kind: z.literal('session.imported'),
     replyTo: z.string().min(1),
     record: SessionRecordSchema,
+  }),
+  /** Broadcast on a notification-worthy session moment (turn end / approval wait / error), like
+   * `script.status`: no replyTo, fanned out to every client. Must stay a broadcast even once
+   * per-connection subscription modes exist (CODE-72) — background sessions on other devices
+   * drive OS notifications through this frame. */
+  z.object({
+    kind: z.literal('session.notification'),
+    notification: SessionNotificationSchema,
   }),
 ] as const;

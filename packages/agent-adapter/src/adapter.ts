@@ -57,3 +57,9 @@ export function nextToolCallId(): string {
 export function nextRequestId(): string {
   return nextId('req');
 }
+
+/**
+ * `AgentEvent` error `code` for a failed-authentication turn (the agent CLI is signed out or its
+ * token expired). The daemon re-probes login state on it so a stale "signed in" snapshot self-heals.
+ */
+export const AUTH_FAILED_ERROR_CODE = 'authentication_failed';

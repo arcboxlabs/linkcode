@@ -3,6 +3,7 @@ import { init as reactInit } from '@sentry/react';
 import { createRoot } from 'react-dom/client';
 import { DesktopApp } from './app';
 import { systemBridge } from './ipc';
+import { installNotificationClickThrough } from './notifications';
 import { useDesktopSettingsStore } from './settings/store';
 import { installAdaptiveTheme } from './theme';
 import 'allotment/dist/style.css';
@@ -23,5 +24,8 @@ const unsubscribeOpenSettings = systemBridge.app.onOpenSettings(() => {
   useDesktopSettingsStore.getState().openSettings();
 });
 if (import.meta.hot) import.meta.hot.dispose(unsubscribeOpenSettings);
+
+const unsubscribeNotificationClicks = installNotificationClickThrough();
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeNotificationClicks);
 
 createRoot(el).render(<DesktopApp />);

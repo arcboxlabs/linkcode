@@ -2,7 +2,11 @@ import { defineInvokeHandlers } from '@moeru/eventa';
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main';
 import type { BrowserWindow, IpcMain, IpcMainEvent } from 'electron';
 import type { SystemContext } from './context';
-import { DesktopSettingsPatchSchema, PickFileOptionsSchema } from './context';
+import {
+  DesktopSettingsPatchSchema,
+  PickFileOptionsSchema,
+  SystemNotificationSchema,
+} from './context';
 import {
   DAEMON_URL_SNAPSHOT_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
@@ -43,6 +47,8 @@ export function bindElectronSystemIpc({
     daemonIsManaged: () => ctx.daemon.isManaged(),
     settingsGet: () => ctx.settings.get(),
     settingsSet: (patch) => ctx.settings.set(DesktopSettingsPatchSchema.parse(patch)),
+    notificationsNotify: (notification) =>
+      ctx.notifications.notify(SystemNotificationSchema.parse(notification)),
   });
 
   // Synchronous boot snapshot: the renderer needs locale + daemonUrl before first paint, which the

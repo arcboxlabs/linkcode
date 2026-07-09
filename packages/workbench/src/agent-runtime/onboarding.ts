@@ -5,15 +5,16 @@ import type {
   AgentRuntimes,
   ManagedAssetId,
   ManagedAssetStatus,
+  ProvidersConfig,
 } from '@linkcode/schema';
-import { ensureAsset } from '@linkcode/sdk';
+import { ensureAsset, getProviderConfig } from '@linkcode/sdk';
 import type { AgentRuntimeCue, AgentRuntimeCues } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAssets } from '../assets/hooks';
-import { useMutation } from '../runtime/tayori';
+import { useData, useMutation } from '../runtime/tayori';
 import { useAgentRuntimes } from './hooks';
 import { useUnverifiedRuntimesStore } from './unverified-store';
 
@@ -37,6 +38,19 @@ export type AssetActivity =
 
 export type AssetActivityMap = Partial<Record<ManagedAssetId, AssetActivity>>;
 
+/**
+ * Client-local progress of an interactive `agent-login`, layered over the probed `loggedIn: false`.
+ * `opening` waits for the browser URL, `awaiting-code` holds it for the paste-code step, `failed`
+ * shows the error. Success carries no activity — the `agent-runtime.changed` re-probe flips the
+ * probed status to logged-in and the cue disappears.
+ */
+export type LoginActivity =
+  | { kind: 'opening' }
+  | { kind: 'awaiting-code'; url?: string }
+  | { kind: 'failed'; error: string };
+
+export type LoginActivityMap = Partial<Record<AgentKind, LoginActivity>>;
+
 function versionKey(runtime: AgentRuntimeAvailability): string {
   return runtime.version ?? 'unknown';
 }
@@ -51,16 +65,30 @@ export function deriveAgentRuntimeCues(
   assets: ManagedAssetStatus[] | undefined,
   activity: AssetActivityMap,
   acknowledged: Partial<Record<AgentKind, string>>,
+  loginActivity: LoginActivityMap = {},
+  providers: ProvidersConfig = {},
 ): AgentRuntimeCues {
   const cues: AgentRuntimeCues = {};
   if (!runtimes) return cues;
   for (const [kind, runtime] of Object.entries(runtimes) as Array<
     [AgentKind, AgentRuntimeAvailability]
   >) {
-    const cue = deriveCue(kind, runtime, assets, activity, acknowledged);
+    const cue = deriveCue(kind, runtime, assets, activity, acknowledged, loginActivity, providers);
     if (cue) cues[kind] = cue;
   }
   return cues;
+}
+
+/** The login cue for a signed-out runtime, its phase driven by any in-flight login activity. */
+function loginCue(activity: LoginActivity | undefined): AgentRuntimeCue {
+  if (activity?.kind === 'opening') return { state: 'needs-login', phase: 'opening' };
+  if (activity?.kind === 'awaiting-code') {
+    return { state: 'needs-login', phase: 'awaiting-code', url: activity.url };
+  }
+  if (activity?.kind === 'failed') {
+    return { state: 'needs-login', phase: 'failed', error: activity.error };
+  }
+  return { state: 'needs-login', phase: 'idle' };
 }
 
 /**
@@ -89,10 +117,18 @@ function deriveCue(
   assets: ManagedAssetStatus[] | undefined,
   activity: AssetActivityMap,
   acknowledged: Partial<Record<AgentKind, string>>,
+  loginActivity: LoginActivityMap,
+  providers: ProvidersConfig,
 ): AgentRuntimeCue | undefined {
   switch (runtime.status) {
     case 'available':
-      return undefined;
+      // Installed but signed out — offer the login flow. `auth` absent means unprobed (pi/opencode)
+      // or a fail-open probe: don't block. A configured API key is injected as ANTHROPIC_API_KEY at
+      // spawn (applyProviderDefaults), so it makes a signed-out CLI runnable — skip the cue then. An
+      // in-flight login overrides while it runs.
+      return runtime.auth?.loggedIn === false && !providers[kind]?.apiKey
+        ? loginCue(loginActivity[kind])
+        : undefined;
     case 'out-of-range': {
       // "Download paired version" runs the same install as the missing flow — its activity must
       // win over the probed status here too, or the card never shows progress and a settled
@@ -128,11 +164,20 @@ export function useAgentRuntimeOnboarding(): {
   cues: AgentRuntimeCues;
   download: (kind: AgentKind) => void;
   acknowledgeUnverified: (kind: AgentKind) => void;
+  login: (kind: AgentKind) => void;
+  submitLoginCode: (kind: AgentKind, code: string) => void;
+  cancelLogin: (kind: AgentKind) => void;
 } {
   const client = useLinkCodeClient();
   const { data: runtimes } = useAgentRuntimes();
   const { data: assets } = useAssets();
+  // A saved API key makes a signed-out CLI runnable, so it suppresses the login cue.
+  const { data: providers } = useData(getProviderConfig, {});
   const [activity, setActivity] = useState<AssetActivityMap>({});
+  const [loginActivity, setLoginActivity] = useState<LoginActivityMap>({});
+  // The in-flight loginId per kind (+ a cancel flag so a user-aborted login settles to idle, not
+  // failed). A ref, not state: the settled callback must read the current value, not a stale closure.
+  const activeLoginsRef = useRef(new Map<AgentKind, { loginId?: string; cancelled: boolean }>());
   const acknowledged = useUnverifiedRuntimesStore((state) => state.acknowledged);
   const acknowledge = useUnverifiedRuntimesStore((state) => state.acknowledge);
   // Failures surface through the settled broadcast / local catch as the failed cue — no banner.
@@ -204,9 +249,73 @@ export function useAgentRuntimeOnboarding(): {
     acknowledge(kind, versionKey(runtime));
   }
 
+  function setLogin(kind: AgentKind, next: LoginActivity | undefined): void {
+    setLoginActivity((previous) => {
+      if (!next) {
+        const { [kind]: _cleared, ...rest } = previous;
+        return rest;
+      }
+      return { ...previous, [kind]: next };
+    });
+  }
+
+  function login(kind: AgentKind): void {
+    const entry = { loginId: undefined as string | undefined, cancelled: false };
+    activeLoginsRef.current.set(kind, entry);
+    setLogin(kind, { kind: 'opening' });
+    client
+      .startAgentLogin(kind)
+      .then((loginId) => {
+        entry.loginId = loginId;
+        client.subscribeAgentLogin(loginId, {
+          onUrl(url) {
+            // Desktop routes `_blank` to the system browser (main-process window handler); webview
+            // opens a tab. A fallback link in the card reopens `url` if the launch was blocked.
+            window.open(url, '_blank', 'noopener,noreferrer');
+            setLogin(kind, { kind: 'awaiting-code', url });
+          },
+          onSettled({ ok, error }) {
+            activeLoginsRef.current.delete(kind);
+            // Success: the re-probe push flips the runtime to logged-in and drops the cue. Cancel:
+            // back to the idle login button. Failure: show the error with a retry.
+            if (ok || entry.cancelled) setLogin(kind, undefined);
+            else setLogin(kind, { kind: 'failed', error: error ?? 'login failed' });
+          },
+        });
+      })
+      .catch((err: unknown) => {
+        activeLoginsRef.current.delete(kind);
+        setLogin(kind, { kind: 'failed', error: extractErrorMessage(err) ?? 'login failed' });
+      });
+  }
+
+  function submitLoginCode(kind: AgentKind, code: string): void {
+    const loginId = activeLoginsRef.current.get(kind)?.loginId;
+    if (loginId) client.submitLoginCode(loginId, code);
+  }
+
+  function cancelLogin(kind: AgentKind): void {
+    const entry = activeLoginsRef.current.get(kind);
+    if (entry) {
+      entry.cancelled = true;
+      if (entry.loginId) client.cancelAgentLogin(entry.loginId);
+    }
+    setLogin(kind, undefined);
+  }
+
   return {
-    cues: deriveAgentRuntimeCues(runtimes, assets, activity, acknowledged),
+    cues: deriveAgentRuntimeCues(
+      runtimes,
+      assets,
+      activity,
+      acknowledged,
+      loginActivity,
+      providers,
+    ),
     download,
     acknowledgeUnverified,
+    login,
+    submitLoginCode,
+    cancelLogin,
   };
 }

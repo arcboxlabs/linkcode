@@ -3,6 +3,7 @@ import {
   CloudHostsProvider,
   ConnectionState,
   createDaemonTransport,
+  SessionNotifier,
   useWorkbenchRuntimeStatus,
   Workbench,
   WorkbenchAppProviders,
@@ -12,8 +13,10 @@ import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useState } from 'react';
 import { systemBridge } from './ipc';
+import { presentDesktopNotification } from './notifications';
 import { SettingsView } from './settings/settings-view';
 import { useDesktopSettingsStore } from './settings/store';
+import { DesktopWindowControls } from './shell/chrome/window-controls';
 import { ConnectionSkeleton } from './shell/connection-skeleton';
 import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
 
@@ -34,10 +37,14 @@ export function DesktopApp(): React.ReactNode {
         <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
           {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
           <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
+            <SessionNotifier present={presentDesktopNotification} />
             <Workbench shellComponent={DesktopWorkbenchShell} />
           </DaemonConnection>
         </div>
         {settingsOpen ? <SettingsView /> : null}
+        {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
+            can always minimize/maximize/close — including while the daemon is connecting or down. */}
+        <DesktopWindowControls />
       </CloudHostsProvider>
     </WorkbenchAppProviders>
   );

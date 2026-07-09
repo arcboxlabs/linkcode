@@ -2,6 +2,7 @@ import type {
   DesktopSettings,
   DesktopSettingsPatch,
   PickFileOptions,
+  SystemNotification,
   UpdaterStatus,
 } from './context';
 
@@ -16,7 +17,8 @@ export interface SystemBridge {
     toggleMaximize(): Promise<void>;
     close(): Promise<void>;
     isMaximized(): Promise<boolean>;
-    onMaximizedChange?(cb: (value: boolean) => void): () => void;
+    /** Subscribe to maximize/restore/full-screen changes pushed from main — drives the restore icon. */
+    onMaximizedChange(cb: (value: boolean) => void): () => void;
   };
   fs: {
     pickFile(opts?: PickFileOptions): Promise<string | null>;
@@ -54,5 +56,11 @@ export interface SystemBridge {
      * Fired when a daemon (re)starts or stops — re-run `resolveUrl` on it.
      */
     onRuntimeChanged(cb: () => void): () => void;
+  };
+  notifications: {
+    /** Show an OS notification (main-process `Notification`); display params only. */
+    notify(notification: SystemNotification): Promise<void>;
+    /** Subscribe to notification clicks; main focuses the window, then pushes the `clickToken`. */
+    onClick(cb: (clickToken: string) => void): () => void;
   };
 }

@@ -287,3 +287,26 @@ describe('ClaudeCodeAdapter model/effort reflection', () => {
     expect(events.some((e) => e.type === 'effort-update')).toBe(false);
   });
 });
+
+describe('ClaudeCodeAdapter auth failure', () => {
+  it('surfaces a 401 result as an authentication_failed error, not a phantom stop', async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    // The SDK reports a 401 as a `success` result carrying api_error_status (CODE-75 swallow point).
+    queries[0].push({
+      type: 'result',
+      subtype: 'success',
+      api_error_status: 401,
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: {},
+    });
+    await waitIdle(events);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'error', code: 'authentication_failed', recoverable: false }),
+    );
+    // The swallowed turn must not emit a usage or a phantom stop.
+    expect(events.some((e) => e.type === 'stop')).toBe(false);
+    expect(events.some((e) => e.type === 'token-usage')).toBe(false);
+  });
+});
