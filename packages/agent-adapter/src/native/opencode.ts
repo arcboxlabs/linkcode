@@ -9,7 +9,7 @@ import type {
 import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { noop } from 'foxts/noop';
+import { falseFn } from 'foxts/noop';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
@@ -37,6 +37,24 @@ const ABORT_TIMED_OUT = Symbol('opencode-abort-timeout');
 function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): string {
   const message = (error.data as { message?: unknown } | undefined)?.message;
   return typeof message === 'string' && message.length > 0 ? message : error.name;
+}
+
+/** The generated client resolves with `{error}` on HTTP and network failures alike (nothing here
+ * passes `throwOnError`), so every RPC result must be checked — an unchecked failure silently
+ * reads as success. Throws with the error detail when the result carries one. */
+function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T {
+  if (result.error === undefined) return result;
+  let detail: string;
+  if (typeof result.error === 'string') {
+    detail = result.error;
+  } else {
+    try {
+      detail = JSON.stringify(result.error) ?? 'unknown error';
+    } catch {
+      detail = extractErrorMessage(result.error) ?? 'unknown error';
+    }
+  }
+  throw new Error(`${context} failed: ${detail}`);
 }
 
 /** Map OpenCode's tool part state to our ToolCallStatus (running → in_progress, error → failed). */
@@ -88,6 +106,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** True once a `session.error` failed the active turn — the idle settle then skips the `end_turn`
    * stop (the error event already told the story) and sweeps unsettled tools. */
   private turnFailed = false;
+  /** True once the server acknowledged the active turn on-stream (`session.status` busy/retry).
+   * A turn's own `session.error` and `session.idle` NEVER precede its busy status (verified live
+   * on 1.17.11), so an idle or error arriving before it is the PREVIOUS turn's documented
+   * post-settle straggler (the duplicate idle an abort produces; the error re-fired with a stack
+   * after the settle) and must not touch this turn. */
+  private turnStarted = false;
+  /** Monotonic per-prompt counter — lets a straggling abort settlement from an earlier cancel
+   * know whether it may still clear `cancelling` (a new prompt owns the flags by then). */
+  private turnEpoch = 0;
   /** Announced tool part id by provider `callID`: permission/question asks cite the tool they gate
    * via `tool.callID`, but the tool card was announced under the PART id — this map re-joins them
    * so the ask lands on the visible card. Cleared at each turn settle. */
@@ -118,7 +145,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     this.client = started.client;
     this.closeServer = () => started.server.close();
-    const created = await this.client.session.create({ directory: opts.cwd });
+    const created = okOrThrow(
+      await this.client.session.create({ directory: opts.cwd }),
+      'opencode: session.create',
+    );
     const id = created.data?.id;
     if (!id) throw new Error('opencode: failed to create session');
     this.sessionId = id;
@@ -128,19 +158,27 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     if (!this.client || !this.sessionId) throw new Error('opencode: session not started');
     const parts: TextPartInput[] = [{ type: 'text', text: contentToText(content) }];
+    this.turnEpoch += 1;
     this.turnActive = true;
+    this.turnStarted = false;
     this.cancelling = false;
     this.turnFailed = false;
     this.emitStatus('running');
     // promptAsync, not prompt: the blocking variant's HTTP response only resolves once the whole
     // turn finishes, which would hold send() open for the turn's full duration and risks HTTP-layer
     // timeouts on long turns. The SSE stream is the single source of turn lifecycle either way.
-    await this.client.session.promptAsync({
+    const result = await this.client.session.promptAsync({
       sessionID: this.sessionId,
       directory: this.opts?.cwd,
       model: this.model(),
       parts,
     });
+    if (result.error !== undefined) {
+      // The turn never started; put the session back to rest before rejecting send().
+      this.turnActive = false;
+      this.emitStatus('idle');
+      okOrThrow(result, 'opencode: session.promptAsync');
+    }
   }
 
   protected override async onCancel(): Promise<void> {
@@ -162,10 +200,22 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (raced === ABORT_TIMED_OUT) {
         // The abort RPC is still in flight server-side (see ABORT_WAIT_MS): proceed with the local
         // cancel and leave `cancelling` latched — the abort's fallout (`session.error` aborted +
-        // `session.idle`) is still expected. Detach the pending promise so a late rejection can't
-        // become an unhandled rejection.
-        void abort.catch(noop);
+        // `session.idle`) is still expected. But if the straggling abort ultimately FAILS, no
+        // fallout is coming; clear the latch (unless a newer prompt owns the flags by then) so a
+        // later genuine stream failure isn't swallowed as this cancel's fallout.
+        const epoch = this.turnEpoch;
+        void abort
+          .then((res) => res.error === undefined)
+          .catch(falseFn)
+          .then((cleanAbort) => {
+            // A clean success leaves the latch for the expected fallout; any failure (rejected or
+            // resolved-with-error) means no fallout is coming, so clear the latch — unless a newer
+            // prompt already owns the flags by then.
+            if (!cleanAbort && this.turnEpoch === epoch) this.cancelling = false;
+          });
+        return;
       }
+      okOrThrow(raced, 'opencode: session.abort');
     } catch (err) {
       // The abort itself failed, so no cancel-induced idle/close is coming to reset the flag.
       // Leaving `cancelling` latched would make `consumeEvents()` swallow a later genuine stream
@@ -272,8 +322,25 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
             });
           }
           break;
+        case 'session.status':
+          // busy/retry is the server's on-stream acknowledgement that the active turn is running —
+          // the marker that lets settle/error handling tell this turn's events from the previous
+          // turn's post-settle stragglers.
+          if (
+            ev.properties.sessionID === this.sessionId &&
+            this.turnActive &&
+            ev.properties.status.type !== 'idle'
+          ) {
+            this.turnStarted = true;
+          }
+          break;
         case 'session.error':
-          if (ev.properties.sessionID === this.sessionId) this.handleSessionError(ev.properties);
+          // sessionID is OPTIONAL on this event (unlike every other event handled here); this
+          // adapter owns its whole server, so an unattributed error is ours — e.g. an auth failure
+          // must still reach the AUTH_FAILED_ERROR_CODE path.
+          if (ev.properties.sessionID === undefined || ev.properties.sessionID === this.sessionId) {
+            this.handleSessionError(ev.properties);
+          }
           break;
         case 'session.idle':
           if (ev.properties.sessionID === this.sessionId) this.settleTurn();
@@ -286,10 +353,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** Turn settle on `session.idle`. Guarded on turn liveness so the duplicate idle opencode emits
-   * after an abort (observed live: error → idle → idle) doesn't double-report a stop. */
+  /** Turn settle on `session.idle`. Guarded on turn liveness AND the on-stream turn-start marker:
+   * opencode emits a duplicate idle after an abort (observed live: error → idle → idle), and that
+   * straggler can land after the NEXT prompt was already dispatched — without the `turnStarted`
+   * gate it would falsely settle the new turn and then swallow its real settle. */
   private settleTurn(): void {
-    if (!this.turnActive && !this.cancelling && !this.turnFailed) return;
+    const started = this.turnActive && this.turnStarted;
+    if (!started && !this.cancelling && !this.turnFailed) return;
     const cancelled = this.cancelling;
     const failed = this.turnFailed;
     this.turnActive = false;
@@ -306,21 +376,21 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   /** `session.error` arrives both mid-turn (failing it) and as a post-idle duplicate (observed
-   * live: the same failure re-emitted with a stack trace after the settle) — the turn-liveness
-   * gate keeps duplicates out. `session.idle` still follows every error and does the settle. */
+   * live: the same failure re-emitted with a stack trace after the settle) — and that duplicate
+   * can land after the NEXT prompt was dispatched. A turn's own error never precedes its busy
+   * status (verified live), so gating on `turnStarted` keeps stragglers from poisoning the new
+   * turn. `session.idle` still follows every error and does the settle. */
   private handleSessionError(props: SessionErrored): void {
     const error = props.error;
     if (!error) return;
+    if (!this.cancelling && (!this.turnActive || !this.turnStarted)) return;
     if (error.name === 'MessageAbortedError') {
       // The abort's own fallout (ours, or an external client's): fold it into the cancel path so
       // the idle settle reports `cancelled` — never surface it as an error.
-      if (this.turnActive || this.cancelling) {
-        this.turnActive = false;
-        this.cancelling = true;
-      }
+      this.turnActive = false;
+      this.cancelling = true;
       return;
     }
-    if (!this.turnActive && !this.cancelling) return;
     this.turnFailed = true;
     const message = sessionErrorMessage(error);
     if (error.name === 'ProviderAuthError') {
@@ -360,11 +430,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           ? 'always'
           : 'reject';
     try {
-      await this.client.permission.reply({
-        requestID: props.id,
-        directory: this.opts?.cwd,
-        reply,
-      });
+      okOrThrow(
+        await this.client.permission.reply({
+          requestID: props.id,
+          directory: this.opts?.cwd,
+          reply,
+        }),
+        'opencode: permission.reply',
+      );
     } catch (err) {
       // A teardown-cancelled reject races the abort that triggered it — the server may already
       // have discarded the ask, and that failure carries no signal.
@@ -381,8 +454,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (props.questions.length === 0 || props.questions.some((q) => q.options.length === 0)) {
       // The Question schema requires ≥1 option per question; an ask we can't render must still be
       // answered or it gates the turn server-side forever.
-      await this.client?.question.reject({ requestID, directory });
       this.emitError('opencode: question ask carried no options; rejected');
+      if (this.client) {
+        okOrThrow(
+          await this.client.question.reject({ requestID, directory }),
+          'opencode: question.reject',
+        );
+      }
       return;
     }
     const toolCallId =
@@ -413,7 +491,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (!this.client) return;
     if (outcome.outcome === 'cancelled') {
       try {
-        await this.client.question.reject({ requestID, directory });
+        okOrThrow(
+          await this.client.question.reject({ requestID, directory }),
+          'opencode: question.reject',
+        );
       } catch {
         // The cancel races the abort that triggered it — the ask may already be gone server-side.
       }
@@ -432,7 +513,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (custom) labels.push(custom);
       return labels;
     });
-    await this.client.question.reply({ requestID, directory, answers });
+    okOrThrow(
+      await this.client.question.reply({ requestID, directory, answers }),
+      'opencode: question.reply',
+    );
   }
 
   private handlePart(part: Part): void {

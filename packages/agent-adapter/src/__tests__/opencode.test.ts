@@ -157,6 +157,16 @@ function pushIdle(): void {
   });
 }
 
+/** The server's on-stream acknowledgement that the active turn is running — always precedes the
+ * turn's own error/idle on the real stream (verified live on 1.17.11). */
+function pushBusy(): void {
+  client.stream.push({
+    id: 'e-busy',
+    type: 'session.status',
+    properties: { sessionID: 'sess-1', status: { type: 'busy' } },
+  });
+}
+
 describe('OpenCodeAdapter.consumeEvents', () => {
   it('reports a malformed event via emitError instead of throwing, and keeps consuming', async () => {
     const unhandled = vi.fn();
@@ -263,11 +273,8 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     const { adapter, events } = await makeAdapter();
 
     await adapter.send({ type: 'prompt', content: [] });
-    client.stream.push({
-      id: 'e-idle',
-      type: 'session.idle',
-      properties: { sessionID: 'sess-1' },
-    });
+    pushBusy();
+    pushIdle();
     await vi.waitFor(() => {
       expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
     });
@@ -601,6 +608,7 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
   it('maps ProviderAuthError to a non-recoverable authentication_failed error, and the idle settle skips end_turn', async () => {
     const { adapter, events } = await makeAdapter();
     await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
     events.length = 0;
 
     client.stream.push({
@@ -628,6 +636,7 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
   it('ignores a duplicate session.error after the turn settled (observed live: re-emitted with a stack)', async () => {
     const { adapter, events } = await makeAdapter();
     await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
 
     const push = () => {
       client.stream.push({
@@ -655,6 +664,7 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
   it('treats MessageAbortedError as cancel fallout: no error, and the idle settle reports cancelled', async () => {
     const { adapter, events } = await makeAdapter();
     await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
     events.length = 0;
 
     // An abort not initiated through this adapter (e.g. another client) — same settle path.
@@ -709,5 +719,172 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("absorbs the previous turn's straggling duplicate idle instead of settling the next un-started turn", async () => {
+    const { adapter, events } = await makeAdapter();
+
+    // Turn 1: started, cancelled, settled (opencode emits a duplicate idle after an abort — the
+    // straggler can arrive after the next prompt is already dispatched).
+    await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
+    await adapter.send({ type: 'cancel' });
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events).map((s) => s.stopReason)).toEqual(['cancelled']);
+    });
+
+    // Turn 2 dispatched; turn 1's duplicate idle lands before turn 2's busy acknowledgement.
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(events).toHaveLength(0);
+    });
+
+    // Turn 2's real lifecycle still settles normally.
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events).map((s) => s.stopReason)).toEqual(['end_turn']);
+    });
+  });
+
+  it("drops the previous turn's re-fired session.error instead of failing the next un-started turn", async () => {
+    const { adapter, events } = await makeAdapter();
+
+    const pushError = () => {
+      client.stream.push({
+        id: 'e-err',
+        type: 'session.error',
+        properties: {
+          sessionID: 'sess-1',
+          error: { name: 'UnknownError', data: { message: 'model not found' } },
+        },
+      });
+    };
+
+    // Turn 1 fails and settles.
+    await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
+    pushError();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+
+    // Turn 2 dispatched; turn 1's stale re-fire lands before turn 2's busy acknowledgement.
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+    pushError();
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events).map((s) => s.stopReason)).toEqual(['end_turn']);
+    });
+    // No error was attributed to turn 2, and its clean settle wasn't suppressed by a stale
+    // turnFailed.
+    expect(errors(events)).toHaveLength(0);
+  });
+
+  it('handles a session.error that carries no sessionID (the SDK declares it optional)', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
+    events.length = 0;
+
+    client.stream.push({
+      id: 'e-err',
+      type: 'session.error',
+      properties: {
+        error: { name: 'ProviderAuthError', data: { providerID: 'openai', message: '401' } },
+      },
+    });
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(errors(events)[0].code).toBe('authentication_failed');
+  });
+});
+
+describe('OpenCodeAdapter RPC results (the SDK resolves with {error} instead of rejecting)', () => {
+  it('rejects send() and returns the session to idle when promptAsync resolves with an error', async () => {
+    const { adapter, events } = await makeAdapter();
+    client.session.promptAsync.mockResolvedValueOnce({ error: { message: 'boom' } } as never);
+
+    await expect(adapter.send({ type: 'prompt', content: [] })).rejects.toThrow(
+      'session.promptAsync failed',
+    );
+    const statuses = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'status' }> => e.type === 'status',
+    );
+    expect(statuses.at(-1)?.status).toBe('idle');
+  });
+
+  it('surfaces a permission.reply that resolves with an error for a user-answered ask', async () => {
+    const { adapter, events } = await makeAdapter();
+    client.permission.reply.mockResolvedValueOnce({ error: { message: 'gone' } } as never);
+    pushPermissionAsked(false);
+    await vi.waitFor(() => {
+      expect(permissionAsks(events)).toHaveLength(1);
+    });
+
+    await adapter.send({
+      type: 'permission-response',
+      requestId: permissionAsks(events)[0].requestId,
+      outcome: { outcome: 'selected', optionId: 'allow' },
+    });
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(errors(events)[0].message).toContain('permission.reply failed');
+  });
+
+  it('rejects send(cancel) and clears the cancel latch when session.abort resolves with an error', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    client.session.abort.mockResolvedValueOnce({ error: { message: 'gone' } } as never);
+    await expect(adapter.send({ type: 'cancel' })).rejects.toThrow('session.abort failed');
+
+    // The latch was cleared, so a genuine stream failure afterwards still surfaces.
+    client.stream.fail(new Error('connection dropped'));
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(true);
+  });
+
+  it('clears the cancel latch when the straggling abort fails after the wait cap', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    let rejectAbort: ((err: Error) => void) | undefined;
+    vi.useFakeTimers();
+    try {
+      client.session.abort.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectAbort = reject;
+          }) as never,
+      );
+      const cancel = adapter.send({ type: 'cancel' });
+      await vi.advanceTimersByTimeAsync(2000);
+      await cancel;
+      // The straggling abort ultimately fails: no cancel fallout is coming.
+      rejectAbort?.(new Error('abort finally failed'));
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // A genuine stream failure afterwards must surface, not be swallowed as cancel fallout.
+    client.stream.fail(new Error('connection dropped'));
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(true);
   });
 });
