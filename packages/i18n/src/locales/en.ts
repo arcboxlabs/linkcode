@@ -291,6 +291,9 @@ export const en = {
       toggleSidebar: 'Toggle sidebar',
       toggleBottomPanel: 'Toggle bottom panel',
       toggleRightPanel: 'Toggle right panel',
+      footerNavigate: 'Navigate',
+      footerOpen: 'Open',
+      footerClose: 'Close',
     },
     content: {
       audio: '[audio]',
