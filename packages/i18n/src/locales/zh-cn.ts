@@ -282,6 +282,7 @@ export const zhCN = {
       goForward: '前进',
       openFolder: '打开文件夹…',
       openSettings: '打开设置',
+      importHistory: '导入聊天历史',
       toggleSidebar: '切换侧边栏',
       toggleBottomPanel: '切换底部面板',
       toggleRightPanel: '切换右侧面板',
