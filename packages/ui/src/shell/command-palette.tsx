@@ -24,8 +24,8 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Fragment, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../chat/agent-icon';
+import { preventBaseUIHandler } from '../lib/base-ui';
 import { cn } from '../lib/cn';
-import { preventBaseUIHandler } from './composer-command';
 import { SESSION_STATUS_DOT_CLASS } from './sidebar/thread-row';
 
 export interface PaletteThreadViewModel {
@@ -45,7 +45,7 @@ export interface PaletteCommandViewModel {
 }
 
 export interface CommandPaletteProps {
-  open: boolean;
+  /** Fires with `false` on Escape/backdrop dismissal; closing happens by unmounting (the caller's `AnimatePresence` plays the exit). */
   onOpenChange: (open: boolean) => void;
   /** Controlled query — filtering/ranking happens upstream, never inside the dialog. */
   query: string;
@@ -109,7 +109,6 @@ function useMeasuredHeight(): [React.RefCallback<HTMLElement>, number | null] {
  * highlighted-item, so rows only need `onClick`.
  */
 export function CommandPalette({
-  open,
   onOpenChange,
   query,
   onQueryChange,
@@ -143,7 +142,7 @@ export function CommandPalette({
     : { duration: 0.2, ease: 'easeInOut' };
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
+    <CommandDialog open onOpenChange={onOpenChange}>
       <CommandDialogPortal>
         <CommandDialogPrimitive.Backdrop
           className={BACKDROP_CLASS}

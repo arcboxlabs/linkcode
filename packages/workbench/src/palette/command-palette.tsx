@@ -130,7 +130,6 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
 
   return (
     <CommandPalette
-      open
       onOpenChange={setOpen}
       query={query}
       onQueryChange={setQuery}
