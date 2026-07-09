@@ -15,6 +15,7 @@ import type {
   SessionInfo,
   SessionNotificationReason,
   SessionRecord,
+  StartOptions,
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
@@ -37,6 +38,8 @@ import { ScriptService } from './scripts/script-service';
 import type { SessionStore } from './session-store';
 import { InMemorySessionStore } from './session-store';
 import { TerminalService } from './terminal-service';
+import type { TranslatorService } from './translator';
+import { translationUpstream, withTranslatorEndpoint } from './translator';
 import { WorkspaceRegistry } from './workspace-registry';
 import type { WorkspaceStore } from './workspace-store';
 import { InMemoryWorkspaceStore } from './workspace-store';
@@ -79,6 +82,8 @@ export interface EngineDeps {
   collectAgentRuntimes?: () => Promise<AgentRuntimes>;
   /** Resolves the CLI to spawn for an interactive `agent-login`; absent hosts reject login requests. */
   resolveLoginBinary?: LoginBinaryResolver;
+  /** Local Anthropic⇄OpenAI translation sidecar; absent Engines reject cross-protocol accounts. */
+  translator?: TranslatorService;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
@@ -119,6 +124,7 @@ export class Engine {
   private agentRuntimes: AgentRuntimes;
   private readonly assets?: AssetService;
   private readonly logins?: AgentLoginService;
+  private readonly translator?: TranslatorService;
   private readonly collectAgentRuntimes?: () => Promise<AgentRuntimes>;
   private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
@@ -148,6 +154,7 @@ export class Engine {
     this.artifactHost = new ArtifactHostService(routes);
     this.agentRuntimes = deps.agentRuntimes ?? {};
     this.assets = deps.assets;
+    this.translator = deps.translator;
     this.collectAgentRuntimes = deps.collectAgentRuntimes;
     this.logins = deps.resolveLoginBinary
       ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
@@ -182,16 +189,33 @@ export class Engine {
     return this.workspaces.ensureChatWorkspace(cwd);
   }
 
+  /**
+   * Resolve a session's StartOptions: apply the bound account/provider defaults, then, for a
+   * cross-protocol account, route the agent through the local translation sidecar (rewriting the
+   * endpoint to its loopback URL). A session that needs translation with no sidecar available fails.
+   */
+  private async resolveStartOptions(opts: StartOptions): Promise<StartOptions> {
+    const resolved = applyProviderDefaults(
+      opts,
+      this.providerStore.get(),
+      this.providerStore.getAccounts(),
+    );
+    const upstream = translationUpstream(resolved);
+    if (!upstream) return resolved;
+    if (!this.translator) {
+      throw new Error(
+        'claude-code cross-protocol account needs the translation sidecar, which is unavailable',
+      );
+    }
+    return withTranslatorEndpoint(resolved, await this.translator.ensure(upstream));
+  }
+
   private async handle(msg: WireMessage): Promise<void> {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start': {
         await this.tryReply(p.clientReqId, async () => {
-          const opts = applyProviderDefaults(
-            p.opts,
-            this.providerStore.get(),
-            this.providerStore.getAccounts(),
-          );
+          const opts = await this.resolveStartOptions(p.opts);
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -292,11 +316,10 @@ export class Engine {
           // A never-prompted session has no provider transcript to resume from (the adapter only
           // mints one on the first prompt); waking it is a fresh start under the same Link Code id.
           const historyId = latestHistoryId(record);
-          const startOpts = applyProviderDefaults(
-            { kind: record.kind, cwd: record.cwd },
-            this.providerStore.get(),
-            this.providerStore.getAccounts(),
-          );
+          const startOpts = await this.resolveStartOptions({
+            kind: record.kind,
+            cwd: record.cwd,
+          });
           record.runs.push({ historyId, startedAt: Date.now() });
           await this.startLiveSession(p.clientReqId, record, (adapter) =>
             historyId === undefined
@@ -352,11 +375,7 @@ export class Engine {
       }
       case 'history.resume': {
         await this.tryReply(p.clientReqId, async () => {
-          const startOpts = applyProviderDefaults(
-            { ...p.startOpts, kind: p.agentKind },
-            this.providerStore.get(),
-            this.providerStore.getAccounts(),
-          );
+          const startOpts = await this.resolveStartOptions({ ...p.startOpts, kind: p.agentKind });
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -670,6 +689,7 @@ export class Engine {
     this.scripts?.shutdown();
     this.terminals?.closeAll();
     this.logins?.closeAll();
+    await this.translator?.closeAll();
     this.transport.close();
   }
 
