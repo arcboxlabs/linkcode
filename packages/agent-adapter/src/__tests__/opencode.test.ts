@@ -1,5 +1,6 @@
 import type { AgentEvent } from '@linkcode/schema';
 import type { Event } from '@opencode-ai/sdk/v2';
+import { noop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenCodeAdapter } from '../native/opencode';
 
@@ -69,8 +70,8 @@ class FakeClient {
   subscribeError: Error | null = null;
   readonly session = {
     create: vi.fn(() => ({ data: { id: 'sess-1' } })),
-    prompt: vi.fn(() => ({})),
-    abort: vi.fn(() => ({})),
+    promptAsync: vi.fn(() => ({ data: null })),
+    abort: vi.fn(() => ({ data: true })),
   };
   readonly event = {
     subscribe: vi.fn(() => {
@@ -102,6 +103,18 @@ async function makeAdapter(): Promise<{ adapter: OpenCodeAdapter; events: AgentE
 
 function errors(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 'error' }>> {
   return events.filter((e): e is Extract<AgentEvent, { type: 'error' }> => e.type === 'error');
+}
+
+function stops(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 'stop' }>> {
+  return events.filter((e): e is Extract<AgentEvent, { type: 'stop' }> => e.type === 'stop');
+}
+
+function pushIdle(): void {
+  client.stream.push({
+    id: 'e-idle',
+    type: 'session.idle',
+    properties: { sessionID: 'sess-1' },
+  });
 }
 
 describe('OpenCodeAdapter.consumeEvents', () => {
@@ -196,7 +209,10 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     events.length = 0;
 
     await adapter.send({ type: 'cancel' });
-    expect(client.session.abort).toHaveBeenCalledWith({ sessionID: 'sess-1' });
+    expect(client.session.abort).toHaveBeenCalledWith({
+      sessionID: 'sess-1',
+      directory: '/tmp/repo',
+    });
 
     // Cancel aborts the turn without a matching `session.idle`; opencode then closes the stream —
     // that's the abort's own fallout, not an unexpected disconnect.
@@ -274,5 +290,144 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       // Give the loop a chance to run; nothing should ever land.
       expect(events).toHaveLength(0);
     });
+  });
+});
+
+describe('OpenCodeAdapter prompt dispatch', () => {
+  it('subscribes the event stream scoped to the session directory', async () => {
+    await makeAdapter();
+    // Session events ride the per-directory instance bus; a bare subscribe() silently misses them
+    // whenever the daemon cwd differs from the session cwd.
+    expect(client.event.subscribe).toHaveBeenCalledWith({ directory: '/tmp/repo' });
+  });
+
+  it('dispatches prompts via promptAsync so send() is not held open for the whole turn', async () => {
+    const adapter = new OpenCodeAdapter();
+    adapter.onEvent(noop);
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo', model: 'openai/gpt-5.5' });
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+
+    expect(client.session.promptAsync).toHaveBeenCalledWith({
+      sessionID: 'sess-1',
+      directory: '/tmp/repo',
+      model: { providerID: 'openai', modelID: 'gpt-5.5' },
+      parts: [{ type: 'text', text: 'hi' }],
+    });
+  });
+});
+
+describe('OpenCodeAdapter session.error and turn settle', () => {
+  it('maps ProviderAuthError to a non-recoverable authentication_failed error, and the idle settle skips end_turn', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    client.stream.push({
+      id: 'e-err',
+      type: 'session.error',
+      properties: {
+        sessionID: 'sess-1',
+        error: { name: 'ProviderAuthError', data: { providerID: 'openai', message: '401' } },
+      },
+    });
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(errors(events)[0].code).toBe('authentication_failed');
+    expect(errors(events)[0].recoverable).toBe(false);
+
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+    });
+    // The error already told the story; an end_turn stop would make the turn look clean.
+    expect(stops(events)).toHaveLength(0);
+  });
+
+  it('ignores a duplicate session.error after the turn settled (observed live: re-emitted with a stack)', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+
+    const push = () => {
+      client.stream.push({
+        id: 'e-err',
+        type: 'session.error',
+        properties: {
+          sessionID: 'sess-1',
+          error: { name: 'UnknownError', data: { message: 'model not found' } },
+        },
+      });
+    };
+    push();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+    });
+    events.length = 0;
+
+    push();
+    await vi.waitFor(() => {
+      expect(events).toHaveLength(0);
+    });
+  });
+
+  it('treats MessageAbortedError as cancel fallout: no error, and the idle settle reports cancelled', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    // An abort not initiated through this adapter (e.g. another client) — same settle path.
+    client.stream.push({
+      id: 'e-err',
+      type: 'session.error',
+      properties: {
+        sessionID: 'sess-1',
+        error: { name: 'MessageAbortedError', data: { message: 'Aborted' } },
+      },
+    });
+    pushIdle();
+
+    await vi.waitFor(() => {
+      expect(stops(events)).toHaveLength(1);
+    });
+    expect(stops(events)[0].stopReason).toBe('cancelled');
+    expect(errors(events)).toHaveLength(0);
+  });
+
+  it('settles a cancelled turn with a cancelled stop, and a duplicate idle emits nothing more', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    await adapter.send({ type: 'cancel' });
+    events.length = 0;
+
+    // Observed live on an abort: session.idle arrives, sometimes twice.
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events)).toHaveLength(1);
+    });
+    expect(stops(events)[0].stopReason).toBe('cancelled');
+    events.length = 0;
+
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(events).toHaveLength(0);
+    });
+  });
+
+  it('proceeds with the local cancel when session.abort exceeds the wait cap', async () => {
+    const { adapter } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+
+    vi.useFakeTimers();
+    try {
+      // The abort RPC hangs (opencode has blocked it until the running tool exits).
+      client.session.abort.mockImplementationOnce(() => new Promise(noop) as never);
+      const cancel = adapter.send({ type: 'cancel' });
+      await vi.advanceTimersByTimeAsync(2000);
+      await cancel;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
