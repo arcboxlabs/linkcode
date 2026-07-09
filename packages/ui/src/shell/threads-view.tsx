@@ -31,7 +31,6 @@ export interface ThreadGroupViewModel {
   hasOverflow: boolean;
   collapsed: boolean;
   previewExpanded: boolean;
-  historyOpen: boolean;
   /** True for the daemon-owned chat workspace's group — rendered in "Chats", not "Projects". */
   isChat: boolean;
 }
@@ -67,16 +66,13 @@ export function ThreadsView({
   onReorderGroups,
   onReorderThreads,
   onStartDraft,
-  onImportSession,
   onPickDirectory,
   onRegisterWorkspace,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   BranchStatusComponent,
-  HistoryComponent,
 }: ThreadsViewProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const projectGroups: ThreadGroupViewModel[] = [];
@@ -168,14 +164,11 @@ export function ThreadsView({
               onClose={onClose}
               onToggleSessionPinned={onToggleSessionPinned}
               onStartDraft={onStartDraft}
-              onImportSession={onImportSession}
               onRenameWorkspace={onRenameWorkspace}
               onArchiveWorkspace={onArchiveWorkspace}
               onToggleGroupCollapsed={onToggleGroupCollapsed}
               onTogglePreviewExpanded={onTogglePreviewExpanded}
-              onToggleImportHistory={onToggleImportHistory}
               BranchStatusComponent={BranchStatusComponent}
-              HistoryComponent={HistoryComponent}
             />
           ))}
           <AddWorkspaceRow
@@ -214,14 +207,11 @@ function ThreadGroupSection({
   onClose,
   onToggleSessionPinned,
   onStartDraft,
-  onImportSession,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   BranchStatusComponent,
-  HistoryComponent,
 }: ThreadGroupActions &
   ThreadGroupState & {
     group: ThreadGroupViewModel;
@@ -255,10 +245,6 @@ function ThreadGroupSection({
         onNewThread={workspace ? () => onStartDraft(workspace.workspaceId) : undefined}
         onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}
         onArchive={workspace ? () => onArchiveWorkspace(workspace.workspaceId) : undefined}
-        historyOpen={group.historyOpen}
-        onToggleHistory={
-          workspace && HistoryComponent ? () => onToggleImportHistory(group.key) : undefined
-        }
         BranchStatusComponent={BranchStatusComponent}
       />
       <div className="pl-3">
@@ -286,18 +272,6 @@ function ThreadGroupSection({
           />
         )}
       </div>
-      {!group.collapsed &&
-        group.historyOpen &&
-        workspace &&
-        HistoryComponent &&
-        onImportSession && (
-          <div className="pt-1">
-            <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
-              {t('importHistoryTitle')}
-            </div>
-            <HistoryComponent cwd={workspace.cwd} onImported={onImportSession} />
-          </div>
-        )}
     </section>
   );
 }

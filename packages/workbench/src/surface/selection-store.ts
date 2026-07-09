@@ -18,10 +18,12 @@ interface SessionSelectionState {
 }
 
 /**
- * Session selection lives outside the `Workbench` tree so surfaces mounted elsewhere (command
- * palette, shortcuts, notification click-through) can drive the same selection the visible
- * workbench renders. The explicit draft lives here for the same reason. Not persisted: a fresh
- * window starts at the default session.
+ * The workbench main-surface state (selected session + explicit new-thread draft) lives outside
+ * the `Workbench` tree so surfaces mounted elsewhere — command palette, shortcuts, notification
+ * click-through, and secondary `useWorkbenchSessions` instances (the history import pane) — drive
+ * the same state the visible workbench renders. Instance-local copies would desynchronize the
+ * apply paths (a selection made from one instance must clear the draft everywhere). Not
+ * persisted: a fresh window starts at the default session.
  */
 export const useSessionSelectionStore = create<SessionSelectionState>()((set) => ({
   selectedId: null,

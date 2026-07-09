@@ -6,16 +6,21 @@ import { createContextState } from 'foxact/context-state';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { trueFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import type * as React from 'react';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { Middleware as SWRMiddleware } from 'swr';
-import { SWRConfig } from 'swr';
+import { SWRConfig, mutate as swrMutate } from 'swr';
 import { useDebug } from './debug';
 import { TayoriProvider } from './tayori';
 
 export interface WorkbenchRuntimeProviderProps extends React.PropsWithChildren {
   transport: Transport;
+}
+
+export interface WorkbenchConnectionGateProps extends React.PropsWithChildren {
+  /** Renders instead of `children` while the transport is connecting or errored. */
   fallback: React.ReactNode;
 }
 
@@ -80,6 +85,12 @@ export function useWorkbenchSdkClient(): LinkCodeSdkClient {
   );
 }
 
+/**
+ * Mounts the data-plane contexts (SDK client, tayori, SWR) unconditionally — connection state
+ * does NOT gate them, so ungated surfaces (desktop Settings) can fetch while the transport is
+ * still connecting or down (their requests fail or pend until it is ready). Gating the main
+ * experience is `WorkbenchConnectionGate`'s job.
+ */
 export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): React.ReactNode {
   return (
     <WorkbenchRuntimeStatusProvider>
@@ -88,17 +99,36 @@ export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): 
   );
 }
 
+/**
+ * The connection gate, separated from the runtime contexts: renders `fallback` until the
+ * transport is ready. Mount it around everything that assumes a connected daemon.
+ */
+export function WorkbenchConnectionGate({
+  fallback,
+  children,
+}: WorkbenchConnectionGateProps): React.ReactNode {
+  const status = useWorkbenchRuntimeStatus();
+  return status === 'ready' ? children : fallback;
+}
+
 function WorkbenchRuntimeConnection({
   transport,
   children,
-  fallback,
 }: WorkbenchRuntimeProviderProps): React.ReactNode {
-  const [client, setClient] = useState(() => createClient({ transport }));
-  const status = useWorkbenchRuntimeStatus();
+  // tayori's initClient runs exactly once per TayoriProvider mount (see the tayori docs), so a
+  // retry that swaps the client must remount the whole context stack — hence the epoch key.
+  const [clientState, setClientState] = useState(() => ({
+    client: createClient({ transport }),
+    epoch: 0,
+  }));
+  const { client, epoch } = clientState;
   const setStatus = useSetWorkbenchRuntimeStatus();
   const retry = useCallback(() => {
     setStatus('connecting');
-    setClient(createClient({ transport }));
+    setClientState((previous) => ({
+      client: createClient({ transport }),
+      epoch: previous.epoch + 1,
+    }));
   }, [setStatus, transport]);
   const controls = useMemo<WorkbenchRuntimeControls>(() => ({ retry }), [retry]);
 
@@ -109,7 +139,13 @@ function WorkbenchRuntimeConnection({
       client
         .connect()
         .then(() => {
-          if (!signal.aborted) setStatus('ready');
+          if (signal.aborted) return;
+          setStatus('ready');
+          // Ungated surfaces may hold requests that failed pre-connect in SWR error-backoff —
+          // kick every key now instead of waiting the backoff out. Gated children mount fresh
+          // and are unaffected; the SWRConfig below shares the default cache, so the global
+          // mutate reaches these keys.
+          void swrMutate(trueFn);
         })
         .catch(() => {
           if (!signal.aborted) setStatus('error');
@@ -123,16 +159,9 @@ function WorkbenchRuntimeConnection({
     [client, setStatus],
   );
 
-  if (status !== 'ready') {
-    return (
-      <WorkbenchRuntimeControlsContext.Provider value={controls}>
-        {fallback}
-      </WorkbenchRuntimeControlsContext.Provider>
-    );
-  }
-
   return (
     <ComposeContextProvider
+      key={epoch}
       contexts={[
         <WorkbenchRuntimeControlsContext.Provider key="runtime-controls" value={controls} />,
         <WorkbenchSdkClientContext.Provider key="sdk-client" value={client} />,

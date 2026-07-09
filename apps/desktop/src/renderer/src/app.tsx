@@ -4,6 +4,7 @@ import {
   ConnectionState,
   createDaemonTransport,
   SessionNotifier,
+  useNavigationHistoryStore,
   useWorkbenchRuntimeStatus,
   Workbench,
   WorkbenchAppProviders,
@@ -26,22 +27,24 @@ const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHost
 export function DesktopApp(): React.ReactNode {
   const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
-  const settingsOpen = useDesktopSettingsStore((state) => state.settingsOpen);
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
       <CloudHostsProvider source={listCloudHosts}>
-        {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over the
-            native backdrop, so any workbench pixels underneath would ghost through the settings
-            sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction. */}
-        <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
-          {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
-          <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-            <SessionNotifier present={presentDesktopNotification} />
+        {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
+        <DaemonConnection
+          key={daemonUrl}
+          daemonUrl={daemonUrl}
+          // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
+          // URL), yet its history-import panel can still use the data plane once connected.
+          ungated={settingsOpen ? <SettingsView /> : null}
+        >
+          <SessionNotifier present={presentDesktopNotification} />
+          <SettingsUnderlay>
             <Workbench shellComponent={DesktopWorkbenchShell} />
-          </DaemonConnection>
-        </div>
-        {settingsOpen ? <SettingsView /> : null}
+          </SettingsUnderlay>
+        </DaemonConnection>
         {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
             can always minimize/maximize/close — including while the daemon is connecting or down. */}
         <DesktopWindowControls />
@@ -50,17 +53,37 @@ export function DesktopApp(): React.ReactNode {
   );
 }
 
+/**
+ * Hides (never unmounts) the workbench-side layer while Settings covers it: both shells are
+ * translucent over the native backdrop, so painted pixels underneath ghost through the settings
+ * sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction.
+ */
+function SettingsUnderlay({ children }: React.PropsWithChildren): React.ReactNode {
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
+  return (
+    <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+      {children}
+    </div>
+  );
+}
+
 /** The desktop renderer connects to the local daemon (apps/daemon) like every other client. */
 function DaemonConnection({
   daemonUrl,
+  ungated,
   children,
-}: React.PropsWithChildren<{ daemonUrl: string }>): React.ReactNode {
+}: React.PropsWithChildren<{ daemonUrl: string; ungated?: React.ReactNode }>): React.ReactNode {
   const { current: transport } = useSingleton(() => createDaemonTransport(daemonUrl));
   return (
     <WorkbenchProviders
       transport={transport}
       daemonUrl={daemonUrl}
-      fallback={<DesktopConnectionFallback daemonUrl={daemonUrl} />}
+      fallback={
+        <SettingsUnderlay>
+          <DesktopConnectionFallback daemonUrl={daemonUrl} />
+        </SettingsUnderlay>
+      }
+      ungated={ungated}
     >
       {children}
     </WorkbenchProviders>
@@ -70,8 +93,12 @@ function DaemonConnection({
 /**
  * A supervised daemon needs a beat to boot (fork + engine + listener bind, ~250ms measured);
  * early dial failures within this window are startup, not an outage — keep the skeleton up.
+ * Measured from renderer boot, not from mount: the fallback remounts on every retry (the
+ * epoch-keyed runtime contexts), and restarting the grace there would hide the error screen —
+ * and its Retry button — for another window after each click.
  */
 const MANAGED_STARTUP_GRACE_MS = 10000;
+const RENDERER_BOOT_AT = Date.now();
 
 /**
  * Desktop connection gate: a shell-shaped skeleton while connecting (plus a startup grace window
@@ -87,11 +114,15 @@ function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.
   const adoptDiscoveredUrl = useDesktopSettingsStore((state) => state.adoptDiscoveredUrl);
   const managed = useDaemonIsManaged();
 
-  const [withinStartupGrace, setWithinStartupGrace] = useState(true);
+  const [withinStartupGrace, setWithinStartupGrace] = useState(
+    () => Date.now() - RENDERER_BOOT_AT < MANAGED_STARTUP_GRACE_MS,
+  );
   useAbortableEffect((signal) => {
+    const remaining = MANAGED_STARTUP_GRACE_MS - (Date.now() - RENDERER_BOOT_AT);
+    if (remaining <= 0) return;
     const timer = setTimeout(() => {
       if (!signal.aborted) setWithinStartupGrace(false);
-    }, MANAGED_STARTUP_GRACE_MS);
+    }, remaining);
     signal.addEventListener('abort', () => clearTimeout(timer));
   }, []);
 

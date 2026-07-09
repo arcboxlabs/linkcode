@@ -83,7 +83,6 @@ export function SessionSidebar({
   onReorderGroups,
   onReorderThreads,
   onStartDraft,
-  onImportSession,
   onPickDirectory,
   onOpenSearch,
   searchShortcut,
@@ -92,9 +91,7 @@ export function SessionSidebar({
   onArchiveWorkspace,
   onToggleGroupCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   BranchStatusComponent,
-  HistoryComponent,
 }: SessionSidebarProps): React.ReactNode {
   return (
     <ShellSidebar
@@ -134,16 +131,13 @@ export function SessionSidebar({
             onReorderGroups={onReorderGroups}
             onReorderThreads={onReorderThreads}
             onStartDraft={onStartDraft}
-            onImportSession={onImportSession}
             onPickDirectory={onPickDirectory}
             onRegisterWorkspace={onRegisterWorkspace}
             onRenameWorkspace={onRenameWorkspace}
             onArchiveWorkspace={onArchiveWorkspace}
             onToggleGroupCollapsed={onToggleGroupCollapsed}
             onTogglePreviewExpanded={onTogglePreviewExpanded}
-            onToggleImportHistory={onToggleImportHistory}
             BranchStatusComponent={BranchStatusComponent}
-            HistoryComponent={HistoryComponent}
           />
         </div>
       </div>
@@ -250,6 +244,7 @@ export function HostFooter({
   onOpenSettings?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
+  const tPalette = useTranslations('workbench.palette');
   const pendingPermissionLabel =
     pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
 
@@ -350,7 +345,7 @@ export function HostFooter({
             disabled={!onOpenSettings}
             size="icon-sm"
             variant="outline"
-            aria-label="Settings"
+            aria-label={tPalette('openSettings')}
             onClick={onOpenSettings}
           >
             <SettingsIcon />

@@ -11,7 +11,6 @@ import {
 import { Button } from 'coss-ui/components/button';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -23,7 +22,6 @@ import {
   EllipsisIcon,
   FolderIcon,
   FolderOpenIcon,
-  HistoryIcon,
   PencilIcon,
   PlusIcon,
 } from 'lucide-react';
@@ -44,8 +42,6 @@ export interface ThreadGroupHeaderProps {
   onNewThread?: () => void;
   onRename?: (name: string) => Promise<void>;
   onArchive?: () => Promise<void>;
-  historyOpen: boolean;
-  onToggleHistory?: () => void;
   BranchStatusComponent?: BranchStatusComponentType;
   /** Marks the header as its group's drag handle — the whole section moves by grabbing this row. */
   dragHandleRef?: (element: Element | null) => void;
@@ -91,8 +87,6 @@ export function ThreadGroupHeader({
   onNewThread,
   onRename,
   onArchive,
-  historyOpen,
-  onToggleHistory,
   BranchStatusComponent,
   dragHandleRef,
 }: ThreadGroupHeaderProps): React.ReactNode {
@@ -103,7 +97,7 @@ export function ThreadGroupHeader({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveError, setArchiveError] = useState<unknown>(null);
   const [archivePending, setArchivePending] = useState(false);
-  const hasActions = Boolean(onNewThread || onRename || onArchive || onToggleHistory);
+  const hasActions = Boolean(onNewThread || onRename || onArchive);
 
   function beginRename(): void {
     setDraftName(title);
@@ -196,7 +190,7 @@ export function ThreadGroupHeader({
               <PlusIcon className="size-3.5" />
             </button>
           )}
-          {(onRename || onArchive || onToggleHistory) && (
+          {(onRename || onArchive) && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t('groupActions')}
@@ -211,16 +205,6 @@ export function ThreadGroupHeader({
                     <PencilIcon />
                     {t('renameWorkspace')}
                   </DropdownMenuItem>
-                )}
-                {onToggleHistory && (
-                  <DropdownMenuCheckboxItem checked={historyOpen} onCheckedChange={onToggleHistory}>
-                    {/* Checkbox items lay children in a plain grid cell; wrap so the leading icon
-                        sits inline with the label instead of stacking above it. */}
-                    <span className="flex items-center gap-2">
-                      <HistoryIcon />
-                      {t('importHistoryTitle')}
-                    </span>
-                  </DropdownMenuCheckboxItem>
                 )}
                 {onArchive && (
                   <>
