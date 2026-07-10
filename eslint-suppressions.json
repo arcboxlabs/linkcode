@@ -1,0 +1,12 @@
+{
+  "apps/desktop/scripts/verify-artifacts.mts": {
+    "sukka/prefer-foxts-object-size": {
+      "count": 1
+    }
+  },
+  "packages/workbench/src/runtime/provider.tsx": {
+    "sukka/react-no-use-effect-watching": {
+      "count": 1
+    }
+  }
+}
