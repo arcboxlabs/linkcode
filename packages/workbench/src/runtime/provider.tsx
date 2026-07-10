@@ -1,6 +1,5 @@
 import { LinkCodeProvider } from '@linkcode/client-core';
 import type { LinkCodeSdkClient } from '@linkcode/sdk';
-import type { Transport } from '@linkcode/transport';
 import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
@@ -21,18 +20,11 @@ import { WorkbenchConnectionController } from './connection-controller';
 import { useDebug } from './debug';
 import { TayoriProvider } from './tayori';
 
-interface WorkbenchRuntimeProviderBaseProps {
+export interface WorkbenchRuntimeProviderProps extends React.PropsWithChildren {
+  connectionSource: WorkbenchConnectionSource;
   /** Controller-only UI rendered before the first connection attempt can provide SDK contexts. */
   noGenerationFallback?: React.ReactNode;
 }
-
-export type WorkbenchRuntimeProviderProps = React.PropsWithChildren<
-  WorkbenchRuntimeProviderBaseProps &
-    (
-      | { connectionSource: WorkbenchConnectionSource; transport?: never }
-      | { connectionSource?: never; transport: Transport }
-    )
->;
 
 export interface WorkbenchConnectionGateProps extends React.PropsWithChildren {
   /** Renders instead of `children` while the transport is connecting or errored. */
@@ -108,18 +100,7 @@ export function useWorkbenchSdkClient(): LinkCodeSdkClient {
  * Gating the main experience is `WorkbenchConnectionGate`'s job.
  */
 export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): React.ReactNode {
-  const { children, noGenerationFallback = null } = props;
-  const legacyTransport = 'transport' in props ? props.transport : null;
-  const { current: legacyConnectionSource } = useSingleton<WorkbenchConnectionSource>(() => ({
-    resolve: () => ({
-      transport: nullthrow(
-        legacyTransport,
-        'WorkbenchRuntimeProvider requires a transport or connection source',
-      ),
-    }),
-  }));
-  const connectionSource =
-    props.connectionSource !== undefined ? props.connectionSource : legacyConnectionSource;
+  const { connectionSource, children, noGenerationFallback = null } = props;
   const { current: controller } = useSingleton(
     () => new WorkbenchConnectionController(connectionSource),
   );

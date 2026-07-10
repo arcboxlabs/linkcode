@@ -1,23 +1,21 @@
-import type { Transport } from '@linkcode/transport';
+import type { WorkbenchConnectionSource } from '../runtime/connection-controller';
 import type { WorkbenchShellComponent } from '../surface/shell';
 import { Workbench } from '../surface/workbench';
 import { WorkbenchAppProviders } from './app-providers';
 import { WorkbenchProviders } from './workbench-providers';
 
 export interface WorkbenchAppProps {
-  transport: Transport;
-  daemonUrl?: string;
+  connectionSource: WorkbenchConnectionSource;
   shellComponent?: WorkbenchShellComponent;
 }
 
 export function WorkbenchApp({
-  transport,
-  daemonUrl,
+  connectionSource,
   shellComponent,
 }: WorkbenchAppProps): React.ReactNode {
   return (
     <WorkbenchAppProviders>
-      <WorkbenchProviders transport={transport} daemonUrl={daemonUrl}>
+      <WorkbenchProviders connectionSource={connectionSource}>
         <Workbench shellComponent={shellComponent} />
       </WorkbenchProviders>
     </WorkbenchAppProviders>

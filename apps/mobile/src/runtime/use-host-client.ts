@@ -13,8 +13,7 @@ export interface HostClientState {
 }
 
 /**
- * Owns one client's connection lifecycle for a host URL, mirroring the state machine
- * of workbench's WorkbenchRuntimeConnection: connecting → ready | error, retry by
+ * Owns one client's connection lifecycle for a host URL: connecting → ready | error, retry by
  * recreating the transport + client pair.
  */
 export function useHostClient(url: string): HostClientState {
@@ -39,6 +38,9 @@ export function useHostClient(url: string): HostClientState {
   // the render-time reset above, and retry.
   useEffect(
     (signal) => {
+      const offClose = client.onClose(() => {
+        if (!signal.aborted) setStatus('error');
+      });
       client
         .connect()
         .then(() => {
@@ -48,7 +50,10 @@ export function useHostClient(url: string): HostClientState {
           if (!signal.aborted) setStatus('error');
         });
 
-      return () => client.dispose();
+      return () => {
+        offClose();
+        client.dispose();
+      };
     },
     [client],
   );
