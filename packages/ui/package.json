@@ -18,7 +18,6 @@
   },
   "scripts": {
     "postinstall": "node scripts/fetch-noto-emoji.mjs",
-    "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {

@@ -12,7 +12,6 @@
     "./styles/*": "./src/styles/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "lint": "biome check ."
   },
   "dependencies": {

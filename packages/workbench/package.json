@@ -11,7 +11,6 @@
     "./tayori": "./src/runtime/tayori.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {

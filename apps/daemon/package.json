@@ -15,7 +15,6 @@
     "build:rust": "cargo build -p linkcode-pty --release",
     "bench:pty": "pnpm run build:rust && tsx src/pty/bench-throughput.mts",
     "start": "node --import ./dist/instrument.js dist/index.js",
-    "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {

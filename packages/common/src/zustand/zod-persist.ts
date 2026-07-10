@@ -41,7 +41,6 @@ export function zodPersist<
 }
 
 function createSafeJSONStorage<State>(): PersistStorage<State> | undefined {
-  // eslint-disable-next-line sukka/react-prefer-foxact-persistent -- This is the Zustand persistence adapter itself; callers should not access localStorage directly.
   const storage = createJSONStorage<State>(() => localStorage);
   if (!storage) return undefined;
 

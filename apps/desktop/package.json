@@ -15,7 +15,6 @@
     "package": "pnpm run stage:host-runtime && electron-vite build && node scripts/package-app.mts",
     "package:devshell": "pnpm run stage:host-runtime && electron-vite build --mode devshell && node scripts/package-app.mts --devshell",
     "e2e:notifications": "node e2e/notifications.e2e.mts",
-    "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
   "author": "ArcBox Labs <team@arcbox.dev>",

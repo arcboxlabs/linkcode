@@ -13,7 +13,6 @@
     "dev:mock": "vite --mode mock",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/webview"
   },
   "dependencies": {

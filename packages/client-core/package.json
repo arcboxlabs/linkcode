@@ -9,7 +9,6 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {

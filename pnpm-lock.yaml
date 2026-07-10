@@ -137,9 +137,6 @@ importers:
       eslint-formatter-sukka:
         specifier: ^8.13.2
         version: 8.13.2(eslint@10.6.0(jiti@2.7.0))
-      eslint-import-resolver-typescript:
-        specifier: ^4.4.5
-        version: 4.4.5(eslint-plugin-import-x@4.17.1(@typescript-eslint/utils@8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.6.0(jiti@2.7.0)))(eslint@10.6.0(jiti@2.7.0))
       turbo:
         specifier: ^2.9.18
         version: 2.9.18
@@ -321,7 +318,7 @@ importers:
         version: 5.0.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
       foxact:
         specifier: ^0.3.7
-        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       lucide-react:
         specifier: 'catalog:'
         version: 1.18.0(react@19.2.7)
@@ -405,7 +402,7 @@ importers:
         version: 56.0.4(expo@56.0.13)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       foxact:
         specifier: ^0.3.7
-        version: 0.3.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 0.3.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       heroui-native:
         specifier: 1.0.4
         version: 1.0.4(cd673f28fd2c716052bd866cd2bb42c8)
@@ -521,7 +518,7 @@ importers:
         version: link:../../packages/coss-ui
       foxact:
         specifier: ^0.3.7
-        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       foxts:
         specifier: ^5.6.0
         version: 5.6.0
@@ -680,7 +677,7 @@ importers:
         version: link:../transport
       foxact:
         specifier: ^0.3.7
-        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       foxts:
         specifier: ^5.6.0
         version: 5.6.0
@@ -724,7 +721,7 @@ importers:
         version: 2.1.1
       foxact:
         specifier: ^0.3.7
-        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -904,7 +901,7 @@ importers:
         version: 3.4.11
       foxact:
         specifier: ^0.3.7
-        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       foxts:
         specifier: ^5.6.0
         version: 5.6.0
@@ -989,7 +986,7 @@ importers:
         version: link:../coss-ui
       foxact:
         specifier: ^0.3.7
-        version: 0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       foxts:
         specifier: ^5.6.0
         version: 5.6.0
@@ -6432,17 +6429,6 @@ packages:
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
-
-  foxact@0.3.7:
-    resolution: {integrity: sha512-U9+boW5SGK8TMuJ/21s7yfszXJCqVoUj8K9Gqmpe/uqiOG4wtPILxsONqrh0IizteGzGwiDa7oiPX2hn5AJtog==}
-    peerDependencies:
-      react: '*'
-      react-dom: '*'
-    peerDependenciesMeta:
-      react:
-        optional: true
-      react-dom:
-        optional: true
 
   foxact@0.3.8:
     resolution: {integrity: sha512-lFakEG8xm6A6wMH4ycWhXvwUybq4ATnMxJfBD4hj6hm9CKo72q2M/YaiEemoWGh9sUjQqX+pPXfq8S/jxedWzA==}
@@ -15570,7 +15556,7 @@ snapshots:
 
   forwarded@0.2.0: {}
 
-  foxact@0.3.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+  foxact@0.3.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       client-only: 0.0.1
       event-target-bus: 1.0.0
@@ -15578,15 +15564,6 @@ snapshots:
     optionalDependencies:
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
-
-  foxact@0.3.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
-    dependencies:
-      client-only: 0.0.1
-      event-target-bus: 1.0.0
-      server-only: 0.0.1
-    optionalDependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
 
   foxact@0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
