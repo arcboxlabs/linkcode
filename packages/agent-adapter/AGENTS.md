@@ -1,6 +1,6 @@
 # packages/agent-adapter — vendor coding-agent adapters
 
-`@linkcode/agent-adapter` drives four coding agents through one normalized `AgentAdapter`. It is the deepest vendor-specific layer in the repo: the agent SDKs are fast-moving (claude/pi are 0.x; opencode is 1.x), so read the installed `.d.ts` under `node_modules`, not vendor docs, and verify behavior against the installed SDK — never re-derive it from memory. codex has no JS SDK since the app-server rewrite — its protocol facts must be verified against a live `codex app-server` (the adapter's comments record what codex-cli 0.140.0 actually does).
+`@linkcode/agent-adapter` drives four coding agents through one normalized `AgentAdapter`. It is the deepest vendor-specific layer in the repo: the agent SDKs are fast-moving (claude/pi are 0.x; opencode is 1.x), so read the installed `.d.ts` under `node_modules`, not vendor docs, and verify behavior against the installed SDK — never re-derive it from memory. codex has no JS SDK since the app-server rewrite — its protocol facts must be verified against a live `codex app-server` (the adapter's comments record what codex-cli 0.144.1 actually does).
 
 ## Layout
 
@@ -20,10 +20,10 @@ Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin)
 
 | agent | JS package | version |
 | --- | --- | --- |
-| claude-code | `@anthropic-ai/claude-agent-sdk` | 0.3.179 |
-| codex | `@openai/codex` (CLI carrier — no JS SDK) | 0.140.0 |
-| opencode | `@opencode-ai/sdk` | 1.17.7 |
-| pi | `@earendil-works/pi-coding-agent` | 0.79.6 |
+| claude-code | `@anthropic-ai/claude-agent-sdk` | 0.3.206 |
+| codex | `@openai/codex` (CLI carrier — no JS SDK) | 0.144.1 |
+| opencode | `@opencode-ai/sdk` | 1.17.18 |
+| pi | `@earendil-works/pi-coding-agent` | 0.80.6 |
 
 - **Bumping a JS package** moves the exact pair self-resolved in dev; detected user installs are unaffected (their drift is the compat manifest's problem, CODE-77/113). Nothing is staged at package time anymore (CODE-114).
 - Quirk: `@openai/codex-<arch>` is an npm alias for `@openai/codex@<ver>-<arch>`, so querying the registry by the alias name 404s — resolve via the `@openai/codex` version.
@@ -50,7 +50,7 @@ Every new adapter MUST honor these (`base.ts`); downstream relies on them, they 
 
 ## codex (CODE-97: app-server)
 
-- **Driven over `codex app-server`** — line-delimited JSON-RPC on stdio, the protocol behind the official VS Code extension; framing carries no `jsonrpc` field (verified against codex-cli 0.140.0). `@openai/codex-sdk` was dropped: its one-shot `codex exec` wrapper had no approval callback, no mid-turn input, no structured diffs, no per-turn overrides. One persistent process per session: prompts are `turn/start` on a single thread; prompts during a running turn QUEUE and drain one per `turn/completed`; `turn/completed` status maps failed→error event, interrupted→`stop:cancelled`, else `stop:end_turn`.
+- **Driven over `codex app-server`** — line-delimited JSON-RPC on stdio, the protocol behind the official VS Code extension; framing carries no `jsonrpc` field (verified against codex-cli 0.144.1). `@openai/codex-sdk` was dropped: its one-shot `codex exec` wrapper had no approval callback, no mid-turn input, no structured diffs, no per-turn overrides. One persistent process per session: prompts are `turn/start` on a single thread; prompts during a running turn QUEUE and drain one per `turn/completed`; `turn/completed` status maps failed→error event, interrupted→`stop:cancelled`, else `stop:end_turn`.
 - **Spawn resolution**: `agentRuntimeProber.resolveBinary('codex')` (managed dir → detected user install) with `resolveCodexBinaryPath()` — the node_modules vendor of `@openai/codex` — as the dev/standalone fallback; packaged apps ship no codex binary (CODE-114). Both live behind the `startAppServer` test seam; `readConfiguredSandbox` is the other seam.
 - **Approvals**: server→client requests `item/commandExecution|fileChange/requestApproval` answer through the shared `requestPermission` round-trip — Allow→`accept`, Always allow→`acceptForSession` (real session-scoped grant), Reject→`decline`, teardown/cancel→`cancel`. The `declined` item status folds into `failed`, like claude-code's denied tool_result.
 - **Approval-policy axis** (three tiers; claude-only ids like `plan`/`auto` reject): `default`→untrusted + workspace-write, `acceptEdits` (initial)→on-request + workspace-write, `bypassPermissions`→never + danger-full-access. Applied per `turn/start` — next-turn semantics, same channel as model/effort; nothing can alter an in-flight turn.

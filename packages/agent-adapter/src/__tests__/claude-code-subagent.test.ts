@@ -200,7 +200,14 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
   const SESSION = 'session-1';
 
   function mainRow(type: 'user' | 'assistant', uuid: string, content: unknown[]): SessionMessage {
-    return { type, uuid, session_id: SESSION, parent_tool_use_id: null, message: { content } };
+    return {
+      type,
+      uuid,
+      session_id: SESSION,
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: { content },
+    };
   }
 
   function subRow(
@@ -208,7 +215,14 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
     uuid: string,
     content: string | unknown[],
   ): SessionMessage {
-    return { type, uuid, session_id: SESSION, parent_tool_use_id: TASK_ID, message: { content } };
+    return {
+      type,
+      uuid,
+      session_id: SESSION,
+      parent_tool_use_id: TASK_ID,
+      parent_agent_id: null,
+      message: { content },
+    };
   }
 
   /** The trimmed slice of the SDK module surface readHistory touches. */
@@ -303,6 +317,7 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
       uuid,
       session_id: SESSION,
       parent_tool_use_id: INNER_ID,
+      parent_agent_id: null,
       message: { content },
     });
     const adapter = new HistoryClaude(
