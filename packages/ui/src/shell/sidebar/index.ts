@@ -9,6 +9,10 @@ export { ThreadGroupHeader } from './group-header';
 export type { ShowMoreToggleProps } from './show-more-toggle';
 export { ShowMoreToggle } from './show-more-toggle';
 export { SIDEBAR_SORTABLE_SENSORS } from './sortable-sensors';
-export type { ThreadGroupActions, ThreadGroupState } from './thread-group-actions';
+export type {
+  SidebarSectionKey,
+  ThreadGroupActions,
+  ThreadGroupState,
+} from './thread-group-actions';
 export type { ThreadRowProps } from './thread-row';
 export { ThreadRow } from './thread-row';

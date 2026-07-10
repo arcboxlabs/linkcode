@@ -82,6 +82,7 @@ export function SessionSidebar({
   sessionsLoading,
   activeId,
   pinnedSessionIds,
+  collapsedSections,
   topInsetClassName,
   footer,
   className,
@@ -98,6 +99,7 @@ export function SessionSidebar({
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
+  onToggleSectionCollapsed,
   onTogglePreviewExpanded,
   BranchStatusComponent,
 }: SessionSidebarProps): React.ReactNode {
@@ -140,6 +142,7 @@ export function SessionSidebar({
           sessionsLoading={sessionsLoading}
           activeId={activeId}
           pinnedSessionIds={pinnedSessionIds}
+          collapsedSections={collapsedSections}
           onSelect={onSelect}
           onClose={onClose}
           onToggleSessionPinned={onToggleSessionPinned}
@@ -151,6 +154,7 @@ export function SessionSidebar({
           onRenameWorkspace={onRenameWorkspace}
           onArchiveWorkspace={onArchiveWorkspace}
           onToggleGroupCollapsed={onToggleGroupCollapsed}
+          onToggleSectionCollapsed={onToggleSectionCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           BranchStatusComponent={BranchStatusComponent}
         />

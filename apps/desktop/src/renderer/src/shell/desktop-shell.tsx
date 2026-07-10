@@ -77,6 +77,7 @@ export function DesktopShell({
   respondingQuestions,
   errorMessage,
   pinnedSessionIds,
+  collapsedSections,
   onSelectSession,
   onCloseSession,
   onToggleSessionPinned,
@@ -88,6 +89,7 @@ export function DesktopShell({
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
+  onToggleSectionCollapsed,
   onTogglePreviewExpanded,
   onSendPrompt,
   onStopTurn,
@@ -591,6 +593,7 @@ export function DesktopShell({
                 sessionsLoading={sessionsLoading}
                 activeId={active?.sessionId ?? null}
                 pinnedSessionIds={pinnedSessionIds}
+                collapsedSections={collapsedSections}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
                   <HostFooter
@@ -616,6 +619,7 @@ export function DesktopShell({
                 onRenameWorkspace={onRenameWorkspace}
                 onArchiveWorkspace={onArchiveWorkspace}
                 onToggleGroupCollapsed={onToggleGroupCollapsed}
+                onToggleSectionCollapsed={onToggleSectionCollapsed}
                 onTogglePreviewExpanded={onTogglePreviewExpanded}
                 BranchStatusComponent={BranchStatusComponent}
                 onSelect={onSelectSession}

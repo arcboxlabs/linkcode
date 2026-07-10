@@ -66,6 +66,7 @@ export function ThreadsView({
   sessionsLoading,
   activeId,
   pinnedSessionIds,
+  collapsedSections,
   onSelect,
   onClose,
   onToggleSessionPinned,
@@ -77,6 +78,7 @@ export function ThreadsView({
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
+  onToggleSectionCollapsed,
   onTogglePreviewExpanded,
   BranchStatusComponent,
 }: ThreadsViewProps): React.ReactNode {
@@ -164,6 +166,8 @@ export function ThreadsView({
               sortIndex={index}
               activeId={activeId}
               pinnedSessionIds={pinnedSessionIds}
+              collapsedSections={collapsedSections}
+              onToggleSectionCollapsed={onToggleSectionCollapsed}
               onSelect={onSelect}
               onClose={onClose}
               onToggleSessionPinned={onToggleSessionPinned}

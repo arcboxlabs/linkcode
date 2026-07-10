@@ -153,6 +153,10 @@ function WorkbenchSessionSurface({
   const archiveWorkspaceMutation = useMutation(archiveWorkspace);
   const collapsedKeys = useSidebarGroupCollapseStore((state) => state.collapsedKeys);
   const toggleGroupCollapsed = useSidebarGroupCollapseStore((state) => state.toggleCollapsed);
+  const collapsedSections = useSidebarGroupCollapseStore((state) => state.collapsedSections);
+  const toggleSectionCollapsed = useSidebarGroupCollapseStore(
+    (state) => state.toggleSectionCollapsed,
+  );
   const pinnedSessionIds = useSidebarPinStore((state) => state.pinnedSessionIds);
   const toggleSessionPinned = useSidebarPinStore((state) => state.togglePinned);
   const groupOrder = useSidebarOrderStore((state) => state.groupOrder);
@@ -419,6 +423,7 @@ function WorkbenchSessionSurface({
       }}
       errorMessage={errorMessage}
       pinnedSessionIds={pinnedSessionIds}
+      collapsedSections={collapsedSections}
       onSelectSession={sessions.select}
       onCloseSession={sessions.close}
       onToggleSessionPinned={toggleSessionPinned}
@@ -430,6 +435,7 @@ function WorkbenchSessionSurface({
       onRenameWorkspace={handleRenameWorkspace}
       onArchiveWorkspace={handleArchiveWorkspace}
       onToggleGroupCollapsed={toggleGroupCollapsed}
+      onToggleSectionCollapsed={toggleSectionCollapsed}
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}

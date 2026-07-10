@@ -22,7 +22,7 @@ type RenamedThreadGroupActions = 'onSelect' | 'onClose';
 
 export interface ShellFrameProps
   extends Pick<ThreadGroupActions, Exclude<keyof ThreadGroupActions, RenamedThreadGroupActions>>,
-    Pick<ThreadGroupState, 'pinnedSessionIds'> {
+    Pick<ThreadGroupState, 'pinnedSessionIds' | 'collapsedSections'> {
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
@@ -109,6 +109,7 @@ export function ShellFrame({
   header,
   errorMessage,
   pinnedSessionIds,
+  collapsedSections,
   onSelectSession,
   onCloseSession,
   onToggleSessionPinned,
@@ -120,6 +121,7 @@ export function ShellFrame({
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
+  onToggleSectionCollapsed,
   onTogglePreviewExpanded,
   onSendPrompt,
   onStopTurn,
@@ -148,6 +150,7 @@ export function ShellFrame({
           sessionsLoading={sessionsLoading}
           activeId={active?.sessionId ?? null}
           pinnedSessionIds={pinnedSessionIds}
+          collapsedSections={collapsedSections}
           footer={<DefaultHostFooter />}
           onSelect={onSelectSession}
           onClose={onCloseSession}
@@ -159,6 +162,7 @@ export function ShellFrame({
           onRenameWorkspace={onRenameWorkspace}
           onArchiveWorkspace={onArchiveWorkspace}
           onToggleGroupCollapsed={onToggleGroupCollapsed}
+          onToggleSectionCollapsed={onToggleSectionCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           onOpenSearch={onOpenSearch}
           searchShortcut={searchShortcut}
