@@ -57,8 +57,10 @@ export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupStat
   onOpenSearch?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
-  /** Registers a directory as a workspace — the Add workspace row. */
+  /** Registers a directory as a workspace — the Projects "+" menu's folder flow. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  /** Opens the provider history import surface; desktop only — the menu item hides without it. */
+  onImportHistory?: () => void;
 }
 
 /** The signed-in LinkCode Cloud account rendered in the footer; null/undefined when signed out. */
@@ -96,6 +98,7 @@ export function SessionSidebar({
   onOpenSearch,
   searchShortcut,
   onRegisterWorkspace,
+  onImportHistory,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
@@ -151,6 +154,7 @@ export function SessionSidebar({
           onStartDraft={onStartDraft}
           onPickDirectory={onPickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
+          onImportHistory={onImportHistory}
           onRenameWorkspace={onRenameWorkspace}
           onArchiveWorkspace={onArchiveWorkspace}
           onToggleGroupCollapsed={onToggleGroupCollapsed}

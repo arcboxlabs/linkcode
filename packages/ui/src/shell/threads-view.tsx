@@ -4,15 +4,14 @@ import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
 import { Accordion, AccordionItem, AccordionPanel } from 'coss-ui/components/accordion';
-import { SidebarGroup, SidebarGroupAction, SidebarMenu } from 'coss-ui/components/sidebar';
+import { SidebarGroup, SidebarMenu } from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
-import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { repositoryLabel } from './repository-label';
 import type { SidebarSectionKey, ThreadGroupActions, ThreadGroupState } from './sidebar';
 import {
-  AddWorkspaceRow,
+  AddProjectMenu,
   ChatsSection,
   SectionAccordionTrigger,
   ShowMoreToggle,
@@ -57,6 +56,8 @@ export interface ThreadsViewProps extends ThreadGroupActions, ThreadGroupState {
   ) => void;
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  /** Opens the provider history import surface; desktop only — the menu item hides without it. */
+  onImportHistory?: () => void;
 }
 
 /** The sidebar's two sections: "Projects" (the grouped tree) and the flat "Chats" list. */
@@ -75,6 +76,7 @@ export function ThreadsView({
   onStartDraft,
   onPickDirectory,
   onRegisterWorkspace,
+  onImportHistory,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
@@ -164,14 +166,12 @@ export function ThreadsView({
       >
         <AccordionItem value="projects" className="border-b-0" render={<SidebarGroup />}>
           <SectionAccordionTrigger>{t('projects')}</SectionAccordionTrigger>
-          <SidebarGroupAction
-            aria-label={t('newThread')}
-            title={t('newThread')}
-            className="text-muted-foreground"
-            onClick={() => onStartDraft()}
-          >
-            <PlusIcon />
-          </SidebarGroupAction>
+          <AddProjectMenu
+            onStartDraft={() => onStartDraft()}
+            onPickDirectory={onPickDirectory}
+            onRegisterWorkspace={onRegisterWorkspace}
+            onImportHistory={onImportHistory}
+          />
           <AccordionPanel className="space-y-2 pb-0 text-sidebar-foreground">
             {projectGroups.length === 0 && workspacesLoading && (
               <div className="space-y-1">
@@ -221,10 +221,6 @@ export function ThreadsView({
                 ))}
               </Accordion>
             )}
-            <AddWorkspaceRow
-              onPickDirectory={onPickDirectory}
-              onRegisterWorkspace={onRegisterWorkspace}
-            />
           </AccordionPanel>
         </AccordionItem>
 

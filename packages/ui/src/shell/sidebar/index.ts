@@ -1,5 +1,5 @@
-export type { AddWorkspaceRowProps } from './add-workspace-row';
-export { AddWorkspaceRow } from './add-workspace-row';
+export type { AddProjectMenuProps } from './add-project-menu';
+export { AddProjectMenu } from './add-project-menu';
 export type { BranchStatusComponentType, BranchStatusProps } from './branch-status';
 export { BranchStatus } from './branch-status';
 export type { ChatsSectionProps } from './chats-section';

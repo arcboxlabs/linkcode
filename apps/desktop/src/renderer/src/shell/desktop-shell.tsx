@@ -104,10 +104,13 @@ export function DesktopShell({
   onModelChange,
   onEffortChange,
   onOpenSettings,
+  onImportHistory,
   themeType,
 }: WorkbenchShellProps & {
   systemBridge: SystemBridge;
   onOpenSettings?: () => void;
+  /** Opens the desktop settings overlay on the History import category. */
+  onImportHistory?: () => void;
   themeType: ThemePreference;
 }): React.ReactNode {
   const shellState = useDesktopShellStore(
@@ -616,6 +619,7 @@ export function DesktopShell({
                 onOpenSearch={onOpenSearch}
                 searchShortcut={panelShortcuts.palette}
                 onRegisterWorkspace={onRegisterWorkspace}
+                onImportHistory={onImportHistory}
                 onRenameWorkspace={onRenameWorkspace}
                 onArchiveWorkspace={onArchiveWorkspace}
                 onToggleGroupCollapsed={onToggleGroupCollapsed}
