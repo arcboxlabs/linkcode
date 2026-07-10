@@ -7,7 +7,7 @@ import { AccordionTrigger } from 'coss-ui/components/accordion';
  */
 export function SectionAccordionTrigger({ children }: React.PropsWithChildren): React.ReactNode {
   return (
-    <AccordionTrigger className="*:data-[slot=accordion-indicator]:translate-y-0 h-8 items-center justify-start gap-2 rounded-lg px-2 py-0 text-xs focus-visible:ring-1 focus-visible:ring-inset">
+    <AccordionTrigger className="*:data-[slot=accordion-indicator]:size-3.5 *:data-[slot=accordion-indicator]:translate-y-0 h-8 items-center justify-start gap-2 rounded-lg px-2 py-0 text-xs focus-visible:ring-1 focus-visible:ring-inset">
       {children}
     </AccordionTrigger>
   );

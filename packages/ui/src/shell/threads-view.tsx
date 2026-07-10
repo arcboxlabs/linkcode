@@ -154,7 +154,7 @@ export function ThreadsView({
           root leaves base-ui's exit transition stuck (panel never reaches data-ending-style). */}
       <Accordion
         multiple
-        className="flex flex-col gap-2"
+        className="flex flex-col gap-0.5"
         value={openSections}
         onValueChange={(next) => {
           for (const section of SIDEBAR_SECTIONS) {
@@ -172,7 +172,7 @@ export function ThreadsView({
             onRegisterWorkspace={onRegisterWorkspace}
             onImportHistory={onImportHistory}
           />
-          <AccordionPanel className="flex flex-col gap-2 pb-0 text-sidebar-foreground">
+          <AccordionPanel className="flex flex-col gap-0.5 pb-0 text-sidebar-foreground">
             {projectGroups.length === 0 && workspacesLoading && (
               <div className="flex flex-col gap-1">
                 {createFixedArray(3).map((i) => (
@@ -188,7 +188,7 @@ export function ThreadsView({
             {projectGroups.length > 0 && (
               <Accordion
                 multiple
-                className="flex flex-col gap-2"
+                className="flex flex-col gap-0.5"
                 value={openGroupKeys}
                 onValueChange={(next) => {
                   for (const group of projectGroups) {

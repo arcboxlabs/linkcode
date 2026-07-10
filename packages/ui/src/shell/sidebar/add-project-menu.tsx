@@ -126,11 +126,11 @@ export function AddProjectMenu({
             <SidebarGroupAction
               aria-label={t('addProject')}
               title={t('addProject')}
-              className="top-3 size-6 hover:bg-transparent"
+              className="hover:bg-transparent"
             />
           }
         >
-          <PlusIcon />
+          <PlusIcon className="size-3.5" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-56">
           <DropdownMenuItem onClick={onStartDraft}>

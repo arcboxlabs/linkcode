@@ -63,10 +63,10 @@ export function ChatsSection({
         <SidebarGroupAction
           aria-label={t('newChat')}
           title={t('newChat')}
-          className="top-3 size-6 hover:bg-transparent"
+          className="hover:bg-transparent"
           onClick={() => onStartDraft(workspace.workspaceId)}
         >
-          <PlusIcon />
+          <PlusIcon className="size-3.5" />
         </SidebarGroupAction>
       )}
       <AccordionPanel className="pb-0 text-sidebar-foreground">
