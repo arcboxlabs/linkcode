@@ -42,6 +42,13 @@ export type ConversationItem =
       parentToolCallId?: string;
     })
   | (ConversationItemBase & { kind: 'tool'; toolCall: ToolCall })
+  | (ConversationItemBase & {
+      kind: 'compaction';
+      trigger?: 'manual' | 'auto';
+      preTokens?: number;
+      postTokens?: number;
+      summary?: string;
+    })
   | (ConversationItemBase & { kind: 'plan'; plan: Plan })
   | (ConversationItemBase & {
       kind: 'approval';

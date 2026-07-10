@@ -369,6 +369,41 @@ describe('buildConversation', () => {
     expect(c.currentEffort).toBe('xhigh');
     expect(c.items).toHaveLength(0);
   });
+
+  it('places a compaction marker in the timeline and merges re-emits by compactionId', () => {
+    const c = buildConversation([
+      userText('do it'),
+      text('working', 'a1'),
+      // The adapter announces the boundary first (metadata only)…
+      { type: 'compaction', compactionId: 'cb1', trigger: 'auto', preTokens: 1000, postTokens: 20 },
+      // …then re-emits the same id once the summary text arrives.
+      { type: 'compaction', compactionId: 'cb1', summary: 'what happened so far' },
+      text('continuing', 'a2'),
+    ]);
+    expect(c.items.map((item) => item.kind)).toEqual([
+      'message',
+      'message',
+      'compaction',
+      'message',
+    ]);
+    const marker = c.items[2];
+    expect(marker).toMatchObject({
+      kind: 'compaction',
+      id: 'cb1',
+      trigger: 'auto',
+      preTokens: 1000,
+      postTokens: 20,
+      summary: 'what happened so far',
+    });
+  });
+
+  it('keeps distinct compactions as separate markers', () => {
+    const c = buildConversation([
+      { type: 'compaction', compactionId: 'cb1', trigger: 'auto' },
+      { type: 'compaction', compactionId: 'cb2', trigger: 'manual' },
+    ]);
+    expect(c.items).toHaveLength(2);
+  });
 });
 
 describe('createConversationBuilder', () => {

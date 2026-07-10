@@ -17,6 +17,8 @@ export const zhCN = {
       emptyHint: '在下方输入消息，{agent} 会在 {cwd} 中开始工作。',
       thinking: '思考中…',
       thought: '思考',
+      compacted: '上下文已压缩',
+      compactedTokens: '{pre} → {post} tokens',
     },
     tool: {
       input: '输入',
