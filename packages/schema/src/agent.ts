@@ -125,6 +125,22 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // ── Tools: one event per state change, each carrying the full current ToolCall snapshot ──
   z.object({ type: z.literal('tool-call'), toolCall: ToolCallSchema }),
 
+  // ── Context compaction: the agent summarized earlier turns in place to free context window ──
+  /** Emitted at the compaction boundary with whatever is known at that moment, and again once the
+   * swapped-in summary text is learned (it arrives on a later frame). Consumers merge events by
+   * `compactionId` — the provider's own boundary id — so partial emits, live re-emits, and history
+   * replay of the same compaction all converge into one timeline marker. */
+  z.object({
+    type: z.literal('compaction'),
+    compactionId: z.string().min(1),
+    trigger: z.enum(['manual', 'auto']).optional(),
+    /** Context tokens before / after the compaction, when the provider reports them. */
+    preTokens: z.number().int().nonnegative().optional(),
+    postTokens: z.number().int().nonnegative().optional(),
+    /** The summary text the provider swapped in for the compacted turns. */
+    summary: z.string().optional(),
+  }),
+
   // ── Planning / meta ──
   z.object({ type: z.literal('plan'), plan: PlanSchema }),
   z.object({ type: z.literal('current-mode-update'), currentModeId: SessionModeIdSchema }),
