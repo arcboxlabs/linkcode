@@ -8,6 +8,7 @@ export type SettingsCategory =
   | 'connection'
   | 'notifications'
   | 'about'
+  | 'providers'
   | 'agents'
   | 'history-import';
 

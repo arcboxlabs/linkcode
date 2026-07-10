@@ -4,7 +4,15 @@ import { AGENT_LABELS, AgentIcon, SettingsSidebarNav, ShellSidebar } from '@link
 import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import { BellIcon, BotIcon, HistoryIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
+import {
+  BellIcon,
+  BotIcon,
+  HistoryIcon,
+  InfoIcon,
+  KeyRoundIcon,
+  SettingsIcon,
+  WifiIcon,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
@@ -18,6 +26,7 @@ import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
 import { NotificationsTab } from './notifications-tab';
+import { ProvidersTab } from './providers-tab';
 import type { SettingsCategory } from './store';
 import { useDesktopSettingsStore } from './store';
 
@@ -138,6 +147,13 @@ export function SettingsView(): React.ReactNode {
                     onClick: () => setCategory('about'),
                   },
                   {
+                    key: 'providers',
+                    icon: <KeyRoundIcon className="size-4" />,
+                    label: t('tabs.providers'),
+                    active: category === 'providers',
+                    onClick: () => setCategory('providers'),
+                  },
+                  {
                     key: 'agents',
                     icon: <BotIcon className="size-4" />,
                     label: t('tabs.agents'),
@@ -172,7 +188,10 @@ export function SettingsView(): React.ReactNode {
           </div>
           <main className="flex min-w-0 flex-1 flex-col bg-background">
             <div className="min-w-0 flex-1 overflow-y-auto pt-(--lc-chrome-h)">
-              <div className="mx-auto max-w-2xl p-6">
+              {/* The providers tab is a master/detail split and needs the extra width. */}
+              <div
+                className={`mx-auto p-6 ${category === 'providers' ? 'max-w-5xl' : 'max-w-2xl'}`}
+              >
                 {renderSettingsPanel(category, historyProvider)}
               </div>
             </div>
@@ -196,6 +215,8 @@ function renderSettingsPanel(
       return <NotificationsTab />;
     case 'about':
       return <AboutTab />;
+    case 'providers':
+      return <ProvidersTab />;
     case 'agents':
       return <AgentsTab />;
     case 'history-import':

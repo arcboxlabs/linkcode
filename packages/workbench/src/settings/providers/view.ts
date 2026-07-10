@@ -54,6 +54,15 @@ export function withBinding(
   return { ...providers, [kind]: { ...entry, activeAccountId: accountId } };
 }
 
+/** Toggle whether the agent is offered in the client's agent picker. */
+export function withEnabled(
+  providers: ProvidersConfig,
+  kind: AgentKind,
+  enabled: boolean,
+): ProvidersConfig {
+  return { ...providers, [kind]: { ...(providers[kind] ?? {}), enabled } };
+}
+
 /** Set (or, with undefined, clear) an agent's default model. */
 export function withModel(
   providers: ProvidersConfig,

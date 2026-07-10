@@ -1,9 +1,17 @@
-import { AgentAccountsSettings } from '@linkcode/workbench';
+import { AgentsSettingsPanel, useProvidersSettingsStore } from '@linkcode/workbench';
+import { useDesktopSettingsStore } from './store';
 
-// The provider × account editor is a transport-backed workbench container. The desktop Settings
-// overlay renders inside `WorkbenchProviders` (the `ungated` slot) but above the connection gate,
-// so — like the history-import panel — the editor is reachable here and degrades to loading/error
-// states while the daemon is unreachable.
+// Runtime concerns only; account/model bindings live on the Providers tab, and the summary row
+// jumps there with the bound account pre-selected.
 export function AgentsTab(): React.ReactNode {
-  return <AgentAccountsSettings />;
+  const setCategory = useDesktopSettingsStore((state) => state.setSettingsCategory);
+  const selectAccount = useProvidersSettingsStore((state) => state.select);
+  return (
+    <AgentsSettingsPanel
+      onOpenProviders={(accountId) => {
+        if (accountId !== undefined) selectAccount(accountId);
+        setCategory('providers');
+      }}
+    />
+  );
 }

@@ -1,10 +1,20 @@
-import { AgentAccountsSettings } from '@linkcode/workbench';
+import { AgentsSettingsPanel, useProvidersSettingsStore } from '@linkcode/workbench';
 import { usePageTitle } from '@webview/hooks/use-page-title';
+import { useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
-/** The shared provider × account editor lives in `@linkcode/workbench`; webview only adds the page title. */
+/** Runtime concerns only; account/model bindings live on the Providers page. */
 export function AgentsSettings(): React.ReactNode {
   const tTabs = useTranslations('settings.tabs');
   usePageTitle(tTabs('agents'));
-  return <AgentAccountsSettings />;
+  const navigate = useNavigate();
+  const selectAccount = useProvidersSettingsStore((state) => state.select);
+  return (
+    <AgentsSettingsPanel
+      onOpenProviders={(accountId) => {
+        if (accountId !== undefined) selectAccount(accountId);
+        void navigate('/settings/providers');
+      }}
+    />
+  );
 }

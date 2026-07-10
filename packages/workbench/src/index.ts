@@ -29,7 +29,7 @@ export * from './runtime/tayori';
 export * from './scripts/hooks';
 export * from './scripts/open-url-store';
 export * from './scripts/services-menu';
-export * from './settings/agent-accounts';
+export * from './settings/agents-settings';
 export * from './settings/providers/providers-settings';
 export * from './settings/providers/store';
 export * from './surface/selection-store';
