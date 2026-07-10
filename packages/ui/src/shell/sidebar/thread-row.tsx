@@ -69,7 +69,7 @@ export function ThreadRow({
             // PingFang Medium and mixed-script titles read artificially bold.
             'data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
             // A pinned row shows its pin at rest, so it keeps the action space reserved.
-            pinned ? 'pe-16 sm:pe-14' : ROW_HOVER_PE_CLASS,
+            pinned ? 'pe-15 sm:pe-13' : ROW_HOVER_PE_CLASS,
           )}
         >
           <span className="relative shrink-0">

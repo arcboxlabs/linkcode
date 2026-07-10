@@ -5,15 +5,15 @@ import { cn } from '../../lib/cn';
 
 /** Reserves action space on a row's `SidebarMenuButton` only while the actions are shown. */
 export const ROW_HOVER_PE_CLASS =
-  'group-hover/menu-item:pe-16 group-focus-within/menu-item:pe-16 sm:group-hover/menu-item:pe-14 sm:group-focus-within/menu-item:pe-14';
+  'group-hover/menu-item:pe-15 group-has-[:focus-visible]/menu-item:pe-15 group-has-data-popup-open/menu-item:pe-15 sm:group-hover/menu-item:pe-13 sm:group-has-[:focus-visible]/menu-item:pe-13 sm:group-has-data-popup-open/menu-item:pe-13';
 
 /**
  * Visibility behavior shared by the coss-ui action buttons. `data-popup-open` is base-ui's
- * open-trigger attribute; it keeps the menu trigger shown while its popup is open.
+ * open-trigger attribute; it keeps the cluster stable while its popup is open.
  */
 export const ROW_ACTION_CLASS = cn(
-  'opacity-0 transition-opacity hover:bg-transparent',
-  'group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-popup-open:opacity-100',
+  'opacity-0 transition-opacity hover:bg-transparent data-pressed:bg-transparent',
+  'group-hover/menu-item:opacity-100 group-has-[:focus-visible]/menu-item:opacity-100 group-has-data-popup-open/menu-item:opacity-100',
 );
 
 /** Anchors a row's action buttons over the space `ROW_HOVER_PE_CLASS` frees up on hover. */
@@ -26,10 +26,7 @@ export function RowActionsCluster({
 }): React.ReactNode {
   return (
     <div
-      className={cn(
-        '-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0.5',
-        className,
-      )}
+      className={cn('-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0', className)}
     >
       {children}
     </div>

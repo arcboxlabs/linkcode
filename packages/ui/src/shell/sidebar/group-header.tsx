@@ -203,7 +203,13 @@ export function ThreadGroupHeader({
               >
                 <EllipsisIcon />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-52">
+              <DropdownMenuContent
+                align="start"
+                side="right"
+                sideOffset={8}
+                className="w-52"
+                finalFocus={(closeType) => closeType === 'keyboard'}
+              >
                 {onRename && (
                   <DropdownMenuItem onClick={beginRename}>
                     <PencilIcon />
