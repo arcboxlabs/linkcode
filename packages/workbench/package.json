@@ -15,6 +15,7 @@
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
     "@linkcode/client-core": "workspace:*",
     "@linkcode/common": "workspace:*",
     "@linkcode/i18n": "workspace:*",

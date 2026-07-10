@@ -40,6 +40,7 @@ import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
 import { AUTH_FAILED_ERROR_CODE } from '../adapter';
 import { BaseAgentAdapter } from '../base';
+import { claudeCodeEnv, readAgentCredential } from '../credential';
 import {
   asHistoryId,
   asMessageId,
@@ -417,9 +418,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
     this.resumeFrom = undefined;
-    // The SDK has no apiKey option; the key reaches the subprocess via `env`. Because `env` *replaces*
-    // the subprocess environment entirely, spread `env` so PATH/HOME and other inherited vars survive.
-    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    // The SDK has no apiKey/baseURL option; the resolved account reaches the subprocess via `env`.
+    // `claudeCodeEnv` spreads the base env (env *replaces* the subprocess environment, so PATH/HOME
+    // must survive) and maps the credential to ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN /
+    // ANTHROPIC_BASE_URL; it returns undefined when the account contributes nothing, so `env` is
+    // omitted and the CLI inherits the parent env (the login / OAuth path).
+    const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
     const q = query({
       prompt: queue,
       options: {
@@ -451,7 +455,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
-        ...(apiKey && { env: { ...env, ANTHROPIC_API_KEY: apiKey } }),
+        ...(credentialEnv && { env: credentialEnv }),
       },
     });
     this.q = q;

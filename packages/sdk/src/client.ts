@@ -6,6 +6,7 @@ import type {
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
+  Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -176,6 +177,16 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned provider config (data plane). */
   setProviderConfig(providers: ProvidersConfig): RequestResult<{ ok: true }> {
     return toResult(this.raw.setProviderConfig(providers));
+  }
+
+  /** Read the daemon-owned global account pool (data plane). */
+  getAccounts(): RequestResult<Accounts> {
+    return toResult(this.raw.getAccounts());
+  }
+
+  /** Persist the daemon-owned global account pool (data plane). */
+  setAccounts(accounts: Accounts): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setAccounts(accounts));
   }
 
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

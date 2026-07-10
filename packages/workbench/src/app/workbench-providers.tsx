@@ -22,8 +22,8 @@ export interface WorkbenchProvidersProps extends React.PropsWithChildren {
   /**
    * Rendered inside the runtime contexts but OUTSIDE the connection gate — for surfaces that must
    * stay mounted while the daemon is unreachable (desktop Settings) yet still use the data plane.
-   * Their requests fail or pend until the transport is ready (revalidated once it is); no
-   * conversation context here.
+   * Their requests fail or pend until the transport is ready (revalidated once it is), and client
+   * push subscriptions register locally and deliver once connected.
    *
    * Stacking contract: this renders as a DOM sibling AFTER the gate's output, so it only covers
    * the gated tree if it paints above it (a fixed full-viewport overlay, like Settings). This
@@ -37,8 +37,10 @@ export interface WorkbenchProvidersProps extends React.PropsWithChildren {
  * The workbench data plane + connection gate. Mounts, in order:
  *   1. `DebugProvider` (dev-only artificial delay / forced-loading toggles),
  *   2. `WorkbenchRuntimeProvider` (transport SDK client + `TayoriProvider` + `SWRConfig`),
- *   3. `WorkbenchConnectionGate` (fallback until the transport is ready),
- *   4. `LinkCodeProvider` (the event-stream/conversation context), around `children` only.
+ *   3. `LinkCodeProvider` (the client context — a pure provider, so it sits ABOVE the gate: the
+ *      ungated slot needs the client too, e.g. the Providers settings page subscribing to
+ *      runtime pushes),
+ *   4. `WorkbenchConnectionGate` (fallback until the transport is ready), around `children` only.
  */
 export function WorkbenchProviders({
   transport,
@@ -50,10 +52,12 @@ export function WorkbenchProviders({
   return (
     <DebugProvider>
       <WorkbenchRuntimeProvider transport={transport}>
-        <WorkbenchConnectionGate fallback={fallback ?? <ConnectionState daemonUrl={daemonUrl} />}>
-          <WorkbenchLinkCodeProvider>{children}</WorkbenchLinkCodeProvider>
-        </WorkbenchConnectionGate>
-        {ungated}
+        <WorkbenchLinkCodeProvider>
+          <WorkbenchConnectionGate fallback={fallback ?? <ConnectionState daemonUrl={daemonUrl} />}>
+            {children}
+          </WorkbenchConnectionGate>
+          {ungated}
+        </WorkbenchLinkCodeProvider>
       </WorkbenchRuntimeProvider>
     </DebugProvider>
   );

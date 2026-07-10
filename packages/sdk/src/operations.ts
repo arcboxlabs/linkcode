@@ -1,5 +1,6 @@
 import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
 import type {
+  Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -142,6 +143,14 @@ export function setProviderConfig(
   options: Options<{ providers: ProvidersConfig }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).setProviderConfig(options.providers);
+}
+
+export function getAccounts(options?: Options): RequestResult<Accounts> {
+  return resolveClient(options).getAccounts();
+}
+
+export function setAccounts(options: Options<{ accounts: Accounts }>): RequestResult<{ ok: true }> {
+  return resolveClient(options).setAccounts(options.accounts);
 }
 
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

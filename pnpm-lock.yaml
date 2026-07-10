@@ -960,6 +960,9 @@ importers:
 
   packages/workbench:
     dependencies:
+      '@hookform/resolvers':
+        specifier: ^5.4.0
+        version: 5.4.0(react-hook-form@7.80.0(react@19.2.7))
       '@linkcode/client-core':
         specifier: workspace:*
         version: link:../client-core

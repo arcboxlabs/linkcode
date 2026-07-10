@@ -1,15 +1,17 @@
-import { useTranslations } from 'use-intl';
+import { AgentsSettingsPanel, useProvidersSettingsStore } from '@linkcode/workbench';
+import { useDesktopSettingsStore } from './store';
 
-// Placeholder: the real UI reads/writes per-agent config over the data-plane transport
-// (config.get / config.set), but this surface renders above the connection gate where the
-// workbench runtime is unavailable. The webview settings page has the full editor.
+// Runtime concerns only; account/model bindings live on the Providers tab, and the summary row
+// jumps there with the bound account pre-selected.
 export function AgentsTab(): React.ReactNode {
-  const t = useTranslations('settings.agents');
+  const setCategory = useDesktopSettingsStore((state) => state.setSettingsCategory);
+  const selectAccount = useProvidersSettingsStore((state) => state.select);
   return (
-    <div className="flex flex-col gap-2">
-      <h2 className="font-semibold text-sm">{t('title')}</h2>
-      <p className="text-muted-foreground text-xs">{t('hint')}</p>
-      <p className="mt-4 text-muted-foreground text-sm">{t('unavailable')}</p>
-    </div>
+    <AgentsSettingsPanel
+      onOpenProviders={(accountId) => {
+        if (accountId !== undefined) selectAccount(accountId);
+        setCategory('providers');
+      }}
+    />
   );
 }

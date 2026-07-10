@@ -132,7 +132,7 @@ module.exports = require('eslint-config-sukka').sukka(
     // `~icons/*` are unplugin-icons virtual modules resolved by Vite at build time,
     // so the TypeScript import resolver can't see them.
     name: 'linkcode/unplugin-icons-virtual-modules',
-    files: ['packages/ui/src/chat/agent-icon.tsx'],
+    files: ['packages/ui/src/chat/agent-icon.tsx', 'packages/ui/src/shell/service-icon.tsx'],
     rules: {
       'import-x/no-unresolved': ['error', { ignore: ['^~icons/'] }],
     },

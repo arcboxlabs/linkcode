@@ -1,4 +1,4 @@
-import type { ProvidersConfig, StartOptions } from '@linkcode/schema';
+import type { Account, ProvidersConfig, StartOptions } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { applyProviderDefaults } from '../provider-config';
 
@@ -29,5 +29,83 @@ describe('applyProviderDefaults', () => {
     const opts: StartOptions = { kind: 'codex', cwd: '/repo' };
     applyProviderDefaults(opts, providers);
     expect(opts).toEqual({ kind: 'codex', cwd: '/repo' });
+  });
+});
+
+describe('applyProviderDefaults account pool', () => {
+  const account: Account = {
+    id: 'acc_1',
+    label: 'Personal',
+    credential: { type: 'api-key', key: 'sk-acc' },
+    createdAt: 0,
+  };
+
+  it('injects the credential from the account bound via activeAccountId', () => {
+    const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'acc_1' } };
+    expect(applyProviderDefaults(baseOpts, providers, [account]).config).toEqual({
+      apiKey: 'sk-acc',
+    });
+  });
+
+  it('lets an explicit opts.config.accountId override activeAccountId', () => {
+    const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'acc_1' } };
+    const other: Account = {
+      id: 'acc_2',
+      label: 'Other',
+      credential: { type: 'api-key', key: 'sk-other' },
+      createdAt: 0,
+    };
+    const merged = applyProviderDefaults(
+      { ...baseOpts, config: { accountId: 'acc_2' } },
+      providers,
+      [account, other],
+    );
+    expect(merged.config).toMatchObject({ apiKey: 'sk-other' });
+  });
+
+  it('injects authToken, baseUrl and protocol for an auth-token account with an endpoint', () => {
+    const gateway: Account = {
+      id: 'gw',
+      label: 'OpenRouter',
+      credential: { type: 'auth-token', token: 'or-tok' },
+      endpoint: { baseUrl: 'https://openrouter.ai/api', protocol: 'anthropic' },
+      createdAt: 0,
+    };
+    const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'gw' } };
+    const merged = applyProviderDefaults(baseOpts, providers, [gateway]);
+    expect(merged.config).toEqual({
+      authToken: 'or-tok',
+      baseUrl: 'https://openrouter.ai/api',
+      protocol: 'anthropic',
+    });
+  });
+
+  it('prefers the account model over the provider default model', () => {
+    const providers: ProvidersConfig = {
+      codex: { enabled: true, defaultModel: 'o4-mini', activeAccountId: 'acc_1' },
+    };
+    expect(applyProviderDefaults(baseOpts, providers, [{ ...account, model: 'gpt-5' }]).model).toBe(
+      'gpt-5',
+    );
+  });
+
+  it('falls back to the legacy apiKey when the bound account id is stale', () => {
+    const providers: ProvidersConfig = {
+      codex: { enabled: true, apiKey: 'sk-legacy', activeAccountId: 'deleted' },
+    };
+    expect(applyProviderDefaults(baseOpts, providers, [account]).config).toEqual({
+      apiKey: 'sk-legacy',
+    });
+  });
+
+  it('injects no secret for an oauth account', () => {
+    const oauth: Account = {
+      id: 'oauth_1',
+      label: 'CLI login',
+      credential: { type: 'oauth', agent: 'codex' },
+      createdAt: 0,
+    };
+    const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oauth_1' } };
+    expect(applyProviderDefaults(baseOpts, providers, [oauth]).config).toEqual({});
   });
 });

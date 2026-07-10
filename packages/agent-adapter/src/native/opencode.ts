@@ -3,6 +3,7 @@ import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { BaseAgentAdapter } from '../base';
+import { readAgentCredential } from '../credential';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
@@ -57,13 +58,18 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
     let started: Awaited<ReturnType<OpencodeModule['createOpencode']>>;
-    // OpenCode routes by provider; inject the configured key under the model's provider id (the
-    // `providerID` half of `providerID/modelID`) so the spawned server authenticates that provider.
-    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    // OpenCode routes by provider; inject the account's key + base URL under the model's provider id
+    // (the `providerID` half of `providerID/modelID`) so the spawned server authenticates and, for a
+    // gateway account, targets that provider.
+    const cred = readAgentCredential(opts.config);
     const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
+    const options: { apiKey?: string; baseURL?: string } = {};
+    const key = cred.apiKey ?? cred.authToken;
+    if (key) options.apiKey = key;
+    if (cred.baseUrl) options.baseURL = cred.baseUrl;
     const serverOptions =
-      apiKey && providerID
-        ? { config: { provider: { [providerID]: { options: { apiKey } } } } }
+      providerID && (options.apiKey || options.baseURL)
+        ? { config: { provider: { [providerID]: { options } } } }
         : undefined;
     try {
       started = await mod.createOpencode(serverOptions);

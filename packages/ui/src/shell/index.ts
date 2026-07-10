@@ -11,6 +11,7 @@ export * from './history/sort';
 export * from './history/sort-select';
 export * from './new-session-surface';
 export * from './notifications-settings-panel';
+export * from './service-icon';
 export * from './session-sidebar';
 export * from './settings-sidebar-nav';
 export * from './shell-control';

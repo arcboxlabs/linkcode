@@ -1,4 +1,5 @@
 import type {
+  Accounts,
   AgentEvent,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -136,7 +137,9 @@ export class LinkCodeClient {
         this.pending.resolve('historyRead', p.replyTo, p.result);
         break;
       case 'config.get.result':
+        // One result carries both; each resolve is a no-op unless a request awaits that reply id.
         this.pending.resolve('configGet', p.replyTo, p.providers);
+        this.pending.resolve('accountsGet', p.replyTo, p.accounts);
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
@@ -329,6 +332,10 @@ export class LinkCodeClient {
     return this.control.getProviderConfig();
   }
 
+  getAccounts(): Promise<Accounts> {
+    return this.control.getAccounts();
+  }
+
   listAgentRuntimes(): Promise<AgentRuntimes> {
     return this.control.listAgentRuntimes();
   }
@@ -362,6 +369,10 @@ export class LinkCodeClient {
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.control.setProviderConfig(providers);
+  }
+
+  setAccounts(accounts: Accounts): Promise<RequestAck> {
+    return this.control.setAccounts(accounts);
   }
 
   getGitStatus(cwd: string): Promise<GitStatus> {
