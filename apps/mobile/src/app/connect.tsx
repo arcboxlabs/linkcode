@@ -48,7 +48,6 @@ export default function ConnectScreen() {
     <ScreenScroll title={t('title')} keyboardAware>
       <HqAccountSection />
 
-
       {hosts.length === 0 ? (
         <EmptyState title={t('emptyTitle')} hint={t('emptyHint')} />
       ) : (
