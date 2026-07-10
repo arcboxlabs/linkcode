@@ -1,15 +1,11 @@
 import type { SessionId, SessionInfo, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
-import {
-  SidebarGroup,
-  SidebarGroupAction,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-} from 'coss-ui/components/sidebar';
+import { AccordionItem, AccordionPanel } from 'coss-ui/components/accordion';
+import { SidebarGroup, SidebarGroupAction, SidebarMenu } from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { SectionAccordionTrigger } from './section-header';
 import { ShowMoreToggle } from './show-more-toggle';
 import { ThreadRow } from './thread-row';
 
@@ -61,8 +57,8 @@ export function ChatsSection({
   const t = useTranslations('workbench.sidebar');
 
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel className="text-muted-foreground">{t('chats')}</SidebarGroupLabel>
+    <AccordionItem value="chats" className="border-b-0" render={<SidebarGroup />}>
+      <SectionAccordionTrigger>{t('chats')}</SectionAccordionTrigger>
       {workspace && (
         <SidebarGroupAction
           aria-label={t('newChat')}
@@ -73,7 +69,7 @@ export function ChatsSection({
           <PlusIcon />
         </SidebarGroupAction>
       )}
-      <SidebarGroupContent>
+      <AccordionPanel className="pb-0 text-sidebar-foreground">
         {sessions.length > 0 ? (
           <SidebarMenu className="gap-0.5">
             {sessions.map((session, index) => (
@@ -107,7 +103,7 @@ export function ChatsSection({
             {t('chatsEmptyHint')}
           </div>
         )}
-      </SidebarGroupContent>
-    </SidebarGroup>
+      </AccordionPanel>
+    </AccordionItem>
   );
 }

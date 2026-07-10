@@ -3,25 +3,25 @@ import type { DragEndEvent, DragOverEvent } from '@dnd-kit/react';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
-import {
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-} from 'coss-ui/components/sidebar';
+import { Accordion, AccordionItem, AccordionPanel } from 'coss-ui/components/accordion';
+import { SidebarGroup, SidebarGroupAction, SidebarMenu } from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
+import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { repositoryLabel } from './repository-label';
-import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
+import type { SidebarSectionKey, ThreadGroupActions, ThreadGroupState } from './sidebar';
 import {
   AddWorkspaceRow,
   ChatsSection,
+  SectionAccordionTrigger,
   ShowMoreToggle,
   SIDEBAR_SORTABLE_SENSORS,
   ThreadGroupHeader,
   ThreadRow,
 } from './sidebar';
+
+const SIDEBAR_SECTIONS = ['projects', 'chats'] as const satisfies readonly SidebarSectionKey[];
 
 /** One workspace's sessions, or the fallback bucket (`workspace: null`) for an unmatched `cwd`. */
 export interface ThreadGroupViewModel {
@@ -83,6 +83,7 @@ export function ThreadsView({
   BranchStatusComponent,
 }: ThreadsViewProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
+  const openSections = SIDEBAR_SECTIONS.filter((section) => !collapsedSections.includes(section));
   const projectGroups: ThreadGroupViewModel[] = [];
   let chatGroup: ThreadGroupViewModel | undefined;
   for (const group of groups) {
@@ -144,64 +145,87 @@ export function ThreadsView({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <SidebarGroup>
-        <SidebarGroupLabel className="text-muted-foreground">{t('projects')}</SidebarGroupLabel>
-        <SidebarGroupContent className="space-y-2">
-          {projectGroups.length === 0 && workspacesLoading && (
-            <div className="space-y-1">
-              {createFixedArray(3).map((i) => (
-                <Skeleton key={i} className="h-7 w-full rounded-lg" />
-              ))}
-            </div>
-          )}
-          {projectGroups.length === 0 && !workspacesLoading && (
-            <div className="px-3 py-6 text-center text-muted-foreground text-sm">
-              {t('emptyTitle')}
-            </div>
-          )}
-          {projectGroups.map((group, index) => (
-            <ThreadGroupSection
-              key={group.key}
-              group={group}
-              sortIndex={index}
-              activeId={activeId}
-              pinnedSessionIds={pinnedSessionIds}
-              collapsedSections={collapsedSections}
-              onToggleSectionCollapsed={onToggleSectionCollapsed}
-              onSelect={onSelect}
-              onClose={onClose}
-              onToggleSessionPinned={onToggleSessionPinned}
-              onStartDraft={onStartDraft}
-              onRenameWorkspace={onRenameWorkspace}
-              onArchiveWorkspace={onArchiveWorkspace}
-              onToggleGroupCollapsed={onToggleGroupCollapsed}
-              onTogglePreviewExpanded={onTogglePreviewExpanded}
-              BranchStatusComponent={BranchStatusComponent}
+      {/* Controlled with root-level onValueChange: item-level onOpenChange plus a controlled
+          root leaves base-ui's exit transition stuck (panel never reaches data-ending-style). */}
+      <Accordion
+        multiple
+        className="flex flex-col gap-2"
+        value={openSections}
+        onValueChange={(next) => {
+          for (const section of SIDEBAR_SECTIONS) {
+            if (next.includes(section) !== openSections.includes(section)) {
+              onToggleSectionCollapsed(section);
+            }
+          }
+        }}
+      >
+        <AccordionItem value="projects" className="border-b-0" render={<SidebarGroup />}>
+          <SectionAccordionTrigger>{t('projects')}</SectionAccordionTrigger>
+          <SidebarGroupAction
+            aria-label={t('newThread')}
+            title={t('newThread')}
+            className="text-muted-foreground"
+            onClick={() => onStartDraft()}
+          >
+            <PlusIcon />
+          </SidebarGroupAction>
+          <AccordionPanel className="space-y-2 pb-0 text-sidebar-foreground">
+            {projectGroups.length === 0 && workspacesLoading && (
+              <div className="space-y-1">
+                {createFixedArray(3).map((i) => (
+                  <Skeleton key={i} className="h-7 w-full rounded-lg" />
+                ))}
+              </div>
+            )}
+            {projectGroups.length === 0 && !workspacesLoading && (
+              <div className="px-3 py-6 text-center text-muted-foreground text-sm">
+                {t('emptyTitle')}
+              </div>
+            )}
+            {projectGroups.map((group, index) => (
+              <ThreadGroupSection
+                key={group.key}
+                group={group}
+                sortIndex={index}
+                activeId={activeId}
+                pinnedSessionIds={pinnedSessionIds}
+                collapsedSections={collapsedSections}
+                onToggleSectionCollapsed={onToggleSectionCollapsed}
+                onSelect={onSelect}
+                onClose={onClose}
+                onToggleSessionPinned={onToggleSessionPinned}
+                onStartDraft={onStartDraft}
+                onRenameWorkspace={onRenameWorkspace}
+                onArchiveWorkspace={onArchiveWorkspace}
+                onToggleGroupCollapsed={onToggleGroupCollapsed}
+                onTogglePreviewExpanded={onTogglePreviewExpanded}
+                BranchStatusComponent={BranchStatusComponent}
+              />
+            ))}
+            <AddWorkspaceRow
+              onPickDirectory={onPickDirectory}
+              onRegisterWorkspace={onRegisterWorkspace}
             />
-          ))}
-          <AddWorkspaceRow
-            onPickDirectory={onPickDirectory}
-            onRegisterWorkspace={onRegisterWorkspace}
-          />
-        </SidebarGroupContent>
-      </SidebarGroup>
+          </AccordionPanel>
+        </AccordionItem>
 
-      <ChatsSection
-        workspace={chatGroup?.workspace ?? null}
-        sessions={chatGroup?.visibleSessions ?? []}
-        isLoading={sessionsLoading}
-        hasOverflow={chatGroup?.hasOverflow ?? false}
-        previewExpanded={chatGroup?.previewExpanded ?? false}
-        groupKey={chatGroup?.key ?? 'chat'}
-        sortKey={chatGroup?.collapseKey ?? 'chat'}
-        activeId={activeId}
-        pinnedSessionIds={pinnedSessionIds}
-        onSelect={onSelect}
-        onClose={onClose}
-        onToggleSessionPinned={onToggleSessionPinned}
-        onStartDraft={onStartDraft}
-        onTogglePreviewExpanded={onTogglePreviewExpanded}
-      />
+        <ChatsSection
+          workspace={chatGroup?.workspace ?? null}
+          sessions={chatGroup?.visibleSessions ?? []}
+          isLoading={sessionsLoading}
+          hasOverflow={chatGroup?.hasOverflow ?? false}
+          previewExpanded={chatGroup?.previewExpanded ?? false}
+          groupKey={chatGroup?.key ?? 'chat'}
+          sortKey={chatGroup?.collapseKey ?? 'chat'}
+          activeId={activeId}
+          pinnedSessionIds={pinnedSessionIds}
+          onSelect={onSelect}
+          onClose={onClose}
+          onToggleSessionPinned={onToggleSessionPinned}
+          onStartDraft={onStartDraft}
+          onTogglePreviewExpanded={onTogglePreviewExpanded}
+        />
+      </Accordion>
     </DragDropProvider>
   );
 }
