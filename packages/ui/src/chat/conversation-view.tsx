@@ -5,6 +5,7 @@ import { useTranslations } from 'use-intl';
 import { ActivityGroup } from './activity-group';
 import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
+import { CompactionMarker } from './compaction-marker';
 import { ContentBlockView } from './content-block-view';
 import {
   Conversation,
@@ -148,6 +149,15 @@ export function ConversationView({
         );
       case 'reasoning':
         return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />;
+      case 'compaction':
+        return (
+          <CompactionMarker
+            key={item.id}
+            preTokens={item.preTokens}
+            postTokens={item.postTokens}
+            summary={item.summary}
+          />
+        );
       case 'approval':
         // Accepted / pending asks leave no receipt — the tool row (or the dock card) is the
         // record. A decline only materializes here when the agent never snapshotted the call.

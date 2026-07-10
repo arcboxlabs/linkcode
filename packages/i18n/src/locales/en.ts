@@ -19,6 +19,8 @@ export const en = {
       emptyHint: 'Type a message below — {agent} will get to work in {cwd}.',
       thinking: 'Thinking…',
       thought: 'Thought',
+      compacted: 'Context compacted',
+      compactedTokens: '{pre} → {post} tokens',
     },
     tool: {
       input: 'Input',
@@ -596,6 +598,8 @@ export const en = {
       approval: 'Permission request',
       error: 'Error',
       streaming: 'Streaming…',
+      compacted: 'Context compacted',
+      compactedTokens: '{pre} → {post} tokens',
     },
     connection: {
       connecting: 'Connecting to the host…',
