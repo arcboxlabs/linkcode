@@ -4,9 +4,11 @@ import {
   Dialog,
   DialogFooter,
   DialogHeader,
+  DialogPanel,
   DialogPopup,
   DialogTitle,
 } from 'coss-ui/components/dialog';
+import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
 import {
   DropdownMenu,
@@ -106,7 +108,9 @@ export function AddProjectMenu({
       setError(err);
       return;
     }
-    if (picked && (await register(picked))) closeDialog();
+    if (!picked) return;
+    setPath(picked);
+    if (await register(picked)) closeDialog();
   }
 
   function handleSubmit(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>): void {
@@ -159,43 +163,50 @@ export function AddProjectMenu({
 
       <Dialog
         open={dialogOpen}
+        disablePointerDismissal={pending}
         onOpenChange={(open) => {
-          if (!open) closeDialog();
+          if (!open && !pending) closeDialog();
         }}
       >
-        <DialogPopup className="max-w-md">
+        <DialogPopup className="max-w-md" closeProps={{ disabled: pending }}>
           <DialogHeader>
             <DialogTitle>{t('useExistingFolder')}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {onPickDirectory && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled={pending}
-                onClick={() => {
-                  void handleBrowseInDialog();
-                }}
-              >
-                <FolderPlusIcon />
-                {t('chooseDirectory')}
-              </Button>
-            )}
-            <Input
-              autoFocus={!onPickDirectory}
-              value={path}
-              onChange={(event) => setPath(event.target.value)}
-              placeholder={t('addWorkspacePathPlaceholder')}
-              disabled={pending}
-              size="sm"
-            />
-            {error != null && (
-              <div className="text-destructive text-xs">
-                {t('registerWorkspaceError', { message: extractErrorMessage(error, false) ?? '' })}
-              </div>
-            )}
+          <form onSubmit={handleSubmit}>
+            <DialogPanel className="space-y-3">
+              {onPickDirectory && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={pending}
+                  onClick={() => {
+                    void handleBrowseInDialog();
+                  }}
+                >
+                  <FolderPlusIcon />
+                  {t('chooseDirectory')}
+                </Button>
+              )}
+              <Field name="path" invalid={error != null}>
+                <FieldLabel className="sr-only">{t('useExistingFolder')}</FieldLabel>
+                <Input
+                  autoFocus={!onPickDirectory}
+                  value={path}
+                  onChange={(event) => setPath(event.target.value)}
+                  placeholder={t('addWorkspacePathPlaceholder')}
+                  disabled={pending}
+                  size="sm"
+                />
+                <FieldError match={error != null}>
+                  {error != null &&
+                    t('registerWorkspaceError', {
+                      message: extractErrorMessage(error, false) ?? '',
+                    })}
+                </FieldError>
+              </Field>
+            </DialogPanel>
             <DialogFooter>
               <Button
                 type="button"

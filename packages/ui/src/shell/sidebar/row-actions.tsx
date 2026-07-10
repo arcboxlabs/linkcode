@@ -11,10 +11,8 @@ export const ROW_HOVER_PE_CLASS =
  * Visibility behavior shared by the coss-ui action buttons. `data-popup-open` is base-ui's
  * open-trigger attribute; it keeps the cluster stable while its popup is open.
  */
-export const ROW_ACTION_CLASS = cn(
-  'opacity-0 transition-opacity hover:bg-transparent data-pressed:bg-transparent',
-  'group-hover/menu-item:opacity-100 group-has-[:focus-visible]/menu-item:opacity-100 group-has-data-popup-open/menu-item:opacity-100',
-);
+export const ROW_ACTION_CLASS =
+  'opacity-0 transition-opacity hover:bg-transparent data-pressed:bg-transparent group-hover/menu-item:opacity-100 group-has-[:focus-visible]/menu-item:opacity-100 group-has-data-popup-open/menu-item:opacity-100';
 
 /** Anchors a row's action buttons over the space `ROW_HOVER_PE_CLASS` frees up on hover. */
 export function RowActionsCluster({

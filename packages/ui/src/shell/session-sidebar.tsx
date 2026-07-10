@@ -26,6 +26,7 @@ import {
   SettingsIcon,
   SparklesIcon,
 } from 'lucide-react';
+import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ShellSidebar } from './shell-sidebar';
@@ -237,6 +238,7 @@ export function HostFooter({
   const tPalette = useTranslations('workbench.palette');
   const pendingPermissionLabel =
     pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
+  const openingSettingsRef = useRef(false);
 
   return (
     <Popover>
@@ -246,7 +248,7 @@ export function HostFooter({
           <SidebarMenuItem>
             <PopoverTrigger
               render={
-                <SidebarMenuButton className="hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset data-[state=open]:hover:bg-transparent">
+                <SidebarMenuButton className="hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset">
                   <span className="size-2 rounded-full bg-success" />
                   <span>Local Host</span>
                   {state && <span className="text-muted-foreground">{state}</span>}
@@ -262,7 +264,11 @@ export function HostFooter({
         align="start"
         sideOffset={8}
         className="w-80 text-sm"
-        finalFocus={(closeType) => closeType === 'keyboard'}
+        finalFocus={(closeType) => {
+          const restoreFocus = closeType === 'keyboard' && !openingSettingsRef.current;
+          openingSettingsRef.current = false;
+          return restoreFocus;
+        }}
       >
         <div className="flex items-center gap-2 py-1.5">
           <span className="size-2 rounded-full bg-success" />
@@ -341,6 +347,7 @@ export function HostFooter({
                     size="icon-sm"
                     variant="ghost"
                     aria-label={t('signOut')}
+                    disabled={!onSignOut}
                     onClick={onSignOut}
                   >
                     <LogOutIcon />
@@ -372,7 +379,10 @@ export function HostFooter({
                 size="icon-sm"
                 variant="outline"
                 aria-label={tPalette('openSettings')}
-                onClick={onOpenSettings}
+                onClick={() => {
+                  openingSettingsRef.current = true;
+                  onOpenSettings?.();
+                }}
               >
                 <SettingsIcon />
               </Button>

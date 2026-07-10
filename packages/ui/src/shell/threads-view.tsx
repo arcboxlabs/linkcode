@@ -8,6 +8,7 @@ import { SidebarGroup, SidebarMenu } from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { useTranslations } from 'use-intl';
+import { changedAccordionValues, openThreadGroupValues } from './accordion-values';
 import { repositoryLabel } from './repository-label';
 import type { SidebarSectionKey, ThreadGroupActions, ThreadGroupState } from './sidebar';
 import {
@@ -92,9 +93,8 @@ export function ThreadsView({
     if (group.isChat) chatGroup = group;
     else projectGroups.push(group);
   }
-  const openGroupKeys = projectGroups.flatMap((group) =>
-    group.collapsed ? [] : [group.collapseKey],
-  );
+  const projectGroupKeys = projectGroups.map((group) => group.collapseKey);
+  const openGroupKeys = openThreadGroupValues(projectGroups);
 
   // The optimistic preview must never cross the pin boundary: the drop would be clamped anyway
   // (pin membership only changes via the pin button), and committing an order that disagrees
@@ -157,10 +157,8 @@ export function ThreadsView({
         className="flex flex-col gap-0.5"
         value={openSections}
         onValueChange={(next) => {
-          for (const section of SIDEBAR_SECTIONS) {
-            if (next.includes(section) !== openSections.includes(section)) {
-              onToggleSectionCollapsed(section);
-            }
+          for (const section of changedAccordionValues(SIDEBAR_SECTIONS, openSections, next)) {
+            onToggleSectionCollapsed(section);
           }
         }}
       >
@@ -191,11 +189,8 @@ export function ThreadsView({
                 className="flex flex-col gap-0.5"
                 value={openGroupKeys}
                 onValueChange={(next) => {
-                  for (const group of projectGroups) {
-                    const key = group.collapseKey;
-                    if (next.includes(key) !== openGroupKeys.includes(key)) {
-                      onToggleGroupCollapsed(key);
-                    }
+                  for (const key of changedAccordionValues(projectGroupKeys, openGroupKeys, next)) {
+                    onToggleGroupCollapsed(key);
                   }
                 }}
               >
@@ -206,15 +201,12 @@ export function ThreadsView({
                     sortIndex={index}
                     activeId={activeId}
                     pinnedSessionIds={pinnedSessionIds}
-                    collapsedSections={collapsedSections}
-                    onToggleSectionCollapsed={onToggleSectionCollapsed}
                     onSelect={onSelect}
                     onClose={onClose}
                     onToggleSessionPinned={onToggleSessionPinned}
                     onStartDraft={onStartDraft}
                     onRenameWorkspace={onRenameWorkspace}
                     onArchiveWorkspace={onArchiveWorkspace}
-                    onToggleGroupCollapsed={onToggleGroupCollapsed}
                     onTogglePreviewExpanded={onTogglePreviewExpanded}
                     BranchStatusComponent={BranchStatusComponent}
                   />
@@ -258,8 +250,18 @@ function ThreadGroupSection({
   onArchiveWorkspace,
   onTogglePreviewExpanded,
   BranchStatusComponent,
-}: ThreadGroupActions &
-  ThreadGroupState & {
+}: Pick<
+  ThreadGroupActions,
+  | 'onSelect'
+  | 'onClose'
+  | 'onToggleSessionPinned'
+  | 'onStartDraft'
+  | 'onRenameWorkspace'
+  | 'onArchiveWorkspace'
+  | 'onTogglePreviewExpanded'
+  | 'BranchStatusComponent'
+> &
+  Pick<ThreadGroupState, 'activeId' | 'pinnedSessionIds'> & {
     group: ThreadGroupViewModel;
     /** The group's index among the rendered project groups — feeds the sortable. */
     sortIndex: number;

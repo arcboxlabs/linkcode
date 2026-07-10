@@ -41,6 +41,8 @@ export interface SettingsSidebarNavProps {
   onBack?: () => void;
   /** Navigation-backed back row (e.g. `<Link to="/" />`); mutually exclusive with `onBack`. */
   backRender?: SettingsSidebarNavRender;
+  /** Focuses the back control when a non-routed settings overlay opens. */
+  backAutoFocus?: boolean;
   searchPlaceholder: string;
   items: SettingsSidebarNavItem[];
 }
@@ -50,6 +52,7 @@ export function SettingsSidebarNav({
   backLabel,
   onBack,
   backRender,
+  backAutoFocus,
   searchPlaceholder,
   items,
 }: SettingsSidebarNavProps): React.ReactNode {
@@ -57,7 +60,7 @@ export function SettingsSidebarNav({
     <div className="px-2">
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton onClick={onBack} render={backRender}>
+          <SidebarMenuButton autoFocus={backAutoFocus} onClick={onBack} render={backRender}>
             <ChevronLeftIcon className="size-4" />
             {backLabel}
           </SidebarMenuButton>
