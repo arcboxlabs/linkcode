@@ -3,7 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Kbd } from 'coss-ui/components/kbd';
-import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
+import { Popover, PopoverClose, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { Separator } from 'coss-ui/components/separator';
 import {
   SidebarContent,
@@ -17,7 +17,7 @@ import {
 import {
   BotIcon,
   CheckIcon,
-  ChevronDownIcon,
+  ChevronUpIcon,
   CloudIcon,
   ExternalLinkIcon,
   FilePlus2Icon,
@@ -184,14 +184,14 @@ export function DefaultHostFooter({
 
   return (
     <>
-      <SidebarSeparator className="data-[orientation=horizontal]:w-auto" />
+      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
       <SidebarFooter className="shrink-0 px-2 py-1">
         <div className="flex h-8 items-center gap-2 px-2 text-sm">
           <span className="size-2 rounded-full bg-success" />
           <span>Local Host</span>
           {state && <span className="text-muted-foreground">{state}</span>}
           <span className="text-muted-foreground">{latency}</span>
-          <ChevronDownIcon className="ml-auto size-4 text-muted-foreground" />
+          <ChevronUpIcon className="ml-auto size-4 text-muted-foreground" />
         </div>
       </SidebarFooter>
     </>
@@ -240,7 +240,7 @@ export function HostFooter({
 
   return (
     <Popover>
-      <SidebarSeparator className="data-[orientation=horizontal]:w-auto" />
+      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
       <SidebarFooter className="shrink-0 px-2 py-1">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -250,7 +250,7 @@ export function HostFooter({
                   <span className="size-2 rounded-full bg-success" />
                   <span>Local Host</span>
                   {state && <span className="text-muted-foreground">{state}</span>}
-                  <ChevronDownIcon className="ml-auto text-muted-foreground" />
+                  <ChevronUpIcon className="ml-auto text-muted-foreground" />
                 </SidebarMenuButton>
               }
             />
@@ -322,41 +322,62 @@ export function HostFooter({
                 <div className="truncate font-medium">{account.name}</div>
                 <div className="truncate text-muted-foreground text-xs">{account.email}</div>
               </div>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('manageAccount')}
-                disabled={!onManageAccount}
-                onClick={onManageAccount}
-              >
-                <ExternalLinkIcon />
-              </Button>
-              <Button size="icon-sm" variant="ghost" aria-label={t('signOut')} onClick={onSignOut}>
-                <LogOutIcon />
-              </Button>
+              <PopoverClose
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t('manageAccount')}
+                    disabled={!onManageAccount}
+                    onClick={onManageAccount}
+                  >
+                    <ExternalLinkIcon />
+                  </Button>
+                }
+              />
+              <PopoverClose
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t('signOut')}
+                    onClick={onSignOut}
+                  >
+                    <LogOutIcon />
+                  </Button>
+                }
+              />
             </div>
           ) : (
-            <Button
-              className="min-w-0 flex-1 justify-start"
-              size="sm"
-              variant="outline"
-              loading={authPending}
-              disabled={!onSignIn}
-              onClick={onSignIn}
-            >
-              <CloudIcon />
-              {t('signInCloud')}
-            </Button>
+            <PopoverClose
+              render={
+                <Button
+                  className="min-w-0 flex-1 justify-start"
+                  size="sm"
+                  variant="outline"
+                  loading={authPending}
+                  disabled={!onSignIn}
+                  onClick={onSignIn}
+                >
+                  <CloudIcon />
+                  {t('signInCloud')}
+                </Button>
+              }
+            />
           )}
-          <Button
-            disabled={!onOpenSettings}
-            size="icon-sm"
-            variant="outline"
-            aria-label={tPalette('openSettings')}
-            onClick={onOpenSettings}
-          >
-            <SettingsIcon />
-          </Button>
+          <PopoverClose
+            render={
+              <Button
+                disabled={!onOpenSettings}
+                size="icon-sm"
+                variant="outline"
+                aria-label={tPalette('openSettings')}
+                onClick={onOpenSettings}
+              >
+                <SettingsIcon />
+              </Button>
+            }
+          />
         </div>
       </PopoverPopup>
     </Popover>
@@ -394,26 +415,30 @@ function RemoteHostList({
       {hosts.map((host) => {
         const selected = host.id === selectedHostId;
         return (
-          <Button
+          <PopoverClose
             key={host.id}
-            variant="ghost"
-            size="sm"
-            disabled={!onSelectHost}
-            onClick={() => onSelectHost?.(host.id)}
-            className={cn(
-              'w-full justify-start px-2 hover:bg-transparent',
-              selected && 'bg-sidebar-accent',
-            )}
-          >
-            <span className="size-1.5 shrink-0 rounded-full bg-success" />
-            <span className="min-w-0 flex-1 truncate text-left font-medium">{host.name}</span>
-            {host.statusLabel && (
-              <span className="shrink-0 font-normal text-muted-foreground text-xs">
-                {host.statusLabel}
-              </span>
-            )}
-            {selected && <CheckIcon className="shrink-0 text-muted-foreground" />}
-          </Button>
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!onSelectHost}
+                onClick={() => onSelectHost?.(host.id)}
+                className={cn(
+                  'w-full justify-start px-2 hover:bg-transparent',
+                  selected && 'bg-sidebar-accent',
+                )}
+              >
+                <span className="size-1.5 shrink-0 rounded-full bg-success" />
+                <span className="min-w-0 flex-1 truncate text-left font-medium">{host.name}</span>
+                {host.statusLabel && (
+                  <span className="shrink-0 font-normal text-muted-foreground text-xs">
+                    {host.statusLabel}
+                  </span>
+                )}
+                {selected && <CheckIcon className="shrink-0 text-muted-foreground" />}
+              </Button>
+            }
+          />
         );
       })}
     </div>
@@ -438,7 +463,7 @@ function HostFooterRow({
 export function EmptyHostFooter(): React.ReactNode {
   return (
     <>
-      <SidebarSeparator className="data-[orientation=horizontal]:w-auto" />
+      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
       <SidebarFooter className="shrink-0 px-2 py-1">
         <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
           <BotIcon className="size-4" />
