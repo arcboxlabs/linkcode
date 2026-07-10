@@ -17,8 +17,9 @@ export interface CompactionMarkerProps {
   summary?: string;
 }
 
-/** Compact token counts ("193437" → "193.4k") so the marker reads at a glance. */
+/** Compact token counts ("193437" → "193.4k", "1193437" → "1.2M") so the marker reads at a glance. */
 function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
   return count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
 }
 

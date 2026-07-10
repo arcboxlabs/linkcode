@@ -588,6 +588,8 @@ export const zhCN = {
       approval: '权限请求',
       error: '错误',
       streaming: '输出中…',
+      compacted: '上下文已压缩',
+      compactedTokens: '{pre} → {post} tokens',
     },
     connection: {
       connecting: '正在连接 host…',

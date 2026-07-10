@@ -598,6 +598,8 @@ export const en = {
       approval: 'Permission request',
       error: 'Error',
       streaming: 'Streaming…',
+      compacted: 'Context compacted',
+      compactedTokens: '{pre} → {post} tokens',
     },
     connection: {
       connecting: 'Connecting to the host…',
