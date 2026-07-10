@@ -90,6 +90,9 @@ export function ThreadsView({
     if (group.isChat) chatGroup = group;
     else projectGroups.push(group);
   }
+  const openGroupKeys = projectGroups.flatMap((group) =>
+    group.collapsed ? [] : [group.collapseKey],
+  );
 
   // The optimistic preview must never cross the pin boundary: the drop would be clamped anyway
   // (pin membership only changes via the pin button), and committing an order that disagrees
@@ -182,26 +185,42 @@ export function ThreadsView({
                 {t('emptyTitle')}
               </div>
             )}
-            {projectGroups.map((group, index) => (
-              <ThreadGroupSection
-                key={group.key}
-                group={group}
-                sortIndex={index}
-                activeId={activeId}
-                pinnedSessionIds={pinnedSessionIds}
-                collapsedSections={collapsedSections}
-                onToggleSectionCollapsed={onToggleSectionCollapsed}
-                onSelect={onSelect}
-                onClose={onClose}
-                onToggleSessionPinned={onToggleSessionPinned}
-                onStartDraft={onStartDraft}
-                onRenameWorkspace={onRenameWorkspace}
-                onArchiveWorkspace={onArchiveWorkspace}
-                onToggleGroupCollapsed={onToggleGroupCollapsed}
-                onTogglePreviewExpanded={onTogglePreviewExpanded}
-                BranchStatusComponent={BranchStatusComponent}
-              />
-            ))}
+            {projectGroups.length > 0 && (
+              <Accordion
+                multiple
+                className="space-y-2"
+                value={openGroupKeys}
+                onValueChange={(next) => {
+                  for (const group of projectGroups) {
+                    const key = group.collapseKey;
+                    if (next.includes(key) !== openGroupKeys.includes(key)) {
+                      onToggleGroupCollapsed(key);
+                    }
+                  }
+                }}
+              >
+                {projectGroups.map((group, index) => (
+                  <ThreadGroupSection
+                    key={group.key}
+                    group={group}
+                    sortIndex={index}
+                    activeId={activeId}
+                    pinnedSessionIds={pinnedSessionIds}
+                    collapsedSections={collapsedSections}
+                    onToggleSectionCollapsed={onToggleSectionCollapsed}
+                    onSelect={onSelect}
+                    onClose={onClose}
+                    onToggleSessionPinned={onToggleSessionPinned}
+                    onStartDraft={onStartDraft}
+                    onRenameWorkspace={onRenameWorkspace}
+                    onArchiveWorkspace={onArchiveWorkspace}
+                    onToggleGroupCollapsed={onToggleGroupCollapsed}
+                    onTogglePreviewExpanded={onTogglePreviewExpanded}
+                    BranchStatusComponent={BranchStatusComponent}
+                  />
+                ))}
+              </Accordion>
+            )}
             <AddWorkspaceRow
               onPickDirectory={onPickDirectory}
               onRegisterWorkspace={onRegisterWorkspace}
@@ -241,7 +260,6 @@ function ThreadGroupSection({
   onStartDraft,
   onRenameWorkspace,
   onArchiveWorkspace,
-  onToggleGroupCollapsed,
   onTogglePreviewExpanded,
   BranchStatusComponent,
 }: ThreadGroupActions &
@@ -265,41 +283,62 @@ function ThreadGroupSection({
     disabled: workspace === null,
   });
 
+  // The panel always renders the open-state preview: emptying it on collapse would leave the
+  // exit transition with no height delta, so base-ui would wait forever for a `transitionend`
+  // and never unmount the panel. The active session additionally renders BELOW the closed panel
+  // ("switching sessions never hides the one you're on"). During the 200ms exit both copies of
+  // that row exist; dnd-kit's registry hands the sortable id to the newest instance and its
+  // unregister is owner-guarded, so the transient duplicate is inert.
+  let collapsedActiveSession: SessionInfo | undefined;
+  if (group.collapsed) {
+    for (const session of group.sessions) {
+      if (session.sessionId === activeId) {
+        collapsedActiveSession = session;
+        break;
+      }
+    }
+  }
+  const renderRow = (session: SessionInfo, index: number): React.ReactNode => (
+    <ThreadRow
+      key={session.sessionId}
+      active={session.sessionId === activeId}
+      pinned={pinnedSessionIds.includes(session.sessionId)}
+      sortIndex={index}
+      sortGroup={group.collapseKey}
+      session={session}
+      onSelect={() => onSelect(session.sessionId)}
+      onClose={() => onClose(session.sessionId)}
+      onTogglePin={() => onToggleSessionPinned(session.sessionId)}
+    />
+  );
+
   return (
-    <SidebarMenu ref={sectionRef} className="gap-0.5">
+    <AccordionItem ref={sectionRef} value={group.collapseKey} className="border-b-0">
       <ThreadGroupHeader
         dragHandleRef={workspace ? handleRef : undefined}
         title={title}
         workspace={workspace}
         sessionCount={group.sessions.length}
         collapsed={group.collapsed}
-        onToggleCollapsed={() => onToggleGroupCollapsed(group.collapseKey)}
         onNewThread={workspace ? () => onStartDraft(workspace.workspaceId) : undefined}
         onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}
         onArchive={workspace ? () => onArchiveWorkspace(workspace.workspaceId) : undefined}
         BranchStatusComponent={BranchStatusComponent}
       />
-      {group.visibleSessions.map((session, index) => (
-        <ThreadRow
-          key={session.sessionId}
-          className="pl-3"
-          active={session.sessionId === activeId}
-          pinned={pinnedSessionIds.includes(session.sessionId)}
-          sortIndex={index}
-          sortGroup={group.collapseKey}
-          session={session}
-          onSelect={() => onSelect(session.sessionId)}
-          onClose={() => onClose(session.sessionId)}
-          onTogglePin={() => onToggleSessionPinned(session.sessionId)}
-        />
-      ))}
-      {!group.collapsed && group.hasOverflow && (
-        <ShowMoreToggle
-          className="pl-3"
-          expanded={group.previewExpanded}
-          onToggle={() => onTogglePreviewExpanded(group.key)}
-        />
+      <AccordionPanel className="pb-0 text-sidebar-foreground">
+        <SidebarMenu className="gap-0.5 pl-3">
+          {group.visibleSessions.map(renderRow)}
+          {group.hasOverflow && (
+            <ShowMoreToggle
+              expanded={group.previewExpanded}
+              onToggle={() => onTogglePreviewExpanded(group.key)}
+            />
+          )}
+        </SidebarMenu>
+      </AccordionPanel>
+      {collapsedActiveSession && (
+        <SidebarMenu className="gap-0.5 pl-3">{renderRow(collapsedActiveSession, 0)}</SidebarMenu>
       )}
-    </SidebarMenu>
+    </AccordionItem>
   );
 }

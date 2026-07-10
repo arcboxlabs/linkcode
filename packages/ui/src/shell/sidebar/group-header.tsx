@@ -1,4 +1,5 @@
 import type { WorkspaceRecord } from '@linkcode/schema';
+import { AccordionPrimitive } from 'coss-ui/components/accordion';
 import {
   AlertDialog,
   AlertDialogClose,
@@ -16,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'coss-ui/components/menu';
-import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
+import { SidebarMenuButton } from 'coss-ui/components/sidebar';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   ArchiveIcon,
@@ -37,8 +38,8 @@ export interface ThreadGroupHeaderProps {
   title: string;
   workspace: WorkspaceRecord | null;
   sessionCount: number;
+  /** Mirrors the surrounding accordion item's open state (the trigger owns toggling). */
   collapsed: boolean;
-  onToggleCollapsed: () => void;
   /** Opens the new-session page preselecting this group's workspace. Undefined for the
    * unregistered fallback group — it has no single `cwd` to start a thread in. */
   onNewThread?: () => void;
@@ -85,7 +86,6 @@ export function ThreadGroupHeader({
   workspace,
   sessionCount,
   collapsed,
-  onToggleCollapsed,
   onNewThread,
   onRename,
   onArchive,
@@ -134,7 +134,9 @@ export function ThreadGroupHeader({
   }
 
   return (
-    <SidebarMenuItem ref={dragHandleRef}>
+    <AccordionPrimitive.Header
+      render={<div ref={dragHandleRef} className="group/menu-item relative flex" />}
+    >
       {renaming ? (
         <input
           // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
@@ -154,19 +156,25 @@ export function ThreadGroupHeader({
           className="h-7 w-full min-w-0 rounded-lg border border-input bg-background px-1.5 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
-        <SidebarMenuButton
-          size="sm"
-          onClick={onToggleCollapsed}
-          title={workspace?.cwd}
-          aria-label={collapsed ? t('expandGroup') : t('collapseGroup')}
-          className={cn('text-muted-foreground transition-none', hasActions && ROW_HOVER_PE_CLASS)}
-        >
-          <FolderToggleIcon open={!collapsed} />
-          {/* No font-medium: CJK falls back to PingFang Medium and reads bold. */}
-          <span className="min-w-0 truncate">{title}</span>
-          {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
-          <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
-        </SidebarMenuButton>
+        <AccordionPrimitive.Trigger
+          render={
+            <SidebarMenuButton
+              size="sm"
+              title={workspace?.cwd}
+              aria-label={collapsed ? t('expandGroup') : t('collapseGroup')}
+              className={cn(
+                'text-muted-foreground transition-none',
+                hasActions && ROW_HOVER_PE_CLASS,
+              )}
+            >
+              <FolderToggleIcon open={!collapsed} />
+              {/* No font-medium: CJK falls back to PingFang Medium and reads bold. */}
+              <span className="min-w-0 truncate">{title}</span>
+              {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
+              <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
+            </SidebarMenuButton>
+          }
+        />
       )}
       {renameError != null && (
         <div className="-bottom-5 absolute left-0 z-10 px-1 text-destructive text-xs">
@@ -239,6 +247,6 @@ export function ThreadGroupHeader({
           </AlertDialogPopup>
         </AlertDialog>
       )}
-    </SidebarMenuItem>
+    </AccordionPrimitive.Header>
   );
 }

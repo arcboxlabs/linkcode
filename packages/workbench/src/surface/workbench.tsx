@@ -179,7 +179,6 @@ function WorkbenchSessionSurface({
         threadOrder[group.collapseKey] ?? [],
       );
       const { sessions: visibleSessions, hasOverflow } = selectVisibleSessions(ordered, {
-        collapsed,
         expanded: previewExpanded,
         activeId: sessions.activeId,
       });

@@ -26,8 +26,6 @@ export interface ThreadRowProps {
   sortIndex: number;
   /** The group's `collapseKey` — scopes dragging to the row's own group. */
   sortGroup: string;
-  /** Extra classes on the row `li` — the Projects tree indents its rows with `pl-3`. */
-  className?: string;
   onSelect: () => void;
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
   onClose: () => void;
@@ -41,7 +39,6 @@ export function ThreadRow({
   pinned,
   sortIndex,
   sortGroup,
-  className,
   onSelect,
   onClose,
   onTogglePin,
@@ -61,7 +58,7 @@ export function ThreadRow({
   });
 
   return (
-    <SidebarMenuItem ref={sortableRef} className={className}>
+    <SidebarMenuItem ref={sortableRef}>
       {withTooltip(
         <SidebarMenuButton
           isActive={active}

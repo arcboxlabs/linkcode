@@ -4,8 +4,6 @@ import type { SessionId, SessionInfo } from '@linkcode/schema';
 export const DEFAULT_GROUP_PREVIEW_COUNT = 5;
 
 export interface VisibleSessionsOptions {
-  /** The group header is collapsed — only the active row (if any) stays visible. */
-  collapsed: boolean;
   /** "Show more" has been toggled for this group. */
   expanded: boolean;
   activeId: SessionId | null;
@@ -14,26 +12,22 @@ export interface VisibleSessionsOptions {
 
 export interface VisibleSessionsResult {
   sessions: SessionInfo[];
-  /** Whether a Show more/Show less toggle should render. Always `false` while collapsed. */
+  /** Whether a Show more/Show less toggle should render. */
   hasOverflow: boolean;
 }
 
 /**
  * Selects which of a group's sessions (already sorted, most recent first) render in the sidebar.
- * A collapsed group shows nothing but its own active session, if any — so switching sessions never
- * hides the one you're on. An expanded group previews the first `previewCount`, unless "Show more"
- * is toggled; the active session is force-included in the preview even past the cutoff.
+ * The list is the group's OPEN-state preview: hiding a collapsed group is the accordion panel's
+ * job (the UI separately keeps the active row visible under a collapsed header). Previews the
+ * first `previewCount`, unless "Show more" is toggled; the active session is force-included in
+ * the preview even past the cutoff.
  */
 export function selectVisibleSessions(
   sessions: readonly SessionInfo[],
   options: VisibleSessionsOptions,
 ): VisibleSessionsResult {
-  const { collapsed, expanded, activeId, previewCount = DEFAULT_GROUP_PREVIEW_COUNT } = options;
-
-  if (collapsed) {
-    const active = sessions.find((session) => session.sessionId === activeId);
-    return { sessions: active ? [active] : [], hasOverflow: false };
-  }
+  const { expanded, activeId, previewCount = DEFAULT_GROUP_PREVIEW_COUNT } = options;
 
   const hasOverflow = sessions.length > previewCount;
   if (expanded || !hasOverflow) {
