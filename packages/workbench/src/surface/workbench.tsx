@@ -38,7 +38,7 @@ import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
-import { groupThreadsByWorkspace } from '../sidebar/group-threads';
+import { extractPinnedGroup, groupThreadsByWorkspace } from '../sidebar/group-threads';
 import { useSidebarOrderStore } from '../sidebar/order-store';
 import { applyThreadDrag, orderGroups, orderThreads } from '../sidebar/ordering';
 import { useSidebarPinStore } from '../sidebar/pin-store';
@@ -153,6 +153,10 @@ function WorkbenchSessionSurface({
   const archiveWorkspaceMutation = useMutation(archiveWorkspace);
   const collapsedKeys = useSidebarGroupCollapseStore((state) => state.collapsedKeys);
   const toggleGroupCollapsed = useSidebarGroupCollapseStore((state) => state.toggleCollapsed);
+  const collapsedSections = useSidebarGroupCollapseStore((state) => state.collapsedSections);
+  const toggleSectionCollapsed = useSidebarGroupCollapseStore(
+    (state) => state.toggleSectionCollapsed,
+  );
   const pinnedSessionIds = useSidebarPinStore((state) => state.pinnedSessionIds);
   const toggleSessionPinned = useSidebarPinStore((state) => state.togglePinned);
   const groupOrder = useSidebarOrderStore((state) => state.groupOrder);
@@ -165,8 +169,9 @@ function WorkbenchSessionSurface({
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
-    const groups = groupThreadsByWorkspace(sessions.sessions, workspaces ?? []);
-    return orderGroups(groups, groupOrder).map((group) => {
+    const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
+    const groups = orderGroups(groupThreadsByWorkspace(rest, workspaces ?? []), groupOrder);
+    return (pinnedGroup ? [pinnedGroup, ...groups] : groups).map((group) => {
       const collapsed = collapsedKeys.includes(group.collapseKey);
       const previewExpanded = previewExpandedKeys.has(group.key);
       const ordered = orderThreads(
@@ -175,7 +180,6 @@ function WorkbenchSessionSurface({
         threadOrder[group.collapseKey] ?? [],
       );
       const { sessions: visibleSessions, hasOverflow } = selectVisibleSessions(ordered, {
-        collapsed,
         expanded: previewExpanded,
         activeId: sessions.activeId,
       });
@@ -419,6 +423,7 @@ function WorkbenchSessionSurface({
       }}
       errorMessage={errorMessage}
       pinnedSessionIds={pinnedSessionIds}
+      collapsedSections={collapsedSections}
       onSelectSession={sessions.select}
       onCloseSession={sessions.close}
       onToggleSessionPinned={toggleSessionPinned}
@@ -430,6 +435,7 @@ function WorkbenchSessionSurface({
       onRenameWorkspace={handleRenameWorkspace}
       onArchiveWorkspace={handleArchiveWorkspace}
       onToggleGroupCollapsed={toggleGroupCollapsed}
+      onToggleSectionCollapsed={toggleSectionCollapsed}
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}

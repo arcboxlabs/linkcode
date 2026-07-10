@@ -1,6 +1,9 @@
 import type { SessionId, WorkspaceId } from '@linkcode/schema';
 import type { BranchStatusComponentType } from './branch-status';
 
+/** The sidebar's top-level collapsible sections. Mirrored by the workbench collapse store. */
+export type SidebarSectionKey = 'pinned' | 'projects' | 'chats';
+
 /**
  * Session/group interaction callbacks shared verbatim by `SessionSidebar`, `ThreadsView`, and the
  * per-group section they both render. `ShellFrame` renames a few of these at its public boundary
@@ -16,6 +19,7 @@ export interface ThreadGroupActions {
   onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
   onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
   onToggleGroupCollapsed: (collapseKey: string) => void;
+  onToggleSectionCollapsed: (section: SidebarSectionKey) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
   BranchStatusComponent?: BranchStatusComponentType;
 }
@@ -23,6 +27,8 @@ export interface ThreadGroupActions {
 /** The per-group selection/pin state that travels alongside `ThreadGroupActions`. */
 export interface ThreadGroupState {
   activeId: SessionId | null;
-  /** Threads pinned to the top of their group, in pin order. */
+  /** Threads listed in the "Pinned" section, in pin order. */
   pinnedSessionIds: readonly SessionId[];
+  /** Top-level sections currently collapsed; all default open. */
+  collapsedSections: readonly SidebarSectionKey[];
 }

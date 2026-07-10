@@ -1,4 +1,5 @@
 import type { WorkspaceRecord } from '@linkcode/schema';
+import { AccordionPrimitive } from 'coss-ui/components/accordion';
 import {
   AlertDialog,
   AlertDialogClose,
@@ -9,6 +10,7 @@ import {
   AlertDialogTitle,
 } from 'coss-ui/components/alert-dialog';
 import { Button } from 'coss-ui/components/button';
+import { Input } from 'coss-ui/components/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'coss-ui/components/menu';
+import { SidebarMenuButton } from 'coss-ui/components/sidebar';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   ArchiveIcon,
@@ -30,13 +33,14 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import type { BranchStatusComponentType } from './branch-status';
+import { ROW_ACTION_CLASS, ROW_HOVER_PE_CLASS, RowActionsCluster } from './row-actions';
 
 export interface ThreadGroupHeaderProps {
   title: string;
   workspace: WorkspaceRecord | null;
   sessionCount: number;
+  /** Mirrors the surrounding accordion item's open state (the trigger owns toggling). */
   collapsed: boolean;
-  onToggleCollapsed: () => void;
   /** Opens the new-session page preselecting this group's workspace. Undefined for the
    * unregistered fallback group — it has no single `cwd` to start a thread in. */
   onNewThread?: () => void;
@@ -83,7 +87,6 @@ export function ThreadGroupHeader({
   workspace,
   sessionCount,
   collapsed,
-  onToggleCollapsed,
   onNewThread,
   onRename,
   onArchive,
@@ -132,14 +135,14 @@ export function ThreadGroupHeader({
   }
 
   return (
-    <div
-      ref={dragHandleRef}
-      className="group relative flex h-7 items-center gap-1.5 rounded-md px-[var(--lc-sidebar-edge,0.5rem)]"
+    <AccordionPrimitive.Header
+      render={<div ref={dragHandleRef} className="group/menu-item relative flex" />}
     >
       {renaming ? (
-        <input
+        <Input
           // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
           autoFocus
+          aria-label={t('renameWorkspace')}
           value={draftName}
           onChange={(event) => setDraftName(event.target.value)}
           onKeyDown={(event) => {
@@ -152,25 +155,25 @@ export function ThreadGroupHeader({
             }
           }}
           onBlur={commitRename}
-          className="min-w-0 flex-1 rounded-sm border border-input bg-background px-1.5 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          title={workspace?.cwd}
-          aria-label={collapsed ? t('expandGroup') : t('collapseGroup')}
-          className={cn(
-            'flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left text-muted-foreground text-xs outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
-            hasActions && 'pr-14',
-          )}
-        >
-          <FolderToggleIcon open={!collapsed} />
-          {/* No font-medium: CJK falls back to PingFang Medium and reads bold. */}
-          <span className="min-w-0 truncate">{title}</span>
-          {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
-          <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
-        </button>
+        <AccordionPrimitive.Trigger
+          render={
+            <SidebarMenuButton
+              title={workspace?.cwd}
+              aria-label={collapsed ? t('expandGroup') : t('collapseGroup')}
+              className={cn(
+                'hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset',
+                hasActions && ROW_HOVER_PE_CLASS,
+              )}
+            >
+              <FolderToggleIcon open={!collapsed} />
+              <span className="min-w-0 truncate">{title}</span>
+              {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
+              <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
+            </SidebarMenuButton>
+          }
+        />
       )}
       {renameError != null && (
         <div className="-bottom-5 absolute left-0 z-10 px-1 text-destructive text-xs">
@@ -178,28 +181,35 @@ export function ThreadGroupHeader({
         </div>
       )}
       {!renaming && hasActions && (
-        <div className="-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0.5 opacity-0 outline-none focus-within:opacity-100 group-hover:opacity-100">
+        <RowActionsCluster>
           {onNewThread && (
-            <button
-              type="button"
+            <Button
               aria-label={t('newThread')}
               title={t('newThread')}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className={ROW_ACTION_CLASS}
+              size="icon-xs"
+              variant="ghost"
               onClick={onNewThread}
             >
-              <PlusIcon className="size-3.5" />
-            </button>
+              <PlusIcon />
+            </Button>
           )}
           {(onRename || onArchive) && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t('groupActions')}
                 title={t('groupActions')}
-                className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                render={<Button className={ROW_ACTION_CLASS} size="icon-xs" variant="ghost" />}
               >
-                <EllipsisIcon className="size-3.5" />
+                <EllipsisIcon />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-52">
+              <DropdownMenuContent
+                align="start"
+                side="right"
+                sideOffset={8}
+                className="w-52"
+                finalFocus={(closeType) => closeType === 'keyboard'}
+              >
                 {onRename && (
                   <DropdownMenuItem onClick={beginRename}>
                     <PencilIcon />
@@ -218,7 +228,7 @@ export function ThreadGroupHeader({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-        </div>
+        </RowActionsCluster>
       )}
       {onArchive && (
         <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
@@ -243,6 +253,6 @@ export function ThreadGroupHeader({
           </AlertDialogPopup>
         </AlertDialog>
       )}
-    </div>
+    </AccordionPrimitive.Header>
   );
 }

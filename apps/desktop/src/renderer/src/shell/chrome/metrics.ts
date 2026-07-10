@@ -9,8 +9,6 @@ export const DESKTOP_CHROME_METRICS = {
   windowControlsInset: 88,
   leftRailWidth: 188,
   rightRailWidth: 92,
-  sidebarEdgePadding: 8,
-  sidebarGap: 8,
 } as const;
 
 export const DESKTOP_CHROME_SPACER_CLASS = 'h-(--lc-chrome-h)';
@@ -26,8 +24,6 @@ export type DesktopChromeMetricsStyle = React.CSSProperties & {
   '--lc-chrome-right-rail-w': string;
   '--lc-chrome-left-local-inset': string;
   '--lc-chrome-right-local-inset': string;
-  '--lc-sidebar-edge': string;
-  '--lc-sidebar-gap': string;
 };
 
 export const DESKTOP_CHROME_METRICS_STYLE = {
@@ -41,6 +37,4 @@ export const DESKTOP_CHROME_METRICS_STYLE = {
   '--lc-chrome-right-rail-w': `${DESKTOP_CHROME_METRICS.rightRailWidth}px`,
   '--lc-chrome-left-local-inset': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
   '--lc-chrome-right-local-inset': `${DESKTOP_CHROME_METRICS.edgePadding}px`,
-  '--lc-sidebar-edge': `${DESKTOP_CHROME_METRICS.sidebarEdgePadding}px`,
-  '--lc-sidebar-gap': `${DESKTOP_CHROME_METRICS.sidebarGap}px`,
 } satisfies DesktopChromeMetricsStyle;

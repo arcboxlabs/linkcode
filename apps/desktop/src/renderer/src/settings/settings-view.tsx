@@ -106,6 +106,7 @@ export function SettingsView(): React.ReactNode {
             >
               <SettingsSidebarNav
                 backLabel={t('back')}
+                backAutoFocus
                 onBack={backFromOverlay}
                 searchPlaceholder={t('searchPlaceholder')}
                 items={[

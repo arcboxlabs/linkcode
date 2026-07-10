@@ -1,8 +1,11 @@
-import type { SessionInfo, WorkspaceRecord } from '@linkcode/schema';
+import type { SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 
 /** Sentinel key for the fallback group: sessions whose `cwd` matches no registered workspace. */
 export const UNREGISTERED_THREAD_GROUP_KEY = 'unregistered';
+
+/** Sentinel key for the synthetic pinned group — see {@link extractPinnedGroup}. */
+export const PINNED_THREAD_GROUP_KEY = 'pinned';
 
 export interface ThreadGroup {
   key: string;
@@ -20,6 +23,11 @@ export interface ThreadGroup {
    * "Chats" section instead of a collapsible Projects group.
    */
   isChat: boolean;
+  /**
+   * True for the synthetic pinned group (see {@link extractPinnedGroup}) — the sidebar renders it
+   * as the top-level "Pinned" section instead of a Projects group.
+   */
+  isPinned: boolean;
 }
 
 /**
@@ -60,6 +68,7 @@ export function groupThreadsByWorkspace(
       workspace,
       sessions: sortByCreatedAtDescending(sessionsByWorkspaceId.get(workspace.workspaceId) ?? []),
       isChat: workspaceKind(workspace) === 'chat',
+      isPinned: false,
     }));
 
   if (unregistered.length > 0) {
@@ -69,10 +78,38 @@ export function groupThreadsByWorkspace(
       workspace: null,
       sessions: sortByCreatedAtDescending(unregistered),
       isChat: false,
+      isPinned: false,
     });
   }
 
   return groups;
+}
+
+/**
+ * Splits the pinned sessions out into the synthetic "Pinned" group, ordered by `pinnedIds` (pin
+ * recency — the pin store prepends). Pinned ids matching no session are ignored; `pinnedGroup` is
+ * `null` when none match. `rest` (everything unpinned, incoming order) is what callers group by
+ * workspace, so pinned sessions never appear in their original group.
+ */
+export function extractPinnedGroup(
+  sessions: readonly SessionInfo[],
+  pinnedIds: readonly SessionId[],
+): { pinnedGroup: ThreadGroup | null; rest: SessionInfo[] } {
+  const pinned = new Set(pinnedIds);
+  const sessionById = new Map(sessions.map((session) => [session.sessionId, session]));
+  const pinnedSessions = pinnedIds.flatMap((id) => sessionById.get(id) ?? []);
+  if (pinnedSessions.length === 0) return { pinnedGroup: null, rest: [...sessions] };
+  return {
+    pinnedGroup: {
+      key: PINNED_THREAD_GROUP_KEY,
+      collapseKey: PINNED_THREAD_GROUP_KEY,
+      workspace: null,
+      sessions: pinnedSessions,
+      isChat: false,
+      isPinned: true,
+    },
+    rest: sessions.filter((session) => !pinned.has(session.sessionId)),
+  };
 }
 
 function sortByCreatedAtDescending(sessions: readonly SessionInfo[]): SessionInfo[] {

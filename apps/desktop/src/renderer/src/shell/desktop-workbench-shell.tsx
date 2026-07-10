@@ -10,6 +10,7 @@ export function DesktopWorkbenchShell({ header, ...props }: WorkbenchShellProps)
       systemBridge={systemBridge}
       header={header}
       onOpenSettings={() => openDesktopSettings()}
+      onImportHistory={() => openDesktopSettings('history-import')}
       themeType={theme}
       {...props}
     />
