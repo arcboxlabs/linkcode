@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from 'coss-ui/components/alert-dialog';
 import { Button } from 'coss-ui/components/button';
+import { Input } from 'coss-ui/components/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -138,9 +139,10 @@ export function ThreadGroupHeader({
       render={<div ref={dragHandleRef} className="group/menu-item relative flex" />}
     >
       {renaming ? (
-        <input
+        <Input
           // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
           autoFocus
+          aria-label={t('renameWorkspace')}
           value={draftName}
           onChange={(event) => setDraftName(event.target.value)}
           onKeyDown={(event) => {
@@ -153,22 +155,19 @@ export function ThreadGroupHeader({
             }
           }}
           onBlur={commitRename}
-          className="h-7 w-full min-w-0 rounded-lg border border-input bg-background px-1.5 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
         <AccordionPrimitive.Trigger
           render={
             <SidebarMenuButton
-              size="sm"
               title={workspace?.cwd}
               aria-label={collapsed ? t('expandGroup') : t('collapseGroup')}
               className={cn(
-                'text-muted-foreground transition-none',
+                'hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset',
                 hasActions && ROW_HOVER_PE_CLASS,
               )}
             >
               <FolderToggleIcon open={!collapsed} />
-              {/* No font-medium: CJK falls back to PingFang Medium and reads bold. */}
               <span className="min-w-0 truncate">{title}</span>
               {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
               <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
@@ -184,22 +183,23 @@ export function ThreadGroupHeader({
       {!renaming && hasActions && (
         <RowActionsCluster>
           {onNewThread && (
-            <button
-              type="button"
+            <Button
               aria-label={t('newThread')}
               title={t('newThread')}
               className={ROW_ACTION_CLASS}
+              size="icon-xs"
+              variant="ghost"
               onClick={onNewThread}
             >
               <PlusIcon />
-            </button>
+            </Button>
           )}
           {(onRename || onArchive) && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t('groupActions')}
                 title={t('groupActions')}
-                className={ROW_ACTION_CLASS}
+                render={<Button className={ROW_ACTION_CLASS} size="icon-xs" variant="ghost" />}
               >
                 <EllipsisIcon />
               </DropdownMenuTrigger>

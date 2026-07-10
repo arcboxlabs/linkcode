@@ -126,7 +126,7 @@ export function AddProjectMenu({
             <SidebarGroupAction
               aria-label={t('addProject')}
               title={t('addProject')}
-              className="text-muted-foreground"
+              className="top-3 size-6 hover:bg-transparent"
             />
           }
         >

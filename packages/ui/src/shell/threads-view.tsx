@@ -30,7 +30,7 @@ export interface ThreadGroupViewModel {
   workspace: WorkspaceRecord | null;
   /** Every session in the group, most recent first — the header's count reflects this length. */
   sessions: SessionInfo[];
-  /** The subset actually rendered, honoring the collapse and preview-truncation state below. */
+  /** The preview subset rendered while the group is open. */
   visibleSessions: SessionInfo[];
   /** Whether a Show more/Show less toggle should render. */
   hasOverflow: boolean;
@@ -172,11 +172,11 @@ export function ThreadsView({
             onRegisterWorkspace={onRegisterWorkspace}
             onImportHistory={onImportHistory}
           />
-          <AccordionPanel className="space-y-2 pb-0 text-sidebar-foreground">
+          <AccordionPanel className="flex flex-col gap-2 pb-0 text-sidebar-foreground">
             {projectGroups.length === 0 && workspacesLoading && (
-              <div className="space-y-1">
+              <div className="flex flex-col gap-1">
                 {createFixedArray(3).map((i) => (
-                  <Skeleton key={i} className="h-7 w-full rounded-lg" />
+                  <Skeleton key={i} className="h-8 w-full rounded-lg" />
                 ))}
               </div>
             )}
@@ -188,7 +188,7 @@ export function ThreadsView({
             {projectGroups.length > 0 && (
               <Accordion
                 multiple
-                className="space-y-2"
+                className="flex flex-col gap-2"
                 value={openGroupKeys}
                 onValueChange={(next) => {
                   for (const group of projectGroups) {
@@ -279,21 +279,8 @@ function ThreadGroupSection({
     disabled: workspace === null,
   });
 
-  // The panel always renders the open-state preview: emptying it on collapse would leave the
-  // exit transition with no height delta, so base-ui would wait forever for a `transitionend`
-  // and never unmount the panel. The active session additionally renders BELOW the closed panel
-  // ("switching sessions never hides the one you're on"). During the 200ms exit both copies of
-  // that row exist; dnd-kit's registry hands the sortable id to the newest instance and its
-  // unregister is owner-guarded, so the transient duplicate is inert.
-  let collapsedActiveSession: SessionInfo | undefined;
-  if (group.collapsed) {
-    for (const session of group.sessions) {
-      if (session.sessionId === activeId) {
-        collapsedActiveSession = session;
-        break;
-      }
-    }
-  }
+  // Keep the open-state preview mounted while the panel closes so base-ui can measure and finish
+  // its height transition before unmounting the rows.
   const renderRow = (session: SessionInfo, index: number): React.ReactNode => (
     <ThreadRow
       key={session.sessionId}
@@ -332,9 +319,6 @@ function ThreadGroupSection({
           )}
         </SidebarMenu>
       </AccordionPanel>
-      {collapsedActiveSession && (
-        <SidebarMenu className="gap-0.5 pl-3">{renderRow(collapsedActiveSession, 0)}</SidebarMenu>
-      )}
     </AccordionItem>
   );
 }

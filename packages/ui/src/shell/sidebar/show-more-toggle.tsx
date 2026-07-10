@@ -12,7 +12,7 @@ export function ShowMoreToggle({ expanded, onToggle }: ShowMoreToggleProps): Rea
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton size="sm" className="text-muted-foreground" onClick={onToggle}>
+      <SidebarMenuButton className="hover:bg-transparent" onClick={onToggle}>
         {expanded ? t('showLess') : t('showMore')}
       </SidebarMenuButton>
     </SidebarMenuItem>

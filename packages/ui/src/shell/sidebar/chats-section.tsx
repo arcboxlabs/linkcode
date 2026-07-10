@@ -63,7 +63,7 @@ export function ChatsSection({
         <SidebarGroupAction
           aria-label={t('newChat')}
           title={t('newChat')}
-          className="text-muted-foreground"
+          className="top-3 size-6 hover:bg-transparent"
           onClick={() => onStartDraft(workspace.workspaceId)}
         >
           <PlusIcon />
@@ -93,13 +93,13 @@ export function ChatsSection({
             )}
           </SidebarMenu>
         ) : isLoading ? (
-          <div className="space-y-0.5">
+          <div className="flex flex-col gap-0.5">
             {createFixedArray(3).map((i) => (
               <Skeleton key={i} className="h-8 w-full rounded-lg" />
             ))}
           </div>
         ) : (
-          <div className="px-3 py-3 text-center text-muted-foreground text-xs">
+          <div className="px-3 py-3 text-center text-muted-foreground text-sm">
             {t('chatsEmptyHint')}
           </div>
         )}

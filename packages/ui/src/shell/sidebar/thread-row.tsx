@@ -1,5 +1,6 @@
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
+import { Button } from 'coss-ui/components/button';
 import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
 import { PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
@@ -66,11 +67,9 @@ export function ThreadRow({
           className={cn(
             // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
             // PingFang Medium and mixed-script titles read artificially bold.
-            'transition-none data-[active=true]:font-normal',
-            // Keep the row highlighted while the pointer is over the absolute action cluster.
-            'group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground',
+            'data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
             // A pinned row shows its pin at rest, so it keeps the action space reserved.
-            pinned ? 'pe-12' : ROW_HOVER_PE_CLASS,
+            pinned ? 'pe-16 sm:pe-14' : ROW_HOVER_PE_CLASS,
           )}
         >
           <span className="relative shrink-0">
@@ -88,24 +87,26 @@ export function ThreadRow({
         createdAtLabel,
       )}
       <RowActionsCluster>
-        <button
-          type="button"
+        <Button
           aria-label={pinned ? t('unpinThread') : t('pinThread')}
           title={pinned ? t('unpinThread') : t('pinThread')}
           onClick={onTogglePin}
           className={cn(ROW_ACTION_CLASS, pinned && 'opacity-100')}
+          size="icon-xs"
+          variant="ghost"
         >
           <PinIcon className={cn(pinned && 'fill-current')} />
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           aria-label={t('closeThread')}
           title={t('closeThread')}
           onClick={onClose}
           className={ROW_ACTION_CLASS}
+          size="icon-xs"
+          variant="ghost"
         >
           <XIcon />
-        </button>
+        </Button>
       </RowActionsCluster>
     </SidebarMenuItem>
   );

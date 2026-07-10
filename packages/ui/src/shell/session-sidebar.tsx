@@ -7,10 +7,12 @@ import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popove
 import { Separator } from 'coss-ui/components/separator';
 import {
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from 'coss-ui/components/sidebar';
 import {
   BotIcon,
@@ -117,21 +119,25 @@ export function SessionSidebar({
       <SidebarHeader className="pb-1">
         <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => onStartDraft()}>
-              <FilePlus2Icon className="text-muted-foreground" />
+            <SidebarMenuButton className="hover:bg-transparent" onClick={() => onStartDraft()}>
+              <FilePlus2Icon />
               <span className="min-w-0 flex-1 truncate">New Task</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton disabled={!onOpenSearch} onClick={onOpenSearch}>
-              <SearchIcon className="text-muted-foreground" />
+            <SidebarMenuButton
+              className="hover:bg-transparent"
+              disabled={!onOpenSearch}
+              onClick={onOpenSearch}
+            >
+              <SearchIcon />
               <span className="min-w-0 flex-1 truncate">Search</span>
               {searchShortcut && <Kbd>{searchShortcut}</Kbd>}
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton disabled>
-              <SparklesIcon className="text-muted-foreground" />
+            <SidebarMenuButton className="hover:bg-transparent" disabled>
+              <SparklesIcon />
               <span className="min-w-0 flex-1 truncate">Automation</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -177,13 +183,18 @@ export function DefaultHostFooter({
   if (!latency) return <HostFooter state={state} />;
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-xs">
-      <span className="size-2 rounded-full bg-success" />
-      <span className="font-medium text-sidebar-foreground">Local Host</span>
-      {state && <span className="text-muted-foreground">{state}</span>}
-      {latency && <span className="text-muted-foreground">{latency}</span>}
-      <ChevronDownIcon className="ml-auto size-3.5 text-muted-foreground" />
-    </div>
+    <>
+      <SidebarSeparator />
+      <SidebarFooter>
+        <div className="flex h-8 items-center gap-2 px-2 text-sm">
+          <span className="size-2 rounded-full bg-success" />
+          <span>Local Host</span>
+          {state && <span className="text-muted-foreground">{state}</span>}
+          <span className="text-muted-foreground">{latency}</span>
+          <ChevronDownIcon className="ml-auto size-4 text-muted-foreground" />
+        </div>
+      </SidebarFooter>
+    </>
   );
 }
 
@@ -229,12 +240,23 @@ export function HostFooter({
 
   return (
     <Popover>
-      <PopoverTrigger className="flex h-10 w-full items-center gap-(--lc-chrome-section-gap) border-sidebar-border border-t px-(--lc-chrome-edge) text-left text-xs outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring">
-        <span className="size-2 rounded-full bg-success" />
-        <span className="font-medium text-sidebar-foreground">Local Host</span>
-        {state && <span className="text-muted-foreground">{state}</span>}
-        <ChevronDownIcon className="ml-auto size-3.5 text-muted-foreground" />
-      </PopoverTrigger>
+      <SidebarSeparator />
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <PopoverTrigger
+              render={
+                <SidebarMenuButton className="hover:bg-transparent data-[state=open]:hover:bg-transparent">
+                  <span className="size-2 rounded-full bg-success" />
+                  <span>Local Host</span>
+                  {state && <span className="text-muted-foreground">{state}</span>}
+                  <ChevronDownIcon className="ml-auto text-muted-foreground" />
+                </SidebarMenuButton>
+              }
+            />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
       <PopoverPopup side="top" align="start" sideOffset={8} className="w-80 text-sm">
         <div className="flex items-center gap-2 py-1.5">
           <span className="size-2 rounded-full bg-success" />
@@ -372,7 +394,10 @@ function RemoteHostList({
             size="sm"
             disabled={!onSelectHost}
             onClick={() => onSelectHost?.(host.id)}
-            className={cn('w-full justify-start px-2', selected && 'bg-sidebar-accent')}
+            className={cn(
+              'w-full justify-start px-2 hover:bg-transparent',
+              selected && 'bg-sidebar-accent',
+            )}
           >
             <span className="size-1.5 shrink-0 rounded-full bg-success" />
             <span className="min-w-0 flex-1 truncate text-left font-medium">{host.name}</span>
@@ -381,7 +406,7 @@ function RemoteHostList({
                 {host.statusLabel}
               </span>
             )}
-            {selected && <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />}
+            {selected && <CheckIcon className="shrink-0 text-muted-foreground" />}
           </Button>
         );
       })}
@@ -406,9 +431,14 @@ function HostFooterRow({
 
 export function EmptyHostFooter(): React.ReactNode {
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-muted-foreground text-xs">
-      <BotIcon className="size-3.5" />
-      Local Host
-    </div>
+    <>
+      <SidebarSeparator />
+      <SidebarFooter>
+        <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
+          <BotIcon className="size-4" />
+          Local Host
+        </div>
+      </SidebarFooter>
+    </>
   );
 }

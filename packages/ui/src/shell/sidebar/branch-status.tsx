@@ -23,12 +23,7 @@ export function BranchStatus({
   if (!status?.isRepo) return null;
 
   return (
-    <span
-      className={cn(
-        'inline-flex min-w-0 items-center gap-1 font-mono text-muted-foreground text-xs',
-        className,
-      )}
-    >
+    <span className={cn('inline-flex min-w-0 items-center gap-1 text-muted-foreground', className)}>
       <span className="truncate">{status.branch ?? t('detachedHead')}</span>
       {showDirty && status.dirtyFileCount > 0 && (
         <Badge size="sm" variant="warning">

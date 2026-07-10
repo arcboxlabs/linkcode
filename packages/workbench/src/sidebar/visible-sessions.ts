@@ -18,10 +18,9 @@ export interface VisibleSessionsResult {
 
 /**
  * Selects which of a group's sessions (already sorted, most recent first) render in the sidebar.
- * The list is the group's OPEN-state preview: hiding a collapsed group is the accordion panel's
- * job (the UI separately keeps the active row visible under a collapsed header). Previews the
- * first `previewCount`, unless "Show more" is toggled; the active session is force-included in
- * the preview even past the cutoff.
+ * The list is the group's open-state preview; hiding a collapsed group is the accordion panel's
+ * job. Previews the first `previewCount`, unless "Show more" is toggled; the active session is
+ * force-included in the preview even past the cutoff.
  */
 export function selectVisibleSessions(
   sessions: readonly SessionInfo[],
