@@ -3,9 +3,10 @@ import { ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Input } from 'coss-ui/components/input';
 import { Skeleton } from 'coss-ui/components/skeleton';
+import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { serviceById } from './catalog';
+import { detectedLoginSuggestions, serviceById } from './catalog';
 import { AGENT_KINDS, boundAgentKinds } from './view';
 
 /** Left column of the Providers page: searchable account pool with bound-agent chips. */
@@ -17,6 +18,7 @@ export function AccountMasterList({
   selectedId,
   onSelect,
   onAdd,
+  onAdoptDetected,
 }: {
   accounts: Accounts;
   loading: boolean;
@@ -25,6 +27,8 @@ export function AccountMasterList({
   selectedId: string | undefined;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  /** One-click adopt a detected CLI login into the pool (a suggestion card, not a pool member). */
+  onAdoptDetected: (serviceId: string) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
@@ -120,6 +124,33 @@ export function AccountMasterList({
         {!loading && needle && rows.length === 0 ? (
           <li className="px-1 py-3 text-muted-foreground text-sm">{t('noMatches')}</li>
         ) : null}
+        {needle === ''
+          ? detectedLoginSuggestions(accounts, runtimes).map(({ service, auth }) => (
+              <li key={service.id}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 rounded-lg border border-border border-dashed p-2.5 text-left transition-colors hover:bg-muted/50"
+                  onClick={() => onAdoptDetected(service.id)}
+                >
+                  <ServiceIcon service={service.id} label={service.label} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-medium text-sm">
+                        {t(`serviceName.${service.id}`)}
+                      </span>
+                      <span className="rounded-full border border-border px-1.5 text-[10px] text-muted-foreground leading-4">
+                        {t('detected')}
+                      </span>
+                    </span>
+                    <span className="block truncate text-muted-foreground text-xs">
+                      {auth.email ?? t('loggedIn')}
+                    </span>
+                  </span>
+                  <PlusIcon className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            ))
+          : null}
       </ul>
       <Button type="button" size="sm" variant="outline" onClick={onAdd}>
         {t('addAccount')}

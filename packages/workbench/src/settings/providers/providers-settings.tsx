@@ -5,7 +5,8 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AccountDetail } from './account-detail';
-import { AddAccountForm, ServiceCatalogView } from './add-flow';
+import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { serviceById } from './catalog';
 import { AccountMasterList } from './master-list';
 import { useProvidersSettingsStore } from './store';
 import { withBinding, withModel, withoutAccount } from './view';
@@ -61,6 +62,13 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     select(account.id);
   };
 
+  // One-click adoption of a detected CLI login: same account the oauth form would create.
+  const handleAdoptDetected = (serviceId: string): void => {
+    const service = serviceById(serviceId);
+    if (service?.kind !== 'oauth') return;
+    void handleAdd(oauthAccount(service, t(`serviceName.${service.id}`)));
+  };
+
   const handleRemove = async (): Promise<void> => {
     if (!selected) return;
     const cleared = withoutAccount(providers ?? {}, selected.id);
@@ -94,6 +102,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           selectedId={selected?.id}
           onSelect={select}
           onAdd={startAdd}
+          onAdoptDetected={handleAdoptDetected}
         />
         <div className="min-w-0 flex-1">
           {effectiveView.kind === 'add-form' ? (

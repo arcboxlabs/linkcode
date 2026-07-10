@@ -1,7 +1,13 @@
-import type { Account } from '@linkcode/schema';
+import type { Account, AgentRuntimes } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { bindingAvailability } from '../capability';
-import { accountProtocol, fillTemplate, serviceById, templatePlaceholders } from '../catalog';
+import {
+  accountProtocol,
+  detectedLoginSuggestions,
+  fillTemplate,
+  serviceById,
+  templatePlaceholders,
+} from '../catalog';
 
 function account(overrides: Partial<Account>): Account {
   return {
@@ -88,6 +94,24 @@ describe('catalog helpers', () => {
     expect(fillTemplate(template, { account_id: '8f3a', gateway_id: 'prod' })).toBe(
       'https://gateway.ai.cloudflare.com/v1/8f3a/prod/anthropic',
     );
+  });
+
+  it('suggests detected CLI logins the pool does not represent yet', () => {
+    const runtimes: AgentRuntimes = {
+      'claude-code': {
+        status: 'available',
+        auth: { loggedIn: true, method: 'claude.ai', subscriptionType: 'max', email: 'x@y.z' },
+      },
+      codex: { status: 'available', auth: { loggedIn: false } },
+    };
+    const suggested = detectedLoginSuggestions([], runtimes);
+    expect(suggested.map(({ service, auth }) => [service.id, auth.email])).toEqual([
+      ['claude-sub', 'x@y.z'],
+    ]);
+    // An existing oauth account for the agent absorbs the suggestion; unprobed runtimes yield none.
+    const claudeSub = account({ credential: { type: 'oauth', agent: 'claude-code' } });
+    expect(detectedLoginSuggestions([claudeSub], runtimes)).toEqual([]);
+    expect(detectedLoginSuggestions([], undefined)).toEqual([]);
   });
 
   it('implies a protocol from the service when the endpoint is absent', () => {

@@ -434,6 +434,7 @@ export const en = {
       customService: 'Custom endpoint',
       unbound: 'Not connected',
       noMatches: 'No matching accounts.',
+      detected: 'Detected',
       accountMenu: 'Account actions',
       credential: 'Credential',
       credentialApiKey: 'API key',

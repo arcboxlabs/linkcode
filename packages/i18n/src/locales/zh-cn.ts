@@ -426,6 +426,7 @@ export const zhCN = {
       customService: '自定义端点',
       unbound: '未接入',
       noMatches: '没有匹配的账号。',
+      detected: '检测到',
       accountMenu: '账号操作',
       credential: '凭证',
       credentialApiKey: 'API 密钥',
