@@ -145,7 +145,8 @@ export function codexToolSettle(
     };
   }
 
-  // The announce can sit beyond this read's page window; settle with first-sight defaults.
+  // No announce: codex maps the whole rollout before paging, so this only happens when the
+  // announce row was torn/corrupt (readJsonlFile skips it) — settle with first-sight defaults.
   return {
     toolCallId: callId,
     title: callId,
