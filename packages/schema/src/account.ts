@@ -39,6 +39,12 @@ export const AccountSchema = z.object({
   id: z.string().min(1),
   /** User-facing name. */
   label: z.string().min(1),
+  /**
+   * Service-catalog key the account was created from (e.g. `openrouter`, `anthropic-api`). Drives
+   * brand presentation and, when `endpoint` is absent, implies the protocol a bare key speaks —
+   * an Anthropic key is not an OpenAI key. Absent for custom and pre-catalog accounts.
+   */
+  service: z.string().optional(),
   credential: AccountCredentialSchema,
   endpoint: AccountEndpointSchema.optional(),
   /** Per-account default model (vendor-specific), overriding the provider default when set. */
