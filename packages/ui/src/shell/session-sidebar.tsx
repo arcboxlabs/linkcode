@@ -169,7 +169,7 @@ export function DefaultHostFooter({
   if (!latency) return <HostFooter state={state} />;
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-xs">
+    <div className="flex h-10 shrink-0 items-center gap-2 border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-xs">
       <span className="size-2 rounded-full bg-success" />
       <span className="font-medium text-sidebar-foreground">Local Host</span>
       {state && <span className="text-muted-foreground">{state}</span>}
@@ -358,23 +358,23 @@ function RemoteHostList({
       {hosts.map((host) => {
         const selected = host.id === selectedHostId;
         return (
-          <button
+          <Button
             key={host.id}
-            type="button"
+            variant="ghost"
+            size="sm"
             disabled={!onSelectHost}
             onClick={() => onSelectHost?.(host.id)}
-            className={cn(
-              'flex h-8 items-center gap-2 rounded-md px-2 text-left outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring',
-              selected && 'bg-sidebar-accent',
-            )}
+            className={cn('w-full justify-start px-2', selected && 'bg-sidebar-accent')}
           >
             <span className="size-1.5 shrink-0 rounded-full bg-success" />
-            <span className="min-w-0 flex-1 truncate font-medium">{host.name}</span>
+            <span className="min-w-0 flex-1 truncate text-left font-medium">{host.name}</span>
             {host.statusLabel && (
-              <span className="shrink-0 text-muted-foreground text-xs">{host.statusLabel}</span>
+              <span className="shrink-0 font-normal text-muted-foreground text-xs">
+                {host.statusLabel}
+              </span>
             )}
             {selected && <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -398,7 +398,7 @@ function HostFooterRow({
 
 export function EmptyHostFooter(): React.ReactNode {
   return (
-    <div className="flex h-10 shrink-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-muted-foreground text-xs">
+    <div className="flex h-10 shrink-0 items-center gap-2 border-sidebar-border border-t px-[var(--lc-chrome-edge,1rem)] text-muted-foreground text-xs">
       <BotIcon className="size-3.5" />
       Local Host
     </div>

@@ -1,11 +1,11 @@
 import type { WorkspaceRecord } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { Input } from 'coss-ui/components/input';
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { FolderPlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { shellSidebarItemClassName } from '../shell-sidebar';
 
 export interface AddWorkspaceRowProps {
   /** Opens the native directory picker; desktop only — omit to keep the manual path field only. */
@@ -64,17 +64,19 @@ export function AddWorkspaceRow({
 
   if (!open) {
     return (
-      <button type="button" className={shellSidebarItemClassName} onClick={() => setOpen(true)}>
-        <span className="text-muted-foreground [&_svg]:size-4">
-          <FolderPlusIcon />
-        </span>
-        <span className="min-w-0 flex-1 truncate">{t('addWorkspace')}</span>
-      </button>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={() => setOpen(true)}>
+            <FolderPlusIcon className="text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{t('addWorkspace')}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-1.5 px-[var(--lc-sidebar-edge,0.5rem)] py-1">
+    <form onSubmit={handleSubmit} className="space-y-1.5 px-2 py-1">
       {onPickDirectory && (
         <Button
           type="button"

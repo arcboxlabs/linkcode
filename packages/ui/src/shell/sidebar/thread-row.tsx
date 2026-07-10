@@ -1,11 +1,14 @@
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
+import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
 import { PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
+import { withTooltip } from '../../chat/with-tooltip';
 import { cn } from '../../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
+import { ROW_ACTION_CLASS, ROW_HOVER_PE_CLASS, RowActionsCluster } from './row-actions';
 
 export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   starting: 'bg-info',
@@ -15,9 +18,6 @@ export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   stopped: 'bg-muted-foreground/25',
 };
 
-const ROW_ACTION_CLASS =
-  'flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
-
 export interface ThreadRowProps {
   session: SessionInfo;
   active: boolean;
@@ -26,6 +26,8 @@ export interface ThreadRowProps {
   sortIndex: number;
   /** The group's `collapseKey` — scopes dragging to the row's own group. */
   sortGroup: string;
+  /** Extra classes on the row `li` — the Projects tree indents its rows with `pl-3`. */
+  className?: string;
   onSelect: () => void;
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
   onClose: () => void;
@@ -39,6 +41,7 @@ export function ThreadRow({
   pinned,
   sortIndex,
   sortGroup,
+  className,
   onSelect,
   onClose,
   onTogglePin,
@@ -58,59 +61,55 @@ export function ThreadRow({
   });
 
   return (
-    <div
-      ref={sortableRef}
-      className={cn(
-        'group relative rounded-md',
-        active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/70',
+    <SidebarMenuItem ref={sortableRef} className={className}>
+      {withTooltip(
+        <SidebarMenuButton
+          isActive={active}
+          onClick={onSelect}
+          className={cn(
+            // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
+            // PingFang Medium and mixed-script titles read artificially bold.
+            'transition-none data-[active=true]:font-normal',
+            // Keep the row highlighted while the pointer is over the absolute action cluster.
+            'group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground',
+            // A pinned row shows its pin at rest, so it keeps the action space reserved.
+            pinned ? 'pe-12' : ROW_HOVER_PE_CLASS,
+          )}
+        >
+          <span className="relative shrink-0">
+            <AgentIcon kind={session.kind} variant="ghost" className="text-muted-foreground" />
+            <span
+              aria-hidden
+              className={cn(
+                'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar transition-colors',
+                SESSION_STATUS_DOT_CLASS[session.status],
+              )}
+            />
+          </span>
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+        </SidebarMenuButton>,
+        createdAtLabel,
       )}
-    >
-      {active && (
-        <span className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-primary" />
-      )}
-      <button
-        type="button"
-        title={createdAtLabel}
-        className="flex h-7 w-full min-w-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] pr-14 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onSelect}
-      >
-        <span className="relative shrink-0">
-          <AgentIcon kind={session.kind} variant="ghost" className="text-muted-foreground" />
-          <span
-            aria-hidden
-            className={cn(
-              'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar transition-colors',
-              SESSION_STATUS_DOT_CLASS[session.status],
-            )}
-          />
-        </span>
-        {/* No font-medium: IBM Plex Sans lacks CJK, so 500 falls back to PingFang
-            Medium and mixed-script titles read artificially bold. */}
-        <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
-      </button>
-      <div className="-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0.5">
+      <RowActionsCluster>
         <button
           type="button"
           aria-label={pinned ? t('unpinThread') : t('pinThread')}
           title={pinned ? t('unpinThread') : t('pinThread')}
           onClick={onTogglePin}
-          className={cn(
-            ROW_ACTION_CLASS,
-            pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
-          )}
+          className={cn(ROW_ACTION_CLASS, pinned && 'opacity-100')}
         >
-          <PinIcon className={cn('size-3.5', pinned && 'fill-current')} />
+          <PinIcon className={cn(pinned && 'fill-current')} />
         </button>
         <button
           type="button"
           aria-label={t('closeThread')}
           title={t('closeThread')}
           onClick={onClose}
-          className={cn(ROW_ACTION_CLASS, 'opacity-0 group-hover:opacity-100')}
+          className={ROW_ACTION_CLASS}
         >
-          <XIcon className="size-3.5" />
+          <XIcon />
         </button>
-      </div>
-    </div>
+      </RowActionsCluster>
+    </SidebarMenuItem>
   );
 }

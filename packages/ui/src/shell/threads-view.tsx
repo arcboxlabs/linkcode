@@ -254,6 +254,7 @@ function ThreadGroupSection({
       {group.visibleSessions.map((session, index) => (
         <ThreadRow
           key={session.sessionId}
+          className="pl-3"
           active={session.sessionId === activeId}
           pinned={pinnedSessionIds.includes(session.sessionId)}
           sortIndex={index}
@@ -266,6 +267,7 @@ function ThreadGroupSection({
       ))}
       {!group.collapsed && group.hasOverflow && (
         <ShowMoreToggle
+          className="pl-3"
           expanded={group.previewExpanded}
           onToggle={() => onTogglePreviewExpanded(group.key)}
         />
