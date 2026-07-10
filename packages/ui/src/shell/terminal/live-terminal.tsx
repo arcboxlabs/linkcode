@@ -1,10 +1,10 @@
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useRef } from 'react';
-import { createRestty } from 'restty';
-import type { PtyTransport } from 'restty/internal';
+import type { PtyTransport } from 'restty';
+import { Restty } from 'restty';
 import { cn } from '../../lib/cn';
-import { TERMINAL_FONT_SOURCES } from './fonts';
+import { resolveTerminalFonts } from './fonts';
 import type { TerminalSession } from './session';
 import { applyTerminalTheme } from './terminal-theme';
 
@@ -122,38 +122,44 @@ export function LiveTerminal({
       if (!frame || !container) return;
 
       let revealFrame = 0;
-      const restty = createRestty({
-        root: container,
-        fontSources: TERMINAL_FONT_SOURCES,
-        appOptions: {
-          autoResize: true,
-          fontPreset: 'none',
-          ptyTransport: createSessionPtyTransport(session),
-          // Connect once the renderer core is ready, so the shell's initial prompt (replayed from the
-          // client prebuffer on subscribe) isn't dropped before the WASM terminal can render it.
-          callbacks: {
-            onBackend() {
-              if (signal.aborted) return;
-              applyTerminalTheme(restty, frame);
-              restty.connectPty('session://terminal');
-              // Reveal only once a themed frame can be painted, so the default black frames restty
-              // draws while the WASM core boots are never shown.
-              revealFrame = requestAnimationFrame(() => {
-                frame.style.opacity = '1';
-              });
-            },
-          },
-        },
-      });
+      let restty: Restty | null = null;
+      void (async () => {
+        // Font resolution is async (Local Font Access probe) but cached module-wide, so only the
+        // first terminal of a renderer session pays for it.
+        const fonts = await resolveTerminalFonts();
+        if (signal.aborted) return;
+        restty = new Restty({
+          root: container,
+          // Init manually: connectPty must land only once the renderer core is ready, so the
+          // shell's initial prompt (replayed from the client prebuffer on subscribe) isn't
+          // dropped before the WASM terminal can render it.
+          surface: { autoInit: false },
+          terminal: { autoResize: true, fonts },
+          services: { ptyTransport: createSessionPtyTransport(session) },
+        });
+        const pane = restty.getActivePane();
+        if (!pane) return;
+        await pane.runtime.lifecycle.init();
+        if (signal.aborted) return;
+        applyTerminalTheme(restty, frame);
+        restty.connectPty('session://terminal');
+        // Reveal only once a themed frame can be painted, so the default black frames restty
+        // draws while the WASM core boots are never shown.
+        revealFrame = requestAnimationFrame(() => {
+          frame.style.opacity = '1';
+        });
+      })();
 
       // The terminal theme follows the app's `.dark` class, so re-apply whenever it flips
       // (light/dark mode change) — no need to tear down the terminal.
-      const unsubscribeThemeChange = subscribeThemeChange(() => applyTerminalTheme(restty, frame));
+      const unsubscribeThemeChange = subscribeThemeChange(() => {
+        if (restty) applyTerminalTheme(restty, frame);
+      });
 
       return () => {
         cancelAnimationFrame(revealFrame);
         unsubscribeThemeChange();
-        restty.destroy();
+        restty?.destroy();
       };
     },
     [session],

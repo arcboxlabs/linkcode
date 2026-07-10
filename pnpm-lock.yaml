@@ -924,8 +924,8 @@ importers:
         specifier: '>=5.0.0'
         version: 5.7.0(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       restty:
-        specifier: ^0.1.35
-        version: 0.1.35(typescript@6.0.3)
+        specifier: ^0.2.0
+        version: 0.2.0(typescript@6.0.3)
       streamdown:
         specifier: ^2.5.0
         version: 2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -8529,8 +8529,8 @@ packages:
     resolution: {integrity: sha512-6IzJLuGi4+R14vwagDHX+JrXmPVtPpn4mffDJ1UdR7/Edm87fl6yi8mMBIVvFtJaNTUvjughmW4hwLhRG7gC1Q==}
     engines: {node: '>=4'}
 
-  restty@0.1.35:
-    resolution: {integrity: sha512-IUr4NsdYCTErKBxuAd0eu/KdiGZhADBxA0ddSPEEIxAz8np3RT1bLiL9iIH+wglmUeSmHRmJzkPN7hGJJ+E/Yw==}
+  restty@0.2.0:
+    resolution: {integrity: sha512-PVD4+PxX0tFGd6qMDRywL+ME0PXSBX+QEjzJpfSy2i6dycOzyDYB0Z5RRuHZhzpqXeYN+wr20ffu8fixuWE+SQ==}
     engines: {bun: '>=1.2.0'}
 
   retry@0.12.0:
@@ -8994,8 +8994,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  text-shaper@0.1.22:
-    resolution: {integrity: sha512-OYxqPcNEox3tlXilxZVPNub8EU/A6Lxy9vlCAe362fiGI9f3pMav497wL7cecX0CPq1yVtiBn/lii/ZZUUk9bQ==}
+  text-shaper@0.1.23:
+    resolution: {integrity: sha512-kBItvxckAzS4JkcferjxbXN7tFir/RDUBcxk1aKe2Z9QqtmoddGezmwFOc7xBjKKF/Nf9JVDCWXnK6XNVzTjIA==}
     peerDependencies:
       typescript: ^5
 
@@ -18092,9 +18092,9 @@ snapshots:
       onetime: 2.0.1
       signal-exit: 3.0.7
 
-  restty@0.1.35(typescript@6.0.3):
+  restty@0.2.0(typescript@6.0.3):
     dependencies:
-      text-shaper: 0.1.22(typescript@6.0.3)
+      text-shaper: 0.1.23(typescript@6.0.3)
     transitivePeerDependencies:
       - typescript
 
@@ -18671,7 +18671,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  text-shaper@0.1.22(typescript@6.0.3):
+  text-shaper@0.1.23(typescript@6.0.3):
     dependencies:
       typescript: 6.0.3
 
