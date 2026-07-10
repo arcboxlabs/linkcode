@@ -184,8 +184,8 @@ export function DefaultHostFooter({
 
   return (
     <>
-      <SidebarSeparator />
-      <SidebarFooter>
+      <SidebarSeparator className="data-[orientation=horizontal]:w-auto" />
+      <SidebarFooter className="shrink-0 px-2 py-1">
         <div className="flex h-8 items-center gap-2 px-2 text-sm">
           <span className="size-2 rounded-full bg-success" />
           <span>Local Host</span>
@@ -240,13 +240,13 @@ export function HostFooter({
 
   return (
     <Popover>
-      <SidebarSeparator />
-      <SidebarFooter>
+      <SidebarSeparator className="data-[orientation=horizontal]:w-auto" />
+      <SidebarFooter className="shrink-0 px-2 py-1">
         <SidebarMenu>
           <SidebarMenuItem>
             <PopoverTrigger
               render={
-                <SidebarMenuButton className="hover:bg-transparent data-[state=open]:hover:bg-transparent">
+                <SidebarMenuButton className="hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset data-[state=open]:hover:bg-transparent">
                   <span className="size-2 rounded-full bg-success" />
                   <span>Local Host</span>
                   {state && <span className="text-muted-foreground">{state}</span>}
@@ -257,7 +257,13 @@ export function HostFooter({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <PopoverPopup side="top" align="start" sideOffset={8} className="w-80 text-sm">
+      <PopoverPopup
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-80 text-sm"
+        finalFocus={(closeType) => closeType === 'keyboard'}
+      >
         <div className="flex items-center gap-2 py-1.5">
           <span className="size-2 rounded-full bg-success" />
           <span className="font-semibold">Local Host</span>
@@ -432,8 +438,8 @@ function HostFooterRow({
 export function EmptyHostFooter(): React.ReactNode {
   return (
     <>
-      <SidebarSeparator />
-      <SidebarFooter>
+      <SidebarSeparator className="data-[orientation=horizontal]:w-auto" />
+      <SidebarFooter className="shrink-0 px-2 py-1">
         <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
           <BotIcon className="size-4" />
           Local Host
