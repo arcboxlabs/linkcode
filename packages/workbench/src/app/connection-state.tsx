@@ -1,7 +1,11 @@
 import { DAEMON_DEFAULT_URL } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { useTranslations } from 'use-intl';
-import { useWorkbenchRuntimeRetry, useWorkbenchRuntimeStatus } from '../runtime/provider';
+import {
+  useWorkbenchRuntimeEndpoint,
+  useWorkbenchRuntimeRetry,
+  useWorkbenchRuntimeStatus,
+} from '../runtime/provider';
 
 /** Default connection-gate fallback: shown while the transport connects or after it errored. */
 export function ConnectionState({
@@ -13,6 +17,7 @@ export function ConnectionState({
   managedHost?: boolean;
 }): React.ReactNode {
   const status = useWorkbenchRuntimeStatus();
+  const endpoint = useWorkbenchRuntimeEndpoint();
   const retry = useWorkbenchRuntimeRetry();
   const t = useTranslations('workbench.connection');
   const common = useTranslations('common');
@@ -26,9 +31,9 @@ export function ConnectionState({
           <div className="space-y-3">
             <p className="text-destructive-foreground text-sm">
               {managedHost
-                ? t('errorManaged', { url: daemonUrl ?? DAEMON_DEFAULT_URL })
+                ? t('errorManaged', { url: endpoint ?? daemonUrl ?? DAEMON_DEFAULT_URL })
                 : t('error', {
-                    url: daemonUrl ?? DAEMON_DEFAULT_URL,
+                    url: endpoint ?? daemonUrl ?? DAEMON_DEFAULT_URL,
                     command: common('daemonCommand'),
                   })}
             </p>

@@ -4,7 +4,7 @@ import type { BrowserWindow } from 'electron';
 import { app, dialog, Notification } from 'electron';
 import { applyThemePreference } from './appearance';
 import { resolveDaemonUrl } from './daemon-discovery';
-import { isDaemonManaged, syncDaemonSupervisor } from './daemon-supervisor';
+import { isDaemonManaged, retryDaemonSupervisor } from './daemon-supervisor';
 import { ensureDefaultPickerDirectory } from './default-picker-directory';
 import { getSettings, setSettings } from './settings';
 import { checkForUpdates } from './updater';
@@ -43,13 +43,14 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
         const next = setSettings(patch);
         applyThemePreference(next.theme);
         // Clearing the daemonUrl override makes this app the daemon's manager mid-session.
-        syncDaemonSupervisor();
+        if (patch.daemonUrl === null) retryDaemonSupervisor();
         return next;
       },
     },
     daemon: {
       resolveUrl: () => resolveDaemonUrl(),
       isManaged: () => isDaemonManaged(),
+      retry: () => retryDaemonSupervisor(),
     },
     notifications: {
       notify({ title, body, clickToken }) {

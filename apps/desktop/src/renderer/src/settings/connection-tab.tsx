@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useWorkbenchRuntimeEndpoint } from '@linkcode/workbench';
 import { rhfErrorsToFormErrors } from '@linkcode/workbench/form';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from 'coss-ui/components/field';
@@ -20,7 +21,7 @@ type ConnectionForm = z.infer<typeof connectionSchema>;
 
 export function ConnectionTab(): React.ReactNode {
   const t = useTranslations('settings.connection');
-  const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
+  const daemonUrl = useWorkbenchRuntimeEndpoint();
   const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);
   const setDaemonUrl = useDesktopSettingsStore((state) => state.setDaemonUrl);
 
@@ -38,8 +39,8 @@ export function ConnectionTab(): React.ReactNode {
     <Form
       className="flex flex-col gap-4"
       errors={rhfErrorsToFormErrors(errors)}
-      onSubmit={handleSubmit(({ daemonUrl: next }) => {
-        setDaemonUrl(next === '' ? null : next);
+      onSubmit={handleSubmit(async ({ daemonUrl: next }) => {
+        await setDaemonUrl(next === '' ? null : next);
         // Rebase the form's baseline to the saved value so `isDirty` compares against the current
         // setting, not the mount-time default — otherwise re-typing the old value falsely reads clean.
         reset({ daemonUrl: next });

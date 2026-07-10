@@ -51,6 +51,8 @@ export interface SystemBridge {
      * user's to run.
      */
     isManaged(): Promise<boolean>;
+    /** Re-arm the managed daemon after an explicit connection retry; no-op when unmanaged. */
+    retry(): Promise<void>;
     /**
      * Subscribe to daemon runtime-file changes pushed from main (fs.watch on ~/.linkcode).
      * Fired when a daemon (re)starts or stops — re-run `resolveUrl` on it.

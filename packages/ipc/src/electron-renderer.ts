@@ -77,6 +77,7 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
         (ipcRenderer.sendSync(DAEMON_URL_SNAPSHOT_CHANNEL) as string | undefined) ??
         DAEMON_DEFAULT_URL,
       isManaged: () => invoke.daemonIsManaged(),
+      retry: () => invoke.daemonRetry(),
       onRuntimeChanged(cb) {
         const handler: IpcRendererListener = () => cb();
         ipcRenderer.on(DAEMON_RUNTIME_CHANGED_CHANNEL, handler);

@@ -45,6 +45,7 @@ export function bindElectronSystemIpc({
     appPlatform: () => ctx.app.getPlatform(),
     appCheckForUpdates: () => ctx.app.checkForUpdates(),
     daemonIsManaged: () => ctx.daemon.isManaged(),
+    daemonRetry: () => ctx.daemon.retry(),
     settingsGet: () => ctx.settings.get(),
     settingsSet: (patch) => ctx.settings.set(DesktopSettingsPatchSchema.parse(patch)),
     notificationsNotify: (notification) =>
