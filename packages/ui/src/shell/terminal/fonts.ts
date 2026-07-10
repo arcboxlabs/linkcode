@@ -82,8 +82,14 @@ async function queryLocalFontsSafe(): Promise<readonly LocalFontData[]> {
   }
 }
 
+let terminalFontsPromise: Promise<ResttyFontInput[]> | null = null;
+
 async function buildTerminalFonts(): Promise<ResttyFontInput[]> {
   const local = await queryLocalFontsSafe();
+  // An empty probe usually means a transient failure (Electron grants Local Font Access without
+  // a gesture, but a denial or a flaky first call shouldn't pin the degraded bundled-only list
+  // for the whole session) — serve the fallback now, retry on the next terminal open.
+  if (local.length === 0) terminalFontsPromise = null;
   const symbols = pickLocalFamily(local, SYMBOLS_FAMILIES);
   const cjk = pickLocalFamily(local, CJK_FAMILIES);
   const colorEmoji = pickLocalFamily(local, COLOR_EMOJI_FAMILIES);
@@ -104,8 +110,6 @@ async function buildTerminalFonts(): Promise<ResttyFontInput[]> {
     ...(mono ? [{ family: mono }] : []),
   ];
 }
-
-let terminalFontsPromise: Promise<ResttyFontInput[]> | null = null;
 
 /** Resolve the terminal font list once per renderer session (installed fonts don't change mid-run). */
 export function resolveTerminalFonts(): Promise<ResttyFontInput[]> {
