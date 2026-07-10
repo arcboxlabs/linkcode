@@ -44,8 +44,10 @@ describe('version parsers', () => {
 describe('parseClaudeAuthStatus', () => {
   it('extracts login fields from a signed-in payload', () => {
     expect(
-      parseClaudeAuthStatus('{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}'),
-    ).toEqual({ loggedIn: true, method: 'claude.ai', subscriptionType: 'max' });
+      parseClaudeAuthStatus(
+        '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max","email":"x@y.z","orgId":"o1"}',
+      ),
+    ).toEqual({ loggedIn: true, method: 'claude.ai', subscriptionType: 'max', email: 'x@y.z' });
   });
 
   it('preserves a signed-out status', () => {

@@ -1,4 +1,4 @@
-import type { Accounts, ProvidersConfig } from '@linkcode/schema';
+import type { Account, Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
 import { ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Input } from 'coss-ui/components/input';
@@ -13,6 +13,7 @@ export function AccountMasterList({
   accounts,
   loading,
   providers,
+  runtimes,
   selectedId,
   onSelect,
   onAdd,
@@ -20,6 +21,7 @@ export function AccountMasterList({
   accounts: Accounts;
   loading: boolean;
   providers: ProvidersConfig | undefined;
+  runtimes: AgentRuntimes | undefined;
   selectedId: string | undefined;
   onSelect: (id: string) => void;
   onAdd: () => void;
@@ -27,6 +29,16 @@ export function AccountMasterList({
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
   const [query, setQuery] = useState('');
+
+  // An oauth card's subline is the CLI's live identity when the probe knows it.
+  const subline = (account: Account): string => {
+    const base = serviceById(account.service)?.label ?? t('customService');
+    if (account.credential.type !== 'oauth') return base;
+    const auth = runtimes?.[account.credential.agent]?.auth;
+    if (auth === undefined) return base;
+    if (!auth.loggedIn) return `${base} · ${t('loggedOut')}`;
+    return auth.email ?? base;
+  };
 
   const needle = query.trim().toLowerCase();
   const rows = needle
@@ -81,7 +93,7 @@ export function AccountMasterList({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium text-sm">{account.label}</span>
                     <span className="block truncate text-muted-foreground text-xs">
-                      {serviceById(account.service)?.label ?? t('customService')}
+                      {subline(account)}
                     </span>
                     <span className="mt-1 flex flex-wrap gap-1">
                       {bound.length === 0 ? (

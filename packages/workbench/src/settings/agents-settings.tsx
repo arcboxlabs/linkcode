@@ -47,6 +47,11 @@ export function AgentsSettingsPanel({
           const translated =
             boundAccount !== undefined &&
             bindingAvailability(boundAccount, kind).tier === 'translate';
+          // With no bound account the agent follows the CLI login — show who that is when probed.
+          const cliIdentity =
+            boundAccount === undefined && runtime?.auth?.loggedIn === true
+              ? runtime.auth.email
+              : undefined;
           return (
             <div
               key={kind}
@@ -67,6 +72,7 @@ export function AgentsSettingsPanel({
                 >
                   {boundAccount ? boundAccount.label : t('followCli')}
                   {translated ? ` · ${t('translated')}` : ''}
+                  {cliIdentity === undefined ? '' : ` · ${cliIdentity}`}
                 </Button>
               </div>
               <Switch

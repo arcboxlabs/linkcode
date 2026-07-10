@@ -272,7 +272,9 @@ function OauthRows({
         <DetailRow label={t('loginState')}>
           <span className="text-sm">
             {auth.loggedIn
-              ? [t('loggedIn'), auth.method, auth.subscriptionType].filter(Boolean).join(' · ')
+              ? [t('loggedIn'), auth.email, auth.method, auth.subscriptionType]
+                  .filter(Boolean)
+                  .join(' · ')
               : t('loggedOut')}
           </span>
         </DetailRow>

@@ -90,6 +90,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           accounts={pool}
           loading={accountsLoading}
           providers={providers}
+          runtimes={runtimes}
           selectedId={selected?.id}
           onSelect={select}
           onAdd={startAdd}

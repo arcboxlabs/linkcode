@@ -206,7 +206,9 @@ function OauthCreateForm({
       <p className="text-muted-foreground text-xs">
         {auth
           ? auth.loggedIn
-            ? [t('loggedIn'), auth.method, auth.subscriptionType].filter(Boolean).join(' · ')
+            ? [t('loggedIn'), auth.email, auth.method, auth.subscriptionType]
+                .filter(Boolean)
+                .join(' · ')
             : t('oauthLoggedOutHint')
           : t('oauthUnprobedHint')}
       </p>
