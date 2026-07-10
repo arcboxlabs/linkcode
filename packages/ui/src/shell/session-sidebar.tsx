@@ -133,7 +133,7 @@ export function SessionSidebar({
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent className="p-2">
+      <SidebarContent>
         <ThreadsView
           groups={threadGroups}
           workspacesLoading={workspacesLoading}

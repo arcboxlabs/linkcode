@@ -3,6 +3,12 @@ import type { DragEndEvent, DragOverEvent } from '@dnd-kit/react';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+} from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { useTranslations } from 'use-intl';
@@ -136,20 +142,18 @@ export function ThreadsView({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="space-y-4">
-        <div className="space-y-3">
-          <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
-            {t('projects')}
-          </div>
+      <SidebarGroup>
+        <SidebarGroupLabel className="text-muted-foreground">{t('projects')}</SidebarGroupLabel>
+        <SidebarGroupContent className="space-y-2">
           {projectGroups.length === 0 && workspacesLoading && (
             <div className="space-y-1">
               {createFixedArray(3).map((i) => (
-                <Skeleton key={i} className="h-6 w-full rounded-md" />
+                <Skeleton key={i} className="h-7 w-full rounded-lg" />
               ))}
             </div>
           )}
           {projectGroups.length === 0 && !workspacesLoading && (
-            <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-6 text-center text-muted-foreground text-sm">
+            <div className="px-3 py-6 text-center text-muted-foreground text-sm">
               {t('emptyTitle')}
             </div>
           )}
@@ -175,25 +179,25 @@ export function ThreadsView({
             onPickDirectory={onPickDirectory}
             onRegisterWorkspace={onRegisterWorkspace}
           />
-        </div>
+        </SidebarGroupContent>
+      </SidebarGroup>
 
-        <ChatsSection
-          workspace={chatGroup?.workspace ?? null}
-          sessions={chatGroup?.visibleSessions ?? []}
-          isLoading={sessionsLoading}
-          hasOverflow={chatGroup?.hasOverflow ?? false}
-          previewExpanded={chatGroup?.previewExpanded ?? false}
-          groupKey={chatGroup?.key ?? 'chat'}
-          sortKey={chatGroup?.collapseKey ?? 'chat'}
-          activeId={activeId}
-          pinnedSessionIds={pinnedSessionIds}
-          onSelect={onSelect}
-          onClose={onClose}
-          onToggleSessionPinned={onToggleSessionPinned}
-          onStartDraft={onStartDraft}
-          onTogglePreviewExpanded={onTogglePreviewExpanded}
-        />
-      </div>
+      <ChatsSection
+        workspace={chatGroup?.workspace ?? null}
+        sessions={chatGroup?.visibleSessions ?? []}
+        isLoading={sessionsLoading}
+        hasOverflow={chatGroup?.hasOverflow ?? false}
+        previewExpanded={chatGroup?.previewExpanded ?? false}
+        groupKey={chatGroup?.key ?? 'chat'}
+        sortKey={chatGroup?.collapseKey ?? 'chat'}
+        activeId={activeId}
+        pinnedSessionIds={pinnedSessionIds}
+        onSelect={onSelect}
+        onClose={onClose}
+        onToggleSessionPinned={onToggleSessionPinned}
+        onStartDraft={onStartDraft}
+        onTogglePreviewExpanded={onTogglePreviewExpanded}
+      />
     </DragDropProvider>
   );
 }
@@ -234,7 +238,7 @@ function ThreadGroupSection({
   });
 
   return (
-    <section ref={sectionRef}>
+    <SidebarMenu ref={sectionRef} className="gap-0.5">
       <ThreadGroupHeader
         dragHandleRef={workspace ? handleRef : undefined}
         title={title}
@@ -247,31 +251,25 @@ function ThreadGroupSection({
         onArchive={workspace ? () => onArchiveWorkspace(workspace.workspaceId) : undefined}
         BranchStatusComponent={BranchStatusComponent}
       />
-      <div className="pl-3">
-        {group.visibleSessions.length > 0 && (
-          <div className="space-y-0.5">
-            {group.visibleSessions.map((session, index) => (
-              <ThreadRow
-                key={session.sessionId}
-                active={session.sessionId === activeId}
-                pinned={pinnedSessionIds.includes(session.sessionId)}
-                sortIndex={index}
-                sortGroup={group.collapseKey}
-                session={session}
-                onSelect={() => onSelect(session.sessionId)}
-                onClose={() => onClose(session.sessionId)}
-                onTogglePin={() => onToggleSessionPinned(session.sessionId)}
-              />
-            ))}
-          </div>
-        )}
-        {!group.collapsed && group.hasOverflow && (
-          <ShowMoreToggle
-            expanded={group.previewExpanded}
-            onToggle={() => onTogglePreviewExpanded(group.key)}
-          />
-        )}
-      </div>
-    </section>
+      {group.visibleSessions.map((session, index) => (
+        <ThreadRow
+          key={session.sessionId}
+          active={session.sessionId === activeId}
+          pinned={pinnedSessionIds.includes(session.sessionId)}
+          sortIndex={index}
+          sortGroup={group.collapseKey}
+          session={session}
+          onSelect={() => onSelect(session.sessionId)}
+          onClose={() => onClose(session.sessionId)}
+          onTogglePin={() => onToggleSessionPinned(session.sessionId)}
+        />
+      ))}
+      {!group.collapsed && group.hasOverflow && (
+        <ShowMoreToggle
+          expanded={group.previewExpanded}
+          onToggle={() => onTogglePreviewExpanded(group.key)}
+        />
+      )}
+    </SidebarMenu>
   );
 }

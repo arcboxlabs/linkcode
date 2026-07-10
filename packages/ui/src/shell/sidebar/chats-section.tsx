@@ -1,4 +1,11 @@
 import type { SessionId, SessionInfo, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import {
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+} from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { PlusIcon } from 'lucide-react';
@@ -54,56 +61,53 @@ export function ChatsSection({
   const t = useTranslations('workbench.sidebar');
 
   return (
-    <section>
-      <div className="flex h-7 items-center gap-1.5 px-[var(--lc-sidebar-edge,0.5rem)]">
-        <span className="min-w-0 flex-1 truncate font-medium text-muted-foreground text-xs">
-          {t('chats')}
-        </span>
-        {workspace && (
-          <button
-            type="button"
-            aria-label={t('newChat')}
-            title={t('newChat')}
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => onStartDraft(workspace.workspaceId)}
-          >
-            <PlusIcon className="size-3.5" />
-          </button>
+    <SidebarGroup>
+      <SidebarGroupLabel className="text-muted-foreground">{t('chats')}</SidebarGroupLabel>
+      {workspace && (
+        <SidebarGroupAction
+          aria-label={t('newChat')}
+          title={t('newChat')}
+          className="text-muted-foreground"
+          onClick={() => onStartDraft(workspace.workspaceId)}
+        >
+          <PlusIcon />
+        </SidebarGroupAction>
+      )}
+      <SidebarGroupContent>
+        {sessions.length > 0 ? (
+          <SidebarMenu className="gap-0.5">
+            {sessions.map((session, index) => (
+              <ThreadRow
+                key={session.sessionId}
+                active={session.sessionId === activeId}
+                pinned={pinnedSessionIds.includes(session.sessionId)}
+                sortIndex={index}
+                sortGroup={sortKey}
+                session={session}
+                onSelect={() => onSelect(session.sessionId)}
+                onClose={() => onClose(session.sessionId)}
+                onTogglePin={() => onToggleSessionPinned(session.sessionId)}
+              />
+            ))}
+            {hasOverflow && (
+              <ShowMoreToggle
+                expanded={previewExpanded}
+                onToggle={() => onTogglePreviewExpanded(groupKey)}
+              />
+            )}
+          </SidebarMenu>
+        ) : isLoading ? (
+          <div className="space-y-0.5">
+            {createFixedArray(3).map((i) => (
+              <Skeleton key={i} className="h-8 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <div className="px-3 py-3 text-center text-muted-foreground text-xs">
+            {t('chatsEmptyHint')}
+          </div>
         )}
-      </div>
-      {sessions.length > 0 ? (
-        <div className="space-y-0.5">
-          {sessions.map((session, index) => (
-            <ThreadRow
-              key={session.sessionId}
-              active={session.sessionId === activeId}
-              pinned={pinnedSessionIds.includes(session.sessionId)}
-              sortIndex={index}
-              sortGroup={sortKey}
-              session={session}
-              onSelect={() => onSelect(session.sessionId)}
-              onClose={() => onClose(session.sessionId)}
-              onTogglePin={() => onToggleSessionPinned(session.sessionId)}
-            />
-          ))}
-        </div>
-      ) : isLoading ? (
-        <div className="space-y-0.5">
-          {createFixedArray(3).map((i) => (
-            <Skeleton key={i} className="h-7 w-full rounded-md" />
-          ))}
-        </div>
-      ) : (
-        <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-3 text-center text-muted-foreground text-xs">
-          {t('chatsEmptyHint')}
-        </div>
-      )}
-      {hasOverflow && (
-        <ShowMoreToggle
-          expanded={previewExpanded}
-          onToggle={() => onTogglePreviewExpanded(groupKey)}
-        />
-      )}
-    </section>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
