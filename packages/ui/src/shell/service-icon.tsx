@@ -1,7 +1,7 @@
 /// <reference types="unplugin-icons/types/react" />
 import AnthropicGlyph from '~icons/lobe-icons/anthropic';
-import ClaudeGlyph from '~icons/lobe-icons/claude';
-import CloudflareGlyph from '~icons/lobe-icons/cloudflare';
+import ClaudeColorGlyph from '~icons/lobe-icons/claude-color';
+import CloudflareColorGlyph from '~icons/lobe-icons/cloudflare-color';
 import OpenAiGlyph from '~icons/lobe-icons/openai';
 import OpenRouterGlyph from '~icons/lobe-icons/openrouter';
 import VercelGlyph from '~icons/lobe-icons/vercel';
@@ -10,18 +10,19 @@ import { cn } from '../lib/cn';
 
 /**
  * Brand glyphs keyed by `Account.service` (the workbench service-catalog id — a string join key,
- * like `AgentKind` for `AgentIcon`). A missing key deliberately falls back to initials derived
- * from the label, so custom services need no wiring here.
+ * like `AgentKind` for `AgentIcon`). Brand-color variants where lobe-icons ships one (claude,
+ * cloudflare); the rest are officially monochrome marks and render in currentColor. A missing key
+ * deliberately falls back to initials derived from the label, so custom services need no wiring.
  */
 const SERVICE_GLYPHS: Record<string, typeof AnthropicGlyph> = {
-  'claude-sub': ClaudeGlyph,
+  'claude-sub': ClaudeColorGlyph,
   'chatgpt-sub': OpenAiGlyph,
   'anthropic-api': AnthropicGlyph,
   'openai-api': OpenAiGlyph,
   xai: XaiGlyph,
   openrouter: OpenRouterGlyph,
   'vercel-gateway': VercelGlyph,
-  'cloudflare-gateway': CloudflareGlyph,
+  'cloudflare-gateway': CloudflareColorGlyph,
 };
 
 const WHITESPACE = /\s+/;
