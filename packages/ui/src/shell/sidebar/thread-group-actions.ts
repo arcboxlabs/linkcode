@@ -2,7 +2,7 @@ import type { SessionId, WorkspaceId } from '@linkcode/schema';
 import type { BranchStatusComponentType } from './branch-status';
 
 /** The sidebar's top-level collapsible sections. Mirrored by the workbench collapse store. */
-export type SidebarSectionKey = 'projects' | 'chats';
+export type SidebarSectionKey = 'pinned' | 'projects' | 'chats';
 
 /**
  * Session/group interaction callbacks shared verbatim by `SessionSidebar`, `ThreadsView`, and the
@@ -27,8 +27,8 @@ export interface ThreadGroupActions {
 /** The per-group selection/pin state that travels alongside `ThreadGroupActions`. */
 export interface ThreadGroupState {
   activeId: SessionId | null;
-  /** Threads pinned to the top of their group, in pin order. */
+  /** Threads listed in the "Pinned" section, in pin order. */
   pinnedSessionIds: readonly SessionId[];
-  /** Top-level sections currently collapsed; both default open. */
+  /** Top-level sections currently collapsed; all default open. */
   collapsedSections: readonly SidebarSectionKey[];
 }

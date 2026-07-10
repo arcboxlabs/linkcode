@@ -238,6 +238,7 @@ export const zhCN = {
       emptyTitle: '暂无线程',
       projects: '项目',
       chats: '聊天',
+      pinned: '置顶',
       newChat: '新聊天',
       chatsEmptyHint: '暂无聊天',
       pinThread: '置顶线程',

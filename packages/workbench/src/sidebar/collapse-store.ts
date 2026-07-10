@@ -7,17 +7,17 @@ import { create } from 'zustand';
 const PersistedCollapsedGroupsSchema = z
   .object({
     collapsedKeys: z.array(z.string()),
-    collapsedSections: z.array(z.enum(['projects', 'chats'])),
+    collapsedSections: z.array(z.enum(['pinned', 'projects', 'chats'])),
   })
   .partial();
 type PersistedCollapsedGroups = z.infer<typeof PersistedCollapsedGroupsSchema>;
 
-export type SidebarSection = 'projects' | 'chats';
+export type SidebarSection = 'pinned' | 'projects' | 'chats';
 
 export interface SidebarGroupCollapseState {
   /** Group `collapseKey`s (see `ThreadGroup`) currently collapsed. */
   collapsedKeys: string[];
-  /** Top-level sidebar sections currently collapsed; both default open. */
+  /** Top-level sidebar sections currently collapsed; all default open. */
   collapsedSections: SidebarSection[];
   toggleCollapsed: (key: string) => void;
   toggleSectionCollapsed: (section: SidebarSection) => void;

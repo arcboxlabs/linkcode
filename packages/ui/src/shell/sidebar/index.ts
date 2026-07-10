@@ -6,6 +6,8 @@ export type { ChatsSectionProps } from './chats-section';
 export { ChatsSection } from './chats-section';
 export type { ThreadGroupHeaderProps } from './group-header';
 export { ThreadGroupHeader } from './group-header';
+export type { PinnedSectionProps } from './pinned-section';
+export { PinnedSection } from './pinned-section';
 export { SectionAccordionTrigger } from './section-header';
 export type { ShowMoreToggleProps } from './show-more-toggle';
 export { ShowMoreToggle } from './show-more-toggle';

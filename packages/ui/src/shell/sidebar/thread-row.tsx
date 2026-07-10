@@ -68,8 +68,7 @@ export function ThreadRow({
             // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
             // PingFang Medium and mixed-script titles read artificially bold.
             'data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
-            // A pinned row shows its pin at rest, so it keeps the action space reserved.
-            pinned ? 'pe-15 sm:pe-13' : ROW_HOVER_PE_CLASS,
+            ROW_HOVER_PE_CLASS,
           )}
         >
           <span className="relative shrink-0">
@@ -91,7 +90,7 @@ export function ThreadRow({
           aria-label={pinned ? t('unpinThread') : t('pinThread')}
           title={pinned ? t('unpinThread') : t('pinThread')}
           onClick={onTogglePin}
-          className={cn(ROW_ACTION_CLASS, pinned && 'opacity-100')}
+          className={ROW_ACTION_CLASS}
           size="icon-xs"
           variant="ghost"
         >

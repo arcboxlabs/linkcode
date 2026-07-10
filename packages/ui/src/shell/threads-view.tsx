@@ -14,6 +14,7 @@ import type { SidebarSectionKey, ThreadGroupActions, ThreadGroupState } from './
 import {
   AddProjectMenu,
   ChatsSection,
+  PinnedSection,
   SectionAccordionTrigger,
   ShowMoreToggle,
   SIDEBAR_SORTABLE_SENSORS,
@@ -21,7 +22,11 @@ import {
   ThreadRow,
 } from './sidebar';
 
-const SIDEBAR_SECTIONS = ['projects', 'chats'] as const satisfies readonly SidebarSectionKey[];
+const SIDEBAR_SECTIONS = [
+  'pinned',
+  'projects',
+  'chats',
+] as const satisfies readonly SidebarSectionKey[];
 
 /** One workspace's sessions, or the fallback bucket (`workspace: null`) for an unmatched `cwd`. */
 export interface ThreadGroupViewModel {
@@ -39,6 +44,8 @@ export interface ThreadGroupViewModel {
   previewExpanded: boolean;
   /** True for the daemon-owned chat workspace's group — rendered in "Chats", not "Projects". */
   isChat: boolean;
+  /** True for the synthetic pinned group — rendered as the top-level "Pinned" section. */
+  isPinned: boolean;
 }
 
 export interface ThreadsViewProps extends ThreadGroupActions, ThreadGroupState {
@@ -88,9 +95,11 @@ export function ThreadsView({
   const t = useTranslations('workbench.sidebar');
   const openSections = SIDEBAR_SECTIONS.filter((section) => !collapsedSections.includes(section));
   const projectGroups: ThreadGroupViewModel[] = [];
+  let pinnedGroup: ThreadGroupViewModel | undefined;
   let chatGroup: ThreadGroupViewModel | undefined;
   for (const group of groups) {
-    if (group.isChat) chatGroup = group;
+    if (group.isPinned) pinnedGroup = group;
+    else if (group.isChat) chatGroup = group;
     else projectGroups.push(group);
   }
   const projectGroupKeys = projectGroups.map((group) => group.collapseKey);
@@ -162,6 +171,21 @@ export function ThreadsView({
           }
         }}
       >
+        {pinnedGroup && (
+          <PinnedSection
+            sessions={pinnedGroup.visibleSessions}
+            hasOverflow={pinnedGroup.hasOverflow}
+            previewExpanded={pinnedGroup.previewExpanded}
+            groupKey={pinnedGroup.key}
+            sortKey={pinnedGroup.collapseKey}
+            activeId={activeId}
+            onSelect={onSelect}
+            onClose={onClose}
+            onToggleSessionPinned={onToggleSessionPinned}
+            onTogglePreviewExpanded={onTogglePreviewExpanded}
+          />
+        )}
+
         <AccordionItem value="projects" className="border-b-0" render={<SidebarGroup />}>
           <SectionAccordionTrigger>{t('projects')}</SectionAccordionTrigger>
           <AddProjectMenu

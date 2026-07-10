@@ -38,7 +38,7 @@ import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
-import { groupThreadsByWorkspace } from '../sidebar/group-threads';
+import { extractPinnedGroup, groupThreadsByWorkspace } from '../sidebar/group-threads';
 import { useSidebarOrderStore } from '../sidebar/order-store';
 import { applyThreadDrag, orderGroups, orderThreads } from '../sidebar/ordering';
 import { useSidebarPinStore } from '../sidebar/pin-store';
@@ -169,8 +169,9 @@ function WorkbenchSessionSurface({
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
-    const groups = groupThreadsByWorkspace(sessions.sessions, workspaces ?? []);
-    return orderGroups(groups, groupOrder).map((group) => {
+    const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
+    const groups = orderGroups(groupThreadsByWorkspace(rest, workspaces ?? []), groupOrder);
+    return (pinnedGroup ? [pinnedGroup, ...groups] : groups).map((group) => {
       const collapsed = collapsedKeys.includes(group.collapseKey);
       const previewExpanded = previewExpandedKeys.has(group.key);
       const ordered = orderThreads(
