@@ -1,6 +1,8 @@
 import ibmPlexMono400 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2?inline';
 import ibmPlexMono700 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-700-normal.woff2?inline';
 import type { ResttyFontInput } from 'restty';
+// Not in git: fetched (pinned tag + sha256) by scripts/fetch-noto-emoji.mjs on install. If the
+// import fails to resolve, run `pnpm -F @linkcode/ui postinstall`.
 import notoEmojiTtf from './vendor/noto-emoji-regular.ttf?inline';
 
 function decodeDataUri(uri: string): ArrayBuffer {

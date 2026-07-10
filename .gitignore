@@ -70,3 +70,4 @@ devenv.local.yaml
 
 # Claude Code local state (plans, worktrees) — never tracked or linted
 .claude/worktrees/
+packages/ui/src/shell/terminal/vendor/noto-emoji-regular.ttf
