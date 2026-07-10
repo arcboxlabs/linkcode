@@ -1,8 +1,8 @@
 import type { AgentEvent, SessionId } from '@linkcode/schema';
-import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
-import { LinkCodeClient } from '../client';
 import { createConversationStore } from '../conversation-store';
+import { createConnectedLocalClient } from './local-client';
 
 const sessionId = 'sess-store' as SessionId;
 
@@ -17,10 +17,7 @@ function tick(): Promise<void> {
 }
 
 async function harness() {
-  const [clientTransport, serverTransport] = createLocalTransportPair();
-  const client = new LinkCodeClient(clientTransport);
-  await client.connect();
-  await serverTransport.connect();
+  const { client, serverTransport } = await createConnectedLocalClient();
   return {
     client,
     send(this: void, event: AgentEvent) {

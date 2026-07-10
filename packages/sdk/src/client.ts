@@ -80,6 +80,11 @@ export class LinkCodeSdkClient {
     return this.raw.connect();
   }
 
+  /** Observe an unexpected close after the client has completed its LinkCode handshake. */
+  onClose(cb: (error: Error) => void): () => void {
+    return this.raw.onClose(cb);
+  }
+
   dispose(): void {
     this.raw.dispose();
   }
