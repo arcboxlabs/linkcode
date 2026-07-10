@@ -2,8 +2,16 @@ import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
 import { Avatar, AvatarFallback, AvatarImage } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
+import { Kbd } from 'coss-ui/components/kbd';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { Separator } from 'coss-ui/components/separator';
+import {
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from 'coss-ui/components/sidebar';
 import {
   BotIcon,
   CheckIcon,
@@ -18,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import { ShellSidebar, shellSidebarItemClassName } from './shell-sidebar';
+import { ShellSidebar } from './shell-sidebar';
 import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
 import type { ThreadGroupViewModel } from './threads-view';
 import { ThreadsView } from './threads-view';
@@ -101,90 +109,53 @@ export function SessionSidebar({
       }
       footer={footer}
     >
-      <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1">
-        <SidebarMenuButton
-          icon={<FilePlus2Icon />}
-          label="New Task"
-          onClick={() => onStartDraft()}
-        />
-        <SidebarMenuButton
-          disabled={!onOpenSearch}
-          icon={<SearchIcon />}
-          label="Search"
-          shortcut={searchShortcut}
-          onClick={onOpenSearch}
-        />
-        <SidebarMenuButton disabled icon={<SparklesIcon />} label="Automation" />
-      </div>
+      <SidebarHeader className="pb-1">
+        <SidebarMenu className="gap-0.5">
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => onStartDraft()}>
+              <FilePlus2Icon className="text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">New Task</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton disabled={!onOpenSearch} onClick={onOpenSearch}>
+              <SearchIcon className="text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">Search</span>
+              {searchShortcut && <Kbd>{searchShortcut}</Kbd>}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton disabled>
+              <SparklesIcon className="text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">Automation</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto px-[var(--lc-sidebar-edge,0.5rem)] pt-[var(--lc-sidebar-edge,0.5rem)] pb-[var(--lc-sidebar-edge,0.5rem)]">
-          <ThreadsView
-            groups={threadGroups}
-            workspacesLoading={workspacesLoading}
-            sessionsLoading={sessionsLoading}
-            activeId={activeId}
-            pinnedSessionIds={pinnedSessionIds}
-            onSelect={onSelect}
-            onClose={onClose}
-            onToggleSessionPinned={onToggleSessionPinned}
-            onReorderGroups={onReorderGroups}
-            onReorderThreads={onReorderThreads}
-            onStartDraft={onStartDraft}
-            onPickDirectory={onPickDirectory}
-            onRegisterWorkspace={onRegisterWorkspace}
-            onRenameWorkspace={onRenameWorkspace}
-            onArchiveWorkspace={onArchiveWorkspace}
-            onToggleGroupCollapsed={onToggleGroupCollapsed}
-            onTogglePreviewExpanded={onTogglePreviewExpanded}
-            BranchStatusComponent={BranchStatusComponent}
-          />
-        </div>
-      </div>
+      <SidebarContent className="p-2">
+        <ThreadsView
+          groups={threadGroups}
+          workspacesLoading={workspacesLoading}
+          sessionsLoading={sessionsLoading}
+          activeId={activeId}
+          pinnedSessionIds={pinnedSessionIds}
+          onSelect={onSelect}
+          onClose={onClose}
+          onToggleSessionPinned={onToggleSessionPinned}
+          onReorderGroups={onReorderGroups}
+          onReorderThreads={onReorderThreads}
+          onStartDraft={onStartDraft}
+          onPickDirectory={onPickDirectory}
+          onRegisterWorkspace={onRegisterWorkspace}
+          onRenameWorkspace={onRenameWorkspace}
+          onArchiveWorkspace={onArchiveWorkspace}
+          onToggleGroupCollapsed={onToggleGroupCollapsed}
+          onTogglePreviewExpanded={onTogglePreviewExpanded}
+          BranchStatusComponent={BranchStatusComponent}
+        />
+      </SidebarContent>
     </ShellSidebar>
-  );
-}
-
-function SidebarMenuButton({
-  icon,
-  label,
-  shortcut,
-  disabled,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  shortcut?: string;
-  disabled?: boolean;
-  onClick?: () => void;
-}): React.ReactNode {
-  return (
-    <button
-      type="button"
-      className={shellSidebarItemClassName}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <SidebarMenuButtonContent icon={icon} label={label} shortcut={shortcut} />
-    </button>
-  );
-}
-
-function SidebarMenuButtonContent({
-  icon,
-  label,
-  shortcut,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  shortcut?: string;
-}): React.ReactNode {
-  return (
-    <>
-      <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {shortcut && <span className="font-mono text-muted-foreground text-xs">{shortcut}</span>}
-    </>
   );
 }
 
