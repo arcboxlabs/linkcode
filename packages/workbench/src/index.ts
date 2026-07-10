@@ -22,6 +22,7 @@ export * from './notifications/use-session-notifications';
 export * from './palette/hotkey';
 export * from './palette/match';
 export * from './palette/store';
+export * from './runtime/connection-controller';
 export * from './runtime/daemon-transport';
 export * from './runtime/debug';
 export * from './runtime/provider';
