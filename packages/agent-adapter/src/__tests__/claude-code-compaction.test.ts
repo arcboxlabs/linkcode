@@ -225,6 +225,8 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
   }
 
   class HistoryClaude extends ClaudeCodeAdapter {
+    supplementReads = 0;
+
     constructor(
       private readonly messages: SessionMessage[],
       private readonly supplement: ClaudeCompactionSupplement,
@@ -241,6 +243,7 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
     }
 
     protected override readCompactionSupplement(): Promise<ClaudeCompactionSupplement> {
+      this.supplementReads += 1;
       return Promise.resolve(this.supplement);
     }
   }
@@ -316,5 +319,16 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
     });
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
     expect(result.events.map((e) => e.event.type)).toEqual(['user-message']);
+  });
+
+  it('skips the transcript read on pages after the first', async () => {
+    const adapter = new HistoryClaude([row('user', 'u0', [{ type: 'text', text: 'hello' }])], {
+      records: new Map([[ANCHOR_UUID, record]]),
+      droppedRows: [],
+    });
+    await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+    expect(adapter.supplementReads).toBe(1);
+    await adapter.readHistory({ historyId: asHistoryId(SESSION), cursor: '1000' });
+    expect(adapter.supplementReads).toBe(1);
   });
 });

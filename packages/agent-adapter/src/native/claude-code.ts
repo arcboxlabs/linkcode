@@ -238,6 +238,8 @@ export function mapClaudeStop(reason: string | null): StopReason {
   }
 }
 
+const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
+
 /**
  * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` via `query()` in **streaming input
  * mode**: one persistent `Query` for the whole session, fed through `AsyncMessageQueue` so each new
@@ -369,7 +371,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         offset,
       }),
       readSubagentTranscripts(mod, opts.historyId),
-      this.readCompactionSupplement(opts.historyId),
+      // The supplement only affects the first page — the swapped-in summary is the SDK chain's
+      // head row and the dropped rows are prepended before it — so later pages skip the
+      // whole-transcript read.
+      offset === 0 ? this.readCompactionSupplement(opts.historyId) : EMPTY_SUPPLEMENT,
     ]);
     const historyId = opts.historyId;
     const mapper = createClaudeHistoryEventMapper(historyId, compactions.records);
@@ -398,10 +403,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The SDK's chain walk starts at the newest compaction summary, dropping everything logically
     // before it (the reported "history gone" symptom). Prepend those rows — recovered from the raw
     // transcript — ahead of the first page; rows the SDK still returned (the preserved segment,
-    // relinked into the post-compaction chain) are deduped by uuid.
+    // relinked into the post-compaction chain) are deduped by uuid. The dedup window is this page
+    // only — safe because the preserved segment sits right after the summary head, well inside it.
     const returned = new Set(page.map((message) => message.uuid));
-    const dropped =
-      offset === 0 ? compactions.droppedRows.filter((row) => !returned.has(row.uuid)) : [];
+    const dropped = compactions.droppedRows.filter((row) => !returned.has(row.uuid));
     for (const message of [...dropped, ...page]) {
       for (const event of mapper(message)) pushWithSubagents(event);
     }
@@ -1011,8 +1016,6 @@ export interface ClaudeCompactionSupplement {
    * SDK does still return (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
 }
-
-const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
 
 /**
  * Recover, from raw transcript lines, what the SDK read API strips about compactions (verified
