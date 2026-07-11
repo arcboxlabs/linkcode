@@ -19,7 +19,6 @@ export * from './navigation/store';
 export * from './notifications/prefs-store';
 export * from './notifications/should-present';
 export * from './notifications/use-session-notifications';
-export * from './palette/hotkey';
 export * from './palette/match';
 export * from './palette/store';
 export * from './runtime/connection-controller';

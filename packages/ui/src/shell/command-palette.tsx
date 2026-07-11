@@ -47,6 +47,8 @@ export interface PaletteCommandViewModel {
 export interface CommandPaletteProps {
   /** Fires with `false` on Escape/backdrop dismissal; closing happens by unmounting (the caller's `AnimatePresence` plays the exit). */
   onOpenChange: (open: boolean) => void;
+  /** The popup element, for bindings that must stay active while the dialog inert-masks the app (e.g. the toggle chord). */
+  popupRef?: React.Ref<HTMLDivElement>;
   /** Controlled query — filtering/ranking happens upstream, never inside the dialog. */
   query: string;
   onQueryChange: (query: string) => void;
@@ -110,6 +112,7 @@ function useMeasuredHeight(): [React.RefCallback<HTMLElement>, number | null] {
  */
 export function CommandPalette({
   onOpenChange,
+  popupRef,
   query,
   onQueryChange,
   threads,
@@ -158,6 +161,7 @@ export function CommandPalette({
         />
         <CommandDialogViewport>
           <CommandDialogPrimitive.Popup
+            ref={popupRef}
             className={POPUP_CLASS}
             data-slot="command-dialog-popup"
             render={
