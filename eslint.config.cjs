@@ -16,7 +16,6 @@ module.exports = require('eslint-config-sukka').sukka(
         '.zed/**',
         '**/expo-export/**',
         'packages/coss-ui/**', // sync from upstream
-        'packages/sdk/**', // codegen
         'pnpm-lock.yaml',
       ],
     },

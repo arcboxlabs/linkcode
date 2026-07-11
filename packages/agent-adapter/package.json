@@ -19,7 +19,7 @@
     "@linkcode/transport": "workspace:*",
     "@openai/codex": "^0.144.1",
     "@opencode-ai/sdk": "^1.17.18",
-    "foxts": "^5.6.0",
+    "foxts": "^5.8.0",
     "smol-toml": "^1.7.0",
     "zod": "catalog:"
   },
