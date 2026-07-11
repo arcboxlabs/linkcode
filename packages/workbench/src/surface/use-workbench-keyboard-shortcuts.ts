@@ -1,7 +1,7 @@
 import { useKeyboardShortcut } from '@linkcode/ui';
 import { useCommandPaletteStore } from '../palette/store';
 
-export const PALETTE_SHORTCUT = { code: 'KeyK', modifiers: ['primary'] } as const;
+const PALETTE_SHORTCUT = { code: 'KeyK', modifiers: ['primary'] } as const;
 
 export function useWorkbenchKeyboardShortcuts(owner: React.RefObject<Element | null>): void {
   useKeyboardShortcut({

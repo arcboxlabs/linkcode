@@ -5,13 +5,11 @@ import {
   AGENT_LABELS,
   CommandPalette,
   repositoryLabel,
-  useKeyboardShortcut,
   useKeyboardShortcutLabels,
 } from '@linkcode/ui';
 import { AnimatePresence } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { PALETTE_SHORTCUT } from '../surface/use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from '../surface/use-workbench-sessions';
 import { useWorkspaces } from '../workspace/hooks';
 import type { PaletteCommand, PaletteThreadCandidate } from './match';
@@ -41,22 +39,8 @@ export function WorkbenchCommandPalette({
 
 function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.ReactNode {
   const t = useTranslations('workbench.palette');
-  const popupRef = useRef<HTMLDivElement>(null);
   const shortcutLabels = useKeyboardShortcutLabels();
   const setOpen = useCommandPaletteStore((state) => state.setOpen);
-
-  // The open dialog inert-masks the workbench root that owns the opening ⌘K binding, so the
-  // toggle-closed half registers again here, owned by the popup itself. Same action + same chord
-  // is a permitted duplicate; whichever owner the DOM keeps active handles the press.
-  useKeyboardShortcut({
-    actionId: 'workbench.command-palette',
-    shortcut: PALETTE_SHORTCUT,
-    owner: popupRef,
-    handler() {
-      useCommandPaletteStore.getState().toggle();
-      return true;
-    },
-  });
   const commandsByOwner = useCommandPaletteStore((state) => state.commandsByOwner);
   const { data: workspaces } = useWorkspaces();
   const [query, setQuery] = useState('');
@@ -152,7 +136,6 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
   return (
     <CommandPalette
       onOpenChange={setOpen}
-      popupRef={popupRef}
       query={query}
       onQueryChange={setQuery}
       threads={threadViewModels}
