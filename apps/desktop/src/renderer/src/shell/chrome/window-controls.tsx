@@ -16,17 +16,10 @@ const WINDOW_CONTROLS_LAYER_STYLE: DesktopChromeMetricsStyle = DESKTOP_CHROME_ME
  * renderer draws them. Mounted at the app root ABOVE the connection gate and the settings overlay,
  * so they stay reachable while the daemon is connecting/unreachable and never shift as the app moves
  * between the connection fallback, the shell, and settings. macOS keeps its native traffic lights;
- * gated on a resolved non-macOS platform so nothing flashes there before `app.platform()` returns.
+ * the preload-backed platform constant prevents renderer heuristics and macOS control flashes.
  */
 export function DesktopWindowControls(): React.ReactNode {
-  const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
-  useAbortableEffect((signal) => {
-    void systemBridge.app.platform().then((value) => {
-      if (!signal.aborted) setPlatform(value);
-    });
-  }, []);
-
-  if (platform === null || platform === 'darwin') return null;
+  if (systemBridge.app.platform === 'darwin') return null;
 
   return (
     <div

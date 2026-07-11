@@ -18,7 +18,6 @@ export interface SystemContext {
   };
   app: {
     getVersion(): string;
-    getPlatform(): NodeJS.Platform;
     /** Trigger a manual update check (no-op when the app is not packaged). */
     checkForUpdates(): void;
   };

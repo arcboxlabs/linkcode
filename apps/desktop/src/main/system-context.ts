@@ -34,7 +34,6 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
     },
     app: {
       getVersion: () => app.getVersion(),
-      getPlatform: () => process.platform,
       checkForUpdates: () => checkForUpdates(),
     },
     settings: {
