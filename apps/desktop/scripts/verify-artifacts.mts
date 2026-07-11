@@ -27,6 +27,7 @@ import process, { argv } from 'node:process';
  *   sidecar (Resources), so a build can never again ship a client with no host runtime (CODE-86/87).
  */
 import { listPackage, statFile } from '@electron/asar';
+import { keysLength } from 'foxts/property-count';
 
 const RELEASE_DIR = 'release';
 const FEED_URL_LINE = /^ {2}- url: (.+)$/;
@@ -340,7 +341,7 @@ async function main(): Promise<number> {
     return 1;
   }
   console.log(
-    `✓ ${platform}: ${expected.artifacts.length} artifacts + ${Object.keys(expected.feeds).length} feed manifest(s) + host runtime in ${expected.resourceDirs.length} app(s) verified`,
+    `✓ ${platform}: ${expected.artifacts.length} artifacts + ${keysLength(expected.feeds)} feed manifest(s) + host runtime in ${expected.resourceDirs.length} app(s) verified`,
   );
   return 0;
 }

@@ -1,4 +1,5 @@
 import type { StartOptions } from '@linkcode/schema';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 
 /**
  * The credential/endpoint bundle the engine resolves from a session's bound account
@@ -69,7 +70,7 @@ export function codexEnv(cred: AgentCredential): Record<string, string> | undefi
   if (key) env.CODEX_API_KEY = key;
   if (cred.baseUrl) env.OPENAI_BASE_URL = cred.baseUrl;
   if (cred.extraEnv) Object.assign(env, cred.extraEnv);
-  return Object.keys(env).length > 0 ? env : undefined;
+  return isObjectEmpty(env) ? undefined : env;
 }
 
 function readString(value: unknown): string | undefined {
@@ -80,5 +81,5 @@ function readStringRecord(value: unknown): Record<string, string> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const out: Record<string, string> = {};
   for (const [key, val] of Object.entries(value)) if (typeof val === 'string') out[key] = val;
-  return Object.keys(out).length > 0 ? out : undefined;
+  return isObjectEmpty(out) ? undefined : out;
 }

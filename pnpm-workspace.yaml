@@ -39,7 +39,7 @@ allowBuilds:
   unrs-resolver: false
   electron-winstaller: false
   # sentry-cli binary backing @sentry/react-native (mobile) — fetched to upload source maps at build time.
-  '@sentry/cli': true
+  "@sentry/cli": true
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.
@@ -60,8 +60,7 @@ catalog:
   "@types/react-dom": ^19.2.3
 
   # Client data layer
-  "@tanstack/react-query": ^5.62.7
-  swr: ^2.4.1
+  swr: ^2.4.2
   use-intl: ^4.13.0
   zustand: ^5.0.14
   lucide-react: ^1.18.0
@@ -94,9 +93,9 @@ catalog:
   # Testing
   vitest: ^4.1.9
   unplugin-icons: ^23.0.1
-  '@svgr/core': ^8.1.0
-  '@svgr/plugin-jsx': ^8.1.0
-  '@proj-airi/lobe-icons': ^1.0.19
+  "@svgr/core": ^8.1.0
+  "@svgr/plugin-jsx": ^8.1.0
+  "@proj-airi/lobe-icons": ^1.0.19
 
 minimumReleaseAgeExclude:
   # codex platform artifacts are versions of @openai/codex keyed <ver>-<platform>-<arch>.
@@ -113,29 +112,29 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-tui@0.80.6'
   - electron@42.4.1
   - react-router@7.18.0
-  - '@shikijs/core@4.3.0'
-  - '@shikijs/engine-javascript@4.3.0'
-  - '@shikijs/engine-oniguruma@4.3.0'
-  - '@shikijs/langs@4.3.0'
-  - '@shikijs/primitive@4.3.0'
-  - '@shikijs/themes@4.3.0'
-  - '@shikijs/types@4.3.0'
+  - "@shikijs/core@4.3.0"
+  - "@shikijs/engine-javascript@4.3.0"
+  - "@shikijs/engine-oniguruma@4.3.0"
+  - "@shikijs/langs@4.3.0"
+  - "@shikijs/primitive@4.3.0"
+  - "@shikijs/themes@4.3.0"
+  - "@shikijs/types@4.3.0"
   - shiki@4.3.0
-  - '@expo/metro-runtime@56.0.16'
-  - '@expo/ui@56.0.19'
+  - "@expo/metro-runtime@56.0.16"
+  - "@expo/ui@56.0.19"
   - expo-constants@56.0.19
   - expo-router@56.2.12
   - foxts@5.6.0
   - uniwind@1.10.0
-  - '@expo/cli@56.1.17'
-  - '@expo/config-plugins@56.0.10'
-  - '@expo/config-types@56.0.7'
-  - '@expo/config@56.0.10'
-  - '@expo/fingerprint@0.19.5'
-  - '@expo/log-box@56.0.14'
-  - '@expo/metro-config@56.0.15'
-  - '@expo/prebuild-config@56.0.17'
-  - '@expo/router-server@56.0.15'
+  - "@expo/cli@56.1.17"
+  - "@expo/config-plugins@56.0.10"
+  - "@expo/config-types@56.0.7"
+  - "@expo/config@56.0.10"
+  - "@expo/fingerprint@0.19.5"
+  - "@expo/log-box@56.0.14"
+  - "@expo/metro-config@56.0.15"
+  - "@expo/prebuild-config@56.0.17"
+  - "@expo/router-server@56.0.15"
   - babel-preset-expo@56.0.16
   - expo-asset@56.0.18
   - expo-modules-autolinking@56.0.17
@@ -156,4 +155,3 @@ overrides:
   undici@>=8.0.0 <8.5.0: ^8.5.0
   uuid@<11.1.1: ^11.1.1
   ws@>=8.0.0 <8.21.0: ^8.21.0
-

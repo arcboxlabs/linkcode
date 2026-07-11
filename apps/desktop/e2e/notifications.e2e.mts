@@ -102,7 +102,9 @@ async function run(app: ElectronApplication, win: Page): Promise<void> {
   await win.getByRole('button', { name: 'New Task' }).click();
   await win.waitForTimeout(800);
   await app.evaluate(() => {
-    (globalThis as { __notifs?: { emit: (event: string) => void }[] }).__notifs![0].emit('click');
+    (globalThis as { __notifs?: Array<{ emit: (event: string) => void }> }).__notifs![0].emit(
+      'click',
+    );
   });
   await win.waitForTimeout(1500);
 
