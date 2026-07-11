@@ -133,7 +133,9 @@ export function LiveTerminal({
           // Init manually: connectPty must land only once the renderer core is ready, so the
           // shell's initial prompt (replayed from the client prebuffer on subscribe) isn't
           // dropped before the WASM terminal can render it.
-          surface: { autoInit: false },
+          // LinkCode owns terminal tabs/panels. Restty's unscoped Cmd/Ctrl+D pane splitter would
+          // otherwise fire once per mounted terminal, including hidden tabs.
+          surface: { autoInit: false, shortcuts: false },
           terminal: { autoResize: true, fonts },
           services: { ptyTransport: createSessionPtyTransport(session) },
         });
@@ -168,7 +170,11 @@ export function LiveTerminal({
   // Padding lives on the frame, never on the restty root: restty sizes its canvas from the root's
   // clientWidth/clientHeight, which include padding, so a padded root would overflow into the inset.
   return (
-    <div ref={frameRef} className={cn('p-2 opacity-0 transition-opacity duration-150', className)}>
+    <div
+      ref={frameRef}
+      data-keyboard-shortcut-local=""
+      className={cn('p-2 opacity-0 transition-opacity duration-150', className)}
+    >
       <div ref={containerRef} className="size-full" />
     </div>
   );

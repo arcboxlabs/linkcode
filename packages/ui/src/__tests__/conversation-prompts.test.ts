@@ -4,6 +4,7 @@ import {
   isConversationPromptResponseSubmittable,
   STUB_PLAN_REVIEW_PROMPTS,
 } from '../chat/conversation-prompt';
+import { choiceIndexForNumberShortcut } from '../chat/conversation-prompt-keyboard';
 import type { PermissionConversationItem, PermissionDecision } from '../chat/conversation-prompts';
 import {
   conversationFlowItems,
@@ -75,6 +76,14 @@ function approval(requestId: string): PermissionConversationItem {
 }
 
 describe('conversation prompt selectors', () => {
+  it('maps physical and fallback number shortcuts independent of keyboard layout', () => {
+    expect(choiceIndexForNumberShortcut('Digit2', 'é')).toBe(1);
+    expect(choiceIndexForNumberShortcut('Numpad9', '9')).toBe(8);
+    expect(choiceIndexForNumberShortcut('Numpad9', 'PageUp')).toBeNull();
+    expect(choiceIndexForNumberShortcut('Unidentified', '3')).toBe(2);
+    expect(choiceIndexForNumberShortcut('Digit0', '0')).toBeNull();
+  });
+
   it('excludes plans from conversation flow items', () => {
     const message = user('turn-0');
     const item = plan('turn-0', [{ content: 'Read files', priority: 'high', status: 'pending' }]);

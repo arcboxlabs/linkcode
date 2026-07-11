@@ -21,9 +21,9 @@ import type {
   ConversationPromptTone,
 } from './conversation-prompt';
 import { isConversationPromptResponseSubmittable } from './conversation-prompt';
+import { choiceIndexForNumberShortcut } from './conversation-prompt-keyboard';
 
 const EMPTY_DETAILS: ConversationPromptDetail[] = [];
-const NUMBER_KEY_PATTERN = /^[1-9]$/;
 
 export interface ConversationPromptDetail {
   label: string;
@@ -134,41 +134,40 @@ export function ConversationPromptAlert({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
-    // TODO(keyboard): these shortcuts only work while focus is inside the prompt. Move prompt
-    // shortcuts into a global keyboard registry when the shell has one.
-    if (event.defaultPrevented || event.nativeEvent.isComposing) return;
-
     if (
-      event.key === 'Enter' &&
-      !event.shiftKey &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      event.key === 'Process' ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      isEditableTarget(event.target)
     ) {
-      event.preventDefault();
-      submit();
       return;
     }
 
-    if (isEditableTarget(event.target)) return;
-
-    const numberIndex = choiceIndexForNumberKey(event.key);
-    if (numberIndex !== null && numberIndex < choices.length) {
+    const numberIndex = choiceIndexForNumberShortcut(event.code, event.key);
+    if (!event.repeat && numberIndex !== null && numberIndex < choices.length) {
       event.preventDefault();
       selectChoiceAt(numberIndex, event.currentTarget);
       return;
     }
 
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const focusedIndex = focusedChoiceIndex(event.currentTarget);
-      const currentIndex = focusedIndex ?? currentChoiceIndex(choices, effectiveSelectedIds);
-      const offset = event.key === 'ArrowDown' ? 1 : -1;
-      const nextIndex = wrapIndex(currentIndex + offset, choices.length);
-      // Multi-select arrows move focus only; number keys, Space/click, and submit keep their roles.
-      if (mode === 'multiple') focusChoiceAt(nextIndex, event.currentTarget);
-      else selectChoiceAt(nextIndex, event.currentTarget);
+    if (choices.length === 0 || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) {
+      return;
     }
+
+    event.preventDefault();
+    const focusedIndex = focusedChoiceIndex(event.currentTarget);
+    const currentIndex = focusedIndex ?? currentChoiceIndex(choices, effectiveSelectedIds);
+    const nextIndex = wrapIndex(
+      currentIndex + (event.key === 'ArrowDown' ? 1 : -1),
+      choices.length,
+    );
+    // Multi-select arrows move focus only; number keys, Space/click, and submit keep their roles.
+    if (mode === 'multiple') focusChoiceAt(nextIndex, event.currentTarget);
+    else selectChoiceAt(nextIndex, event.currentTarget);
   }
 
   function selectChoiceAt(index: number, form: HTMLFormElement): void {
@@ -415,11 +414,6 @@ function badgeVariantForTone(
   return 'secondary';
 }
 
-function choiceIndexForNumberKey(key: string): number | null {
-  if (!NUMBER_KEY_PATTERN.test(key)) return null;
-  return Number(key) - 1;
-}
-
 function currentChoiceIndex(
   choices: readonly ConversationPromptChoice[],
   selectedIds: readonly string[],
@@ -453,6 +447,7 @@ function focusChoiceAt(index: number, form: HTMLFormElement): void {
 function isEditableTarget(target: EventTarget): boolean {
   return (
     target instanceof HTMLElement &&
-    Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !==
+      null
   );
 }
