@@ -112,8 +112,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * post-settle straggler (the duplicate idle an abort produces; the error re-fired with a stack
    * after the settle) and must not touch this turn. */
   private turnStarted = false;
-  /** Monotonic per-prompt counter — lets a straggling abort settlement from an earlier cancel
-   * know whether it may still clear `cancelling` (a new prompt owns the flags by then). */
+  /** Monotonic flag-ownership counter, bumped by every prompt AND every cancel — lets a straggling
+   * abort settlement from an earlier cancel know whether it may still clear `cancelling` (a newer
+   * prompt or a repeat cancel owns the flags by then). */
   private turnEpoch = 0;
   /** Announced tool part id by provider `callID`: permission/question asks cite the tool they gate
    * via `tool.callID`, but the tool card was announced under the PART id — this map re-joins them
@@ -184,6 +185,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   protected override async onCancel(): Promise<void> {
     this.turnActive = false;
     this.cancelling = true;
+    // A repeat cancel takes over the flags: without the bump, the FIRST cancel's straggling abort
+    // could fail late and clear the latch this cancel now owns, making the second abort's real
+    // fallout read as a genuine stream failure.
+    this.turnEpoch += 1;
+    // Captured NOW, not when the wait cap fires: a repeat cancel inside the wait window must not
+    // let this cancel's late-failure watcher mistake itself for the current flag owner.
+    const epoch = this.turnEpoch;
     if (!this.client || !this.sessionId) return;
     const abort = this.client.session.abort({
       sessionID: this.sessionId,
@@ -201,16 +209,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // The abort RPC is still in flight server-side (see ABORT_WAIT_MS): proceed with the local
         // cancel and leave `cancelling` latched — the abort's fallout (`session.error` aborted +
         // `session.idle`) is still expected. But if the straggling abort ultimately FAILS, no
-        // fallout is coming; clear the latch (unless a newer prompt owns the flags by then) so a
-        // later genuine stream failure isn't swallowed as this cancel's fallout.
-        const epoch = this.turnEpoch;
+        // fallout is coming; clear the latch (unless a newer prompt or cancel owns the flags by
+        // then) so a later genuine stream failure isn't swallowed as this cancel's fallout.
         void abort
           .then((res) => res.error === undefined)
           .catch(falseFn)
           .then((cleanAbort) => {
             // A clean success leaves the latch for the expected fallout; any failure (rejected or
             // resolved-with-error) means no fallout is coming, so clear the latch — unless a newer
-            // prompt already owns the flags by then.
+            // prompt or cancel already owns the flags by then.
             if (!cleanAbort && this.turnEpoch === epoch) this.cancelling = false;
           });
         return;
@@ -359,7 +366,18 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * gate it would falsely settle the new turn and then swallow its real settle. */
   private settleTurn(): void {
     const started = this.turnActive && this.turnStarted;
-    if (!started && !this.cancelling && !this.turnFailed) return;
+    if (!started && !this.cancelling && !this.turnFailed) {
+      if (this.turnActive) {
+        // Normally the previous turn's post-settle straggler. But if the server never emits
+        // `session.status` (the busy-precedes-idle ordering is only live-verified on 1.17.11),
+        // this WAS the real settle and the turn will hang at `running` — leave a trace so a
+        // stuck turn is attributable.
+        console.warn(
+          'opencode: absorbed a session.idle that preceded the busy acknowledgement (straggler, or a server that never emits session.status)',
+        );
+      }
+      return;
+    }
     const cancelled = this.cancelling;
     const failed = this.turnFailed;
     this.turnActive = false;
@@ -510,6 +528,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         if (selected.has(`o${oi}`)) labels.push(option.label);
       }
       const custom = answer.customText?.trim();
+      // Safe even for asks whose `custom` flag is unset: upstream Question.reply resolves the
+      // answer arrays to the asking tool verbatim, with no validation against option labels
+      // (anomalyco/opencode packages/opencode/src/question/index.ts).
       if (custom) labels.push(custom);
       return labels;
     });

@@ -1,6 +1,7 @@
 import type { AgentEvent } from '@linkcode/schema';
 import type { Event } from '@opencode-ai/sdk/v2';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenCodeAdapter } from '../native/opencode';
 
@@ -106,6 +107,13 @@ async function makeAdapter(): Promise<{ adapter: OpenCodeAdapter; events: AgentE
   adapter.onEvent((e) => events.push(e));
   await adapter.start({ kind: 'opencode', cwd: '/tmp/repo' });
   return { adapter, events };
+}
+
+/** Flush the fake stream before an ABSENCE assertion: pushed events drain on microtasks, so one
+ * macrotask turn guarantees they were processed — `vi.waitFor` alone passes an emptiness check on
+ * its first tick, before the event ever reached `handleEvent`. */
+function drained(): Promise<void> {
+  return wait(0);
 }
 
 function errors(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 'error' }>> {
@@ -273,6 +281,8 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     const { adapter, events } = await makeAdapter();
 
     await adapter.send({ type: 'prompt', content: [] });
+    // Drop the startup statuses: the idle awaited below must be the SETTLE's, not start()'s.
+    events.length = 0;
     pushBusy();
     pushIdle();
     await vi.waitFor(() => {
@@ -284,10 +294,8 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     // completed round-trip, not a failure — there's nothing left to interrupt.
     client.stream.end();
 
-    await vi.waitFor(() => {
-      // Give the loop a chance to run; nothing should ever land.
-      expect(events).toHaveLength(0);
-    });
+    await drained();
+    expect(events).toHaveLength(0);
   });
 
   it('treats the stream closing while a turn is still active as a fatal error and stops the session', async () => {
@@ -327,10 +335,8 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     // that's the abort's own fallout, not an unexpected disconnect.
     client.stream.end();
 
-    await vi.waitFor(() => {
-      // Give the loop a chance to run; nothing should ever land.
-      expect(events).toHaveLength(0);
-    });
+    await drained();
+    expect(events).toHaveLength(0);
   });
 
   it('does not latch the cancel suppression when abort() itself rejects, so a later stream failure still surfaces', async () => {
@@ -395,10 +401,8 @@ describe('OpenCodeAdapter.consumeEvents', () => {
 
     // stop() already closed the server; the stream ending is the normal fallout, not a failure.
     client.stream.end();
-    await vi.waitFor(() => {
-      // Give the loop a chance to run; nothing should ever land.
-      expect(events).toHaveLength(0);
-    });
+    await drained();
+    expect(events).toHaveLength(0);
   });
 });
 
@@ -636,6 +640,8 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
   it('ignores a duplicate session.error after the turn settled (observed live: re-emitted with a stack)', async () => {
     const { adapter, events } = await makeAdapter();
     await adapter.send({ type: 'prompt', content: [] });
+    // Drop the startup statuses: the idle awaited below must be the SETTLE's, not start()'s.
+    events.length = 0;
     pushBusy();
 
     const push = () => {
@@ -656,9 +662,8 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     events.length = 0;
 
     push();
-    await vi.waitFor(() => {
-      expect(events).toHaveLength(0);
-    });
+    await drained();
+    expect(events).toHaveLength(0);
   });
 
   it('treats MessageAbortedError as cancel fallout: no error, and the idle settle reports cancelled', async () => {
@@ -700,9 +705,8 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     events.length = 0;
 
     pushIdle();
-    await vi.waitFor(() => {
-      expect(events).toHaveLength(0);
-    });
+    await drained();
+    expect(events).toHaveLength(0);
   });
 
   it('proceeds with the local cancel when session.abort exceeds the wait cap', async () => {
@@ -737,10 +741,17 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     // Turn 2 dispatched; turn 1's duplicate idle lands before turn 2's busy acknowledgement.
     await adapter.send({ type: 'prompt', content: [] });
     events.length = 0;
-    pushIdle();
-    await vi.waitFor(() => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(noop);
+    try {
+      pushIdle();
+      await drained();
       expect(events).toHaveLength(0);
-    });
+      // The absorb leaves a trace — the one diagnostic if a server never emits session.status
+      // (the turn would then hang at `running` with no error).
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
 
     // Turn 2's real lifecycle still settles normally.
     pushBusy();
@@ -886,5 +897,41 @@ describe('OpenCodeAdapter RPC results (the SDK resolves with {error} instead of 
       expect(errors(events)).toHaveLength(1);
     });
     expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(true);
+  });
+
+  it("keeps the latch owned by a repeat cancel when the first cancel's straggling abort later fails", async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+
+    let rejectAbort: ((err: Error) => void) | undefined;
+    vi.useFakeTimers();
+    try {
+      client.session.abort.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectAbort = reject;
+          }) as never,
+      );
+      const cancel = adapter.send({ type: 'cancel' });
+      await vi.advanceTimersByTimeAsync(2000);
+      await cancel;
+
+      // A repeat cancel — its abort succeeds (default mock) — takes over the latch.
+      await adapter.send({ type: 'cancel' });
+
+      // The FIRST cancel's straggling abort finally fails; the flags belong to the repeat cancel
+      // now, so the late-failure watcher must not clear the latch.
+      rejectAbort?.(new Error('first abort finally failed'));
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The stream fallout of the repeat cancel's clean abort is still expected — not an error.
+    client.stream.fail(new Error('cancel-induced close'));
+    await drained();
+    expect(errors(events)).toHaveLength(0);
+    expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(false);
   });
 });
