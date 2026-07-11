@@ -221,7 +221,14 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
   const SESSION = 'session-compact';
 
   function row(type: 'user' | 'assistant', uuid: string, content: unknown): SessionMessage {
-    return { type, uuid, session_id: SESSION, parent_tool_use_id: null, message: { content } };
+    return {
+      type,
+      uuid,
+      session_id: SESSION,
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: { content },
+    };
   }
 
   class HistoryClaude extends ClaudeCodeAdapter {

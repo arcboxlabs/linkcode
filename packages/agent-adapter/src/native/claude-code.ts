@@ -1072,6 +1072,7 @@ export function buildClaudeCompactionSupplement(
         session_id: typeof row.sessionId === 'string' ? row.sessionId : '',
         message: row.message,
         parent_tool_use_id: null,
+        parent_agent_id: null,
       },
       boundariesBefore: boundaries,
     });
