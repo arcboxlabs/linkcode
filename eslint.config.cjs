@@ -13,6 +13,7 @@ module.exports = require('eslint-config-sukka').sukka(
         '**/.vite/**',
         '**/.turbo/**',
         '**/.expo/**',
+        '.vscode/**',
         '.zed/**',
         '**/expo-export/**',
         'packages/coss-ui/**', // sync from upstream

@@ -46,6 +46,6 @@
   "devDependencies": {
     "@types/react": "catalog:",
     "tailwindcss": "^4.3.1",
-    "typescript": "~6.0.3"
+    "typescript": "catalog:"
   }
 }
