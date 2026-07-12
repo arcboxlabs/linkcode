@@ -231,6 +231,8 @@ pnpm lint
 pnpm format:check
 ```
 
+`pnpm lint` pins `--concurrency=2`: ESLint's `auto` spawns a worker per core, which measures 1.5–2× slower wall-clock than two workers for this typed-lint workload (and CI runners have 2 vCPUs).
+
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 
 ```bash
