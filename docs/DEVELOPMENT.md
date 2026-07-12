@@ -5,7 +5,7 @@ The local runbook: run the apps, run the tests, debug a stuck daemon. For archit
 ## Prerequisites
 
 > [!NOTE]
-> `devenv` is recommended: it pins Node.js 24, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
+> `devenv` is recommended: it pins Node.js 26, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
 
 Without `devenv`, install these yourself:
 
@@ -230,6 +230,8 @@ JavaScript/TypeScript use ESLint for linting and Biome for formatting (Biome's l
 pnpm lint
 pnpm format:check
 ```
+
+`pnpm lint` pins `--concurrency=2`: ESLint's `auto` spawns a worker per core, which measures 1.5–2× slower wall-clock than two workers for this typed-lint workload (and CI runners have 2 vCPUs).
 
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 
