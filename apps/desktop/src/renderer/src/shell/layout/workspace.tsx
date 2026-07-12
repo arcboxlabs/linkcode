@@ -11,6 +11,7 @@ import {
 import type { AllotmentHandle } from 'allotment';
 import { Allotment, LayoutPriority } from 'allotment';
 import type { AnimatedSplit } from './use-animated-split';
+import { getShellContentMotionStyle } from './use-animated-split';
 
 /** One dockable side of the workspace: its animated split plus the docked and maximized-overlay nodes. */
 export interface WorkspaceSide {
@@ -81,8 +82,24 @@ export function DesktopWorkspace({
             preferredSize={layout.rightW}
             visible={right.split.paneVisible}
           >
-            <div aria-hidden={!right.open} inert={!right.open} className="h-full min-h-0">
-              {right.node}
+            {/* Static bg-background surface behind the sliding panel: the layout commits in one
+                snap while the content slides, and the strip revealed in between must not show
+                the translucent window backdrop. */}
+            <div
+              aria-hidden={!right.open}
+              inert={!right.open}
+              className="h-full min-h-0 bg-background"
+            >
+              <div
+                className="h-full min-h-0"
+                style={getShellContentMotionStyle({
+                  axis: 'x',
+                  phase: right.split.phase,
+                  reducedMotion: right.split.reducedMotion,
+                })}
+              >
+                {right.node}
+              </div>
             </div>
           </Allotment.Pane>
         </Allotment>
@@ -125,8 +142,21 @@ export function DesktopWorkspace({
             preferredSize={layout.bottomH}
             visible={bottom.split.paneVisible}
           >
-            <div aria-hidden={!bottom.open} inert={!bottom.open} className="h-full min-h-0">
-              {bottom.node}
+            <div
+              aria-hidden={!bottom.open}
+              inert={!bottom.open}
+              className="h-full min-h-0 bg-background"
+            >
+              <div
+                className="h-full min-h-0"
+                style={getShellContentMotionStyle({
+                  axis: 'y',
+                  phase: bottom.split.phase,
+                  reducedMotion: bottom.split.reducedMotion,
+                })}
+              >
+                {bottom.node}
+              </div>
             </div>
           </Allotment.Pane>
         </Allotment>

@@ -26,7 +26,8 @@ interface PanelChromePlacement {
 }
 
 const PANEL_CHROME_TRANSITION = {
-  duration: 0.18,
+  // Matches the shell pane toggle (SHELL_TRANSITION in the desktop renderer).
+  duration: 0.3,
   ease: [0.2, 0, 0, 1] as [number, number, number, number],
 };
 

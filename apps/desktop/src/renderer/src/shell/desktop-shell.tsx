@@ -42,7 +42,7 @@ import { DesktopPanelRegion } from './layout/panel-region';
 import { DesktopRightPanelRegion } from './layout/right-panel-region';
 import type { DesktopShellStyle } from './layout/shell-style';
 import { createDesktopShellStyle, setShellPaneCssSize } from './layout/shell-style';
-import { useAnimatedSplit } from './layout/use-animated-split';
+import { getShellContentMotionStyle, useAnimatedSplit } from './layout/use-animated-split';
 import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
 import {
@@ -392,8 +392,6 @@ export function DesktopShell({
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={rightSplit.phase}
-        reducedMotion={rightSplit.reducedMotion}
         terminalContentTargetRef={setRightContentTarget}
         onSelectSection={setActiveSection}
         onSelectTerminalTab={setActiveRightTerminalTab}
@@ -419,8 +417,6 @@ export function DesktopShell({
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={bottomSplit.phase}
-        reducedMotion={bottomSplit.reducedMotion}
         contentTargetRef={setBottomContentTarget}
         onSelectTab={(id) => updatePanel((current) => ({ ...current, activeTabId: id }))}
         onCloseTab={(id) => closeTab(id)}
@@ -520,6 +516,11 @@ export function DesktopShell({
       ref={shellRootRef}
       className="linkcode-desktop-shell relative h-full bg-transparent text-foreground"
       style={shellStyle}
+      data-shell-animating={
+        sidebarSplit.isAnimating || rightSplit.isAnimating || bottomSplit.isAnimating
+          ? ''
+          : undefined
+      }
     >
       <DesktopChrome
         header={header}
@@ -586,54 +587,73 @@ export function DesktopShell({
             preferredSize={layout.sidebarW}
             visible={sidebarSplit.paneVisible}
           >
-            <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
-              <SessionSidebar
-                className={sidebarClassName}
-                threadGroups={threadGroups}
-                workspacesLoading={workspacesLoading}
-                sessionsLoading={sessionsLoading}
-                activeId={active?.sessionId ?? null}
-                pinnedSessionIds={pinnedSessionIds}
-                collapsedSections={collapsedSections}
-                topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
-                footer={
-                  <HostFooter
-                    state={tConnection('connected')}
-                    appVersion={appVersion}
-                    pendingPermissionCount={conversation.pendingPermissionIds.length}
-                    account={cloudAuth.account}
-                    authPending={cloudAuth.authenticating}
-                    onSignIn={cloudAuth.signIn}
-                    onSignOut={cloudAuth.signOut}
-                    onManageAccount={cloudAuth.manageAccount}
-                    remoteHosts={remoteHostItems}
-                    remoteHostsLoading={remoteHosts.isLoading}
-                    selectedHostId={selectedHostId}
-                    onSelectHost={selectHost}
-                    onOpenSettings={onOpenSettings}
-                  />
-                }
-                onPickDirectory={pickDirectory}
-                onOpenSearch={onOpenSearch}
-                searchShortcut={searchShortcut}
-                onRegisterWorkspace={onRegisterWorkspace}
-                onImportHistory={onImportHistory}
-                onRenameWorkspace={onRenameWorkspace}
-                onArchiveWorkspace={onArchiveWorkspace}
-                onToggleGroupCollapsed={onToggleGroupCollapsed}
-                onToggleSectionCollapsed={onToggleSectionCollapsed}
-                onTogglePreviewExpanded={onTogglePreviewExpanded}
-                BranchStatusComponent={BranchStatusComponent}
-                // Cloud-gated: without a session the IM source can't authenticate, so the
-                // row menu (and its ellipsis) stays hidden entirely.
-                ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
-                onSelect={onSelectSession}
-                onClose={onCloseSession}
-                onToggleSessionPinned={onToggleSessionPinned}
-                onReorderGroups={onReorderGroups}
-                onReorderThreads={onReorderThreads}
-                onStartDraft={onStartDraft}
-              />
+            {/* The outer wrapper is the static surface behind the sliding sidebar. On native
+                backdrops it stays transparent — the strip the slide reveals is the window
+                vibrancy the sidebar tint sits on anyway (a second bg-sidebar/25 layer would
+                double the tint mid-slide). Opaque platforms paint bg-sidebar so the strip is
+                indistinguishable from the sidebar itself. */}
+            <div
+              aria-hidden={!sidebarOpen}
+              inert={!sidebarOpen}
+              className={hasNativeBackdrop ? 'h-full min-w-0' : 'h-full min-w-0 bg-sidebar'}
+            >
+              <div
+                className="h-full"
+                style={getShellContentMotionStyle({
+                  axis: 'x',
+                  reverse: true,
+                  phase: sidebarSplit.phase,
+                  reducedMotion: sidebarSplit.reducedMotion,
+                })}
+              >
+                <SessionSidebar
+                  className={sidebarClassName}
+                  threadGroups={threadGroups}
+                  workspacesLoading={workspacesLoading}
+                  sessionsLoading={sessionsLoading}
+                  activeId={active?.sessionId ?? null}
+                  pinnedSessionIds={pinnedSessionIds}
+                  collapsedSections={collapsedSections}
+                  topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
+                  footer={
+                    <HostFooter
+                      state={tConnection('connected')}
+                      appVersion={appVersion}
+                      pendingPermissionCount={conversation.pendingPermissionIds.length}
+                      account={cloudAuth.account}
+                      authPending={cloudAuth.authenticating}
+                      onSignIn={cloudAuth.signIn}
+                      onSignOut={cloudAuth.signOut}
+                      onManageAccount={cloudAuth.manageAccount}
+                      remoteHosts={remoteHostItems}
+                      remoteHostsLoading={remoteHosts.isLoading}
+                      selectedHostId={selectedHostId}
+                      onSelectHost={selectHost}
+                      onOpenSettings={onOpenSettings}
+                    />
+                  }
+                  onPickDirectory={pickDirectory}
+                  onOpenSearch={onOpenSearch}
+                  searchShortcut={searchShortcut}
+                  onRegisterWorkspace={onRegisterWorkspace}
+                  onImportHistory={onImportHistory}
+                  onRenameWorkspace={onRenameWorkspace}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onToggleGroupCollapsed={onToggleGroupCollapsed}
+                  onToggleSectionCollapsed={onToggleSectionCollapsed}
+                  onTogglePreviewExpanded={onTogglePreviewExpanded}
+                  BranchStatusComponent={BranchStatusComponent}
+                  // Cloud-gated: without a session the IM source can't authenticate, so the
+                  // row menu (and its ellipsis) stays hidden entirely.
+                  ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
+                  onSelect={onSelectSession}
+                  onClose={onCloseSession}
+                  onToggleSessionPinned={onToggleSessionPinned}
+                  onReorderGroups={onReorderGroups}
+                  onReorderThreads={onReorderThreads}
+                  onStartDraft={onStartDraft}
+                />
+              </div>
             </div>
           </Allotment.Pane>
           <Allotment.Pane minSize={workspaceMinSize} priority={LayoutPriority.High}>

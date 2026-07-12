@@ -1,14 +1,13 @@
 import type { AllotmentHandle } from 'allotment';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import { animate } from 'motion';
 import { useReducedMotion } from 'motion/react';
 import { useCallback, useRef, useState } from 'react';
 
+// Duration and bezier are duplicated in index.css (the `--lc-*` transition under
+// [data-shell-animating]) — keep both in sync.
 export const SHELL_TRANSITION = {
-  duration: 0.18,
-  durationMs: 180,
-  ease: [0.2, 0, 0, 1] as [number, number, number, number],
+  durationMs: 300,
   cssEase: 'cubic-bezier(0.2, 0, 0, 1)',
 };
 
@@ -39,7 +38,6 @@ export interface SplitTransitionState {
   requestedOpen: boolean;
   phase: SplitPanePhase;
   targetPaneSize: number;
-  shouldStartFromZero: boolean;
   version: number;
 }
 
@@ -67,7 +65,6 @@ export function useAnimatedSplit({
     requestedOpen: open,
     phase: open ? 'open' : 'closed',
     targetPaneSize: open ? Math.max(0, paneSize) : 0,
-    shouldStartFromZero: false,
     version: 0,
   }));
 
@@ -75,7 +72,7 @@ export function useAnimatedSplit({
   // to adjust state when props change (it re-renders before paint, avoiding an effect round-trip).
   const active = reconcileTransition(transition, open, paneSize, reducedMotion);
   if (active !== transition) setTransition(active);
-  const { phase, shouldStartFromZero, targetPaneSize, version: transitionVersion } = active;
+  const { phase, targetPaneSize, version: transitionVersion } = active;
 
   const setAllotmentHandle = useCallback((handle: AllotmentHandle | null): void => {
     allotmentRef.current = handle;
@@ -109,15 +106,19 @@ export function useAnimatedSplit({
     [onPaneSizeChange, paneIndex],
   );
 
-  // Snap the pane to its closed (zero) start position before paint when opening from a closed
-  // state. Allotment restores the pane's cached visible size in its own (child) layout effect, so
-  // without this pre-paint reset the panel flashes one full-width frame before the post-paint
-  // animation effect drives it from zero.
+  // Commit the final layout once, before paint. Opening resizes straight to the target — this
+  // also overrides Allotment's cached-size restore, which runs in its own (child) layout effect
+  // first — and the pane content then slides in via a compositor transition over the settled
+  // layout. Closing leaves the layout at full size so there is something to slide out; only the
+  // chrome CSS variable is retargeted now, so the titlebar transitions down in sync with the
+  // slide, and the layout commit is deferred to the settle timer below.
   useLayoutEffect(() => {
-    if (shouldStartFromZero && phase === 'opening') {
-      applyPaneSize(0);
+    if (phase === 'opening') {
+      applyPaneSize(targetPaneSize);
+    } else if (phase === 'closing') {
+      onPaneSizeChange?.(0);
     }
-  }, [applyPaneSize, phase, shouldStartFromZero]);
+  }, [applyPaneSize, onPaneSizeChange, phase, targetPaneSize]);
 
   useAbortableEffect(
     (signal) => {
@@ -131,15 +132,15 @@ export function useAnimatedSplit({
         return;
       }
 
-      const startSize = shouldStartFromZero ? 0 : readPaneSize(sizesRef.current, paneIndex);
       const completedPhase: SplitPanePhase = phase === 'opening' ? 'open' : 'closed';
 
-      applyPaneSize(startSize);
-
-      const finish = (): void => {
+      // CSS transitions drive the visuals; this timer only settles the phase (and commits the
+      // deferred close) once they are done. A timer instead of `transitionend`: Chromium
+      // throttles occluded windows, and the phase must settle even if no frame is ever painted.
+      const settle = setTimeout(() => {
         if (signal.aborted) return;
 
-        applyPaneSize(targetPaneSize);
+        if (phase === 'closing') applyPaneSize(targetPaneSize);
 
         setTransition((latest) => {
           if (latest.version !== transitionVersion) return latest;
@@ -147,42 +148,13 @@ export function useAnimatedSplit({
           return {
             ...latest,
             phase: completedPhase,
-            shouldStartFromZero: false,
           };
         });
-      };
-
-      const controls = animate(startSize, targetPaneSize, {
-        duration: SHELL_TRANSITION.duration,
-        ease: SHELL_TRANSITION.ease,
-        onUpdate(latest) {
-          if (!signal.aborted) applyPaneSize(latest);
-        },
-        onComplete: finish,
-      });
-
-      // The animation runs on rAF, which Chromium throttles to a standstill in occluded windows —
-      // onComplete would then never fire and the phase would stay 'opening'/'closing' forever.
-      // Force completion once the duration has passed; after a real completion this is a no-op.
-      const fallback = setTimeout(() => {
-        controls.stop();
-        finish();
       }, SHELL_TRANSITION.durationMs + 100);
 
-      return () => {
-        clearTimeout(fallback);
-        controls.stop();
-      };
+      return () => clearTimeout(settle);
     },
-    [
-      applyPaneSize,
-      paneIndex,
-      phase,
-      setTransition,
-      shouldStartFromZero,
-      targetPaneSize,
-      transitionVersion,
-    ],
+    [applyPaneSize, paneIndex, phase, setTransition, targetPaneSize, transitionVersion],
   );
 
   const paneVisible = open || phase !== 'closed';
@@ -212,11 +184,19 @@ export function getShellContentMotionStyle({
   reverse?: boolean;
 }): React.CSSProperties {
   const visible = phase === 'open' || phase === 'opening';
-  const offset = visible || reducedMotion ? 0 : reverse ? -8 : 8;
+  const offset = visible ? '0%' : reverse ? '-100%' : '100%';
 
   return {
     opacity: visible || reducedMotion ? 1 : 0,
-    transform: axis === 'x' ? `translate3d(${offset}px, 0, 0)` : `translate3d(0, ${offset}px, 0)`,
+    // Settled-open drops the transform entirely: a resting translate3d would pin a compositor
+    // layer and a containing block on the whole pane subtree. `none` → translate still
+    // transitions (none is the identity), so the closing slide starts cleanly from here.
+    transform:
+      phase === 'open' || reducedMotion
+        ? undefined
+        : axis === 'x'
+          ? `translate3d(${offset}, 0, 0)`
+          : `translate3d(0, ${offset}, 0)`,
     transition: reducedMotion
       ? 'none'
       : `opacity ${SHELL_TRANSITION.durationMs}ms ${SHELL_TRANSITION.cssEase}, transform ${SHELL_TRANSITION.durationMs}ms ${SHELL_TRANSITION.cssEase}`,
@@ -230,8 +210,8 @@ function isAnimatingPhase(phase: SplitPanePhase): boolean {
 /**
  * Derive the next transition from the latest `open` request, returning the same reference when
  * nothing changed so the caller can skip the state update. The target pane size is snapshotted here
- * rather than read live in the animation effect, which would otherwise restart every frame as the
- * controlled `paneSize` updates during the animation.
+ * rather than read live in the transition effects, which would otherwise restart mid-transition as
+ * the controlled `paneSize` updates.
  */
 export function reconcileTransition(
   current: SplitTransitionState,
@@ -244,7 +224,6 @@ export function reconcileTransition(
       requestedOpen: open,
       phase: reducedMotion ? (open ? 'open' : 'closed') : open ? 'opening' : 'closing',
       targetPaneSize: open ? Math.max(0, paneSize) : 0,
-      shouldStartFromZero: !reducedMotion && open && current.phase === 'closed',
       version: current.version + 1,
     };
   }
@@ -253,7 +232,6 @@ export function reconcileTransition(
     return {
       ...current,
       phase: current.requestedOpen ? 'open' : 'closed',
-      shouldStartFromZero: false,
       version: current.version + 1,
     };
   }

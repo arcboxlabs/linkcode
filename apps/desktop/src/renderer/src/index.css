@@ -28,6 +28,28 @@
 }
 
 /*
+ * The titlebar chrome overlay mirrors the sidebar/right pane widths through
+ * `--lc-sidebar-w`/`--lc-right-w` (grid columns + main-slot insets in chrome.tsx). A pane
+ * toggle writes the final value ONCE; these transitions on the two consuming elements
+ * interpolate the titlebar, so the per-frame style/layout work stays confined to the
+ * dozen-element chrome subtree. (Transitioning the variables themselves on the shell root
+ * was measurably worse: the inherited custom property re-propagates through the whole
+ * shell subtree every frame.) Scoped to [data-shell-animating] — set by DesktopShell only
+ * while a pane toggle is in flight — so sash drags and window resizes track the pointer
+ * live, and the maximize cut stays instant.
+ * Keep duration/bezier in sync with SHELL_TRANSITION in shell/layout/use-animated-split.ts.
+ */
+.linkcode-desktop-shell[data-shell-animating] .linkcode-chrome-grid {
+  transition: grid-template-columns 300ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.linkcode-desktop-shell[data-shell-animating] .linkcode-chrome-slot-inset {
+  transition:
+    padding-left 300ms cubic-bezier(0.2, 0, 0, 1),
+    padding-right 300ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
  * Each chrome divider visually continues the allotment sash directly beneath it,
  * so it adopts the sash's focus color whenever that sash is hovered or dragged.
  * Allotment flags the active sash with `.sash-hover` / `.sash-active`; `:has()`

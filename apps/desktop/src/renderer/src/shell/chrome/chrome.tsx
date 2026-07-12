@@ -274,7 +274,7 @@ function ChromeSegmentGrid({
 }): React.ReactNode {
   return (
     <div
-      className="absolute inset-0 grid overflow-hidden"
+      className="linkcode-chrome-grid absolute inset-0 grid overflow-hidden"
       style={expandedPanel ? MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE : CHROME_BACKGROUND_GRID_STYLE}
     >
       <ChromeSegment
@@ -348,7 +348,7 @@ function ChromeSegment({
     >
       <div
         className={cn(
-          'pointer-events-none absolute inset-0 grid grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-(--lc-chrome-section-gap)',
+          'linkcode-chrome-slot-inset pointer-events-none absolute inset-0 grid grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-(--lc-chrome-section-gap)',
         )}
         style={slotInsetStyle}
       >

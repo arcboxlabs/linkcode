@@ -7,7 +7,6 @@ function transition(overrides?: Partial<SplitTransitionState>): SplitTransitionS
     requestedOpen: false,
     phase: 'closed',
     targetPaneSize: 0,
-    shouldStartFromZero: false,
     version: 0,
     ...overrides,
   };
@@ -25,7 +24,7 @@ describe('reconcileTransition', () => {
     expect(reconcileTransition(current, true, 440, false)).toBe(current);
   });
 
-  it('animates open from closed, starting from zero and snapshotting the size', () => {
+  it('animates open from closed, snapshotting the size', () => {
     const current = transition({ requestedOpen: false, phase: 'closed', version: 1 });
 
     const next = reconcileTransition(current, true, 440, false);
@@ -35,7 +34,6 @@ describe('reconcileTransition', () => {
       requestedOpen: true,
       phase: 'opening',
       targetPaneSize: 440,
-      shouldStartFromZero: true,
       version: 2,
     });
   });
@@ -54,17 +52,16 @@ describe('reconcileTransition', () => {
       requestedOpen: false,
       phase: 'closing',
       targetPaneSize: 0,
-      shouldStartFromZero: false,
       version: 6,
     });
   });
 
-  it('does not snap from zero when re-opening before a close has finished', () => {
+  it('re-enters opening with a version bump when re-opening before a close has finished', () => {
     const current = transition({ requestedOpen: false, phase: 'closing', version: 2 });
 
     const next = reconcileTransition(current, true, 440, false);
 
-    expect(next).toMatchObject({ phase: 'opening', shouldStartFromZero: false, version: 3 });
+    expect(next).toMatchObject({ phase: 'opening', targetPaneSize: 440, version: 3 });
   });
 
   it('skips the animation phases under reduced motion', () => {
@@ -72,7 +69,6 @@ describe('reconcileTransition', () => {
     expect(opened).toMatchObject({
       phase: 'open',
       targetPaneSize: 440,
-      shouldStartFromZero: false,
     });
 
     const closed = reconcileTransition(
@@ -84,7 +80,6 @@ describe('reconcileTransition', () => {
     expect(closed).toMatchObject({
       phase: 'closed',
       targetPaneSize: 0,
-      shouldStartFromZero: false,
     });
   });
 
@@ -93,7 +88,6 @@ describe('reconcileTransition', () => {
       requestedOpen: true,
       phase: 'opening',
       targetPaneSize: 440,
-      shouldStartFromZero: true,
       version: 4,
     });
 
@@ -104,7 +98,6 @@ describe('reconcileTransition', () => {
       requestedOpen: true,
       phase: 'open',
       targetPaneSize: 440,
-      shouldStartFromZero: false,
       version: 5,
     });
   });

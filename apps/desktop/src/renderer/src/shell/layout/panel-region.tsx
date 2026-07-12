@@ -3,8 +3,6 @@ import { PanelRegion } from '@linkcode/ui/shell/panels';
 import { DesktopChromePortal } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
 import type { PanelSide, PanelState } from '../store/model';
-import type { SplitPanePhase } from './use-animated-split';
-import { getShellContentMotionStyle } from './use-animated-split';
 
 /**
  * Desktop panel chrome/frame. Tab content is NOT rendered here: the shell owns it and portals a
@@ -18,8 +16,6 @@ export function DesktopPanelRegion({
   chromeVisible,
   chromeSurface,
   contentHidden,
-  phase,
-  reducedMotion,
   contentTargetRef,
   onSelectTab,
   onCloseTab,
@@ -33,8 +29,6 @@ export function DesktopPanelRegion({
   chromeVisible: boolean;
   chromeSurface: ChromeSurface;
   contentHidden: boolean;
-  phase: SplitPanePhase;
-  reducedMotion: boolean;
   contentTargetRef: (element: HTMLDivElement | null) => void;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
@@ -52,11 +46,6 @@ export function DesktopPanelRegion({
       contentHidden={contentHidden}
       chromeSpacerClassName={DESKTOP_CHROME_SPACER_CLASS}
       ChromePortal={DesktopChromePortal}
-      contentStyle={getShellContentMotionStyle({
-        axis: side === 'right' ? 'x' : 'y',
-        phase,
-        reducedMotion,
-      })}
       contentTargetRef={contentTargetRef}
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
