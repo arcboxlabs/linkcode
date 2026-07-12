@@ -1,3 +1,4 @@
+import { setKeyboardShortcutPlatform } from '@linkcode/ui';
 import { init as sentryInit } from '@sentry/electron/renderer';
 import { init as reactInit } from '@sentry/react';
 import { createRoot } from 'react-dom/client';
@@ -8,6 +9,8 @@ import { openDesktopSettings } from './settings/store';
 import { installAdaptiveTheme } from './theme';
 import 'allotment/dist/style.css';
 import './index.css';
+
+setKeyboardShortcutPlatform(systemBridge.app.platform === 'darwin' ? 'mac' : 'non-mac');
 
 // Renderer events route through the main process, which owns the DSN/transport — passing dsn here has no effect.
 // Combine with @sentry/react so React component stacks and error boundaries are captured.

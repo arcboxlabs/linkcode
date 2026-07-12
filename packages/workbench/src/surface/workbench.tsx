@@ -26,10 +26,11 @@ import type {
   PermissionDecision,
   ThreadGroupViewModel,
 } from '@linkcode/ui';
+import { useKeyboardShortcutLabel } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
@@ -49,13 +50,12 @@ import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import { useSeededConversation } from './use-seeded-conversation';
+import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
 
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
-  /** Platform-formatted hint for the palette trigger (e.g. `⌘K`); apps own the label. */
-  paletteShortcut?: string;
 }
 
 /**
@@ -68,14 +68,15 @@ export interface WorkbenchProps {
  */
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
-  paletteShortcut,
 }: WorkbenchProps): React.ReactNode {
+  const rootRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err));
   }
 
   const sessions = useWorkbenchSessions(handleError);
+  useWorkbenchKeyboardShortcuts(rootRef);
   const conversation = useSeededConversation(sessions.active, handleError);
 
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
@@ -84,18 +85,17 @@ export function Workbench({
   // column (the shells key their ConversationSurface), and the permission state below survives
   // switches safely because adapter requestIds are globally unique.
   return (
-    <>
+    <div ref={rootRef} className="h-full min-h-0">
       <WorkbenchSessionSurface
         sessions={sessions}
         conversation={conversation}
         errorMessage={errorMessage}
         ShellComponent={ShellComponent}
-        paletteShortcut={paletteShortcut}
         onClearError={() => setErrorMessage(null)}
         onError={handleError}
       />
       <WorkbenchCommandPalette sessions={sessions} />
-    </>
+    </div>
   );
 }
 
@@ -104,7 +104,6 @@ interface WorkbenchSessionSurfaceProps {
   conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
-  paletteShortcut?: string;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -114,11 +113,11 @@ function WorkbenchSessionSurface({
   conversation,
   errorMessage,
   ShellComponent,
-  paletteShortcut,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
+  const searchShortcut = useKeyboardShortcutLabel('workbench.command-palette');
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
@@ -443,7 +442,7 @@ function WorkbenchSessionSurface({
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
       onOpenSearch={openCommandPalette}
-      searchShortcut={paletteShortcut}
+      searchShortcut={searchShortcut}
       TerminalBlockComponent={RuntimeTerminalBlock}
       BranchStatusComponent={RuntimeBranchStatus}
       onDismissError={onClearError}

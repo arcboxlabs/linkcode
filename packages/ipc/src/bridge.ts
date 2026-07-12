@@ -25,7 +25,8 @@ export interface SystemBridge {
   };
   app: {
     version(): Promise<string>;
-    platform(): Promise<NodeJS.Platform>;
+    /** Synchronous Electron platform supplied by the sandboxed preload. */
+    readonly platform: NodeJS.Platform;
     /** Trigger a manual update check; observe progress via `onUpdaterStatus`. */
     checkForUpdates(): Promise<void>;
     /** Subscribe to auto-update lifecycle status pushed from main. */

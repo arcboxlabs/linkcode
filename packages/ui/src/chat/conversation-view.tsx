@@ -18,7 +18,7 @@ import {
   conversationFlowItems,
   declinedToolCall,
   declinedToolCallIds,
-  selectPendingPermissionItems,
+  selectPendingPromptItems,
 } from './conversation-prompts';
 import { assistantTurnText, latestReceivedAt } from './conversation-text';
 import { ErrorMessage } from './error-message';
@@ -82,8 +82,10 @@ export function ConversationView({
   );
   // Gated calls whose ask is still open (not answered in this client) carry the shield glyph.
   const awaitingApproval = new Set(
-    selectPendingPermissionItems(conversation).flatMap((item) =>
-      permissionDecisions.has(item.requestId) ? [] : [item.toolCall.toolCallId],
+    selectPendingPromptItems(conversation).flatMap((item) =>
+      item.kind === 'approval' && !permissionDecisions.has(item.requestId)
+        ? [item.toolCall.toolCallId]
+        : [],
     ),
   );
   const segments = splitTurnSegments(conversationFlowItems(items));

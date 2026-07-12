@@ -6,6 +6,7 @@ import {
   HostFooter,
   NewSessionSurface,
   SessionSidebar,
+  useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import {
   getChromeSurface,
@@ -54,7 +55,7 @@ import {
 } from './store/model';
 import { useDesktopShellStore } from './store/store';
 import { useDesktopPaletteCommands } from './use-desktop-palette-commands';
-import { getPanelToggleShortcuts, useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
+import { useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
 
 export function DesktopShell({
   systemBridge,
@@ -97,6 +98,7 @@ export function DesktopShell({
   onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
+  searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
   onDismissError,
@@ -158,8 +160,11 @@ export function DesktopShell({
   const { current: shellStyle } = useSingleton<DesktopShellStyle>(() =>
     createDesktopShellStyle(shellState),
   );
-  const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
+  const desktopPlatform = systemBridge.app.platform;
   const [appVersion, setAppVersion] = useState('');
+  const sidebarShortcut = useKeyboardShortcutLabel('desktop.toggle-sidebar');
+  const bottomPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-bottom-panel');
+  const rightPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-right-panel');
   // Content boxes reported by the active panel-region instances (docked or maximized overlay).
   const [rightContentTarget, setRightContentTarget] = useState<HTMLDivElement | null>(null);
   const [bottomContentTarget, setBottomContentTarget] = useState<HTMLDivElement | null>(null);
@@ -218,11 +223,7 @@ export function DesktopShell({
 
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
-  // Non-macOS gets renderer-drawn window controls; gate on a known platform so macOS never flashes
-  // them before `app.platform()` resolves.
-  const showWindowControls = desktopPlatform !== null && desktopPlatform !== 'darwin';
-  // Hints mirror the window keydown bindings below; hidden until the platform is known.
-  const panelShortcuts = getPanelToggleShortcuts(desktopPlatform);
+  const showWindowControls = desktopPlatform !== 'darwin';
   const sidebarClassName = hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar';
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
@@ -232,15 +233,6 @@ export function DesktopShell({
     minMainSize: MIN_MAIN_SIZE,
     rightPanelMinSize: RIGHT_PANEL_MIN_SIZE,
   });
-
-  useAbortableEffect(
-    (signal) => {
-      void systemBridge.app.platform().then((platform) => {
-        if (!signal.aborted) setDesktopPlatform(platform);
-      });
-    },
-    [systemBridge],
-  );
 
   useAbortableEffect(
     (signal) => {
@@ -280,7 +272,12 @@ export function DesktopShell({
     resetBottomPanelSize: resetBottomPanelLayoutSize,
   } = shellState;
 
-  useDesktopShellShortcuts({ desktopPlatform, togglePanel, updateSidebarOpen });
+  useDesktopShellShortcuts({
+    navigation,
+    owner: shellRootRef,
+    togglePanel,
+    updateSidebarOpen,
+  });
 
   const pickDirectory = useCallback(
     () => systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true }),
@@ -533,9 +530,9 @@ export function DesktopShell({
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
         showWindowControls={showWindowControls}
-        sidebarShortcut={panelShortcuts.sidebar}
-        rightPanelShortcut={panelShortcuts.right}
-        bottomPanelShortcut={panelShortcuts.bottom}
+        sidebarShortcut={sidebarShortcut}
+        rightPanelShortcut={rightPanelShortcut}
+        bottomPanelShortcut={bottomPanelShortcut}
         titleContent={hideMainTitle ? null : undefined}
         titleIcon={
           titledSession ? (
@@ -617,7 +614,7 @@ export function DesktopShell({
                 }
                 onPickDirectory={pickDirectory}
                 onOpenSearch={onOpenSearch}
-                searchShortcut={panelShortcuts.palette}
+                searchShortcut={searchShortcut}
                 onRegisterWorkspace={onRegisterWorkspace}
                 onImportHistory={onImportHistory}
                 onRenameWorkspace={onRenameWorkspace}

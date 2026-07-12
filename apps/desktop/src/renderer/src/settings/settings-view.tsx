@@ -1,9 +1,14 @@
 import type { AgentKind } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
-import { AGENT_LABELS, AgentIcon, SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
+import {
+  AGENT_LABELS,
+  AgentIcon,
+  SettingsSidebarNav,
+  ShellSidebar,
+  useKeyboardShortcut,
+} from '@linkcode/ui';
 import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import {
   BellIcon,
   BotIcon,
@@ -13,7 +18,7 @@ import {
   SettingsIcon,
   WifiIcon,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
 import { DesktopChrome } from '../shell/chrome/chrome';
@@ -32,6 +37,7 @@ import { useDesktopSettingsStore } from './store';
 
 const AGENT_KINDS: readonly AgentKind[] = AgentKindSchema.options;
 const DEFAULT_HISTORY_PROVIDER: AgentKind = 'claude-code';
+const CLOSE_SETTINGS_SHORTCUT = { key: 'Escape' } as const;
 
 const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
   ...DESKTOP_CHROME_METRICS_STYLE,
@@ -53,28 +59,25 @@ export function SettingsView(): React.ReactNode {
   const setCategory = useDesktopSettingsStore((state) => state.setSettingsCategory);
   const historyProvider = useDesktopSettingsStore((state) => state.historyImportProvider);
   const setHistoryProvider = useDesktopSettingsStore((state) => state.setHistoryImportProvider);
-  const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
+  const settingsRootRef = useRef<HTMLDivElement>(null);
+  const desktopPlatform = systemBridge.app.platform;
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
-  const showWindowControls = desktopPlatform !== null && desktopPlatform !== 'darwin';
+  const showWindowControls = desktopPlatform !== 'darwin';
 
-  useAbortableEffect((signal) => {
-    void systemBridge.app.platform().then((platform) => {
-      if (!signal.aborted) setDesktopPlatform(platform);
-    });
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      // defaultPrevented: an open popup (select, menu) consumed this Esc to dismiss itself.
-      if (event.key === 'Escape' && !event.defaultPrevented) backFromOverlay();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [backFromOverlay]);
+  useKeyboardShortcut({
+    actionId: 'desktop.close-settings',
+    shortcut: CLOSE_SETTINGS_SHORTCUT,
+    owner: settingsRootRef,
+    handler() {
+      backFromOverlay();
+      return true;
+    },
+  });
 
   return (
     <div
+      ref={settingsRootRef}
       className="linkcode-desktop-shell fixed inset-0 z-50 bg-transparent text-foreground"
       style={SETTINGS_CHROME_STYLE}
     >

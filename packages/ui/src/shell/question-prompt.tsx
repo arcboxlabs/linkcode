@@ -1,66 +1,153 @@
 import type { QuestionAnswer, QuestionOutcome } from '@linkcode/schema';
+import { Button } from 'coss-ui/components/button';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { ConversationPromptResponse } from '../chat/conversation-prompt';
+import { isConversationPromptResponseSubmittable } from '../chat/conversation-prompt';
 import { ConversationPromptAlert } from '../chat/conversation-prompt-alert';
 import type { QuestionConversationItem } from '../chat/conversation-prompts';
+import { PromptPager } from './prompt-pager';
+
+const EMPTY_RESPONSE: ConversationPromptResponse = { selectedIds: [] };
 
 /**
- * One agent question ask (1–4 questions), stepped through one question per card. Answers accumulate
- * locally and submit as ONE reply on the last step — the agent awaits a single response for the
- * whole ask. Skip declines the whole ask (the agent hears "declined", not partial answers).
+ * One agent question group, paged within one card. Drafts and skips stay local until one aggregate
+ * reply submits the whole group, so its pager never crosses into standalone prompts.
  */
 export function QuestionPrompt({
-  action,
+  autoFocusFirstChoice = false,
   item,
+  queuedCount = 0,
   responding,
   onRespond,
 }: {
-  action?: React.ReactNode;
+  autoFocusFirstChoice?: boolean;
   item: QuestionConversationItem;
+  queuedCount?: number;
   responding: boolean;
   onRespond: (requestId: string, outcome: QuestionOutcome) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.question');
-  const [answers, setAnswers] = useState<QuestionAnswer[]>([]);
-  const index = Math.min(answers.length, item.questions.length - 1);
+  const [responses, setResponses] = useState<Map<string, ConversationPromptResponse>>(
+    () => new Map(),
+  );
+  const [skippedQuestionIds, setSkippedQuestionIds] = useState<string[]>([]);
+  const [index, setIndex] = useState(0);
+  const [focusAfterNavigation, setFocusAfterNavigation] = useState(false);
   const question = item.questions[index];
-  const isLast = index === item.questions.length - 1;
   const header = question.header ?? t('badge');
-  const badge =
-    item.questions.length > 1
-      ? `${header} · ${t('progress', { current: index + 1, total: item.questions.length })}`
-      : header;
+  const response = responses.get(question.questionId) ?? EMPTY_RESPONSE;
+  const skipped = skippedQuestionIds.includes(question.questionId);
+  const allResolved = item.questions.every((candidate) => {
+    if (skippedQuestionIds.includes(candidate.questionId)) return true;
+    const candidateResponse = responses.get(candidate.questionId);
+    return candidateResponse ? isQuestionAnswered(candidate, candidateResponse) : false;
+  });
+
+  function selectPage(nextIndex: number): void {
+    if (nextIndex < 0 || nextIndex >= item.questions.length) return;
+    setFocusAfterNavigation(true);
+    setIndex(nextIndex);
+  }
+
+  function updateResponse(nextResponse: ConversationPromptResponse): void {
+    setResponses((current) => new Map(current).set(question.questionId, nextResponse));
+    setSkippedQuestionIds((current) =>
+      current.filter((questionId) => questionId !== question.questionId),
+    );
+    if (!question.multiSelect && nextResponse.selectedIds.length === 1) {
+      selectPage(index + 1);
+    }
+  }
+
+  function skipQuestion(): void {
+    setResponses((current) => {
+      const next = new Map(current);
+      next.delete(question.questionId);
+      return next;
+    });
+    setSkippedQuestionIds((current) =>
+      current.includes(question.questionId) ? current : [...current, question.questionId],
+    );
+    selectPage(index + 1);
+  }
+
+  function submitGroup(): void {
+    if (!allResolved || responding) return;
+    const answers: QuestionAnswer[] = [];
+    for (const candidate of item.questions) {
+      const candidateResponse = responses.get(candidate.questionId);
+      if (!candidateResponse || !isQuestionAnswered(candidate, candidateResponse)) continue;
+      answers.push({
+        questionId: candidate.questionId,
+        selectedOptionIds: candidateResponse.selectedIds,
+        customText: candidateResponse.customText?.trim() || undefined,
+      });
+    }
+    onRespond(
+      item.requestId,
+      answers.length > 0 ? { outcome: 'answered', answers } : { outcome: 'cancelled' },
+    );
+  }
 
   return (
     <ConversationPromptAlert
-      // Remount per question so the alert's selection state starts fresh on each step.
+      // Remount the visible page; controlled drafts restore its prior answer when revisited.
       key={question.questionId}
       className="my-0"
-      action={action}
-      badge={badge}
+      action={
+        item.questions.length > 1 || queuedCount > 0 ? (
+          <PromptPager
+            current={index + 1}
+            disabled={responding}
+            nextLabel={t('next')}
+            previousLabel={t('previous')}
+            queued={queuedCount}
+            total={item.questions.length}
+            onNext={() => selectPage(index + 1)}
+            onPrevious={() => selectPage(index - 1)}
+          />
+        ) : undefined
+      }
+      autoFocusFirstChoice={autoFocusFirstChoice || focusAfterNavigation}
+      badge={header}
       choices={question.options.map((option) => ({
         id: option.optionId,
         label: option.label,
         description: option.description,
       }))}
       customInputPlaceholder={t('customPlaceholder')}
+      footerAction={
+        <Button
+          disabled={!allResolved || responding}
+          loading={responding}
+          size="xs"
+          type="button"
+          onClick={submitGroup}
+        >
+          {t('submit')}
+        </Button>
+      }
       mode={question.multiSelect ? 'multiple' : 'single'}
+      response={response}
+      skipLabel={skipped ? t('skipped') : undefined}
       submitting={responding}
-      submitLabel={isLast ? undefined : t('next')}
       title={question.prompt}
-      onSkip={() => onRespond(item.requestId, { outcome: 'cancelled' })}
-      onSubmit={(response) => {
-        const answer: QuestionAnswer = {
-          questionId: question.questionId,
-          selectedOptionIds: response.selectedIds,
-          customText: response.customText,
-        };
-        if (isLast) {
-          onRespond(item.requestId, { outcome: 'answered', answers: [...answers, answer] });
-        } else {
-          setAnswers((current) => [...current, answer]);
-        }
-      }}
+      onResponseChange={updateResponse}
+      onSkip={skipQuestion}
     />
+  );
+}
+
+function isQuestionAnswered(
+  question: QuestionConversationItem['questions'][number],
+  response: ConversationPromptResponse,
+): boolean {
+  return isConversationPromptResponseSubmittable(
+    {
+      mode: question.multiSelect ? 'multiple' : 'single',
+      choices: question.options.map((option) => ({ id: option.optionId, label: option.label })),
+    },
+    response,
   );
 }

@@ -1,3 +1,4 @@
+import { formatKeyboardShortcut } from '@linkcode/ui';
 import type { PanelSide } from '@linkcode/ui/shell/panels';
 import type { PaletteCommand } from '@linkcode/workbench';
 import { useCommandPaletteStore } from '@linkcode/workbench';
@@ -5,10 +6,11 @@ import { noop } from 'foxact/noop';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useTranslations } from 'use-intl';
 import { openDesktopSettings } from '../settings/store';
-import { getPanelToggleShortcuts } from './use-desktop-shell-shortcuts';
+
+const SETTINGS_SHORTCUT = { code: 'Comma', modifiers: ['primary'] } as const;
 
 interface UseDesktopPaletteCommandsOptions {
-  desktopPlatform: NodeJS.Platform | null;
+  desktopPlatform: NodeJS.Platform;
   pickDirectory: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => void;
   onOpenSettings?: () => void;
@@ -33,7 +35,10 @@ export function useDesktopPaletteCommands({
   const tPalette = useTranslations('workbench.palette');
 
   useAbortableEffect(() => {
-    const shortcuts = getPanelToggleShortcuts(desktopPlatform);
+    const settingsShortcut = formatKeyboardShortcut(
+      SETTINGS_SHORTCUT,
+      desktopPlatform === 'darwin' ? 'mac' : 'non-mac',
+    );
     const commands: PaletteCommand[] = [
       {
         id: 'desktop.open-folder',
@@ -50,7 +55,6 @@ export function useDesktopPaletteCommands({
       {
         id: 'desktop.toggle-sidebar',
         label: tPalette('toggleSidebar'),
-        shortcut: shortcuts.sidebar,
         run() {
           updateSidebarOpen((open) => !open);
         },
@@ -58,7 +62,6 @@ export function useDesktopPaletteCommands({
       {
         id: 'desktop.toggle-bottom-panel',
         label: tPalette('toggleBottomPanel'),
-        shortcut: shortcuts.bottom,
         run() {
           togglePanel('bottom');
         },
@@ -66,7 +69,6 @@ export function useDesktopPaletteCommands({
       {
         id: 'desktop.toggle-right-panel',
         label: tPalette('toggleRightPanel'),
-        shortcut: shortcuts.right,
         run() {
           togglePanel('right');
         },
@@ -79,7 +81,7 @@ export function useDesktopPaletteCommands({
         {
           id: 'desktop.settings',
           label: tPalette('openSettings'),
-          shortcut: shortcuts.settings,
+          shortcut: settingsShortcut,
           run: onOpenSettings,
         },
         {

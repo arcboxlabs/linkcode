@@ -86,15 +86,18 @@ export const zhCN = {
     prompt: {
       submit: '提交',
       skip: '跳过',
-      page: '{current} / {total}',
+      progress: '{current} / {total}',
+      queued: '另有 {count} 个待处理',
       previous: '上一个提示',
       next: '下一个提示',
       customPlaceholder: '告诉 Codex 要如何调整',
     },
     question: {
       badge: '提问',
-      progress: '{current}/{total}',
-      next: '下一题',
+      previous: '上一个问题',
+      next: '下一个问题',
+      submit: '提交回答',
+      skipped: '已跳过',
       customPlaceholder: '输入自定义回答',
     },
     agentRuntime: {
