@@ -47,7 +47,6 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "allotment": "^1.20.5",
     "babel-plugin-react-compiler": "catalog:",
     "coss-ui": "workspace:*",
     "cross-spawn": "^7.0.6",

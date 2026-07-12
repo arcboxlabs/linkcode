@@ -16,29 +16,51 @@
   }
 }
 
-@layer components {
-  .linkcode-shell-split {
-    /* Match the chrome segment / sidebar borders (solid `--border`) so every
-       divider reads as one color; allotment's softened default looked lighter. */
-    --separator-border: var(--border);
-    --focus-border: var(--info);
-    --sash-hover-size: 1px;
-    --sash-hover-transition-duration: 120ms;
-  }
+/*
+ * The shell workspace is one CSS grid whose tracks read the pane variables written on the
+ * shell root (`--lc-sidebar-w` / `--lc-right-w` / `--lc-bottom-h`). The clamps keep the
+ * 1fr main cell at least `--lc-main-min` wide/tall when the window shrinks — the right
+ * panel yields first, then the sidebar. The wrapper is a size container so the track
+ * expressions and the main content lock can resolve the workspace's own dimensions
+ * through cq units.
+ */
+.linkcode-shell-workspace {
+  container-type: size;
+}
+
+.linkcode-shell-grid {
+  /* Keep in sync with MIN_MAIN_SIZE in shell/store/model.ts. */
+  --lc-main-min: 360px;
+  --lc-sidebar-col: clamp(0px, var(--lc-sidebar-w), calc(100cqw - var(--lc-main-min)));
+  --lc-right-col: clamp(
+    0px,
+    var(--lc-right-w),
+    calc(100cqw - var(--lc-sidebar-col) - var(--lc-main-min))
+  );
+  --lc-bottom-row: clamp(0px, var(--lc-bottom-h), calc(100cqh - var(--lc-main-min)));
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--lc-sidebar-col) minmax(0, 1fr) var(--lc-right-col);
+  grid-template-rows: minmax(0, 1fr) var(--lc-bottom-row);
 }
 
 /*
- * The titlebar chrome overlay mirrors the sidebar/right pane widths through
- * `--lc-sidebar-w`/`--lc-right-w` (grid columns + main-slot insets in chrome.tsx). A pane
- * toggle writes the final value ONCE; these transitions on the two consuming elements
- * interpolate the titlebar, so the per-frame style/layout work stays confined to the
- * dozen-element chrome subtree. (Transitioning the variables themselves on the shell root
- * was measurably worse: the inherited custom property re-propagates through the whole
- * shell subtree every frame.) Scoped to [data-shell-animating] — set by DesktopShell only
- * while a pane toggle is in flight — so sash drags and window resizes track the pointer
- * live, and the maximize cut stays instant.
- * Keep duration/bezier in sync with SHELL_TRANSITION in shell/layout/use-animated-split.ts.
+ * A pane toggle writes its variable ONCE; these scoped transitions interpolate the
+ * consuming grid templates — workspace panes and titlebar chrome on one shared timeline —
+ * so the per-frame style/layout work is just track math plus repositioning the locked,
+ * fixed-size pane subtrees. (Transitioning the variables themselves on the shell root was
+ * measurably worse: an inherited custom property re-propagates through the whole shell
+ * subtree every frame.) [data-shell-animating] is set by DesktopShell only while a pane
+ * toggle is in flight, so sash drags and window resizes keep tracking the pointer live
+ * and the maximize cut stays instant.
+ * Keep duration/bezier in sync with SHELL_TRANSITION in shell/layout/pane-transition.ts.
  */
+.linkcode-desktop-shell[data-shell-animating] .linkcode-shell-grid {
+  transition:
+    grid-template-columns 300ms cubic-bezier(0.2, 0, 0, 1),
+    grid-template-rows 300ms cubic-bezier(0.2, 0, 0, 1);
+}
+
 .linkcode-desktop-shell[data-shell-animating] .linkcode-chrome-grid {
   transition: grid-template-columns 300ms cubic-bezier(0.2, 0, 0, 1);
 }
@@ -50,42 +72,88 @@
 }
 
 /*
- * Each chrome divider visually continues the allotment sash directly beneath it,
- * so it adopts the sash's focus color whenever that sash is hovered or dragged.
- * Allotment flags the active sash with `.sash-hover` / `.sash-active`; `:has()`
- * mirrors that onto the aligned `[data-chrome-divider]`. Left unlayered so it
- * overrides the Tailwind border-color utilities on the segments. The
- * `> .sash-container` child combinator scopes each rule to that split's own sash,
- * not the nested split's.
+ * While a horizontal pane toggle runs, the main content is laid out ONCE at its final
+ * width and kept centered on the animating cell's midpoint (the margin recomputes per
+ * frame — position only, no rewrap). A centered column then glides exactly as a real
+ * per-frame relayout would settle it.
  */
-.linkcode-desktop-shell [data-chrome-divider] {
-  transition: border-color var(--sash-hover-transition-duration, 120ms) ease-out;
+.linkcode-shell-main-lock {
+  --lc-main-final: calc(100cqw - var(--lc-sidebar-col) - var(--lc-right-col));
+  width: var(--lc-main-final);
+  margin-left: calc((100% - var(--lc-main-final)) / 2);
 }
 
-.linkcode-desktop-shell:has(
-    .linkcode-shell-sidebar-main-split > .sash-container > :is(.sash-hover, .sash-active)
-  )
-  [data-chrome-divider="sidebar-main"],
-.linkcode-desktop-shell:has(
-    .linkcode-shell-main-right-split > .sash-container > :is(.sash-hover, .sash-active)
-  )
-  [data-chrome-divider="main-right"] {
-  border-color: var(--info);
+/* Sashes: invisible 8px hit areas over the dividers, riding the same track variables. */
+.linkcode-sash-sidebar {
+  inset-block: 0;
+  left: calc(var(--lc-sidebar-col) - 4px);
+}
+
+.linkcode-sash-right {
+  inset-block: 0 var(--lc-bottom-row);
+  right: calc(var(--lc-right-col) - 4px);
+}
+
+.linkcode-sash-bottom {
+  bottom: calc(var(--lc-bottom-row) - 4px);
+  left: var(--lc-sidebar-col);
+  right: 0;
+}
+
+/* While a toggle animates the variables already sit at their final values, so the hit
+   area would be ahead of the gliding edge — no dragging mid-toggle. */
+.linkcode-desktop-shell[data-shell-animating] .linkcode-shell-sash {
+  pointer-events: none;
+}
+
+/* The 1px hover/drag bar, aligned onto the cell border it controls (the sidebar's
+   border-r sits left of its edge; the right/bottom borders sit right of / below it). */
+.linkcode-shell-sash::before {
+  content: "";
+  position: absolute;
+  background-color: transparent;
+  transition: background-color 120ms ease-out 200ms;
+}
+
+.linkcode-sash-sidebar::before {
+  inset-block: 0;
+  left: calc(50% - 1px);
+  width: 1px;
+}
+
+.linkcode-sash-right::before {
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+}
+
+.linkcode-sash-bottom::before {
+  inset-inline: 0;
+  top: 50%;
+  height: 1px;
+}
+
+.linkcode-shell-sash:hover::before,
+.linkcode-shell-sash[data-dragging]::before {
+  background-color: var(--info);
+}
+
+.linkcode-shell-sash[data-dragging]::before {
+  transition-delay: 0s;
 }
 
 /*
- * Allotment centers the sash's 1px focus bar on the pane boundary, but each
- * chrome divider above it is an inset 1px border sitting on one side of that
- * boundary: sidebar↔main on the sidebar segment's right edge, main↔right on the
- * right segment's left edge. Nudge each sash bar onto that same edge so the
- * chrome border and the sash read as one continuous line instead of a 1px jog.
- * `> .sash-container > .sash` targets only the split's own sash, never a nested
- * split's; the higher specificity overrides allotment's centered default.
+ * Each chrome divider visually continues the workspace sash directly beneath it, so it
+ * adopts the sash's focus color whenever that sash is hovered or dragged. Left unlayered
+ * so it overrides the Tailwind border-color utilities on the segments.
  */
-.linkcode-shell-sidebar-main-split > .sash-container > .sash::before {
-  left: calc(50% - var(--sash-hover-size));
+.linkcode-desktop-shell [data-chrome-divider] {
+  transition: border-color 120ms ease-out;
 }
 
-.linkcode-shell-main-right-split > .sash-container > .sash::before {
-  left: 50%;
+.linkcode-desktop-shell:has(.linkcode-sash-sidebar:is(:hover, [data-dragging]))
+  [data-chrome-divider="sidebar-main"],
+.linkcode-desktop-shell:has(.linkcode-sash-right:is(:hover, [data-dragging]))
+  [data-chrome-divider="main-right"] {
+  border-color: var(--info);
 }

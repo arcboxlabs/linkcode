@@ -7,7 +7,6 @@ import { systemBridge } from './ipc';
 import { installNotificationClickThrough } from './notifications';
 import { openDesktopSettings } from './settings/store';
 import { installAdaptiveTheme } from './theme';
-import 'allotment/dist/style.css';
 import './index.css';
 
 setKeyboardShortcutPlatform(systemBridge.app.platform === 'darwin' ? 'mac' : 'non-mac');

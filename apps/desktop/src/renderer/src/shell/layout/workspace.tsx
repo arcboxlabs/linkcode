@@ -1,185 +1,228 @@
+import { cn } from '@linkcode/ui';
 import type { LayoutState, PanelSide } from '@renderer/shell/store/model';
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
   getExpandedPanelForTarget,
-  MIN_MAIN_SIZE,
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
-  readPaneSize,
+  SIDEBAR_MAX_SIZE,
+  SIDEBAR_MIN_SIZE,
 } from '@renderer/shell/store/model';
-import type { AllotmentHandle } from 'allotment';
-import { Allotment, LayoutPriority } from 'allotment';
-import type { AnimatedSplit } from './use-animated-split';
-import { getShellContentMotionStyle } from './use-animated-split';
+import type { PaneTransition } from './pane-transition';
+import { Sash } from './sash';
 
-/** One dockable side of the workspace: its animated split plus the docked and maximized-overlay nodes. */
+/** One dockable side of the workspace: its transition plus the docked and maximized-overlay nodes. */
 export interface WorkspaceSide {
-  split: Omit<AnimatedSplit, 'setAllotmentHandle'>;
+  transition: PaneTransition;
   open: boolean;
   node: React.ReactNode;
   expandedNode: React.ReactNode;
   onResetSize: () => void;
 }
 
+/** The sidebar: like a side, but it has no maximized-overlay form. */
+export type WorkspaceSidebar = Omit<WorkspaceSide, 'expandedNode'>;
+
+const CELL_CLASS = 'relative min-h-0 min-w-0 overflow-hidden';
+
+/**
+ * The shell workspace: one CSS grid whose tracks read the `--lc-*` shell variables
+ * (index.css `.linkcode-shell-grid`). Pane toggles write a variable once and a scoped
+ * grid-template transition glides every edge on the same 300ms timeline as the titlebar
+ * chrome; sash drags write the same variable per frame with the transition inactive.
+ * While a pane animates, its content is locked to the settled size so nothing rewraps
+ * per frame — only grid tracks move.
+ */
 export function DesktopWorkspace({
+  sidebar,
   main,
   right,
   bottom,
-  // The allotment ref setters arrive as standalone props: the React Compiler only
-  // accepts a plain identifier in `ref={…}`, so they cannot live on the side objects.
-  rightAllotmentRef,
-  bottomAllotmentRef,
   expandedPanel,
   layout,
   onLayoutChange,
+  onSidebarResize,
+  onRightResize,
+  onBottomResize,
 }: {
+  sidebar: WorkspaceSidebar;
   main: React.ReactNode;
   right: WorkspaceSide;
   bottom: WorkspaceSide;
-  rightAllotmentRef: (handle: AllotmentHandle | null) => void;
-  bottomAllotmentRef: (handle: AllotmentHandle | null) => void;
   expandedPanel: PanelSide | null;
   layout: LayoutState;
   onLayoutChange: (updater: (current: LayoutState) => LayoutState) => void;
+  /** Imperative shell-variable writers (the same ones the pane transitions use). */
+  onSidebarResize: (size: number) => void;
+  onRightResize: (size: number) => void;
+  onBottomResize: (size: number) => void;
 }): React.ReactNode {
   const rowOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'editor-row');
   const workbenchOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'workbench');
   // Expanded panels render as direct overlays. Docked panels stay mounted so
   // they keep owning chrome portals and panel state.
   const dockedInert = workbenchOverlayPanel !== null;
+  const editorInert = rowOverlayPanel !== null || dockedInert;
 
-  const contentRow = (
-    <div className="relative isolate h-full min-h-0 min-w-0">
-      <div
-        className="h-full min-h-0"
-        aria-hidden={rowOverlayPanel !== null}
-        inert={rowOverlayPanel !== null}
-      >
-        <Allotment
-          ref={rightAllotmentRef}
-          className="linkcode-shell-split linkcode-shell-main-right-split h-full"
-          defaultSizes={[1000, layout.rightW]}
-          proportionalLayout={false}
-          onChange={right.split.onChange}
-          onDragEnd={(sizes) => {
-            right.split.onChange(sizes);
-            if (right.open && !right.split.isAnimating) {
-              onLayoutChange((current) => ({
-                ...current,
-                rightW: readPaneSize(sizes[1], current.rightW),
-              }));
-            }
-          }}
-          onReset={right.onResetSize}
-        >
-          <Allotment.Pane minSize={MIN_MAIN_SIZE} priority={LayoutPriority.High}>
-            {main}
-          </Allotment.Pane>
-          <Allotment.Pane
-            maxSize={RIGHT_PANEL_MAX_SIZE}
-            minSize={right.split.allowZeroSize ? 0 : RIGHT_PANEL_MIN_SIZE}
-            preferredSize={layout.rightW}
-            visible={right.split.paneVisible}
-          >
-            {/* Static bg-background surface behind the sliding panel: the layout commits in one
-                snap while the content slides, and the strip revealed in between must not show
-                the translucent window backdrop. */}
-            <div
-              aria-hidden={!right.open}
-              inert={!right.open}
-              className="h-full min-h-0 bg-background"
-            >
-              <div
-                className="h-full min-h-0"
-                style={getShellContentMotionStyle({
-                  axis: 'x',
-                  phase: right.split.phase,
-                  reducedMotion: right.split.reducedMotion,
-                })}
-              >
-                {right.node}
-              </div>
-            </div>
-          </Allotment.Pane>
-        </Allotment>
-      </div>
-
-      {rowOverlayPanel && (
-        <ExpandedPanelOverlay side={rowOverlayPanel}>
-          {rowOverlayPanel === 'right' ? right.expandedNode : bottom.expandedNode}
-        </ExpandedPanelOverlay>
-      )}
-    </div>
-  );
+  const anyAnimating =
+    sidebar.transition.isAnimating || right.transition.isAnimating || bottom.transition.isAnimating;
+  const horizontalAnimating = sidebar.transition.isAnimating || right.transition.isAnimating;
 
   return (
-    <div className="relative isolate h-full min-h-0 min-w-0">
-      <div className="h-full min-h-0" aria-hidden={dockedInert} inert={dockedInert}>
-        <Allotment
-          ref={bottomAllotmentRef}
-          className="linkcode-shell-split h-full"
-          vertical
-          defaultSizes={[1000, layout.bottomH]}
-          proportionalLayout={false}
-          onChange={bottom.split.onChange}
-          onDragEnd={(sizes) => {
-            bottom.split.onChange(sizes);
-            if (!bottom.open || bottom.split.isAnimating) return;
-            onLayoutChange((current) => ({
-              ...current,
-              bottomH: readPaneSize(sizes[1], current.bottomH),
-            }));
-          }}
-          onReset={bottom.onResetSize}
+    <div className="linkcode-shell-workspace isolate h-full min-h-0 min-w-0">
+      <div className="linkcode-shell-grid h-full w-full">
+        {/* The sidebar cell's right edge is the animated divider, so the cell owns the
+            border (the aside's own border-r is suppressed by the shell). */}
+        <div
+          data-shell-pane="sidebar"
+          aria-hidden={!sidebar.open}
+          inert={!sidebar.open}
+          className={cn(
+            CELL_CLASS,
+            'col-start-1 row-span-2 row-start-1',
+            sidebar.transition.paneVisible && 'border-sidebar-border border-r',
+          )}
         >
-          <Allotment.Pane minSize={MIN_MAIN_SIZE} priority={LayoutPriority.High}>
-            {contentRow}
-          </Allotment.Pane>
-          <Allotment.Pane
-            maxSize={BOTTOM_PANEL_MAX_SIZE}
-            minSize={bottom.split.allowZeroSize ? 0 : BOTTOM_PANEL_MIN_SIZE}
-            preferredSize={layout.bottomH}
-            visible={bottom.split.paneVisible}
+          <div
+            className="h-full"
+            style={sidebar.transition.isAnimating ? { width: layout.sidebarW } : undefined}
           >
-            <div
-              aria-hidden={!bottom.open}
-              inert={!bottom.open}
-              className="h-full min-h-0 bg-background"
-            >
-              <div
-                className="h-full min-h-0"
-                style={getShellContentMotionStyle({
-                  axis: 'y',
-                  phase: bottom.split.phase,
-                  reducedMotion: bottom.split.reducedMotion,
-                })}
-              >
-                {bottom.node}
-              </div>
-            </div>
-          </Allotment.Pane>
-        </Allotment>
-      </div>
+            {sidebar.node}
+          </div>
+        </div>
 
-      {workbenchOverlayPanel && (
-        <ExpandedPanelOverlay side={workbenchOverlayPanel}>
-          {workbenchOverlayPanel === 'right' ? right.expandedNode : bottom.expandedNode}
-        </ExpandedPanelOverlay>
-      )}
+        <div
+          data-shell-pane="main"
+          aria-hidden={editorInert}
+          inert={editorInert}
+          className={cn(CELL_CLASS, 'col-start-2 row-start-1 bg-background')}
+        >
+          {/* During a horizontal pane transition the main content is laid out ONCE at its
+              final width and kept centered in the animating cell (index.css), so its text
+              glides with the moving track edges instead of rewrapping per frame. */}
+          <div className={cn('h-full', horizontalAnimating && 'linkcode-shell-main-lock')}>
+            {main}
+          </div>
+        </div>
+
+        <div
+          data-shell-pane="right"
+          aria-hidden={!right.open || editorInert}
+          inert={!right.open || editorInert}
+          className={cn(
+            CELL_CLASS,
+            'col-start-3 row-start-1',
+            right.transition.paneVisible && 'border-border border-l',
+          )}
+        >
+          <div
+            className="h-full"
+            style={right.transition.isAnimating ? { width: layout.rightW } : undefined}
+          >
+            {right.node}
+          </div>
+        </div>
+
+        <div
+          data-shell-pane="bottom"
+          aria-hidden={!bottom.open || dockedInert}
+          inert={!bottom.open || dockedInert}
+          className={cn(
+            CELL_CLASS,
+            'col-span-2 col-start-2 row-start-2',
+            bottom.transition.paneVisible && 'border-border border-t',
+          )}
+        >
+          {/* h-full at rest; the inline lock (fixed px, overriding the percentage) wins while
+              the row track animates so the panel content never resizes mid-toggle. */}
+          <div
+            className="h-full"
+            style={bottom.transition.isAnimating ? { height: layout.bottomH } : undefined}
+          >
+            {bottom.node}
+          </div>
+        </div>
+
+        {/* Sashes are absolute (no grid area), positioned by the same track variables. */}
+        {sidebar.open && (
+          <Sash
+            orientation="vertical"
+            edge="start"
+            className="linkcode-sash-sidebar"
+            size={layout.sidebarW}
+            minSize={SIDEBAR_MIN_SIZE}
+            maxSize={SIDEBAR_MAX_SIZE}
+            disabled={anyAnimating}
+            onResize={onSidebarResize}
+            onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, sidebarW: size }))}
+            onReset={sidebar.onResetSize}
+          />
+        )}
+        {right.open && (
+          <Sash
+            orientation="vertical"
+            edge="end"
+            className="linkcode-sash-right"
+            size={layout.rightW}
+            minSize={RIGHT_PANEL_MIN_SIZE}
+            maxSize={RIGHT_PANEL_MAX_SIZE}
+            disabled={anyAnimating}
+            onResize={onRightResize}
+            onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, rightW: size }))}
+            onReset={right.onResetSize}
+          />
+        )}
+        {bottom.open && (
+          <Sash
+            orientation="horizontal"
+            edge="end"
+            className="linkcode-sash-bottom"
+            size={layout.bottomH}
+            minSize={BOTTOM_PANEL_MIN_SIZE}
+            maxSize={BOTTOM_PANEL_MAX_SIZE}
+            disabled={anyAnimating}
+            onResize={onBottomResize}
+            onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, bottomH: size }))}
+            onReset={bottom.onResetSize}
+          />
+        )}
+
+        {rowOverlayPanel && (
+          <ExpandedPanelOverlay
+            side={rowOverlayPanel}
+            className="col-end-4 col-start-2 row-start-1"
+          >
+            {rowOverlayPanel === 'right' ? right.expandedNode : bottom.expandedNode}
+          </ExpandedPanelOverlay>
+        )}
+        {workbenchOverlayPanel && (
+          <ExpandedPanelOverlay
+            side={workbenchOverlayPanel}
+            className="col-end-4 col-start-2 row-span-2 row-start-1"
+          >
+            {workbenchOverlayPanel === 'right' ? right.expandedNode : bottom.expandedNode}
+          </ExpandedPanelOverlay>
+        )}
+      </div>
     </div>
   );
 }
 
 function ExpandedPanelOverlay({
   side,
+  className,
   children,
 }: {
   side: PanelSide;
+  className: string;
   children: React.ReactNode;
 }): React.ReactNode {
   return (
-    <div data-expanded-panel={side} className="absolute inset-0 z-20 overflow-hidden bg-background">
+    <div
+      data-expanded-panel={side}
+      className={cn('z-20 min-h-0 min-w-0 overflow-hidden bg-background', className)}
+    >
       {children}
     </div>
   );

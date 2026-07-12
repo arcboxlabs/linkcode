@@ -7,7 +7,7 @@ export type {
 export { PanelStubContent } from './free-panel';
 export type { PanelTabContentItem } from './panel-content-stack';
 export { PanelTabContentStack } from './panel-content-stack';
-export { getChromeSurface, getWorkspaceMinSize } from './panel-layout';
+export { getChromeSurface } from './panel-layout';
 export type { PanelStateLike } from './panel-region';
 export { PanelRegion } from './panel-region';
 export type { SectionPanelRegionProps, SectionPanelState } from './section-panel';
