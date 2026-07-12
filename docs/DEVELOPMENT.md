@@ -5,7 +5,7 @@ The local runbook: run the apps, run the tests, debug a stuck daemon. For archit
 ## Prerequisites
 
 > [!NOTE]
-> `devenv` is recommended: it pins Node.js 24, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
+> `devenv` is recommended: it pins Node.js 26, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
 
 Without `devenv`, install these yourself:
 

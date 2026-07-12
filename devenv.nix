@@ -16,7 +16,9 @@
 
   languages.javascript = {
     enable = true;
-    package = pkgs.nodejs_24;
+    # nixpkgs nodejs_24 24.15/24.16 crashes worker_threads workloads on Darwin
+    # (NixOS/nixpkgs#536039); Node 26 ships the upstream V8 fix.
+    package = pkgs.nodejs_26;
     corepack.enable = false;
     pnpm = {
       enable = true;
