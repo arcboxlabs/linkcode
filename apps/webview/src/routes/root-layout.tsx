@@ -1,43 +1,25 @@
-import {
-  createDaemonTransport,
-  SessionNotifier,
-  WorkbenchAppProviders,
-  WorkbenchProviders,
-} from '@linkcode/workbench';
+import { SessionNotifier, WorkbenchAppProviders, WorkbenchProviders } from '@linkcode/workbench';
+import { webviewDaemonConnectionSource } from '@webview/daemon-connection-source';
 import { presentWebNotification } from '@webview/notifications';
 import { useSettingsStore } from '@webview/settings/store';
-import { useSingleton } from 'foxact/use-singleton';
 import { Outlet } from 'react-router';
 
 /**
  * Root layout: global providers + the daemon connection, rendered once around every route's
- * `<Outlet>`. The daemon URL and locale come from the settings store, so editing them re-keys the
- * connection / re-resolves the locale without a manual reload.
+ * `<Outlet>`. The daemon URL and locale come from the settings store, so editing them replaces the
+ * connection generation / re-resolves the locale without a manual reload.
  */
 export function RootLayout(): React.ReactNode {
-  const daemonUrl = useSettingsStore((state) => state.daemonUrl);
   const locale = useSettingsStore((state) => state.locale);
 
   return (
     <WorkbenchAppProviders locale={locale}>
-      <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
+      <WorkbenchProviders connectionSource={webviewDaemonConnectionSource}>
+        {/* Persistent across route changes, so background notifications keep arriving while the
+            user is on a non-workbench route such as Settings. */}
+        <SessionNotifier present={presentWebNotification} />
         <Outlet />
-      </DaemonConnection>
+      </WorkbenchProviders>
     </WorkbenchAppProviders>
-  );
-}
-
-function DaemonConnection({
-  daemonUrl,
-  children,
-}: React.PropsWithChildren<{ daemonUrl: string }>): React.ReactNode {
-  const { current: transport } = useSingleton(() => createDaemonTransport(daemonUrl));
-  return (
-    <WorkbenchProviders transport={transport} daemonUrl={daemonUrl}>
-      {/* Persistent across route changes, so background notifications keep arriving while the user
-          is on a non-workbench route such as Settings. */}
-      <SessionNotifier present={presentWebNotification} />
-      {children}
-    </WorkbenchProviders>
   );
 }

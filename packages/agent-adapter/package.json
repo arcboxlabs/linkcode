@@ -9,18 +9,17 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.179",
-    "@anthropic-ai/sdk": "^0.104.2",
-    "@earendil-works/pi-coding-agent": "^0.79.6",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.206",
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@earendil-works/pi-coding-agent": "^0.80.6",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
-    "@openai/codex": "^0.140.0",
-    "@opencode-ai/sdk": "^1.17.7",
-    "foxts": "^5.6.0",
+    "@openai/codex": "^0.144.1",
+    "@opencode-ai/sdk": "^1.17.18",
+    "foxts": "^5.8.0",
     "smol-toml": "^1.7.0",
     "zod": "catalog:"
   },

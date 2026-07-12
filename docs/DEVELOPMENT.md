@@ -5,7 +5,7 @@ The local runbook: run the apps, run the tests, debug a stuck daemon. For archit
 ## Prerequisites
 
 > [!NOTE]
-> `devenv` is recommended: it pins Node.js 24, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
+> `devenv` is recommended: it pins Node.js 26, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
 
 Without `devenv`, install these yourself:
 
@@ -95,7 +95,7 @@ The release build is used in dev on purpose, so the daemon's fallback path match
 
 ### One runner
 
-There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` (`environment: 'node'`; include globs `packages/**/src/**/__tests__/**/*.test.ts` and `apps/**/src/**/__tests__/**/*.test.ts`). No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. All tests are pure-logic node-env — no jsdom/DOM component render; even renderer tests exercise pure store/reducer functions. Run one area by passing a path or name filter:
+There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` (`environment: 'node'`; include globs cover `*.test.ts` and `*.test.tsx` under package/app `src/**/__tests__`). DOM component tests opt in per file with `@vitest-environment jsdom`; other tests stay in the default node environment. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
 
 ```bash
 pnpm test apps/daemon/src/pty     # just the PTY unit tests
@@ -230,6 +230,8 @@ JavaScript/TypeScript use ESLint for linting and Biome for formatting (Biome's l
 pnpm lint
 pnpm format:check
 ```
+
+`pnpm lint` pins `--concurrency=2`: ESLint's `auto` spawns a worker per core, which measures 1.5–2× slower wall-clock than two workers for this typed-lint workload (and CI runners have 2 vCPUs).
 
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 

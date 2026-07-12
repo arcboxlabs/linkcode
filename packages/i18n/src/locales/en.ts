@@ -19,6 +19,8 @@ export const en = {
       emptyHint: 'Type a message below — {agent} will get to work in {cwd}.',
       thinking: 'Thinking…',
       thought: 'Thought',
+      compacted: 'Context compacted',
+      compactedTokens: '{pre} → {post} tokens',
     },
     tool: {
       input: 'Input',
@@ -86,15 +88,18 @@ export const en = {
     prompt: {
       submit: 'Submit',
       skip: 'Skip',
-      page: '{current} of {total}',
+      progress: '{current} of {total}',
+      queued: '{count, plural, one {# queued} other {# queued}}',
       previous: 'Previous prompt',
       next: 'Next prompt',
       customPlaceholder: 'Tell Codex what to do differently',
     },
     question: {
       badge: 'Question',
-      progress: '{current}/{total}',
-      next: 'Next',
+      previous: 'Previous question',
+      next: 'Next question',
+      submit: 'Submit answers',
+      skipped: 'Skipped',
       customPlaceholder: 'Type a custom answer',
     },
     agentRuntime: {
@@ -609,6 +614,8 @@ export const en = {
       approval: 'Permission request',
       error: 'Error',
       streaming: 'Streaming…',
+      compacted: 'Context compacted',
+      compactedTokens: '{pre} → {post} tokens',
     },
     connection: {
       connecting: 'Connecting to the host…',

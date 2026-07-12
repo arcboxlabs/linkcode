@@ -4,6 +4,7 @@ import type { ConversationItem, ConversationViewModel } from './types';
 export type PlanConversationItem = Extract<ConversationItem, { kind: 'plan' }>;
 export type PermissionConversationItem = Extract<ConversationItem, { kind: 'approval' }>;
 export type QuestionConversationItem = Extract<ConversationItem, { kind: 'question' }>;
+export type PromptConversationItem = PermissionConversationItem | QuestionConversationItem;
 
 export type PermissionDecision =
   | {
@@ -21,6 +22,7 @@ export interface CurrentPlan {
 
 export interface PromptPageCursor {
   promptId: string | null;
+  segmentId: string | null;
   index: number;
 }
 
@@ -56,34 +58,21 @@ export function selectCurrentPlan(
   };
 }
 
-/**
- * Permission asks that still need an answer. Gated on a live turn: once the turn ends (cancel,
- * stop, reload of an old transcript) the agent is no longer awaiting, so a stale ask must not
- * present an actionable card.
- */
-export function selectPendingPermissionItems(
-  conversation: Pick<ConversationViewModel, 'items' | 'pendingPermissionIds' | 'status'>,
-): PermissionConversationItem[] {
+/** Pending actionable asks in conversation arrival order. Once the turn ends the agent is no
+ * longer awaiting, so stale asks must not present an actionable card. */
+export function selectPendingPromptItems(
+  conversation: Pick<
+    ConversationViewModel,
+    'items' | 'pendingPermissionIds' | 'pendingQuestionIds' | 'status'
+  >,
+): PromptConversationItem[] {
   if (conversation.status !== 'running' && conversation.status !== 'starting') return [];
-  const pending = new Set(conversation.pendingPermissionIds);
+  const pendingPermissions = new Set(conversation.pendingPermissionIds);
+  const pendingQuestions = new Set(conversation.pendingQuestionIds);
   return conversation.items.filter(
-    (item): item is PermissionConversationItem =>
-      item.kind === 'approval' && pending.has(item.requestId),
-  );
-}
-
-/**
- * Question asks that still need answers — same live-turn gating as permission asks: once the turn
- * ends, the agent is no longer awaiting, so a stale ask must not present an actionable card.
- */
-export function selectPendingQuestionItems(
-  conversation: Pick<ConversationViewModel, 'items' | 'pendingQuestionIds' | 'status'>,
-): QuestionConversationItem[] {
-  if (conversation.status !== 'running' && conversation.status !== 'starting') return [];
-  const pending = new Set(conversation.pendingQuestionIds);
-  return conversation.items.filter(
-    (item): item is QuestionConversationItem =>
-      item.kind === 'question' && pending.has(item.requestId),
+    (item): item is PromptConversationItem =>
+      (item.kind === 'approval' && pendingPermissions.has(item.requestId)) ||
+      (item.kind === 'question' && pendingQuestions.has(item.requestId)),
   );
 }
 
@@ -96,6 +85,7 @@ export function resolvePromptPageIndex(
     const selectedIndex = items.findIndex((item) => item.promptId === cursor.promptId);
     if (selectedIndex >= 0) return selectedIndex;
   }
+  if (cursor.segmentId !== items[0].promptId) return 0;
   return Math.min(Math.max(cursor.index, 0), items.length - 1);
 }
 

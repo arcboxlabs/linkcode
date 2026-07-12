@@ -9,14 +9,13 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
     "@linkcode/agent-adapter": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
-    "foxts": "^5.6.0",
+    "foxts": "^5.8.0",
     "zod": "catalog:"
   },
   "devDependencies": {

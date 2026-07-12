@@ -40,6 +40,9 @@ export function useHostClient(host: HostProfile): HostClientState {
   // the render-time reset above, and retry.
   useEffect(
     (signal) => {
+      const offClose = client.onClose(() => {
+        if (!signal.aborted) setStatus('error');
+      });
       client
         .connect()
         .then(() => {
@@ -49,7 +52,10 @@ export function useHostClient(host: HostProfile): HostClientState {
           if (!signal.aborted) setStatus('error');
         });
 
-      return () => client.dispose();
+      return () => {
+        offClose();
+        client.dispose();
+      };
     },
     [client],
   );

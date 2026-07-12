@@ -17,6 +17,8 @@ export const zhCN = {
       emptyHint: '在下方输入消息，{agent} 会在 {cwd} 中开始工作。',
       thinking: '思考中…',
       thought: '思考',
+      compacted: '上下文已压缩',
+      compactedTokens: '{pre} → {post} tokens',
     },
     tool: {
       input: '输入',
@@ -84,15 +86,18 @@ export const zhCN = {
     prompt: {
       submit: '提交',
       skip: '跳过',
-      page: '{current} / {total}',
+      progress: '{current} / {total}',
+      queued: '另有 {count} 个待处理',
       previous: '上一个提示',
       next: '下一个提示',
       customPlaceholder: '告诉 Codex 要如何调整',
     },
     question: {
       badge: '提问',
-      progress: '{current}/{total}',
-      next: '下一题',
+      previous: '上一个问题',
+      next: '下一个问题',
+      submit: '提交回答',
+      skipped: '已跳过',
       customPlaceholder: '输入自定义回答',
     },
     agentRuntime: {
@@ -598,6 +603,8 @@ export const zhCN = {
       approval: '权限请求',
       error: '错误',
       streaming: '输出中…',
+      compacted: '上下文已压缩',
+      compactedTokens: '{pre} → {post} tokens',
     },
     connection: {
       connecting: '正在连接 host…',

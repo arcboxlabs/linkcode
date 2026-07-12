@@ -46,6 +46,16 @@ export type ConversationItem = (
       parentToolCallId?: string;
     }
   | { kind: 'tool'; id: string; turnId: ConversationTurnId; toolCall: ToolCall }
+  | {
+      kind: 'compaction';
+      /** The provider's compaction boundary id — partial re-emits merge into one marker by it. */
+      id: string;
+      turnId: ConversationTurnId;
+      trigger?: 'manual' | 'auto';
+      preTokens?: number;
+      postTokens?: number;
+      summary?: string;
+    }
   | { kind: 'plan'; id: string; turnId: ConversationTurnId; plan: Plan }
   | {
       kind: 'approval';
@@ -141,6 +151,8 @@ export function createConversationBuilder(): ConversationBuilder {
   const toolIndex = new Map<string, number>();
   // messageId → item index, so streaming chunks bucket into one item regardless of interleaving.
   const messageIndex = new Map<string, number>();
+  // compactionId → item index, so partial compaction re-emits merge into one marker.
+  const compactionIndex = new Map<string, number>();
   const planIndexByTurn = new Map<ConversationTurnId, number>();
   /** Asks in arrival order; each stays "pending" until its tool call reaches a terminal status. */
   const approvals: Array<{ requestId: string; toolCallId: string }> = [];
@@ -262,6 +274,39 @@ export function createConversationBuilder(): ConversationBuilder {
               receivedAt: receivedAt ?? item.receivedAt,
             };
           }
+        }
+        break;
+      }
+
+      case 'compaction': {
+        // The adapter emits the boundary first (metadata only) and again once the summary text is
+        // known; history replay repeats the same compactionId. Merge instead of replacing so a
+        // later partial emit never wipes fields an earlier one carried.
+        const existing = compactionIndex.get(event.compactionId);
+        if (existing === undefined) {
+          items.push({
+            kind: 'compaction',
+            id: event.compactionId,
+            turnId: currentTurnId,
+            trigger: event.trigger,
+            preTokens: event.preTokens,
+            postTokens: event.postTokens,
+            summary: event.summary,
+            receivedAt,
+          });
+          compactionIndex.set(event.compactionId, items.length - 1);
+          break;
+        }
+        const item = items[existing];
+        if (item.kind === 'compaction') {
+          items[existing] = {
+            ...item,
+            trigger: event.trigger ?? item.trigger,
+            preTokens: event.preTokens ?? item.preTokens,
+            postTokens: event.postTokens ?? item.postTokens,
+            summary: event.summary ?? item.summary,
+            receivedAt: receivedAt ?? item.receivedAt,
+          };
         }
         break;
       }

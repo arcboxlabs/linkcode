@@ -31,10 +31,6 @@ interface NavigationHistoryState extends NavHistoryStacks {
  * Per-window navigation history over the workbench's main surface, VS Code-style: an in-memory
  * stack of locations, no URLs. Module scope (like the palette store) so any surface can traverse
  * it; not persisted — a fresh window starts with empty history.
- *
- * TODO(keybinds): bind go-back/go-forward through the global keybind registry once it exists.
- * Deliberately no per-app keydown wiring — the palette commands and the shells' ‹ › buttons are
- * the only triggers until then.
  */
 export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, get) => ({
   back: [],

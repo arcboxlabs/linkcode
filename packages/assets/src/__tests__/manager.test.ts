@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AssetDescriptor } from '../catalog';
 import type { AssetInstallEvent } from '../manager';
@@ -72,6 +72,24 @@ describe('AssetManager', () => {
     const report = manager.gcAtBoot();
     expect(report.removed.sort()).toEqual([join(dir, '.tmp-orphan'), join(dir, '1.0.0')]);
     expect(existsSync(join(dir, '2.0.0'))).toBe(true);
+  });
+
+  it('gcAtBoot skips an uninspectable asset path and continues with later assets', () => {
+    freshStore();
+    const catalog = (['agent:claude-code', 'agent:opencode', 'agent:codex'] as const).map((id) => ({
+      id,
+      binaryBase: 'tool',
+      version: { kind: 'pinned' as const, version: '2.0.0' },
+      artifacts: {},
+    }));
+    const manager = new AssetManager({ catalog });
+    const blocked = assetDir('agent:claude-code');
+    mkdirSync(dirname(blocked), { recursive: true });
+    writeFileSync(blocked, 'not a directory');
+    const stale = join(assetDir('agent:codex'), '1.0.0');
+    mkdirSync(stale, { recursive: true });
+
+    expect(manager.gcAtBoot()).toEqual({ removed: [stale], skipped: [blocked] });
   });
 
   it('leaves unpinnable assets alone: ensure() is undefined and GC does not touch their dirs', async () => {

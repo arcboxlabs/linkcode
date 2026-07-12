@@ -56,6 +56,7 @@ function row(
     uuid,
     session_id: 'h1',
     parent_tool_use_id: parentToolUseId,
+    parent_agent_id: null,
     message: { content },
   };
 }

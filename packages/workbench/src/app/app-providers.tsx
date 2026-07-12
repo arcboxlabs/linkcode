@@ -1,5 +1,6 @@
 import type { Locale } from '@linkcode/i18n';
 import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
+import { useKeyboardShortcutListener } from '@linkcode/ui';
 import { AnchoredToastProvider, ToastProvider } from 'coss-ui/components/toast';
 import type * as React from 'react';
 import { useMemo } from 'react';
@@ -32,12 +33,17 @@ export function AppI18nProvider({
 
 /**
  * Global, app-agnostic providers shared by browser and desktop renderers.
- * `locale` is a raw override (e.g. from a settings store); unset follows the runtime.
+ * Apps initialize their authoritative keyboard platform before mounting; `locale` is a raw
+ * override (e.g. from a settings store), and unset follows the runtime.
  */
 export function WorkbenchAppProviders({
   children,
   locale,
-}: React.PropsWithChildren<{ locale?: string | null }>): React.ReactNode {
+}: React.PropsWithChildren<{
+  locale?: string | null;
+}>): React.ReactNode {
+  useKeyboardShortcutListener();
+
   return (
     <ToastProvider>
       <AnchoredToastProvider>

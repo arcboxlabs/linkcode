@@ -1,7 +1,12 @@
 import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 import type { PaletteThreadViewModel } from '@linkcode/ui';
-import { AGENT_LABELS, CommandPalette, repositoryLabel } from '@linkcode/ui';
+import {
+  AGENT_LABELS,
+  CommandPalette,
+  repositoryLabel,
+  useKeyboardShortcutLabels,
+} from '@linkcode/ui';
 import { AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -34,6 +39,7 @@ export function WorkbenchCommandPalette({
 
 function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.ReactNode {
   const t = useTranslations('workbench.palette');
+  const shortcutLabels = useKeyboardShortcutLabels();
   const setOpen = useCommandPaletteStore((state) => state.setOpen);
   const commandsByOwner = useCommandPaletteStore((state) => state.commandsByOwner);
   const { data: workspaces } = useWorkspaces();
@@ -57,7 +63,6 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
     .sort()
     .flatMap((owner) => commandsByOwner[owner]);
   // Included only while traversal is possible — a listed command must always be runnable.
-  // TODO(keybinds): surface `shortcut` hints here once the global keybind registry exists.
   const navigationCommands: PaletteCommand[] = [
     ...(sessions.canGoBack
       ? [
@@ -134,7 +139,11 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
       query={query}
       onQueryChange={setQuery}
       threads={threadViewModels}
-      commands={matchedCommands.map(({ id, label, shortcut }) => ({ id, label, shortcut }))}
+      commands={matchedCommands.map(({ id, label, shortcut }) => ({
+        id,
+        label,
+        shortcut: shortcut ?? shortcutLabels.get(id),
+      }))}
       onSelectThread={handleSelectThread}
       onRunCommand={handleRunCommand}
     />

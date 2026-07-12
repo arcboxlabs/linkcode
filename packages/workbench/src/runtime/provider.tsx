@@ -1,22 +1,29 @@
+import { LinkCodeProvider } from '@linkcode/client-core';
 import type { LinkCodeSdkClient } from '@linkcode/sdk';
-import { createClient, setDefaultClient } from '@linkcode/sdk';
-import type { Transport } from '@linkcode/transport';
 import { ComposeContextProvider } from 'foxact/compose-context-provider';
-import { createContextState } from 'foxact/context-state';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
+import { useSingleton } from 'foxact/use-singleton';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { trueFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import type * as React from 'react';
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import type { Middleware as SWRMiddleware } from 'swr';
-import { SWRConfig, mutate as swrMutate } from 'swr';
+import { createContext, useContext, useRef, useSyncExternalStore } from 'react';
+import type { Cache, Middleware as SWRMiddleware } from 'swr';
+import { SWRConfig, useSWRConfig } from 'swr';
+import type {
+  WorkbenchConnectionGeneration,
+  WorkbenchConnectionSource,
+  WorkbenchRuntimeStatus,
+} from './connection-controller';
+import { WorkbenchConnectionController } from './connection-controller';
 import { useDebug } from './debug';
 import { TayoriProvider } from './tayori';
 
 export interface WorkbenchRuntimeProviderProps extends React.PropsWithChildren {
-  transport: Transport;
+  connectionSource: WorkbenchConnectionSource;
+  /** Controller-only UI rendered before the first connection attempt can provide SDK contexts. */
+  noGenerationFallback?: React.ReactNode;
 }
 
 export interface WorkbenchConnectionGateProps extends React.PropsWithChildren {
@@ -24,19 +31,9 @@ export interface WorkbenchConnectionGateProps extends React.PropsWithChildren {
   fallback: React.ReactNode;
 }
 
-export type WorkbenchRuntimeStatus = 'connecting' | 'ready' | 'error';
-
-interface WorkbenchRuntimeControls {
-  retry: () => void;
-}
-
-const [
-  WorkbenchRuntimeStatusProvider,
-  useWorkbenchRuntimeStatusValue,
-  useSetWorkbenchRuntimeStatus,
-] = createContextState<WorkbenchRuntimeStatus>('connecting');
-
-const WorkbenchRuntimeControlsContext = createContext<WorkbenchRuntimeControls | null>(null);
+const WorkbenchConnectionControllerContext = createContext<WorkbenchConnectionController | null>(
+  null,
+);
 const WorkbenchSdkClientContext = createContext<LinkCodeSdkClient | null>(null);
 
 const debugMiddleware: SWRMiddleware = (useSWRNext) =>
@@ -68,14 +65,25 @@ const debugMiddleware: SWRMiddleware = (useSWRNext) =>
   };
 
 export function useWorkbenchRuntimeStatus(): WorkbenchRuntimeStatus {
-  return useWorkbenchRuntimeStatusValue();
+  const controller = useWorkbenchConnectionController();
+  return useSyncExternalStore(
+    controller.subscribe,
+    () => controller.getSnapshot().status,
+    () => controller.getSnapshot().status,
+  );
+}
+
+export function useWorkbenchRuntimeEndpoint(): string | undefined {
+  const controller = useWorkbenchConnectionController();
+  return useSyncExternalStore(
+    controller.subscribe,
+    () => controller.getSnapshot().endpoint,
+    () => controller.getSnapshot().endpoint,
+  );
 }
 
 export function useWorkbenchRuntimeRetry(): () => void {
-  return nullthrow(
-    useContext(WorkbenchRuntimeControlsContext),
-    'useWorkbenchRuntimeRetry must be used within WorkbenchRuntimeProvider',
-  ).retry;
+  return useWorkbenchConnectionController().retry;
 }
 
 export function useWorkbenchSdkClient(): LinkCodeSdkClient {
@@ -86,16 +94,37 @@ export function useWorkbenchSdkClient(): LinkCodeSdkClient {
 }
 
 /**
- * Mounts the data-plane contexts (SDK client, tayori, SWR) unconditionally — connection state
- * does NOT gate them, so ungated surfaces (desktop Settings) can fetch while the transport is
- * still connecting or down (their requests fail or pend until it is ready). Gating the main
- * experience is `WorkbenchConnectionGate`'s job.
+ * Keeps the SWR cache and connection controller stable while remounting SDK, tayori, and raw-client
+ * contexts together for each physical connection generation. Connection state does not gate those
+ * contexts, so ungated surfaces remain mounted during recovery after the first generation exists.
+ * Gating the main experience is `WorkbenchConnectionGate`'s job.
  */
 export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): React.ReactNode {
+  const { connectionSource, children, noGenerationFallback = null } = props;
+  const { current: controller } = useSingleton(
+    () => new WorkbenchConnectionController(connectionSource),
+  );
+
+  useEffect(() => {
+    controller.setSource(connectionSource);
+  }, [connectionSource, controller]);
+
+  useEffect(() => {
+    controller.start();
+    return () => controller.stop();
+  }, [controller]);
+
   return (
-    <WorkbenchRuntimeStatusProvider>
-      <WorkbenchRuntimeConnection {...props} />
-    </WorkbenchRuntimeStatusProvider>
+    <WorkbenchConnectionControllerContext.Provider value={controller}>
+      <WorkbenchEndpointCacheBoundary controller={controller}>
+        <WorkbenchRuntimeGeneration
+          controller={controller}
+          noGenerationFallback={noGenerationFallback}
+        >
+          {children}
+        </WorkbenchRuntimeGeneration>
+      </WorkbenchEndpointCacheBoundary>
+    </WorkbenchConnectionControllerContext.Provider>
   );
 }
 
@@ -111,75 +140,86 @@ export function WorkbenchConnectionGate({
   return status === 'ready' ? children : fallback;
 }
 
-function WorkbenchRuntimeConnection({
-  transport,
+function WorkbenchRuntimeGeneration({
+  controller,
   children,
-}: WorkbenchRuntimeProviderProps): React.ReactNode {
-  // tayori's initClient runs exactly once per TayoriProvider mount (see the tayori docs), so a
-  // retry that swaps the client must remount the whole context stack — hence the epoch key.
-  const [clientState, setClientState] = useState(() => ({
-    client: createClient({ transport }),
-    epoch: 0,
-  }));
-  const { client, epoch } = clientState;
-  const setStatus = useSetWorkbenchRuntimeStatus();
-  const retry = useCallback(() => {
-    setStatus('connecting');
-    setClientState((previous) => ({
-      client: createClient({ transport }),
-      epoch: previous.epoch + 1,
-    }));
-  }, [setStatus, transport]);
-  const controls = useMemo<WorkbenchRuntimeControls>(() => ({ retry }), [retry]);
-
-  useEffect(
-    (signal) => {
-      setDefaultClient(client);
-      setStatus('connecting');
-      client
-        .connect()
-        .then(() => {
-          if (signal.aborted) return;
-          setStatus('ready');
-          // Ungated surfaces may hold requests that failed pre-connect in SWR error-backoff —
-          // kick every key now instead of waiting the backoff out. Gated children mount fresh
-          // and are unaffected; the SWRConfig below shares the default cache, so the global
-          // mutate reaches these keys.
-          void swrMutate(trueFn);
-        })
-        .catch(() => {
-          if (!signal.aborted) setStatus('error');
-        });
-
-      return () => {
-        setDefaultClient(null);
-        client.dispose();
-      };
-    },
-    [client, setStatus],
+  noGenerationFallback,
+}: React.PropsWithChildren<{
+  controller: WorkbenchConnectionController;
+  noGenerationFallback: React.ReactNode;
+}>): React.ReactNode {
+  const snapshot = useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
   );
+  const { contextGeneration } = snapshot;
+  if (!contextGeneration) return noGenerationFallback;
 
   return (
     <ComposeContextProvider
-      key={epoch}
+      key={contextGeneration.id}
       contexts={[
-        <WorkbenchRuntimeControlsContext.Provider key="runtime-controls" value={controls} />,
-        <WorkbenchSdkClientContext.Provider key="sdk-client" value={client} />,
-        <TayoriProvider key="tayori" initClient={() => client} />,
-        <WorkbenchSWRConfig key="swr" />,
+        <WorkbenchSdkClientContext.Provider key="sdk-client" value={contextGeneration.client} />,
+        <TayoriProvider key="tayori" initClient={() => contextGeneration.client} />,
+        <LinkCodeProvider key="linkcode" client={contextGeneration.client.raw} />,
       ]}
     >
-      {children}
+      <ReadyRevalidator controller={controller} generation={contextGeneration}>
+        {children}
+      </ReadyRevalidator>
     </ComposeContextProvider>
   );
 }
 
+function ReadyRevalidator({
+  children,
+  controller,
+  generation,
+}: React.PropsWithChildren<{
+  controller: WorkbenchConnectionController;
+  generation: WorkbenchConnectionGeneration;
+}>): React.ReactNode {
+  const { mutate } = useSWRConfig();
+  const revalidatedRef = useRef(false);
+  const status = useSyncExternalStore(
+    controller.subscribe,
+    () => controller.getSnapshot().status,
+    () => controller.getSnapshot().status,
+  );
+
+  useEffect(() => {
+    if (status !== 'ready' || revalidatedRef.current) return;
+    revalidatedRef.current = true;
+    void mutate(trueFn);
+  }, [generation.id, mutate, status]);
+
+  return children;
+}
+
+function WorkbenchEndpointCacheBoundary({
+  children,
+  controller,
+}: React.PropsWithChildren<{
+  controller: WorkbenchConnectionController;
+}>): React.ReactNode {
+  const endpoint = useSyncExternalStore(
+    controller.subscribe,
+    () => controller.getSnapshot().endpoint,
+    () => controller.getSnapshot().endpoint,
+  );
+  return <WorkbenchSWRConfig key={endpoint ?? 'unscoped'}>{children}</WorkbenchSWRConfig>;
+}
+
 function WorkbenchSWRConfig({ children }: React.PropsWithChildren): React.ReactNode {
+  const { current: cache } = useSingleton<Cache>(() => new Map());
+  const { current: provider } = useSingleton(() => createCacheProvider(cache));
   return (
     <SWRConfig
       value={{
         keepPreviousData: true,
         onError: handleFetchError,
+        provider,
         use: [debugMiddleware],
       }}
     >
@@ -188,6 +228,17 @@ function WorkbenchSWRConfig({ children }: React.PropsWithChildren): React.ReactN
   );
 }
 
+function createCacheProvider(cache: Cache): () => Cache {
+  return () => cache;
+}
+
 function handleFetchError(error: unknown): void {
   console.error('[LinkCode data error]', extractErrorMessage(error) ?? error);
+}
+
+function useWorkbenchConnectionController(): WorkbenchConnectionController {
+  return nullthrow(
+    useContext(WorkbenchConnectionControllerContext),
+    'Workbench runtime hooks must be used within WorkbenchRuntimeProvider',
+  );
 }

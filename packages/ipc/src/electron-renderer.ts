@@ -26,7 +26,10 @@ const FALLBACK_SETTINGS: DesktopSettings = {
   daemonUrl: null,
 };
 
-export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBridge {
+export function createElectronSystemBridge(
+  ipcRenderer: IpcRenderer,
+  platform: NodeJS.Platform,
+): SystemBridge {
   const { context } = createRendererContext(toEventaRendererIpc(ipcRenderer));
   const invoke = defineInvokes(context, systemIpcEvents);
 
@@ -49,7 +52,7 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
     },
     app: {
       version: () => invoke.appVersion(),
-      platform: () => invoke.appPlatform(),
+      platform,
       checkForUpdates: () => invoke.appCheckForUpdates(),
       onUpdaterStatus(cb) {
         const handler: IpcRendererListener = (_event, value: unknown) => {
@@ -77,6 +80,7 @@ export function createElectronSystemBridge(ipcRenderer: IpcRenderer): SystemBrid
         (ipcRenderer.sendSync(DAEMON_URL_SNAPSHOT_CHANNEL) as string | undefined) ??
         DAEMON_DEFAULT_URL,
       isManaged: () => invoke.daemonIsManaged(),
+      retry: () => invoke.daemonRetry(),
       onRuntimeChanged(cb) {
         const handler: IpcRendererListener = () => cb();
         ipcRenderer.on(DAEMON_RUNTIME_CHANGED_CHANNEL, handler);

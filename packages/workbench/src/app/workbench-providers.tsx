@@ -1,18 +1,12 @@
-import { LinkCodeProvider } from '@linkcode/client-core';
-import type { Transport } from '@linkcode/transport';
 import type * as React from 'react';
+import type { WorkbenchConnectionSource } from '../runtime/connection-controller';
 import { DebugProvider } from '../runtime/debug';
-import {
-  useWorkbenchSdkClient,
-  WorkbenchConnectionGate,
-  WorkbenchRuntimeProvider,
-} from '../runtime/provider';
+import { WorkbenchConnectionGate, WorkbenchRuntimeProvider } from '../runtime/provider';
 import { ConnectionState } from './connection-state';
 
 export interface WorkbenchProvidersProps extends React.PropsWithChildren {
-  transport: Transport;
-  /** Used by the default connection-state fallback to tell the user where the host should be. */
-  daemonUrl?: string;
+  /** Resolves a fresh physical transport for every connection generation. */
+  connectionSource: WorkbenchConnectionSource;
   /**
    * Renders while the transport is connecting or after it errored, replacing
    * `children` entirely (this is the connection gate). Defaults to the built-in
@@ -36,34 +30,25 @@ export interface WorkbenchProvidersProps extends React.PropsWithChildren {
 /**
  * The workbench data plane + connection gate. Mounts, in order:
  *   1. `DebugProvider` (dev-only artificial delay / forced-loading toggles),
- *   2. `WorkbenchRuntimeProvider` (transport SDK client + `TayoriProvider` + `SWRConfig`),
- *   3. `LinkCodeProvider` (the client context — a pure provider, so it sits ABOVE the gate: the
- *      ungated slot needs the client too, e.g. the Providers settings page subscribing to
- *      runtime pushes),
- *   4. `WorkbenchConnectionGate` (fallback until the transport is ready), around `children` only.
+ *   2. `WorkbenchRuntimeProvider` (connection controller + generation-scoped SDK/Tayori/client),
+ *   3. `WorkbenchConnectionGate` (fallback until the protocol is ready), around `children` only.
  */
 export function WorkbenchProviders({
-  transport,
-  daemonUrl,
+  connectionSource,
   children,
   fallback,
   ungated,
 }: WorkbenchProvidersProps): React.ReactNode {
+  const connectionFallback = fallback ?? <ConnectionState />;
   return (
     <DebugProvider>
-      <WorkbenchRuntimeProvider transport={transport}>
-        <WorkbenchLinkCodeProvider>
-          <WorkbenchConnectionGate fallback={fallback ?? <ConnectionState daemonUrl={daemonUrl} />}>
-            {children}
-          </WorkbenchConnectionGate>
-          {ungated}
-        </WorkbenchLinkCodeProvider>
+      <WorkbenchRuntimeProvider
+        connectionSource={connectionSource}
+        noGenerationFallback={connectionFallback}
+      >
+        <WorkbenchConnectionGate fallback={connectionFallback}>{children}</WorkbenchConnectionGate>
+        {ungated}
       </WorkbenchRuntimeProvider>
     </DebugProvider>
   );
-}
-
-function WorkbenchLinkCodeProvider({ children }: React.PropsWithChildren): React.ReactNode {
-  const client = useWorkbenchSdkClient();
-  return <LinkCodeProvider client={client.raw}>{children}</LinkCodeProvider>;
 }

@@ -13,7 +13,7 @@ The rules below are desktop-only — the **system plane**.
 - **Main vs renderer.** `src/main/**` is Node — no coss-ui / React conventions apply there. Only `src/renderer/**` is the SPA the front-end rule governs.
 - **Desktop owns only desktop integration.** Keep native chrome, traffic-light/backdrop behavior, desktop-only layout adapters, desktop transport construction, and `SystemBridge` reads here. Move reusable workbench/sidebar/chat presentation to `packages/ui`; move data-plane/runtime containers to `packages/workbench`.
 - **Pass system data down as props.** If shared UI needs the app version, platform, a picked file path, or another system-plane value, read it once in desktop and pass a plain value/callback to shared code. Do not keep a whole component in desktop just because one prop comes from IPC.
-- **Use Electron/Node as the system source of truth.** Platform checks come from main-process `process.platform` through `SystemBridge`, not renderer heuristics such as `navigator.platform`.
+- **Use Electron/Node as the system source of truth.** Platform checks use the sandboxed preload's `process.platform`, exposed as the immutable `SystemBridge.app.platform` value — never renderer heuristics such as `navigator.platform`.
 - **Do not import app code through another app.** Desktop may depend on `packages/workbench` and `packages/ui`; it must not import `@linkcode/webview` to reuse app roots, providers, transports, or shells.
 
 ## Packaging & asar invariants
@@ -41,7 +41,7 @@ Both fail only in packaged builds, produce no error, and are invisible to typech
 
 - **`src/main/daemon-supervisor.ts` is PACKAGED-ONLY** (`if (!app.isPackaged) return`) — in dev the desktop app never starts a daemon; run it yourself (see DEVELOPMENT.md). It forks `out/daemon/index.mjs` under Electron's Node via `utilityProcess.fork` (Route A — not `ELECTRON_RUN_AS_NODE`, not a standalone binary), starts it on app-ready before the window, and SIGTERMs it on `before-quit` (Cmd+Q); closing windows (Cmd+W) leaves it running. Gate: `isDaemonManaged() = app.isPackaged && getSettings().daemonUrl === null`. It only spawns — no probe/adoption.
 - **Spawn env:** it spreads `process.env` (PATH/HOME survive), then injects `LINKCODE_PTY_SIDECAR_PATH` from `process.resourcesPath` (warns `pty sidecar missing …; terminals unavailable` if absent). Agent CLI paths need no env: the daemon owns its managed-asset store (`@linkcode/assets`, CODE-111) and resolves spawn paths managed → detected itself. Child stdout → `electron-log` info, stderr → warn; log-file locations are in DEVELOPMENT.md.
-- **Crash-loop giveup:** respawn after 1000ms; a child living <30000ms increments a fast-exit counter; 5 consecutive make it log `daemon keeps exiting (last code N); giving up` and stop. Exit code `DAEMON_EXIT_ALREADY_RUNNING` is not a crash — it logs `another daemon already serves this machine; standing down`.
+- **Supervisor recovery:** respawn after 1000ms; a child living <30000ms increments a fast-exit counter; 5 consecutive make it log `daemon keeps exiting (last code N); giving up` and stop. This crash-loop block is sticky until the renderer's explicit Retry calls `SystemBridge.daemon.retry()`. Exit code `DAEMON_EXIT_ALREADY_RUNNING` is not a crash: the supervisor stands down for the external daemon, watches `runtime.json`, and automatically re-arms when that runtime changes. Every spawn rechecks `isDaemonManaged()` so an override saved during a pending respawn wins.
 
 ## Cloud auth
 

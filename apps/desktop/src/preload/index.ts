@@ -7,7 +7,7 @@ import { CLOUD_LIST_HOSTS_CHANNEL } from '../shared/cloud';
  * Preload: exposes a minimal, system / UI only bridge via contextBridge.
  * Eventa stays behind this boundary and never carries business data.
  */
-const systemBridge = createElectronSystemBridge(ipcRenderer);
+const systemBridge = createElectronSystemBridge(ipcRenderer, process.platform);
 
 contextBridge.exposeInMainWorld('linkcodeSystem', systemBridge);
 

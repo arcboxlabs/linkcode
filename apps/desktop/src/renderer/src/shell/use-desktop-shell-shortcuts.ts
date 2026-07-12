@@ -1,78 +1,86 @@
+import { isKeyboardShortcutLocalTarget, useKeyboardShortcut } from '@linkcode/ui';
 import type { PanelSide } from '@linkcode/ui/shell/panels';
-import { useCommandPaletteStore, useNavigationHistoryStore } from '@linkcode/workbench';
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import type { WorkbenchShellNavigation } from '@linkcode/workbench';
 
-export function getPanelToggleShortcuts(platform: NodeJS.Platform | null): {
-  sidebar?: string;
-  bottom?: string;
-  right?: string;
-  palette?: string;
-  settings?: string;
-} {
-  if (platform === null) return {};
-  if (platform === 'darwin') {
-    return { sidebar: '⌘B', bottom: '⌘J', right: '⌥⌘B', palette: '⌘K', settings: '⌘,' };
-  }
-  return {
-    sidebar: 'Ctrl+B',
-    bottom: 'Ctrl+J',
-    right: 'Ctrl+Alt+B',
-    palette: 'Ctrl+K',
-    settings: 'Ctrl+,',
-  };
-}
+const TOGGLE_SIDEBAR_SHORTCUT = { code: 'KeyB', modifiers: ['primary'] } as const;
+const TOGGLE_BOTTOM_PANEL_SHORTCUT = { code: 'KeyJ', modifiers: ['primary'] } as const;
+const TOGGLE_RIGHT_PANEL_SHORTCUT = {
+  code: 'KeyB',
+  modifiers: ['primary', 'alt'],
+} as const;
+const GO_BACK_SHORTCUT = {
+  mac: { code: 'BracketLeft', modifiers: ['primary'] },
+  nonMac: { code: 'ArrowLeft', modifiers: ['alt'] },
+} as const;
+const GO_FORWARD_SHORTCUT = {
+  mac: { code: 'BracketRight', modifiers: ['primary'] },
+  nonMac: { code: 'ArrowRight', modifiers: ['alt'] },
+} as const;
 
 interface UseDesktopShellShortcutsOptions {
-  desktopPlatform: NodeJS.Platform | null;
+  navigation: WorkbenchShellNavigation;
+  owner: React.RefObject<Element | null>;
   togglePanel: (side: PanelSide) => void;
   updateSidebarOpen: (updater: boolean | ((current: boolean) => boolean)) => void;
 }
 
-/**
- * Cmd+J (Ctrl+J off-mac) toggles the bottom terminal panel, Cmd+B (Ctrl+B) the sidebar,
- * Option+Cmd+B (Ctrl+Alt+B) the right side panel, and Cmd+K (Ctrl+K) the command palette.
- * Captured at the window so they win even while the terminal canvas holds focus; on mac the
- * Ctrl variants stay with the shell (Ctrl+J is a real terminal keystroke there). Matched on
- * `code` because Option rewrites `key` on mac (⌥B yields "∫").
- */
 export function useDesktopShellShortcuts({
-  desktopPlatform,
+  navigation,
+  owner,
   togglePanel,
   updateSidebarOpen,
 }: UseDesktopShellShortcutsOptions): void {
-  useAbortableEffect(
-    (signal) => {
-      if (desktopPlatform === null) return;
-      const isMac = desktopPlatform === 'darwin';
-      window.addEventListener(
-        'keydown',
-        (event) => {
-          // `inert` on the hidden workbench doesn't stop window-level listeners, so an overlay
-          // surface being open must be checked here at event time — not in the effect deps, or
-          // the listener would re-register on every open/close.
-          if (useNavigationHistoryStore.getState().overlay !== null) return;
-          const modifier = isMac
-            ? event.metaKey && !event.ctrlKey
-            : event.ctrlKey && !event.metaKey;
-          if (!modifier || event.shiftKey) return;
-          const toggle =
-            event.code === 'KeyJ' && !event.altKey
-              ? () => togglePanel('bottom')
-              : event.code === 'KeyB'
-                ? event.altKey
-                  ? () => togglePanel('right')
-                  : () => updateSidebarOpen((open) => !open)
-                : event.code === 'KeyK' && !event.altKey
-                  ? () => useCommandPaletteStore.getState().toggle()
-                  : null;
-          if (toggle === null) return;
-          event.preventDefault();
-          event.stopPropagation();
-          toggle();
-        },
-        { capture: true, signal },
-      );
+  useKeyboardShortcut({
+    actionId: 'desktop.toggle-sidebar',
+    shortcut: TOGGLE_SIDEBAR_SHORTCUT,
+    owner,
+    handler() {
+      updateSidebarOpen((open) => !open);
+      return true;
     },
-    [desktopPlatform, togglePanel, updateSidebarOpen],
-  );
+  });
+
+  useKeyboardShortcut({
+    actionId: 'desktop.toggle-bottom-panel',
+    shortcut: TOGGLE_BOTTOM_PANEL_SHORTCUT,
+    owner,
+    handler() {
+      togglePanel('bottom');
+      return true;
+    },
+  });
+
+  useKeyboardShortcut({
+    actionId: 'desktop.toggle-right-panel',
+    shortcut: TOGGLE_RIGHT_PANEL_SHORTCUT,
+    owner,
+    handler() {
+      togglePanel('right');
+      return true;
+    },
+  });
+
+  useKeyboardShortcut({
+    actionId: 'workbench.go-back',
+    shortcut: GO_BACK_SHORTCUT,
+    owner,
+    when: (event) => !isKeyboardShortcutLocalTarget(event.target),
+    handler() {
+      if (!navigation.canGoBack) return false;
+      navigation.onBack();
+      return true;
+    },
+  });
+
+  useKeyboardShortcut({
+    actionId: 'workbench.go-forward',
+    shortcut: GO_FORWARD_SHORTCUT,
+    owner,
+    when: (event) => !isKeyboardShortcutLocalTarget(event.target),
+    handler() {
+      if (!navigation.canGoForward) return false;
+      navigation.onForward();
+      return true;
+    },
+  });
 }

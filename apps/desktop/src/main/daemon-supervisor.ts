@@ -4,6 +4,7 @@ import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
 import type { UtilityProcess } from 'electron';
 import { app, utilityProcess } from 'electron';
 import log from 'electron-log';
+import { watchDaemonRuntime } from './daemon-discovery';
 import { getSettings } from './settings';
 
 /**
@@ -26,6 +27,7 @@ let child: UtilityProcess | null = null;
 let respawnTimer: NodeJS.Timeout | null = null;
 let quitting = false;
 let fastExits = 0;
+let blockedBy: 'external-daemon' | 'crash-loop' | null = null;
 
 /** True when this app owns the daemon's lifecycle — drives the connection-failure copy. */
 export function isDaemonManaged(): boolean {
@@ -35,8 +37,10 @@ export function isDaemonManaged(): boolean {
 export function startDaemonSupervisor(): void {
   // Dev shells run the daemon from the repo.
   if (!app.isPackaged) return;
+  const unwatchRuntime = watchDaemonRuntime(syncDaemonSupervisor);
   app.on('before-quit', () => {
     quitting = true;
+    unwatchRuntime();
     if (respawnTimer !== null) clearTimeout(respawnTimer);
     child?.kill();
   });
@@ -44,21 +48,34 @@ export function startDaemonSupervisor(): void {
 }
 
 /**
- * Spawn the daemon if this app should be managing one and is not already. Called at startup and
- * again when settings change: clearing the endpoint override mid-session must start the daemon,
- * not wait for an app restart. Setting an override leaves a running child alone — it dies with
- * the app and the one-daemon-per-machine contract keeps it harmless. A user-driven sync also
- * resets the crash-loop counter, giving a deliberate retry a fresh start.
+ * Re-evaluate an automatic stand-down when runtime.json changes. A live external daemon makes
+ * our child exit with code 3; when that daemon later stops, its runtime-file change lets this app
+ * take ownership again. A crash-loop give-up is intentionally sticky until an explicit retry.
  */
-export function syncDaemonSupervisor(): void {
+function syncDaemonSupervisor(): void {
   if (quitting || !isDaemonManaged()) return;
   if (child !== null || respawnTimer !== null) return;
+  if (blockedBy === 'crash-loop') return;
+  blockedBy = null;
+  spawnDaemon();
+}
+
+/** Explicit user retry: reset the crash budget and immediately re-arm a managed daemon. */
+export function retryDaemonSupervisor(): void {
+  if (quitting || !isDaemonManaged()) return;
   fastExits = 0;
+  blockedBy = null;
+  if (child !== null) return;
+  if (respawnTimer !== null) {
+    clearTimeout(respawnTimer);
+    respawnTimer = null;
+  }
   spawnDaemon();
 }
 
 function spawnDaemon(): void {
-  if (quitting) return;
+  // Management can be disabled while a respawn timer is pending.
+  if (quitting || !isDaemonManaged()) return;
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = { ...process.env };
   const sidecar = sidecarPath();
@@ -79,11 +96,13 @@ function spawnDaemon(): void {
     child = null;
     if (quitting) return;
     if (code === DAEMON_EXIT_ALREADY_RUNNING) {
+      blockedBy = 'external-daemon';
       log.info('[linkcode/desktop] another daemon already serves this machine; standing down');
       return;
     }
     fastExits = Date.now() - startedAt < HEALTHY_AFTER_MS ? fastExits + 1 : 1;
     if (fastExits >= MAX_CONSECUTIVE_FAST_EXITS) {
+      blockedBy = 'crash-loop';
       log.error(`[linkcode/desktop] daemon keeps exiting (last code ${code}); giving up`);
       return;
     }

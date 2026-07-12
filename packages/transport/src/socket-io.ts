@@ -8,26 +8,40 @@ const FRAME_EVENT = 'frame';
 
 export interface SocketIoTransportOptions {
   url: string;
-  options?: Partial<ManagerOptions & SocketOptions>;
+  options?: Omit<
+    Partial<ManagerOptions & SocketOptions>,
+    'autoConnect' | 'forceNew' | 'multiplex' | 'reconnection'
+  >;
 }
+
+type ConnectionState = 'idle' | 'connecting' | 'connected' | 'closed';
 
 /**
  * SocketIoTransport: browser / RN / Node client implementation backed by Socket.IO.
  *
  * Socket.IO stays a product-level carrier here: business semantics are still carried as schema-validated
- * WireMessage frames, so upper layers do not depend on Socket.IO event names.
+ * WireMessage frames, so upper layers do not depend on Socket.IO event names. Each instance owns one
+ * connection lifetime; recovery creates a fresh transport instead of reconnecting underneath its owner.
  */
 export class SocketIoTransport extends WireConnection {
   private socket: Socket | null = null;
+  private state: ConnectionState = 'idle';
+  private rejectConnecting: ((error: Error) => void) | null = null;
 
   constructor(private readonly opts: SocketIoTransportOptions) {
     super('SocketIoTransport');
   }
 
   override connect(): Promise<void> {
+    if (this.state !== 'idle') {
+      return Promise.reject(new Error('SocketIoTransport: connection already started'));
+    }
+    this.state = 'connecting';
     const socket = io(this.opts.url, {
       ...this.opts.options,
       autoConnect: false,
+      forceNew: true,
+      reconnection: false,
     });
     this.socket = socket;
     this.armClosedListener();
@@ -37,11 +51,46 @@ export class SocketIoTransport extends WireConnection {
       if (parsed.success) this.inbound.emit(parsed.data);
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
     });
-    socket.on('disconnect', () => this.emitClosed());
+    socket.on('disconnect', () => {
+      const wasConnecting = this.state === 'connecting';
+      this.state = 'closed';
+      if (this.socket === socket) this.socket = null;
+      if (wasConnecting) {
+        this.rejectConnecting?.(new Error('SocketIoTransport: connection closed'));
+      }
+      this.emitClosed();
+    });
 
     return new Promise<void>((resolve, reject) => {
-      socket.once('connect', () => resolve());
-      socket.once('connect_error', (err: Error) => reject(err));
+      let onConnect: () => void;
+      let onConnectError: (error: Error) => void;
+      const cleanup = (): void => {
+        socket.off('connect', onConnect);
+        socket.off('connect_error', onConnectError);
+        this.rejectConnecting = null;
+      };
+      const rejectConnect = (error: Error): void => {
+        cleanup();
+        reject(error);
+      };
+      onConnect = (): void => {
+        if (this.state !== 'connecting') return;
+        this.state = 'connected';
+        cleanup();
+        resolve();
+      };
+      onConnectError = (error: Error): void => {
+        if (this.state !== 'connecting') return;
+        this.state = 'closed';
+        if (this.socket === socket) this.socket = null;
+        rejectConnect(error);
+        socket.disconnect();
+        this.emitClosed();
+      };
+
+      this.rejectConnecting = rejectConnect;
+      socket.once('connect', onConnect);
+      socket.once('connect_error', onConnectError);
       socket.connect();
     });
   }
@@ -54,8 +103,12 @@ export class SocketIoTransport extends WireConnection {
   }
 
   close(): void {
-    this.socket?.disconnect();
+    if (this.state === 'closed') return;
+    this.state = 'closed';
+    const socket = this.socket;
     this.socket = null;
+    this.rejectConnecting?.(new Error('SocketIoTransport: connection closed'));
+    socket?.disconnect();
     this.emitClosed();
   }
 }
