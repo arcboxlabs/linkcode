@@ -13,8 +13,7 @@ import {
   isPermissionDeclined,
   resolvePromptPageIndex,
   selectCurrentPlan,
-  selectPendingPermissionItems,
-  selectPendingQuestionItems,
+  selectPendingPromptItems,
 } from '../chat/conversation-prompts';
 import type { ConversationItem, ConversationViewModel } from '../chat/types';
 
@@ -134,27 +133,46 @@ describe('conversation prompt selectors', () => {
     expect(selectCurrentPlan(conversation([user('turn-0'), oldPlan, user('turn-1')]))).toBeNull();
   });
 
-  it('only surfaces pending permissions while a turn is live', () => {
+  it('only surfaces pending prompt groups while a turn is live', () => {
     const item = approval('ask');
     const pending = { pendingPermissionIds: ['ask'] };
 
-    expect(selectPendingPermissionItems(conversation([item], pending))).toEqual([item]);
-    expect(
-      selectPendingPermissionItems(conversation([item], { ...pending, status: 'idle' })),
-    ).toEqual([]);
-    expect(selectPendingPermissionItems(conversation([item]))).toEqual([]);
+    expect(selectPendingPromptItems(conversation([item], pending))).toEqual([item]);
+    expect(selectPendingPromptItems(conversation([item], { ...pending, status: 'idle' }))).toEqual(
+      [],
+    );
+    expect(selectPendingPromptItems(conversation([item]))).toEqual([]);
   });
 
-  it('preserves and clamps the prompt page', () => {
+  it('preserves a standalone prompt page and falls forward when it resolves', () => {
     const first = { promptId: 'first' };
     const second = { promptId: 'second' };
     const third = { promptId: 'third' };
 
-    expect(resolvePromptPageIndex([first, second, third], { promptId: 'second', index: 1 })).toBe(
-      1,
-    );
-    expect(resolvePromptPageIndex([first, third], { promptId: 'second', index: 1 })).toBe(1);
-    expect(resolvePromptPageIndex([first], { promptId: 'third', index: 2 })).toBe(0);
+    expect(
+      resolvePromptPageIndex([first, second, third], {
+        promptId: 'second',
+        segmentId: 'first',
+        index: 1,
+      }),
+    ).toBe(1);
+    expect(
+      resolvePromptPageIndex([first, third], {
+        promptId: 'second',
+        segmentId: 'first',
+        index: 1,
+      }),
+    ).toBe(1);
+    expect(
+      resolvePromptPageIndex([first], { promptId: 'third', segmentId: 'first', index: 2 }),
+    ).toBe(0);
+    expect(
+      resolvePromptPageIndex([second, third], {
+        promptId: 'missing',
+        segmentId: 'previous-segment',
+        index: 1,
+      }),
+    ).toBe(0);
   });
 
   it('collects reject and cancelled decisions as declined tool calls', () => {
@@ -270,16 +288,20 @@ describe('conversation prompt selectors', () => {
         },
       ],
     };
-    const live = conversation([question], { pendingQuestionIds: ['ask1'] });
-    expect(selectPendingQuestionItems(live)).toHaveLength(1);
+    const permission = approval('ask2');
+    const live = conversation([question, permission], {
+      pendingPermissionIds: ['ask2'],
+      pendingQuestionIds: ['ask1'],
+    });
+    expect(selectPendingPromptItems(live)).toEqual([question, permission]);
 
     const settled = conversation([question], { pendingQuestionIds: [] });
-    expect(selectPendingQuestionItems(settled)).toHaveLength(0);
+    expect(selectPendingPromptItems(settled)).toHaveLength(0);
 
     const ended = conversation([question], {
       pendingQuestionIds: ['ask1'],
       status: 'idle',
     });
-    expect(selectPendingQuestionItems(ended)).toHaveLength(0);
+    expect(selectPendingPromptItems(ended)).toHaveLength(0);
   });
 });

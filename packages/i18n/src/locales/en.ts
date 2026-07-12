@@ -88,15 +88,18 @@ export const en = {
     prompt: {
       submit: 'Submit',
       skip: 'Skip',
-      page: '{current} of {total}',
+      progress: '{current} of {total}',
+      queued: '{count, plural, one {# queued} other {# queued}}',
       previous: 'Previous prompt',
       next: 'Next prompt',
       customPlaceholder: 'Tell Codex what to do differently',
     },
     question: {
       badge: 'Question',
-      progress: '{current}/{total}',
-      next: 'Next',
+      previous: 'Previous question',
+      next: 'Next question',
+      submit: 'Submit answers',
+      skipped: 'Skipped',
       customPlaceholder: 'Type a custom answer',
     },
     agentRuntime: {

@@ -11,7 +11,7 @@ import {
 } from 'coss-ui/components/frame';
 import { InputPrimitive } from 'coss-ui/components/input';
 import { ArrowDownIcon, ArrowUpIcon, CornerDownLeftIcon, PencilIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type {
@@ -41,11 +41,15 @@ export interface ConversationPromptAlertProps {
   choices: readonly ConversationPromptChoice[];
   submitting?: boolean;
   action?: React.ReactNode;
+  footerAction?: React.ReactNode;
+  autoFocusFirstChoice?: boolean;
   customInputDisabled?: boolean;
   customInputPlaceholder?: string;
+  response?: ConversationPromptResponse;
   submitLabel?: string;
   skipLabel?: string;
-  onSubmit: (response: ConversationPromptResponse) => void;
+  onResponseChange?: (response: ConversationPromptResponse) => void;
+  onSubmit?: (response: ConversationPromptResponse) => void;
   onSkip?: () => void;
 }
 
@@ -59,31 +63,37 @@ export function ConversationPromptAlert({
   choices,
   submitting = false,
   action,
+  footerAction,
+  autoFocusFirstChoice = false,
   customInputDisabled = false,
   customInputPlaceholder,
+  response: controlledResponse,
   submitLabel,
   skipLabel,
+  onResponseChange,
   onSubmit,
   onSkip,
 }: ConversationPromptAlertProps): React.ReactNode {
   const t = useTranslations('workbench.prompt');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [customSelected, setCustomSelected] = useState(false);
-  const [customText, setCustomText] = useState('');
+  const titleId = useId();
+  const [uncontrolledResponse, setUncontrolledResponse] = useState<ConversationPromptResponse>({
+    selectedIds: [],
+  });
+  const [customTextDraft, setCustomTextDraft] = useState(
+    () => controlledResponse?.customText ?? '',
+  );
+  const currentResponse = controlledResponse ?? uncontrolledResponse;
+  const customSelected = currentResponse.customText !== undefined;
+  const customText = customSelected ? (currentResponse.customText ?? '') : customTextDraft;
 
-  // Store only explicit user selection; derive the default first choice from current props.
-  // That keeps prompt/page changes correct without a state-sync effect.
+  // Filter controlled or local drafts against current props so page changes need no sync effect.
   const choiceIds = new Set(choices.map((choice) => choice.id));
-  const validSelectedIds = selectedIds.filter((id) => choiceIds.has(id));
+  const validSelectedIds = currentResponse.selectedIds.filter((id) => choiceIds.has(id));
   const effectiveSelectedIds = customSelected
     ? []
     : mode === 'multiple'
       ? validSelectedIds
-      : validSelectedIds.length > 0
-        ? [validSelectedIds[0]]
-        : choices.length > 0
-          ? [choices[0].id]
-          : [];
+      : validSelectedIds.slice(0, 1);
 
   const response: ConversationPromptResponse = customSelected
     ? {
@@ -94,34 +104,44 @@ export function ConversationPromptAlert({
         selectedIds: effectiveSelectedIds,
       };
   const canSubmit =
-    !submitting && isConversationPromptResponseSubmittable({ mode, choices }, response);
+    Boolean(onSubmit) &&
+    !submitting &&
+    isConversationPromptResponseSubmittable({ mode, choices }, response);
+  const showSubmit = Boolean(onSubmit) && (mode === 'multiple' || customSelected);
+
+  function updateResponse(nextResponse: ConversationPromptResponse): void {
+    if (controlledResponse === undefined) setUncontrolledResponse(nextResponse);
+    onResponseChange?.(nextResponse);
+  }
 
   function selectChoice(choiceId: string): void {
-    setCustomSelected(false);
-    if (mode === 'multiple') {
-      setSelectedIds((current) =>
-        current.includes(choiceId)
-          ? current.filter((id) => id !== choiceId)
-          : [...current, choiceId],
-      );
+    if (submitting) return;
+    if (mode === 'single') {
+      const nextResponse = { selectedIds: [choiceId] };
+      updateResponse(nextResponse);
+      onSubmit?.(nextResponse);
       return;
     }
-    setSelectedIds([choiceId]);
+
+    updateResponse({
+      selectedIds: effectiveSelectedIds.includes(choiceId)
+        ? effectiveSelectedIds.filter((id) => id !== choiceId)
+        : [...effectiveSelectedIds, choiceId],
+    });
   }
 
   function selectCustom(): void {
     if (customInputDisabled) return;
-    setCustomSelected(true);
-    setSelectedIds([]);
+    updateResponse({ selectedIds: [], customText });
   }
 
   function setCustomResponse(value: string): void {
-    setCustomText(value);
-    if (value.length > 0) selectCustom();
+    setCustomTextDraft(value);
+    updateResponse({ selectedIds: [], customText: value });
   }
 
   function submit(): void {
-    if (!canSubmit) return;
+    if (!canSubmit || !onSubmit) return;
     onSubmit({
       selectedIds: effectiveSelectedIds,
       customText: customSelected ? customText.trim() || undefined : undefined,
@@ -134,23 +154,39 @@ export function ConversationPromptAlert({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
-    if (
-      event.defaultPrevented ||
-      event.nativeEvent.isComposing ||
-      event.key === 'Process' ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.shiftKey ||
-      isEditableTarget(event.target)
-    ) {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.key === 'Process') {
       return;
     }
+
+    const hasCommandModifier = event.metaKey || event.ctrlKey || event.altKey;
+    if (event.key === 'Enter' && (event.repeat || event.shiftKey || hasCommandModifier)) {
+      event.preventDefault();
+      return;
+    }
+    if (hasCommandModifier || isEditableTarget(event.target)) return;
 
     const numberIndex = choiceIndexForNumberShortcut(event.code, event.key);
     if (!event.repeat && numberIndex !== null && numberIndex < choices.length) {
       event.preventDefault();
-      selectChoiceAt(numberIndex, event.currentTarget);
+      activateChoiceAt(numberIndex, event.currentTarget);
+      return;
+    }
+
+    if (event.shiftKey || (event.repeat && event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) {
+      return;
+    }
+
+    if (
+      onSubmit &&
+      event.key === 'Enter' &&
+      mode === 'multiple' &&
+      isPromptChoiceTarget(event.target)
+    ) {
+      const focusedIndex = focusedChoiceIndex(event.currentTarget);
+      if (focusedIndex !== null && effectiveSelectedIds.includes(choices[focusedIndex].id)) {
+        event.preventDefault();
+        submit();
+      }
       return;
     }
 
@@ -161,22 +197,22 @@ export function ConversationPromptAlert({
     event.preventDefault();
     const focusedIndex = focusedChoiceIndex(event.currentTarget);
     const currentIndex = focusedIndex ?? currentChoiceIndex(choices, effectiveSelectedIds);
-    const nextIndex = wrapIndex(
-      currentIndex + (event.key === 'ArrowDown' ? 1 : -1),
-      choices.length,
-    );
-    // Multi-select arrows move focus only; number keys, Space/click, and submit keep their roles.
-    if (mode === 'multiple') focusChoiceAt(nextIndex, event.currentTarget);
-    else selectChoiceAt(nextIndex, event.currentTarget);
+    const offset = event.key === 'ArrowDown' ? 1 : -1;
+    const nextIndex =
+      currentIndex === null
+        ? event.key === 'ArrowDown'
+          ? 0
+          : choices.length - 1
+        : wrapIndex(currentIndex + offset, choices.length);
+    focusChoiceAt(nextIndex, event.currentTarget);
   }
 
-  function selectChoiceAt(index: number, form: HTMLFormElement): void {
+  function activateChoiceAt(index: number, form: HTMLFormElement): void {
     if (index < 0 || index >= choices.length) return;
     const choice = choices[index];
 
-    selectChoice(choice.id);
-
     focusChoiceAt(index, form);
+    selectChoice(choice.id);
   }
 
   return (
@@ -184,7 +220,7 @@ export function ConversationPromptAlert({
       <Form className="flex flex-col" onKeyDown={handleKeyDown} onSubmit={handleSubmit}>
         <FrameHeader className="gap-1 px-3 py-2">
           <div className="flex w-full min-w-0 items-center justify-between gap-2">
-            <FrameTitle className="flex min-w-0 items-center gap-2 font-medium">
+            <FrameTitle id={titleId} className="flex min-w-0 items-center gap-2 font-medium">
               <span className="min-w-0 truncate">{title}</span>
               {badge ? (
                 <Badge size="sm" variant={badgeVariantForTone(tone)}>
@@ -200,30 +236,44 @@ export function ConversationPromptAlert({
             </FrameDescription>
           ) : null}
         </FrameHeader>
-        <FramePanel className="p-1">
+        <FramePanel aria-labelledby={titleId} className="p-1" role="group">
           <PromptChoices
+            autoFocusFirstChoice={autoFocusFirstChoice}
             choices={choices}
             customInputDisabled={customInputDisabled}
             customInputPlaceholder={customInputPlaceholder ?? t('customPlaceholder')}
             customSelected={customSelected}
             customText={customText}
+            disabled={submitting}
+            mode={mode}
             selectedIds={effectiveSelectedIds}
             onCustomSelect={selectCustom}
             onCustomTextChange={setCustomResponse}
             onSelectChoice={selectChoice}
           />
         </FramePanel>
-        <FrameFooter className="flex items-center justify-end gap-1 px-2 py-1.5">
-          {onSkip ? (
-            <Button disabled={submitting} size="xs" type="button" variant="ghost" onClick={onSkip}>
-              {skipLabel ?? t('skip')}
-            </Button>
-          ) : null}
-          <Button disabled={!canSubmit} loading={submitting} size="xs" type="submit">
-            {submitLabel ?? t('submit')}
-            <CornerDownLeftIcon />
-          </Button>
-        </FrameFooter>
+        {onSkip || showSubmit || footerAction ? (
+          <FrameFooter className="flex items-center justify-end gap-1 px-2 py-1.5">
+            {onSkip ? (
+              <Button
+                disabled={submitting}
+                size="xs"
+                type="button"
+                variant="ghost"
+                onClick={onSkip}
+              >
+                {skipLabel ?? t('skip')}
+              </Button>
+            ) : null}
+            {showSubmit ? (
+              <Button disabled={!canSubmit} loading={submitting} size="xs" type="submit">
+                {submitLabel ?? t('submit')}
+                <CornerDownLeftIcon />
+              </Button>
+            ) : null}
+            {footerAction}
+          </FrameFooter>
+        ) : null}
       </Form>
     </Frame>
   );
@@ -250,21 +300,27 @@ function PromptDetails({ details }: { details: readonly ConversationPromptDetail
 }
 
 function PromptChoices({
+  autoFocusFirstChoice,
   choices,
   customInputDisabled,
   customInputPlaceholder,
   customSelected,
   customText,
+  disabled,
+  mode,
   selectedIds,
   onCustomSelect,
   onCustomTextChange,
   onSelectChoice,
 }: {
+  autoFocusFirstChoice: boolean;
   choices: readonly ConversationPromptChoice[];
   customInputDisabled: boolean;
   customInputPlaceholder: string;
   customSelected: boolean;
   customText: string;
+  disabled: boolean;
+  mode: ConversationPromptMode;
   selectedIds: readonly string[];
   onCustomSelect: () => void;
   onCustomTextChange: (value: string) => void;
@@ -277,16 +333,19 @@ function PromptChoices({
         return (
           <PromptChoiceRow
             key={choice.id}
+            autoFocus={autoFocusFirstChoice && index === 0}
             checked={selected}
             choice={choice}
+            disabled={disabled}
             index={index}
+            multiple={mode === 'multiple'}
             onSelect={() => onSelectChoice(choice.id)}
           />
         );
       })}
       <PromptCustomRow
         checked={customSelected}
-        disabled={customInputDisabled}
+        disabled={customInputDisabled || disabled}
         placeholder={customInputPlaceholder}
         value={customText}
         onSelect={onCustomSelect}
@@ -297,14 +356,20 @@ function PromptChoices({
 }
 
 function PromptChoiceRow({
+  autoFocus,
   checked,
   choice,
+  disabled,
   index,
+  multiple,
   onSelect,
 }: {
+  autoFocus: boolean;
   checked: boolean;
   choice: ConversationPromptChoice;
+  disabled: boolean;
   index: number;
+  multiple: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -318,7 +383,9 @@ function PromptChoiceRow({
       <Button
         className="h-auto w-full justify-start whitespace-normal px-2 py-1.5 text-left"
         data-prompt-choice=""
-        aria-pressed={checked}
+        aria-pressed={multiple || checked ? checked : undefined}
+        autoFocus={autoFocus}
+        disabled={disabled}
         type="button"
         variant="ghost"
         onClick={onSelect}
@@ -417,12 +484,12 @@ function badgeVariantForTone(
 function currentChoiceIndex(
   choices: readonly ConversationPromptChoice[],
   selectedIds: readonly string[],
-): number {
+): number | null {
   const selectedId = selectedIds[0];
   for (let index = 0; index < choices.length; index += 1) {
     if (choices[index].id === selectedId) return index;
   }
-  return 0;
+  return null;
 }
 
 function wrapIndex(index: number, length: number): number {
@@ -442,6 +509,10 @@ function focusChoiceAt(index: number, form: HTMLFormElement): void {
   const choices = form.querySelectorAll<HTMLElement>('[data-prompt-choice]');
   if (index < 0 || index >= choices.length) return;
   choices[index].focus();
+}
+
+function isPromptChoiceTarget(target: EventTarget): boolean {
+  return target instanceof HTMLElement && target.closest('[data-prompt-choice]') !== null;
 }
 
 function isEditableTarget(target: EventTarget): boolean {
