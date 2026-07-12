@@ -10,9 +10,6 @@
       "cache": false,
       "persistent": true
     },
-    "typecheck": {
-      "dependsOn": ["^typecheck"]
-    },
     "lint": {},
     "clean": {
       "cache": false

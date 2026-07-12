@@ -17,7 +17,7 @@
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/fetch-noto-emoji.mjs",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
@@ -37,12 +37,12 @@
     "coss-ui": "workspace:*",
     "date-fns": "^4.4.0",
     "dompurify": "^3.4.11",
-    "foxact": "^0.3.7",
-    "foxts": "^5.6.0",
+    "foxact": "^0.3.8",
+    "foxts": "^5.8.0",
     "lucide-react": "^1.18.0",
     "mermaid": "^11.16.0",
     "motion": "^12.40.0",
-    "restty": "^0.1.35",
+    "restty": "^0.2.0",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
     "use-intl": "catalog:",

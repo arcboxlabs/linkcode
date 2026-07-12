@@ -1,3 +1,4 @@
+import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
 import { useTranslations } from 'use-intl';
 
 export interface ShowMoreToggleProps {
@@ -10,12 +11,10 @@ export function ShowMoreToggle({ expanded, onToggle }: ShowMoreToggleProps): Rea
   const t = useTranslations('workbench.sidebar');
 
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="w-full rounded-md px-[var(--lc-sidebar-edge,0.5rem)] py-1 text-left text-muted-foreground text-xs outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {expanded ? t('showLess') : t('showMore')}
-    </button>
+    <SidebarMenuItem>
+      <SidebarMenuButton className="hover:bg-transparent" onClick={onToggle}>
+        {expanded ? t('showLess') : t('showMore')}
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }

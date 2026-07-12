@@ -1,17 +1,12 @@
 import type { PermissionOption, QuestionOutcome, ToolCallUpdate } from '@linkcode/schema';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-} from 'coss-ui/components/pagination';
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import { ChevronRightIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CircularProgress } from '../chat/circular-progress';
 import type {
   ConversationPromptChoice,
   ConversationPromptMode,
+  ConversationPromptResponse,
   ConversationPromptTone,
 } from '../chat/conversation-prompt';
 import { ConversationPromptAlert } from '../chat/conversation-prompt-alert';
@@ -25,12 +20,12 @@ import type {
 import {
   resolvePromptPageIndex,
   selectCurrentPlan,
-  selectPendingPermissionItems,
-  selectPendingQuestionItems,
+  selectPendingPromptItems,
 } from '../chat/conversation-prompts';
 import { Step, StepContent, StepHeader, StepItem } from '../chat/step';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
+import { PromptPager } from './prompt-pager';
 import { QuestionPrompt } from './question-prompt';
 
 interface MockConversationPrompt {
@@ -43,14 +38,21 @@ interface MockConversationPrompt {
   details?: ReadonlyArray<{ label: string; value: string; monospace?: boolean }>;
 }
 
-type PromptQueueItem =
+type StandalonePrompt =
   | { kind: 'permission'; promptId: string; item: PermissionConversationItem }
-  | { kind: 'question'; promptId: string; item: QuestionConversationItem }
   | { kind: 'mock'; promptId: string; prompt: MockConversationPrompt };
 
-const EMPTY_MOCK_PROMPTS: MockConversationPrompt[] = [];
+type QuestionPromptGroup =
+  | { kind: 'question'; promptId: string; item: QuestionConversationItem }
+  | { kind: 'mock-question'; promptId: string; item: QuestionConversationItem };
 
-// Frontend-only fixtures keep every prompt shape visible until backend prompt events exist.
+type PromptGroup = StandalonePrompt | QuestionPromptGroup;
+
+const EMPTY_MOCK_PROMPTS: MockConversationPrompt[] = [];
+const EMPTY_PROMPT_RESPONSE: ConversationPromptResponse = { selectedIds: [] };
+const MOCK_QUESTION_BATCH_ID = 'mock-question-batch';
+
+// Frontend-only fixtures keep every prompt shape visible in mock-showcase mode.
 const MOCK_SHOWCASE_PROMPTS: MockConversationPrompt[] = [
   {
     promptId: 'mock-prompt-single',
@@ -82,6 +84,48 @@ const MOCK_SHOWCASE_PROMPTS: MockConversationPrompt[] = [
   },
 ];
 
+// TODO(CODE-159): Replace this frontend request/response stub when Codex requestUserInput is
+// normalized into one QuestionConversationItem and one aggregate QuestionOutcome by the adapter.
+const MOCK_SHOWCASE_QUESTION: QuestionConversationItem = {
+  kind: 'question',
+  id: MOCK_QUESTION_BATCH_ID,
+  turnId: null,
+  requestId: MOCK_QUESTION_BATCH_ID,
+  toolCall: { toolCallId: MOCK_QUESTION_BATCH_ID, title: 'Request user input' },
+  questions: [
+    {
+      questionId: 'scope',
+      prompt: 'How broad should the change be?',
+      header: 'Scope',
+      multiSelect: false,
+      options: [
+        { optionId: 'focused', label: 'Focused', description: 'Only the requested behavior.' },
+        { optionId: 'broad', label: 'Broad', description: 'Include adjacent cleanup.' },
+      ],
+    },
+    {
+      questionId: 'checks',
+      prompt: 'Which checks should run?',
+      header: 'Checks',
+      multiSelect: true,
+      options: [
+        { optionId: 'targeted', label: 'Targeted tests' },
+        { optionId: 'full', label: 'Full suite' },
+      ],
+    },
+    {
+      questionId: 'handoff',
+      prompt: 'How should the result be handed off?',
+      header: 'Handoff',
+      multiSelect: false,
+      options: [
+        { optionId: 'summary', label: 'Summary' },
+        { optionId: 'details', label: 'Detailed notes' },
+      ],
+    },
+  ],
+};
+
 /** Actionable prompts pinned above the composer: the current plan and pending permission/question asks. */
 export function ConversationPromptDock({
   conversation,
@@ -101,111 +145,221 @@ export function ConversationPromptDock({
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
 }): React.ReactNode {
   const plan = selectCurrentPlan(conversation);
-  const pendingPermissions = selectPendingPermissionItems(conversation).filter(
-    (item) => !permissionDecisions.has(item.requestId),
-  );
-  const pendingQuestions = selectPendingQuestionItems(conversation).filter(
-    (item) => !answeredQuestionIds.has(item.requestId),
-  );
   const [dismissedMockPromptIds, setDismissedMockPromptIds] = useState<string[]>([]);
-  const [promptCursor, setPromptCursor] = useState<PromptPageCursor>({
-    promptId: null,
-    index: 0,
-  });
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+  const [selectedPromptSegmentId, setSelectedPromptSegmentId] = useState<string | null>(null);
+  const [selectedPromptIndex, setSelectedPromptIndex] = useState(0);
+  const [standaloneResponses, setStandaloneResponses] = useState<
+    Record<string, ConversationPromptResponse>
+  >({});
+  const [autoFocusPromptId, setAutoFocusPromptId] = useState<string | null>(null);
+
+  const pendingAgentGroups: PromptGroup[] = [];
+  for (const item of selectPendingPromptItems(conversation)) {
+    if (item.kind === 'approval') {
+      if (!permissionDecisions.has(item.requestId)) {
+        pendingAgentGroups.push({
+          kind: 'permission',
+          promptId: `permission:${item.requestId}`,
+          item,
+        });
+      }
+    } else if (!answeredQuestionIds.has(item.requestId)) {
+      pendingAgentGroups.push({
+        kind: 'question',
+        promptId: `question:${item.requestId}`,
+        item,
+      });
+    }
+  }
+
   const mockPrompts =
     conversation.currentModeId === 'mock-showcase' ? MOCK_SHOWCASE_PROMPTS : EMPTY_MOCK_PROMPTS;
   const pendingMockPrompts = mockPrompts.filter(
     (prompt) => !dismissedMockPromptIds.includes(prompt.promptId),
   );
-  const pendingPrompts: PromptQueueItem[] = [
-    ...pendingPermissions.map(
-      (item): PromptQueueItem => ({
-        kind: 'permission',
-        promptId: `permission:${item.requestId}`,
-        item,
-      }),
-    ),
-    ...pendingQuestions.map(
-      (item): PromptQueueItem => ({
-        kind: 'question',
-        promptId: `question:${item.requestId}`,
-        item,
-      }),
-    ),
+  const pendingMockQuestions: PromptGroup[] =
+    conversation.currentModeId === 'mock-showcase' &&
+    !dismissedMockPromptIds.includes(MOCK_QUESTION_BATCH_ID)
+      ? [
+          {
+            kind: 'mock-question',
+            promptId: `mock-question:${MOCK_QUESTION_BATCH_ID}`,
+            item: MOCK_SHOWCASE_QUESTION,
+          },
+        ]
+      : [];
+  const pendingMockGroups: PromptGroup[] = [
+    ...pendingMockQuestions,
     ...pendingMockPrompts.map(
-      (prompt): PromptQueueItem => ({
+      (prompt): PromptGroup => ({
         kind: 'mock',
         promptId: `mock:${prompt.promptId}`,
         prompt,
       }),
     ),
   ];
-  const pageIndex = resolvePromptPageIndex(pendingPrompts, promptCursor);
-  const hasPrompts = pendingPrompts.length > 0;
+  // Mock fixtures are seeded when the showcase opens, so later live events must queue behind them.
+  const pendingGroups = [...pendingMockGroups, ...pendingAgentGroups];
+  const firstGroup = pendingGroups.at(0);
+  const currentQuestionGroup = firstGroup && isQuestionGroup(firstGroup) ? firstGroup : null;
+  const standalonePrompts: StandalonePrompt[] = [];
+  if (!currentQuestionGroup) {
+    for (const group of pendingGroups) {
+      if (isQuestionGroup(group)) break;
+      standalonePrompts.push(group);
+    }
+  }
+  const promptCursor: PromptPageCursor = {
+    promptId: selectedPromptId,
+    segmentId: selectedPromptSegmentId,
+    index: selectedPromptIndex,
+  };
+  const pageIndex = resolvePromptPageIndex(standalonePrompts, promptCursor);
+  const currentStandalonePrompt = standalonePrompts.at(pageIndex) ?? null;
+  const currentGroup = currentQuestionGroup ?? currentStandalonePrompt;
 
-  if (!plan && !hasPrompts) return null;
+  if (!plan && !currentGroup) return null;
 
-  const currentPrompt = hasPrompts ? pendingPrompts[pageIndex] : null;
+  const queuedCount = currentQuestionGroup
+    ? pendingGroups.length - 1
+    : pendingGroups.length - standalonePrompts.length;
 
-  function selectPromptPage(index: number): void {
-    const prompt = pendingPrompts[index];
-    setPromptCursor({ promptId: prompt.promptId, index });
+  function selectStandalonePage(index: number): void {
+    const prompt = standalonePrompts[index];
+    setAutoFocusPromptId(prompt.promptId);
+    setSelectedPromptId(prompt.promptId);
+    setSelectedPromptSegmentId(standalonePrompts[0].promptId);
+    setSelectedPromptIndex(index);
+  }
+
+  function cursorAfterCurrent(): PromptPageCursor {
+    if (currentQuestionGroup) {
+      const next = pendingGroups.at(1);
+      return { promptId: next?.promptId ?? null, segmentId: next?.promptId ?? null, index: 0 };
+    }
+
+    const next = standalonePrompts.at(pageIndex + 1);
+    if (next) {
+      return {
+        promptId: next.promptId,
+        segmentId: standalonePrompts[0].promptId,
+        index: pageIndex,
+      };
+    }
+    const previous = pageIndex > 0 ? standalonePrompts.at(pageIndex - 1) : undefined;
+    if (previous) {
+      return {
+        promptId: previous.promptId,
+        segmentId: standalonePrompts[0].promptId,
+        index: pageIndex - 1,
+      };
+    }
+    const boundary = pendingGroups.at(standalonePrompts.length);
+    return {
+      promptId: boundary?.promptId ?? null,
+      segmentId: boundary?.promptId ?? null,
+      index: 0,
+    };
+  }
+
+  function prepareNextPrompt(): void {
+    const cursor = cursorAfterCurrent();
+    setAutoFocusPromptId(cursor.promptId);
+    setSelectedPromptId(cursor.promptId);
+    setSelectedPromptSegmentId(cursor.segmentId);
+    setSelectedPromptIndex(cursor.index);
   }
 
   function dismissMockPrompt(promptId: string): void {
+    prepareNextPrompt();
     setDismissedMockPromptIds((current) =>
       current.includes(promptId) ? current : [...current, promptId],
     );
   }
 
-  const pager =
-    hasPrompts && pendingPrompts.length > 1 ? (
+  function respondToPermission(requestId: string, decision: PermissionDecision): void {
+    prepareNextPrompt();
+    onRespondPermission(requestId, decision);
+  }
+
+  function respondToQuestion(requestId: string, outcome: QuestionOutcome): void {
+    prepareNextPrompt();
+    onRespondQuestion(requestId, outcome);
+  }
+
+  const standalonePager =
+    currentStandalonePrompt && (standalonePrompts.length > 1 || queuedCount > 0) ? (
       <PromptPager
         current={pageIndex + 1}
-        total={pendingPrompts.length}
-        onNext={() => selectPromptPage(pageIndex + 1)}
-        onPrevious={() => selectPromptPage(pageIndex - 1)}
+        queued={queuedCount}
+        total={standalonePrompts.length}
+        onNext={() => selectStandalonePage(pageIndex + 1)}
+        onPrevious={() => selectStandalonePage(pageIndex - 1)}
       />
     ) : undefined;
 
   return (
     <div className="shrink-0 px-4 py-2">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
-        {/* One queue keeps every active prompt kind under the same pager. */}
-        {currentPrompt?.kind === 'permission' ? (
+        {/* A question group is a hard boundary; standalone prompts page only within its prefix. */}
+        {currentGroup?.kind === 'permission' ? (
           <PermissionPrompt
-            key={currentPrompt.promptId}
-            action={pager}
-            item={currentPrompt.item}
+            key={currentGroup.promptId}
+            action={standalonePager}
+            autoFocusFirstChoice={autoFocusPromptId === currentGroup.promptId}
+            item={currentGroup.item}
             respondingPermissions={respondingPermissions}
-            onRespondPermission={onRespondPermission}
+            onRespondPermission={respondToPermission}
           />
-        ) : currentPrompt?.kind === 'question' ? (
+        ) : currentGroup?.kind === 'question' ? (
           <QuestionPrompt
-            key={currentPrompt.promptId}
-            action={pager}
-            item={currentPrompt.item}
-            responding={respondingQuestions.has(currentPrompt.item.requestId)}
-            onRespond={onRespondQuestion}
+            key={currentGroup.promptId}
+            autoFocusFirstChoice={autoFocusPromptId === currentGroup.promptId}
+            item={currentGroup.item}
+            queuedCount={queuedCount}
+            responding={respondingQuestions.has(currentGroup.item.requestId)}
+            onRespond={respondToQuestion}
           />
-        ) : currentPrompt ? (
+        ) : currentGroup?.kind === 'mock-question' ? (
+          <QuestionPrompt
+            key={currentGroup.promptId}
+            autoFocusFirstChoice={autoFocusPromptId === currentGroup.promptId}
+            item={currentGroup.item}
+            queuedCount={queuedCount}
+            responding={false}
+            onRespond={() => dismissMockPrompt(MOCK_QUESTION_BATCH_ID)}
+          />
+        ) : currentGroup ? (
           <ConversationPromptAlert
-            key={currentPrompt.promptId}
-            action={pager}
-            badge={currentPrompt.prompt.badge}
-            choices={currentPrompt.prompt.choices}
-            details={currentPrompt.prompt.details}
-            mode={currentPrompt.prompt.mode}
-            tone={currentPrompt.prompt.tone}
-            title={currentPrompt.prompt.title}
-            onSkip={() => dismissMockPrompt(currentPrompt.prompt.promptId)}
-            onSubmit={() => dismissMockPrompt(currentPrompt.prompt.promptId)}
+            key={currentGroup.promptId}
+            action={standalonePager}
+            autoFocusFirstChoice={autoFocusPromptId === currentGroup.promptId}
+            badge={currentGroup.prompt.badge}
+            choices={currentGroup.prompt.choices}
+            details={currentGroup.prompt.details}
+            mode={currentGroup.prompt.mode}
+            response={standaloneResponses[currentGroup.promptId] ?? EMPTY_PROMPT_RESPONSE}
+            tone={currentGroup.prompt.tone}
+            title={currentGroup.prompt.title}
+            onResponseChange={(response) =>
+              setStandaloneResponses((current) => ({
+                ...current,
+                [currentGroup.promptId]: response,
+              }))
+            }
+            onSkip={() => dismissMockPrompt(currentGroup.prompt.promptId)}
+            onSubmit={() => dismissMockPrompt(currentGroup.prompt.promptId)}
           />
         ) : null}
         {plan ? <StepPromptRow plan={plan} /> : null}
       </div>
     </div>
   );
+}
+
+function isQuestionGroup(group: PromptGroup): group is QuestionPromptGroup {
+  return group.kind === 'question' || group.kind === 'mock-question';
 }
 
 function StepPromptRow({ plan }: { plan: CurrentPlan }): React.ReactNode {
@@ -247,11 +401,13 @@ function StepPromptRow({ plan }: { plan: CurrentPlan }): React.ReactNode {
 
 function PermissionPrompt({
   action,
+  autoFocusFirstChoice,
   item,
   respondingPermissions,
   onRespondPermission,
 }: {
   action?: React.ReactNode;
+  autoFocusFirstChoice: boolean;
   item: PermissionConversationItem;
   respondingPermissions: ReadonlySet<string>;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
@@ -268,6 +424,7 @@ function PermissionPrompt({
       key={item.requestId}
       className="my-0"
       action={action}
+      autoFocusFirstChoice={autoFocusFirstChoice}
       badge={kindLabel}
       choices={permissionChoices(item.options)}
       // TODO(backend): enable once permission responses can carry a steering comment.
@@ -337,64 +494,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function stringField(raw: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = raw?.[key];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function PromptPager({
-  current,
-  total,
-  onPrevious,
-  onNext,
-}: {
-  current: number;
-  total: number;
-  onPrevious: () => void;
-  onNext: () => void;
-}): React.ReactNode {
-  const t = useTranslations('workbench.prompt');
-
-  if (total < 2) return null;
-
-  return (
-    <Pagination className="w-auto justify-end">
-      <PaginationContent>
-        <PaginationItem>
-          <PaginationLink
-            aria-label={t('previous')}
-            aria-disabled={current <= 1}
-            className={cn(current <= 1 && 'pointer-events-none opacity-50')}
-            href="#"
-            size="icon-xs"
-            tabIndex={current <= 1 ? -1 : 0}
-            onClick={(event) => {
-              event.preventDefault();
-              if (current > 1) onPrevious();
-            }}
-          >
-            <ChevronLeftIcon />
-          </PaginationLink>
-        </PaginationItem>
-        <PaginationItem>
-          <span className="flex h-6 items-center text-muted-foreground text-xs tabular-nums">
-            {t('page', { current, total })}
-          </span>
-        </PaginationItem>
-        <PaginationItem>
-          <PaginationLink
-            aria-label={t('next')}
-            aria-disabled={current >= total}
-            className={cn(current >= total && 'pointer-events-none opacity-50')}
-            href="#"
-            size="icon-xs"
-            tabIndex={current >= total ? -1 : 0}
-            onClick={(event) => {
-              event.preventDefault();
-              if (current < total) onNext();
-            }}
-          >
-            <ChevronRightIcon />
-          </PaginationLink>
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
-  );
 }

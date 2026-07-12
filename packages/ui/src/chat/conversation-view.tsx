@@ -5,6 +5,7 @@ import { useTranslations } from 'use-intl';
 import { ActivityGroup } from './activity-group';
 import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
+import { CompactionMarker } from './compaction-marker';
 import { ContentBlockView } from './content-block-view';
 import {
   Conversation,
@@ -17,7 +18,7 @@ import {
   conversationFlowItems,
   declinedToolCall,
   declinedToolCallIds,
-  selectPendingPermissionItems,
+  selectPendingPromptItems,
 } from './conversation-prompts';
 import { assistantTurnText, latestReceivedAt } from './conversation-text';
 import { ErrorMessage } from './error-message';
@@ -81,8 +82,10 @@ export function ConversationView({
   );
   // Gated calls whose ask is still open (not answered in this client) carry the shield glyph.
   const awaitingApproval = new Set(
-    selectPendingPermissionItems(conversation).flatMap((item) =>
-      permissionDecisions.has(item.requestId) ? [] : [item.toolCall.toolCallId],
+    selectPendingPromptItems(conversation).flatMap((item) =>
+      item.kind === 'approval' && !permissionDecisions.has(item.requestId)
+        ? [item.toolCall.toolCallId]
+        : [],
     ),
   );
   const segments = splitTurnSegments(conversationFlowItems(items));
@@ -148,6 +151,15 @@ export function ConversationView({
         );
       case 'reasoning':
         return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />;
+      case 'compaction':
+        return (
+          <CompactionMarker
+            key={item.id}
+            preTokens={item.preTokens}
+            postTokens={item.postTokens}
+            summary={item.summary}
+          />
+        );
       case 'approval':
         // Accepted / pending asks leave no receipt — the tool row (or the dock card) is the
         // record. A decline only materializes here when the agent never snapshotted the call.

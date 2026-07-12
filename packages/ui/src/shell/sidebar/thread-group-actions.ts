@@ -1,6 +1,9 @@
 import type { SessionId, WorkspaceId } from '@linkcode/schema';
 import type { BranchStatusComponentType } from './branch-status';
 
+/** The sidebar's top-level collapsible sections. Mirrored by the workbench collapse store. */
+export type SidebarSectionKey = 'pinned' | 'projects' | 'chats';
+
 /**
  * Session/group interaction callbacks shared verbatim by `SessionSidebar`, `ThreadsView`, and the
  * per-group section they both render. `ShellFrame` renames a few of these at its public boundary
@@ -13,23 +16,19 @@ export interface ThreadGroupActions {
   onToggleSessionPinned: (id: SessionId) => void;
   /** Opens the new-session page, optionally preselecting a workspace (group "+", Chats "+"). */
   onStartDraft: (workspaceId?: WorkspaceId) => void;
-  /** Called once a history entry finishes importing as a new thread. */
-  onImportSession?: (sessionId: SessionId) => void;
   onRenameWorkspace: (workspaceId: WorkspaceId, name: string) => Promise<void>;
   onArchiveWorkspace: (workspaceId: WorkspaceId) => Promise<void>;
   onToggleGroupCollapsed: (collapseKey: string) => void;
+  onToggleSectionCollapsed: (section: SidebarSectionKey) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
-  onToggleImportHistory: (groupKey: string) => void;
   BranchStatusComponent?: BranchStatusComponentType;
-  HistoryComponent?: React.ComponentType<{
-    cwd: string;
-    onImported: (sessionId: SessionId) => void;
-  }>;
 }
 
 /** The per-group selection/pin state that travels alongside `ThreadGroupActions`. */
 export interface ThreadGroupState {
   activeId: SessionId | null;
-  /** Threads pinned to the top of their group, in pin order. */
+  /** Threads listed in the "Pinned" section, in pin order. */
   pinnedSessionIds: readonly SessionId[];
+  /** Top-level sections currently collapsed; all default open. */
+  collapsedSections: readonly SidebarSectionKey[];
 }

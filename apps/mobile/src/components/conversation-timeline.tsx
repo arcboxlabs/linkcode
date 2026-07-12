@@ -17,6 +17,12 @@ const PLAN_STATUS_MARK = {
   completed: '●',
 } as const;
 
+/** Compact token counts ("193437" → "193.4k") — mirrors the web CompactionMarker's format. */
+function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  return count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
+}
+
 /** Read-only rendering of the conversation view-model; one card per timeline item. */
 export function ConversationTimeline({ items }: { items: ConversationItem[] }): React.ReactNode {
   const t = useTranslations('mobile.conversation');
@@ -109,6 +115,22 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
                   <Text className="text-[13px] text-foreground">{item.message}</Text>
                 </Card.Body>
               </Card>
+            );
+          case 'compaction':
+            return (
+              <View key={item.id} className="flex-row items-center justify-center gap-2 px-2">
+                <Text className="text-[12px] text-muted" style={{ fontWeight: '600' }}>
+                  {t('compacted')}
+                </Text>
+                {item.preTokens !== undefined && item.postTokens !== undefined ? (
+                  <Text className="text-[12px] text-muted">
+                    {t('compactedTokens', {
+                      pre: formatTokens(item.preTokens),
+                      post: formatTokens(item.postTokens),
+                    })}
+                  </Text>
+                ) : null}
+              </View>
             );
           default:
             return null;

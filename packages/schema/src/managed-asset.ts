@@ -14,6 +14,7 @@ export const ManagedAssetIdSchema = z.enum([
   'agent:codex',
   'agent:opencode',
   'tool:tectonic',
+  'tool:aigateway',
 ]);
 export type ManagedAssetId = z.infer<typeof ManagedAssetIdSchema>;
 

@@ -1,8 +1,24 @@
-import { SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
+import type { AgentKind } from '@linkcode/schema';
+import { AgentKindSchema } from '@linkcode/schema';
+import {
+  AGENT_LABELS,
+  AgentIcon,
+  SettingsSidebarNav,
+  ShellSidebar,
+  useKeyboardShortcut,
+} from '@linkcode/ui';
+import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
-import { BellIcon, BotIcon, InfoIcon, SettingsIcon, WifiIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+  BellIcon,
+  BotIcon,
+  HistoryIcon,
+  InfoIcon,
+  KeyRoundIcon,
+  SettingsIcon,
+  WifiIcon,
+} from 'lucide-react';
+import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
 import { DesktopChrome } from '../shell/chrome/chrome';
@@ -13,10 +29,15 @@ import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
+import { HistoryImportTab } from './history-import-tab';
 import { NotificationsTab } from './notifications-tab';
+import { ProvidersTab } from './providers-tab';
+import type { SettingsCategory } from './store';
 import { useDesktopSettingsStore } from './store';
 
-type SettingsCategory = 'general' | 'connection' | 'notifications' | 'about' | 'agents';
+const AGENT_KINDS: readonly AgentKind[] = AgentKindSchema.options;
+const DEFAULT_HISTORY_PROVIDER: AgentKind = 'claude-code';
+const CLOSE_SETTINGS_SHORTCUT = { key: 'Escape' } as const;
 
 const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
   ...DESKTOP_CHROME_METRICS_STYLE,
@@ -31,29 +52,32 @@ const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
  */
 export function SettingsView(): React.ReactNode {
   const t = useTranslations('settings');
-  const closeSettings = useDesktopSettingsStore((state) => state.closeSettings);
-  const [category, setCategory] = useState<SettingsCategory>('general');
-  const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
+  const backFromOverlay = useNavigationHistoryStore((state) => state.backFromOverlay);
+  // Store-held (not component state): the view lives inside the daemon-URL-keyed connection
+  // subtree, and saving a new URL in the Connection tab must not reset the pane under the user.
+  const category = useDesktopSettingsStore((state) => state.settingsCategory);
+  const setCategory = useDesktopSettingsStore((state) => state.setSettingsCategory);
+  const historyProvider = useDesktopSettingsStore((state) => state.historyImportProvider);
+  const setHistoryProvider = useDesktopSettingsStore((state) => state.setHistoryImportProvider);
+  const settingsRootRef = useRef<HTMLDivElement>(null);
+  const desktopPlatform = systemBridge.app.platform;
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
-  const showWindowControls = desktopPlatform !== null && desktopPlatform !== 'darwin';
+  const showWindowControls = desktopPlatform !== 'darwin';
 
-  useAbortableEffect((signal) => {
-    void systemBridge.app.platform().then((platform) => {
-      if (!signal.aborted) setDesktopPlatform(platform);
-    });
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closeSettings();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [closeSettings]);
+  useKeyboardShortcut({
+    actionId: 'desktop.close-settings',
+    shortcut: CLOSE_SETTINGS_SHORTCUT,
+    owner: settingsRootRef,
+    handler() {
+      backFromOverlay();
+      return true;
+    },
+  });
 
   return (
     <div
+      ref={settingsRootRef}
       className="linkcode-desktop-shell fixed inset-0 z-50 bg-transparent text-foreground"
       style={SETTINGS_CHROME_STYLE}
     >
@@ -69,9 +93,16 @@ export function SettingsView(): React.ReactNode {
         // Back lives in the settings sidebar, so suppress the workbench navigation controls.
         leftControls={null}
         rightControls={null}
+        // Immersive title: the chrome names the active panel. A tab that portals its own header
+        // into main:left (history import) suppresses this default via the chrome's portal-wins
+        // rule — no per-tab special case here.
         titleContent={
           <div className="pointer-events-none flex h-full min-w-0 items-center px-2">
-            <span className="min-w-0 truncate font-semibold text-sm">{t('title')}</span>
+            <span className="min-w-0 truncate font-semibold text-sm">
+              {category === 'history-import'
+                ? t('historyImport.portalLabel')
+                : t(`tabs.${category}`)}
+            </span>
           </div>
         }
         onShowSidebar={noop}
@@ -87,7 +118,8 @@ export function SettingsView(): React.ReactNode {
             >
               <SettingsSidebarNav
                 backLabel={t('back')}
-                onBack={closeSettings}
+                backAutoFocus
+                onBack={backFromOverlay}
                 searchPlaceholder={t('searchPlaceholder')}
                 items={[
                   {
@@ -119,11 +151,40 @@ export function SettingsView(): React.ReactNode {
                     onClick: () => setCategory('about'),
                   },
                   {
+                    key: 'providers',
+                    icon: <KeyRoundIcon className="size-4" />,
+                    label: t('tabs.providers'),
+                    active: category === 'providers',
+                    onClick: () => setCategory('providers'),
+                  },
+                  {
                     key: 'agents',
                     icon: <BotIcon className="size-4" />,
                     label: t('tabs.agents'),
                     active: category === 'agents',
                     onClick: () => setCategory('agents'),
+                  },
+                  {
+                    key: 'history-import',
+                    icon: <HistoryIcon className="size-4" />,
+                    label: t('historyImport.portalLabel'),
+                    active: category === 'history-import',
+                    // The disclosure row selects the section's first provider (the accordion
+                    // opens via `active`); it is never highlighted itself.
+                    onClick() {
+                      setCategory('history-import');
+                      setHistoryProvider(DEFAULT_HISTORY_PROVIDER);
+                    },
+                    children: AGENT_KINDS.map((agentKind) => ({
+                      key: agentKind,
+                      icon: <AgentIcon kind={agentKind} variant="ghost" />,
+                      label: AGENT_LABELS[agentKind],
+                      active: category === 'history-import' && historyProvider === agentKind,
+                      onClick() {
+                        setCategory('history-import');
+                        setHistoryProvider(agentKind);
+                      },
+                    })),
                   },
                 ]}
               />
@@ -131,7 +192,12 @@ export function SettingsView(): React.ReactNode {
           </div>
           <main className="flex min-w-0 flex-1 flex-col bg-background">
             <div className="min-w-0 flex-1 overflow-y-auto pt-(--lc-chrome-h)">
-              <div className="mx-auto max-w-2xl p-6">{renderSettingsPanel(category)}</div>
+              {/* The providers tab is a master/detail split and needs the extra width. */}
+              <div
+                className={`mx-auto p-6 ${category === 'providers' ? 'max-w-5xl' : 'max-w-2xl'}`}
+              >
+                {renderSettingsPanel(category, historyProvider)}
+              </div>
             </div>
           </main>
         </div>
@@ -140,7 +206,10 @@ export function SettingsView(): React.ReactNode {
   );
 }
 
-function renderSettingsPanel(category: SettingsCategory): React.ReactNode {
+function renderSettingsPanel(
+  category: SettingsCategory,
+  historyProvider: AgentKind,
+): React.ReactNode {
   switch (category) {
     case 'general':
       return <GeneralTab />;
@@ -150,8 +219,12 @@ function renderSettingsPanel(category: SettingsCategory): React.ReactNode {
       return <NotificationsTab />;
     case 'about':
       return <AboutTab />;
+    case 'providers':
+      return <ProvidersTab />;
     case 'agents':
       return <AgentsTab />;
+    case 'history-import':
+      return <HistoryImportTab kind={historyProvider} />;
     default:
       return null;
   }

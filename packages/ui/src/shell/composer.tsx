@@ -12,6 +12,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '../chat/prompt-input';
+import { preventBaseUIHandler } from '../lib/base-ui';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
@@ -26,7 +27,6 @@ import {
   ComposerCommandMenu,
   commandEntryToString,
   computeTextTrigger,
-  preventBaseUIHandler,
   textControlFromEvent,
 } from './composer-command';
 import {

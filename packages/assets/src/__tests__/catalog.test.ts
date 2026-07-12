@@ -46,5 +46,7 @@ describe('CATALOG', () => {
     expect(Object.keys(CATALOG['agent:opencode'].artifacts)).toHaveLength(6);
     expect(CATALOG['tool:tectonic'].artifacts['win32-arm64']).toBeUndefined();
     expect(Object.keys(CATALOG['tool:tectonic'].artifacts)).toHaveLength(5);
+    expect(CATALOG['tool:aigateway'].artifacts['win32-arm64']).toBeUndefined();
+    expect(Object.keys(CATALOG['tool:aigateway'].artifacts)).toHaveLength(5);
   });
 });

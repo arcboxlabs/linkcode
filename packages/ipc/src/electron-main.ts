@@ -42,9 +42,9 @@ export function bindElectronSystemIpc({
     windowIsMaximized: () => ctx.window.isMaximized(),
     fsPickFile: (opts) => ctx.dialog.pickFile(PickFileOptionsSchema.optional().parse(opts)),
     appVersion: () => ctx.app.getVersion(),
-    appPlatform: () => ctx.app.getPlatform(),
     appCheckForUpdates: () => ctx.app.checkForUpdates(),
     daemonIsManaged: () => ctx.daemon.isManaged(),
+    daemonRetry: () => ctx.daemon.retry(),
     settingsGet: () => ctx.settings.get(),
     settingsSet: (patch) => ctx.settings.set(DesktopSettingsPatchSchema.parse(patch)),
     notificationsNotify: (notification) =>

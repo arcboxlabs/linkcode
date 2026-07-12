@@ -1,11 +1,62 @@
-import type { ContentBlock, StartOptions, ToolCallContent, ToolCallStatus } from '@linkcode/schema';
+import type {
+  ContentBlock,
+  PermissionOption,
+  Question,
+  StartOptions,
+  ToolCallContent,
+  ToolCallStatus,
+} from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { falseFn } from 'foxts/noop';
+import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
+import { readAgentCredential } from '../credential';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
 
 type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
+type PermissionAsked = Extract<Event, { type: 'permission.asked' }>['properties'];
+type QuestionAsked = Extract<Event, { type: 'question.asked' }>['properties'];
+type SessionErrored = Extract<Event, { type: 'session.error' }>['properties'];
+
+/** Same three-way menu as claude-code's tool asks; `allow_always` maps onto opencode's `always`
+ * reply, which the server persists as a saved allow rule for the ask's matched pattern. */
+const PERMISSION_OPTIONS: PermissionOption[] = [
+  { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+  { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
+  { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+];
+
+/** Cap on how long `onCancel` waits for `session.abort`: opencode has blocked the abort RPC until
+ * the running tool actually exits (tens of seconds, observed on 1.14.42+ by paseo; 1.17.11 returns
+ * in ~30ms). Past the cap the local cancel proceeds while the abort settles server-side. */
+const ABORT_WAIT_MS = 2000;
+const ABORT_TIMED_OUT = Symbol('opencode-abort-timeout');
+
+/** Most `session.error` variants carry `data.message`; fall back to the variant name. */
+function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): string {
+  const message = (error.data as { message?: unknown } | undefined)?.message;
+  return typeof message === 'string' && message.length > 0 ? message : error.name;
+}
+
+/** The generated client resolves with `{error}` on HTTP and network failures alike (nothing here
+ * passes `throwOnError`), so every RPC result must be checked — an unchecked failure silently
+ * reads as success. Throws with the error detail when the result carries one. */
+function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T {
+  if (result.error === undefined) return result;
+  let detail: string;
+  if (typeof result.error === 'string') {
+    detail = result.error;
+  } else {
+    try {
+      detail = JSON.stringify(result.error) ?? 'unknown error';
+    } catch {
+      detail = extractErrorMessage(result.error) ?? 'unknown error';
+    }
+  }
+  throw new Error(`${context} failed: ${detail}`);
+}
 
 /** Map OpenCode's tool part state to our ToolCallStatus (running → in_progress, error → failed). */
 function mapOpencodeToolStatus(status: ToolPartState['status']): ToolCallStatus {
@@ -53,17 +104,44 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** True once `onCancel` has aborted the in-flight turn — any stream fallout until the next prompt
    * (thrown or clean) is that abort's expected side effect, not a failure. */
   private cancelling = false;
+  /** True once a `session.error` failed the active turn — the idle settle then skips the `end_turn`
+   * stop (the error event already told the story) and sweeps unsettled tools. */
+  private turnFailed = false;
+  /** True once the server acknowledged the active turn on-stream (`session.status` busy/retry).
+   * A turn's own `session.error` and `session.idle` NEVER precede its busy status (verified live
+   * on 1.17.11), so an idle or error arriving before it is the PREVIOUS turn's documented
+   * post-settle straggler (the duplicate idle an abort produces; the error re-fired with a stack
+   * after the settle) and must not touch this turn. */
+  private turnStarted = false;
+  /** Monotonic flag-ownership counter, bumped by every prompt AND every cancel — lets a straggling
+   * abort settlement from an earlier cancel know whether it may still clear `cancelling` (a newer
+   * prompt or a repeat cancel owns the flags by then). */
+  private turnEpoch = 0;
+  /** Announced tool part id by provider `callID`: permission/question asks cite the tool they gate
+   * via `tool.callID`, but the tool card was announced under the PART id — this map re-joins them
+   * so the ask lands on the visible card. Cleared at each turn settle. */
+  private readonly toolPartIdByCallId = new Map<string, string>();
+  /** Message ids opencode reported with `role: 'user'` — their parts must be skipped: the server
+   * streams `message.part.updated` for the user's own prompt text too (observed live on 1.17.11;
+   * `message.updated {role:'user'}` precedes its parts), and replaying that text would
+   * double-render the prompt as an agent bubble. Cleared at each turn settle. */
+  private readonly userMessageIds = new Set<string>();
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
     let started: Awaited<ReturnType<OpencodeModule['createOpencode']>>;
-    // OpenCode routes by provider; inject the configured key under the model's provider id (the
-    // `providerID` half of `providerID/modelID`) so the spawned server authenticates that provider.
-    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    // OpenCode routes by provider; inject the account's key + base URL under the model's provider id
+    // (the `providerID` half of `providerID/modelID`) so the spawned server authenticates and, for a
+    // gateway account, targets that provider.
+    const cred = readAgentCredential(opts.config);
     const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
+    const options: { apiKey?: string; baseURL?: string } = {};
+    const key = cred.apiKey ?? cred.authToken;
+    if (key) options.apiKey = key;
+    if (cred.baseUrl) options.baseURL = cred.baseUrl;
     const serverOptions =
-      apiKey && providerID
-        ? { config: { provider: { [providerID]: { options: { apiKey } } } } }
+      providerID && (options.apiKey || options.baseURL)
+        ? { config: { provider: { [providerID]: { options } } } }
         : undefined;
     try {
       started = await mod.createOpencode(serverOptions);
@@ -74,7 +152,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     this.client = started.client;
     this.closeServer = () => started.server.close();
-    const created = await this.client.session.create({ directory: opts.cwd });
+    const created = okOrThrow(
+      await this.client.session.create({ directory: opts.cwd }),
+      'opencode: session.create',
+    );
     const id = created.data?.id;
     if (!id) throw new Error('opencode: failed to create session');
     this.sessionId = id;
@@ -84,30 +165,78 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     if (!this.client || !this.sessionId) throw new Error('opencode: session not started');
     const parts: TextPartInput[] = [{ type: 'text', text: contentToText(content) }];
+    this.turnEpoch += 1;
     this.turnActive = true;
+    this.turnStarted = false;
     this.cancelling = false;
+    this.turnFailed = false;
     this.emitStatus('running');
-    await this.client.session.prompt({
+    // promptAsync, not prompt: the blocking variant's HTTP response only resolves once the whole
+    // turn finishes, which would hold send() open for the turn's full duration and risks HTTP-layer
+    // timeouts on long turns. The SSE stream is the single source of turn lifecycle either way.
+    const result = await this.client.session.promptAsync({
       sessionID: this.sessionId,
       directory: this.opts?.cwd,
       model: this.model(),
       parts,
     });
+    if (result.error !== undefined) {
+      // The turn never started; put the session back to rest before rejecting send().
+      this.turnActive = false;
+      this.emitStatus('idle');
+      okOrThrow(result, 'opencode: session.promptAsync');
+    }
   }
 
   protected override async onCancel(): Promise<void> {
     this.turnActive = false;
     this.cancelling = true;
-    if (this.client && this.sessionId) {
-      try {
-        await this.client.session.abort({ sessionID: this.sessionId });
-      } catch (err) {
-        // The abort itself failed, so no cancel-induced idle/close is coming to reset the flag.
-        // Leaving `cancelling` latched would make `consumeEvents()` swallow a later genuine stream
-        // failure as an expected cancel close — clear it here so only a real cancel suppresses.
-        this.cancelling = false;
-        throw err;
+    // A repeat cancel takes over the flags: without the bump, the FIRST cancel's straggling abort
+    // could fail late and clear the latch this cancel now owns, making the second abort's real
+    // fallout read as a genuine stream failure.
+    this.turnEpoch += 1;
+    // Captured NOW, not when the wait cap fires: a repeat cancel inside the wait window must not
+    // let this cancel's late-failure watcher mistake itself for the current flag owner.
+    const epoch = this.turnEpoch;
+    if (!this.client || !this.sessionId) return;
+    const abort = this.client.session.abort({
+      sessionID: this.sessionId,
+      directory: this.opts?.cwd,
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const raced = await Promise.race([
+        abort,
+        new Promise<typeof ABORT_TIMED_OUT>((resolve) => {
+          timer = setTimeout(() => resolve(ABORT_TIMED_OUT), ABORT_WAIT_MS);
+        }),
+      ]);
+      if (raced === ABORT_TIMED_OUT) {
+        // The abort RPC is still in flight server-side (see ABORT_WAIT_MS): proceed with the local
+        // cancel and leave `cancelling` latched — the abort's fallout (`session.error` aborted +
+        // `session.idle`) is still expected. But if the straggling abort ultimately FAILS, no
+        // fallout is coming; clear the latch (unless a newer prompt or cancel owns the flags by
+        // then) so a later genuine stream failure isn't swallowed as this cancel's fallout.
+        void abort
+          .then((res) => res.error === undefined)
+          .catch(falseFn)
+          .then((cleanAbort) => {
+            // A clean success leaves the latch for the expected fallout; any failure (rejected or
+            // resolved-with-error) means no fallout is coming, so clear the latch — unless a newer
+            // prompt or cancel already owns the flags by then.
+            if (!cleanAbort && this.turnEpoch === epoch) this.cancelling = false;
+          });
+        return;
       }
+      okOrThrow(raced, 'opencode: session.abort');
+    } catch (err) {
+      // The abort itself failed, so no cancel-induced idle/close is coming to reset the flag.
+      // Leaving `cancelling` latched would make `consumeEvents()` swallow a later genuine stream
+      // failure as an expected cancel close — clear it here so only a real cancel suppresses.
+      this.cancelling = false;
+      throw err;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
@@ -145,7 +274,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (!this.client) return;
     let caught: unknown;
     try {
-      const sub = await this.client.event.subscribe();
+      // Events are scoped to the per-directory instance: a bare subscribe() only carries the
+      // server-cwd instance's bus and silently misses every session event whenever the daemon cwd
+      // differs from the session cwd (verified live on opencode 1.17.11).
+      const sub = await this.client.event.subscribe({ directory: this.opts?.cwd });
       for await (const ev of sub.stream) {
         if (this.stopped) break;
         this.handleEvent(ev);
@@ -176,16 +308,55 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private handleEvent(ev: Event): void {
     try {
       switch (ev.type) {
+        case 'message.updated':
+          if (ev.properties.sessionID === this.sessionId && ev.properties.info.role === 'user') {
+            this.userMessageIds.add(ev.properties.info.id);
+          }
+          break;
         case 'message.part.updated':
-          if (ev.properties.sessionID === this.sessionId) this.handlePart(ev.properties.part);
+          if (
+            ev.properties.sessionID === this.sessionId &&
+            !this.userMessageIds.has(ev.properties.part.messageID)
+          ) {
+            this.handlePart(ev.properties.part);
+          }
+          break;
+        case 'permission.asked':
+          if (ev.properties.sessionID === this.sessionId) {
+            void this.handlePermissionAsked(ev.properties).catch((err: unknown) => {
+              this.emitError(extractErrorMessage(err) ?? 'opencode: permission reply failed');
+            });
+          }
+          break;
+        case 'question.asked':
+          if (ev.properties.sessionID === this.sessionId) {
+            void this.handleQuestionAsked(ev.properties).catch((err: unknown) => {
+              this.emitError(extractErrorMessage(err) ?? 'opencode: question reply failed');
+            });
+          }
+          break;
+        case 'session.status':
+          // busy/retry is the server's on-stream acknowledgement that the active turn is running —
+          // the marker that lets settle/error handling tell this turn's events from the previous
+          // turn's post-settle stragglers.
+          if (
+            ev.properties.sessionID === this.sessionId &&
+            this.turnActive &&
+            ev.properties.status.type !== 'idle'
+          ) {
+            this.turnStarted = true;
+          }
+          break;
+        case 'session.error':
+          // sessionID is OPTIONAL on this event (unlike every other event handled here); this
+          // adapter owns its whole server, so an unattributed error is ours — e.g. an auth failure
+          // must still reach the AUTH_FAILED_ERROR_CODE path.
+          if (ev.properties.sessionID === undefined || ev.properties.sessionID === this.sessionId) {
+            this.handleSessionError(ev.properties);
+          }
           break;
         case 'session.idle':
-          if (ev.properties.sessionID === this.sessionId) {
-            this.turnActive = false;
-            this.cancelling = false;
-            this.emitStop('end_turn');
-            this.emitStatus('idle');
-          }
+          if (ev.properties.sessionID === this.sessionId) this.settleTurn();
           break;
         default:
           break;
@@ -193,6 +364,186 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     } catch (err) {
       this.emitError(extractErrorMessage(err) ?? `opencode: failed to handle event (${ev.type})`);
     }
+  }
+
+  /** Turn settle on `session.idle`. Guarded on turn liveness AND the on-stream turn-start marker:
+   * opencode emits a duplicate idle after an abort (observed live: error → idle → idle), and that
+   * straggler can land after the NEXT prompt was already dispatched — without the `turnStarted`
+   * gate it would falsely settle the new turn and then swallow its real settle. */
+  private settleTurn(): void {
+    const started = this.turnActive && this.turnStarted;
+    if (!started && !this.cancelling && !this.turnFailed) {
+      if (this.turnActive) {
+        // Normally the previous turn's post-settle straggler. But if the server never emits
+        // `session.status` (the busy-precedes-idle ordering is only live-verified on 1.17.11),
+        // this WAS the real settle and the turn will hang at `running` — leave a trace so a
+        // stuck turn is attributable.
+        console.warn(
+          'opencode: absorbed a session.idle that preceded the busy acknowledgement (straggler, or a server that never emits session.status)',
+        );
+      }
+      return;
+    }
+    const cancelled = this.cancelling;
+    const failed = this.turnFailed;
+    this.turnActive = false;
+    this.cancelling = false;
+    this.turnFailed = false;
+    this.toolPartIdByCallId.clear();
+    this.userMessageIds.clear();
+    // A cancelled or failed turn never delivers its remaining tool settles; sweep them (idempotent
+    // after the base cancel-path teardown).
+    if (cancelled || failed) this.teardown();
+    if (cancelled) this.emitStop('cancelled');
+    else if (!failed) this.emitStop('end_turn');
+    this.emitStatus('idle');
+  }
+
+  /** `session.error` arrives both mid-turn (failing it) and as a post-idle duplicate (observed
+   * live: the same failure re-emitted with a stack trace after the settle) — and that duplicate
+   * can land after the NEXT prompt was dispatched. A turn's own error never precedes its busy
+   * status (verified live), so gating on `turnStarted` keeps stragglers from poisoning the new
+   * turn. `session.idle` still follows every error and does the settle. */
+  private handleSessionError(props: SessionErrored): void {
+    const error = props.error;
+    if (!error) return;
+    if (!this.cancelling && (!this.turnActive || !this.turnStarted)) return;
+    if (error.name === 'MessageAbortedError') {
+      // The abort's own fallout (ours, or an external client's): fold it into the cancel path so
+      // the idle settle reports `cancelled` — never surface it as an error.
+      this.turnActive = false;
+      this.cancelling = true;
+      return;
+    }
+    this.turnFailed = true;
+    const message = sessionErrorMessage(error);
+    if (error.name === 'ProviderAuthError') {
+      this.emitError(
+        `opencode: provider authentication failed (${message})`,
+        AUTH_FAILED_ERROR_CODE,
+        false,
+      );
+      return;
+    }
+    this.emitError(message);
+  }
+
+  /** Answer a `permission.asked` through the shared permission round-trip: Allow→`once`,
+   * Always allow→`always` (persisted server-side), Reject→`reject`. A teardown-cancelled ask also
+   * replies `reject` — an unanswered ask would otherwise gate the turn server-side forever. */
+  private async handlePermissionAsked(props: PermissionAsked): Promise<void> {
+    const toolCallId =
+      (props.tool && this.toolPartIdByCallId.get(props.tool.callID)) ??
+      props.tool?.callID ??
+      nextToolCallId();
+    const outcome = await this.requestPermission(
+      {
+        toolCallId,
+        title: props.permission,
+        kind: toolKindFromName(props.permission),
+        rawInput: props.metadata,
+      },
+      PERMISSION_OPTIONS,
+    );
+    if (!this.client) return;
+    const allowed = outcome.outcome === 'selected';
+    const reply =
+      allowed && outcome.optionId === 'allow'
+        ? 'once'
+        : allowed && outcome.optionId === 'allow_always'
+          ? 'always'
+          : 'reject';
+    try {
+      okOrThrow(
+        await this.client.permission.reply({
+          requestID: props.id,
+          directory: this.opts?.cwd,
+          reply,
+        }),
+        'opencode: permission.reply',
+      );
+    } catch (err) {
+      // A teardown-cancelled reject races the abort that triggered it — the server may already
+      // have discarded the ask, and that failure carries no signal.
+      if (outcome.outcome !== 'cancelled') throw err;
+    }
+  }
+
+  /** Surface `question.asked` as a structured question card (the analogue of claude-code's
+   * AskUserQuestion): answers reply as one label array per question — `question.replied` echoes
+   * exactly that shape — and a decline (or teardown cancel) rejects so the asking tool settles. */
+  private async handleQuestionAsked(props: QuestionAsked): Promise<void> {
+    const requestID = props.id;
+    const directory = this.opts?.cwd;
+    if (props.questions.length === 0 || props.questions.some((q) => q.options.length === 0)) {
+      // The Question schema requires ≥1 option per question; an ask we can't render must still be
+      // answered or it gates the turn server-side forever.
+      this.emitError('opencode: question ask carried no options; rejected');
+      if (this.client) {
+        okOrThrow(
+          await this.client.question.reject({ requestID, directory }),
+          'opencode: question.reject',
+        );
+      }
+      return;
+    }
+    const toolCallId =
+      (props.tool && this.toolPartIdByCallId.get(props.tool.callID)) ??
+      props.tool?.callID ??
+      nextToolCallId();
+    const outcome = await this.requestQuestion(
+      {
+        toolCallId,
+        title: 'question',
+        kind: toolKindFromName('question'),
+        rawInput: { questions: props.questions },
+      },
+      props.questions.map(
+        (q, qi): Question => ({
+          questionId: `q${qi}`,
+          prompt: q.question,
+          header: q.header,
+          multiSelect: q.multiple ?? false,
+          options: q.options.map((option, oi) => ({
+            optionId: `o${oi}`,
+            label: option.label,
+            description: option.description,
+          })),
+        }),
+      ),
+    );
+    if (!this.client) return;
+    if (outcome.outcome === 'cancelled') {
+      try {
+        okOrThrow(
+          await this.client.question.reject({ requestID, directory }),
+          'opencode: question.reject',
+        );
+      } catch {
+        // The cancel races the abort that triggered it — the ask may already be gone server-side.
+      }
+      return;
+    }
+    const byQuestionId = new Map(outcome.answers.map((answer) => [answer.questionId, answer]));
+    const answers = props.questions.map((q, qi) => {
+      const answer = byQuestionId.get(`q${qi}`);
+      if (!answer) return [];
+      const selected = new Set(answer.selectedOptionIds);
+      const labels: string[] = [];
+      for (const [oi, option] of q.options.entries()) {
+        if (selected.has(`o${oi}`)) labels.push(option.label);
+      }
+      const custom = answer.customText?.trim();
+      // Safe even for asks whose `custom` flag is unset: upstream Question.reply resolves the
+      // answer arrays to the asking tool verbatim, with no validation against option labels
+      // (anomalyco/opencode packages/opencode/src/question/index.ts).
+      if (custom) labels.push(custom);
+      return labels;
+    });
+    okOrThrow(
+      await this.client.question.reply({ requestID, directory, answers }),
+      'opencode: question.reply',
+    );
   }
 
   private handlePart(part: Part): void {
@@ -208,6 +559,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         break;
       }
       case 'tool': {
+        this.toolPartIdByCallId.set(part.callID, part.id);
         this.emitTool({
           toolCallId: part.id,
           title: part.tool,

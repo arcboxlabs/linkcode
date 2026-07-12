@@ -27,6 +27,7 @@ describe('orderGroups', () => {
       workspace: null,
       sessions: [],
       isChat: false,
+      isPinned: false,
     };
     const groups = [chat, createGroup('/a'), createGroup('/b'), fallback];
 
@@ -184,5 +185,12 @@ function createGroup(cwd: string): ThreadGroup {
     createdAt: 0,
     lastUsedAt: 0,
   };
-  return { key: workspace.workspaceId, collapseKey: cwd, workspace, sessions: [], isChat: false };
+  return {
+    key: workspace.workspaceId,
+    collapseKey: cwd,
+    workspace,
+    sessions: [],
+    isChat: false,
+    isPinned: false,
+  };
 }

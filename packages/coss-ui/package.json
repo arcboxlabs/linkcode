@@ -12,14 +12,13 @@
     "./styles/*": "./src/styles/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "lint": "biome check ."
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "foxact": "^0.3.7",
+    "foxact": "^0.3.8",
     "input-otp": "^1.4.2",
     "lucide-react": "catalog:",
     "react-day-picker": "^9.14.0",

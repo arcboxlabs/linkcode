@@ -1,4 +1,5 @@
 import type {
+  Accounts,
   AgentHistoryListResult,
   AgentHistoryReadResult,
   AgentRuntimes,
@@ -41,6 +42,7 @@ export interface PendingValueMap {
   historyList: AgentHistoryListResult;
   historyRead: AgentHistoryReadResult;
   configGet: ProvidersConfig;
+  accountsGet: Accounts;
   agentRuntimeList: AgentRuntimes;
   assetList: ManagedAssetStatus[];
   assetEnsure: ManagedAssetStatus;
@@ -78,6 +80,7 @@ export class PendingRegistry {
     historyList: new Map(),
     historyRead: new Map(),
     configGet: new Map(),
+    accountsGet: new Map(),
     agentRuntimeList: new Map(),
     assetList: new Map(),
     assetEnsure: new Map(),

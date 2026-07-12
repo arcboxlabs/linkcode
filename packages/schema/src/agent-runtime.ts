@@ -22,6 +22,8 @@ export const AgentAuthStatusSchema = z.object({
   method: z.string().optional(),
   /** Subscription tier for a subscription login, e.g. `max` / `pro`. */
   subscriptionType: z.string().optional(),
+  /** Signed-in identity the CLI reports — the account email. */
+  email: z.string().optional(),
 });
 export type AgentAuthStatus = z.infer<typeof AgentAuthStatusSchema>;
 

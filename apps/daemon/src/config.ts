@@ -2,8 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { ProvidersConfig } from '@linkcode/schema';
-import { AgentKindSchema, DAEMON_DEFAULT_PORT, ProviderConfigSchema } from '@linkcode/schema';
+import type { Accounts, ProvidersConfig } from '@linkcode/schema';
+import {
+  AccountSchema,
+  AgentKindSchema,
+  DAEMON_DEFAULT_PORT,
+  ProviderConfigSchema,
+} from '@linkcode/schema';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 
 /**
@@ -17,6 +22,8 @@ export interface DaemonConfig {
   listeners: DaemonListenerConfig[];
   /** Typed per-provider configuration (data plane); undefined when nothing is configured. */
   providers?: ProvidersConfig;
+  /** Global account pool (data plane); undefined when nothing is configured. */
+  accounts?: Accounts;
 }
 
 const DEFAULT_PORT = DAEMON_DEFAULT_PORT;
@@ -27,6 +34,7 @@ interface ConfigFile {
   hostname?: unknown;
   listeners?: unknown;
   providers?: unknown;
+  accounts?: unknown;
 }
 
 function configPath(): string {
@@ -74,7 +82,32 @@ export function loadConfig(): DaemonConfig {
       configuredListeners.length > 0 ? configuredListeners : [fallbackListener],
     ),
     providers: parseProviders(file.providers),
+    accounts: parseAccounts(file.accounts),
   };
+}
+
+/**
+ * Parse `file.accounts` element by element: an invalid account (bad shape, unknown agent kind for
+ * an oauth credential, …) is dropped and logged rather than discarding the whole pool — one bad
+ * entry must not blank out the rest, and `saveAccounts` would otherwise persist that loss on the
+ * next write. Mirrors {@link parseProviders}.
+ */
+function parseAccounts(raw: unknown): Accounts {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    console.error('Invalid accounts config: expected an array, got', raw);
+    return [];
+  }
+  const accounts: Accounts = [];
+  for (const value of raw) {
+    const account = AccountSchema.safeParse(value);
+    if (!account.success) {
+      console.error('Invalid account config, dropping entry:', account.error);
+      continue;
+    }
+    accounts.push(account.data);
+  }
+  return accounts;
 }
 
 /**
@@ -108,9 +141,22 @@ function parseProviders(raw: unknown): ProvidersConfig {
 
 /**
  * Persist provider config back to `~/.linkcode/config.json`, preserving the file's other fields
- * (listeners / port / host). Written `0600` since it may hold API keys.
+ * (listeners / port / host / accounts). Written `0600` since it may hold API keys.
  */
 export function saveProviders(providers: ProvidersConfig): void {
+  writeConfigField('providers', providers);
+}
+
+/**
+ * Persist the account pool back to `~/.linkcode/config.json`, preserving the file's other fields.
+ * Written `0600` since accounts hold API keys / tokens.
+ */
+export function saveAccounts(accounts: Accounts): void {
+  writeConfigField('accounts', accounts);
+}
+
+/** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
+function writeConfigField(key: 'providers' | 'accounts', value: unknown): void {
   const path = configPath();
   let file: Record<string, unknown> = {};
   try {
@@ -119,7 +165,7 @@ export function saveProviders(providers: ProvidersConfig): void {
   } catch {
     // Start from an empty document if the file is missing or malformed.
   }
-  file.providers = providers;
+  file[key] = value;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
 }

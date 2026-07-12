@@ -5,19 +5,16 @@ import type {
   SessionNotification,
   WirePayload,
 } from '@linkcode/schema';
-import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
 import type { SequencedAgentEvent } from '../client';
-import { LinkCodeClient } from '../client';
+import { createConnectedLocalClient } from './local-client';
 
 const sessionId = 'sess-control' as SessionId;
 
 describe('LinkCodeClient control API', () => {
   it('waits for control acknowledgements', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
-    await client.connect();
-    await serverTransport.connect();
+    const { client, serverTransport } = await createConnectedLocalClient();
 
     serverTransport.onMessage((msg) => {
       const payload = successFor(msg.payload);
@@ -34,11 +31,8 @@ describe('LinkCodeClient control API', () => {
   });
 
   it('rejects control calls on request.failed', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
+    const { client, serverTransport } = await createConnectedLocalClient();
     const outcome: PermissionOutcome = { outcome: 'selected', optionId: 'reject' };
-    await client.connect();
-    await serverTransport.connect();
 
     serverTransport.onMessage((msg) => {
       const p = msg.payload;
@@ -64,10 +58,7 @@ describe('LinkCodeClient control API', () => {
 
 describe('LinkCodeClient session notifications', () => {
   it('fans session.notification broadcasts out to subscribers until unsubscribed', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
-    await client.connect();
-    await serverTransport.connect();
+    const { client, serverTransport } = await createConnectedLocalClient();
 
     const seen: SessionNotification[] = [];
     const unsubscribe = client.subscribeSessionNotification((n) => seen.push(n));
@@ -98,10 +89,7 @@ describe('LinkCodeClient session notifications', () => {
 
 describe('LinkCodeClient event buffer', () => {
   it('sequences received events and replays them to a late subscriber with original seqs', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
-    await client.connect();
-    await serverTransport.connect();
+    const { client, serverTransport } = await createConnectedLocalClient();
 
     const first: AgentEvent = { type: 'user-message', content: [{ type: 'text', text: 'hi' }] };
     const second: AgentEvent = { type: 'status', status: 'running' };
@@ -126,10 +114,7 @@ describe('LinkCodeClient event buffer', () => {
   });
 
   it('serves a stable events snapshot between changes and a fresh one per event', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
-    await client.connect();
-    await serverTransport.connect();
+    const { client, serverTransport } = await createConnectedLocalClient();
 
     expect(client.eventsSnapshot(sessionId)).toBe(client.eventsSnapshot(sessionId));
     expect(client.eventsSnapshot(sessionId)).toEqual([]);
@@ -157,10 +142,7 @@ describe('LinkCodeClient event buffer', () => {
   });
 
   it('keeps the seq counter monotone across a stop that clears the buffer', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
-    await client.connect();
-    await serverTransport.connect();
+    const { client, serverTransport } = await createConnectedLocalClient();
 
     serverTransport.onMessage((msg) => {
       const payload = successFor(msg.payload);

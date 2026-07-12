@@ -1,18 +1,30 @@
+import type { WireMessage } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { LinkCodeClient } from '../client';
 
 /** A transport whose every `send` rejects, so terminal frames always fail to leave. */
 function sendFailingTransport(err: Error): Transport {
+  let onMessage: (message: WireMessage) => void = noop;
   return {
     connect() {
       return Promise.resolve();
     },
-    send() {
+    send(message) {
+      if (message.payload.kind === 'ping') {
+        queueMicrotask(() => onMessage(createWireMessage({ kind: 'pong' })));
+        return;
+      }
       return Promise.reject(err);
     },
-    onMessage: () => noop,
+    onMessage(cb) {
+      onMessage = cb;
+      return () => {
+        onMessage = noop;
+      };
+    },
     onClose: () => noop,
     close: noop,
   };

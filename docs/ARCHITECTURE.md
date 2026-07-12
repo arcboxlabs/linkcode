@@ -145,7 +145,7 @@ A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable en
 | `client-core`   | Shared client data layer: `LinkCodeClient`, the conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`).           |
 | `common`        | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers).       |
 | `sdk`           | Transport-backed SDK (`LinkCodeSdkClient` over a `Transport`): typed operations plus the `Options` / `RequestResult` types `tayori` is parameterized with. Hand-written RPC, not OpenAPI-generated. |
-| `workbench`     | Shared workbench runtime: `WorkbenchProviders` (data plane + connection gate), the `Workbench` surface (session / conversation / composer), the typed `tayori` wrapper, and the debug context. |
+| `workbench`     | Shared workbench runtime: the connection controller (endpoint resolution, fresh transport/SDK generations, retry/backoff), `WorkbenchProviders`, the `Workbench` surface, and typed `tayori`/SWR data plumbing. SWR caches by endpoint and revalidates after a new generation becomes ready; it does not own sockets. |
 | `ui`            | Shared, business-free presentation: chat and shell view components (`AppShell`). Receives view-models and callbacks; owns no routing, connection, or state. |
 | `coss-ui`       | Vendored COSS UI primitives (base-ui + Tailwind, from cal.com's COSS UI). Synced from upstream, not hand-edited. Formatted by Biome, excluded from ESLint. |
 | `ipc`           | TypeSafe IPC (system plane) for Electron; `tRPC` is the default implementation. Desktop only.                                                  |
@@ -187,7 +187,11 @@ the front-end, not to any particular wire format.
 The `transport` package answers "how messages travel." It offers one `Transport`
 interface with several implementations — an in-process local transport, a WebSocket
 transport, and a Socket.IO transport — plus a `TransportServer` that accepts client
-connections and presents each as a `Transport`.
+connections and presents each as a `Transport`. A client `Transport` instance owns one
+physical connection lifetime and never silently revives after close; recovery creates a
+fresh transport and client generation. Carrier connection alone is not application
+readiness: `LinkCodeClient.connect()` resolves only after a versioned `ping` / `pong`
+round trip, so a wire-incompatible peer cannot become falsely ready.
 
 The daemon serves many clients at once through a **`Hub`**, which composes every client
 connection into the single `Transport` the host consumes. Outbound messages are
@@ -241,6 +245,9 @@ interface TransportServer {
 // @linkcode/sdk — transport-backed client the front-end data layer is built on
 class LinkCodeSdkClient {
   constructor(options: { transport: Transport });
+  connect(): Promise<void>;                                // resolves after LinkCode ping/pong
+  onClose(cb: (error: Error) => void): Unsubscribe;         // unexpected close after readiness
+  dispose(): void;
   listSessions(): RequestResult<SessionInfo[]>;
   startSession(opts: StartOptions): RequestResult<SessionId>;
   stopSession(id: SessionId): RequestResult<{ ok: true }>;

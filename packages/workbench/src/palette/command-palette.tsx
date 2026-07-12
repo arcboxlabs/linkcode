@@ -1,7 +1,13 @@
 import type { SessionId, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 import type { PaletteThreadViewModel } from '@linkcode/ui';
-import { AGENT_LABELS, CommandPalette, repositoryLabel } from '@linkcode/ui';
+import {
+  AGENT_LABELS,
+  CommandPalette,
+  repositoryLabel,
+  useKeyboardShortcutLabels,
+} from '@linkcode/ui';
+import { AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { WorkbenchSessions } from '../surface/use-workbench-sessions';
@@ -17,18 +23,23 @@ export interface WorkbenchCommandPaletteProps {
 /**
  * The palette container: mounted permanently by `Workbench`, but everything below — data
  * assembly, matching, the dialog — exists only while open, so the closed palette costs nothing
- * and the query resets on close for free.
+ * and the query resets on close for free. `AnimatePresence` defers the unmount until the
+ * dialog's motion exit transition finishes.
  */
 export function WorkbenchCommandPalette({
   sessions,
 }: WorkbenchCommandPaletteProps): React.ReactNode {
   const open = useCommandPaletteStore((state) => state.open);
-  if (!open) return null;
-  return <OpenCommandPalette sessions={sessions} />;
+  return (
+    <AnimatePresence>
+      {open && <OpenCommandPalette key="palette" sessions={sessions} />}
+    </AnimatePresence>
+  );
 }
 
 function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.ReactNode {
   const t = useTranslations('workbench.palette');
+  const shortcutLabels = useKeyboardShortcutLabels();
   const setOpen = useCommandPaletteStore((state) => state.setOpen);
   const commandsByOwner = useCommandPaletteStore((state) => state.commandsByOwner);
   const { data: workspaces } = useWorkspaces();
@@ -51,6 +62,29 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
   const appCommands = Object.keys(commandsByOwner)
     .sort()
     .flatMap((owner) => commandsByOwner[owner]);
+  // Included only while traversal is possible — a listed command must always be runnable.
+  const navigationCommands: PaletteCommand[] = [
+    ...(sessions.canGoBack
+      ? [
+          {
+            id: 'workbench.go-back',
+            label: t('goBack'),
+            keywords: ['back', 'history'],
+            run: sessions.goBack,
+          },
+        ]
+      : []),
+    ...(sessions.canGoForward
+      ? [
+          {
+            id: 'workbench.go-forward',
+            label: t('goForward'),
+            keywords: ['forward', 'history'],
+            run: sessions.goForward,
+          },
+        ]
+      : []),
+  ];
   let targetWorkspace: WorkspaceRecord | null = null;
   for (const workspace of workspaces ?? []) {
     if (workspaceKind(workspace) !== 'chat') {
@@ -71,9 +105,10 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
             });
           },
         },
+        ...navigationCommands,
         ...appCommands,
       ]
-    : [...appCommands];
+    : [...navigationCommands, ...appCommands];
 
   const matchedThreads = matchPaletteThreads(candidates, query);
   const matchedCommands = matchPaletteCommands(commands, query);
@@ -100,12 +135,15 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
 
   return (
     <CommandPalette
-      open
       onOpenChange={setOpen}
       query={query}
       onQueryChange={setQuery}
       threads={threadViewModels}
-      commands={matchedCommands.map(({ id, label, shortcut }) => ({ id, label, shortcut }))}
+      commands={matchedCommands.map(({ id, label, shortcut }) => ({
+        id,
+        label,
+        shortcut: shortcut ?? shortcutLabels.get(id),
+      }))}
       onSelectThread={handleSelectThread}
       onRunCommand={handleRunCommand}
     />

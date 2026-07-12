@@ -22,7 +22,7 @@ type RenamedThreadGroupActions = 'onSelect' | 'onClose';
 
 export interface ShellFrameProps
   extends Pick<ThreadGroupActions, Exclude<keyof ThreadGroupActions, RenamedThreadGroupActions>>,
-    Pick<ThreadGroupState, 'pinnedSessionIds'> {
+    Pick<ThreadGroupState, 'pinnedSessionIds' | 'collapsedSections'> {
   threadGroups: ThreadGroupViewModel[];
   workspaces: WorkspaceRecord[];
   workspacesLoading?: boolean;
@@ -109,6 +109,7 @@ export function ShellFrame({
   header,
   errorMessage,
   pinnedSessionIds,
+  collapsedSections,
   onSelectSession,
   onCloseSession,
   onToggleSessionPinned,
@@ -116,13 +117,12 @@ export function ShellFrame({
   onReorderThreads,
   onStartDraft,
   onSubmitDraft,
-  onImportSession,
   onRegisterWorkspace,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
+  onToggleSectionCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -132,7 +132,6 @@ export function ShellFrame({
   searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
-  HistoryComponent,
   onDismissError,
   onModeChange,
   onApprovalPolicyChange,
@@ -151,6 +150,7 @@ export function ShellFrame({
           sessionsLoading={sessionsLoading}
           activeId={active?.sessionId ?? null}
           pinnedSessionIds={pinnedSessionIds}
+          collapsedSections={collapsedSections}
           footer={<DefaultHostFooter />}
           onSelect={onSelectSession}
           onClose={onCloseSession}
@@ -158,17 +158,15 @@ export function ShellFrame({
           onReorderGroups={onReorderGroups}
           onReorderThreads={onReorderThreads}
           onStartDraft={onStartDraft}
-          onImportSession={onImportSession}
           onRegisterWorkspace={onRegisterWorkspace}
           onRenameWorkspace={onRenameWorkspace}
           onArchiveWorkspace={onArchiveWorkspace}
           onToggleGroupCollapsed={onToggleGroupCollapsed}
+          onToggleSectionCollapsed={onToggleSectionCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
-          onToggleImportHistory={onToggleImportHistory}
           onOpenSearch={onOpenSearch}
           searchShortcut={searchShortcut}
           BranchStatusComponent={BranchStatusComponent}
-          HistoryComponent={HistoryComponent}
         />
       </div>
       <main className="flex min-w-0 flex-1 flex-col">

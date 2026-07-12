@@ -11,8 +11,14 @@ export const ProviderConfigSchema = z.object({
   enabled: z.boolean().default(true),
   /** Default model used when the client starts a session without specifying one. */
   defaultModel: z.string().optional(),
-  /** Provider API key, injected into the adapter at session start. */
+  /**
+   * Provider API key, injected into the adapter at session start. Legacy: superseded by the global
+   * account pool (`account.ts`), but kept so pre-account configs still load and resolve — when
+   * `activeAccountId` is unset, the resolver falls back to this key.
+   */
   apiKey: z.string().optional(),
+  /** Id of the pooled `Account` this agent's new sessions use (see `account.ts`). */
+  activeAccountId: z.string().optional(),
 });
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 

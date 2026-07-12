@@ -1,11 +1,17 @@
-import { ShellFrame, TitleStrip } from '@linkcode/ui';
+import { ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
-import { SettingsIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, SettingsIcon } from 'lucide-react';
 import { Link } from 'react-router';
+import { useTranslations } from 'use-intl';
 
-export function WebWorkbenchShell({ header, ...props }: WorkbenchShellProps): React.ReactNode {
+export function WebWorkbenchShell({
+  header,
+  navigation,
+  ...props
+}: WorkbenchShellProps): React.ReactNode {
+  const t = useTranslations('workbench.palette');
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
@@ -14,6 +20,20 @@ export function WebWorkbenchShell({ header, ...props }: WorkbenchShellProps): Re
       {...props}
       header={
         <TitleStrip className="border-border border-b">
+          <ShellIconButton
+            label={t('goBack')}
+            disabled={!navigation.canGoBack}
+            onClick={navigation.onBack}
+          >
+            <ChevronLeftIcon className="size-4" />
+          </ShellIconButton>
+          <ShellIconButton
+            label={t('goForward')}
+            disabled={!navigation.canGoForward}
+            onClick={navigation.onForward}
+          >
+            <ChevronRightIcon className="size-4" />
+          </ShellIconButton>
           <div className="min-w-0">
             <div className="truncate font-medium text-sm">{header.title}</div>
             {header.subtitle && (
@@ -32,7 +52,7 @@ export function WebWorkbenchShell({ header, ...props }: WorkbenchShellProps): Re
               render={<Link to="/settings" />}
               size="icon-sm"
               variant="ghost"
-              aria-label="Settings"
+              aria-label={t('openSettings')}
             >
               <SettingsIcon />
             </Button>

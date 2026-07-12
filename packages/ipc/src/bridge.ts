@@ -25,7 +25,8 @@ export interface SystemBridge {
   };
   app: {
     version(): Promise<string>;
-    platform(): Promise<NodeJS.Platform>;
+    /** Synchronous Electron platform supplied by the sandboxed preload. */
+    readonly platform: NodeJS.Platform;
     /** Trigger a manual update check; observe progress via `onUpdaterStatus`. */
     checkForUpdates(): Promise<void>;
     /** Subscribe to auto-update lifecycle status pushed from main. */
@@ -51,6 +52,8 @@ export interface SystemBridge {
      * user's to run.
      */
     isManaged(): Promise<boolean>;
+    /** Re-arm the managed daemon after an explicit connection retry; no-op when unmanaged. */
+    retry(): Promise<void>;
     /**
      * Subscribe to daemon runtime-file changes pushed from main (fs.watch on ~/.linkcode).
      * Fired when a daemon (re)starts or stops — re-run `resolveUrl` on it.

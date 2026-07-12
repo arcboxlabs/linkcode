@@ -1,4 +1,5 @@
 import type {
+  Accounts,
   AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -266,6 +267,14 @@ export class ControlChannel {
     }));
   }
 
+  /** Read the daemon-owned global account pool (data plane). */
+  getAccounts(): Promise<Accounts> {
+    return this.sendCorrelated('accountsGet', (clientReqId) => ({
+      kind: 'config.get',
+      clientReqId,
+    }));
+  }
+
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
   listAgentRuntimes(): Promise<AgentRuntimes> {
     return this.sendCorrelated('agentRuntimeList', (clientReqId) => ({
@@ -295,12 +304,21 @@ export class ControlChannel {
     }));
   }
 
-  /** Persist the daemon-owned provider config (data plane). */
+  /** Persist the daemon-owned provider config (data plane). Preserves the account pool. */
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'config.set',
       clientReqId,
       providers,
+    }));
+  }
+
+  /** Persist the daemon-owned global account pool (data plane). Preserves the provider config. */
+  setAccounts(accounts: Accounts): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'config.set',
+      clientReqId,
+      accounts,
     }));
   }
 

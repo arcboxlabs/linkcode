@@ -1,3 +1,4 @@
+import { release } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DAEMON_RUNTIME_CHANGED_CHANNEL, UPDATER_STATUS_CHANNEL } from '@linkcode/ipc';
@@ -48,7 +49,13 @@ function createWindow(): BrowserWindow {
     icon,
     title: APP_NAME,
     titleBarStyle: 'hidden',
-    ...(process.platform === 'darwin' && { trafficLightPosition: { x: 16, y: 16 } }),
+    // macOS 26 Tahoe (Darwin ≥ 25) shrank the traffic-light frame height used for
+    // vertical centering from 16pt to 14pt (same fix as microsoft/vscode#279769).
+    // y = floor((48 − frameHeight) / 2) centers the buttons on the midline of the
+    // 48px chrome bar (renderer DESKTOP_CHROME_METRICS.height).
+    ...(process.platform === 'darwin' && {
+      trafficLightPosition: { x: 16, y: Number.parseFloat(release()) >= 25 ? 17 : 16 },
+    }),
     ...desktopBackdropOptions(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

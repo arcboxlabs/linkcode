@@ -1,6 +1,17 @@
-import type { SessionInfo, WorkspaceId, WorkspaceKind, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  SessionId,
+  SessionInfo,
+  WorkspaceId,
+  WorkspaceKind,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { groupThreadsByWorkspace, UNREGISTERED_THREAD_GROUP_KEY } from '../group-threads';
+import {
+  extractPinnedGroup,
+  groupThreadsByWorkspace,
+  PINNED_THREAD_GROUP_KEY,
+  UNREGISTERED_THREAD_GROUP_KEY,
+} from '../group-threads';
 
 describe('groupThreadsByWorkspace', () => {
   it('aligns sessions to workspaces via normalizeCwdKey, ignoring a trailing separator', () => {
@@ -77,6 +88,40 @@ describe('groupThreadsByWorkspace', () => {
     expect(groups.find((g) => g.key === 'ws-chat')?.isChat).toBe(true);
     expect(groups.find((g) => g.key === 'ws-project')?.isChat).toBe(false);
     expect(groups.find((g) => g.key === UNREGISTERED_THREAD_GROUP_KEY)?.isChat).toBe(false);
+    expect(groups.every((g) => !g.isPinned)).toBe(true);
+  });
+});
+
+describe('extractPinnedGroup', () => {
+  const sessions = [
+    createSession('s-1', '/repo/app', 300),
+    createSession('s-2', '/repo/app', 200),
+    createSession('s-3', '/repo/other', 100),
+  ];
+  const ids = (list: readonly string[]): SessionId[] => list as SessionId[];
+
+  it('splits pinned sessions into the synthetic group, ordered by pin recency', () => {
+    const { pinnedGroup, rest } = extractPinnedGroup(sessions, ids(['s-3', 's-1']));
+
+    expect(pinnedGroup?.key).toBe(PINNED_THREAD_GROUP_KEY);
+    expect(pinnedGroup?.collapseKey).toBe(PINNED_THREAD_GROUP_KEY);
+    expect(pinnedGroup?.workspace).toBeNull();
+    expect(pinnedGroup?.isChat).toBe(false);
+    expect(pinnedGroup?.isPinned).toBe(true);
+    expect(pinnedGroup?.sessions.map((s) => s.sessionId)).toEqual(['s-3', 's-1']);
+    expect(rest.map((s) => s.sessionId)).toEqual(['s-2']);
+  });
+
+  it('ignores pinned ids matching no session', () => {
+    const { pinnedGroup, rest } = extractPinnedGroup(sessions, ids(['s-gone', 's-2']));
+
+    expect(pinnedGroup?.sessions.map((s) => s.sessionId)).toEqual(['s-2']);
+    expect(rest.map((s) => s.sessionId)).toEqual(['s-1', 's-3']);
+  });
+
+  it('returns no group and every session when nothing matches', () => {
+    expect(extractPinnedGroup(sessions, [])).toEqual({ pinnedGroup: null, rest: sessions });
+    expect(extractPinnedGroup(sessions, ids(['s-gone'])).pinnedGroup).toBeNull();
   });
 });
 

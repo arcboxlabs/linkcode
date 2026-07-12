@@ -17,7 +17,7 @@ import { isRecord } from '../../history-util';
  * with claude-code.
  *
  * Framing follows the server's own dialect: requests/responses carry `{id, method?, params?}`
- * with no `jsonrpc` envelope field (verified against codex-cli 0.140.0, which accepts both but
+ * with no `jsonrpc` envelope field (verified against codex-cli 0.144.1, which accepts both but
  * replies without it).
  */
 

@@ -18,7 +18,6 @@ export interface SystemContext {
   };
   app: {
     getVersion(): string;
-    getPlatform(): NodeJS.Platform;
     /** Trigger a manual update check (no-op when the app is not packaged). */
     checkForUpdates(): void;
   };
@@ -31,6 +30,8 @@ export interface SystemContext {
     resolveUrl(): string;
     /** Whether this app supervises the daemon's lifecycle (packaged build, no endpoint override). */
     isManaged(): boolean;
+    /** Re-arm the managed daemon after an explicit connection retry; no-op when unmanaged. */
+    retry(): void;
   };
   notifications: {
     /** Show an OS notification; a click focuses the window and pushes `clickToken` back. */

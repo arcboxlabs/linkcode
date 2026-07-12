@@ -1,0 +1,74 @@
+# Dependabot version updates (CODE-148). Security updates/alerts are separate repo-settings
+# toggles, and neither package.json's `packageManager` pin nor the devenv.nix toolchain is
+# covered here. CI does not run `pnpm test` (AGENTS.md Invariant 4) — a green Dependabot PR
+# does not mean the vitest suite passes; run it locally before merging.
+#
+# Cooldown: pnpm 11's default minimumReleaseAge (1 day) already gates installs; 7 days keeps
+# bot PRs on versions old enough to have survived a supply-chain review window.
+version: 2
+updates:
+  - package-ecosystem: npm # pnpm: root lockfile + pnpm-workspace.yaml catalog
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+        # Agent SDKs are fast-moving 0.x and adapter-sensitive — one reviewable PR each.
+        exclude-patterns:
+          - "@anthropic-ai/*"
+          - "@earendil-works/*"
+          - "@openai/*"
+          - "@opencode-ai/*"
+    ignore:
+      # Versions owned by the Expo SDK (`expo install`), not semver-latest.
+      - dependency-name: "expo*"
+      - dependency-name: "@expo/*"
+      - dependency-name: "react-native*"
+      - dependency-name: "@react-native*"
+      # The catalog react pin is shared with apps/mobile and must match what the Expo SDK
+      # expects; bump react/react-dom together with Expo upgrades, not via Dependabot.
+      - dependency-name: react
+      - dependency-name: react-dom
+
+  - package-ecosystem: cargo # workspace: crates/linkcode-pty
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      actions-all:
+        patterns:
+          - "*"

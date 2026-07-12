@@ -61,5 +61,6 @@ export function parseClaudeAuthStatus(stdout: string): AgentAuthStatus | undefin
     method: typeof record.authMethod === 'string' ? record.authMethod : undefined,
     subscriptionType:
       typeof record.subscriptionType === 'string' ? record.subscriptionType : undefined,
+    email: typeof record.email === 'string' ? record.email : undefined,
   };
 }

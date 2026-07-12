@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { env } from 'node:process';
@@ -8,6 +8,7 @@ import type {
   PermissionMode,
   PermissionResult,
   Query,
+  SDKCompactBoundaryMessage,
   SDKMessage,
   SDKPermissionDeniedMessage,
   SDKSessionInfo,
@@ -15,6 +16,7 @@ import type {
   SessionMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
+  AgentEvent,
   AgentHistoryCapabilities,
   AgentHistoryEvent,
   AgentHistoryId,
@@ -40,6 +42,7 @@ import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
 import { AUTH_FAILED_ERROR_CODE } from '../adapter';
 import { BaseAgentAdapter } from '../base';
+import { claudeCodeEnv, readAgentCredential } from '../credential';
 import {
   asHistoryId,
   asMessageId,
@@ -235,6 +238,8 @@ export function mapClaudeStop(reason: string | null): StopReason {
   }
 }
 
+const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
+
 /**
  * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` via `query()` in **streaming input
  * mode**: one persistent `Query` for the whole session, fed through `AsyncMessageQueue` so each new
@@ -273,6 +278,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * because `emitTool`'s merge replaces `content` wholesale — the result text must not wipe the
    * diff. */
   private readonly pendingEditDiffs = new Map<string, ToolCallContent[]>();
+  /** The last compaction boundary, awaiting its summary: the swapped-in summary text arrives on a
+   * separate user frame identified by the boundary's anchor uuid (see `handleCompactBoundary`). */
+  private pendingCompaction: {
+    event: Extract<AgentEvent, { type: 'compaction' }>;
+    anchorUuid: string | undefined;
+  } | null = null;
 
   protected async onStart(opts: StartOptions): Promise<void> {
     // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
@@ -353,16 +364,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
-    const [info, messages, subagentEvents] = await Promise.all([
+    const [info, messages, subagentEvents, compactions] = await Promise.all([
       mod.getSessionInfo(opts.historyId),
       mod.getSessionMessages(opts.historyId, {
         limit: limit + 1,
         offset,
       }),
       readSubagentTranscripts(mod, opts.historyId),
+      // The supplement only affects the first page — the swapped-in summary is the SDK chain's
+      // head row and the dropped rows are prepended before it — so later pages skip the
+      // whole-transcript read.
+      offset === 0 ? this.readCompactionSupplement(opts.historyId) : EMPTY_SUPPLEMENT,
     ]);
     const historyId = opts.historyId;
-    const mapper = createClaudeHistoryEventMapper(historyId);
+    const mapper = createClaudeHistoryEventMapper(historyId, compactions.records);
     const events: AgentHistoryEvent[] = [];
     // Splice each subagent's transcript in right after its spawn announce, so the seeded order
     // matches the live stream and the children land inside the parent's turn (the UI's per-segment
@@ -384,7 +399,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         }
       }
     };
-    for (const message of messages.slice(0, limit)) {
+    const page = messages.slice(0, limit);
+    // The SDK's chain walk starts at the newest compaction summary, dropping everything logically
+    // before it (the reported "history gone" symptom). Prepend those rows — recovered from the raw
+    // transcript — ahead of the first page; rows the SDK still returned (the preserved segment,
+    // relinked into the post-compaction chain) are deduped by uuid. The dedup window is this page
+    // only — safe because the preserved segment sits right after the summary head, well inside it.
+    const returned = new Set(page.map((message) => message.uuid));
+    const dropped = compactions.droppedRows.filter((row) => !returned.has(row.uuid));
+    for (const message of [...dropped, ...page]) {
       for (const event of mapper(message)) pushWithSubagents(event);
     }
     return {
@@ -394,6 +417,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       events,
       cursor: cursorFromFetched(offset, messages.length, limit),
     };
+  }
+
+  /** Test seam over the raw transcript probe (see `readClaudeCompactionSupplement`). */
+  protected readCompactionSupplement(sessionId: string): Promise<ClaudeCompactionSupplement> {
+    return readClaudeCompactionSupplement(sessionId);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -417,9 +445,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
     this.resumeFrom = undefined;
-    // The SDK has no apiKey option; the key reaches the subprocess via `env`. Because `env` *replaces*
-    // the subprocess environment entirely, spread `env` so PATH/HOME and other inherited vars survive.
-    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    // The SDK has no apiKey/baseURL option; the resolved account reaches the subprocess via `env`.
+    // `claudeCodeEnv` spreads the base env (env *replaces* the subprocess environment, so PATH/HOME
+    // must survive) and maps the credential to ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN /
+    // ANTHROPIC_BASE_URL; it returns undefined when the account contributes nothing, so `env` is
+    // omitted and the CLI inherits the parent env (the login / OAuth path).
+    const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
     const q = query({
       prompt: queue,
       options: {
@@ -451,7 +482,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
-        ...(apiKey && { env: { ...env, ANTHROPIC_API_KEY: apiKey } }),
+        ...(credentialEnv && { env: credentialEnv }),
       },
     });
     this.q = q;
@@ -519,11 +550,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * ignores a changed `model` option once a session is resumed. Before the first prompt, the `Query`
    * doesn't exist yet; fall back to updating `opts.model`, which `onPrompt` reads when it creates it. */
   protected override async onSetModel(model: string): Promise<void> {
-    if (!this.q) {
+    if (this.q) {
+      await this.q.setModel(model);
+    } else {
       invariant(this.opts, 'claude-code: session not started');
       this.opts.model = model;
-    } else {
-      await this.q.setModel(model);
     }
     // Reflect the pick immediately (the CLI accepted it, or it will apply at the next Query
     // creation); the served id off the next assistant frame reconciles it via `syncModel`.
@@ -581,9 +612,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     queue?.close();
   }
 
-  /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs. */
+  /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs.
+   * A compaction's summary frame also never outlives its turn — drop a stale boundary stash so
+   * the summary match can't fire against an unrelated later frame. */
   protected override teardown(): void {
     this.pendingEditDiffs.clear();
+    this.pendingCompaction = null;
     super.teardown();
   }
 
@@ -668,6 +702,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.lastSessionRef = msg.session_id;
       this.emitSessionRef(asHistoryId(msg.session_id));
     }
+    // The compaction summary rides the stream as an isReplay-flagged user frame right after the
+    // boundary (verified live against 0.3.179), so it must be caught before the replay guard
+    // below silently drops it.
+    if (msg.type === 'user' && this.isCompactionSummary(msg)) {
+      const compaction = nullthrow(this.pendingCompaction, 'checked by isCompactionSummary');
+      const summary = plainTextContent(msg.message.content);
+      if (summary) this.emit({ ...compaction.event, summary });
+      this.pendingCompaction = null;
+      return;
+    }
     // A history-resumed session (see resumeFrom) replays prior turns as `isReplay` frames (historical
     // text + tool_results) right after the Query is created. Skip them: re-emitting as live events
     // would flood the stream and pollute the tool-call snapshot map.
@@ -689,7 +733,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // task_started/task_updated/task_progress intentionally fall through: a card's state derives
         // entirely from the Task tool_use/tool_result pair; consuming them (task_id ↔ tool_use_id
         // correlation) only pays off once run_in_background tasks are supported.
+        // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other subtypes are ignored); the switch autofix then trips the error-level default-case rule
         if (msg.subtype === 'permission_denied') this.handlePermissionDenied(msg);
+        else if (msg.subtype === 'compact_boundary') this.handleCompactBoundary(msg);
         else if (msg.subtype === 'init') {
           this.syncApprovalPolicy(msg.permissionMode);
           this.syncModel(msg.model);
@@ -698,6 +744,40 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       default:
         break;
     }
+  }
+
+  /**
+   * A compaction boundary: the CLI summarized earlier turns in place — the session (and its id)
+   * continue unchanged; only the model's context was swapped (verified live: `session_id` is
+   * identical across the boundary). Announce the marker immediately with the boundary's metadata;
+   * the swapped-in summary text follows on a separate user frame whose uuid is the boundary's
+   * anchor uuid, and re-emits the same `compactionId` with `summary` attached (consumers merge).
+   */
+  private handleCompactBoundary(msg: SDKCompactBoundaryMessage): void {
+    const meta = msg.compact_metadata;
+    const event = {
+      type: 'compaction' as const,
+      compactionId: msg.uuid,
+      trigger: meta.trigger,
+      preTokens: meta.pre_tokens,
+      postTokens: meta.post_tokens,
+    };
+    this.pendingCompaction = {
+      event,
+      anchorUuid: meta.preserved_messages?.anchor_uuid ?? meta.preserved_segment?.anchor_uuid,
+    };
+    this.emit(event);
+  }
+
+  /** The summary user frame belonging to the pending compaction boundary: matched by the anchor
+   * uuid, or — when the compaction summarized everything and left no anchor — the next synthetic
+   * user frame. Deliberately not a type predicate: its `false` branch must not narrow `user`
+   * frames out of `handleMessage`'s union. */
+  private isCompactionSummary(msg: Extract<SDKMessage, { type: 'user' }>): boolean {
+    if (!this.pendingCompaction) return false;
+    const anchor = this.pendingCompaction.anchorUuid;
+    if (anchor) return msg.uuid === anchor;
+    return msg.isSynthetic === true;
   }
 
   /** A tool call auto-denied without an interactive ask (auto-mode classifier, deny rule, …) never
@@ -901,6 +981,140 @@ function toolResultContent(content: unknown): ToolCallContent[] {
   }, []);
 }
 
+/** Flatten a user message's payload (string or API content blocks) into plain text — the shape a
+ * compaction summary travels in, both live and on disk. */
+function plainTextContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .flatMap((block) =>
+      isRecord(block) && block.type === 'text' && typeof block.text === 'string'
+        ? [block.text]
+        : [],
+    )
+    .join('\n');
+}
+
+/** A session id becomes a transcript filename — only uuid-shaped ids are probed on disk. */
+const SAFE_SESSION_ID = /^[\w-]+$/;
+
+export interface ClaudeCompactionRecord {
+  compactionId: string;
+  trigger?: 'manual' | 'auto';
+  preTokens?: number;
+  postTokens?: number;
+}
+
+/** What the raw transcript knows about compactions that the SDK read API loses. */
+export interface ClaudeCompactionSupplement {
+  /** Swapped-in-summary row uuid → its boundary's record, for the mapper to turn the summary row
+   * into a compaction marker instead of a fake user prompt. */
+  records: Map<string, ClaudeCompactionRecord>;
+  /** The pre-compaction rows `getSessionMessages` drops: its chain walk starts at the newest
+   * summary (whose `parentUuid` is null — `logicalParentUuid` is ignored), so everything logically
+   * before the last compaction vanishes from the read. In file (= chronological) order; rows the
+   * SDK does still return (the preserved segment) are deduped by uuid at read time. */
+  droppedRows: SessionMessage[];
+}
+
+/**
+ * Recover, from raw transcript lines, what the SDK read API strips about compactions (verified
+ * against SDK 0.3.179). On disk a compaction is a `system/compact_boundary` row (camelCase
+ * `compactMetadata`) followed by an `isCompactSummary:true` user row carrying the swapped-in
+ * summary; a boundary claims the next summary row. `getSessionMessages` keeps only
+ * type/uuid/session_id/message/parent_tool_use_id/timestamp per row — the boundary's metadata and
+ * the summary flag never survive — and its chain reconstruction drops every row logically before
+ * the newest summary, so both the marker and the pre-compaction timeline must come from here.
+ */
+export function buildClaudeCompactionSupplement(
+  lines: Iterable<string>,
+): ClaudeCompactionSupplement {
+  const records = new Map<string, ClaudeCompactionRecord>();
+  /** Conversation rows in file order, with the index of the last boundary seen before each. */
+  const rows: Array<{ row: SessionMessage; boundariesBefore: number }> = [];
+  let boundaries = 0;
+  let pending: ClaudeCompactionRecord | null = null;
+  for (const line of lines) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue; // Torn/corrupt line (e.g. a write in progress) — skip, like the SDK's own reader.
+    }
+    if (!isRecord(parsed) || typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
+    const row = parsed;
+    const uuid = parsed.uuid;
+    if (row.type === 'system' && row.subtype === 'compact_boundary') {
+      boundaries += 1;
+      const meta = isRecord(row.compactMetadata) ? row.compactMetadata : {};
+      pending = {
+        compactionId: uuid,
+        trigger: meta.trigger === 'manual' || meta.trigger === 'auto' ? meta.trigger : undefined,
+        preTokens: numberField(meta, 'preTokens'),
+        postTokens: numberField(meta, 'postTokens'),
+      };
+      continue;
+    }
+    if (row.type === 'user' && row.isCompactSummary === true) {
+      // A summary row with no preceding boundary (torn write) still marks a compaction; it just
+      // has no metadata and is keyed by its own uuid. The row also joins the conversation rows:
+      // an EARLIER compaction's summary is itself dropped by the SDK's chain walk, and replaying
+      // it through the mapper is what puts that compaction's marker back into the timeline.
+      records.set(uuid, pending ?? { compactionId: uuid });
+      pending = null;
+    } else if (row.type !== 'user' && row.type !== 'assistant') continue;
+    // Same exclusions as the SDK's own reader: meta rows, sidechains, and teammate rows.
+    if (row.isMeta === true || row.isSidechain === true || row.teamName) continue;
+    rows.push({
+      row: {
+        type: row.type,
+        uuid,
+        session_id: typeof row.sessionId === 'string' ? row.sessionId : '',
+        message: row.message,
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+      },
+      boundariesBefore: boundaries,
+    });
+  }
+  return {
+    records,
+    // Only rows before the last boundary are dropped by the SDK's chain walk; the rest of the
+    // timeline (summary head onward) comes back from getSessionMessages as usual.
+    droppedRows: rows.reduce<SessionMessage[]>((dropped, r) => {
+      if (r.boundariesBefore < boundaries) dropped.push(r.row);
+      return dropped;
+    }, []),
+  };
+}
+
+/**
+ * Locate the session's transcript and build its compaction supplement. `readHistory` carries no
+ * cwd, so — mirroring `getSessionMessages` without `dir` — every project dir is probed for
+ * `<sessionId>.jsonl` (the id is unique, so at most one probe succeeds). Any failure degrades to
+ * an empty supplement: history still reads, just without compaction markers.
+ */
+async function readClaudeCompactionSupplement(
+  sessionId: string,
+): Promise<ClaudeCompactionSupplement> {
+  // The id becomes a filename — refuse anything that could traverse out of the projects dir.
+  if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
+  const projectsDir = path.join(homedir(), '.claude', 'projects');
+  let dirs: string[];
+  try {
+    dirs = await readdir(projectsDir);
+  } catch {
+    return EMPTY_SUPPLEMENT;
+  }
+  const texts = await Promise.all(
+    dirs.map((dir) =>
+      readFile(path.join(projectsDir, dir, `${sessionId}.jsonl`), 'utf8').catch(() => null),
+    ),
+  );
+  const text = texts.find((t) => t !== null);
+  return text ? buildClaudeCompactionSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
+}
+
 function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
   return {
     historyId: asHistoryId(session.sessionId),
@@ -949,6 +1163,7 @@ async function readSubagentTranscripts(
  */
 export function createClaudeHistoryEventMapper(
   historyId: AgentHistoryId,
+  compactions?: ReadonlyMap<string, ClaudeCompactionRecord>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
 
@@ -959,6 +1174,22 @@ export function createClaudeHistoryEventMapper(
 
   return (message) => {
     if (message.type !== 'user' && message.type !== 'assistant') return [];
+    // A compaction's swapped-in summary is stored as a user row; replaying it as a user prompt
+    // would fake a giant user turn (the reported CODE-141 symptom). It becomes the compaction
+    // marker instead, placed exactly where the summary sits in the timeline.
+    const compaction = message.type === 'user' ? compactions?.get(message.uuid) : undefined;
+    if (compaction) {
+      const summary = plainTextContent(
+        isRecord(message.message) ? message.message.content : undefined,
+      );
+      return [
+        {
+          historyId,
+          itemId: compaction.compactionId,
+          event: { type: 'compaction', ...compaction, ...(summary && { summary }) },
+        },
+      ];
+    }
     const events: AgentHistoryEvent[] = [];
     const blocks = messageContentBlocks(message.message);
     // Subagent transcript rows carry the spawning Task's tool_use id, same as live frames.
