@@ -791,8 +791,8 @@ importers:
         specifier: workspace:*
         version: link:../schema
       '@moeru/eventa':
-        specifier: 1.0.0-beta.10
-        version: 1.0.0-beta.10(electron@42.4.1)(hono@4.12.27)
+        specifier: 1.0.0-beta.11
+        version: 1.0.0-beta.11(electron@42.4.1)(hono@4.12.27)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -1981,11 +1981,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -2964,12 +2964,12 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@moeru/eventa@1.0.0-beta.10':
-    resolution: {integrity: sha512-ybGbJbod6o89ZW6RThruugs5GCCA+PgxQV5pPa9a9VNS65AOB7KdBdztUmcUpvT8fBS9RAt5WwoBrafxWpIUSQ==}
+  '@moeru/eventa@1.0.0-beta.11':
+    resolution: {integrity: sha512-g0zQ76hVmmF/7RrlLR2r7mhw2n70Iwdyg49VwtjpKtLRhbLUxAwAypJxQ8I7m2S9TyZLT+DJcL4SATn+fazIzQ==}
     peerDependencies:
       electron: '>=39'
       h3: '>=2.0.1-rc.22'
-      hono: '>=4.0.0'
+      hono: '>=4.12.25'
       web-worker: ^1.5.0
     peerDependenciesMeta:
       electron:
@@ -7880,8 +7880,8 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@5.1.11:
-    resolution: {integrity: sha512-v+KEsUv2ps74PaSKv0gHTxTCgMXOIfBEbaqa6w6ISIGC7ZsvHN4N9oJ8d4cmf0n5oTzQz2SLmThbQWhjd/8eKg==}
+  nanoid@5.1.16:
+    resolution: {integrity: sha512-kVrnsrJqMR8+oLJnGEmSWw9BivK5mt7H3FZatVRjrc5wGqFYuBxX1yG7+A7Gi5AefkX6t/oCkizcQgpu0cY1dQ==}
     engines: {node: ^18 || >=20}
     hasBin: true
 
@@ -8148,6 +8148,10 @@ packages:
 
   picomatch@4.0.4:
     resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
+    engines: {node: '>=12'}
+
+  picomatch@4.0.5:
+    resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
     engines: {node: '>=12'}
 
   pirates@4.0.7:
@@ -11426,7 +11430,7 @@ snapshots:
       node-forge: 1.4.0
       npm-package-arg: 11.0.3
       ora: 3.4.0
-      picomatch: 4.0.4
+      picomatch: 4.0.5
       pretty-format: 29.7.0
       progress: 2.0.3
       prompts: 2.4.2
@@ -11608,7 +11612,7 @@ snapshots:
       hermes-parser: 0.33.3
       jsc-safe-url: 0.2.4
       lightningcss: 1.32.0
-      picomatch: 4.0.4
+      picomatch: 4.0.5
       postcss: 8.5.16
       resolve-from: 5.0.0
     optionalDependencies:
@@ -11991,10 +11995,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@moeru/eventa@1.0.0-beta.10(electron@42.4.1)(hono@4.12.27)':
+  '@moeru/eventa@1.0.0-beta.11(electron@42.4.1)(hono@4.12.27)':
     dependencies:
-      nanoid: 5.1.11
-      picomatch: 4.0.4
+      nanoid: 5.1.16
+      picomatch: 4.0.5
     optionalDependencies:
       electron: 42.4.1
       hono: 4.12.27
@@ -15735,6 +15739,10 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
+  fdir@6.5.0(picomatch@4.0.5):
+    optionalDependencies:
+      picomatch: 4.0.5
+
   fetch-blob@3.2.0:
     dependencies:
       node-domexception: 1.0.0
@@ -17506,7 +17514,7 @@ snapshots:
 
   nanoid@3.3.15: {}
 
-  nanoid@5.1.11: {}
+  nanoid@5.1.16: {}
 
   nanostores@1.4.0: {}
 
@@ -17742,6 +17750,8 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.4: {}
+
+  picomatch@4.0.5: {}
 
   pirates@4.0.7: {}
 
@@ -19004,8 +19014,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.4)
-      picomatch: 4.0.4
+      fdir: 6.5.0(picomatch@4.0.5)
+      picomatch: 4.0.5
 
   tinyrainbow@3.1.0: {}
 
@@ -19241,7 +19251,7 @@ snapshots:
     dependencies:
       '@jridgewell/remapping': 2.3.5
       acorn: 8.17.0
-      picomatch: 4.0.4
+      picomatch: 4.0.5
       webpack-virtual-modules: 0.6.2
 
   unrs-resolver@1.12.2:
