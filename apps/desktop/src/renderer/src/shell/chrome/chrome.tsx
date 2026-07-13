@@ -290,10 +290,12 @@ function ChromeSegmentGrid({
         divider="sidebar-main"
         // The sidebar owns the native-backdrop tint across its full height; keep
         // this overlay transparent so the title area does not get double-tinted.
+        // The opaque divider color paints over the pane's identical full-height border-r,
+        // so stacking the two is harmless.
         className={
           hasNativeBackdrop
-            ? 'col-start-1 bg-transparent backdrop-blur-none'
-            : 'col-start-1 border-sidebar-border border-r bg-sidebar backdrop-blur-none'
+            ? 'col-start-1 border-(--lc-shell-sidebar-divider) border-r bg-transparent backdrop-blur-none'
+            : 'col-start-1 border-(--lc-shell-sidebar-divider) border-r bg-sidebar backdrop-blur-none'
         }
         slotInsetStyle={SIDEBAR_SLOT_INSET_STYLE}
         portalUse={portalUse}
@@ -318,7 +320,7 @@ function ChromeSegmentGrid({
       <ChromeSegment
         segment="right"
         divider="main-right"
-        className="col-start-3 border-border border-l bg-background/80"
+        className="col-start-3 border-(--lc-shell-divider) border-l bg-background/80"
         hidden={expandedPanel !== null}
         slotInsetStyle={RIGHT_SLOT_INSET_STYLE}
         portalUse={portalUse}

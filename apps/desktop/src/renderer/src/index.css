@@ -29,6 +29,19 @@
   container-type: size;
 }
 
+/*
+ * Shell dividers use border colors flattened over the background instead of raw alpha
+ * tokens: the strips sit over wildly different backdrops (naked vibrancy in the workspace
+ * slits, frosted bg-background/80 in the titlebar segments), and an alpha color composites
+ * to a visibly different gray over each. Opaque = identical everywhere.
+ * `--lc-shell-divider` matches `--border`; the sidebar divider is deliberately darker so
+ * the translucent sidebar separates clearly from the main content.
+ */
+.linkcode-desktop-shell {
+  --lc-shell-divider: color-mix(in srgb, var(--foreground) 12%, var(--background));
+  --lc-shell-sidebar-divider: color-mix(in srgb, var(--foreground) 20%, var(--background));
+}
+
 .linkcode-chrome-grid,
 .linkcode-shell-grid {
   /* Keep in sync with the pane minima in shell/store/model.ts. A closed pane writes 0,
@@ -166,7 +179,7 @@
   content: "";
   position: absolute;
   background-color: transparent;
-  transition: background-color 120ms ease-out 200ms;
+  transition: background-color 120ms ease-out;
 }
 
 .linkcode-sash-sidebar::before {
@@ -193,14 +206,10 @@
   background-color: var(--info);
 }
 
-.linkcode-shell-sash[data-dragging]::before {
-  transition-delay: 0s;
-}
-
 /*
  * Each chrome divider visually continues the workspace sash directly beneath it, so it
- * adopts the sash's focus color whenever that sash is hovered or dragged. Left unlayered
- * so it overrides the Tailwind border-color utilities on the segments.
+ * adopts the sash's active color whenever that sash is hovered, focused, or dragged.
+ * Left unlayered so it overrides the Tailwind border-color utilities on the segments.
  */
 .linkcode-desktop-shell [data-chrome-divider] {
   transition: border-color 120ms ease-out;

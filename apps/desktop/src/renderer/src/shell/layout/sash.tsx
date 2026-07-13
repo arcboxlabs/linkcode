@@ -203,7 +203,7 @@ export function Sash({
       aria-hidden={hidden || undefined}
       inert={hidden}
       className={cn(
-        'linkcode-shell-sash absolute z-10 touch-none select-none',
+        'linkcode-shell-sash absolute z-10 touch-none select-none outline-none',
         orientation === 'vertical' ? 'w-2 cursor-col-resize' : 'h-2 cursor-row-resize',
         hidden && 'invisible pointer-events-none',
         className,

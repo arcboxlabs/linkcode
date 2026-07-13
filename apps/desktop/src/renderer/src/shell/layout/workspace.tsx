@@ -131,7 +131,7 @@ export function DesktopWorkspace({
         className={cn(
           CELL_CLASS,
           'col-start-1 row-span-2 row-start-1',
-          sidebar.transition.paneVisible && 'border-sidebar-border border-r',
+          sidebar.transition.paneVisible && 'border-(--lc-shell-sidebar-divider) border-r',
         )}
       >
         {/* linkcode-shell-pane-lock max-clamps the locked size to the same window-aware
@@ -174,7 +174,7 @@ export function DesktopWorkspace({
         className={cn(
           CELL_CLASS,
           'col-start-3 row-start-1',
-          right.transition.paneVisible && 'border-border border-l',
+          right.transition.paneVisible && 'border-(--lc-shell-divider) border-l',
         )}
       >
         <div
@@ -200,7 +200,7 @@ export function DesktopWorkspace({
         className={cn(
           CELL_CLASS,
           'col-span-2 col-start-2 row-start-2',
-          bottom.transition.paneVisible && 'border-border border-t',
+          bottom.transition.paneVisible && 'border-(--lc-shell-divider) border-t',
         )}
       >
         {/* h-full at rest; the inline lock (fixed px, overriding the percentage) wins while
