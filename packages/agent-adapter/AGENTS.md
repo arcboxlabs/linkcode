@@ -36,8 +36,20 @@ Every new adapter MUST honor these (`base.ts`); downstream relies on them, they 
 - **`teardown()`** (idempotent) sweeps liveness on cancel/stop/abnormal-end: resolves every pending permission ask `{outcome:'cancelled'}` and forces every non-terminal tool to `failed`. A cancelled turn never leaves a stuck tool or a hung permission.
 - **`streamDelta(id, fullText, kind)`** turns a provider's CUMULATIVE per-item text into incremental deltas keyed by item id. opencode reports cumulative and MUST use it; claude/pi/codex emit true incremental deltas and call `emitAssistantText`/`emitThought` directly (codex additionally keeps a per-item length ledger so `item/completed` can backstop deltas the stream dropped). Mixing the two double-renders or drops text.
 - **`freshSegment()`** opens fresh `messageId` AND `thoughtId` cursors; call it at turn start and after EVERY tool call (`buildConversation` buckets `agent-message-chunk` by `messageId`; `message-grouping.test.ts` guards it). A message's `messageId` must stay STABLE across all its deltas (the Pi adapter once minted a new id per delta and broke dedup).
+- **`onCommand(name, args)` / `onShellCommand(command)`** (CODE-161) back the `command` / `shell-command` AgentInput variants; both default-reject (`` `${kind}: slash/shell commands are not supported` ``). **`emitCommands(commands)`** advertises the slash-command catalog (`available-commands-update`, full-replace) — its absence IS the capability signal: the composer offers a command menu only after a catalog arrives, and gates `$` on the static `AGENT_SHELL_SUPPORT` table (`ui/src/shell/composer-directives.ts` — update it when an adapter gains/loses shell support). The engine caches the latest catalog and replays it on `session.attach` like the approval policy. The engine also echoes command/shell inputs as `user-message` text (`/name args` / `$ cmd`) before dispatch — adapters must NOT re-emit the user's invocation.
 
-## claude-code (richest adapter)
+## Slash commands & shell passthrough (CODE-161)
+
+| agent | `/` commands | catalog source | `$` shell |
+| --- | --- | --- | --- |
+| claude-code | ✓ | `Query#supportedCommands()` at Query creation + `commands_changed` full-replace push | ✗ (`!` bash mode is a TUI input-box feature with no verified programmatic entry) |
+| codex | ✗ (`~/.codex/prompts` is expanded client-side by the TUI; no app-server method exists) | — | ✓ `thread/shellCommand` |
+| opencode | ✓ | `command.list({directory})` once at start (no change events exist — snapshot only) | ✓ `session.shell` |
+| pi | ✗ (the SDK's own `session.prompt` still expands `/` text it receives — untouched pass-through) | — | ✗ |
+
+- **claude-code**: invocation = pushing `/name args` as a plain user message — the vendored CLI parses a leading `/` on every user message even in SDK streaming-input mode (verified in the binary), so `onCommand` rides `onPrompt` and the normal result-frame settle. Live-verified on the pinned 0.3.206×2.1.206 pair: a local command (`/usage`) returns a synthetic assistant message + a zero-cost `result` — status does not hang. `system/local_command_output` (never observed live, handled per SDK types) renders as assistant text bracketed by `freshSegment()`.
+- **codex**: `thread/shellCommand {threadId, command}` acks immediately with `{}` and then runs a REAL turn (`turn/started` → `commandExecution` item with `source:"userShell"` → `item/completed` → `turn/completed`), so the existing notification dispatch does all rendering/settle — `onShellCommand` is just ensure-thread + request. It deliberately does not gate on an active turn (overlapping calls coalesce into the shared turn, verified live). The command **bypasses the thread's sandbox AND approval policy by design** (the user's own command; params docstring confirms). Turn status is always `completed` — failure is item-level (`status:'failed'` + `exitCode`). A JSON-RPC error (bad thread id etc.) rejects `send()`.
+- **opencode**: `session.command` and `session.shell` are BLOCKING (no `*Async` variants exist) — fire-and-not-await like the TUI does, streaming rides the same SSE pipeline as prompts. Wire-level required fields the class wrappers type as optional: `command.arguments` and `shell.agent` (missing → HTTP 400). `session.command`'s `model` is a plain string, unlike prompt/shell's `{providerID, modelID}` object. Shell runs NO model call (the OpenAPI description "return the AI's response" is wrong — verified in upstream `shellImpl`); the shell agent name comes from `app.agents({directory})` (first `mode:'primary'`, else first, else literal `'build'`), and the HTTP-resolve settle backstop covers the unverified "does `session.status` fire for shell turns" gap. Busy sessions 409 (`SessionBusyError`) → turn failure.
 
 - **Streaming-input mode** (one persistent `Query` fed by an `AsyncMessageQueue`): the older single-message-per-turn + resume design silently ignored a changed model option on resume, so live model/permission/effort switching is ONLY possible in streaming mode — do not revert to `query()`+resume. Live switches: `Query#setModel`, `Query#setPermissionMode`, `Query#applyFlagSettings`. State is emitted only AFTER the CLI accepts a switch; a rejected one is not rolled back optimistically.
 - **Approval policies** (CODE-78) map 1:1 onto the SDK `PermissionMode` in Claude Desktop's menu order: `default` (Ask), `acceptEdits` (Accept edits), `plan` (Plan mode), `auto` (Auto mode), `bypassPermissions` (Bypass). The SDK's `dontAsk` tier is deliberately off the menu. Claude models permissions and plan as ONE axis, so `plan` rides the approval-policy channel (not the generic set-mode axis codex uses). approval-policy is a locked, orthogonal SECOND axis; the engine caches the latest state and replays it on `session.attach` — without the replay the menu vanishes after reconnect.
@@ -75,12 +87,12 @@ Every new adapter MUST honor these (`base.ts`); downstream relies on them, they 
 
 Product code must branch on `historyCapabilities` — never assume an op is supported. Unsupported `read`/`resume` reject clearly (`'<kind>: history read is not supported'`); unsupported `list` returns empty `{sessions:[]}`.
 
-| agent | list/read/resume | set-model | set-effort | set-approval-policy | packaged binary (CODE-114) |
-| --- | --- | --- | --- | --- | --- |
-| claude-code | ✓ | ✓ (live) | ✓ (live) | ✓ | detected user install / managed dir |
-| codex | ✓ | ✓ (next turn) | ✓ (next turn, low–xhigh) | ✓ (3 tiers) | detected user install / managed dir |
-| opencode | ✗ | ✗ | ✗ | ✗ | self-spawns server via PATH (CODE-76) |
-| pi | ✗ | ✗ | ✗ | ✗ | in-process JS |
+| agent | list/read/resume | set-model | set-effort | set-approval-policy | `/` commands | `$` shell | packaged binary (CODE-114) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| claude-code | ✓ | ✓ (live) | ✓ (live) | ✓ | ✓ | ✗ | detected user install / managed dir |
+| codex | ✓ | ✓ (next turn) | ✓ (next turn, low–xhigh) | ✓ (3 tiers) | ✗ | ✓ | detected user install / managed dir |
+| opencode | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | self-spawns server via PATH (CODE-76) |
+| pi | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | in-process JS |
 
 - **apiKey injection** (all read `StartOptions.config.apiKey`, four shapes): claude-code → `ANTHROPIC_API_KEY` in spawned env; codex → `CODEX_API_KEY` in the app-server env (the CLI still honors `CODEX_HOME`/config.toml auth); opencode → nested `config.provider[providerID].options.apiKey` (providerID = before `/` in model); pi → `authStorage.setRuntimeApiKey`.
 - **Cancellation**: codex `turn/interrupt` (queued prompts dropped; a cancel before the turn id is known is armed and fired on arrival); pi `session.abort()`; opencode `client.session.abort({sessionID, directory})` with the wait capped at 2s (opencode has blocked the abort RPC until the running tool exits — tens of seconds on 1.14.42+; the local cancel proceeds and the abort settles server-side); claude-code `Query#interrupt()` with a `cancelling` flag suppressing the interrupt-induced stream error. After any cancel, base `send()` also calls `teardown()`.
