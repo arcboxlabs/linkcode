@@ -8,7 +8,9 @@ import type {
 } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Badge } from 'coss-ui/components/badge';
+import { Collapsible, CollapsiblePanel } from 'coss-ui/components/collapsible';
 import { Command } from 'coss-ui/components/command';
+import { Frame, FramePanel } from 'coss-ui/components/frame';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { TerminalIcon } from 'lucide-react';
@@ -22,6 +24,7 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { preventBaseUIHandler } from '../lib/base-ui';
+import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
@@ -237,12 +240,14 @@ export function Composer({
   }
 
   function updateValue(nextValue: string, event: Event): void {
+    const control = textControlFromEvent(event);
+    const nextCaret = control?.selectionStart ?? nextValue.length;
+    const nextTrigger = computeTextTrigger(nextValue, nextCaret);
     setPlusCommandStart((start) =>
-      start === null ? null : movePlusCommandStart(value, nextValue, start),
+      start === null || nextTrigger ? null : movePlusCommandStart(value, nextValue, start),
     );
     setValue(nextValue);
-    const control = textControlFromEvent(event);
-    updateCaret(control?.selectionStart ?? nextValue.length, nextValue);
+    updateCaret(nextCaret, nextValue);
   }
 
   // Layout effect (not a passive one) so the caret lands before paint — a mention insertion
@@ -313,14 +318,6 @@ export function Composer({
   }
 
   function selectMentionCommand(): void {
-    if (textTrigger?.kind === 'slash') {
-      const next = `${value.slice(0, textTrigger.start)}@${value.slice(caret)}`;
-      setPlusCommandStart(null);
-      setDismissedStart(null);
-      setValueAndCaret(next, textTrigger.start + 1);
-      return;
-    }
-
     insertMentionTrigger(value, textareaRef.current?.selectionStart ?? caret);
   }
 
@@ -452,88 +449,110 @@ export function Composer({
             }}
             onValueChange={(nextValue, details) => updateValue(nextValue, details.event)}
           >
-            {commandOpen ? (
-              <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
-            ) : null}
-            <PromptInput onSubmit={submit} className="relative z-10">
-              <AutocompletePrimitive.Input
-                render={
-                  <PromptInputTextarea
-                    ref={textareaRef}
-                    disabled={disabled}
-                    rows={1}
-                    placeholder={
-                      disabled
-                        ? t('placeholderDisconnected')
-                        : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
-                    }
-                    onClick={(e) =>
-                      updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                    }
-                    onKeyUp={(e) =>
-                      updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                    }
-                    onKeyDown={onKeyDown}
-                  />
-                }
-              />
-              <PromptInputFooter>
-                <PromptInputTools>
-                  <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
-                  {shellActive ? (
-                    <Badge className="gap-1" variant="secondary">
-                      <TerminalIcon aria-hidden className="size-3" />
-                      {t('shellCommand')}
-                    </Badge>
-                  ) : null}
-                  {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
-                    <ApprovalPolicyMenu
-                      agentLabel={placeholderAgent}
-                      currentPolicyId={approvalPolicy.currentPolicyId}
-                      disabled={disabled}
-                      policies={approvalPolicy.availablePolicies}
-                      onSelect={selectPolicy}
-                    />
-                  ) : null}
-                  {activeMode && onModeChange ? (
-                    <SessionModeChip
-                      disabled={disabled}
-                      mode={activeMode}
-                      onToggle={() => toggleMode(activeMode)}
-                    />
-                  ) : null}
-                </PromptInputTools>
-                <ModelSelectorMenu
-                  disabled={disabled}
-                  effortOptions={effortOptions}
-                  modelOptions={modelOptions}
-                  provider={agentKind}
-                  runtimeCues={runtimeCues}
-                  selectableProviders={selectableProviders}
-                  selectedEffortId={currentEffort ?? null}
-                  selectedModelId={currentModel ?? null}
-                  onSelectEffort={selectEffort}
-                  onSelectModel={selectModel}
-                  onSelectProvider={
-                    onProviderChange
-                      ? (provider) => {
-                          void onProviderChange(provider).catch(noop);
+            <Frame
+              className={cn(
+                'transition-[background-color,padding] duration-200 ease-out motion-reduce:transition-none',
+                commandOpen ? 'bg-muted/72 p-1' : 'bg-transparent p-0',
+              )}
+            >
+              <Collapsible open={commandOpen}>
+                <CollapsiblePanel
+                  aria-hidden={!commandOpen}
+                  inert={!commandOpen}
+                  className="min-h-0 transition-[height,opacity,transform] duration-200 ease-out data-ending-style:translate-y-2 data-ending-style:opacity-0 data-starting-style:translate-y-2 data-starting-style:opacity-0 motion-reduce:transition-none"
+                >
+                  <div className="min-h-0 pb-1">
+                    <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
+                  </div>
+                </CollapsiblePanel>
+              </Collapsible>
+              <FramePanel className="z-10 p-0">
+                <PromptInput
+                  onSubmit={submit}
+                  className="relative [&_[data-slot=input-group]]:border-0 [&_[data-slot=input-group]]:before:shadow-none"
+                >
+                  <AutocompletePrimitive.Input
+                    render={
+                      <PromptInputTextarea
+                        ref={textareaRef}
+                        disabled={disabled}
+                        rows={1}
+                        placeholder={
+                          disabled
+                            ? t('placeholderDisconnected')
+                            : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
                         }
-                      : undefined
-                  }
-                />
-                <PromptInputSubmit
-                  aria-label={isRunning ? t('stop') : t('send')}
-                  disabled={!isRunning && (disabled || sendBlocked || value.trim().length === 0)}
-                  onStop={onStop}
-                  status={isRunning ? 'streaming' : 'ready'}
-                  className="rounded-full"
-                  variant={isRunning ? 'secondary' : 'default'}
-                />
-              </PromptInputFooter>
-              {/* Sibling of the footer addon, which is `order-last` — this must match to stay below it. */}
-              {contextBar ? <div className="order-last w-full">{contextBar}</div> : null}
-            </PromptInput>
+                        onClick={(e) =>
+                          updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                        }
+                        onKeyUp={(e) =>
+                          updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                        }
+                        onKeyDown={onKeyDown}
+                      />
+                    }
+                  />
+                  <PromptInputFooter>
+                    <PromptInputTools>
+                      <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
+                      {shellActive ? (
+                        <Badge className="gap-1" variant="secondary">
+                          <TerminalIcon aria-hidden className="size-3" />
+                          {t('shellCommand')}
+                        </Badge>
+                      ) : null}
+                      {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
+                        <ApprovalPolicyMenu
+                          agentLabel={placeholderAgent}
+                          currentPolicyId={approvalPolicy.currentPolicyId}
+                          disabled={disabled}
+                          policies={approvalPolicy.availablePolicies}
+                          onSelect={selectPolicy}
+                        />
+                      ) : null}
+                      {activeMode && onModeChange ? (
+                        <SessionModeChip
+                          disabled={disabled}
+                          mode={activeMode}
+                          onToggle={() => toggleMode(activeMode)}
+                        />
+                      ) : null}
+                    </PromptInputTools>
+                    <ModelSelectorMenu
+                      disabled={disabled}
+                      effortOptions={effortOptions}
+                      modelOptions={modelOptions}
+                      provider={agentKind}
+                      runtimeCues={runtimeCues}
+                      selectableProviders={selectableProviders}
+                      selectedEffortId={currentEffort ?? null}
+                      selectedModelId={currentModel ?? null}
+                      onSelectEffort={selectEffort}
+                      onSelectModel={selectModel}
+                      onSelectProvider={
+                        onProviderChange
+                          ? (provider) => {
+                              void onProviderChange(provider).catch(noop);
+                            }
+                          : undefined
+                      }
+                    />
+                    <PromptInputSubmit
+                      aria-label={isRunning ? t('stop') : t('send')}
+                      disabled={
+                        !isRunning && (disabled || sendBlocked || value.trim().length === 0)
+                      }
+                      onStop={onStop}
+                      status={isRunning ? 'streaming' : 'ready'}
+                      className="rounded-full"
+                      variant={isRunning ? 'secondary' : 'default'}
+                    />
+                  </PromptInputFooter>
+                  {/* Sibling of the footer addon, which is `order-last` — this must match to stay below it. */}
+                  {contextBar ? <div className="order-last w-full">{contextBar}</div> : null}
+                </PromptInput>
+              </FramePanel>
+            </Frame>
           </Command>
         </div>
       </div>

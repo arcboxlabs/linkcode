@@ -6,7 +6,6 @@ import {
   CommandGroupLabel,
   CommandItem,
   CommandList,
-  CommandPanel,
 } from 'coss-ui/components/command';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -185,7 +184,7 @@ export function buildComposerCommandGroups({
       id: 'mention-command',
       kind: 'action',
       label: labels.mentions,
-      source: commandSource,
+      source: 'plus',
       value: 'mention',
     },
   ];
@@ -246,44 +245,42 @@ export function ComposerCommandMenu({
   onSelect: (entry: ComposerCommandEntry) => void;
 }): React.ReactNode {
   return (
-    <div className="absolute inset-x-0 bottom-full z-0 translate-y-4 rounded-2xl rounded-b-none border border-b-0 bg-background">
-      <CommandPanel className="border-0 bg-muted/32 pb-4">
-        <CommandEmpty>{emptyLabel}</CommandEmpty>
-        <CommandList>
-          {(group: ComposerCommandGroup) => (
-            <CommandGroup key={group.value} items={group.items}>
-              <CommandGroupLabel>{group.label}</CommandGroupLabel>
-              <CommandCollection>
-                {(entry: ComposerCommandEntry) => (
-                  <CommandItem
-                    key={entry.id}
-                    className="gap-2"
-                    disabled={entry.disabled}
-                    value={entry}
-                    onClick={(event) => {
-                      event.preventBaseUIHandler();
-                      onSelect(entry);
-                    }}
-                  >
-                    <CommandIcon entry={entry} />
-                    <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                      <span className="shrink-0">{entry.label}</span>
-                      {entry.hint ? (
-                        <span className="min-w-0 truncate text-muted-foreground text-xs">
-                          {entry.hint}
-                        </span>
-                      ) : null}
-                    </span>
-                    {entry.kind === 'mode' && entry.active ? (
-                      <CheckIcon className="ms-auto size-4 shrink-0 opacity-80" />
+    <div className="flex max-h-80 min-h-0 flex-col">
+      <CommandEmpty>{emptyLabel}</CommandEmpty>
+      <CommandList>
+        {(group: ComposerCommandGroup) => (
+          <CommandGroup key={group.value} items={group.items}>
+            <CommandGroupLabel>{group.label}</CommandGroupLabel>
+            <CommandCollection>
+              {(entry: ComposerCommandEntry) => (
+                <CommandItem
+                  key={entry.id}
+                  className="gap-2"
+                  disabled={entry.disabled}
+                  value={entry}
+                  onClick={(event) => {
+                    event.preventBaseUIHandler();
+                    onSelect(entry);
+                  }}
+                >
+                  <CommandIcon entry={entry} />
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span className="shrink-0">{entry.label}</span>
+                    {entry.hint ? (
+                      <span className="min-w-0 truncate text-muted-foreground text-xs">
+                        {entry.hint}
+                      </span>
                     ) : null}
-                  </CommandItem>
-                )}
-              </CommandCollection>
-            </CommandGroup>
-          )}
-        </CommandList>
-      </CommandPanel>
+                  </span>
+                  {entry.kind === 'mode' && entry.active ? (
+                    <CheckIcon className="ms-auto size-4 shrink-0 opacity-80" />
+                  ) : null}
+                </CommandItem>
+              )}
+            </CommandCollection>
+          </CommandGroup>
+        )}
+      </CommandList>
     </div>
   );
 }

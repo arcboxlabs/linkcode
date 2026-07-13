@@ -29,6 +29,7 @@ describe('buildComposerCommandGroups slash catalog', () => {
     expect(commandEntries.map((item) => item.label)).toEqual(['/compact', '/review']);
     expect(commandEntries[0].hint).toBe('Compact the context');
     expect(commandEntries[1].hint).toBe('<pr>');
+    expect(group.items.some((item) => item.id === 'mention-command')).toBe(false);
   });
 
   it('filters catalog commands by the typed query', () => {
@@ -40,11 +41,7 @@ describe('buildComposerCommandGroups slash catalog', () => {
     expect(values).toEqual(['review']);
   });
 
-  it('keeps the mention redirect entry when the catalog is empty', () => {
-    const [group] = slashGroups([]);
-    expect(
-      group.items.some((item) => item.kind === 'action' && item.id === 'mention-command'),
-    ).toBe(true);
-    expect(group.items.some((item) => item.kind === 'command')).toBe(false);
+  it('has no slash results when the catalog is empty', () => {
+    expect(slashGroups([])).toEqual([]);
   });
 });
