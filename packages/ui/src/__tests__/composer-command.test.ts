@@ -1,4 +1,5 @@
 import type { AgentCommand } from '@linkcode/schema';
+import { BookTextIcon } from 'lucide-react';
 import { describe, expect, it } from 'vitest';
 import { buildComposerCommandGroups } from '../shell/composer-command';
 
@@ -27,6 +28,7 @@ describe('buildComposerCommandGroups slash catalog', () => {
     const [group] = slashGroups(CATALOG);
     const commandEntries = group.items.filter((item) => item.kind === 'command');
     expect(commandEntries.map((item) => item.label)).toEqual(['/compact', '/review']);
+    expect(commandEntries.map((item) => item.icon)).toEqual([BookTextIcon, BookTextIcon]);
     expect(commandEntries[0].hint).toBe('Compact the context');
     expect(commandEntries[1].hint).toBe('<pr>');
     expect(group.items.some((item) => item.id === 'mention-command')).toBe(false);

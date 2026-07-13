@@ -255,7 +255,7 @@ function NewSessionContextBar({
     : t('chooseWorkspace');
 
   return (
-    <div className="flex w-full items-center gap-1 border-border border-t bg-muted/32 px-2 py-1">
+    <div className="flex w-full items-center gap-1 px-2 py-1">
       <Menu>
         <MenuTrigger
           aria-label={t('chooseWorkspace')}

@@ -9,7 +9,7 @@ import type {
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Badge } from 'coss-ui/components/badge';
 import { Command } from 'coss-ui/components/command';
-import { Frame, FramePanel } from 'coss-ui/components/frame';
+import { Frame, FrameFooter } from 'coss-ui/components/frame';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { TerminalIcon } from 'lucide-react';
@@ -235,6 +235,7 @@ export function Composer({
 
   const hasCommandItems = commandGroups.some((group) => group.items.length > 0);
   const commandOpen = !disabled && Boolean(commandSource);
+  const frameVisible = commandOpen || contextBar != null;
   const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
   const [exitCommandGroups, setExitCommandGroups] = useState(() => commandGroups);
   const [exitCommandEmptyLabel, setExitCommandEmptyLabel] = useState(emptyCommandLabel);
@@ -466,8 +467,8 @@ export function Composer({
             <Frame
               className={cn(
                 'transition-[background-color,padding] motion-reduce:transition-none',
-                commandOpen
-                  ? 'bg-muted/72 p-1 duration-200 ease-[cubic-bezier(0.2,0,0,1)]'
+                frameVisible
+                  ? 'duration-200 ease-[cubic-bezier(0.2,0,0,1)]'
                   : 'bg-transparent p-0 duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
               )}
             >
@@ -508,89 +509,84 @@ export function Composer({
                   ) : null}
                 </AnimatePresence>
               </div>
-              <FramePanel className="z-10 border-0 bg-transparent p-0 shadow-none before:hidden">
-                <PromptInput onSubmit={submit} className="relative">
-                  <AutocompletePrimitive.Input
-                    render={
-                      <PromptInputTextarea
-                        ref={textareaRef}
+              <PromptInput onSubmit={submit} className="relative z-10">
+                <AutocompletePrimitive.Input
+                  render={
+                    <PromptInputTextarea
+                      ref={textareaRef}
+                      disabled={disabled}
+                      rows={1}
+                      placeholder={
+                        disabled
+                          ? t('placeholderDisconnected')
+                          : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
+                      }
+                      onClick={(e) =>
+                        updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                      }
+                      onKeyUp={(e) =>
+                        updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                      }
+                      onKeyDown={onKeyDown}
+                    />
+                  }
+                />
+                <PromptInputFooter>
+                  <PromptInputTools>
+                    <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
+                    {shellActive ? (
+                      <Badge className="gap-1" variant="secondary">
+                        <TerminalIcon aria-hidden className="size-3" />
+                        {t('shellCommand')}
+                      </Badge>
+                    ) : null}
+                    {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
+                      <ApprovalPolicyMenu
+                        agentLabel={placeholderAgent}
+                        currentPolicyId={approvalPolicy.currentPolicyId}
                         disabled={disabled}
-                        rows={1}
-                        placeholder={
-                          disabled
-                            ? t('placeholderDisconnected')
-                            : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
-                        }
-                        onClick={(e) =>
-                          updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                        }
-                        onKeyUp={(e) =>
-                          updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                        }
-                        onKeyDown={onKeyDown}
+                        policies={approvalPolicy.availablePolicies}
+                        onSelect={selectPolicy}
                       />
+                    ) : null}
+                    {activeMode && onModeChange ? (
+                      <SessionModeChip
+                        disabled={disabled}
+                        mode={activeMode}
+                        onToggle={() => toggleMode(activeMode)}
+                      />
+                    ) : null}
+                  </PromptInputTools>
+                  <ModelSelectorMenu
+                    disabled={disabled}
+                    effortOptions={effortOptions}
+                    modelOptions={modelOptions}
+                    provider={agentKind}
+                    runtimeCues={runtimeCues}
+                    selectableProviders={selectableProviders}
+                    selectedEffortId={currentEffort ?? null}
+                    selectedModelId={currentModel ?? null}
+                    onSelectEffort={selectEffort}
+                    onSelectModel={selectModel}
+                    onSelectProvider={
+                      onProviderChange
+                        ? (provider) => {
+                            void onProviderChange(provider).catch(noop);
+                          }
+                        : undefined
                     }
                   />
-                  <PromptInputFooter>
-                    <PromptInputTools>
-                      <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
-                      {shellActive ? (
-                        <Badge className="gap-1" variant="secondary">
-                          <TerminalIcon aria-hidden className="size-3" />
-                          {t('shellCommand')}
-                        </Badge>
-                      ) : null}
-                      {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
-                        <ApprovalPolicyMenu
-                          agentLabel={placeholderAgent}
-                          currentPolicyId={approvalPolicy.currentPolicyId}
-                          disabled={disabled}
-                          policies={approvalPolicy.availablePolicies}
-                          onSelect={selectPolicy}
-                        />
-                      ) : null}
-                      {activeMode && onModeChange ? (
-                        <SessionModeChip
-                          disabled={disabled}
-                          mode={activeMode}
-                          onToggle={() => toggleMode(activeMode)}
-                        />
-                      ) : null}
-                    </PromptInputTools>
-                    <ModelSelectorMenu
-                      disabled={disabled}
-                      effortOptions={effortOptions}
-                      modelOptions={modelOptions}
-                      provider={agentKind}
-                      runtimeCues={runtimeCues}
-                      selectableProviders={selectableProviders}
-                      selectedEffortId={currentEffort ?? null}
-                      selectedModelId={currentModel ?? null}
-                      onSelectEffort={selectEffort}
-                      onSelectModel={selectModel}
-                      onSelectProvider={
-                        onProviderChange
-                          ? (provider) => {
-                              void onProviderChange(provider).catch(noop);
-                            }
-                          : undefined
-                      }
-                    />
-                    <PromptInputSubmit
-                      aria-label={isRunning ? t('stop') : t('send')}
-                      disabled={
-                        !isRunning && (disabled || sendBlocked || value.trim().length === 0)
-                      }
-                      onStop={onStop}
-                      status={isRunning ? 'streaming' : 'ready'}
-                      className="rounded-full"
-                      variant={isRunning ? 'secondary' : 'default'}
-                    />
-                  </PromptInputFooter>
-                  {/* Sibling of the footer addon, which is `order-last` — this must match to stay below it. */}
-                  {contextBar ? <div className="order-last w-full">{contextBar}</div> : null}
-                </PromptInput>
-              </FramePanel>
+                  <PromptInputSubmit
+                    aria-label={isRunning ? t('stop') : t('send')}
+                    disabled={!isRunning && (disabled || sendBlocked || value.trim().length === 0)}
+                    onStop={onStop}
+                    status={isRunning ? 'streaming' : 'ready'}
+                    className="rounded-full"
+                    variant={isRunning ? 'secondary' : 'default'}
+                  />
+                </PromptInputFooter>
+              </PromptInput>
+              {contextBar ? <FrameFooter className="p-0">{contextBar}</FrameFooter> : null}
             </Frame>
           </Command>
         </div>

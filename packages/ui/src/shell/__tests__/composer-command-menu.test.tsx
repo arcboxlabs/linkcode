@@ -23,13 +23,20 @@ const MODES: SessionMode[] = [
   { modeId: 'goal', name: 'Goal', description: 'Keep working toward a goal' },
 ];
 
-function composer(disabled = false): React.ReactNode {
+function composer({
+  contextBar,
+  disabled = false,
+}: {
+  contextBar?: React.ReactNode;
+  disabled?: boolean;
+} = {}): React.ReactNode {
   return (
     <Composer
       agentCapabilities={{ shellCommand: false, slashCommands: true }}
       agentCommands={COMMANDS}
       availableModes={MODES}
       currentModeId={null}
+      contextBar={contextBar}
       disabled={disabled}
       isRunning={false}
       onModeChange={vi.fn().mockResolvedValue(undefined)}
@@ -94,6 +101,7 @@ describe('Composer command menu', () => {
     expect(screen.getByRole('listbox')).toBeDefined();
     expect(screen.getByRole('option', { name: /\/compact/ })).toBeDefined();
     expect(screen.getByRole('option', { name: /\/review/ })).toBeDefined();
+    expect(screen.getByTitle('Compact the context').textContent).toBe('Compact the context');
     expect(screen.queryByText('mentions')).toBeNull();
     expect(screen.queryByText('Plan')).toBeNull();
 
@@ -114,9 +122,21 @@ describe('Composer command menu', () => {
     await user.type(screen.getByRole('textbox'), '/');
     expect(screen.getByText('/compact')).toBeDefined();
 
-    rerender(composer(true));
+    rerender(composer({ disabled: true }));
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(screen.getByText('/compact')).toBeDefined();
     await waitFor(() => expect(screen.queryByText('/compact')).toBeNull());
+  });
+
+  it('renders new-session context as a separate frame footer outside the form', () => {
+    render(composer({ contextBar: <button type="button">Workspace context</button> }));
+
+    const context = screen.getByRole('button', { name: 'Workspace context' });
+    const footer = context.closest('[data-slot="frame-panel-footer"]');
+    const frame = context.closest('[data-slot="frame"]');
+    expect(footer).not.toBeNull();
+    expect(footer?.parentElement).toBe(frame);
+    expect(context.closest('form')).toBeNull();
+    expect(frame?.querySelector('form')).not.toBeNull();
   });
 });

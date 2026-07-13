@@ -10,6 +10,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import {
   AtSignIcon,
+  BookTextIcon,
   CheckIcon,
   ListTodoIcon,
   PaperclipIcon,
@@ -194,6 +195,7 @@ export function buildComposerCommandGroups({
       commandItems.push({
         command,
         hint: command.description ?? command.argumentHint,
+        icon: BookTextIcon,
         id: `command:${command.name}`,
         kind: 'command',
         label: `/${command.name}`,
@@ -266,7 +268,10 @@ export function ComposerCommandMenu({
                     <span className="flex min-w-0 flex-1 items-baseline gap-2">
                       <span className="shrink-0">{entry.label}</span>
                       {entry.hint ? (
-                        <span className="min-w-0 truncate text-muted-foreground text-xs">
+                        <span
+                          className="min-w-0 truncate text-muted-foreground text-xs"
+                          title={entry.hint}
+                        >
                           {entry.hint}
                         </span>
                       ) : null}
