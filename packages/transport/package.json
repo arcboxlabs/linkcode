@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@linkcode/schema": "workspace:*",
+    "@linkcode/tunnel": "^0.1.0",
     "foxts": "^5.8.0",
     "socket.io": "catalog:",
     "socket.io-client": "catalog:",

@@ -18,6 +18,7 @@
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
+    "@arcboxlabs/deviceid": "^0.1.0",
     "@linkcode/agent-adapter": "workspace:*",
     "@linkcode/assets": "workspace:*",
     "@linkcode/common": "workspace:*",

@@ -16,12 +16,25 @@ export const HostUrlSchema = z.string().refine((value) => {
   }
 });
 
-export const HostProfileSchema = z.object({
+const HostProfileBase = {
   id: z.string().min(1),
   name: z.string().min(1),
-  url: HostUrlSchema,
   createdAt: z.number().int().nonnegative(),
+};
+
+/** A host reached directly on the local network by URL. */
+export const DirectHostProfileSchema = z.object({ ...HostProfileBase, url: HostUrlSchema });
+export type DirectHostProfile = z.infer<typeof DirectHostProfileSchema>;
+
+/** A host reached through the HQ tunnel; the id is the daemon's registered device id. */
+export const TunnelHostProfileSchema = z.object({
+  ...HostProfileBase,
+  tunnelHostId: z.string().min(1),
 });
+export type TunnelHostProfile = z.infer<typeof TunnelHostProfileSchema>;
+
+/** Direct entries predate tunnel ones, so persisted v1 data parses unchanged. */
+export const HostProfileSchema = z.union([DirectHostProfileSchema, TunnelHostProfileSchema]);
 export type HostProfile = z.infer<typeof HostProfileSchema>;
 
 /** Persisted subset — every field optional so partial/stale storage merges over the defaults. */
@@ -38,6 +51,8 @@ export interface HostRegistryState {
   /** Startup-redirect hint only; screens always resolve their host from the route param. */
   lastActiveHostId: string | null;
   addHost: (input: { name: string; url: string }) => HostProfile;
+  /** Upserts by tunnel host id — re-discovering a known host reuses its entry. */
+  addTunnelHost: (input: { name: string; tunnelHostId: string }) => HostProfile;
   removeHost: (id: string) => void;
   setLastActiveHostId: (id: string | null) => void;
 }
@@ -48,7 +63,7 @@ function createHostId(): string {
 
 export const useHostRegistryStore = create<HostRegistryState>()(
   zodPersist<HostRegistryState, [], [], PersistedHostRegistry, PersistedHostRegistry>(
-    (set) => ({
+    (set, get) => ({
       hosts: [],
       lastActiveHostId: null,
       addHost(input) {
@@ -56,6 +71,27 @@ export const useHostRegistryStore = create<HostRegistryState>()(
           id: createHostId(),
           name: input.name,
           url: input.url,
+          createdAt: Date.now(),
+        };
+        set((state) => ({ hosts: [...state.hosts, profile] }));
+        return profile;
+      },
+      addTunnelHost(input) {
+        const existing = get().hosts.find(
+          (host) => 'tunnelHostId' in host && host.tunnelHostId === input.tunnelHostId,
+        );
+        if (existing) {
+          if (existing.name === input.name) return existing;
+          const renamed = { ...existing, name: input.name };
+          set((state) => ({
+            hosts: state.hosts.map((host) => (host.id === existing.id ? renamed : host)),
+          }));
+          return renamed;
+        }
+        const profile: HostProfile = {
+          id: createHostId(),
+          name: input.name,
+          tunnelHostId: input.tunnelHostId,
           createdAt: Date.now(),
         };
         set((state) => ({ hosts: [...state.hosts, profile] }));

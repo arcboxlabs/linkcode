@@ -51,6 +51,21 @@ export function runtimeFilePath(): string {
   return daemonRuntimeFilePath();
 }
 
+/** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
+export function hqCredentialsPath(): string {
+  return join(homedir(), '.linkcode', 'hq.json');
+}
+
+/** The device's Ed25519 private key (PKCS#8 PEM), next to config.json; written 0600. */
+export function deviceKeyPath(): string {
+  return join(homedir(), '.linkcode', 'device-key.pem');
+}
+
+/** Hardware-wrapped device-key handles (@arcboxlabs/deviceid), next to config.json. */
+export function deviceKeysDir(): string {
+  return join(homedir(), '.linkcode', 'keys');
+}
+
 /**
  * The daemon-owned chat root: a fixed directory the daemon ensures exists and registers as the
  * `chat`-kind workspace (see `WorkspaceRegistry.ensureChatWorkspace`) backing the sidebar's

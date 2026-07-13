@@ -6,10 +6,13 @@ import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
 import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { noop } from 'foxts/noop';
 import { once } from 'foxts/once';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
 import { chatWorkspaceRoot, databasePath, loadConfig } from './config';
+import { runLoginCommand, runLogoutCommand } from './hq/login';
+import { startHqUplink } from './hq/uplink';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
 import {
@@ -48,9 +51,16 @@ process.on('unhandledRejection', (reason) => {
  * they spawn CLI subprocesses and hold credentials, so they cannot run inside a browser tab.
  */
 async function main(): Promise<void> {
+  // Subcommands run and exit instead of booting the host (a running daemon
+  // picks the new sign-in state up on its next restart).
+  const command = process.argv[2];
+  if (command === 'login') return runLoginCommand();
+  if (command === 'logout') return runLogoutCommand();
+
   // Before the engine starts: agent adapters spawn vendored CLI binaries that resolve inside the
   // desktop app's asar (no-op outside Electron — see asar-spawn.ts).
   installAsarSpawnFix();
+
   const config = loadConfig();
 
   // One daemon per machine — a second instance would share ~/.linkcode/daemon.db and split sessions.
@@ -145,8 +155,10 @@ async function main(): Promise<void> {
   };
 
   const servers: TransportServer[] = [];
+  let stopUplink: () => void = noop;
   const stopAll = async (): Promise<void> => {
     cancelReap();
+    stopUplink();
     await Promise.all(servers.map((server) => server.close()));
     hub.close();
     await engine.stop();
@@ -155,6 +167,11 @@ async function main(): Promise<void> {
   try {
     // Listeners hunt concurrently; a transient collision between two of our own hunts resolves
     // itself because listenWithPortHunt treats an occupant with our pid as "keep hunting".
+    // Host-terminal reaping tracks *local* clients only — the HQ uplink also
+    // sits in the Hub, but it is standing infrastructure, not a watching
+    // client, so it must not hold terminals alive (nor does the relay tell us
+    // when remote clients come and go).
+    let localClients = 0;
     const bound: DaemonListenerInfo[] = await Promise.all(
       config.listeners.map(async (listener) => {
         const { server, url, port } = await listenWithPortHunt(listener, identity, previewRoutes);
@@ -162,10 +179,12 @@ async function main(): Promise<void> {
         previewRoutes.proxyPort ??= port;
         server.onConnection((conn) => {
           cancelReap();
+          localClients += 1;
           hub.addConnection(conn);
           conn.onClose(() => {
             hub.removeConnection(conn);
-            if (hub.size === 0) {
+            localClients -= 1;
+            if (localClients === 0) {
               cancelReap();
               reapTimer = setTimeout(() => engine.reapHostTerminals(), HOST_TERMINAL_REAP_DELAY_MS);
             }
@@ -177,6 +196,7 @@ async function main(): Promise<void> {
       }),
     );
     writeRuntimeFile({ ...identity, listeners: bound });
+    stopUplink = startHqUplink(hub);
   } catch (err) {
     if (err instanceof DaemonAlreadyRunningError) {
       console.error(`[linkcode/daemon] ${extractErrorMessage(err)}`);

@@ -149,6 +149,9 @@ minimumReleaseAgeExclude:
   - undici@8.5.0
   - linkify-it@5.0.1
   - tayori@0.3.8
+  - '@arcboxlabs/deviceid-darwin-arm64@0.1.0'
+  - '@arcboxlabs/deviceid@0.1.0'
+  - '@linkcode/tunnel@0.1.0'
   - '@typescript/typescript-aix-ppc64@7.0.2'
   - '@typescript/typescript-darwin-arm64@7.0.2'
   - '@typescript/typescript-darwin-x64@7.0.2'

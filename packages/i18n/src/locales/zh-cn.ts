@@ -561,6 +561,18 @@ export const zhCN = {
       savedHosts: '已保存的 host',
       open: '打开',
       remove: '移除',
+      viaTunnel: '经由 LinkCode Cloud',
+      hq: {
+        title: 'LinkCode Cloud',
+        hint: '登录后即可通过 LinkCode Cloud 随时随地连接你的机器。',
+        signIn: '登录',
+        signedInAs: '已登录:{name}',
+        signOut: '退出登录',
+        hosts: '在线机器',
+        empty: '暂无在线机器。在目标机器上执行一次 linkcode-daemon login 并保持 daemon 运行。',
+        error: '无法获取机器列表。',
+        refresh: '刷新',
+      },
     },
     sessions: {
       title: '会话',
