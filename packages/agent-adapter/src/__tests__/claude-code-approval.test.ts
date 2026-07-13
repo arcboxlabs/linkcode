@@ -149,16 +149,15 @@ describe('ClaudeCodeAdapter approval policy', () => {
     expect(queries[0].options.permissionMode).toBe('acceptEdits');
   });
 
-  it('stashes a pre-prompt switch and applies it at Query creation', async () => {
+  it('switches the live Query before the first prompt', async () => {
     const { adapter, events } = await makeAdapter();
     await setPolicy(adapter, 'auto');
     expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('auto');
 
-    await prompt(adapter);
     const q = queries[0];
-    expect(q.options.permissionMode).toBe('auto');
+    expect(q.options.permissionMode).toBeUndefined();
     expect(q.options.allowDangerouslySkipPermissions).toBe(true);
-    expect(q.setPermissionMode).not.toHaveBeenCalled();
+    expect(q.setPermissionMode).toHaveBeenCalledWith('auto');
   });
 
   it('switches live via setPermissionMode and reflects only on success', async () => {

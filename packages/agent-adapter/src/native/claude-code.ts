@@ -273,8 +273,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private q: Query | null = null;
   private inputQueue: AsyncMessageQueue | null = null;
-  /** Session id to resume *once*, at the first `onPrompt`, when this adapter was started from saved
-   * history — not updated afterwards; the persistent `Query` carries the conversation itself now. */
+  /** Session id to resume *once*, when the persistent Query starts from saved history — not updated
+   * afterwards; the Query carries the conversation itself from there. */
   private resumeFrom: string | undefined;
   /** Suppresses `emitError` for the interrupt-induced stream failure `onCancel` triggers on purpose. */
   private cancelling = false;
@@ -299,13 +299,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   } | null = null;
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
     await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
+    // Query initialization is also the only authoritative slash-command catalog source. Start the
+    // persistent streaming Query with an empty input queue so a fresh session can advertise `/`
+    // commands before the user sends its first message.
+    await this.createQuery();
   }
 
   private approvalPolicyState(): ApprovalPolicyState {
@@ -438,7 +441,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    const opts = nullthrow(this.opts, 'claude-code: session not started');
     this.freshSegment();
     this.emitStatus('running');
     const message: SDKUserMessage = {
@@ -451,6 +453,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.inputQueue.push(message);
       return;
     }
+    // A crashed or deliberately rebuilt process is recreated on demand. Normal sessions already
+    // own their Query from onStart so the command catalog is available before this first prompt.
+    const queue = await this.createQuery();
+    queue.push(message);
+  }
+
+  private async createQuery(): Promise<AsyncMessageQueue> {
+    const opts = nullthrow(this.opts, 'claude-code: session not started');
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const queue = new AsyncMessageQueue();
     this.inputQueue = queue;
@@ -500,7 +510,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
     this.q = q;
     void this.consume(q);
-    void this.publishCommands(q);
+    await this.publishCommands(q);
     if (this.effort !== undefined && this.effort !== 'max') {
       try {
         await q.applyFlagSettings(effortFlagSettings(this.effort));
@@ -512,9 +522,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         this.emitError(extractErrorMessage(err) ?? 'claude-code: effort switch rejected');
       }
     }
-    // Pushed only after the effort is applied, so the first turn cannot start at — or race the
-    // control request from — the CLI's default level.
-    queue.push(message);
+    return queue;
   }
 
   /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
@@ -576,8 +584,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   /** Real live model switch via the persistent `Query`'s `setModel()` (streaming-input-mode-only
    * control request) — the single-message + `resume` design this replaced could not do this: the CLI
-   * ignores a changed `model` option once a session is resumed. Before the first prompt, the `Query`
-   * doesn't exist yet; fall back to updating `opts.model`, which `onPrompt` reads when it creates it. */
+   * ignores a changed `model` option once a session is resumed. */
   protected override async onSetModel(model: string): Promise<void> {
     if (this.q) {
       await this.q.setModel(model);
@@ -590,10 +597,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitModel(model);
   }
 
-  /** Live switch rides the streaming-input control request `Query#setPermissionMode`; before the
-   * first prompt the `Query` doesn't exist yet, so the pick is only stashed and applied at creation
-   * via `options.permissionMode`. The new state reflects only after the CLI accepted the switch, so
-   * a rejected one (e.g. auto mode unavailable for the account) leaves the previous policy shown. */
+  /** Live switch rides the streaming-input control request `Query#setPermissionMode`. The new state
+   * reflects only after the CLI accepted the switch, so a rejected one (e.g. auto mode unavailable
+   * for the account) leaves the previous policy shown. */
   protected override async onSetApprovalPolicy(policyId: string): Promise<void> {
     const policy = APPROVAL_POLICIES.find((p) => p.policyId === policyId);
     if (!policy) throw new Error(`claude-code: unknown approval policy: ${policyId}`);

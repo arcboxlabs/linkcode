@@ -94,10 +94,13 @@ afterEach(() => {
   nextQuerySetup = null;
 });
 
-async function makeAdapter(): Promise<{ adapter: ClaudeCodeAdapter; events: AgentEvent[] }> {
+async function makeAdapter(
+  setup?: (q: FakeQuery) => void,
+): Promise<{ adapter: ClaudeCodeAdapter; events: AgentEvent[] }> {
   const adapter = new ClaudeCodeAdapter();
   const events: AgentEvent[] = [];
   adapter.onEvent((e) => events.push(e));
+  nextQuerySetup = setup ?? null;
   await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
   return { adapter, events };
 }
@@ -125,16 +128,14 @@ function commandUpdates(
 }
 
 describe('ClaudeCodeAdapter slash commands', () => {
-  it('publishes the catalog fetched from supportedCommands() at Query creation', async () => {
-    const { adapter, events } = await makeAdapter();
-    nextQuerySetup = (q) => {
+  it('publishes the catalog at adapter start, before the first prompt', async () => {
+    const { events } = await makeAdapter((q) => {
       q.supportedCommands.mockResolvedValue([
         { name: 'review', description: 'Review the diff', argumentHint: '<path>' },
         // Empty-string description/argumentHint and an alias — both dropped by the mapper.
         { name: 'usage', description: '', argumentHint: '', aliases: ['cost'] },
       ]);
-    };
-    await prompt(adapter);
+    });
 
     await vi.waitFor(() => {
       expect(commandUpdates(events)).toHaveLength(1);
@@ -146,11 +147,9 @@ describe('ClaudeCodeAdapter slash commands', () => {
   });
 
   it('does not surface an error when supportedCommands() rejects', async () => {
-    const { adapter, events } = await makeAdapter();
-    nextQuerySetup = (q) => {
+    const { events } = await makeAdapter((q) => {
       q.supportedCommands.mockRejectedValue(new Error('not ready'));
-    };
-    await prompt(adapter);
+    });
     // Let the rejected publishCommands() microtask settle.
     await vi.waitFor(() => {
       expect(queries[0].supportedCommands).toHaveBeenCalled();
