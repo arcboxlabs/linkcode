@@ -15,6 +15,7 @@ import {
   HistoryIcon,
   InfoIcon,
   KeyRoundIcon,
+  SendIcon,
   SettingsIcon,
   WifiIcon,
 } from 'lucide-react';
@@ -30,6 +31,7 @@ import { AgentsTab } from './agents-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
+import { ImChannelTab } from './im-channel-tab';
 import { NotificationsTab } from './notifications-tab';
 import { ProvidersTab } from './providers-tab';
 import type { SettingsCategory } from './store';
@@ -165,6 +167,13 @@ export function SettingsView(): React.ReactNode {
                     onClick: () => setCategory('agents'),
                   },
                   {
+                    key: 'imChannel',
+                    icon: <SendIcon className="size-4" />,
+                    label: t('tabs.imChannel'),
+                    active: category === 'imChannel',
+                    onClick: () => setCategory('imChannel'),
+                  },
+                  {
                     key: 'history-import',
                     icon: <HistoryIcon className="size-4" />,
                     label: t('historyImport.portalLabel'),
@@ -223,6 +232,8 @@ function renderSettingsPanel(
       return <ProvidersTab />;
     case 'agents':
       return <AgentsTab />;
+    case 'imChannel':
+      return <ImChannelTab />;
     case 'history-import':
       return <HistoryImportTab kind={historyProvider} />;
     default:

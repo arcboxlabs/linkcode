@@ -32,6 +32,7 @@ import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
+import { DesktopThreadImMenu } from '../cloud-auth/thread-im-menu';
 import { useCloudAccount } from '../cloud-auth/use-cloud-account';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
@@ -623,6 +624,9 @@ export function DesktopShell({
                 onToggleSectionCollapsed={onToggleSectionCollapsed}
                 onTogglePreviewExpanded={onTogglePreviewExpanded}
                 BranchStatusComponent={BranchStatusComponent}
+                // Cloud-gated: without a session the IM source can't authenticate, so the
+                // row menu (and its ellipsis) stays hidden entirely.
+                ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
                 onSelect={onSelectSession}
                 onClose={onCloseSession}
                 onToggleSessionPinned={onToggleSessionPinned}

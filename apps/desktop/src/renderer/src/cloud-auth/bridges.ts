@@ -5,7 +5,7 @@
  * across the process boundary, so we mirror the vendor's stable public shape here.
  */
 
-import type { CloudHost } from '@linkcode/workbench';
+import type { CloudHost, CloudImSource } from '@linkcode/workbench';
 
 /** The authenticated user, as normalized by the electron plugin. Extra IdP fields are preserved. */
 export interface CloudUser {
@@ -31,6 +31,8 @@ export interface CloudDataBridges {
   linkcodeCloud: {
     /** Lists the signed-in account's online hosts; main attaches the session and validates. */
     listHosts: () => Promise<CloudHost[]>;
+    /** IM Channel management (`/im/*`); same session-in-main model as listHosts. */
+    im: CloudImSource;
   };
 }
 
