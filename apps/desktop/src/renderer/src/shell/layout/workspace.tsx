@@ -4,11 +4,13 @@ import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
   getExpandedPanelForTarget,
+  MIN_MAIN_SIZE,
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
 } from '@renderer/shell/store/model';
+import { useTranslations } from 'use-intl';
 import type { PaneTransition } from './pane-transition';
 import { Sash } from './sash';
 
@@ -25,6 +27,12 @@ export interface WorkspaceSide {
 export type WorkspaceSidebar = Omit<WorkspaceSide, 'expandedNode'>;
 
 const CELL_CLASS = 'relative min-h-0 min-w-0 overflow-hidden';
+const PANE_ID = {
+  sidebar: 'linkcode-shell-sidebar-pane',
+  main: 'linkcode-shell-main-pane',
+  right: 'linkcode-shell-right-pane',
+  bottom: 'linkcode-shell-bottom-pane',
+} as const;
 
 /**
  * The shell workspace: one CSS grid whose tracks read the `--lc-*` shell variables
@@ -58,6 +66,7 @@ export function DesktopWorkspace({
   onRightResize: (size: number) => void;
   onBottomResize: (size: number) => void;
 }): React.ReactNode {
+  const tPanel = useTranslations('workbench.panel');
   const rowOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'editor-row');
   const workbenchOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'workbench');
   // Expanded panels render as direct overlays. Docked panels stay mounted so
@@ -115,6 +124,7 @@ export function DesktopWorkspace({
       {/* The sidebar cell's right edge is the animated divider, so the cell owns the
             border (the aside's own border-r is suppressed by the shell). */}
       <div
+        id={PANE_ID.sidebar}
         data-shell-pane="sidebar"
         aria-hidden={!sidebar.open}
         inert={!sidebar.open}
@@ -142,6 +152,7 @@ export function DesktopWorkspace({
       </div>
 
       <div
+        id={PANE_ID.main}
         data-shell-pane="main"
         aria-hidden={editorInert}
         inert={editorInert}
@@ -156,6 +167,7 @@ export function DesktopWorkspace({
       </div>
 
       <div
+        id={PANE_ID.right}
         data-shell-pane="right"
         aria-hidden={!right.open || editorInert}
         inert={!right.open || editorInert}
@@ -181,6 +193,7 @@ export function DesktopWorkspace({
       </div>
 
       <div
+        id={PANE_ID.bottom}
         data-shell-pane="bottom"
         aria-hidden={!bottom.open || dockedInert}
         inert={!bottom.open || dockedInert}
@@ -213,48 +226,61 @@ export function DesktopWorkspace({
       </div>
 
       {/* Sashes are absolute (no grid area), positioned by the same track variables. */}
-      {sidebar.open && (
-        <Sash
-          orientation="vertical"
-          edge="start"
-          className="linkcode-sash-sidebar"
-          size={layout.sidebarW}
-          minSize={SIDEBAR_MIN_SIZE}
-          maxSize={SIDEBAR_MAX_SIZE}
-          disabled={anyAnimating}
-          onResize={onSidebarResize}
-          onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, sidebarW: size }))}
-          onReset={sidebar.onResetSize}
-        />
-      )}
-      {right.open && (
-        <Sash
-          orientation="vertical"
-          edge="end"
-          className="linkcode-sash-right"
-          size={layout.rightW}
-          minSize={RIGHT_PANEL_MIN_SIZE}
-          maxSize={RIGHT_PANEL_MAX_SIZE}
-          disabled={anyAnimating}
-          onResize={onRightResize}
-          onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, rightW: size }))}
-          onReset={right.onResetSize}
-        />
-      )}
-      {bottom.open && (
-        <Sash
-          orientation="horizontal"
-          edge="end"
-          className="linkcode-sash-bottom"
-          size={layout.bottomH}
-          minSize={BOTTOM_PANEL_MIN_SIZE}
-          maxSize={BOTTOM_PANEL_MAX_SIZE}
-          disabled={anyAnimating}
-          onResize={onBottomResize}
-          onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, bottomH: size }))}
-          onReset={bottom.onResetSize}
-        />
-      )}
+      {/* Sashes stay mounted while closed so a keyboard toggle during pointer capture can
+          finalize the drag instead of losing its store commit with the DOM node. */}
+      <Sash
+        orientation="vertical"
+        edge="start"
+        pane="sidebar"
+        paneId={PANE_ID.sidebar}
+        label={tPanel('resizeSidebar')}
+        className="linkcode-sash-sidebar"
+        size={layout.sidebarW}
+        minSize={SIDEBAR_MIN_SIZE}
+        maxSize={SIDEBAR_MAX_SIZE}
+        minMainSize={MIN_MAIN_SIZE}
+        reclaimFromPane="right"
+        reclaimFromMinSize={right.open ? RIGHT_PANEL_MIN_SIZE : 0}
+        disabled={!sidebar.open || anyAnimating}
+        hidden={!sidebar.open}
+        onResize={onSidebarResize}
+        onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, sidebarW: size }))}
+        onReset={sidebar.onResetSize}
+      />
+      <Sash
+        orientation="vertical"
+        edge="end"
+        pane="right"
+        paneId={PANE_ID.right}
+        label={tPanel('resizeRightPanel')}
+        className="linkcode-sash-right"
+        size={layout.rightW}
+        minSize={RIGHT_PANEL_MIN_SIZE}
+        maxSize={RIGHT_PANEL_MAX_SIZE}
+        minMainSize={MIN_MAIN_SIZE}
+        disabled={!right.open || editorInert || anyAnimating}
+        hidden={!right.open || editorInert}
+        onResize={onRightResize}
+        onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, rightW: size }))}
+        onReset={right.onResetSize}
+      />
+      <Sash
+        orientation="horizontal"
+        edge="end"
+        pane="bottom"
+        paneId={PANE_ID.bottom}
+        label={tPanel('resizeBottomPanel')}
+        className="linkcode-sash-bottom"
+        size={layout.bottomH}
+        minSize={BOTTOM_PANEL_MIN_SIZE}
+        maxSize={BOTTOM_PANEL_MAX_SIZE}
+        minMainSize={MIN_MAIN_SIZE}
+        disabled={!bottom.open || dockedInert || anyAnimating}
+        hidden={!bottom.open || dockedInert}
+        onResize={onBottomResize}
+        onResizeEnd={(size) => onLayoutChange((current) => ({ ...current, bottomH: size }))}
+        onReset={bottom.onResetSize}
+      />
 
       {rowOverlayPanel && (
         <ExpandedPanelOverlay side={rowOverlayPanel} className="col-end-4 col-start-2 row-start-1">
