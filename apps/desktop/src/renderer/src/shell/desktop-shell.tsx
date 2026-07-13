@@ -336,8 +336,8 @@ export function DesktopShell({
     </main>
   );
 
-  // One renderer, two mount points per side: the docked instance (inside the Allotment, owns the
-  // chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
+  // One renderer, two mount points per side: the docked instance (inside its workspace grid
+  // cell, owns the chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
   // instance keeps owning the chrome so the two never portal duplicate tabs during the
   // transition). Tab content mounts in exactly one of them (the overlay while expanded, via
   // contentHidden), so stateful tabs like the terminal never run twice; the terminal session

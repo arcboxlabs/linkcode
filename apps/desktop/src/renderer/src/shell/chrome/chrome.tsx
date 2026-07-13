@@ -76,14 +76,17 @@ type ChromeBackgroundGridStyle = React.CSSProperties & {
 const ChromePortalTargetContext = createContext<ChromePortalTargetMap | null>(null);
 const ChromePortalRegisterContext = createContext<RegisterChromePortalUse | null>(null);
 
+// The columns read the window-clamped track variables (index.css) — the same ones the
+// workspace grid uses — so the titlebar dividers stay glued to the real pane edges even
+// when a small window forces the clamps to engage.
 const CHROME_BACKGROUND_GRID_STYLE = {
-  gridTemplateColumns: 'var(--lc-sidebar-w) minmax(0, 1fr) var(--lc-right-w)',
-  '--lc-chrome-right-segment-w': 'var(--lc-right-w)',
+  gridTemplateColumns: 'var(--lc-sidebar-col) minmax(0, 1fr) var(--lc-right-col)',
+  '--lc-chrome-right-segment-w': 'var(--lc-right-col)',
 } satisfies ChromeBackgroundGridStyle;
 
 // Maximizing is a direct cut: the right segment collapses to zero instantly.
 const MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE = {
-  gridTemplateColumns: 'var(--lc-sidebar-w) minmax(0, 1fr) 0px',
+  gridTemplateColumns: 'var(--lc-sidebar-col) minmax(0, 1fr) 0px',
   '--lc-chrome-right-segment-w': '0px',
 } satisfies ChromeBackgroundGridStyle;
 
@@ -100,7 +103,7 @@ const SIDEBAR_SLOT_INSET_STYLE = {
 
 const MAIN_SLOT_INSET_STYLE = {
   paddingLeft:
-    'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-w)))',
+    'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-col)))',
   paddingRight:
     'max(var(--lc-chrome-edge), calc(var(--lc-chrome-right-local-inset) - var(--lc-chrome-right-segment-w)))',
 } satisfies React.CSSProperties;
@@ -199,55 +202,60 @@ export function DesktopChrome({
   return (
     <ChromePortalRegisterContext value={registerPortalUse}>
       <ChromePortalTargetContext value={portalTargets}>
-        <div
-          ref={chromeRootRef}
-          className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
-        >
-          <ChromeSegmentGrid
-            header={header}
-            expandedPanel={expandedPanel}
-            hasNativeBackdrop={hasNativeBackdrop}
-            titleContent={titleContent}
-            titleIcon={titleIcon}
-            titleChip={titleChip}
-            portalUse={portalUse}
-            setPortalTarget={setPortalTarget}
-          />
-          <StableLeftChrome
-            contentRef={leftRailContentRef}
-            hasNativeTrafficLights={hasNativeTrafficLights}
+        {/* Size container for the shell's cq-based track math (index.css): the chrome grid
+            and the workspace grid both resolve the clamped `--lc-*-col` variables against
+            this frame, so their dividers stay in lockstep at every window size. */}
+        <div className="linkcode-shell-frame relative h-full">
+          <div
+            ref={chromeRootRef}
+            className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
           >
-            {leftControls === undefined ? (
-              <DefaultLeftChromeControls
-                sidebarOpen={sidebarOpen}
-                sidebarShortcut={sidebarShortcut}
-                navigation={navigation}
-                onShowSidebar={onShowSidebar}
-                onHideSidebar={onHideSidebar}
-              />
-            ) : (
-              leftControls
-            )}
-          </StableLeftChrome>
-          <StableRightChrome
-            contentRef={rightRailContentRef}
-            showWindowControls={showWindowControls}
-          >
-            {rightControls === undefined ? (
-              <DefaultRightChromeControls
-                rightPanelOpen={rightPanelOpen}
-                bottomPanelOpen={bottomPanelOpen}
-                rightPanelShortcut={rightPanelShortcut}
-                bottomPanelShortcut={bottomPanelShortcut}
-                onToggleRight={onToggleRight}
-                onToggleBottom={onToggleBottom}
-              />
-            ) : (
-              rightControls
-            )}
-          </StableRightChrome>
+            <ChromeSegmentGrid
+              header={header}
+              expandedPanel={expandedPanel}
+              hasNativeBackdrop={hasNativeBackdrop}
+              titleContent={titleContent}
+              titleIcon={titleIcon}
+              titleChip={titleChip}
+              portalUse={portalUse}
+              setPortalTarget={setPortalTarget}
+            />
+            <StableLeftChrome
+              contentRef={leftRailContentRef}
+              hasNativeTrafficLights={hasNativeTrafficLights}
+            >
+              {leftControls === undefined ? (
+                <DefaultLeftChromeControls
+                  sidebarOpen={sidebarOpen}
+                  sidebarShortcut={sidebarShortcut}
+                  navigation={navigation}
+                  onShowSidebar={onShowSidebar}
+                  onHideSidebar={onHideSidebar}
+                />
+              ) : (
+                leftControls
+              )}
+            </StableLeftChrome>
+            <StableRightChrome
+              contentRef={rightRailContentRef}
+              showWindowControls={showWindowControls}
+            >
+              {rightControls === undefined ? (
+                <DefaultRightChromeControls
+                  rightPanelOpen={rightPanelOpen}
+                  bottomPanelOpen={bottomPanelOpen}
+                  rightPanelShortcut={rightPanelShortcut}
+                  bottomPanelShortcut={bottomPanelShortcut}
+                  onToggleRight={onToggleRight}
+                  onToggleBottom={onToggleBottom}
+                />
+              ) : (
+                rightControls
+              )}
+            </StableRightChrome>
+          </div>
+          {children}
         </div>
-        {children}
       </ChromePortalTargetContext>
     </ChromePortalRegisterContext>
   );

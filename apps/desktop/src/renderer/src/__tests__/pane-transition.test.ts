@@ -6,7 +6,6 @@ function transition(overrides?: Partial<SplitTransitionState>): SplitTransitionS
   return {
     requestedOpen: false,
     phase: 'closed',
-    targetPaneSize: 0,
     version: 0,
     ...overrides,
   };
@@ -14,103 +13,60 @@ function transition(overrides?: Partial<SplitTransitionState>): SplitTransitionS
 
 describe('reconcileTransition', () => {
   it('returns the same reference when the request is unchanged', () => {
-    const current = transition({
-      requestedOpen: true,
-      phase: 'open',
-      targetPaneSize: 440,
-      version: 3,
-    });
+    const current = transition({ requestedOpen: true, phase: 'open', version: 3 });
 
-    expect(reconcileTransition(current, true, 440, false)).toBe(current);
+    expect(reconcileTransition(current, true, false)).toBe(current);
   });
 
-  it('animates open from closed, snapshotting the size', () => {
+  it('animates open from closed with a version bump', () => {
     const current = transition({ requestedOpen: false, phase: 'closed', version: 1 });
 
-    const next = reconcileTransition(current, true, 440, false);
+    const next = reconcileTransition(current, true, false);
 
     expect(next).not.toBe(current);
-    expect(next).toEqual({
-      requestedOpen: true,
-      phase: 'opening',
-      targetPaneSize: 440,
-      version: 2,
-    });
+    expect(next).toEqual({ requestedOpen: true, phase: 'opening', version: 2 });
   });
 
-  it('animates closed, driving the target size to zero', () => {
-    const current = transition({
-      requestedOpen: true,
-      phase: 'open',
-      targetPaneSize: 440,
-      version: 5,
-    });
+  it('animates closed', () => {
+    const current = transition({ requestedOpen: true, phase: 'open', version: 5 });
 
-    const next = reconcileTransition(current, false, 440, false);
+    const next = reconcileTransition(current, false, false);
 
-    expect(next).toEqual({
-      requestedOpen: false,
-      phase: 'closing',
-      targetPaneSize: 0,
-      version: 6,
-    });
+    expect(next).toEqual({ requestedOpen: false, phase: 'closing', version: 6 });
   });
 
   it('re-enters opening with a version bump when re-opening before a close has finished', () => {
     const current = transition({ requestedOpen: false, phase: 'closing', version: 2 });
 
-    const next = reconcileTransition(current, true, 440, false);
+    const next = reconcileTransition(current, true, false);
 
-    expect(next).toMatchObject({ phase: 'opening', targetPaneSize: 440, version: 3 });
+    expect(next).toMatchObject({ phase: 'opening', version: 3 });
   });
 
   it('skips the animation phases under reduced motion', () => {
-    const opened = reconcileTransition(transition({ phase: 'closed' }), true, 440, true);
-    expect(opened).toMatchObject({
-      phase: 'open',
-      targetPaneSize: 440,
-    });
+    const opened = reconcileTransition(transition({ phase: 'closed' }), true, true);
+    expect(opened).toMatchObject({ phase: 'open' });
 
     const closed = reconcileTransition(
-      transition({ requestedOpen: true, phase: 'open', targetPaneSize: 440 }),
+      transition({ requestedOpen: true, phase: 'open' }),
       false,
-      440,
       true,
     );
-    expect(closed).toMatchObject({
-      phase: 'closed',
-      targetPaneSize: 0,
-    });
+    expect(closed).toMatchObject({ phase: 'closed' });
   });
 
   it('settles an in-flight animation to its resting phase when reduced motion turns on', () => {
-    const current = transition({
-      requestedOpen: true,
-      phase: 'opening',
-      targetPaneSize: 440,
-      version: 4,
-    });
+    const current = transition({ requestedOpen: true, phase: 'opening', version: 4 });
 
-    const next = reconcileTransition(current, true, 440, true);
+    const next = reconcileTransition(current, true, true);
 
     expect(next).not.toBe(current);
-    expect(next).toEqual({
-      requestedOpen: true,
-      phase: 'open',
-      targetPaneSize: 440,
-      version: 5,
-    });
+    expect(next).toEqual({ requestedOpen: true, phase: 'open', version: 5 });
   });
 
   it('does not churn the version once a reduced-motion transition has settled', () => {
-    const current = transition({ requestedOpen: true, phase: 'open', targetPaneSize: 440 });
+    const current = transition({ requestedOpen: true, phase: 'open' });
 
-    expect(reconcileTransition(current, true, 440, true)).toBe(current);
-  });
-
-  it('clamps a negative requested size to zero', () => {
-    const next = reconcileTransition(transition({ phase: 'closed' }), true, -50, false);
-
-    expect(next.targetPaneSize).toBe(0);
+    expect(reconcileTransition(current, true, true)).toBe(current);
   });
 });

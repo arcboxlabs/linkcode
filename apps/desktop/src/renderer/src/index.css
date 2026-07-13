@@ -20,14 +20,16 @@
  * The shell workspace is one CSS grid whose tracks read the pane variables written on the
  * shell root (`--lc-sidebar-w` / `--lc-right-w` / `--lc-bottom-h`). The clamps keep the
  * 1fr main cell at least `--lc-main-min` wide/tall when the window shrinks — the right
- * panel yields first, then the sidebar. The wrapper is a size container so the track
- * expressions and the main content lock can resolve the workspace's own dimensions
- * through cq units.
+ * panel yields first, then the sidebar. `.linkcode-shell-frame` (the chrome + workspace
+ * wrapper in chrome.tsx) is the size container the cq units resolve against; the clamped
+ * `--lc-*-col`/`--lc-*-row` values are defined on BOTH the titlebar chrome grid and the
+ * workspace grid so their dividers agree at every window size.
  */
-.linkcode-shell-workspace {
+.linkcode-shell-frame {
   container-type: size;
 }
 
+.linkcode-chrome-grid,
 .linkcode-shell-grid {
   /* Keep in sync with MIN_MAIN_SIZE in shell/store/model.ts. */
   --lc-main-min: 360px;
@@ -38,10 +40,30 @@
     calc(100cqw - var(--lc-sidebar-col) - var(--lc-main-min))
   );
   --lc-bottom-row: clamp(0px, var(--lc-bottom-h), calc(100cqh - var(--lc-main-min)));
+}
+
+.linkcode-shell-grid {
   position: relative;
   display: grid;
   grid-template-columns: var(--lc-sidebar-col) minmax(0, 1fr) var(--lc-right-col);
   grid-template-rows: minmax(0, 1fr) var(--lc-bottom-row);
+}
+
+/*
+ * While a pane animates, its content keeps the settled size (inline px from the layout
+ * store) so nothing rewraps per frame; the max-clamp mirrors the track expression so the
+ * lock always equals the track's settled value, window clamps included.
+ */
+[data-shell-pane="sidebar"] > .linkcode-shell-pane-lock {
+  max-width: calc(100cqw - var(--lc-main-min));
+}
+
+[data-shell-pane="right"] > .linkcode-shell-pane-lock {
+  max-width: calc(100cqw - var(--lc-sidebar-col) - var(--lc-main-min));
+}
+
+[data-shell-pane="bottom"] > .linkcode-shell-pane-lock {
+  max-height: calc(100cqh - var(--lc-main-min));
 }
 
 /*

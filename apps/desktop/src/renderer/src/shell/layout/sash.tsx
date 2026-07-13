@@ -47,7 +47,8 @@ export function Sash({
     orientation === 'vertical' ? event.clientX : event.clientY;
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (disabled || event.button !== 0) return;
+    // One drag at a time: a second (touch) pointer must not reset the baseline mid-drag.
+    if (disabled || dragRef.current !== null || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.dataset.dragging = '';
     dragRef.current = {
@@ -62,6 +63,15 @@ export function Sash({
     const drag = dragRef.current;
     if (!drag) return;
     if (event.pointerId !== drag.pointerId) return;
+    if (disabled) {
+      // A pane toggle started mid-drag; the grid transition is now live, so end the drag
+      // where it stands instead of fighting the animation with per-frame writes.
+      dragRef.current = null;
+      delete event.currentTarget.dataset.dragging;
+      event.currentTarget.releasePointerCapture(drag.pointerId);
+      onResizeEnd(drag.lastSize);
+      return;
+    }
     const delta = readCoord(event) - drag.startCoord;
     const requested = edge === 'start' ? drag.startSize + delta : drag.startSize - delta;
     const next = Math.min(maxSize, Math.max(minSize, requested));

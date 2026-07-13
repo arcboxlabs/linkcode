@@ -31,7 +31,6 @@ interface UsePaneTransitionOptions {
 export interface SplitTransitionState {
   requestedOpen: boolean;
   phase: SplitPanePhase;
-  targetPaneSize: number;
   version: number;
 }
 
@@ -57,24 +56,15 @@ export function usePaneTransition({
   // 'opening'/'closing'. Field-granular reads off a tracked store stay compiler-safe (the dep
   // check re-reads through the getters); passing the whole object as a dependency is what breaks,
   // and this version-counted, render-phase-adjusted machine wants snapshot semantics anyway.
-  // Plain useState with whole-object replacement. The whole transition object feeds into
-  // reconcileTransition, so the React Compiler keys that memo on the object's IDENTITY — and a
-  // tracked-getter store (foxact useStateWithDeps) deliberately keeps one stable reference and
-  // mutates inside (it is not a snapshot). Completion-driven phase updates (same `open`, new
-  // phase) then rendered from the stale memoized reconcile result and the phase never left
-  // 'opening'/'closing'. Field-granular reads off a tracked store stay compiler-safe (the dep
-  // check re-reads through the getters); passing the whole object as a dependency is what breaks,
-  // and this version-counted, render-phase-adjusted machine wants snapshot semantics anyway.
   const [transition, setTransition] = useState<SplitTransitionState>(() => ({
     requestedOpen: open,
     phase: open ? 'open' : 'closed',
-    targetPaneSize: open ? Math.max(0, size) : 0,
     version: 0,
   }));
 
   // Derive the next transition from the latest `open` request during render — React's prescribed way
   // to adjust state when props change (it re-renders before paint, avoiding an effect round-trip).
-  const active = reconcileTransition(transition, open, size, reducedMotion);
+  const active = reconcileTransition(transition, open, reducedMotion);
   if (active !== transition) setTransition(active);
   const { phase, version: transitionVersion } = active;
 
@@ -128,21 +118,18 @@ function isAnimatingPhase(phase: SplitPanePhase): boolean {
 
 /**
  * Derive the next transition from the latest `open` request, returning the same reference when
- * nothing changed so the caller can skip the state update. The target pane size is snapshotted here
- * rather than read live in the transition effects, which would otherwise restart mid-transition as
- * the controlled `paneSize` updates.
+ * nothing changed so the caller can skip the state update. The version stamps each request so a
+ * stale settle timer cannot complete a newer transition.
  */
 export function reconcileTransition(
   current: SplitTransitionState,
   open: boolean,
-  paneSize: number,
   reducedMotion: boolean,
 ): SplitTransitionState {
   if (current.requestedOpen !== open) {
     return {
       requestedOpen: open,
       phase: reducedMotion ? (open ? 'open' : 'closed') : open ? 'opening' : 'closing',
-      targetPaneSize: open ? Math.max(0, paneSize) : 0,
       version: current.version + 1,
     };
   }
