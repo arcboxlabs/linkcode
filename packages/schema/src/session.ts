@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema, TimestampSchema } from './common';
+import { ImPlatformSchema } from './im';
 
 /** Session modes (e.g. plan / accept-edits) the agent advertises and the user can switch between. */
 export const SessionModeIdSchema = z.string().min(1);
@@ -137,6 +138,8 @@ export const SessionRecordSchema = z.object({
   /** Derived from the first prompt, or user-renamed later. */
   title: z.string().optional(),
   origin: SessionOriginSchema,
+  /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
+  createdVia: ImPlatformSchema.optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   runs: z.array(SessionRunSchema),
@@ -154,6 +157,8 @@ export const SessionInfoSchema = z.object({
   updatedAt: TimestampSchema,
   title: z.string().optional(),
   origin: SessionOriginSchema.optional(),
+  /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
+  createdVia: ImPlatformSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */
   historyId: AgentHistoryIdSchema.optional(),
 });
