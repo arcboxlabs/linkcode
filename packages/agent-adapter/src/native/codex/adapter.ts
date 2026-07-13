@@ -203,6 +203,7 @@ export function decisionFromOutcome(
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
+  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,

@@ -29,7 +29,23 @@ describe('buildConversation', () => {
     expect(c.status).toBeNull();
     expect(c.usage).toBeNull();
     expect(c.availableCommands).toBeNull();
+    expect(c.capabilities).toBeNull();
     expect(c.pendingPermissionIds).toEqual([]);
+  });
+
+  it('reflects the latest adapter capabilities without adding timeline items', () => {
+    const c = buildConversation([
+      {
+        type: 'capabilities-update',
+        capabilities: { slashCommands: false, shellCommand: false },
+      },
+      {
+        type: 'capabilities-update',
+        capabilities: { slashCommands: true, shellCommand: true },
+      },
+    ]);
+    expect(c.capabilities).toEqual({ slashCommands: true, shellCommand: true });
+    expect(c.items).toEqual([]);
   });
 
   it('replaces the command catalog wholesale on each available-commands-update', () => {

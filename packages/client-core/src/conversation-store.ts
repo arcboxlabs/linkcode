@@ -21,6 +21,7 @@ const EMPTY_CONVERSATION: Conversation = {
   currentModel: null,
   currentEffort: null,
   availableCommands: null,
+  capabilities: null,
   stopReason: null,
   pendingPermissionIds: [],
   pendingQuestionIds: [],

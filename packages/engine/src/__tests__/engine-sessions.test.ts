@@ -1,6 +1,7 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { AUTH_FAILED_ERROR_CODE, asHistoryId } from '@linkcode/agent-adapter';
 import type {
+  AgentCapabilities,
   AgentEvent,
   AgentHistoryCapabilities,
   AgentHistoryListResult,
@@ -27,6 +28,7 @@ import { InMemorySessionStore } from '../session-store';
 
 class FakeAdapter implements AgentAdapter {
   readonly kind = 'claude-code' as const;
+  readonly capabilities: AgentCapabilities = { slashCommands: false, shellCommand: false };
   readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
     read: true,
@@ -445,8 +447,28 @@ describe('engine attach replay', () => {
     ]);
   });
 
+  it('replays the latest adapter capabilities to an attaching client', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: false },
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(sent, mark)).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: false },
+    });
+  });
+
   it('echoes command and shell inputs as the text the user typed', async () => {
-    const { sent, inject, sessionId } = await startedHarness();
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    adapter.emit({ type: 'available-commands-update', commands: [{ name: 'review' }] });
     const mark = sent.length;
     await inject({
       kind: 'agent.input',
@@ -465,6 +487,45 @@ describe('engine attach replay', () => {
       { type: 'user-message', content: [{ type: 'text', text: '/review src/index.ts' }] },
       { type: 'user-message', content: [{ type: 'text', text: '$ git status' }] },
     ]);
+  });
+
+  it('rejects unavailable command and shell inputs before echoing them', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: false },
+    });
+    adapter.emit({ type: 'available-commands-update', commands: [{ name: 'compact' }] });
+    const mark = sent.length;
+
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r-command',
+      sessionId,
+      input: { type: 'command', name: 'stale' },
+    });
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r-shell',
+      sessionId,
+      input: { type: 'shell-command', command: 'git status' },
+    });
+
+    const rejected = sent.slice(mark);
+    expect(
+      rejected.some(
+        (payload) => payload.kind === 'agent.event' && payload.event.type === 'user-message',
+      ),
+    ).toBe(false);
+    expect(
+      rejected.filter(
+        (payload) =>
+          payload.kind === 'agent.event' &&
+          payload.event.type === 'error' &&
+          payload.event.code === 'input_rejected',
+      ),
+    ).toHaveLength(2);
+    expect(rejected.filter((payload) => payload.kind === 'request.failed')).toHaveLength(2);
   });
 
   it('rejects a concurrent turn input before echoing or dispatching it', async () => {

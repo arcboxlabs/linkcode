@@ -218,6 +218,7 @@ shape in `packages/*`, elided for readability.
 // @linkcode/agent-adapter — one adapter per agent; native events → normalized AgentEvent
 interface AgentAdapter {
   readonly kind: AgentKind;                                  // 'claude-code' | 'codex' | 'opencode' | 'pi'
+  readonly capabilities: AgentCapabilities;                  // { slashCommands, shellCommand }
   readonly historyCapabilities: AgentHistoryCapabilities;    // { list, read, resume }
   start(opts: StartOptions): Promise<void>;
   send(input: AgentInput): Promise<void>;

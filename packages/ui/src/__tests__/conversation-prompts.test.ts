@@ -37,6 +37,7 @@ function conversation(
     currentModel: null,
     currentEffort: null,
     availableCommands: null,
+    capabilities: null,
     stopReason: null,
     pendingPermissionIds: [],
     pendingQuestionIds: [],

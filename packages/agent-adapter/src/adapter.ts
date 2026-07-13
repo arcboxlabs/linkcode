@@ -1,4 +1,5 @@
 import type {
+  AgentCapabilities,
   AgentEvent,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
@@ -22,6 +23,8 @@ import type { Unsubscribe } from '@linkcode/transport';
  */
 export interface AgentAdapter {
   readonly kind: AgentKind;
+  /** Stable input features this adapter accepts, also advertised on the event stream at start. */
+  readonly capabilities: AgentCapabilities;
   /** History support advertised by this adapter. Unsupported operations must reject clearly. */
   readonly historyCapabilities: AgentHistoryCapabilities;
   start(opts: StartOptions): Promise<void>;

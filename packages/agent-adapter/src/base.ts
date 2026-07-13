@@ -1,4 +1,5 @@
 import type {
+  AgentCapabilities,
   AgentCommand,
   AgentEvent,
   AgentHistoryCapabilities,
@@ -52,6 +53,11 @@ type QuestionResolver = (outcome: QuestionOutcome) => void;
 export abstract class BaseAgentAdapter implements AgentAdapter {
   abstract readonly kind: AgentKind;
 
+  readonly capabilities: AgentCapabilities = {
+    slashCommands: false,
+    shellCommand: false,
+  };
+
   readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
     read: false,
@@ -81,6 +87,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   async start(opts: StartOptions): Promise<void> {
     this.opts = opts;
     this.emitStatus('starting');
+    this.emit({ type: 'capabilities-update', capabilities: this.capabilities });
     await this.onStart(opts);
     this.emitStatus('idle');
   }

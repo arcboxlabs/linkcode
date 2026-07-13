@@ -1,4 +1,5 @@
 import type {
+  AgentCapabilities,
   AgentCommand,
   AgentEvent,
   ApprovalPolicyState,
@@ -106,6 +107,8 @@ export interface ConversationViewModel {
   /** Slash-command catalog from `available-commands-update` (full-replace). `null` means the agent
    * advertised none — the composer then offers no command menu. */
   availableCommands: AgentCommand[] | null;
+  /** Adapter input features from `capabilities-update`; null until the live session advertises. */
+  capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -172,6 +175,7 @@ export function createConversationBuilder(): ConversationBuilder {
   let currentModel: string | null = null;
   let currentEffort: EffortLevel | null = null;
   let availableCommands: AgentCommand[] | null = null;
+  let capabilities: AgentCapabilities | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
 
@@ -355,6 +359,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'available-commands-update':
         availableCommands = event.commands;
         break;
+      case 'capabilities-update':
+        capabilities = event.capabilities;
+        break;
       case 'status':
         status = event.status;
         break;
@@ -448,6 +455,7 @@ export function createConversationBuilder(): ConversationBuilder {
       currentModel,
       currentEffort,
       availableCommands,
+      capabilities,
       stopReason,
       pendingPermissionIds: pendingIds(approvals),
       pendingQuestionIds: pendingIds(questionAsks),

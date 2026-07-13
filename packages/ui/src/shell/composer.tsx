@@ -1,4 +1,5 @@
 import type {
+  AgentCapabilities,
   AgentCommand,
   AgentKind,
   ApprovalPolicyState,
@@ -44,7 +45,7 @@ import {
   ModelSelectorMenu,
   SessionModeChip,
 } from './composer-controls';
-import { AGENT_SHELL_SUPPORT, parseComposerDirective } from './composer-directives';
+import { parseComposerDirective } from './composer-directives';
 import { movePlusCommandStart } from './composer-plus-search';
 import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
@@ -90,10 +91,12 @@ export interface ComposerProps {
    * absent means the agent advertised none — the `/` menu then offers no command entries and a
    * typed `/name` submits as plain text. */
   agentCommands?: AgentCommand[] | null;
+  /** Stable input features advertised by the live adapter session. */
+  agentCapabilities?: AgentCapabilities | null;
   onSend: (text: string) => void;
   /** Sends a catalog command invocation; absent routes a matched `/name` through `onSend`. */
   onInvokeCommand?: (name: string, args?: string) => void;
-  /** Sends a `$`-prefixed shell passthrough; offered only for agents in `AGENT_SHELL_SUPPORT`. */
+  /** Sends a `$`-prefixed shell passthrough when the session advertises it. */
   onRunShellCommand?: (command: string) => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
@@ -136,6 +139,7 @@ export function Composer({
   currentModel,
   currentEffort,
   agentCommands,
+  agentCapabilities,
   onSend,
   onInvokeCommand,
   onRunShellCommand,
@@ -158,10 +162,10 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingCaretRef = useRef<number | null>(null);
 
-  const catalog = agentCommands ?? EMPTY_AGENT_COMMANDS;
-  const shellEnabled = Boolean(
-    agentKind && AGENT_SHELL_SUPPORT[agentKind] && onRunShellCommand && !disabled,
-  );
+  const catalog = agentCapabilities?.slashCommands
+    ? (agentCommands ?? EMPTY_AGENT_COMMANDS)
+    : EMPTY_AGENT_COMMANDS;
+  const shellEnabled = Boolean(agentCapabilities?.shellCommand && onRunShellCommand && !disabled);
   // The whole draft is one shell command while it starts with `$` — the composer shows the badge
   // and routes the submit; slash/mention menus stay out of the way (a path like /tmp inside the
   // command must not pop the command menu).

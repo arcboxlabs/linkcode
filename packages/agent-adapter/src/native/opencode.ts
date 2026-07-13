@@ -94,6 +94,7 @@ type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['cli
  */
 export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'opencode' as const;
+  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
 
   private client: OpencodeClient | null = null;
   private closeServer: (() => void) | null = null;

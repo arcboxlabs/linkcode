@@ -164,6 +164,15 @@ describe('BaseAgentAdapter question round-trip', () => {
 });
 
 describe('BaseAgentAdapter command/shell defaults', () => {
+  it('advertises its input capabilities at adapter start', async () => {
+    const a = new TestAdapter();
+    await a.start({ kind: 'pi', cwd: '/repo' });
+    expect(a.seen).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: false, shellCommand: false },
+    });
+  });
+
   it('rejects a command input unless the adapter overrides onCommand', async () => {
     const a = new TestAdapter();
     await expect(a.send({ type: 'command', name: 'compact' })).rejects.toThrow(

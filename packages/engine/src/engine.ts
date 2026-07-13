@@ -1,6 +1,7 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
+  AgentCapabilities,
   AgentCommand,
   AgentEvent,
   AgentHistoryId,
@@ -67,6 +68,8 @@ interface Session {
   /** Latest slash-command catalog the adapter advertised, replayed on attach for the same reason —
    * without it a reconnecting client's composer loses the command menu. */
   availableCommands?: AgentCommand[];
+  /** Stable adapter input surface, replayed on attach so clients never infer it from agent kind. */
+  capabilities: AgentCapabilities;
 }
 
 type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
@@ -249,20 +252,25 @@ export class Engine {
             p.input.type === 'prompt' ||
             p.input.type === 'command' ||
             p.input.type === 'shell-command';
+          if (p.input.type === 'command') {
+            const commandName = p.input.name;
+            if (
+              !session.capabilities.slashCommands ||
+              !session.availableCommands?.some((command) => command.name === commandName)
+            ) {
+              const error = new Error(`Unknown slash command: /${commandName}`);
+              this.broadcastInputRejected(p.sessionId, error.message);
+              throw error;
+            }
+          }
+          if (p.input.type === 'shell-command' && !session.capabilities.shellCommand) {
+            const error = new Error('Shell commands are not supported by this session');
+            this.broadcastInputRejected(p.sessionId, error.message);
+            throw error;
+          }
           if (startsTurn && session.turnInputActive) {
             const error = new Error(`Session is busy: ${p.sessionId}`);
-            this.transport.send(
-              createWireMessage({
-                kind: 'agent.event',
-                sessionId: p.sessionId,
-                event: {
-                  type: 'error',
-                  message: error.message,
-                  code: 'input_rejected',
-                  recoverable: true,
-                },
-              }),
-            );
+            this.broadcastInputRejected(p.sessionId, error.message);
             throw error;
           }
           if (startsTurn) session.turnInputActive = true;
@@ -306,17 +314,9 @@ export class Engine {
           } catch (err) {
             if (startsTurn && session.status !== 'running') session.turnInputActive = false;
             if (startsTurn) {
-              this.transport.send(
-                createWireMessage({
-                  kind: 'agent.event',
-                  sessionId: p.sessionId,
-                  event: {
-                    type: 'error',
-                    message: extractErrorMessage(err) ?? 'Agent input was rejected',
-                    code: 'input_rejected',
-                    recoverable: true,
-                  },
-                }),
+              this.broadcastInputRejected(
+                p.sessionId,
+                extractErrorMessage(err) ?? 'Agent input was rejected',
               );
             }
             throw err;
@@ -664,9 +664,9 @@ export class Engine {
         // Multi-device attach is implicit: events are broadcast to all clients. What gets
         // re-broadcast here is the buffered state an attaching client can't recover from a
         // history read: the live status (gates the pending-ask cards and the Stop affordance),
-        // the approval-policy advertisement (emitted once at adapter start), and any open
-        // permission/question asks (ephemeral — their event is the only carrier). Clients fold
-        // status/policy idempotently and dedupe ask events by requestId.
+        // the adapter capabilities and approval-policy advertisement (emitted at adapter start),
+        // the latest command catalog, and any open permission/question asks (ephemeral — their
+        // event is the only carrier). Clients fold state idempotently and dedupe asks by requestId.
         const attached = this.sessions.get(p.sessionId);
         if (!attached) break;
         const replay = (event: AgentEvent): void => {
@@ -684,6 +684,7 @@ export class Engine {
         if (attached.currentEffort) {
           replay({ type: 'effort-update', effort: attached.currentEffort });
         }
+        replay({ type: 'capabilities-update', capabilities: attached.capabilities });
         if (attached.availableCommands) {
           replay({ type: 'available-commands-update', commands: attached.availableCommands });
         }
@@ -785,6 +786,7 @@ export class Engine {
       status: 'starting',
       turnInputActive: false,
       pendingAsks: new Map(),
+      capabilities: adapter.capabilities,
     };
     session.unsub = adapter.onEvent((event) => {
       // The adapter invokes this synchronously; an uncaught throw here would bubble out of
@@ -833,6 +835,9 @@ export class Engine {
           case 'available-commands-update':
             session.availableCommands = event.commands;
             break;
+          case 'capabilities-update':
+            session.capabilities = event.capabilities;
+            break;
           case 'error':
             // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
             // `loggedIn: false` and the client surfaces the login cue, self-healing an out-of-band
@@ -869,6 +874,16 @@ export class Engine {
       throw new Error(`Session was closed while starting: ${sessionId}`);
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  private broadcastInputRejected(sessionId: SessionId, message: string): void {
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent.event',
+        sessionId,
+        event: { type: 'error', message, code: 'input_rejected', recoverable: true },
+      }),
+    );
   }
 
   /** Broadcast `session.notification` for notification-worthy adapter events. Classification is

@@ -69,6 +69,14 @@ export const AgentCommandSchema = z.object({
 });
 export type AgentCommand = z.infer<typeof AgentCommandSchema>;
 
+/** Input features a live adapter session accepts. Kept separate from command catalogs: catalogs
+ * change provider-side, while these booleans describe the adapter's stable input surface. */
+export const AgentCapabilitiesSchema = z.object({
+  slashCommands: z.boolean(),
+  shellCommand: z.boolean(),
+});
+export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
+
 /** Input sent up to the agent, normalized into discrete actions. */
 export const AgentInputSchema = z.discriminatedUnion('type', [
   /** A user prompt as one or more content blocks (text / image / resource …). */
@@ -181,10 +189,15 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
    * a Stop hook's `effort.level`), once the default is learned. `undefined`/never-emitted keeps the
    * client showing a placeholder rather than a guessed value. */
   z.object({ type: z.literal('effort-update'), effort: EffortLevelSchema }),
+  /** Stable input capabilities for this live adapter session. Emitted at adapter start and replayed
+   * on attach so clients never infer support from the agent kind. */
+  z.object({
+    type: z.literal('capabilities-update'),
+    capabilities: AgentCapabilitiesSchema,
+  }),
   /** The slash-command catalog the session accepts via `AgentInput.command` — emitted once the
    * adapter learns it and again on every provider-side change, full-replace semantics (consumers
-   * swap their cached list wholesale). Adapters without a command catalog never emit it, which is
-   * also the capability signal: no catalog → the client offers no command menu. */
+   * swap their cached list wholesale). */
   z.object({ type: z.literal('available-commands-update'), commands: z.array(AgentCommandSchema) }),
 
   // ── Lifecycle ──

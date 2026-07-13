@@ -265,6 +265,7 @@ const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), dropp
  */
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
+  override readonly capabilities = { slashCommands: true, shellCommand: false } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
