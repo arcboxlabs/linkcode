@@ -32,6 +32,7 @@ export * from './scripts/services-menu';
 export * from './settings/agents-settings';
 export * from './settings/providers/providers-settings';
 export * from './settings/providers/store';
+export * from './sidebar/runtime-thread-im-menu';
 export * from './surface/selection-store';
 export * from './surface/shell';
 export * from './surface/use-workbench-sessions';
