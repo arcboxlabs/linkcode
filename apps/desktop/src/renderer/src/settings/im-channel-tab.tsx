@@ -18,10 +18,11 @@ import { useCloudAccount } from '../cloud-auth/use-cloud-account';
 export function ImChannelTab(): React.ReactNode {
   const cloudAuth = useCloudAccount();
   const signedIn = cloudAuth.account !== null;
-  const overview = useCloudImOverview(signedIn);
-  const linked = signedIn && (overview.data?.accounts.length ?? 0) > 0;
-  const bindings = useCloudImBindings(linked);
-  const preferences = useCloudImPreferences(linked);
+  const accountKey = cloudAuth.account?.email ?? null;
+  const overview = useCloudImOverview(accountKey);
+  const linked = (overview.data?.accounts.length ?? 0) > 0;
+  const bindings = useCloudImBindings(linked ? accountKey : null);
+  const preferences = useCloudImPreferences(linked ? accountKey : null);
   const actions = useCloudImActions();
 
   const linkTelegram = async (code: string): Promise<ImChannelLinkOutcome> => {

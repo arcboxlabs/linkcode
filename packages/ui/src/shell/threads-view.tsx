@@ -184,6 +184,7 @@ export function ThreadsView({
             onClose={onClose}
             onToggleSessionPinned={onToggleSessionPinned}
             onTogglePreviewExpanded={onTogglePreviewExpanded}
+            ImMenuComponent={ImMenuComponent}
           />
         )}
 

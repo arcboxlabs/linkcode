@@ -12,6 +12,8 @@ function topicUrl(chatId: string, topicId: string | null): string | null {
 
 export interface RuntimeThreadImMenuProps {
   session: SessionInfo;
+  /** Scopes the IM caches to the signed-in cloud account (e.g. its email); see `useCloudImOverview`. */
+  accountKey: string | null | undefined;
   /** Opens Settings → IM Channel, for the not-yet-linked hand-off; injected by the app shell. */
   onOpenSettings?: () => void;
 }
@@ -23,11 +25,12 @@ export interface RuntimeThreadImMenuProps {
  */
 export function RuntimeThreadImMenu({
   session,
+  accountKey,
   onOpenSettings,
 }: RuntimeThreadImMenuProps): React.ReactNode {
-  const overview = useCloudImOverview(true);
+  const overview = useCloudImOverview(accountKey);
   const linked = (overview.data?.accounts.length ?? 0) > 0;
-  const bindings = useCloudImBindings(linked);
+  const bindings = useCloudImBindings(linked ? accountKey : null);
   const actions = useCloudImActions();
   const [pending, setPending] = useState(false);
 

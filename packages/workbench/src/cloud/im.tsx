@@ -98,16 +98,23 @@ const IM_OVERVIEW_KEY = 'cloud/im/overview';
 const IM_BINDINGS_KEY = 'cloud/im/bindings';
 const IM_PREFERENCES_KEY = 'cloud/im/preferences';
 
-/**
- * Linked IM accounts + registered chats. `enabled` gates the fetch on the caller's cloud session
- * so signed-out shells never hit the endpoint.
+/*
+ * Every read hook keys its cache by `accountKey` (a stable per-account identifier, e.g. the
+ * account email) for the same reason as `useCloudHosts`: accounts can switch without a renderer
+ * restart, and an account-agnostic key plus the provider-wide `keepPreviousData` would serve the
+ * previous account's IM data to the next until revalidation. A falsy key means signed out, so the
+ * endpoint is never hit.
  */
-export function useCloudImOverview(enabled: boolean): SWRResponse<CloudImOverview> {
+
+/** Linked IM accounts + registered chats for the signed-in cloud account. */
+export function useCloudImOverview(
+  accountKey: string | null | undefined,
+): SWRResponse<CloudImOverview> {
   const source = use(CloudImSourceContext);
   return useSWR<CloudImOverview>(
-    enabled && source ? IM_OVERVIEW_KEY : null,
+    accountKey && source ? [IM_OVERVIEW_KEY, accountKey] : null,
     source ? source.overview : null,
-    { revalidateOnFocus: true },
+    { revalidateOnFocus: true, keepPreviousData: false },
   );
 }
 
@@ -115,22 +122,26 @@ export function useCloudImOverview(enabled: boolean): SWRResponse<CloudImOvervie
  * Topic↔session bindings on the caller's relay. Bindings change out-of-band (from Telegram or
  * the daemon), so revalidate on focus and on a slow interval.
  */
-export function useCloudImBindings(enabled: boolean): SWRResponse<CloudImBinding[]> {
+export function useCloudImBindings(
+  accountKey: string | null | undefined,
+): SWRResponse<CloudImBinding[]> {
   const source = use(CloudImSourceContext);
   return useSWR<CloudImBinding[]>(
-    enabled && source ? IM_BINDINGS_KEY : null,
+    accountKey && source ? [IM_BINDINGS_KEY, accountKey] : null,
     source ? source.bindings : null,
-    { revalidateOnFocus: true, refreshInterval: 30000 },
+    { revalidateOnFocus: true, refreshInterval: 30000, keepPreviousData: false },
   );
 }
 
-/** Per-account IM preferences (auto-mirror). Gate on the caller's cloud session. */
-export function useCloudImPreferences(enabled: boolean): SWRResponse<CloudImPreferences> {
+/** Per-account IM preferences (auto-mirror). */
+export function useCloudImPreferences(
+  accountKey: string | null | undefined,
+): SWRResponse<CloudImPreferences> {
   const source = use(CloudImSourceContext);
   return useSWR<CloudImPreferences>(
-    enabled && source ? IM_PREFERENCES_KEY : null,
+    accountKey && source ? [IM_PREFERENCES_KEY, accountKey] : null,
     source ? source.preferences : null,
-    { revalidateOnFocus: true },
+    { revalidateOnFocus: true, keepPreviousData: false },
   );
 }
 
@@ -153,61 +164,67 @@ export function useCloudImActions(): CloudImActions | null {
   const source = use(CloudImSourceContext);
   const { mutate } = useSWRConfig();
 
+  // Read keys are `[prefix, accountKey]` tuples, so invalidation matches on the prefix.
+  const invalidate = useCallback(
+    (prefix: string) => mutate((key) => Array.isArray(key) && key[0] === prefix),
+    [mutate],
+  );
+
   const linkTelegram = useCallback(
     async (code: string) => {
       if (!source) throw new Error('CloudImProvider missing');
       const result = await source.linkTelegram(code);
-      if (result.ok) await mutate(IM_OVERVIEW_KEY);
+      if (result.ok) await invalidate(IM_OVERVIEW_KEY);
       return result;
     },
-    [source, mutate],
+    [source, invalidate],
   );
 
   const unlinkTelegram = useCallback(async () => {
     if (!source) throw new Error('CloudImProvider missing');
     await source.unlinkTelegram();
     await Promise.all([
-      mutate(IM_OVERVIEW_KEY),
-      mutate(IM_BINDINGS_KEY),
-      mutate(IM_PREFERENCES_KEY),
+      invalidate(IM_OVERVIEW_KEY),
+      invalidate(IM_BINDINGS_KEY),
+      invalidate(IM_PREFERENCES_KEY),
     ]);
-  }, [source, mutate]);
+  }, [source, invalidate]);
 
   const createBinding = useCallback(
     async (input: CloudImBindingCreate) => {
       if (!source) throw new Error('CloudImProvider missing');
       const result = await source.createBinding(input);
-      await mutate(IM_BINDINGS_KEY);
+      await invalidate(IM_BINDINGS_KEY);
       return result;
     },
-    [source, mutate],
+    [source, invalidate],
   );
 
   const setBindingPush = useCallback(
     async (sessionId: string, pushOut: boolean) => {
       if (!source) throw new Error('CloudImProvider missing');
       await source.updateBinding(sessionId, { pushOut });
-      await mutate(IM_BINDINGS_KEY);
+      await invalidate(IM_BINDINGS_KEY);
     },
-    [source, mutate],
+    [source, invalidate],
   );
 
   const deleteBinding = useCallback(
     async (sessionId: string) => {
       if (!source) throw new Error('CloudImProvider missing');
       await source.deleteBinding(sessionId);
-      await mutate(IM_BINDINGS_KEY);
+      await invalidate(IM_BINDINGS_KEY);
     },
-    [source, mutate],
+    [source, invalidate],
   );
 
   const setPreferences = useCallback(
     async (pref: CloudImPreferences) => {
       if (!source) throw new Error('CloudImProvider missing');
       await source.setPreferences(pref);
-      await mutate(IM_PREFERENCES_KEY);
+      await invalidate(IM_PREFERENCES_KEY);
     },
-    [source, mutate],
+    [source, invalidate],
   );
 
   if (!source) return null;
