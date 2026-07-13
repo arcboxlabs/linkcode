@@ -1,15 +1,22 @@
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from 'coss-ui/components/menu';
 import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
-import { PinIcon, XIcon } from 'lucide-react';
+import { EllipsisIcon, PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 import { withTooltip } from '../../chat/with-tooltip';
 import { cn } from '../../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
-import { ROW_ACTION_CLASS, ROW_HOVER_PE_CLASS, RowActionsCluster } from './row-actions';
+import {
+  ROW_ACTION_CLASS,
+  ROW_HOVER_PE_CLASS,
+  ROW_HOVER_PE_WIDE_CLASS,
+  RowActionsCluster,
+} from './row-actions';
+import type { ThreadImMenuComponentType } from './thread-im-menu';
 
 export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   starting: 'bg-info',
@@ -31,6 +38,8 @@ export interface ThreadRowProps {
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
   onClose: () => void;
   onTogglePin: () => void;
+  /** Runtime-backed IM menu items; the ellipsis menu only renders when this is provided. */
+  ImMenuComponent?: ThreadImMenuComponentType;
 }
 
 /** One thread row: ghost agent icon, single-line title, status dot. The relative time lives in a tooltip. */
@@ -43,6 +52,7 @@ export function ThreadRow({
   onSelect,
   onClose,
   onTogglePin,
+  ImMenuComponent,
 }: ThreadRowProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const agent = AGENT_LABELS[session.kind];
@@ -68,7 +78,7 @@ export function ThreadRow({
             // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
             // PingFang Medium and mixed-script titles read artificially bold.
             'data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
-            ROW_HOVER_PE_CLASS,
+            ImMenuComponent ? ROW_HOVER_PE_WIDE_CLASS : ROW_HOVER_PE_CLASS,
           )}
         >
           <span className="relative shrink-0">
@@ -86,6 +96,20 @@ export function ThreadRow({
         createdAtLabel,
       )}
       <RowActionsCluster>
+        {ImMenuComponent && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={t('threadActions')}
+              title={t('threadActions')}
+              render={<Button className={ROW_ACTION_CLASS} size="icon-xs" variant="ghost" />}
+            >
+              <EllipsisIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-56">
+              <ImMenuComponent session={session} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <Button
           aria-label={pinned ? t('unpinThread') : t('pinThread')}
           title={pinned ? t('unpinThread') : t('pinThread')}

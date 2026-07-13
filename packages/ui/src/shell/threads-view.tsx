@@ -91,6 +91,7 @@ export function ThreadsView({
   onToggleSectionCollapsed,
   onTogglePreviewExpanded,
   BranchStatusComponent,
+  ImMenuComponent,
 }: ThreadsViewProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const openSections = SIDEBAR_SECTIONS.filter((section) => !collapsedSections.includes(section));
@@ -183,6 +184,7 @@ export function ThreadsView({
             onClose={onClose}
             onToggleSessionPinned={onToggleSessionPinned}
             onTogglePreviewExpanded={onTogglePreviewExpanded}
+            ImMenuComponent={ImMenuComponent}
           />
         )}
 
@@ -233,6 +235,7 @@ export function ThreadsView({
                     onArchiveWorkspace={onArchiveWorkspace}
                     onTogglePreviewExpanded={onTogglePreviewExpanded}
                     BranchStatusComponent={BranchStatusComponent}
+                    ImMenuComponent={ImMenuComponent}
                   />
                 ))}
               </Accordion>
@@ -255,6 +258,7 @@ export function ThreadsView({
           onToggleSessionPinned={onToggleSessionPinned}
           onStartDraft={onStartDraft}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
+          ImMenuComponent={ImMenuComponent}
         />
       </Accordion>
     </DragDropProvider>
@@ -274,6 +278,7 @@ function ThreadGroupSection({
   onArchiveWorkspace,
   onTogglePreviewExpanded,
   BranchStatusComponent,
+  ImMenuComponent,
 }: Pick<
   ThreadGroupActions,
   | 'onSelect'
@@ -284,6 +289,7 @@ function ThreadGroupSection({
   | 'onArchiveWorkspace'
   | 'onTogglePreviewExpanded'
   | 'BranchStatusComponent'
+  | 'ImMenuComponent'
 > &
   Pick<ThreadGroupState, 'activeId' | 'pinnedSessionIds'> & {
     group: ThreadGroupViewModel;
@@ -318,6 +324,7 @@ function ThreadGroupSection({
       onSelect={() => onSelect(session.sessionId)}
       onClose={() => onClose(session.sessionId)}
       onTogglePin={() => onToggleSessionPinned(session.sessionId)}
+      ImMenuComponent={ImMenuComponent}
     />
   );
 

@@ -1,5 +1,5 @@
 import { SettingsSidebarNav, ShellSidebar, TitleStrip } from '@linkcode/ui';
-import { BellIcon, BotIcon, KeyRoundIcon, SettingsIcon, WifiIcon } from 'lucide-react';
+import { BellIcon, BotIcon, KeyRoundIcon, SendIcon, SettingsIcon, WifiIcon } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { useTranslations } from 'use-intl';
 
@@ -51,6 +51,13 @@ export function SettingsLayout(): React.ReactNode {
                 active: isActive(pathname, 'agents'),
                 render: <Link to="/settings/agents" />,
               },
+              {
+                key: 'messaging',
+                icon: <SendIcon className="size-4" />,
+                label: t('tabs.imChannel'),
+                active: isActive(pathname, 'messaging'),
+                render: <Link to="/settings/messaging" />,
+              },
             ]}
           />
         </ShellSidebar>
@@ -74,7 +81,7 @@ export function SettingsLayout(): React.ReactNode {
 
 function isActive(
   pathname: string,
-  section: '' | 'connection' | 'notifications' | 'providers' | 'agents',
+  section: '' | 'connection' | 'notifications' | 'providers' | 'agents' | 'messaging',
 ): boolean {
   return pathname.replace(/\/$/, '') === `/settings${section ? `/${section}` : ''}`;
 }

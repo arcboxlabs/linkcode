@@ -4,6 +4,7 @@ import { SidebarGroup, SidebarMenu } from 'coss-ui/components/sidebar';
 import { useTranslations } from 'use-intl';
 import { SectionAccordionTrigger } from './section-header';
 import { ShowMoreToggle } from './show-more-toggle';
+import type { ThreadImMenuComponentType } from './thread-im-menu';
 import { ThreadRow } from './thread-row';
 
 export interface PinnedSectionProps {
@@ -20,6 +21,7 @@ export interface PinnedSectionProps {
   onClose: (id: SessionId) => void;
   onToggleSessionPinned: (id: SessionId) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
+  ImMenuComponent?: ThreadImMenuComponentType;
 }
 
 /**
@@ -38,6 +40,7 @@ export function PinnedSection({
   onClose,
   onToggleSessionPinned,
   onTogglePreviewExpanded,
+  ImMenuComponent,
 }: PinnedSectionProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
 
@@ -57,6 +60,7 @@ export function PinnedSection({
               onSelect={() => onSelect(session.sessionId)}
               onClose={() => onClose(session.sessionId)}
               onTogglePin={() => onToggleSessionPinned(session.sessionId)}
+              ImMenuComponent={ImMenuComponent}
             />
           ))}
           {hasOverflow && (

@@ -17,5 +17,11 @@ export type {
   ThreadGroupActions,
   ThreadGroupState,
 } from './thread-group-actions';
+export type {
+  ThreadImMenuChatView,
+  ThreadImMenuComponentType,
+  ThreadImMenuItemsProps,
+} from './thread-im-menu';
+export { ThreadImMenuItems } from './thread-im-menu';
 export type { ThreadRowProps } from './thread-row';
 export { ThreadRow } from './thread-row';

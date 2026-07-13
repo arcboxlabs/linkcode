@@ -24,6 +24,7 @@
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
     "@sentry/react": "10.60.0",
+    "better-auth": "1.7.0-rc.1",
     "coss-ui": "workspace:*",
     "foxact": "^0.3.8",
     "foxts": "^5.8.0",

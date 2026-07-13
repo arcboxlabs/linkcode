@@ -34,6 +34,17 @@ export const sessionWireVariants = [
   }),
   z.object({ kind: z.literal('session.attach'), sessionId: SessionIdSchema }),
   z.object({ kind: z.literal('session.detach'), sessionId: SessionIdSchema }),
+  /**
+   * Connection-scoped `agent.event` delivery (answered by the Hub, not the Engine). `all` — the
+   * default for every new connection — is the historical broadcast behavior desktop/webview rely
+   * on. `attached` narrows delivery to sessions the connection subscribed via `session.attach`,
+   * so a scoped client (the cloud IM bridge) only ever receives events for its bound sessions.
+   */
+  z.object({
+    kind: z.literal('subscription.set'),
+    clientReqId: z.string().min(1),
+    mode: z.enum(['all', 'attached']),
+  }),
   /** Resume a persisted (cold) session by its Link Code id; replies `session.started` with the SAME id. */
   z.object({
     kind: z.literal('session.resume'),

@@ -7,6 +7,7 @@ import {
   TimestampSchema,
 } from './common';
 import { ContentBlockSchema } from './content';
+import { ImPlatformSchema } from './im';
 import { PermissionOutcomeSchema, PermissionRequestSchema } from './permission';
 import { PlanSchema } from './plan';
 import { QuestionOutcomeSchema, QuestionRequestSchema } from './question';
@@ -43,6 +44,8 @@ export const StartOptionsSchema = z.object({
   mcpServers: z.array(McpServerSchema).optional(),
   /** Extra directories the agent may access beyond `cwd`. */
   additionalDirectories: z.array(z.string()).optional(),
+  /** The IM platform starting this session (attribution/audit); omitted by LinkCode clients. */
+  createdVia: ImPlatformSchema.optional(),
   /** Free-form adapter-specific parameters. */
   config: z.record(z.string(), z.unknown()).optional(),
 });

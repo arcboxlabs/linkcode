@@ -7,6 +7,10 @@ import { cn } from '../../lib/cn';
 export const ROW_HOVER_PE_CLASS =
   'group-hover/menu-item:pe-15 group-has-[:focus-visible]/menu-item:pe-15 group-has-data-popup-open/menu-item:pe-15 sm:group-hover/menu-item:pe-13 sm:group-has-[:focus-visible]/menu-item:pe-13 sm:group-has-data-popup-open/menu-item:pe-13';
 
+/** Same reservation for rows carrying a third action (the thread IM ellipsis menu). */
+export const ROW_HOVER_PE_WIDE_CLASS =
+  'group-hover/menu-item:pe-21 group-has-[:focus-visible]/menu-item:pe-21 group-has-data-popup-open/menu-item:pe-21 sm:group-hover/menu-item:pe-19 sm:group-has-[:focus-visible]/menu-item:pe-19 sm:group-has-data-popup-open/menu-item:pe-19';
+
 /**
  * Visibility behavior shared by the coss-ui action buttons. `data-popup-open` is base-ui's
  * open-trigger attribute; it keeps the cluster stable while its popup is open.

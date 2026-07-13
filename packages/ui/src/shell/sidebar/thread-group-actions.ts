@@ -1,5 +1,6 @@
 import type { SessionId, WorkspaceId } from '@linkcode/schema';
 import type { BranchStatusComponentType } from './branch-status';
+import type { ThreadImMenuComponentType } from './thread-im-menu';
 
 /** The sidebar's top-level collapsible sections. Mirrored by the workbench collapse store. */
 export type SidebarSectionKey = 'pinned' | 'projects' | 'chats';
@@ -22,6 +23,8 @@ export interface ThreadGroupActions {
   onToggleSectionCollapsed: (section: SidebarSectionKey) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
   BranchStatusComponent?: BranchStatusComponentType;
+  /** Per-thread IM (Telegram) menu items; the row's ellipsis menu renders only when provided. */
+  ImMenuComponent?: ThreadImMenuComponentType;
 }
 
 /** The per-group selection/pin state that travels alongside `ThreadGroupActions`. */

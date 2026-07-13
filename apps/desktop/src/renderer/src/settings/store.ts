@@ -11,6 +11,7 @@ export type SettingsCategory =
   | 'about'
   | 'providers'
   | 'agents'
+  | 'imChannel'
   | 'history-import';
 
 /**

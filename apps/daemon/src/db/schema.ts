@@ -15,6 +15,8 @@ export const sessions = sqliteTable(
     originType: text('origin_type', { enum: ['created', 'imported'] }).notNull(),
     originHistoryId: text('origin_history_id'),
     originImportedAt: integer('origin_imported_at'),
+    /** IM platform the session was created from (`SessionRecord.createdVia`); null for LinkCode clients. */
+    createdVia: text('created_via'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },

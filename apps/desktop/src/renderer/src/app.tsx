@@ -1,6 +1,7 @@
 import type { CloudHost } from '@linkcode/workbench';
 import {
   CloudHostsProvider,
+  CloudImProvider,
   ConnectionState,
   SessionNotifier,
   useNavigationHistoryStore,
@@ -20,8 +21,10 @@ import { DesktopWindowControls } from './shell/chrome/window-controls';
 import { ConnectionSkeleton } from './shell/connection-skeleton';
 import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
 
-/** The cloud host list comes from main (it holds the keychain session); see preload's bridge. */
+/** Cloud data comes from main (it holds the keychain session); see preload's bridge. */
 const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHosts();
+// The preload bridge implements CloudImSource verbatim; hand it to the provider as-is.
+const cloudImSource = window.linkcodeCloud.im;
 
 export function DesktopApp(): React.ReactNode {
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
@@ -30,25 +33,27 @@ export function DesktopApp(): React.ReactNode {
   return (
     <WorkbenchAppProviders locale={localeOverride}>
       <CloudHostsProvider source={listCloudHosts}>
-        <WorkbenchProviders
-          connectionSource={desktopDaemonConnectionSource}
-          // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
-          // URL), yet its history-import panel can still use the data plane once connected.
-          ungated={settingsOpen ? <SettingsView /> : null}
-          fallback={
+        <CloudImProvider source={cloudImSource}>
+          <WorkbenchProviders
+            connectionSource={desktopDaemonConnectionSource}
+            // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
+            // URL), yet its history-import panel can still use the data plane once connected.
+            ungated={settingsOpen ? <SettingsView /> : null}
+            fallback={
+              <SettingsUnderlay>
+                <DesktopConnectionFallback />
+              </SettingsUnderlay>
+            }
+          >
+            <SessionNotifier present={presentDesktopNotification} />
             <SettingsUnderlay>
-              <DesktopConnectionFallback />
+              <Workbench shellComponent={DesktopWorkbenchShell} />
             </SettingsUnderlay>
-          }
-        >
-          <SessionNotifier present={presentDesktopNotification} />
-          <SettingsUnderlay>
-            <Workbench shellComponent={DesktopWorkbenchShell} />
-          </SettingsUnderlay>
-        </WorkbenchProviders>
-        {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
-            can always minimize/maximize/close — including while the daemon is connecting or down. */}
-        <DesktopWindowControls />
+          </WorkbenchProviders>
+          {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
+              can always minimize/maximize/close — including while the daemon is connecting or down. */}
+          <DesktopWindowControls />
+        </CloudImProvider>
       </CloudHostsProvider>
     </WorkbenchAppProviders>
   );
