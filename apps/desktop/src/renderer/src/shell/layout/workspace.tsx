@@ -99,28 +99,24 @@ export function DesktopWorkspace({
     if (event.target !== event.currentTarget) return;
     rearmTransition(event.propertyName);
   };
-  const handleTransitionFinish = (event: React.TransitionEvent<HTMLDivElement>): void => {
+  const handleTransitionEnd = (event: React.TransitionEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return;
-    const matchingTransitionIsLive = event.currentTarget.getAnimations().some((animation) => {
-      if (!('transitionProperty' in animation)) return false;
-      return (
-        animation.transitionProperty === event.propertyName &&
-        (animation.pending || animation.playState === 'running')
-      );
-    });
-    if (matchingTransitionIsLive) {
-      rearmTransition(event.propertyName);
-      return;
-    }
     settleTransition(event.propertyName);
+  };
+  const handleTransitionCancel = (event: React.TransitionEvent<HTMLDivElement>): void => {
+    if (event.target !== event.currentTarget) return;
+    // A retargeted transition can dispatch the canceled generation before the replacement's
+    // transitionrun. Cancel therefore never proves the grid has stopped; transitionend or the
+    // versioned fallback owns settlement.
+    rearmTransition(event.propertyName);
   };
 
   return (
     <div
       className="linkcode-shell-grid isolate h-full min-h-0 min-w-0"
       onTransitionRun={handleTransitionRun}
-      onTransitionEnd={handleTransitionFinish}
-      onTransitionCancel={handleTransitionFinish}
+      onTransitionEnd={handleTransitionEnd}
+      onTransitionCancel={handleTransitionCancel}
     >
       {/* The sidebar cell's right edge is the animated divider, so the cell owns the
             border (the aside's own border-r is suppressed by the shell). */}
