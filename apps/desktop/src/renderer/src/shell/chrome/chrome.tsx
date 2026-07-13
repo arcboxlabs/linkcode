@@ -211,6 +211,8 @@ export function DesktopChrome({
             ref={chromeRootRef}
             className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
           >
+            {/* Local layout: every grid segment stays in row 1; the expanded main segment
+                overlaps the hidden right segment at z-10, below the stable rails at z-20. */}
             <ChromeSegmentGrid
               header={header}
               expandedPanel={expandedPanel}
@@ -355,7 +357,7 @@ function ChromeSegment({
     // its labels to icons when its host segment gets narrow (`@max-*/chrome-segment`).
     <div
       className={cn(
-        '@container/chrome-segment relative min-w-0 overflow-hidden backdrop-blur-xl',
+        '@container/chrome-segment relative row-start-1 min-w-0 overflow-hidden backdrop-blur-xl',
         hidden && 'invisible',
         className,
       )}
@@ -448,7 +450,7 @@ function StableLeftChrome({
   children: React.ReactNode;
 }): React.ReactNode {
   return (
-    <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-(--lc-chrome-edge)">
+    <div className="pointer-events-none absolute top-0 left-0 z-20 flex h-full items-center px-(--lc-chrome-edge)">
       <div
         ref={contentRef}
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
@@ -536,7 +538,7 @@ function StableRightChrome({
   children: React.ReactNode;
 }): React.ReactNode {
   return (
-    <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-(--lc-chrome-edge)">
+    <div className="pointer-events-none absolute top-0 right-0 z-20 flex h-full items-center justify-end px-(--lc-chrome-edge)">
       <div
         ref={contentRef}
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
