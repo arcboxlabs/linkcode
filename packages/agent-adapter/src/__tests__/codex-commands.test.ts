@@ -183,9 +183,28 @@ describe('CodexAdapter slash commands', () => {
 
     adapter.fake.notify('skills/changed', {});
 
-    await vi.waitFor(() => expect(catalog(events)).toHaveLength(2));
+    await vi.waitFor(() => expect(catalog(events)).toHaveLength(3));
     const refreshed = catalog(events).at(-1);
     expect(refreshed?.commands.map((command) => command.name)).toEqual(['compact', 'new']);
+  });
+
+  it('drops invalidated skill paths when the refresh fails', async () => {
+    const adapter = new TestCodex(
+      response({ name: 'old', description: 'Old', path: '/skills/old.md', enabled: true }),
+    );
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    adapter.fake.rejectSkills = true;
+
+    adapter.fake.notify('skills/changed', {});
+
+    await vi.waitFor(() => expect(catalog(events)).toHaveLength(3));
+    const latest = catalog(events).at(-1);
+    expect(latest?.commands.map((command) => command.name)).toEqual(['compact']);
+    await expect(adapter.send({ type: 'command', name: 'old' })).rejects.toThrow(
+      "codex: unknown slash command '/old'",
+    );
   });
 
   it('queues structured skill inputs behind an active turn', async () => {

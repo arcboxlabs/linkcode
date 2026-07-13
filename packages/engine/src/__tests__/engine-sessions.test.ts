@@ -101,8 +101,10 @@ class GatedStartAdapter extends FakeAdapter {
 /** An adapter whose send() blocks until released, to interleave an attach with an in-flight response. */
 class GatedSendAdapter extends FakeAdapter {
   releaseSend: () => void = noop;
+  sendCount = 0;
 
   override send(_input: AgentInput): Promise<void> {
+    this.sendCount += 1;
     return new Promise((resolve) => {
       this.releaseSend = resolve;
     });
@@ -463,6 +465,54 @@ describe('engine attach replay', () => {
       { type: 'user-message', content: [{ type: 'text', text: '/review src/index.ts' }] },
       { type: 'user-message', content: [{ type: 'text', text: '$ git status' }] },
     ]);
+  });
+
+  it('rejects a concurrent turn input before echoing or dispatching it', async () => {
+    const h = harness(new InMemorySessionStore(), () => new GatedSendAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const adapter = nullthrow(h.adapters[0]) as GatedSendAdapter;
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r-first',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('first')] },
+    });
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r-second',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('second')] },
+    });
+
+    expect(adapter.sendCount).toBe(1);
+    expect(
+      h.sent.filter(
+        (payload) => payload.kind === 'agent.event' && payload.event.type === 'user-message',
+      ),
+    ).toHaveLength(1);
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'r-second',
+      message: `Error: Session is busy: ${sessionId}`,
+    });
+    expect(h.sent).toContainEqual({
+      kind: 'agent.event',
+      sessionId,
+      event: {
+        type: 'error',
+        message: `Session is busy: ${sessionId}`,
+        code: 'input_rejected',
+        recoverable: true,
+      },
+    });
+    adapter.releaseSend();
   });
 
   it('stops replaying an ask once its response arrived', async () => {

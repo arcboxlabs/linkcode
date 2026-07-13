@@ -510,7 +510,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
     this.q = q;
     void this.consume(q);
-    await this.publishCommands(q);
+    // Catalog discovery is optional and may wait on CLI initialization indefinitely. Do not hold
+    // session.start behind it; publish whenever the snapshot becomes available.
+    void this.publishCommands(q);
     if (this.effort !== undefined && this.effort !== 'max') {
       try {
         await q.applyFlagSettings(effortFlagSettings(this.effort));

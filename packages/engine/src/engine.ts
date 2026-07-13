@@ -49,6 +49,9 @@ interface Session {
   adapter: AgentAdapter;
   unsub: Unsubscribe;
   status: SessionInfo['status'];
+  /** Engine-owned input gate: adapters differ in whether send() blocks for dispatch or a full turn,
+   * so the host serializes turn-initiating inputs until the adapter reports idle/stopped. */
+  turnInputActive: boolean;
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
@@ -242,11 +245,31 @@ export class Engine {
             this.sessions.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
+          const startsTurn =
+            p.input.type === 'prompt' ||
+            p.input.type === 'command' ||
+            p.input.type === 'shell-command';
+          if (startsTurn && session.turnInputActive) {
+            const error = new Error(`Session is busy: ${p.sessionId}`);
+            this.transport.send(
+              createWireMessage({
+                kind: 'agent.event',
+                sessionId: p.sessionId,
+                event: {
+                  type: 'error',
+                  message: error.message,
+                  code: 'input_rejected',
+                  recoverable: true,
+                },
+              }),
+            );
+            throw error;
+          }
+          if (startsTurn) session.turnInputActive = true;
           // Echo the user's prompt into the broadcast stream (and set the title) before awaiting
-          // send: turn-blocking adapters (e.g. CodexAdapter, whose `send` waits for the whole
-          // streamed turn to resolve) would otherwise delay the echo until after the assistant's
-          // reply — or forever, if the turn hangs. A failed send still surfaces to the client, via
-          // tryReply's `request.failed` reply, so this doesn't reintroduce a silent "ghost" message.
+          // send: provider events can outrun the dispatch acknowledgement, so waiting would let
+          // assistant output arrive before its user turn. A failed send is broadcast as an explicit
+          // input_rejected error below as well as replying request.failed to the originating client.
           if (p.input.type === 'prompt') {
             this.transport.send(
               createWireMessage({
@@ -278,7 +301,29 @@ export class Engine {
           if (p.input.type === 'permission-response' || p.input.type === 'question-response') {
             session.pendingAsks.delete(p.input.requestId);
           }
-          await session.adapter.send(p.input);
+          try {
+            await session.adapter.send(p.input);
+          } catch (err) {
+            if (startsTurn && session.status !== 'running') session.turnInputActive = false;
+            if (startsTurn) {
+              this.transport.send(
+                createWireMessage({
+                  kind: 'agent.event',
+                  sessionId: p.sessionId,
+                  event: {
+                    type: 'error',
+                    message: extractErrorMessage(err) ?? 'Agent input was rejected',
+                    code: 'input_rejected',
+                    recoverable: true,
+                  },
+                }),
+              );
+            }
+            throw err;
+          }
+          // Synchronous controls such as Codex /compact may not produce lifecycle events. A real
+          // turn has reported running by this point and stays gated until its idle/stopped event.
+          if (startsTurn && session.status !== 'running') session.turnInputActive = false;
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -734,7 +779,13 @@ export class Engine {
   ): Promise<void> {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
-    const session: Session = { adapter, unsub: noop, status: 'starting', pendingAsks: new Map() };
+    const session: Session = {
+      adapter,
+      unsub: noop,
+      status: 'starting',
+      turnInputActive: false,
+      pendingAsks: new Map(),
+    };
     session.unsub = adapter.onEvent((event) => {
       // The adapter invokes this synchronously; an uncaught throw here would bubble out of
       // whatever triggered the event (the adapter's own internals, in most cases) instead of
@@ -743,6 +794,10 @@ export class Engine {
         switch (event.type) {
           case 'status':
             session.status = event.status;
+            if (event.status === 'running') session.turnInputActive = true;
+            if (event.status === 'idle' || event.status === 'stopped') {
+              session.turnInputActive = false;
+            }
             // A turn boundary settles every ask: the adapter's teardown has resolved them
             // (cancelled) — replaying one after this would present an unanswerable card.
             if (event.status === 'idle' || event.status === 'stopped') session.pendingAsks.clear();

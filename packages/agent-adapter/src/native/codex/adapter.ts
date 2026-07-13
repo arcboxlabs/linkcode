@@ -557,9 +557,9 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** Best-effort full catalog refresh. `skills/changed` is only an invalidation notification, so
-   * every push re-runs `skills/list`; a transient failure keeps the last known skill paths while
-   * `/compact` remains available. */
+  /** Best-effort full catalog refresh. `skills/changed` invalidates every cached provider path
+   * before re-running `skills/list`; refresh failures therefore fail closed while the local
+   * `/compact` control remains available. */
   private async publishCommands(server: CodexServerHandle): Promise<void> {
     const generation = ++this.skillsRefreshGeneration;
     try {
@@ -577,11 +577,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       for (const skill of skills) this.skillCommands.set(skill.name, skill);
       this.emitCommands([COMPACT_COMMAND, ...skills.map(({ path: _path, ...command }) => command)]);
     } catch {
-      if (
-        this.server === server &&
-        generation === this.skillsRefreshGeneration &&
-        this.skillCommands.size === 0
-      ) {
+      if (this.server === server && generation === this.skillsRefreshGeneration) {
+        this.skillCommands.clear();
         this.emitCommands([COMPACT_COMMAND]);
       }
     }
@@ -715,7 +712,11 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
       case 'skills/changed': {
         const server = this.server;
-        if (server) void this.publishCommands(server);
+        if (server) {
+          this.skillCommands.clear();
+          this.emitCommands([COMPACT_COMMAND]);
+          void this.publishCommands(server);
+        }
         break;
       }
       case 'error': {

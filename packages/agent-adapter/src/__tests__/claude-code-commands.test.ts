@@ -128,6 +128,22 @@ function commandUpdates(
 }
 
 describe('ClaudeCodeAdapter slash commands', () => {
+  it('does not block adapter start while command discovery is pending', async () => {
+    let resolveCatalog: ((commands: unknown[]) => void) | undefined;
+    const started = makeAdapter((q) => {
+      q.supportedCommands.mockReturnValue(
+        new Promise((resolve) => {
+          resolveCatalog = resolve;
+        }),
+      );
+    });
+
+    const { events } = await started;
+    expect(commandUpdates(events)).toHaveLength(0);
+    resolveCatalog?.([{ name: 'review', description: 'Review code' }]);
+    await vi.waitFor(() => expect(commandUpdates(events)).toHaveLength(1));
+  });
+
   it('publishes the catalog at adapter start, before the first prompt', async () => {
     const { events } = await makeAdapter((q) => {
       q.supportedCommands.mockResolvedValue([

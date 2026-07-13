@@ -188,6 +188,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * bumps the epoch, arms the turn-liveness flags, and announces `running`. Returns the epoch so a
    * fire-and-not-await RPC failure can check it still owns the turn before touching it. */
   private beginTurn(): number {
+    if (this.turnActive || this.cancelling) {
+      throw new Error('opencode: session is busy');
+    }
     this.turnEpoch += 1;
     this.turnActive = true;
     this.turnStarted = false;

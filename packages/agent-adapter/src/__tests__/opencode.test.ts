@@ -1044,7 +1044,7 @@ describe('OpenCodeAdapter command dispatch', () => {
     expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
   });
 
-  it('ignores a stale session.command failure once a newer turn has already been dispatched', async () => {
+  it('rejects a concurrent command without replacing the active turn state', async () => {
     const { adapter, events } = await makeAdapter();
     let resolveFirst: ((value: unknown) => void) | undefined;
     client.session.command.mockImplementationOnce(
@@ -1055,15 +1055,15 @@ describe('OpenCodeAdapter command dispatch', () => {
     );
 
     void adapter.send({ type: 'command', name: 'first' });
-    // A newer turn (dispatched before the first command's HTTP response ever settles) now owns
-    // turnEpoch.
-    await adapter.send({ type: 'command', name: 'second' });
+    await expect(adapter.send({ type: 'command', name: 'second' })).rejects.toThrow(
+      'opencode: session is busy',
+    );
+    expect(client.session.command).toHaveBeenCalledTimes(1);
     events.length = 0;
 
-    resolveFirst?.({ error: { message: 'stale failure' } });
-    await drained();
-    expect(errors(events)).toHaveLength(0);
-    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(false);
+    resolveFirst?.({ error: { message: 'first failure' } });
+    await vi.waitFor(() => expect(errors(events)).toHaveLength(1));
+    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
   });
 });
 
