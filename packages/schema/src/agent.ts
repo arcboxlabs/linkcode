@@ -59,10 +59,31 @@ export type StartOptions = z.infer<typeof StartOptionsSchema>;
 export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
 export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
+/** A provider slash command the session can invoke, normalized across agents (claude-code
+ * `SlashCommand`, opencode `Command`). `name` carries no leading slash. */
+export const AgentCommandSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  /** Hint for the command's arguments (e.g. "<file>"), when the provider supplies one. */
+  argumentHint: z.string().optional(),
+});
+export type AgentCommand = z.infer<typeof AgentCommandSchema>;
+
 /** Input sent up to the agent, normalized into discrete actions. */
 export const AgentInputSchema = z.discriminatedUnion('type', [
   /** A user prompt as one or more content blocks (text / image / resource …). */
   z.object({ type: z.literal('prompt'), content: z.array(ContentBlockSchema) }),
+  /** Invoke a provider slash command by name (advertised via `available-commands-update`). Only
+   * adapters that emit a command catalog accept this; others reject it. */
+  z.object({
+    type: z.literal('command'),
+    name: z.string().min(1),
+    /** The raw argument text the user typed after the command name, if any. */
+    arguments: z.string().optional(),
+  }),
+  /** Run a raw shell command in the session's working directory, outside the model loop (the
+   * user's `$` input). Only adapters whose provider has a shell passthrough accept this. */
+  z.object({ type: z.literal('shell-command'), command: z.string().min(1) }),
   /** Cancel the in-flight turn (ACP session/cancel). */
   z.object({ type: z.literal('cancel') }),
   /** Switch the active session mode. */
@@ -160,6 +181,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
    * a Stop hook's `effort.level`), once the default is learned. `undefined`/never-emitted keeps the
    * client showing a placeholder rather than a guessed value. */
   z.object({ type: z.literal('effort-update'), effort: EffortLevelSchema }),
+  /** The slash-command catalog the session accepts via `AgentInput.command` — emitted once the
+   * adapter learns it and again on every provider-side change, full-replace semantics (consumers
+   * swap their cached list wholesale). Adapters without a command catalog never emit it, which is
+   * also the capability signal: no catalog → the client offers no command menu. */
+  z.object({ type: z.literal('available-commands-update'), commands: z.array(AgentCommandSchema) }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),
