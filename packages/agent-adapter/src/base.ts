@@ -1,4 +1,5 @@
 import type {
+  AgentCommand,
   AgentEvent,
   AgentHistoryCapabilities,
   AgentHistoryId,
@@ -101,6 +102,12 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       case 'prompt':
         await this.onPrompt(input.content);
         return;
+      case 'command':
+        await this.onCommand(input.name, input.arguments);
+        return;
+      case 'shell-command':
+        await this.onShellCommand(input.command);
+        return;
       case 'cancel':
         await this.onCancel();
         // The interrupted turn won't deliver completion signals for whatever was in flight.
@@ -149,6 +156,15 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   // ── Lifecycle hooks for subclasses ──
   protected abstract onStart(opts: StartOptions): Promise<void>;
   protected abstract onPrompt(content: ContentBlock[]): Promise<void>;
+  /** Default: reject. Only adapters that advertise a catalog via `available-commands-update`
+   * override this. */
+  protected onCommand(_name: string, _args?: string): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: slash commands are not supported`));
+  }
+  /** Default: reject. Only adapters whose provider has a shell passthrough override this. */
+  protected onShellCommand(_command: string): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: shell commands are not supported`));
+  }
   protected onCancel(): Promise<void> {
     return Promise.resolve();
   }
@@ -279,6 +295,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     if (this.reflectedEffort === effort) return;
     this.reflectedEffort = effort;
     this.emit({ type: 'effort-update', effort });
+  }
+  /** Announce the session's slash-command catalog (full-replace semantics — see schema). */
+  protected emitCommands(commands: AgentCommand[]): void {
+    this.emit({ type: 'available-commands-update', commands });
   }
   protected emitStop(stopReason: StopReason): void {
     this.emit({ type: 'stop', stopReason });

@@ -423,6 +423,48 @@ describe('engine attach replay', () => {
     expect(replayed).toContainEqual(QUESTION_ASK);
   });
 
+  it('replays the latest command catalog to an attaching client', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'available-commands-update', commands: [{ name: 'stale' }] });
+    adapter.emit({
+      type: 'available-commands-update',
+      commands: [{ name: 'compact', description: 'Compact the context' }],
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const catalogs = eventsAfter(sent, mark).filter((e) => e.type === 'available-commands-update');
+    // Full-replace semantics: only the latest catalog is replayed.
+    expect(catalogs).toEqual([
+      {
+        type: 'available-commands-update',
+        commands: [{ name: 'compact', description: 'Compact the context' }],
+      },
+    ]);
+  });
+
+  it('echoes command and shell inputs as the text the user typed', async () => {
+    const { sent, inject, sessionId } = await startedHarness();
+    const mark = sent.length;
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r-cmd',
+      sessionId,
+      input: { type: 'command', name: 'review', arguments: 'src/index.ts' },
+    });
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r-sh',
+      sessionId,
+      input: { type: 'shell-command', command: 'git status' },
+    });
+    const echoes = eventsAfter(sent, mark).filter((e) => e.type === 'user-message');
+    expect(echoes).toEqual([
+      { type: 'user-message', content: [{ type: 'text', text: '/review src/index.ts' }] },
+      { type: 'user-message', content: [{ type: 'text', text: '$ git status' }] },
+    ]);
+  });
+
   it('stops replaying an ask once its response arrived', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({ type: 'status', status: 'running' });

@@ -1,6 +1,7 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
+  AgentCommand,
   AgentEvent,
   AgentHistoryId,
   AgentRuntimes,
@@ -60,6 +61,9 @@ interface Session {
    * placeholder instead of the value the session is actually running on. */
   currentModel?: string;
   currentEffort?: EffortLevel;
+  /** Latest slash-command catalog the adapter advertised, replayed on attach for the same reason —
+   * without it a reconnecting client's composer loses the command menu. */
+  availableCommands?: AgentCommand[];
 }
 
 type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
@@ -252,6 +256,22 @@ export class Engine {
               }),
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
+          }
+          // Command/shell inputs echo as the text the user typed (`/name args` / `$ cmd`) so the
+          // transcript shows the invocation; they never drive the title (a session named "/compact"
+          // helps nobody).
+          if (p.input.type === 'command' || p.input.type === 'shell-command') {
+            const text =
+              p.input.type === 'command'
+                ? `/${p.input.name}${p.input.arguments ? ` ${p.input.arguments}` : ''}`
+                : `$ ${p.input.command}`;
+            this.transport.send(
+              createWireMessage({
+                kind: 'agent.event',
+                sessionId: p.sessionId,
+                event: { type: 'user-message', content: [{ type: 'text', text }] },
+              }),
+            );
           }
           // The answer settles the ask the moment it arrives; drop it before awaiting send so a
           // concurrent session.attach (handlers aren't serialized) can't replay an already-answered ask.
@@ -619,6 +639,9 @@ export class Engine {
         if (attached.currentEffort) {
           replay({ type: 'effort-update', effort: attached.currentEffort });
         }
+        if (attached.availableCommands) {
+          replay({ type: 'available-commands-update', commands: attached.availableCommands });
+        }
         for (const ask of attached.pendingAsks.values()) replay(ask);
         break;
       }
@@ -751,6 +774,9 @@ export class Engine {
             break;
           case 'effort-update':
             session.currentEffort = event.effort;
+            break;
+          case 'available-commands-update':
+            session.availableCommands = event.commands;
             break;
           case 'error':
             // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
