@@ -275,6 +275,31 @@ export class CodexAdapter extends BaseAgentAdapter {
     await this.startTurn(content);
   }
 
+  /** `$`-prefixed shell passthrough — the user's own command, not agent-driven, so it bypasses
+   * both the sandbox and the approval policy by design (verified live, codex-cli 0.144.1).
+   * `thread/shellCommand` acks with an empty object before the turn machinery starts; the command
+   * then runs as a genuine turn on the thread (thread/status/changed(active) → turn/started →
+   * item/started → item/commandExecution/outputDelta (not consumed here, same as agent-driven
+   * execs) → item/completed → thread/status/changed(idle) → turn/completed), so the existing
+   * notification dispatch does everything else: running status, the execute tool card
+   * (handleItem's commandExecution case, unaware of and unaffected by source:'userShell'),
+   * output at item/completed's aggregatedOutput, stop + idle at turn/completed. turn/completed's
+   * status is ALWAYS 'completed' even when the command exits non-zero — only the ITEM carries
+   * status:'failed'/exitCode, which mapCodexItemStatus folds into a failed tool call; the turn
+   * itself still resolves via handleTurnCompleted to stop:end_turn. No approval request ever
+   * fires for this path. Works with no turn active (creates its own turn on the thread); if the
+   * fresh thread's first action is a shell command, the turn/started notification's existing
+   * `activateTurn` call still releases `holdSessionRef` — that path isn't keyed to `turn/start`,
+   * so no extra handling is needed here. Overlapping shell commands (or a shell command sent
+   * while a turn is already running) coalesce into that turn server-side, so this deliberately
+   * does not gate on `activeTurnId`/`turnStartsInFlight` the way `onPrompt` queues prompts. */
+  protected override async onShellCommand(command: string): Promise<void> {
+    await this.ensureThread();
+    const server = nullthrow(this.server, 'codex: session not started');
+    const threadId = nullthrow(this.threadId, 'codex: thread not started');
+    await server.request('thread/shellCommand', { threadId, command });
+  }
+
   protected override async onCancel(): Promise<void> {
     // Cancel means stop: the in-flight turn is interrupted and queued prompts are dropped
     // (running them after an explicit cancel would surprise).
