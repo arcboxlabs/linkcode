@@ -76,15 +76,13 @@ type ChromeBackgroundGridStyle = React.CSSProperties & {
 const ChromePortalTargetContext = createContext<ChromePortalTargetMap | null>(null);
 const ChromePortalRegisterContext = createContext<RegisterChromePortalUse | null>(null);
 
+// The columns read the window-clamped track variables (index.css) — the same ones the
+// workspace grid uses — so the titlebar dividers stay glued to the real pane edges even
+// when a small window forces the clamps to engage. Sash drags override this template
+// with resolved inline values per frame (sash-drag-style.ts) and restore it on release.
 const CHROME_BACKGROUND_GRID_STYLE = {
-  gridTemplateColumns: 'var(--lc-sidebar-w) minmax(0, 1fr) var(--lc-right-w)',
-  '--lc-chrome-right-segment-w': 'var(--lc-right-w)',
-} satisfies ChromeBackgroundGridStyle;
-
-// Maximizing is a direct cut: the right segment collapses to zero instantly.
-const MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE = {
-  gridTemplateColumns: 'var(--lc-sidebar-w) minmax(0, 1fr) 0px',
-  '--lc-chrome-right-segment-w': '0px',
+  gridTemplateColumns: 'var(--lc-sidebar-col) minmax(0, 1fr) var(--lc-right-col)',
+  '--lc-chrome-right-segment-w': 'var(--lc-right-col)',
 } satisfies ChromeBackgroundGridStyle;
 
 const CHROME_SLOT_CLASS: Record<DesktopChromePosition, string> = {
@@ -100,9 +98,15 @@ const SIDEBAR_SLOT_INSET_STYLE = {
 
 const MAIN_SLOT_INSET_STYLE = {
   paddingLeft:
-    'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-w)))',
+    'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-col)))',
   paddingRight:
     'max(var(--lc-chrome-edge), calc(var(--lc-chrome-right-local-inset) - var(--lc-chrome-right-segment-w)))',
+} satisfies React.CSSProperties;
+
+const EXPANDED_MAIN_SLOT_INSET_STYLE = {
+  paddingLeft:
+    'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-col)))',
+  paddingRight: 'var(--lc-chrome-right-local-inset)',
 } satisfies React.CSSProperties;
 
 const RIGHT_SLOT_INSET_STYLE = {
@@ -199,55 +203,62 @@ export function DesktopChrome({
   return (
     <ChromePortalRegisterContext value={registerPortalUse}>
       <ChromePortalTargetContext value={portalTargets}>
-        <div
-          ref={chromeRootRef}
-          className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
-        >
-          <ChromeSegmentGrid
-            header={header}
-            expandedPanel={expandedPanel}
-            hasNativeBackdrop={hasNativeBackdrop}
-            titleContent={titleContent}
-            titleIcon={titleIcon}
-            titleChip={titleChip}
-            portalUse={portalUse}
-            setPortalTarget={setPortalTarget}
-          />
-          <StableLeftChrome
-            contentRef={leftRailContentRef}
-            hasNativeTrafficLights={hasNativeTrafficLights}
+        {/* Size container for the shell's cq-based track math (index.css): the chrome grid
+            and the workspace grid both resolve the clamped `--lc-*-col` variables against
+            this frame, so their dividers stay in lockstep at every window size. */}
+        <div className="linkcode-shell-frame relative h-full">
+          <div
+            ref={chromeRootRef}
+            className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
           >
-            {leftControls === undefined ? (
-              <DefaultLeftChromeControls
-                sidebarOpen={sidebarOpen}
-                sidebarShortcut={sidebarShortcut}
-                navigation={navigation}
-                onShowSidebar={onShowSidebar}
-                onHideSidebar={onHideSidebar}
-              />
-            ) : (
-              leftControls
-            )}
-          </StableLeftChrome>
-          <StableRightChrome
-            contentRef={rightRailContentRef}
-            showWindowControls={showWindowControls}
-          >
-            {rightControls === undefined ? (
-              <DefaultRightChromeControls
-                rightPanelOpen={rightPanelOpen}
-                bottomPanelOpen={bottomPanelOpen}
-                rightPanelShortcut={rightPanelShortcut}
-                bottomPanelShortcut={bottomPanelShortcut}
-                onToggleRight={onToggleRight}
-                onToggleBottom={onToggleBottom}
-              />
-            ) : (
-              rightControls
-            )}
-          </StableRightChrome>
+            {/* Local layout: every grid segment stays in row 1; the expanded main segment
+                overlaps the hidden right segment at z-10, below the stable rails at z-20. */}
+            <ChromeSegmentGrid
+              header={header}
+              expandedPanel={expandedPanel}
+              hasNativeBackdrop={hasNativeBackdrop}
+              titleContent={titleContent}
+              titleIcon={titleIcon}
+              titleChip={titleChip}
+              portalUse={portalUse}
+              setPortalTarget={setPortalTarget}
+            />
+            <StableLeftChrome
+              contentRef={leftRailContentRef}
+              hasNativeTrafficLights={hasNativeTrafficLights}
+            >
+              {leftControls === undefined ? (
+                <DefaultLeftChromeControls
+                  sidebarOpen={sidebarOpen}
+                  sidebarShortcut={sidebarShortcut}
+                  navigation={navigation}
+                  onShowSidebar={onShowSidebar}
+                  onHideSidebar={onHideSidebar}
+                />
+              ) : (
+                leftControls
+              )}
+            </StableLeftChrome>
+            <StableRightChrome
+              contentRef={rightRailContentRef}
+              showWindowControls={showWindowControls}
+            >
+              {rightControls === undefined ? (
+                <DefaultRightChromeControls
+                  rightPanelOpen={rightPanelOpen}
+                  bottomPanelOpen={bottomPanelOpen}
+                  rightPanelShortcut={rightPanelShortcut}
+                  bottomPanelShortcut={bottomPanelShortcut}
+                  onToggleRight={onToggleRight}
+                  onToggleBottom={onToggleBottom}
+                />
+              ) : (
+                rightControls
+              )}
+            </StableRightChrome>
+          </div>
+          {children}
         </div>
-        {children}
       </ChromePortalTargetContext>
     </ChromePortalRegisterContext>
   );
@@ -274,18 +285,20 @@ function ChromeSegmentGrid({
 }): React.ReactNode {
   return (
     <div
-      className="absolute inset-0 grid overflow-hidden"
-      style={expandedPanel ? MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE : CHROME_BACKGROUND_GRID_STYLE}
+      className="linkcode-chrome-grid absolute inset-0 grid overflow-hidden"
+      style={CHROME_BACKGROUND_GRID_STYLE}
     >
       <ChromeSegment
         segment="sidebar"
         divider="sidebar-main"
         // The sidebar owns the native-backdrop tint across its full height; keep
         // this overlay transparent so the title area does not get double-tinted.
+        // The opaque divider color paints over the pane's identical full-height border-r,
+        // so stacking the two is harmless.
         className={
           hasNativeBackdrop
-            ? 'bg-transparent backdrop-blur-none'
-            : 'border-sidebar-border border-r bg-sidebar backdrop-blur-none'
+            ? 'col-start-1 border-(--lc-shell-sidebar-divider) border-r bg-transparent backdrop-blur-none'
+            : 'col-start-1 border-(--lc-shell-sidebar-divider) border-r bg-sidebar backdrop-blur-none'
         }
         slotInsetStyle={SIDEBAR_SLOT_INSET_STYLE}
         portalUse={portalUse}
@@ -293,8 +306,8 @@ function ChromeSegmentGrid({
       />
       <ChromeSegment
         segment="main"
-        className="bg-background/80"
-        slotInsetStyle={MAIN_SLOT_INSET_STYLE}
+        className={cn('col-start-2 bg-background/80', expandedPanel && 'z-10 col-end-4')}
+        slotInsetStyle={expandedPanel ? EXPANDED_MAIN_SLOT_INSET_STYLE : MAIN_SLOT_INSET_STYLE}
         // While any panel is maximized the main segment hosts that panel's tabs
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
@@ -310,7 +323,8 @@ function ChromeSegmentGrid({
       <ChromeSegment
         segment="right"
         divider="main-right"
-        className="border-border border-l bg-background/80"
+        className="col-start-3 border-(--lc-shell-divider) border-l bg-background/80"
+        hidden={expandedPanel !== null}
         slotInsetStyle={RIGHT_SLOT_INSET_STYLE}
         portalUse={portalUse}
         setPortalTarget={setPortalTarget}
@@ -325,6 +339,7 @@ function ChromeSegment({
   className,
   slotInsetStyle,
   defaultSlots,
+  hidden = false,
   portalUse,
   setPortalTarget,
 }: {
@@ -333,6 +348,7 @@ function ChromeSegment({
   className: string;
   slotInsetStyle: React.CSSProperties;
   defaultSlots?: Partial<Record<DesktopChromePosition, React.ReactNode>>;
+  hidden?: boolean;
   portalUse: ChromePortalUseMap;
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
@@ -341,14 +357,17 @@ function ChromeSegment({
     // its labels to icons when its host segment gets narrow (`@max-*/chrome-segment`).
     <div
       className={cn(
-        '@container/chrome-segment relative min-w-0 overflow-hidden backdrop-blur-xl',
+        '@container/chrome-segment relative row-start-1 min-w-0 overflow-hidden backdrop-blur-xl',
+        hidden && 'invisible',
         className,
       )}
       data-chrome-divider={divider}
+      aria-hidden={hidden || undefined}
+      inert={hidden}
     >
       <div
         className={cn(
-          'pointer-events-none absolute inset-0 grid grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-(--lc-chrome-section-gap)',
+          'linkcode-chrome-slot-inset pointer-events-none absolute inset-0 grid grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-(--lc-chrome-section-gap)',
         )}
         style={slotInsetStyle}
       >
@@ -431,7 +450,7 @@ function StableLeftChrome({
   children: React.ReactNode;
 }): React.ReactNode {
   return (
-    <div className="pointer-events-none absolute top-0 left-0 flex h-full items-center px-(--lc-chrome-edge)">
+    <div className="pointer-events-none absolute top-0 left-0 z-20 flex h-full items-center px-(--lc-chrome-edge)">
       <div
         ref={contentRef}
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
@@ -519,7 +538,7 @@ function StableRightChrome({
   children: React.ReactNode;
 }): React.ReactNode {
   return (
-    <div className="pointer-events-none absolute top-0 right-0 flex h-full items-center justify-end px-(--lc-chrome-edge)">
+    <div className="pointer-events-none absolute top-0 right-0 z-20 flex h-full items-center justify-end px-(--lc-chrome-edge)">
       <div
         ref={contentRef}
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"

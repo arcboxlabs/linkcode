@@ -6,17 +6,3 @@ export function getChromeSurface(expandedPanel: PanelSide | null): ChromeSurface
   if (expandedPanel === 'right') return 'right-max';
   return 'normal';
 }
-
-export function getWorkspaceMinSize({
-  rightPanelOpen,
-  rightAllowZeroSize,
-  minMainSize,
-  rightPanelMinSize,
-}: {
-  rightPanelOpen: boolean;
-  rightAllowZeroSize: boolean;
-  minMainSize: number;
-  rightPanelMinSize: number;
-}): number {
-  return rightPanelOpen && !rightAllowZeroSize ? minMainSize + rightPanelMinSize : minMainSize;
-}

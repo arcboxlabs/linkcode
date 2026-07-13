@@ -10,7 +10,6 @@ import {
 } from '@linkcode/ui';
 import {
   getChromeSurface,
-  getWorkspaceMinSize,
   PanelStubContent,
   PanelTabContentStack,
 } from '@linkcode/ui/shell/panels';
@@ -24,7 +23,6 @@ import {
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
-import { Allotment, LayoutPriority } from 'allotment';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -38,22 +36,14 @@ import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
+import { usePaneTransition } from './layout/pane-transition';
 import { DesktopPanelRegion } from './layout/panel-region';
 import { DesktopRightPanelRegion } from './layout/right-panel-region';
 import type { DesktopShellStyle } from './layout/shell-style';
 import { createDesktopShellStyle, setShellPaneCssSize } from './layout/shell-style';
-import { useAnimatedSplit } from './layout/use-animated-split';
 import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
-import {
-  DEFAULT_LAYOUT,
-  getExpandedPanel,
-  MIN_MAIN_SIZE,
-  RIGHT_PANEL_MIN_SIZE,
-  readPaneSize,
-  SIDEBAR_MAX_SIZE,
-  SIDEBAR_MIN_SIZE,
-} from './store/model';
+import { getExpandedPanel } from './store/model';
 import { useDesktopShellStore } from './store/store';
 import { useDesktopPaletteCommands } from './use-desktop-palette-commands';
 import { useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
@@ -194,46 +184,38 @@ export function DesktopShell({
     setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size);
   }, []);
   const { sidebarOpen, layout, expansionStack, rightPanel, bottomPanel } = shellState;
-  // The allotment ref setters are destructured to standalone identifiers: the React
-  // Compiler only accepts a plain identifier in `ref={…}` — a member access there marks
-  // the whole object as a ref and rejects every other render-time read of it.
-  const { setAllotmentHandle: sidebarAllotmentRef, ...sidebarSplit } = useAnimatedSplit({
+  const sidebarTransition = usePaneTransition({
     open: sidebarOpen,
-    paneIndex: 0,
-    paneSize: layout.sidebarW,
-    onPaneSizeChange: syncSidebarPaneSize,
+    size: layout.sidebarW,
+    onSizeChange: syncSidebarPaneSize,
   });
-  const { setAllotmentHandle: rightAllotmentRef, ...rightSplit } = useAnimatedSplit({
+  const rightTransition = usePaneTransition({
     open: rightPanel.open,
-    paneIndex: 1,
-    paneSize: layout.rightW,
-    onPaneSizeChange: syncRightPaneSize,
+    size: layout.rightW,
+    onSizeChange: syncRightPaneSize,
   });
-  const { setAllotmentHandle: bottomAllotmentRef, ...bottomSplit } = useAnimatedSplit({
+  const bottomTransition = usePaneTransition({
     open: bottomPanel.open,
-    paneIndex: 1,
-    paneSize: layout.bottomH,
-    onPaneSizeChange: syncBottomPaneSize,
+    size: layout.bottomH,
+    onSizeChange: syncBottomPaneSize,
   });
+  const horizontalAnimating = sidebarTransition.isAnimating || rightTransition.isAnimating;
+  const verticalAnimating = bottomTransition.isAnimating;
+  const shellAnimating = horizontalAnimating || verticalAnimating;
   // Tab content mounts lazily on the panel's first settled open, so no shell is spawned for a
   // panel that is never shown. Latched during render — React's prescribed state adjustment.
   const [rightContentMounted, setRightContentMounted] = useState(false);
-  if (rightSplit.phase === 'open' && !rightContentMounted) setRightContentMounted(true);
+  if (rightTransition.phase === 'open' && !rightContentMounted) setRightContentMounted(true);
   const [bottomContentMounted, setBottomContentMounted] = useState(false);
-  if (bottomSplit.phase === 'open' && !bottomContentMounted) setBottomContentMounted(true);
+  if (bottomTransition.phase === 'open' && !bottomContentMounted) setBottomContentMounted(true);
 
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
   const showWindowControls = desktopPlatform !== 'darwin';
-  const sidebarClassName = hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar';
+  // The workspace grid cell owns the animated divider, so the aside's own border is off.
+  const sidebarClassName = hasNativeBackdrop ? 'border-r-0 bg-sidebar/25' : 'border-r-0 bg-sidebar';
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
-  const workspaceMinSize = getWorkspaceMinSize({
-    rightPanelOpen: rightPanel.open,
-    rightAllowZeroSize: rightSplit.allowZeroSize,
-    minMainSize: MIN_MAIN_SIZE,
-    rightPanelMinSize: RIGHT_PANEL_MIN_SIZE,
-  });
 
   useAbortableEffect(
     (signal) => {
@@ -268,9 +250,9 @@ export function DesktopShell({
     setActiveRightFileTab,
     openBrowserUrl,
     openRightTerminalAttachTab,
-    resetSidebarSize: resetSidebarLayoutSize,
-    resetRightPanelSize: resetRightPanelLayoutSize,
-    resetBottomPanelSize: resetBottomPanelLayoutSize,
+    resetSidebarSize,
+    resetRightPanelSize,
+    resetBottomPanelSize,
   } = shellState;
 
   useDesktopShellShortcuts({
@@ -293,21 +275,6 @@ export function DesktopShell({
     togglePanel,
     updateSidebarOpen,
   });
-
-  function resetSidebarSize(): void {
-    sidebarSplit.setPaneSize(DEFAULT_LAYOUT.sidebarW);
-    resetSidebarLayoutSize();
-  }
-
-  function resetRightPanelSize(): void {
-    rightSplit.setPaneSize(DEFAULT_LAYOUT.rightW);
-    resetRightPanelLayoutSize();
-  }
-
-  function resetBottomPanelSize(): void {
-    bottomSplit.setPaneSize(DEFAULT_LAYOUT.bottomH);
-    resetBottomPanelLayoutSize();
-  }
 
   // File-artifact clicks land in the right panel's files section. The clicked text may
   // be a bare filename from agent prose whose file lives outside the session cwd, so
@@ -372,8 +339,8 @@ export function DesktopShell({
     </main>
   );
 
-  // One renderer, two mount points per side: the docked instance (inside the Allotment, owns the
-  // chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
+  // One renderer, two mount points per side: the docked instance (inside its workspace grid
+  // cell, owns the chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
   // instance keeps owning the chrome so the two never portal duplicate tabs during the
   // transition). Tab content mounts in exactly one of them (the overlay while expanded, via
   // contentHidden), so stateful tabs like the terminal never run twice; the terminal session
@@ -392,8 +359,6 @@ export function DesktopShell({
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={rightSplit.phase}
-        reducedMotion={rightSplit.reducedMotion}
         terminalContentTargetRef={setRightContentTarget}
         onSelectSection={setActiveSection}
         onSelectTerminalTab={setActiveRightTerminalTab}
@@ -419,8 +384,6 @@ export function DesktopShell({
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        phase={bottomSplit.phase}
-        reducedMotion={bottomSplit.reducedMotion}
         contentTargetRef={setBottomContentTarget}
         onSelectTab={(id) => updatePanel((current) => ({ ...current, activeTabId: id }))}
         onCloseTab={(id) => closeTab(id)}
@@ -445,13 +408,13 @@ export function DesktopShell({
       node: tab.id.startsWith('attach:') ? (
         <AttachedTerminalPanel
           terminalId={tab.id.slice('attach:'.length)}
-          suspended={rightSplit.phase !== 'open'}
+          suspended={rightTransition.phase !== 'open' || shellAnimating}
         />
       ) : (
         <TerminalPanel
           sessionKey={tab.id}
           cwd={active?.cwd}
-          suspended={rightSplit.phase !== 'open'}
+          suspended={rightTransition.phase !== 'open' || shellAnimating}
         />
       ),
     }));
@@ -475,7 +438,7 @@ export function DesktopShell({
           <TerminalPanel
             sessionKey={tab.id}
             cwd={active?.cwd}
-            suspended={bottomSplit.phase !== 'open'}
+            suspended={bottomTransition.phase !== 'open' || shellAnimating}
           />
         ) : (
           <PanelStubContent type={tab.type} />
@@ -485,11 +448,11 @@ export function DesktopShell({
   }
 
   const workspaceRight: WorkspaceSide = {
-    split: rightSplit,
+    transition: rightTransition,
     open: rightPanel.open,
     node: renderRightPanel({
       maximized: expandedPanel === 'right',
-      chromeVisible: rightSplit.paneVisible,
+      chromeVisible: rightTransition.paneVisible,
       contentHidden: expandedPanel === 'right',
     }),
     expandedNode: renderRightPanel({
@@ -500,11 +463,11 @@ export function DesktopShell({
     onResetSize: resetRightPanelSize,
   };
   const workspaceBottom: WorkspaceSide = {
-    split: bottomSplit,
+    transition: bottomTransition,
     open: bottomPanel.open,
     node: renderBottomPanel({
       maximized: expandedPanel === 'bottom',
-      chromeVisible: bottomSplit.paneVisible,
+      chromeVisible: bottomTransition.paneVisible,
       contentHidden: expandedPanel === 'bottom',
     }),
     expandedNode: renderBottomPanel({
@@ -520,6 +483,8 @@ export function DesktopShell({
       ref={shellRootRef}
       className="linkcode-desktop-shell relative h-full bg-transparent text-foreground"
       style={shellStyle}
+      data-shell-horizontal-animating={horizontalAnimating ? '' : undefined}
+      data-shell-vertical-animating={verticalAnimating ? '' : undefined}
     >
       <DesktopChrome
         header={header}
@@ -560,33 +525,21 @@ export function DesktopShell({
         onToggleRight={() => togglePanel('right')}
         onToggleBottom={() => togglePanel('bottom')}
       >
-        <Allotment
-          ref={sidebarAllotmentRef}
-          className="linkcode-shell-split linkcode-shell-sidebar-main-split h-full"
-          defaultSizes={[layout.sidebarW, 1000]}
-          proportionalLayout={false}
-          // The sidebar already draws its own right border at the boundary, so
-          // allotment's separator would stack a second offset line beside it.
-          separator={false}
-          onChange={sidebarSplit.onChange}
-          onDragEnd={(sizes) => {
-            sidebarSplit.onChange(sizes);
-            if (sidebarOpen && !sidebarSplit.isAnimating) {
-              updateLayout((current) => ({
-                ...current,
-                sidebarW: readPaneSize(sizes[0], current.sidebarW),
-              }));
-            }
-          }}
-          onReset={resetSidebarSize}
-        >
-          <Allotment.Pane
-            maxSize={SIDEBAR_MAX_SIZE}
-            minSize={sidebarSplit.allowZeroSize ? 0 : SIDEBAR_MIN_SIZE}
-            preferredSize={layout.sidebarW}
-            visible={sidebarSplit.paneVisible}
-          >
-            <div aria-hidden={!sidebarOpen} inert={!sidebarOpen} className="h-full min-w-0">
+        <DesktopWorkspace
+          main={main}
+          right={workspaceRight}
+          bottom={workspaceBottom}
+          expandedPanel={expandedPanel}
+          layout={layout}
+          onLayoutChange={updateLayout}
+          onSidebarResize={syncSidebarPaneSize}
+          onRightResize={syncRightPaneSize}
+          onBottomResize={syncBottomPaneSize}
+          sidebar={{
+            transition: sidebarTransition,
+            open: sidebarOpen,
+            onResetSize: resetSidebarSize,
+            node: (
               <SessionSidebar
                 className={sidebarClassName}
                 threadGroups={threadGroups}
@@ -634,21 +587,9 @@ export function DesktopShell({
                 onReorderThreads={onReorderThreads}
                 onStartDraft={onStartDraft}
               />
-            </div>
-          </Allotment.Pane>
-          <Allotment.Pane minSize={workspaceMinSize} priority={LayoutPriority.High}>
-            <DesktopWorkspace
-              main={main}
-              right={workspaceRight}
-              bottom={workspaceBottom}
-              rightAllotmentRef={rightAllotmentRef}
-              bottomAllotmentRef={bottomAllotmentRef}
-              expandedPanel={expandedPanel}
-              layout={layout}
-              onLayoutChange={updateLayout}
-            />
-          </Allotment.Pane>
-        </Allotment>
+            ),
+          }}
+        />
       </DesktopChrome>
       {rightContentMounted && renderRightPanelContents(rightContentHost)}
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}

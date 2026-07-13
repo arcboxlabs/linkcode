@@ -5,8 +5,6 @@ import { FilesPanel, GitPanel } from '@linkcode/workbench';
 import { DesktopChromePortal } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
 import type { RightPanelState } from '../store/model';
-import type { SplitPanePhase } from './use-animated-split';
-import { getShellContentMotionStyle } from './use-animated-split';
 
 /**
  * Desktop right-panel chrome/frame. The Terminal section's PTY stack is NOT rendered here: the
@@ -22,8 +20,6 @@ export function DesktopRightPanelRegion({
   chromeVisible,
   contentHidden,
   chromeSurface,
-  phase,
-  reducedMotion,
   terminalContentTargetRef,
   onSelectSection,
   onSelectTerminalTab,
@@ -40,8 +36,6 @@ export function DesktopRightPanelRegion({
   chromeVisible: boolean;
   contentHidden: boolean;
   chromeSurface: ChromeSurface;
-  phase: SplitPanePhase;
-  reducedMotion: boolean;
   terminalContentTargetRef: (element: HTMLDivElement | null) => void;
   onSelectSection: (section: PanelSection) => void;
   onSelectTerminalTab: (id: string) => void;
@@ -60,7 +54,6 @@ export function DesktopRightPanelRegion({
       contentHidden={contentHidden}
       chromeSpacerClassName={DESKTOP_CHROME_SPACER_CLASS}
       ChromePortal={DesktopChromePortal}
-      contentStyle={getShellContentMotionStyle({ axis: 'x', phase, reducedMotion })}
       sectionContent={{
         diff: <GitPanel cwd={cwd} themeType={themeType} />,
         // browser intentionally absent: the webview lives in the shell's resident
