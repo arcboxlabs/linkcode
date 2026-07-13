@@ -13,7 +13,6 @@ import {
   CheckIcon,
   ListTodoIcon,
   PaperclipIcon,
-  SlashIcon,
   SlidersHorizontalIcon,
   TargetIcon,
 } from 'lucide-react';
@@ -195,7 +194,6 @@ export function buildComposerCommandGroups({
       commandItems.push({
         command,
         hint: command.description ?? command.argumentHint,
-        icon: SlashIcon,
         id: `command:${command.name}`,
         kind: 'command',
         label: `/${command.name}`,
@@ -245,10 +243,10 @@ export function ComposerCommandMenu({
   onSelect: (entry: ComposerCommandEntry) => void;
 }): React.ReactNode {
   return (
-    <div className="flex max-h-80 min-h-0 flex-col **:data-[slot=scroll-area-viewport]:max-h-80">
+    <div className="flex max-h-80 min-h-0 flex-col **:data-[slot=scroll-area-viewport]:max-h-80 **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-0!">
       <CommandEmpty>{emptyLabel}</CommandEmpty>
       <div className="min-h-0 flex-1">
-        <CommandList>
+        <CommandList className="in-data-has-overflow-y:pe-2!">
           {(group: ComposerCommandGroup) => (
             <CommandGroup key={group.value} items={group.items}>
               <CommandGroupLabel>{group.label}</CommandGroupLabel>

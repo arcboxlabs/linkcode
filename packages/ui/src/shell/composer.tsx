@@ -8,12 +8,12 @@ import type {
 } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Badge } from 'coss-ui/components/badge';
-import { Collapsible, CollapsiblePanel } from 'coss-ui/components/collapsible';
 import { Command } from 'coss-ui/components/command';
 import { Frame, FramePanel } from 'coss-ui/components/frame';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { TerminalIcon } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -24,6 +24,7 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { preventBaseUIHandler } from '../lib/base-ui';
+import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
@@ -156,6 +157,7 @@ export function Composer({
   contextBar,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
+  const reducedMotion = useReducedMotion() ?? false;
   const [value, setValue] = useState('');
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
@@ -173,9 +175,10 @@ export function Composer({
   // command must not pop the command menu).
   const shellActive = shellEnabled && value.trimStart()[0] === '$';
 
-  const rawTrigger = computeTextTrigger(value, caret);
-  const textTrigger =
-    rawTrigger && rawTrigger.start !== dismissedStart && !shellActive ? rawTrigger : null;
+  const textTrigger = useMemo(() => {
+    const trigger = computeTextTrigger(value, caret);
+    return trigger && trigger.start !== dismissedStart && !shellActive ? trigger : null;
+  }, [caret, dismissedStart, shellActive, value]);
   const commandSource: ComposerCommandSource | null =
     plusCommandStart === null
       ? textTrigger?.kind === 'mention'
@@ -232,6 +235,20 @@ export function Composer({
 
   const hasCommandItems = commandGroups.some((group) => group.items.length > 0);
   const commandOpen = !disabled && Boolean(commandSource);
+  const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
+  const [exitCommandGroups, setExitCommandGroups] = useState(() => commandGroups);
+  const [exitCommandEmptyLabel, setExitCommandEmptyLabel] = useState(emptyCommandLabel);
+
+  // Commit the open catalog before rendering children so every close path can animate that exact view.
+  if (commandOpen) {
+    if (exitCommandGroups !== commandGroups) setExitCommandGroups(commandGroups);
+    if (exitCommandEmptyLabel !== emptyCommandLabel) {
+      setExitCommandEmptyLabel(emptyCommandLabel);
+    }
+  }
+
+  const renderedCommandGroups = commandOpen ? commandGroups : exitCommandGroups;
+  const renderedEmptyCommandLabel = commandOpen ? emptyCommandLabel : exitCommandEmptyLabel;
 
   function updateCaret(nextCaret: number, nextValue = value): void {
     setCaret(nextCaret);
@@ -428,8 +445,6 @@ export function Composer({
     void onEffortChange?.(effort).catch(noop);
   }
 
-  const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
-
   return (
     <div className="relative px-4 pb-4">
       <div className="mx-auto max-w-3xl">
@@ -438,7 +453,7 @@ export function Composer({
             autoHighlight="always"
             filter={null}
             inline={false}
-            items={commandGroups}
+            items={renderedCommandGroups}
             itemToStringValue={commandEntryToString}
             keepHighlight
             open={commandOpen}
@@ -449,21 +464,50 @@ export function Composer({
             onValueChange={(nextValue, details) => updateValue(nextValue, details.event)}
           >
             <Frame
-              className={
+              className={cn(
+                'transition-[background-color,padding] motion-reduce:transition-none',
                 commandOpen
-                  ? 'bg-muted/72 p-1 transition-[background-color,padding] duration-200 ease-out motion-reduce:transition-none'
-                  : 'bg-transparent p-0'
-              }
+                  ? 'bg-muted/72 p-1 duration-200 ease-[cubic-bezier(0.2,0,0,1)]'
+                  : 'bg-transparent p-0 duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+              )}
             >
-              <Collapsible open={commandOpen}>
-                <CollapsiblePanel
-                  aria-hidden={!commandOpen}
-                  inert={!commandOpen}
-                  className="max-h-80 min-h-0 transition-[height,max-height] data-ending-style:max-h-0 data-starting-style:max-h-0 motion-reduce:transition-none"
-                >
-                  <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
-                </CollapsiblePanel>
-              </Collapsible>
+              <div aria-hidden={!commandOpen} inert={!commandOpen} className="min-h-0">
+                <AnimatePresence initial={false}>
+                  {commandOpen ? (
+                    <motion.div
+                      key="composer-command-menu"
+                      data-slot="composer-command-menu"
+                      className="max-h-80 min-h-0 overflow-hidden"
+                      initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+                      animate={{
+                        height: 'auto',
+                        opacity: 1,
+                        transition: reducedMotion
+                          ? { duration: 0 }
+                          : {
+                              height: { duration: 0.22, ease: [0.2, 0, 0, 1] },
+                              opacity: { duration: 0.18, ease: [0.2, 0, 0, 1] },
+                            },
+                      }}
+                      exit={{
+                        height: 0,
+                        opacity: 0,
+                        transition: reducedMotion
+                          ? { duration: 0 }
+                          : {
+                              height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                              opacity: { duration: 0.22, ease: [0.4, 0, 0.2, 1] },
+                            },
+                      }}
+                    >
+                      <ComposerCommandMenu
+                        emptyLabel={renderedEmptyCommandLabel}
+                        onSelect={selectCommand}
+                      />
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
               <FramePanel className="z-10 border-0 bg-transparent p-0 shadow-none before:hidden">
                 <PromptInput onSubmit={submit} className="relative">
                   <AutocompletePrimitive.Input

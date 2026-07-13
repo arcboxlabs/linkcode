@@ -23,20 +23,24 @@ const MODES: SessionMode[] = [
   { modeId: 'goal', name: 'Goal', description: 'Keep working toward a goal' },
 ];
 
-function renderComposer(): void {
-  render(
+function composer(disabled = false): React.ReactNode {
+  return (
     <Composer
       agentCapabilities={{ shellCommand: false, slashCommands: true }}
       agentCommands={COMMANDS}
       availableModes={MODES}
       currentModeId={null}
-      disabled={false}
+      disabled={disabled}
       isRunning={false}
       onModeChange={vi.fn().mockResolvedValue(undefined)}
       onSend={vi.fn()}
       onStop={vi.fn()}
-    />,
+    />
   );
+}
+
+function renderComposer(): void {
+  render(composer());
 }
 
 afterEach(cleanup);
@@ -73,7 +77,8 @@ describe('Composer command menu', () => {
     expect(screen.queryByText('Plan')).toBeNull();
 
     await user.type(input, ' ');
-    expect(screen.queryByText('/compact')).toBeNull();
+    expect(screen.queryByRole('listbox')).toBeNull();
+    await waitFor(() => expect(screen.queryByText('/compact')).toBeNull());
     await user.keyboard('{Backspace}');
     expect(screen.getByText('/compact')).toBeDefined();
     expect(screen.queryByText('attach')).toBeNull();
@@ -100,5 +105,18 @@ describe('Composer command menu', () => {
     await user.keyboard('{Backspace}/');
     expect(screen.getByRole('listbox')).toBeDefined();
     expect(screen.getByRole('option', { name: /\/compact/ })).toBeDefined();
+  });
+
+  it('retains command rows only for the visual exit when disabled externally', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(composer());
+
+    await user.type(screen.getByRole('textbox'), '/');
+    expect(screen.getByText('/compact')).toBeDefined();
+
+    rerender(composer(true));
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByText('/compact')).toBeDefined();
+    await waitFor(() => expect(screen.queryByText('/compact')).toBeNull());
   });
 });
