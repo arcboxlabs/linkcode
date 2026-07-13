@@ -26,6 +26,26 @@ export function getEffectiveSashBounds(
   return { min: Math.min(minSize, effectiveMax), max: effectiveMax };
 }
 
+/**
+ * Resolved size of the coupled (reclaim) track while its neighbor pane is dragged to
+ * `paneSize`. Mirrors the CSS clamp coupling in index.css — `--lc-right-col` yields toward
+ * its minimum as the sidebar grows past the main floor, and re-expands toward its
+ * preferred size when space returns. CSS clamp() semantics: the lower bound wins.
+ */
+export function getResolvedReclaimTrack(
+  paneSize: number,
+  frameSize: number,
+  minMainSize: number,
+  reclaimPreferredSize: number,
+  reclaimMinSize: number,
+): number {
+  const available = frameSize - paneSize - minMainSize;
+  return Math.max(
+    Math.min(reclaimPreferredSize, reclaimMinSize),
+    Math.min(reclaimPreferredSize, available),
+  );
+}
+
 export function getKeyboardSashAction({
   key,
   orientation,

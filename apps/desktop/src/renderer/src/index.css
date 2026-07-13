@@ -67,6 +67,8 @@
   );
 }
 
+/* Sash drags temporarily override these templates (and the sash offsets below) with
+   resolved inline values — keep shapes in sync with sash-drag-style.ts. */
 .linkcode-shell-grid {
   position: relative;
   display: grid;

@@ -78,7 +78,8 @@ const ChromePortalRegisterContext = createContext<RegisterChromePortalUse | null
 
 // The columns read the window-clamped track variables (index.css) — the same ones the
 // workspace grid uses — so the titlebar dividers stay glued to the real pane edges even
-// when a small window forces the clamps to engage.
+// when a small window forces the clamps to engage. Sash drags override this template
+// with resolved inline values per frame (sash-drag-style.ts) and restore it on release.
 const CHROME_BACKGROUND_GRID_STYLE = {
   gridTemplateColumns: 'var(--lc-sidebar-col) minmax(0, 1fr) var(--lc-right-col)',
   '--lc-chrome-right-segment-w': 'var(--lc-right-col)',

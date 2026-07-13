@@ -38,7 +38,8 @@ const PANE_ID = {
  * The shell workspace: one CSS grid whose tracks read the `--lc-*` shell variables
  * (index.css `.linkcode-shell-grid`). Pane toggles write a variable once and a scoped
  * grid-template transition glides every edge on the same 300ms timeline as the titlebar
- * chrome; sash drags write the same variable per frame with the transition inactive.
+ * chrome; sash drags write resolved inline tracks per frame (sash-drag-style.ts) and
+ * settle the variable once on release.
  * While a pane animates, its content is locked to the settled size so nothing rewraps
  * per frame — only grid tracks move.
  */
@@ -241,6 +242,7 @@ export function DesktopWorkspace({
         minMainSize={MIN_MAIN_SIZE}
         reclaimFromPane="right"
         reclaimFromMinSize={right.open ? RIGHT_PANEL_MIN_SIZE : 0}
+        reclaimFromPreferredSize={right.open ? layout.rightW : 0}
         disabled={!sidebar.open || anyAnimating}
         hidden={!sidebar.open}
         onResize={onSidebarResize}

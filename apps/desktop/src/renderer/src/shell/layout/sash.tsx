@@ -2,6 +2,8 @@ import { cn } from '@linkcode/ui';
 import { invariant } from 'foxact/invariant';
 import { clamp } from 'foxts/clamp';
 import { useRef } from 'react';
+import type { SashDragStyleWriter } from './sash-drag-style';
+import { createSashDragStyleWriter } from './sash-drag-style';
 import type { SashBounds, SashEdge, SashOrientation, SashPane } from './sash-model';
 import { getEffectiveSashBounds, getKeyboardSashAction } from './sash-model';
 
@@ -12,14 +14,15 @@ interface DragState {
   lastSize: number;
   bounds: SashBounds;
   changed: boolean;
+  writer: SashDragStyleWriter;
 }
 
 /**
  * Drag handle on a workspace grid divider. Positioning comes from the `className` hook
  * (index.css — it rides the same `--lc-*-col`/`--lc-*-row` variables as the grid tracks).
- * Dragging writes the pane's shell CSS variable imperatively per frame via `onResize`
- * (no React state, no transition — the axis animation attributes are absent) and commits the
- * final size to the layout store on release.
+ * Dragging writes resolved inline tracks per frame through the drag style writer (a
+ * per-frame shell-variable rewrite would recalc style across the whole shell — see
+ * sash-drag-style.ts); the shell variable and layout store settle once on release.
  */
 export function Sash({
   orientation,
@@ -34,6 +37,7 @@ export function Sash({
   minMainSize,
   reclaimFromPane,
   reclaimFromMinSize = 0,
+  reclaimFromPreferredSize = 0,
   disabled = false,
   hidden = false,
   onResize,
@@ -56,6 +60,8 @@ export function Sash({
   /** A coupled pane that can yield toward its hard minimum while this pane grows. */
   reclaimFromPane?: SashPane;
   reclaimFromMinSize?: number;
+  /** The coupled pane's preferred settled size — the ceiling it re-expands to mid-drag. */
+  reclaimFromPreferredSize?: number;
   disabled?: boolean;
   hidden?: boolean;
   onResize: (size: number) => void;
@@ -108,19 +114,22 @@ export function Sash({
     element.setAttribute('aria-valuemax', String(Math.round(geometry.bounds.max)));
   };
 
-  const finishDrag = (element: HTMLDivElement, pointerId: number): void => {
+  const finishDrag = (
+    element: HTMLDivElement,
+    pointerId: number,
+    syncShellVariable = true,
+  ): void => {
     const drag = dragRef.current;
     if (drag?.pointerId !== pointerId) return;
     dragRef.current = null;
     delete element.dataset.dragging;
     if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId);
+    drag.writer.restore();
     if (!drag.changed) return;
-    if (drag.lastSize === drag.startSize) {
-      onResize(size);
-      onResizeEnd(size);
-      return;
-    }
-    onResizeEnd(drag.lastSize);
+    const settled = drag.lastSize === drag.startSize ? size : drag.lastSize;
+    // A toggle-interrupted drag must not clobber the variable the toggle just wrote.
+    if (syncShellVariable) onResize(settled);
+    onResizeEnd(settled);
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -137,6 +146,13 @@ export function Sash({
       lastSize: geometry.size,
       bounds: geometry.bounds,
       changed: false,
+      writer: createSashDragStyleWriter(
+        event.currentTarget,
+        pane,
+        minMainSize,
+        reclaimFromPreferredSize,
+        reclaimFromMinSize,
+      ),
     };
   };
 
@@ -147,7 +163,7 @@ export function Sash({
     if (disabled) {
       // A pane toggle started mid-drag; the grid transition is now live, so end the drag
       // where it stands instead of fighting the animation with per-frame writes.
-      finishDrag(event.currentTarget, drag.pointerId);
+      finishDrag(event.currentTarget, drag.pointerId, false);
       return;
     }
     const delta = readCoord(event) - drag.startCoord;
@@ -157,7 +173,7 @@ export function Sash({
       drag.lastSize = next;
       drag.changed = true;
       event.currentTarget.setAttribute('aria-valuenow', String(Math.round(next)));
-      onResize(next);
+      drag.writer.apply(next);
     }
   };
 
