@@ -19,6 +19,18 @@ export function contentToText(content: ContentBlock[]): string {
     .join('\n');
 }
 
+/** Extract image blocks in the vendor-agnostic shape every adapter's own image mapping starts
+ * from — the target shape (Claude's ContentBlockParam, opencode's FilePartInput, pi's
+ * ImageContent, ...) differs per vendor, so only this extraction step is shared. */
+export function imageBlocksFrom(
+  content: ContentBlock[],
+): Array<{ data: string; mimeType: string }> {
+  return content.reduce<Array<{ data: string; mimeType: string }>>((images, c) => {
+    if (c.type === 'image') images.push({ data: c.data, mimeType: c.mimeType });
+    return images;
+  }, []);
+}
+
 const PATH_INPUT_KEYS = ['file_path', 'path', 'notebook_path', 'filePath'] as const;
 
 /** Best-effort file location from a tool's raw input (drives produced-file cards and

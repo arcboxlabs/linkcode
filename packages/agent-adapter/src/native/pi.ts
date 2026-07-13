@@ -1,9 +1,13 @@
-import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  PromptOptions,
+} from '@earendil-works/pi-coding-agent';
 import type { ContentBlock, StartOptions } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
 import { readAgentCredential } from '../credential';
-import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
+import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 /**
  * Pi adapter — drives `@earendil-works/pi-coding-agent` via `createAgentSession()`. Events arrive through
@@ -60,10 +64,21 @@ export class PiAdapter extends BaseAgentAdapter {
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     invariant(this.session, 'pi: session not started');
     const text = contentToText(content);
+    const images = imageBlocksFrom(content);
+    const imageOptions: Pick<PromptOptions, 'images'> | undefined =
+      images.length === 0
+        ? undefined
+        : {
+            images: images.map((image) => ({
+              type: 'image',
+              data: image.data,
+              mimeType: image.mimeType,
+            })),
+          };
     this.emitStatus('running');
     if (this.session.isStreaming) {
-      await this.session.prompt(text, { streamingBehavior: 'followUp' });
-    } else await this.session.prompt(text);
+      await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
+    } else await this.session.prompt(text, imageOptions);
   }
 
   protected override async onCancel(): Promise<void> {

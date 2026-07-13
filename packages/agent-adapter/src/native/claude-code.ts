@@ -15,6 +15,7 @@ import type {
   SDKUserMessage,
   SessionMessage,
 } from '@anthropic-ai/claude-agent-sdk';
+import type { MessageParam } from '@anthropic-ai/sdk/resources';
 import type {
   AgentEvent,
   AgentHistoryCapabilities,
@@ -57,13 +58,25 @@ import {
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
-import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
+import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
 type AssistantMessage = AssistantSDKMessage['message'];
 type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
+
+/** The SDK's `Base64ImageSource.media_type` enum. Our own schema's `ContentBlock.image.mimeType`
+ * is an unconstrained string, so this narrows it before it reaches the SDK. */
+type ClaudeImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+function isClaudeImageMediaType(mimeType: string): mimeType is ClaudeImageMediaType {
+  return (
+    mimeType === 'image/jpeg' ||
+    mimeType === 'image/png' ||
+    mimeType === 'image/gif' ||
+    mimeType === 'image/webp'
+  );
+}
 
 /** Claude's subagent-spawning tool: named `Agent` in current CLIs (verified live against the
  * vendored 0.3.x), `Task` in older transcripts — history replay still meets the old name. Exact
@@ -428,9 +441,29 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const opts = nullthrow(this.opts, 'claude-code: session not started');
     this.freshSegment();
     this.emitStatus('running');
+    type ClaudeImageBlock = {
+      type: 'image';
+      source: { type: 'base64'; media_type: ClaudeImageMediaType; data: string };
+    };
+    const imageBlocksForClaude = imageBlocksFrom(content).reduce<ClaudeImageBlock[]>(
+      (blocks, image) => {
+        if (isClaudeImageMediaType(image.mimeType)) {
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: image.mimeType, data: image.data },
+          });
+        }
+        return blocks;
+      },
+      [],
+    );
+    const messageContent: MessageParam['content'] =
+      imageBlocksForClaude.length === 0
+        ? contentToText(content)
+        : [{ type: 'text', text: contentToText(content) }, ...imageBlocksForClaude];
     const message: SDKUserMessage = {
       type: 'user',
-      message: { role: 'user', content: contentToText(content) },
+      message: { role: 'user', content: messageContent },
       parent_tool_use_id: null,
     };
     if (this.inputQueue) {

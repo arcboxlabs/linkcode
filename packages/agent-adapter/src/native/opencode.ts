@@ -7,13 +7,13 @@ import type {
   ToolCallStatus,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
-import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
+import type { Event, FilePartInput, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { falseFn } from 'foxts/noop';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { readAgentCredential } from '../credential';
-import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
+import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
 type PermissionAsked = Extract<Event, { type: 'permission.asked' }>['properties'];
@@ -164,7 +164,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     if (!this.client || !this.sessionId) throw new Error('opencode: session not started');
-    const parts: TextPartInput[] = [{ type: 'text', text: contentToText(content) }];
+    const parts: Array<TextPartInput | FilePartInput> = [
+      { type: 'text', text: contentToText(content) },
+      ...imageBlocksFrom(content).map(
+        (image): FilePartInput => ({
+          type: 'file',
+          mime: image.mimeType,
+          url: `data:${image.mimeType};base64,${image.data}`,
+        }),
+      ),
+    ];
     this.turnEpoch += 1;
     this.turnActive = true;
     this.turnStarted = false;
