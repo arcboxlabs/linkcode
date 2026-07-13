@@ -33,7 +33,7 @@ import {
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
-import { contentToText } from '../../util';
+import { contentToText, imageBlocksFrom } from '../../util';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
@@ -468,9 +468,20 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.turnStartsInFlight += 1;
     this.emitStatus('running');
     try {
+      // `turn/start`'s image item shape ({type:'image', url: 'data:<mime>;base64,<data>'}) was
+      // live-verified against a real codex app-server (0.144.1): a solid-red probe image sent
+      // this way was correctly identified by the model. Not documented anywhere in the JS
+      // package (codex has no .d.ts) — verify again if the app-server pin moves.
+      const imageInputItems = imageBlocksFrom(content).map((image) => ({
+        type: 'image' as const,
+        url: `data:${image.mimeType};base64,${image.data}`,
+      }));
       const response = await server.request('turn/start', {
         threadId,
-        input: [{ type: 'text', text: contentToText(content), text_elements: [] }],
+        input: [
+          { type: 'text', text: contentToText(content), text_elements: [] },
+          ...imageInputItems,
+        ],
         ...(this.model !== undefined && { model: this.model }),
         ...(this.effort !== undefined && { effort: this.effort }),
         // Idempotent policy override — this is how a set-approval-policy lands on codex.
