@@ -108,6 +108,7 @@ export function SessionSidebar({
   onToggleSectionCollapsed,
   onTogglePreviewExpanded,
   BranchStatusComponent,
+  ImMenuComponent,
 }: SessionSidebarProps): React.ReactNode {
   return (
     <ShellSidebar
@@ -168,6 +169,7 @@ export function SessionSidebar({
           onToggleSectionCollapsed={onToggleSectionCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           BranchStatusComponent={BranchStatusComponent}
+          ImMenuComponent={ImMenuComponent}
         />
       </SidebarContent>
     </ShellSidebar>

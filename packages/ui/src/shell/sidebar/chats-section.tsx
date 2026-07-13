@@ -7,6 +7,7 @@ import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { SectionAccordionTrigger } from './section-header';
 import { ShowMoreToggle } from './show-more-toggle';
+import type { ThreadImMenuComponentType } from './thread-im-menu';
 import { ThreadRow } from './thread-row';
 
 export interface ChatsSectionProps {
@@ -30,6 +31,7 @@ export interface ChatsSectionProps {
   /** Opens the new-session page preselecting the chat workspace. */
   onStartDraft: (workspaceId: WorkspaceId) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
+  ImMenuComponent?: ThreadImMenuComponentType;
 }
 
 /**
@@ -53,6 +55,7 @@ export function ChatsSection({
   onToggleSessionPinned,
   onStartDraft,
   onTogglePreviewExpanded,
+  ImMenuComponent,
 }: ChatsSectionProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
 
@@ -83,6 +86,7 @@ export function ChatsSection({
                 onSelect={() => onSelect(session.sessionId)}
                 onClose={() => onClose(session.sessionId)}
                 onTogglePin={() => onToggleSessionPinned(session.sessionId)}
+                ImMenuComponent={ImMenuComponent}
               />
             ))}
             {hasOverflow && (
