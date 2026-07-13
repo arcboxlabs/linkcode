@@ -5,15 +5,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { asHistoryId } from '../history-util';
 import { AmpAdapter } from '../native/amp/adapter';
 import { mapAmpHistoryEvents } from '../native/amp/history';
+import type { AmpPermissionBridge, AmpPermissionRequest } from '../native/amp/permission-bridge';
 import { AmpProbe } from '../probe/amp';
 
 const SID = 'T-0000-test-thread';
 
 type Script = (request: ExecuteOptions) => AsyncIterable<StreamMessage>;
+type Decide = (req: AmpPermissionRequest) => Promise<'allow' | 'deny'>;
 
 class TestAmpAdapter extends AmpAdapter {
   readonly requests: ExecuteOptions[] = [];
   private readonly scripts: Script[] = [];
+  /** Captured from the stubbed bridge so tests drive the approval round-trip without a real server. */
+  decide?: Decide;
 
   script(next: Script): void {
     this.scripts.push(next);
@@ -24,6 +28,15 @@ class TestAmpAdapter extends AmpAdapter {
     const next = this.scripts.shift();
     if (!next) throw new Error('amp test: no script queued for startExecute');
     return Promise.resolve(next(request));
+  }
+
+  protected override startBridge(decide: Decide): Promise<AmpPermissionBridge> {
+    this.decide = decide;
+    return Promise.resolve({
+      url: 'http://127.0.0.1:0/permission',
+      token: 'test-token',
+      close: () => Promise.resolve(),
+    });
   }
 }
 
@@ -413,6 +426,60 @@ describe('AmpAdapter turn mapping', () => {
     expect(opts).not.toHaveProperty('effort');
     expect(opts).not.toHaveProperty('noArchiveAfterExecute');
     expect(opts).not.toHaveProperty('thinking');
+    // Per-tool approval rides a `delegate` rule — NOT the rule-nuking dangerouslyAllowAll flag.
+    expect(opts).not.toHaveProperty('dangerouslyAllowAll');
+    expect(opts?.permissions).toEqual([
+      { tool: '*', action: 'delegate', to: expect.stringContaining('delegate-helper.mjs') },
+    ]);
+    expect(opts?.env).toMatchObject({
+      LINKCODE_AMP_BRIDGE_URL: expect.any(String),
+      LINKCODE_AMP_BRIDGE_TOKEN: 'test-token',
+    });
+  });
+
+  it('bridges delegate approvals: allow, reject, always-allow (auto), and cancel-denies', async () => {
+    const { adapter, events } = await startedAdapter();
+    const decide = adapter.decide;
+    if (!decide) throw new Error('bridge decide callback was not captured');
+
+    // Allow once: the ask correlates to the tool by its amp tool_use id.
+    const allow = decide({ toolName: 'Bash', toolUseId: 'toolu_1', args: { cmd: 'ls' } });
+    const ask1 = ofType(events, 'permission-request').at(-1);
+    expect(ask1?.toolCall).toMatchObject({ toolCallId: 'toolu_1', title: 'Bash', kind: 'execute' });
+    await adapter.send({
+      type: 'permission-response',
+      requestId: ask1?.requestId ?? '',
+      outcome: { outcome: 'selected', optionId: 'allow' },
+    });
+    expect(await allow).toBe('allow');
+
+    // Reject.
+    const reject = decide({ toolName: 'Bash', toolUseId: 'toolu_2', args: {} });
+    const ask2 = ofType(events, 'permission-request').at(-1);
+    await adapter.send({
+      type: 'permission-response',
+      requestId: ask2?.requestId ?? '',
+      outcome: { outcome: 'selected', optionId: 'reject' },
+    });
+    expect(await reject).toBe('deny');
+
+    // Always-allow, then a second call to the same tool auto-allows with no fresh ask.
+    const always = decide({ toolName: 'Read', toolUseId: 'toolu_3', args: {} });
+    const ask3 = ofType(events, 'permission-request').at(-1);
+    await adapter.send({
+      type: 'permission-response',
+      requestId: ask3?.requestId ?? '',
+      outcome: { outcome: 'selected', optionId: 'allow_always' },
+    });
+    expect(await always).toBe('allow');
+    const asksBefore = ofType(events, 'permission-request').length;
+    expect(await decide({ toolName: 'Read', toolUseId: 'toolu_4', args: {} })).toBe('allow');
+    expect(ofType(events, 'permission-request')).toHaveLength(asksBefore);
+
+    // A cancel (teardown resolves every pending ask `cancelled`) denies the in-flight tool call.
+    const cancelled = decide({ toolName: 'Bash', toolUseId: 'toolu_5', args: {} });
+    await adapter.send({ type: 'cancel' });
+    expect(await cancelled).toBe('deny');
   });
 
   it('reports a failed spawn as a recoverable error and returns to idle', async () => {

@@ -1,4 +1,4 @@
-import { env } from 'node:process';
+import { fileURLToPath } from 'node:url';
 import type {
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
@@ -7,6 +7,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   ContentBlock,
+  PermissionOption,
   StartOptions,
   ToolCall,
   ToolCallContent,
@@ -22,9 +23,10 @@ import type {
   Usage,
   UserMessage,
 } from '@sourcegraph/amp-sdk';
+import { createPermission } from '@sourcegraph/amp-sdk';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
-import { nextMessageId } from '../../adapter';
+import { nextMessageId, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import {
   asHistoryId,
@@ -37,12 +39,27 @@ import {
 import { diffContentFromUnified } from '../../unified-diff';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../../util';
 import { listAmpHistory, readAmpHistory } from './history';
+import type { AmpPermissionBridge, AmpPermissionRequest } from './permission-bridge';
+import { startAmpPermissionBridge } from './permission-bridge';
 
 /** Amp's subagent-spawning tool is `Task`; exact match (not the shared regex classifier) for the
  * same reason claude-code matches its `Agent`/`Task` exactly — see `claudeToolKind`. */
 function ampToolKind(name: string): ToolCall['kind'] {
   return name === 'Task' ? 'task' : toolKindFromName(name);
 }
+
+/** Absolute path to the delegate helper the amp CLI spawns per tool call (see delegate-helper.mjs);
+ * shipped +x with a `#!/usr/bin/env node` shebang so amp can exec it directly (no shell, empty
+ * argv). Resolved from this module's location — packaging it into the daemon bundle is a follow-up
+ * (dev/tsx runs from source). */
+const DELEGATE_HELPER_PATH = fileURLToPath(new URL('./delegate-helper.mjs', import.meta.url));
+
+/** Approval options the user picks from — mirrors codex's `PERMISSION_OPTIONS`. */
+const AMP_PERMISSION_OPTIONS: PermissionOption[] = [
+  { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+  { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
+  { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+];
 
 /** `+++ <path>` (a `\t<label>` may trail it); a deletion's `+++ /dev/null` falls back to `---`. */
 const DIFF_NEW_FILE_RE = /^\+{3} ([^\t\n]+)/m;
@@ -140,12 +157,49 @@ export class AmpAdapter extends BaseAgentAdapter {
    * this is only per-session-since-(re)start — a resumed thread's earlier turns are NOT re-added,
    * so the number restarts from zero on resume. Amp exposes no thread-total to seed from. */
   private readonly usageTotals = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
+  /** Session-scoped loopback approval bridge the delegate helper calls; null until onStart. */
+  private bridge: AmpPermissionBridge | null = null;
+  /** Tools the user chose "Always allow" for this session — auto-approved without a fresh ask
+   * (amp has no session-scoped grant of its own, so the bridge owns it). */
+  private readonly alwaysAllow = new Set<string>();
 
   protected async onStart(_opts: StartOptions): Promise<void> {
     // Load the SDK eagerly so a missing package fails clearly at start; the per-turn CLI process
     // itself spawns lazily at the first prompt. Legacy has no mode/effort channel — there is no
     // startup model/effort to apply.
     await this.loadSdk('@sourcegraph/amp-sdk', () => import('@sourcegraph/amp-sdk'));
+    // Per-tool approval bridge is session-scoped (survives the per-turn CLI processes); start once.
+    this.bridge ??= await this.startBridge((req) => this.decidePermission(req));
+  }
+
+  /** Test seam — the real thing opens the loopback HTTP bridge. */
+  protected startBridge(
+    decide: (req: AmpPermissionRequest) => Promise<'allow' | 'deny'>,
+  ): Promise<AmpPermissionBridge> {
+    return startAmpPermissionBridge(decide);
+  }
+
+  /** Run the approval round-trip for one delegate-helper request, reusing the same
+   * `requestPermission` wire codex/claude use. "Always allow" is remembered per session; a cancelled
+   * turn (teardown resolves pending asks `cancelled`) denies, so the tool never runs. */
+  private async decidePermission(req: AmpPermissionRequest): Promise<'allow' | 'deny'> {
+    if (this.alwaysAllow.has(req.toolName)) return 'allow';
+    const outcome = await this.requestPermission(
+      {
+        toolCallId: req.toolUseId || nextToolCallId(),
+        title: req.toolName,
+        kind: ampToolKind(req.toolName),
+        status: 'in_progress',
+        rawInput: req.args,
+      },
+      AMP_PERMISSION_OPTIONS,
+    );
+    if (outcome.outcome !== 'selected') return 'deny';
+    if (outcome.optionId === 'allow_always') {
+      this.alwaysAllow.add(req.toolName);
+      return 'allow';
+    }
+    return outcome.optionId === 'allow' ? 'allow' : 'deny';
   }
 
   override async resumeHistory(
@@ -195,10 +249,12 @@ export class AmpAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  /** Stopping the session has nothing extra to shut down — there is no persistent process, only
-   * the (possibly) in-flight turn, which cancel already covers. */
-  protected override onStop(): Promise<void> {
-    return this.onCancel();
+  /** Stopping the session cancels the in-flight turn and closes the session-scoped approval bridge
+   * (the only thing that outlives a per-turn process). */
+  protected override async onStop(): Promise<void> {
+    await this.onCancel();
+    await this.bridge?.close();
+    this.bridge = null;
   }
 
   // No onSetModel/onSetEffort overrides: legacy `AmpOptions` has no mode/effort channel, so both
@@ -253,16 +309,31 @@ export class AmpAdapter extends BaseAgentAdapter {
   private executeOptions(opts: StartOptions): AmpOptions {
     const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
     const continueThread = this.threadId ?? this.resumeFrom;
+    const bridge = this.bridge;
     return {
       cwd: opts.cwd,
+      // Per-tool approval: match every tool with a `delegate` rule so amp spawns our helper for each
+      // tool call; the helper round-trips through the bridge → `requestPermission` → LinkCode's own
+      // approval UI (`decidePermission`). `dangerouslyAllowAll` is deliberately NOT set — it
+      // short-circuits every rule (delegate included) to a blanket allow. `'*'` matches all tools;
+      // a plain `ask` rule would instead hard-error in stream-json mode, which is why delegate.
+      ...(bridge && {
+        permissions: [createPermission('*', 'delegate', { to: DELEGATE_HELPER_PATH })],
+      }),
       // Legacy AmpOptions is a zod `.strict()` schema with no mode/effort/thinking/
       // noArchiveAfterExecute field — passing any of them throws. Verified live: the thread stays
       // continuable across turns without an explicit no-archive opt-out.
       ...(continueThread !== undefined && { continue: continueThread }),
-      // The SDK passes `env` to spawn verbatim — it REPLACES the child environment (same trap as
-      // claude-code), so spread the parent env or PATH/HOME vanish. process.env carries no
-      // undefined values at runtime; the cast bridges its looser TS type.
-      ...(apiKey && { env: { ...env, AMP_API_KEY: apiKey } }),
+      // The SDK MERGES `env` over the amp CLI's process.env (verified against the pinned SDK), and
+      // the CLI re-merges it into the delegate helper's env — so the bridge URL/token reach the
+      // grandchild helper. AMP_API_KEY rides only when a per-session key is configured.
+      env: {
+        ...(apiKey && { AMP_API_KEY: apiKey }),
+        ...(bridge && {
+          LINKCODE_AMP_BRIDGE_URL: bridge.url,
+          LINKCODE_AMP_BRIDGE_TOKEN: bridge.token,
+        }),
+      },
     };
   }
 
