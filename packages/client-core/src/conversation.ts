@@ -1,4 +1,5 @@
 import type {
+  AgentCommand,
   AgentEvent,
   ApprovalPolicyState,
   ContentBlock,
@@ -102,6 +103,9 @@ export interface ConversationViewModel {
   /** The reasoning-effort level the session is running at, from `effort-update`. `null` until the
    * adapter reports it — same placeholder rule as `currentModel`. */
   currentEffort: EffortLevel | null;
+  /** Slash-command catalog from `available-commands-update` (full-replace). `null` means the agent
+   * advertised none — the composer then offers no command menu. */
+  availableCommands: AgentCommand[] | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
@@ -167,6 +171,7 @@ export function createConversationBuilder(): ConversationBuilder {
   let approvalPolicy: ApprovalPolicyState | null = null;
   let currentModel: string | null = null;
   let currentEffort: EffortLevel | null = null;
+  let availableCommands: AgentCommand[] | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
 
@@ -347,6 +352,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'effort-update':
         currentEffort = event.effort;
         break;
+      case 'available-commands-update':
+        availableCommands = event.commands;
+        break;
       case 'status':
         status = event.status;
         break;
@@ -439,6 +447,7 @@ export function createConversationBuilder(): ConversationBuilder {
       approvalPolicy,
       currentModel,
       currentEffort,
+      availableCommands,
       stopReason,
       pendingPermissionIds: pendingIds(approvals),
       pendingQuestionIds: pendingIds(questionAsks),

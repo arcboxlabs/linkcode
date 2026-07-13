@@ -147,6 +147,7 @@ export const zhCN = {
       approvalTitle: '如何审批 {agent} 的操作？',
       reasoning: '推理',
       provider: '提供方',
+      shellCommand: 'Shell 命令',
     },
     mode: {
       label: '模式',

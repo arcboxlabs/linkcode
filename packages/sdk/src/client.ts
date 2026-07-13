@@ -146,6 +146,14 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.promptText(sessionId, text));
   }
 
+  invokeCommand(sessionId: SessionId, name: string, args?: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.invokeCommand(sessionId, name, args));
+  }
+
+  runShellCommand(sessionId: SessionId, command: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.runShellCommand(sessionId, command));
+  }
+
   cancel(sessionId: SessionId): RequestResult<{ ok: true }> {
     return toResult(this.raw.cancel(sessionId));
   }

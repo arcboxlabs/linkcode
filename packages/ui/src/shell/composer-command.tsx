@@ -1,4 +1,4 @@
-import type { SessionMode } from '@linkcode/schema';
+import type { AgentCommand, SessionMode } from '@linkcode/schema';
 import {
   CommandCollection,
   CommandEmpty,
@@ -14,6 +14,7 @@ import {
   CheckIcon,
   ListTodoIcon,
   PaperclipIcon,
+  SlashIcon,
   SlidersHorizontalIcon,
   TargetIcon,
 } from 'lucide-react';
@@ -61,7 +62,17 @@ export interface ModeCommandEntry extends BaseCommandEntry {
   mode: SessionMode;
 }
 
-export type ComposerCommandEntry = ActionCommandEntry | MentionCommandEntry | ModeCommandEntry;
+/** A provider slash command from the session's advertised catalog. */
+export interface AgentCommandEntry extends BaseCommandEntry {
+  command: AgentCommand;
+  kind: 'command';
+}
+
+export type ComposerCommandEntry =
+  | ActionCommandEntry
+  | AgentCommandEntry
+  | MentionCommandEntry
+  | ModeCommandEntry;
 
 export interface ComposerCommandGroup {
   items: ComposerCommandEntry[];
@@ -109,6 +120,7 @@ function matchesQuery(
 }
 
 export function buildComposerCommandGroups({
+  agentCommands,
   availableModes,
   commandSource,
   currentModeId,
@@ -118,6 +130,8 @@ export function buildComposerCommandGroups({
   plusQuery,
   textTrigger,
 }: {
+  /** The session's advertised slash-command catalog (empty when the agent has none). */
+  agentCommands: readonly AgentCommand[];
   availableModes: SessionMode[];
   commandSource: ComposerCommandSource | null;
   currentModeId: string | null;
@@ -175,10 +189,26 @@ export function buildComposerCommandGroups({
       value: 'mention',
     },
   ];
-  const commandItems: ComposerCommandEntry[] = commandItemCandidates.filter((item) => {
-    if (commandSource === 'slash' && item.source === 'plus') return false;
-    return matchesQuery(item.label, item.value, item.hint, commandQuery);
-  });
+  const commandItems: ComposerCommandEntry[] = [];
+  if (commandSource === 'slash') {
+    for (const command of agentCommands) {
+      if (!matchesQuery(command.name, command.name, command.description, commandQuery)) continue;
+      commandItems.push({
+        command,
+        hint: command.description ?? command.argumentHint,
+        icon: SlashIcon,
+        id: `command:${command.name}`,
+        kind: 'command',
+        label: `/${command.name}`,
+        source: 'slash',
+        value: command.name,
+      });
+    }
+  }
+  for (const item of commandItemCandidates) {
+    if (commandSource === 'slash' && item.source === 'plus') continue;
+    if (matchesQuery(item.label, item.value, item.hint, commandQuery)) commandItems.push(item);
+  }
 
   if (commandSource === 'plus' && modesEnabled) {
     for (const mode of availableModes) {
