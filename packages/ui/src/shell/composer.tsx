@@ -24,7 +24,6 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { preventBaseUIHandler } from '../lib/base-ui';
-import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
@@ -450,27 +449,23 @@ export function Composer({
             onValueChange={(nextValue, details) => updateValue(nextValue, details.event)}
           >
             <Frame
-              className={cn(
-                'transition-[background-color,padding] duration-200 ease-out motion-reduce:transition-none',
-                commandOpen ? 'bg-muted/72 p-1' : 'bg-transparent p-0',
-              )}
+              className={
+                commandOpen
+                  ? 'bg-muted/72 p-1 transition-[background-color,padding] duration-200 ease-out motion-reduce:transition-none'
+                  : 'bg-transparent p-0'
+              }
             >
               <Collapsible open={commandOpen}>
                 <CollapsiblePanel
                   aria-hidden={!commandOpen}
                   inert={!commandOpen}
-                  className="min-h-0 transition-[height,opacity,transform] duration-200 ease-out data-ending-style:translate-y-2 data-ending-style:opacity-0 data-starting-style:translate-y-2 data-starting-style:opacity-0 motion-reduce:transition-none"
+                  className="max-h-80 min-h-0 transition-[height,max-height] data-ending-style:max-h-0 data-starting-style:max-h-0 motion-reduce:transition-none"
                 >
-                  <div className="min-h-0 pb-1">
-                    <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
-                  </div>
+                  <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
                 </CollapsiblePanel>
               </Collapsible>
-              <FramePanel className="z-10 p-0">
-                <PromptInput
-                  onSubmit={submit}
-                  className="relative [&_[data-slot=input-group]]:border-0 [&_[data-slot=input-group]]:before:shadow-none"
-                >
+              <FramePanel className="z-10 border-0 bg-transparent p-0 shadow-none before:hidden">
+                <PromptInput onSubmit={submit} className="relative">
                   <AutocompletePrimitive.Input
                     render={
                       <PromptInputTextarea

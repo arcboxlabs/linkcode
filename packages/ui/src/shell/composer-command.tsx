@@ -245,42 +245,44 @@ export function ComposerCommandMenu({
   onSelect: (entry: ComposerCommandEntry) => void;
 }): React.ReactNode {
   return (
-    <div className="flex max-h-80 min-h-0 flex-col">
+    <div className="flex max-h-80 min-h-0 flex-col **:data-[slot=scroll-area-viewport]:max-h-80">
       <CommandEmpty>{emptyLabel}</CommandEmpty>
-      <CommandList>
-        {(group: ComposerCommandGroup) => (
-          <CommandGroup key={group.value} items={group.items}>
-            <CommandGroupLabel>{group.label}</CommandGroupLabel>
-            <CommandCollection>
-              {(entry: ComposerCommandEntry) => (
-                <CommandItem
-                  key={entry.id}
-                  className="gap-2"
-                  disabled={entry.disabled}
-                  value={entry}
-                  onClick={(event) => {
-                    event.preventBaseUIHandler();
-                    onSelect(entry);
-                  }}
-                >
-                  <CommandIcon entry={entry} />
-                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                    <span className="shrink-0">{entry.label}</span>
-                    {entry.hint ? (
-                      <span className="min-w-0 truncate text-muted-foreground text-xs">
-                        {entry.hint}
-                      </span>
+      <div className="min-h-0 flex-1">
+        <CommandList>
+          {(group: ComposerCommandGroup) => (
+            <CommandGroup key={group.value} items={group.items}>
+              <CommandGroupLabel>{group.label}</CommandGroupLabel>
+              <CommandCollection>
+                {(entry: ComposerCommandEntry) => (
+                  <CommandItem
+                    key={entry.id}
+                    className="gap-2"
+                    disabled={entry.disabled}
+                    value={entry}
+                    onClick={(event) => {
+                      event.preventBaseUIHandler();
+                      onSelect(entry);
+                    }}
+                  >
+                    <CommandIcon entry={entry} />
+                    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                      <span className="shrink-0">{entry.label}</span>
+                      {entry.hint ? (
+                        <span className="min-w-0 truncate text-muted-foreground text-xs">
+                          {entry.hint}
+                        </span>
+                      ) : null}
+                    </span>
+                    {entry.kind === 'mode' && entry.active ? (
+                      <CheckIcon className="ms-auto size-4 shrink-0 opacity-80" />
                     ) : null}
-                  </span>
-                  {entry.kind === 'mode' && entry.active ? (
-                    <CheckIcon className="ms-auto size-4 shrink-0 opacity-80" />
-                  ) : null}
-                </CommandItem>
-              )}
-            </CommandCollection>
-          </CommandGroup>
-        )}
-      </CommandList>
+                  </CommandItem>
+                )}
+              </CommandCollection>
+            </CommandGroup>
+          )}
+        </CommandList>
+      </div>
     </div>
   );
 }
