@@ -17,6 +17,7 @@
     { "path": "packages/common" },
     { "path": "packages/engine" },
     { "path": "packages/i18n" },
+    { "path": "packages/im-render" },
     { "path": "packages/ipc" },
     { "path": "packages/schema" },
     { "path": "packages/sdk" },
