@@ -19,6 +19,7 @@ import type {
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
+import { MAX_ATTACHMENT_IMAGE_BASE64_LENGTH } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -244,6 +245,9 @@ export class Engine {
           // reply — or forever, if the turn hangs. A failed send still surfaces to the client, via
           // tryReply's `request.failed` reply, so this doesn't reintroduce a silent "ghost" message.
           if (p.input.type === 'prompt') {
+            if (oversizedAttachmentBlock(p.input.content)) {
+              throw new Error('Attachment exceeds the maximum allowed size');
+            }
             this.transport.send(
               createWireMessage({
                 kind: 'agent.event',
@@ -975,6 +979,20 @@ function notificationReason(event: AgentEvent): SessionNotificationReason | unde
 }
 
 const SESSION_TITLE_MAX_LENGTH = 80;
+
+/** Defense-in-depth for less-trusted peers (mobile/Server tunnel) — local desktop/webview already
+ * enforce this client-side before ever encoding a file. */
+function oversizedAttachmentBlock(content: ContentBlock[]): boolean {
+  return content.some((block) => {
+    if (block.type === 'image' || block.type === 'audio') {
+      return block.data.length > MAX_ATTACHMENT_IMAGE_BASE64_LENGTH;
+    }
+    if (block.type === 'resource' && 'blob' in block.resource) {
+      return block.resource.blob.length > MAX_ATTACHMENT_IMAGE_BASE64_LENGTH;
+    }
+    return false;
+  });
+}
 
 function titleFromContent(content: ContentBlock[]): string | undefined {
   for (const block of content) {
