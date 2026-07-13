@@ -214,6 +214,27 @@ function WorkbenchSessionSurface({
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
   }
 
+  // Command/shell directives fire-and-forget like handleSend: the invocation echoes back as a
+  // user-message and results stream as normal events; failures land in the error banner.
+  function handleInvokeCommand(name: string, args?: string): void {
+    if (!sessions.activeId) return;
+    onClearError();
+    void inputMutation
+      .trigger({
+        sessionId: sessions.activeId,
+        input: { type: 'command', name, arguments: args },
+      })
+      .catch(noop);
+  }
+
+  function handleRunShellCommand(command: string): void {
+    if (!sessions.activeId) return;
+    onClearError();
+    void inputMutation
+      .trigger({ sessionId: sessions.activeId, input: { type: 'shell-command', command } })
+      .catch(noop);
+  }
+
   async function handleSubmitDraft(submission: NewSessionSubmission): Promise<void> {
     onClearError();
     // Rejections propagate so the new-session page stays up; the error banner reports them.
@@ -450,6 +471,8 @@ function WorkbenchSessionSurface({
       onApprovalPolicyChange={handleApprovalPolicyChange}
       onModelChange={handleModelChange}
       onEffortChange={handleEffortChange}
+      onInvokeCommand={handleInvokeCommand}
+      onRunShellCommand={handleRunShellCommand}
     />
   );
 }
