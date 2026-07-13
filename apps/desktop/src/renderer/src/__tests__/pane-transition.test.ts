@@ -1,5 +1,5 @@
 import type { SplitTransitionState } from '@renderer/shell/layout/pane-transition';
-import { reconcileTransition } from '@renderer/shell/layout/pane-transition';
+import { reconcileTransition, settleTransition } from '@renderer/shell/layout/pane-transition';
 import { describe, expect, it } from 'vitest';
 
 function transition(overrides?: Partial<SplitTransitionState>): SplitTransitionState {
@@ -68,5 +68,22 @@ describe('reconcileTransition', () => {
     const current = transition({ requestedOpen: true, phase: 'open' });
 
     expect(reconcileTransition(current, true, true)).toBe(current);
+  });
+});
+
+describe('settleTransition', () => {
+  it('settles an active transition to the latest requested state', () => {
+    expect(
+      settleTransition(transition({ requestedOpen: true, phase: 'opening', version: 3 })),
+    ).toEqual({ requestedOpen: true, phase: 'open', version: 3 });
+    expect(
+      settleTransition(transition({ requestedOpen: false, phase: 'closing', version: 4 })),
+    ).toEqual({ requestedOpen: false, phase: 'closed', version: 4 });
+  });
+
+  it('keeps a settled transition reference stable', () => {
+    const current = transition({ requestedOpen: true, phase: 'open', version: 2 });
+
+    expect(settleTransition(current)).toBe(current);
   });
 });

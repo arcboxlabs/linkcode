@@ -1,10 +1,10 @@
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useReducedMotion } from 'motion/react';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 // Duration and bezier are duplicated in index.css (the workspace/chrome grid transitions
-// under [data-shell-animating]) — keep both in sync.
+// under the axis-specific shell animation attributes) — keep both in sync.
 export const SHELL_TRANSITION = {
   durationMs: 300,
   cssEase: 'cubic-bezier(0.2, 0, 0, 1)',
@@ -17,6 +17,8 @@ export interface PaneTransition {
   isAnimating: boolean;
   paneVisible: boolean;
   reducedMotion: boolean;
+  settle: () => void;
+  rearmFallback: () => void;
 }
 
 interface UsePaneTransitionOptions {
@@ -38,7 +40,7 @@ export interface SplitTransitionState {
  * Phase machine for a shell pane toggle. The pane's geometry is a CSS variable: this hook
  * writes it once per change and the scoped grid transitions in index.css interpolate the
  * consuming templates — no per-frame JS. The phases exist for everything that must bracket
- * the 300ms visual: the [data-shell-animating] attribute, content locks, terminal
+ * the 300ms visual: the axis-specific animation attribute, content locks, terminal
  * suspension, and lazy mounting.
  */
 export function usePaneTransition({
@@ -67,48 +69,51 @@ export function usePaneTransition({
   const active = reconcileTransition(transition, open, reducedMotion);
   if (active !== transition) setTransition(active);
   const { phase, version: transitionVersion } = active;
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelFallback = useCallback((): void => {
+    if (fallbackTimerRef.current === null) return;
+    clearTimeout(fallbackTimerRef.current);
+    fallbackTimerRef.current = null;
+  }, []);
+  const settle = useCallback((): void => {
+    cancelFallback();
+    setTransition(settleTransition);
+  }, [cancelFallback]);
+  const rearmFallback = useCallback((): void => {
+    cancelFallback();
+    fallbackTimerRef.current = setTimeout(() => {
+      setTransition((latest) =>
+        latest.version === transitionVersion ? settleTransition(latest) : latest,
+      );
+    }, SHELL_TRANSITION.durationMs + 100);
+  }, [cancelFallback, transitionVersion]);
 
   // Written pre-paint so the variable lands in the same style recalc as the
-  // [data-shell-animating] attribute and the content locks. Sash drags write the same
+  // animation attribute and the content locks. Sash drags write the same
   // variable imperatively per frame (no transition — the attribute is absent) and commit
   // to the store on release, which re-runs this effect with the same value.
   useLayoutEffect(() => {
     onSizeChange?.(open ? Math.max(0, size) : 0);
   }, [onSizeChange, open, size]);
 
-  useAbortableEffect(
-    (signal) => {
-      if (transitionVersion === 0) return;
-      if (!isAnimatingPhase(phase)) return;
+  useAbortableEffect(() => {
+    if (transitionVersion === 0) return;
+    if (!isAnimatingPhase(phase)) return;
 
-      const completedPhase: SplitPanePhase = phase === 'opening' ? 'open' : 'closed';
-
-      // CSS transitions drive the visuals; this timer only settles the phase once they are
-      // done. A timer instead of `transitionend`: Chromium throttles occluded windows, and
-      // the phase must settle even if no frame is ever painted.
-      const settle = setTimeout(() => {
-        if (signal.aborted) return;
-
-        setTransition((latest) => {
-          if (latest.version !== transitionVersion) return latest;
-
-          return {
-            ...latest,
-            phase: completedPhase,
-          };
-        });
-      }, SHELL_TRANSITION.durationMs + 100);
-
-      return () => clearTimeout(settle);
-    },
-    [phase, setTransition, transitionVersion],
-  );
+    // The workspace settles from transitionend. This is only the occluded-window/no-event
+    // fallback, rearmed whenever Chromium starts or retargets the real CSS transition.
+    rearmFallback();
+    return cancelFallback;
+  }, [cancelFallback, phase, rearmFallback, transitionVersion]);
 
   return {
     phase,
     isAnimating: isAnimatingPhase(phase),
     paneVisible: open || phase !== 'closed',
     reducedMotion,
+    settle,
+    rearmFallback,
   };
 }
 
@@ -143,4 +148,13 @@ export function reconcileTransition(
   }
 
   return current;
+}
+
+export function settleTransition(current: SplitTransitionState): SplitTransitionState {
+  if (!isAnimatingPhase(current.phase)) return current;
+
+  return {
+    ...current,
+    phase: current.requestedOpen ? 'open' : 'closed',
+  };
 }

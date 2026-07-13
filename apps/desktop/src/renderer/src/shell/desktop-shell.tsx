@@ -199,6 +199,9 @@ export function DesktopShell({
     size: layout.bottomH,
     onSizeChange: syncBottomPaneSize,
   });
+  const horizontalAnimating = sidebarTransition.isAnimating || rightTransition.isAnimating;
+  const verticalAnimating = bottomTransition.isAnimating;
+  const shellAnimating = horizontalAnimating || verticalAnimating;
   // Tab content mounts lazily on the panel's first settled open, so no shell is spawned for a
   // panel that is never shown. Latched during render — React's prescribed state adjustment.
   const [rightContentMounted, setRightContentMounted] = useState(false);
@@ -405,13 +408,13 @@ export function DesktopShell({
       node: tab.id.startsWith('attach:') ? (
         <AttachedTerminalPanel
           terminalId={tab.id.slice('attach:'.length)}
-          suspended={rightTransition.phase !== 'open'}
+          suspended={rightTransition.phase !== 'open' || shellAnimating}
         />
       ) : (
         <TerminalPanel
           sessionKey={tab.id}
           cwd={active?.cwd}
-          suspended={rightTransition.phase !== 'open'}
+          suspended={rightTransition.phase !== 'open' || shellAnimating}
         />
       ),
     }));
@@ -435,7 +438,7 @@ export function DesktopShell({
           <TerminalPanel
             sessionKey={tab.id}
             cwd={active?.cwd}
-            suspended={bottomTransition.phase !== 'open'}
+            suspended={bottomTransition.phase !== 'open' || shellAnimating}
           />
         ) : (
           <PanelStubContent type={tab.type} />
@@ -480,11 +483,8 @@ export function DesktopShell({
       ref={shellRootRef}
       className="linkcode-desktop-shell relative h-full bg-transparent text-foreground"
       style={shellStyle}
-      data-shell-animating={
-        sidebarTransition.isAnimating || rightTransition.isAnimating || bottomTransition.isAnimating
-          ? ''
-          : undefined
-      }
+      data-shell-horizontal-animating={horizontalAnimating ? '' : undefined}
+      data-shell-vertical-animating={verticalAnimating ? '' : undefined}
     >
       <DesktopChrome
         header={header}

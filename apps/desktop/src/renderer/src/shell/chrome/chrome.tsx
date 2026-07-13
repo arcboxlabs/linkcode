@@ -84,12 +84,6 @@ const CHROME_BACKGROUND_GRID_STYLE = {
   '--lc-chrome-right-segment-w': 'var(--lc-right-col)',
 } satisfies ChromeBackgroundGridStyle;
 
-// Maximizing is a direct cut: the right segment collapses to zero instantly.
-const MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE = {
-  gridTemplateColumns: 'var(--lc-sidebar-col) minmax(0, 1fr) 0px',
-  '--lc-chrome-right-segment-w': '0px',
-} satisfies ChromeBackgroundGridStyle;
-
 const CHROME_SLOT_CLASS: Record<DesktopChromePosition, string> = {
   left: 'col-start-1 justify-start',
   center: 'col-start-2 justify-center',
@@ -106,6 +100,12 @@ const MAIN_SLOT_INSET_STYLE = {
     'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-col)))',
   paddingRight:
     'max(var(--lc-chrome-edge), calc(var(--lc-chrome-right-local-inset) - var(--lc-chrome-right-segment-w)))',
+} satisfies React.CSSProperties;
+
+const EXPANDED_MAIN_SLOT_INSET_STYLE = {
+  paddingLeft:
+    'max(var(--lc-chrome-edge), calc(var(--lc-chrome-left-local-inset) - var(--lc-sidebar-col)))',
+  paddingRight: 'var(--lc-chrome-right-local-inset)',
 } satisfies React.CSSProperties;
 
 const RIGHT_SLOT_INSET_STYLE = {
@@ -283,7 +283,7 @@ function ChromeSegmentGrid({
   return (
     <div
       className="linkcode-chrome-grid absolute inset-0 grid overflow-hidden"
-      style={expandedPanel ? MAXIMIZED_CHROME_BACKGROUND_GRID_STYLE : CHROME_BACKGROUND_GRID_STYLE}
+      style={CHROME_BACKGROUND_GRID_STYLE}
     >
       <ChromeSegment
         segment="sidebar"
@@ -292,8 +292,8 @@ function ChromeSegmentGrid({
         // this overlay transparent so the title area does not get double-tinted.
         className={
           hasNativeBackdrop
-            ? 'bg-transparent backdrop-blur-none'
-            : 'border-sidebar-border border-r bg-sidebar backdrop-blur-none'
+            ? 'col-start-1 bg-transparent backdrop-blur-none'
+            : 'col-start-1 border-sidebar-border border-r bg-sidebar backdrop-blur-none'
         }
         slotInsetStyle={SIDEBAR_SLOT_INSET_STYLE}
         portalUse={portalUse}
@@ -301,8 +301,8 @@ function ChromeSegmentGrid({
       />
       <ChromeSegment
         segment="main"
-        className="bg-background/80"
-        slotInsetStyle={MAIN_SLOT_INSET_STYLE}
+        className={cn('col-start-2 bg-background/80', expandedPanel && 'z-10 col-end-4')}
+        slotInsetStyle={expandedPanel ? EXPANDED_MAIN_SLOT_INSET_STYLE : MAIN_SLOT_INSET_STYLE}
         // While any panel is maximized the main segment hosts that panel's tabs
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
@@ -318,7 +318,8 @@ function ChromeSegmentGrid({
       <ChromeSegment
         segment="right"
         divider="main-right"
-        className="border-border border-l bg-background/80"
+        className="col-start-3 border-border border-l bg-background/80"
+        hidden={expandedPanel !== null}
         slotInsetStyle={RIGHT_SLOT_INSET_STYLE}
         portalUse={portalUse}
         setPortalTarget={setPortalTarget}
@@ -333,6 +334,7 @@ function ChromeSegment({
   className,
   slotInsetStyle,
   defaultSlots,
+  hidden = false,
   portalUse,
   setPortalTarget,
 }: {
@@ -341,6 +343,7 @@ function ChromeSegment({
   className: string;
   slotInsetStyle: React.CSSProperties;
   defaultSlots?: Partial<Record<DesktopChromePosition, React.ReactNode>>;
+  hidden?: boolean;
   portalUse: ChromePortalUseMap;
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
@@ -350,9 +353,12 @@ function ChromeSegment({
     <div
       className={cn(
         '@container/chrome-segment relative min-w-0 overflow-hidden backdrop-blur-xl',
+        hidden && 'invisible',
         className,
       )}
       data-chrome-divider={divider}
+      aria-hidden={hidden || undefined}
+      inert={hidden}
     >
       <div
         className={cn(

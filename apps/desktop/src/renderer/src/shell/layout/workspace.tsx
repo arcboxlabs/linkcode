@@ -69,8 +69,49 @@ export function DesktopWorkspace({
     sidebar.transition.isAnimating || right.transition.isAnimating || bottom.transition.isAnimating;
   const horizontalAnimating = sidebar.transition.isAnimating || right.transition.isAnimating;
 
+  const rearmTransition = (propertyName: string): void => {
+    if (propertyName === 'grid-template-columns') {
+      sidebar.transition.rearmFallback();
+      right.transition.rearmFallback();
+    } else if (propertyName === 'grid-template-rows') {
+      bottom.transition.rearmFallback();
+    }
+  };
+  const settleTransition = (propertyName: string): void => {
+    if (propertyName === 'grid-template-columns') {
+      sidebar.transition.settle();
+      right.transition.settle();
+    } else if (propertyName === 'grid-template-rows') {
+      bottom.transition.settle();
+    }
+  };
+  const handleTransitionRun = (event: React.TransitionEvent<HTMLDivElement>): void => {
+    if (event.target !== event.currentTarget) return;
+    rearmTransition(event.propertyName);
+  };
+  const handleTransitionFinish = (event: React.TransitionEvent<HTMLDivElement>): void => {
+    if (event.target !== event.currentTarget) return;
+    const matchingTransitionIsLive = event.currentTarget.getAnimations().some((animation) => {
+      if (!('transitionProperty' in animation)) return false;
+      return (
+        animation.transitionProperty === event.propertyName &&
+        (animation.pending || animation.playState === 'running')
+      );
+    });
+    if (matchingTransitionIsLive) {
+      rearmTransition(event.propertyName);
+      return;
+    }
+    settleTransition(event.propertyName);
+  };
+
   return (
-    <div className="linkcode-shell-grid isolate h-full min-h-0 min-w-0">
+    <div
+      className="linkcode-shell-grid isolate h-full min-h-0 min-w-0"
+      onTransitionRun={handleTransitionRun}
+      onTransitionEnd={handleTransitionFinish}
+      onTransitionCancel={handleTransitionFinish}
+    >
       {/* The sidebar cell's right edge is the animated divider, so the cell owns the
             border (the aside's own border-r is suppressed by the shell). */}
       <div
@@ -86,8 +127,15 @@ export function DesktopWorkspace({
         {/* linkcode-shell-pane-lock max-clamps the locked size to the same window-aware
               expression as the grid track, so the lock equals the settled track exactly. */}
         <div
-          className={cn('h-full', sidebar.transition.isAnimating && 'linkcode-shell-pane-lock')}
-          style={sidebar.transition.isAnimating ? { width: layout.sidebarW } : undefined}
+          className={cn(
+            'h-full',
+            horizontalAnimating && sidebar.transition.paneVisible && 'linkcode-shell-pane-lock',
+          )}
+          style={
+            horizontalAnimating && sidebar.transition.paneVisible
+              ? { width: layout.sidebarW }
+              : undefined
+          }
         >
           {sidebar.node}
         </div>
@@ -118,8 +166,15 @@ export function DesktopWorkspace({
         )}
       >
         <div
-          className={cn('h-full', right.transition.isAnimating && 'linkcode-shell-pane-lock')}
-          style={right.transition.isAnimating ? { width: layout.rightW } : undefined}
+          className={cn(
+            'h-full',
+            horizontalAnimating && right.transition.paneVisible && 'linkcode-shell-pane-lock',
+          )}
+          style={
+            horizontalAnimating && right.transition.paneVisible
+              ? { width: layout.rightW }
+              : undefined
+          }
         >
           {right.node}
         </div>
@@ -138,8 +193,20 @@ export function DesktopWorkspace({
         {/* h-full at rest; the inline lock (fixed px, overriding the percentage) wins while
               the row track animates so the panel content never resizes mid-toggle. */}
         <div
-          className={cn('h-full', bottom.transition.isAnimating && 'linkcode-shell-pane-lock')}
-          style={bottom.transition.isAnimating ? { height: layout.bottomH } : undefined}
+          className={cn(
+            'h-full',
+            (bottom.transition.isAnimating || horizontalAnimating) &&
+              bottom.transition.paneVisible &&
+              'linkcode-shell-pane-lock',
+            horizontalAnimating &&
+              bottom.transition.paneVisible &&
+              'linkcode-shell-bottom-horizontal-lock',
+          )}
+          style={
+            bottom.transition.isAnimating && bottom.transition.paneVisible
+              ? { height: layout.bottomH }
+              : undefined
+          }
         >
           {bottom.node}
         </div>

@@ -31,15 +31,27 @@
 
 .linkcode-chrome-grid,
 .linkcode-shell-grid {
-  /* Keep in sync with MIN_MAIN_SIZE in shell/store/model.ts. */
+  /* Keep in sync with the pane minima in shell/store/model.ts. A closed pane writes 0,
+     so min() makes its hard minimum disappear without another state variable. */
   --lc-main-min: 360px;
-  --lc-sidebar-col: clamp(0px, var(--lc-sidebar-w), calc(100cqw - var(--lc-main-min)));
+  --lc-sidebar-min: min(var(--lc-sidebar-w), 240px);
+  --lc-right-min: min(var(--lc-right-w), 320px);
+  --lc-bottom-min: min(var(--lc-bottom-h), 150px);
+  --lc-sidebar-col: clamp(
+    var(--lc-sidebar-min),
+    var(--lc-sidebar-w),
+    calc(100cqw - var(--lc-main-min) - var(--lc-right-min))
+  );
   --lc-right-col: clamp(
-    0px,
+    var(--lc-right-min),
     var(--lc-right-w),
     calc(100cqw - var(--lc-sidebar-col) - var(--lc-main-min))
   );
-  --lc-bottom-row: clamp(0px, var(--lc-bottom-h), calc(100cqh - var(--lc-main-min)));
+  --lc-bottom-row: clamp(
+    var(--lc-bottom-min),
+    var(--lc-bottom-h),
+    calc(100cqh - var(--lc-main-min))
+  );
 }
 
 .linkcode-shell-grid {
@@ -55,7 +67,7 @@
  * lock always equals the track's settled value, window clamps included.
  */
 [data-shell-pane="sidebar"] > .linkcode-shell-pane-lock {
-  max-width: calc(100cqw - var(--lc-main-min));
+  max-width: calc(100cqw - var(--lc-main-min) - var(--lc-right-min));
 }
 
 [data-shell-pane="right"] > .linkcode-shell-pane-lock {
@@ -72,25 +84,36 @@
  * so the per-frame style/layout work is just track math plus repositioning the locked,
  * fixed-size pane subtrees. (Transitioning the variables themselves on the shell root was
  * measurably worse: an inherited custom property re-propagates through the whole shell
- * subtree every frame.) [data-shell-animating] is set by DesktopShell only while a pane
- * toggle is in flight, so sash drags and window resizes keep tracking the pointer live
- * and the maximize cut stays instant.
- * Keep duration/bezier in sync with SHELL_TRANSITION in shell/layout/pane-transition.ts.
+ * subtree every frame.) DesktopShell sets one axis-specific animation attribute only while
+ * that axis is in flight, so sash drags and resting window resizes keep tracking live.
+ * Row and column durations are independent so a bottom toggle cannot animate unrelated chrome
+ * geometry. Keep duration/bezier in sync with SHELL_TRANSITION in pane-transition.ts.
  */
-.linkcode-desktop-shell[data-shell-animating] .linkcode-shell-grid {
-  transition:
-    grid-template-columns 300ms cubic-bezier(0.2, 0, 0, 1),
-    grid-template-rows 300ms cubic-bezier(0.2, 0, 0, 1);
+.linkcode-desktop-shell[data-shell-horizontal-animating] {
+  --lc-shell-horizontal-duration: 300ms;
 }
 
-.linkcode-desktop-shell[data-shell-animating] .linkcode-chrome-grid {
-  transition: grid-template-columns 300ms cubic-bezier(0.2, 0, 0, 1);
+.linkcode-desktop-shell[data-shell-vertical-animating] {
+  --lc-shell-vertical-duration: 300ms;
 }
 
-.linkcode-desktop-shell[data-shell-animating] .linkcode-chrome-slot-inset {
-  transition:
-    padding-left 300ms cubic-bezier(0.2, 0, 0, 1),
-    padding-right 300ms cubic-bezier(0.2, 0, 0, 1);
+.linkcode-shell-grid {
+  transition-property: grid-template-columns, grid-template-rows;
+  transition-duration:
+    var(--lc-shell-horizontal-duration, 0ms), var(--lc-shell-vertical-duration, 0ms);
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1), cubic-bezier(0.2, 0, 0, 1);
+}
+
+.linkcode-chrome-grid {
+  transition: grid-template-columns var(--lc-shell-horizontal-duration, 0ms)
+    cubic-bezier(0.2, 0, 0, 1);
+}
+
+.linkcode-chrome-slot-inset {
+  transition-property: padding-left, padding-right;
+  transition-duration:
+    var(--lc-shell-horizontal-duration, 0ms), var(--lc-shell-horizontal-duration, 0ms);
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1), cubic-bezier(0.2, 0, 0, 1);
 }
 
 /*
@@ -103,6 +126,14 @@
   --lc-main-final: calc(100cqw - var(--lc-sidebar-col) - var(--lc-right-col));
   width: var(--lc-main-final);
   margin-left: calc((100% - var(--lc-main-final)) / 2);
+}
+
+/* Keep the bottom span at its endpoint width and centered on the animating cell's midpoint,
+   matching the main lock so its content also lays out only once. */
+.linkcode-shell-bottom-horizontal-lock {
+  --lc-bottom-final-width: calc(100cqw - var(--lc-sidebar-col));
+  width: var(--lc-bottom-final-width);
+  margin-left: calc((100% - var(--lc-bottom-final-width)) / 2);
 }
 
 /* Sashes: invisible 8px hit areas over the dividers, riding the same track variables. */
@@ -124,7 +155,8 @@
 
 /* While a toggle animates the variables already sit at their final values, so the hit
    area would be ahead of the gliding edge — no dragging mid-toggle. */
-.linkcode-desktop-shell[data-shell-animating] .linkcode-shell-sash {
+.linkcode-desktop-shell:is([data-shell-horizontal-animating], [data-shell-vertical-animating])
+.linkcode-shell-sash {
   pointer-events: none;
 }
 
@@ -156,6 +188,7 @@
 }
 
 .linkcode-shell-sash:hover::before,
+.linkcode-shell-sash:focus-visible::before,
 .linkcode-shell-sash[data-dragging]::before {
   background-color: var(--info);
 }
@@ -175,7 +208,10 @@
 
 .linkcode-desktop-shell:has(.linkcode-sash-sidebar:is(:hover, [data-dragging]))
   [data-chrome-divider="sidebar-main"],
+.linkcode-desktop-shell:has(.linkcode-sash-sidebar:focus-visible)
+  [data-chrome-divider="sidebar-main"],
 .linkcode-desktop-shell:has(.linkcode-sash-right:is(:hover, [data-dragging]))
-  [data-chrome-divider="main-right"] {
+  [data-chrome-divider="main-right"],
+.linkcode-desktop-shell:has(.linkcode-sash-right:focus-visible) [data-chrome-divider="main-right"] {
   border-color: var(--info);
 }
