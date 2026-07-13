@@ -47,7 +47,10 @@ export function PromptInputTextarea({
 }: PromptInputTextareaProps): React.ReactNode {
   return (
     <InputGroupTextarea
-      className={cn('max-h-48 px-3.5 pt-3 pb-1.5', className)}
+      className={cn(
+        'px-3.5 pt-3 pb-1.5 **:[textarea]:max-h-48 **:[textarea]:overflow-y-auto',
+        className,
+      )}
       name={name}
       rows={rows}
       {...props}
