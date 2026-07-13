@@ -28,42 +28,59 @@ const execFileAsync = promisify(execFile);
  * Amp thread history lives on Sourcegraph's backend, not on disk (no local cache exists), and the
  * SDK wraps only `threads.new`/`threads.markdown`. Listing and structured reads exist solely as
  * CLI subcommands — `amp threads list --json` and `amp threads export <id>` — which are
- * UNDOCUMENTED in the public manual (verified live against @ampcode/cli 0.0.1783428245; the
- * lockfile pins a nearby build — re-verify the subcommands on every bump, they can be renamed
- * without notice). Every call here is an authenticated network round-trip; auth comes from the
- * CLI's own login state or an ambient `AMP_API_KEY` (history ops run without `StartOptions`, so
- * the per-session config key cannot reach them).
+ * UNDOCUMENTED in the public manual (verified live against the legacy `@sourcegraph/amp` CLI; the
+ * pinned build is exact and mandatory — `@sourcegraph/amp-sdk` depends on `@sourcegraph/amp:latest`,
+ * which redirects to the neo package, so a `pnpm-workspace.yaml` override forces the legacy build —
+ * re-verify the subcommands on every bump, they can be renamed without notice). Every call here is
+ * an authenticated network round-trip; auth comes from the CLI's own login state or an ambient
+ * `AMP_API_KEY` (history ops run without `StartOptions`, so the per-session config key cannot reach
+ * them).
  *
  * Replay is text-only for now, like codex's: the export's message/content block shapes have not
  * been verified against a live paid account, so tool-call replay stays off until they are.
  */
 
-/** Mirrors the SDK's own `findAmpCommand` order exactly — node_modules pair → `AMP_CLI_PATH` →
- * `$AMP_HOME/sdk/bin` → `$AMP_HOME/bin` → PATH — so history reads and live turns land on the SAME
- * binary (the lockstep invariant): a machine with both the pinned pair and a user install must not
- * read history through a version-drifted CLI whose undocumented `threads` output may differ. The
- * runtime probe is deliberately not consulted here for the same reason — `execute()` cannot be
- * pointed at a probed path, so preferring one would guarantee divergence. */
-export function resolveAmpCli(): string {
-  const local = ampPackageBinary();
-  if (local) return local;
-  const binary = process.platform === 'win32' ? 'amp.exe' : 'amp';
-  const fromEnv = env.AMP_CLI_PATH;
-  if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  const ampHome = env.AMP_HOME ?? join(homedir(), '.amp');
-  for (const candidate of [join(ampHome, 'sdk', 'bin', binary), join(ampHome, 'bin', binary)]) {
-    if (existsSync(candidate)) return candidate;
-  }
-  // Last resort: let execFile resolve `amp` from PATH, matching the SDK's own final fallback.
-  return binary;
+interface AmpCommand {
+  command: string;
+  args: string[];
 }
 
-/** The `@ampcode/cli` package's bin — the SDK-pinned pair (its postinstall hardlinks the real
- * platform binary over the `bin/amp.exe` placeholder on every OS, so the path is executable). */
+/** The legacy `@sourcegraph/amp` bin is a JS bundle (`dist/main.js`), so a resolved `.js` path must
+ * run as `node <path>` — a bare `execFile` of it fails on Windows and is unreliable on POSIX. An
+ * already-executable path (a user `amp` wrapper) runs as-is. */
+function asAmpCommand(filePath: string): AmpCommand {
+  return /\.(?:c|m)?js$/.test(filePath)
+    ? { command: process.execPath, args: [filePath] }
+    : { command: filePath, args: [] };
+}
+
+/** Resolves the same `@sourcegraph/amp` bundle the SDK's own `findAmpCommand()` uses, so history
+ * reads and live turns land on the SAME binary (the lockstep invariant). Only the node_modules tier
+ * is verified against the legacy SDK — its real `findAmpCommand()` is node_modules-only with no
+ * env/PATH fallback; the `AMP_CLI_PATH`/`$AMP_HOME`/PATH tiers below are carried over from the neo
+ * resolver as a best-effort net for odd installs, re-verify them if they ever matter. The runtime
+ * probe is deliberately not consulted — `execute()` cannot be pointed at a probed path, so
+ * preferring one would guarantee divergence. */
+export function resolveAmpCli(): AmpCommand {
+  const local = ampPackageBinary();
+  if (local) return asAmpCommand(local);
+  const binary = process.platform === 'win32' ? 'amp.exe' : 'amp';
+  const fromEnv = env.AMP_CLI_PATH;
+  if (fromEnv && existsSync(fromEnv)) return asAmpCommand(fromEnv);
+  const ampHome = env.AMP_HOME ?? join(homedir(), '.amp');
+  for (const candidate of [join(ampHome, 'sdk', 'bin', binary), join(ampHome, 'bin', binary)]) {
+    if (existsSync(candidate)) return asAmpCommand(candidate);
+  }
+  // Last resort: let execFile resolve `amp` from PATH.
+  return asAmpCommand(binary);
+}
+
+/** The `@sourcegraph/amp` package's bin — the legacy CLI carrier. It has no postinstall/hardlink
+ * step: `bin.amp` points permanently at `dist/main.js`, a pure-JS bundle run via `node`. */
 function ampPackageBinary(): string | undefined {
   try {
     const require = createRequire(import.meta.url);
-    const pkgJsonPath = require.resolve('@ampcode/cli/package.json');
+    const pkgJsonPath = require.resolve('@sourcegraph/amp/package.json');
     const parsed: unknown = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
     const bin = isRecord(parsed) && isRecord(parsed.bin) ? parsed.bin.amp : undefined;
     if (typeof bin !== 'string') return undefined;
@@ -78,7 +95,7 @@ async function runAmpThreads(args: string[]): Promise<unknown> {
   const cli = resolveAmpCli();
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync(cli, ['threads', ...args], {
+    ({ stdout } = await execFileAsync(cli.command, [...cli.args, 'threads', ...args], {
       timeout: 30000,
       // A long thread's export easily exceeds execFile's 1 MiB default.
       maxBuffer: 32 * 1024 * 1024,

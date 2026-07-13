@@ -21,7 +21,7 @@ export default defineConfig({
   // ship platform-specific native binaries / spawn subprocesses and break if bundled. They load from
   // node_modules at runtime. `ws` (via @linkcode/transport/server) is externalized for the same reason.
   external: [
-    '@ampcode/sdk',
+    '@sourcegraph/amp-sdk',
     '@anthropic-ai/claude-agent-sdk',
     '@openai/codex',
     '@opencode-ai/sdk',

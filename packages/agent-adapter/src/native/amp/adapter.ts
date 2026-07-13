@@ -1,5 +1,18 @@
 import { env } from 'node:process';
 import type {
+  AgentHistoryCapabilities,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
+  AgentHistoryResumeOptions,
+  ContentBlock,
+  StartOptions,
+  ToolCall,
+  ToolCallContent,
+} from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
+import type {
   AmpOptions,
   AssistantMessage,
   ErrorResultMessage,
@@ -8,21 +21,7 @@ import type {
   StreamMessage,
   Usage,
   UserMessage,
-} from '@ampcode/sdk';
-import type {
-  AgentHistoryCapabilities,
-  AgentHistoryListOptions,
-  AgentHistoryListResult,
-  AgentHistoryReadOptions,
-  AgentHistoryReadResult,
-  AgentHistoryResumeOptions,
-  ContentBlock,
-  EffortLevel,
-  StartOptions,
-  ToolCall,
-  ToolCallContent,
-} from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+} from '@sourcegraph/amp-sdk';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { nextMessageId } from '../../adapter';
@@ -38,27 +37,6 @@ import {
 import { diffContentFromUnified } from '../../unified-diff';
 import { contentToText, locationsFromToolInput, toolKindFromName } from '../../util';
 import { listAmpHistory, readAmpHistory } from './history';
-
-/**
- * Amp has no user-facing model axis: `mode` selects the model + system-prompt bundle (per
- * ampcode.com/models: smart → Opus-class, deep/rush → GPT-class, large → 1M-context). LinkCode's
- * `model` input carries the mode — an encoding choice, same spirit as opencode overloading
- * `model` as `providerID/modelID`.
- */
-const AMP_MODES = ['smart', 'deep', 'rush', 'large'] as const;
-type AmpMode = (typeof AMP_MODES)[number];
-const AMP_MODE_SET = new Set<string>(AMP_MODES);
-
-function isAmpMode(value: string): value is AmpMode {
-  return AMP_MODE_SET.has(value);
-}
-
-/** The shared effort axis ∩ Amp's: Amp additionally accepts none/minimal (never offered — they
- * would need an `EffortLevelSchema` extension) and lacks claude-only `ultracode`. Amp applies
- * effort only under the smart/deep modes and ignores it for rush/large — its own semantics,
- * not enforced here. */
-const AMP_EFFORTS = new Set<EffortLevel>(['low', 'medium', 'high', 'xhigh', 'max']);
-type AmpEffort = Exclude<EffortLevel, 'ultracode'>;
 
 /** Amp's subagent-spawning tool is `Task`; exact match (not the shared regex classifier) for the
  * same reason claude-code matches its `Agent`/`Task` exactly — see `claudeToolKind`. */
@@ -97,29 +75,33 @@ function diffResultContent(content: string): ToolCallContent[] | undefined {
   return diffContentFromUnified(path, parsed.diff);
 }
 
-/** `thinking: true` (`--stream-json-thinking`) adds thinking blocks the shipped SDK types do not
- * declare — `AssistantMessage`'s content union is text|tool_use only (SDK/CLI schema drift,
- * verified against @ampcode/sdk 0.1.0-20260605144103). Widened here; parsed defensively. */
+/** Legacy `@sourcegraph/amp`'s `AssistantMessage` content union is text|tool_use only, and the
+ * legacy `AmpOptions` has no option to request thinking blocks — so the `thinking`/
+ * `redacted_thinking` arms below are vestigial defensive dead code, unreachable via any current
+ * option, kept only in case a future build ever emits them. */
 type AmpAssistantBlock =
   | AssistantMessage['message']['content'][number]
   | { type: 'thinking'; thinking: string }
   | { type: 'redacted_thinking'; data: string };
 
 /**
- * Amp adapter — drives the official `@ampcode/sdk`, whose `execute()` spawns
- * `amp --execute --stream-json` and streams whole NDJSON messages (message-level only: the wire
- * protocol has no token deltas and no in-flight tool updates, so Amp renders chunkier than the
- * other agents by design). One CLI process per turn: each prompt is its own `execute()` call
- * continuing the server-persisted thread (`continue: threadId`), which is what makes cancel
- * (abort kills only the current turn) and per-turn mode/effort switching possible — the flags are
- * spawn-time CLI arguments, so a persistent-process design could not switch them at all.
+ * Amp adapter — drives the LEGACY `@sourcegraph/amp-sdk`, whose `execute()` spawns the legacy
+ * `@sourcegraph/amp` CLI (`amp --execute --stream-json`) and streams whole NDJSON messages
+ * (message-level only: the wire protocol has no token deltas and no in-flight tool updates, so Amp
+ * renders chunkier than the other agents by design). The legacy CLI runs the agentic loop LOCALLY
+ * (it builds and issues the model requests itself, proxied through ampcode.com) — unlike the neo
+ * `@ampcode/cli`, which runs the loop server-side; aligning with legacy is why this adapter is on
+ * the `@sourcegraph/*` packages. One CLI process per turn: each prompt is its own `execute()` call
+ * continuing the server-persisted thread (`continue: threadId`), which is what makes cancel kill
+ * only the current turn while the thread survives for the next prompt. Legacy `AmpOptions` (a zod
+ * `.strict()` schema) has no mode/effort/thinking field, so there is no model/effort axis to
+ * switch — set-model/set-effort reject via the base defaults.
  *
- * Permissions are deliberately absent from the data plane: in execute mode the CLI constructs its
- * permissions plugin with `rejectPermissionPrompts: true`, so an `ask` rule auto-resolves to
- * reject-and-continue and no permission message type exists in the stream — there is nothing to
- * round-trip (verified against the CLI bundle; the `delegate` rule action is the only possible
- * bridge and is a follow-up). Amp's default posture without configured rules is to run tools
- * without prompting; the user's own settings (`~/.config/amp/settings.json`) still apply.
+ * Permissions are absent from the data plane: legacy `AmpOptions` exposes first-class
+ * `permissions[]`/`createPermission`/`dangerouslyAllowAll`, but the adapter passes none and relies
+ * on the default posture — verified live (a Bash tool turn ran to completion with no permission
+ * message in the stream), so tools execute without prompting and there is nothing to round-trip.
+ * `dangerouslyAllowAll`/`permissions` are the levers if that ever needs to change.
  *
  * Note: execute mode and the SDK consume paid Amp credits only — Amp Free does not cover
  * non-interactive use.
@@ -152,10 +134,6 @@ export class AmpAdapter extends BaseAgentAdapter {
   private turnSettled = false;
   /** Prompts received while a turn is running; drained one per turn end (mirrors codex). */
   private pendingPrompts: ContentBlock[][] = [];
-  /** Mode/effort for the next turn's spawn; each turn being its own process makes next-turn
-   * granularity the natural (and only possible) switching channel. */
-  private mode: AmpMode | undefined;
-  private effort: AmpEffort | undefined;
   /** Running usage total for THIS adapter instance (consumers replace usage wholesale, so a
    * per-message value would flicker): Amp reports per-API-call usage on each assistant message and
    * these accumulate. Unlike codex's thread-cumulative figure (which the app-server reports fresh),
@@ -163,11 +141,11 @@ export class AmpAdapter extends BaseAgentAdapter {
    * so the number restarts from zero on resume. Amp exposes no thread-total to seed from. */
   private readonly usageTotals = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
 
-  protected async onStart(opts: StartOptions): Promise<void> {
-    // SDK first: a missing SDK is the more fundamental failure and must not be masked by a
-    // bad model value. The per-turn process itself spawns lazily at the first prompt.
-    await this.loadSdk('@ampcode/sdk', () => import('@ampcode/sdk'));
-    if (opts.model !== undefined) await this.onSetModel(opts.model);
+  protected async onStart(_opts: StartOptions): Promise<void> {
+    // Load the SDK eagerly so a missing package fails clearly at start; the per-turn CLI process
+    // itself spawns lazily at the first prompt. Legacy has no mode/effort channel — there is no
+    // startup model/effort to apply.
+    await this.loadSdk('@sourcegraph/amp-sdk', () => import('@sourcegraph/amp-sdk'));
   }
 
   override async resumeHistory(
@@ -223,32 +201,13 @@ export class AmpAdapter extends BaseAgentAdapter {
     return this.onCancel();
   }
 
-  /** Mode is the model axis (see AMP_MODES); stored and applied at the next turn's spawn. */
-  protected override onSetModel(model: string): Promise<void> {
-    if (!isAmpMode(model)) {
-      return Promise.reject(
-        new Error(
-          `amp: unknown mode '${model}' (amp's models are its modes: ${AMP_MODES.join(', ')})`,
-        ),
-      );
-    }
-    this.mode = model;
-    return Promise.resolve();
-  }
-
-  protected override onSetEffort(effort: EffortLevel): Promise<void> {
-    if (!AMP_EFFORTS.has(effort)) {
-      return Promise.reject(
-        new Error(`amp: effort '${effort}' is not supported (amp accepts low through max)`),
-      );
-    }
-    this.effort = effort as AmpEffort;
-    return Promise.resolve();
-  }
+  // No onSetModel/onSetEffort overrides: legacy `AmpOptions` has no mode/effort channel, so both
+  // fall back to BaseAgentAdapter's default reject ("amp: model can only be set when starting a
+  // session" / "amp: changing effort is not supported").
 
   /** Test seam — the real thing resolves the SDK and spawns the per-turn CLI process. */
   protected async startExecute(request: ExecuteOptions): Promise<AsyncIterable<StreamMessage>> {
-    const sdk = await this.loadSdk('@ampcode/sdk', () => import('@ampcode/sdk'));
+    const sdk = await this.loadSdk('@sourcegraph/amp-sdk', () => import('@sourcegraph/amp-sdk'));
     return sdk.execute(request);
   }
 
@@ -296,12 +255,9 @@ export class AmpAdapter extends BaseAgentAdapter {
     const continueThread = this.threadId ?? this.resumeFrom;
     return {
       cwd: opts.cwd,
-      ...(this.mode && { mode: this.mode }),
-      ...(this.effort && { effort: this.effort }),
-      // Execute-created threads are archived when the run ends unless opted out; a session's
-      // thread must stay live so later turns, resume, and history keep finding it.
-      noArchiveAfterExecute: true,
-      thinking: true,
+      // Legacy AmpOptions is a zod `.strict()` schema with no mode/effort/thinking/
+      // noArchiveAfterExecute field — passing any of them throws. Verified live: the thread stays
+      // continuable across turns without an explicit no-archive opt-out.
       ...(continueThread !== undefined && { continue: continueThread }),
       // The SDK passes `env` to spawn verbatim — it REPLACES the child environment (same trap as
       // claude-code), so spread the parent env or PATH/HOME vanish. process.env carries no

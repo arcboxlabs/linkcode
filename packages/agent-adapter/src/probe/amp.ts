@@ -1,44 +1,35 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import process, { env } from 'node:process';
-import { AgentCliProbe, defaultInstallLocations } from './base';
+import { AgentCliProbe } from './base';
 
 /**
- * Unlike claude/codex, the detected path is NOT handed to the SDK at spawn time — `execute()`
- * resolves its own binary (node_modules pair → `AMP_CLI_PATH` → `$AMP_HOME` → PATH) and offers no
- * per-call override, so this probe only powers the `agent-runtime.list` availability surface. The
- * history module mirrors the SDK's own resolution instead of consulting the probe, keeping
- * history reads and live turns on the same binary.
+ * The legacy SDK's `execute()` resolves its own binary via `require.resolve('@sourcegraph/amp')` —
+ * a node_modules-only lookup with NO `AMP_CLI_PATH`/`$AMP_HOME`/PATH fallback (verified against the
+ * pinned `@sourcegraph/amp-sdk` dist) — so `sdkPlatformPackagePresent()` (does `@sourcegraph/amp`
+ * resolve?) is the only signal that predicts a live turn, and no known-install-location scan
+ * applies. This probe therefore only powers the `agent-runtime.list` availability surface.
  */
 export class AmpProbe extends AgentCliProbe {
   readonly kind = 'amp' as const;
   protected readonly binaryBase = 'amp';
-  /** The SDK package; the CLI carrier `@ampcode/cli`'s platform packages install as same-scope
-   * siblings (`@ampcode/cli-<platform>-<arch>`). */
-  protected readonly sdkPackage = '@ampcode/sdk';
+  /** The SDK package; its CLI carrier `@sourcegraph/amp` installs as a same-scope sibling. Unlike
+   * neo there are NO per-platform variants — `@sourcegraph/amp` is a pure-JS bundle. */
+  protected readonly sdkPackage = '@sourcegraph/amp-sdk';
 
   constructor(locations?: string[]) {
-    // Mirror the SDK's own $AMP_HOME lookup order (sdk/bin before bin, matching history.ts's
-    // resolveAmpCli) ahead of the shared installer locations, so the probe reports availability
-    // for the same binary a live turn / history read would actually resolve.
-    const binary = process.platform === 'win32' ? 'amp.exe' : 'amp';
-    const ampHome = env.AMP_HOME ?? join(homedir(), '.amp');
-    super(
-      locations ?? [
-        join(ampHome, 'sdk', 'bin', binary),
-        join(ampHome, 'bin', binary),
-        ...defaultInstallLocations(binary),
-      ],
-    );
+    // Legacy's findAmpCommand() resolves only from node_modules — there is no standalone install
+    // location to probe, so `sdkPlatformPackagePresent()` is the sole availability signal.
+    // `locations` stays a pure test seam; the default is empty so detect() finds nothing.
+    super(locations ?? []);
   }
 
-  /** `amp --version` prints `0.0.1783401425-gc7fcc1 (released 2026-07-07T05:17:05.000Z, 1d ago)`;
-   * the `(released <iso date>` suffix is the vendor marker. */
+  /** `amp --version` prints e.g. `0.0.1777185893-gae6d40 (released 2026-04-26T06:48:40.597Z,
+   * 2mo ago)` (observed); the `(released <iso date>` marker is the vendor signature — identical
+   * format across legacy and neo, so the regex is unchanged. */
   parseVersion(stdout: string): string | undefined {
     return /^(\d+\.\d+\.\d+(?:-\S+)?) \(released \d{4}-/.exec(stdout.trim())?.[1];
   }
 
   protected platformPackageBase(): string {
-    return `cli-${process.platform}-${process.arch}`;
+    // Legacy's CLI carrier is `@sourcegraph/amp` itself (a pure-JS bundle, no os/arch suffix).
+    return 'amp';
   }
 }

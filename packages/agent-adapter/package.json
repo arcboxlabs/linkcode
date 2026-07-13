@@ -13,7 +13,6 @@
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
-    "@ampcode/sdk": "0.1.0-20260605144103-g77da114",
     "@anthropic-ai/claude-agent-sdk": "^0.3.179",
     "@anthropic-ai/sdk": "^0.104.2",
     "@earendil-works/pi-coding-agent": "^0.79.6",
@@ -21,6 +20,7 @@
     "@linkcode/transport": "workspace:*",
     "@openai/codex": "^0.140.0",
     "@opencode-ai/sdk": "^1.17.7",
+    "@sourcegraph/amp-sdk": "0.1.0-20251022202704-gd85048a",
     "foxts": "^5.6.0",
     "smol-toml": "^1.7.0",
     "zod": "catalog:"

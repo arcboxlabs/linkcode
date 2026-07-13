@@ -40,9 +40,6 @@ allowBuilds:
   electron-winstaller: false
   # sentry-cli binary backing @sentry/react-native (mobile) — fetched to upload source maps at build time.
   '@sentry/cli': true
-  # Amp CLI carrier (@ampcode/sdk dependency): postinstall resolves this platform's binary package;
-  # without it the SDK's own node_modules fallback has no `amp` binary and fails at session start.
-  "@ampcode/cli": true
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.
@@ -160,6 +157,10 @@ overrides:
   undici@>=8.0.0 <8.5.0: ^8.5.0
   uuid@<11.1.1: ^11.1.1
   ws@>=8.0.0 <8.21.0: ^8.21.0
+  # @sourcegraph/amp-sdk's own package.json depends on '@sourcegraph/amp': 'latest', whose dist-tag
+  # now redirects to the neo package (@ampcode/cli). Pin the matched legacy-pair CLI build so the
+  # SDK's findAmpCommand() resolves the local-loop legacy binary, not neo (verified working pair).
+  "@sourcegraph/amp": 0.0.1761408090-g703e48
 
 patchedDependencies:
   app-builder-lib@26.15.3: patches/app-builder-lib@26.15.3.patch

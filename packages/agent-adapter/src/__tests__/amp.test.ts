@@ -1,6 +1,6 @@
-import type { ExecuteOptions, StreamMessage, Usage } from '@ampcode/sdk';
 import type { AgentEvent, StartOptions } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import type { ExecuteOptions, StreamMessage, Usage } from '@sourcegraph/amp-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { asHistoryId } from '../history-util';
 import { AmpAdapter } from '../native/amp/adapter';
@@ -397,25 +397,22 @@ describe('AmpAdapter turn mapping', () => {
     expect(ofType(events, 'stop').map((event) => event.stopReason)).toEqual(['max_turn_requests']);
   });
 
-  it('rejects unknown modes and unsupported efforts; accepted picks ride the next turn', async () => {
+  it('rejects set-model and set-effort — legacy has no mode/effort channel', async () => {
     const { adapter } = await startedAdapter();
-    await expect(adapter.send({ type: 'set-model', model: 'gpt-5.5' })).rejects.toThrow(
-      "amp: unknown mode 'gpt-5.5'",
+    await expect(adapter.send({ type: 'set-model', model: 'deep' })).rejects.toThrow(
+      'amp: model can only be set when starting a session',
     );
-    await expect(adapter.send({ type: 'set-effort', effort: 'ultracode' })).rejects.toThrow(
-      'not supported',
+    await expect(adapter.send({ type: 'set-effort', effort: 'xhigh' })).rejects.toThrow(
+      'amp: changing effort is not supported',
     );
-    await adapter.send({ type: 'set-model', model: 'deep' });
-    await adapter.send({ type: 'set-effort', effort: 'xhigh' });
 
     adapter.script(() => streamOf(init(), success()));
     await adapter.send({ type: 'prompt', content: [textBlock('go')] });
-    expect(adapter.requests[0]?.options).toMatchObject({
-      mode: 'deep',
-      effort: 'xhigh',
-      noArchiveAfterExecute: true,
-      thinking: true,
-    });
+    const opts = adapter.requests[0]?.options;
+    expect(opts).not.toHaveProperty('mode');
+    expect(opts).not.toHaveProperty('effort');
+    expect(opts).not.toHaveProperty('noArchiveAfterExecute');
+    expect(opts).not.toHaveProperty('thinking');
   });
 
   it('reports a failed spawn as a recoverable error and returns to idle', async () => {
