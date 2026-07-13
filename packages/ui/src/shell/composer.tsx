@@ -509,7 +509,13 @@ export function Composer({
                   ) : null}
                 </AnimatePresence>
               </div>
-              <PromptInput onSubmit={submit} className="relative z-10">
+              <PromptInput
+                onSubmit={submit}
+                className={cn(
+                  'relative z-10',
+                  frameVisible && '*:[[data-slot=input-group]]:rounded-xl',
+                )}
+              >
                 <AutocompletePrimitive.Input
                   render={
                     <PromptInputTextarea
