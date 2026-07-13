@@ -7,6 +7,8 @@
       "formatter": "language_server"
     },
     "JavaScript": {
+      // Native TypeScript 7 via the "tsgo" Zed extension; falls back to vtsls for unsupported features.
+      "language_servers": ["tsgo", "vtsls", "!typescript-language-server", "..."],
       "format_on_save": "on",
       "formatter": { "language_server": { "name": "biome" } },
       "code_actions_on_format": {
@@ -15,6 +17,7 @@
       }
     },
     "TypeScript": {
+      "language_servers": ["tsgo", "vtsls", "!typescript-language-server", "..."],
       "format_on_save": "on",
       "formatter": { "language_server": { "name": "biome" } },
       "code_actions_on_format": {
@@ -23,6 +26,7 @@
       }
     },
     "TSX": {
+      "language_servers": ["tsgo", "vtsls", "!typescript-language-server", "..."],
       "format_on_save": "on",
       "formatter": { "language_server": { "name": "biome" } },
       "code_actions_on_format": {

@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { promisify } from 'node:util';
+import type { AgentAuthStatus } from '@linkcode/schema';
 
 const execFileAsync = promisify(execFile);
 
@@ -75,6 +76,31 @@ export abstract class AgentCliProbe {
     const scope = this.sdkPackage.split('/', 1)[0];
     const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
     return paths.some((dir) => existsSync(join(dir, scope, this.platformPackageBase())));
+  }
+
+  /**
+   * Absolute path to the CLI binary at the SDK's platform-package root — claude's layout
+   * (`…/claude-agent-sdk-<plat>-<arch>/claude`). Present in dev / standalone daemons; `undefined`
+   * in packaged apps (platform packages excluded, CODE-114) and for CLIs whose binary is nested
+   * elsewhere (codex vendors its binary under `vendor/` and resolves its own path).
+   */
+  sdkPlatformBinaryPath(): string | undefined {
+    const scope = this.sdkPackage.split('/', 1)[0];
+    const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
+    for (const dir of paths) {
+      const candidate = join(dir, scope, this.platformPackageBase(), this.binaryName());
+      if (existsSync(candidate)) return candidate;
+    }
+    return undefined;
+  }
+
+  /**
+   * Provider login status for this CLI, if it exposes one (claude-code overrides via
+   * `auth status`). Default: the CLI has no login concept — `undefined` reads as "unknown" and
+   * never blocks the UI.
+   */
+  probeAuth(_file: string): Promise<AgentAuthStatus | undefined> {
+    return Promise.resolve(undefined);
   }
 
   binaryName(): string {

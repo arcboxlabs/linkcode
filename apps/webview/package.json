@@ -13,7 +13,6 @@
     "dev:mock": "vite --mode mock",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/webview"
   },
   "dependencies": {
@@ -25,9 +24,10 @@
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
     "@sentry/react": "10.60.0",
+    "better-auth": "1.7.0-rc.1",
     "coss-ui": "workspace:*",
-    "foxact": "^0.3.7",
-    "foxts": "^5.6.0",
+    "foxact": "^0.3.8",
+    "foxts": "^5.8.0",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

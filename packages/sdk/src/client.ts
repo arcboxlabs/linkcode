@@ -6,6 +6,7 @@ import type {
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
+  Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -25,6 +26,7 @@ import type {
   QuestionOutcome,
   SessionId,
   SessionInfo,
+  SessionNotification,
   SessionRecord,
   StartOptions,
   WorkspaceFile,
@@ -76,6 +78,11 @@ export class LinkCodeSdkClient {
 
   connect(): Promise<void> {
     return this.raw.connect();
+  }
+
+  /** Observe an unexpected close after the client has completed its LinkCode handshake. */
+  onClose(cb: (error: Error) => void): () => void {
+    return this.raw.onClose(cb);
   }
 
   dispose(): void {
@@ -177,6 +184,16 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.setProviderConfig(providers));
   }
 
+  /** Read the daemon-owned global account pool (data plane). */
+  getAccounts(): RequestResult<Accounts> {
+    return toResult(this.raw.getAccounts());
+  }
+
+  /** Persist the daemon-owned global account pool (data plane). */
+  setAccounts(accounts: Accounts): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setAccounts(accounts));
+  }
+
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
   listAgentRuntimes(): RequestResult<AgentRuntimes> {
     return toResult(this.raw.listAgentRuntimes());
@@ -243,6 +260,11 @@ export class LinkCodeSdkClient {
   /** Broadcast `script.status` updates for every workspace (callers filter by cwd). */
   subscribeScriptStatus(cb: (cwd: string, script: WorkspaceScript) => void): () => void {
     return this.raw.subscribeScriptStatus(cb);
+  }
+
+  /** Broadcast `session.notification` moments for every session, foreground or background. */
+  subscribeSessionNotification(cb: (notification: SessionNotification) => void): () => void {
+    return this.raw.subscribeSessionNotification(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */

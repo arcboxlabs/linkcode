@@ -6,6 +6,7 @@ import {
   HostFooter,
   NewSessionSurface,
   SessionSidebar,
+  useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import {
   getChromeSurface,
@@ -19,6 +20,8 @@ import {
   isAbsoluteFilePath,
   locateFileArtifact,
   TerminalPanel,
+  useCloudHosts,
+  useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
 import { Allotment, LayoutPriority } from 'allotment';
@@ -27,9 +30,10 @@ import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
-import { useCloudAuthStore } from '../cloud-auth/store';
+import { DesktopThreadImMenu } from '../cloud-auth/thread-im-menu';
+import { useCloudAccount } from '../cloud-auth/use-cloud-account';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
@@ -52,11 +56,12 @@ import {
 } from './store/model';
 import { useDesktopShellStore } from './store/store';
 import { useDesktopPaletteCommands } from './use-desktop-palette-commands';
-import { getPanelToggleShortcuts, useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
+import { useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
 
 export function DesktopShell({
   systemBridge,
   header,
+  navigation,
   threadGroups,
   workspaces,
   workspacesLoading,
@@ -74,6 +79,7 @@ export function DesktopShell({
   respondingQuestions,
   errorMessage,
   pinnedSessionIds,
+  collapsedSections,
   onSelectSession,
   onCloseSession,
   onToggleSessionPinned,
@@ -81,31 +87,33 @@ export function DesktopShell({
   onReorderThreads,
   onStartDraft,
   onSubmitDraft,
-  onImportSession,
   onRegisterWorkspace,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
+  onToggleSectionCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
+  searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
-  HistoryComponent,
   onDismissError,
   onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
   onOpenSettings,
+  onImportHistory,
   themeType,
 }: WorkbenchShellProps & {
   systemBridge: SystemBridge;
   onOpenSettings?: () => void;
+  /** Opens the desktop settings overlay on the History import category. */
+  onImportHistory?: () => void;
   themeType: ThemePreference;
 }): React.ReactNode {
   const shellState = useDesktopShellStore(
@@ -138,20 +146,26 @@ export function DesktopShell({
       resetBottomPanelSize: state.resetBottomPanelSize,
     })),
   );
-  const cloudAuth = useCloudAuthStore(
-    useShallow((state) => ({
-      user: state.user,
-      authenticating: state.authenticating,
-      signIn: state.signIn,
-      signOut: state.signOut,
-    })),
+  const cloudAuth = useCloudAccount();
+  const remoteHosts = useCloudHosts(cloudAuth.account?.email ?? null);
+  const { selectedHostId, selectHost } = useSelectedHostStore(
+    useShallow((state) => ({ selectedHostId: state.selectedHostId, selectHost: state.selectHost })),
   );
+  const format = useFormatter();
+  const remoteHostItems = remoteHosts.data?.map((host) => ({
+    id: host.hostId,
+    name: host.name ?? host.hostId,
+    statusLabel: format.relativeTime(host.lastSeen),
+  }));
   const shellRootRef = useRef<HTMLDivElement | null>(null);
   const { current: shellStyle } = useSingleton<DesktopShellStyle>(() =>
     createDesktopShellStyle(shellState),
   );
-  const [desktopPlatform, setDesktopPlatform] = useState<NodeJS.Platform | null>(null);
+  const desktopPlatform = systemBridge.app.platform;
   const [appVersion, setAppVersion] = useState('');
+  const sidebarShortcut = useKeyboardShortcutLabel('desktop.toggle-sidebar');
+  const bottomPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-bottom-panel');
+  const rightPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-right-panel');
   // Content boxes reported by the active panel-region instances (docked or maximized overlay).
   const [rightContentTarget, setRightContentTarget] = useState<HTMLDivElement | null>(null);
   const [bottomContentTarget, setBottomContentTarget] = useState<HTMLDivElement | null>(null);
@@ -210,8 +224,7 @@ export function DesktopShell({
 
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
-  // Hints mirror the window keydown bindings below; hidden until the platform is known.
-  const panelShortcuts = getPanelToggleShortcuts(desktopPlatform);
+  const showWindowControls = desktopPlatform !== 'darwin';
   const sidebarClassName = hasNativeBackdrop ? 'bg-sidebar/25' : 'bg-sidebar';
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
@@ -221,15 +234,6 @@ export function DesktopShell({
     minMainSize: MIN_MAIN_SIZE,
     rightPanelMinSize: RIGHT_PANEL_MIN_SIZE,
   });
-
-  useAbortableEffect(
-    (signal) => {
-      void systemBridge.app.platform().then((platform) => {
-        if (!signal.aborted) setDesktopPlatform(platform);
-      });
-    },
-    [systemBridge],
-  );
 
   useAbortableEffect(
     (signal) => {
@@ -269,7 +273,12 @@ export function DesktopShell({
     resetBottomPanelSize: resetBottomPanelLayoutSize,
   } = shellState;
 
-  useDesktopShellShortcuts({ desktopPlatform, togglePanel, updateSidebarOpen });
+  useDesktopShellShortcuts({
+    navigation,
+    owner: shellRootRef,
+    togglePanel,
+    updateSidebarOpen,
+  });
 
   const pickDirectory = useCallback(
     () => systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true }),
@@ -514,15 +523,17 @@ export function DesktopShell({
     >
       <DesktopChrome
         header={header}
+        navigation={navigation}
         sidebarOpen={sidebarOpen}
         rightPanelOpen={rightPanel.open}
         bottomPanelOpen={bottomPanel.open}
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
-        sidebarShortcut={panelShortcuts.sidebar}
-        rightPanelShortcut={panelShortcuts.right}
-        bottomPanelShortcut={panelShortcuts.bottom}
+        showWindowControls={showWindowControls}
+        sidebarShortcut={sidebarShortcut}
+        rightPanelShortcut={rightPanelShortcut}
+        bottomPanelShortcut={bottomPanelShortcut}
         titleContent={hideMainTitle ? null : undefined}
         titleIcon={
           titledSession ? (
@@ -583,31 +594,39 @@ export function DesktopShell({
                 sessionsLoading={sessionsLoading}
                 activeId={active?.sessionId ?? null}
                 pinnedSessionIds={pinnedSessionIds}
+                collapsedSections={collapsedSections}
                 topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                 footer={
                   <HostFooter
                     state={tConnection('connected')}
                     appVersion={appVersion}
                     pendingPermissionCount={conversation.pendingPermissionIds.length}
-                    account={cloudAuth.user}
+                    account={cloudAuth.account}
                     authPending={cloudAuth.authenticating}
                     onSignIn={cloudAuth.signIn}
                     onSignOut={cloudAuth.signOut}
+                    onManageAccount={cloudAuth.manageAccount}
+                    remoteHosts={remoteHostItems}
+                    remoteHostsLoading={remoteHosts.isLoading}
+                    selectedHostId={selectedHostId}
+                    onSelectHost={selectHost}
                     onOpenSettings={onOpenSettings}
                   />
                 }
-                onImportSession={onImportSession}
                 onPickDirectory={pickDirectory}
                 onOpenSearch={onOpenSearch}
-                searchShortcut={panelShortcuts.palette}
+                searchShortcut={searchShortcut}
                 onRegisterWorkspace={onRegisterWorkspace}
+                onImportHistory={onImportHistory}
                 onRenameWorkspace={onRenameWorkspace}
                 onArchiveWorkspace={onArchiveWorkspace}
                 onToggleGroupCollapsed={onToggleGroupCollapsed}
+                onToggleSectionCollapsed={onToggleSectionCollapsed}
                 onTogglePreviewExpanded={onTogglePreviewExpanded}
-                onToggleImportHistory={onToggleImportHistory}
                 BranchStatusComponent={BranchStatusComponent}
-                HistoryComponent={HistoryComponent}
+                // Cloud-gated: without a session the IM source can't authenticate, so the
+                // row menu (and its ellipsis) stays hidden entirely.
+                ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
                 onSelect={onSelectSession}
                 onClose={onCloseSession}
                 onToggleSessionPinned={onToggleSessionPinned}

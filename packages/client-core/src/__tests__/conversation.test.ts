@@ -288,6 +288,36 @@ describe('buildConversation', () => {
     expect(settled.pendingQuestionIds).toEqual([]);
   });
 
+  it('folds an attach-replayed duplicate ask only once, by requestId', () => {
+    const ask: AgentEvent = {
+      type: 'question-request',
+      requestId: 'ask1',
+      toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+      questions: [
+        {
+          questionId: 'q0',
+          prompt: 'Which one?',
+          multiSelect: false,
+          options: [
+            { optionId: 'o0', label: 'A' },
+            { optionId: 'o1', label: 'B' },
+          ],
+        },
+      ],
+    };
+    const perm: AgentEvent = {
+      type: 'permission-request',
+      requestId: 'p1',
+      toolCall: { toolCallId: 't2', title: 'Run' },
+      options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+    };
+    const c = buildConversation([userText('go'), ask, perm, ask, perm]);
+    expect(c.items.filter((i) => i.kind === 'question')).toHaveLength(1);
+    expect(c.items.filter((i) => i.kind === 'approval')).toHaveLength(1);
+    expect(c.pendingQuestionIds).toEqual(['ask1']);
+    expect(c.pendingPermissionIds).toEqual(['p1']);
+  });
+
   it('captures lifecycle state (status / usage / mode / stop / error)', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },
@@ -323,6 +353,56 @@ describe('buildConversation', () => {
     ]);
     expect(c.approvalPolicy).toEqual({ availablePolicies: policies, currentPolicyId: 'auto' });
     expect(c.items).toHaveLength(0);
+  });
+
+  it('reflects the latest model/effort without adding timeline items', () => {
+    const empty = buildConversation([]);
+    expect(empty.currentModel).toBeNull();
+    expect(empty.currentEffort).toBeNull();
+    const c = buildConversation([
+      { type: 'model-update', model: 'claude-opus-4-8' },
+      { type: 'effort-update', effort: 'high' },
+      { type: 'model-update', model: 'claude-sonnet-5' },
+      { type: 'effort-update', effort: 'xhigh' },
+    ]);
+    expect(c.currentModel).toBe('claude-sonnet-5');
+    expect(c.currentEffort).toBe('xhigh');
+    expect(c.items).toHaveLength(0);
+  });
+
+  it('places a compaction marker in the timeline and merges re-emits by compactionId', () => {
+    const c = buildConversation([
+      userText('do it'),
+      text('working', 'a1'),
+      // The adapter announces the boundary first (metadata only)…
+      { type: 'compaction', compactionId: 'cb1', trigger: 'auto', preTokens: 1000, postTokens: 20 },
+      // …then re-emits the same id once the summary text arrives.
+      { type: 'compaction', compactionId: 'cb1', summary: 'what happened so far' },
+      text('continuing', 'a2'),
+    ]);
+    expect(c.items.map((item) => item.kind)).toEqual([
+      'message',
+      'message',
+      'compaction',
+      'message',
+    ]);
+    const marker = c.items[2];
+    expect(marker).toMatchObject({
+      kind: 'compaction',
+      id: 'cb1',
+      trigger: 'auto',
+      preTokens: 1000,
+      postTokens: 20,
+      summary: 'what happened so far',
+    });
+  });
+
+  it('keeps distinct compactions as separate markers', () => {
+    const c = buildConversation([
+      { type: 'compaction', compactionId: 'cb1', trigger: 'auto' },
+      { type: 'compaction', compactionId: 'cb2', trigger: 'manual' },
+    ]);
+    expect(c.items).toHaveLength(2);
   });
 });
 

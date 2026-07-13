@@ -2,6 +2,7 @@ import type {
   DesktopSettings,
   DesktopSettingsPatch,
   PickFileOptions,
+  SystemNotification,
   UpdaterStatus,
 } from './context';
 
@@ -16,14 +17,16 @@ export interface SystemBridge {
     toggleMaximize(): Promise<void>;
     close(): Promise<void>;
     isMaximized(): Promise<boolean>;
-    onMaximizedChange?(cb: (value: boolean) => void): () => void;
+    /** Subscribe to maximize/restore/full-screen changes pushed from main — drives the restore icon. */
+    onMaximizedChange(cb: (value: boolean) => void): () => void;
   };
   fs: {
     pickFile(opts?: PickFileOptions): Promise<string | null>;
   };
   app: {
     version(): Promise<string>;
-    platform(): Promise<NodeJS.Platform>;
+    /** Synchronous Electron platform supplied by the sandboxed preload. */
+    readonly platform: NodeJS.Platform;
     /** Trigger a manual update check; observe progress via `onUpdaterStatus`. */
     checkForUpdates(): Promise<void>;
     /** Subscribe to auto-update lifecycle status pushed from main. */
@@ -49,10 +52,18 @@ export interface SystemBridge {
      * user's to run.
      */
     isManaged(): Promise<boolean>;
+    /** Re-arm the managed daemon after an explicit connection retry; no-op when unmanaged. */
+    retry(): Promise<void>;
     /**
      * Subscribe to daemon runtime-file changes pushed from main (fs.watch on ~/.linkcode).
      * Fired when a daemon (re)starts or stops — re-run `resolveUrl` on it.
      */
     onRuntimeChanged(cb: () => void): () => void;
+  };
+  notifications: {
+    /** Show an OS notification (main-process `Notification`); display params only. */
+    notify(notification: SystemNotification): Promise<void>;
+    /** Subscribe to notification clicks; main focuses the window, then pushes the `clickToken`. */
+    onClick(cb: (clickToken: string) => void): () => void;
   };
 }

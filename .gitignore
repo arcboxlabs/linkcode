@@ -27,6 +27,9 @@ expo-export/
 release/
 apps/desktop/sidecar/
 
+# standalone daemon distribution (pnpm --prod deploy output)
+apps/daemon/standalone/
+
 # logs
 *.log
 npm-debug.log*
@@ -66,4 +69,5 @@ devenv.local.yaml
 .pre-commit-config.yaml
 
 # Claude Code local state (plans, worktrees) — never tracked or linted
-.claude/
+.claude/worktrees/
+packages/ui/src/shell/terminal/vendor/noto-emoji-regular.ttf

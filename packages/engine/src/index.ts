@@ -21,5 +21,6 @@ export * from './scripts/route-registry';
 export * from './scripts/script-service';
 export * from './session-store';
 export * from './terminal-service';
+export * from './translator';
 export * from './workspace-registry';
 export * from './workspace-store';

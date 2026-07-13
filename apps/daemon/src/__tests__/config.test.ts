@@ -24,6 +24,19 @@ function writeConfig(providers: unknown): void {
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ providers }));
 }
 
+function writeAccountsConfig(accounts: unknown): void {
+  const dir = join(process.env.HOME ?? '', '.linkcode');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'config.json'), JSON.stringify({ accounts }));
+}
+
+const validAccount = {
+  id: 'acc_1',
+  label: 'Personal key',
+  credential: { type: 'api-key', key: 'sk-test' },
+  createdAt: 0,
+};
+
 describe('loadConfig providers', () => {
   it('keeps valid provider entries and drops an invalid one, logging the error', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
@@ -73,6 +86,42 @@ describe('loadConfig providers', () => {
     const config = loadConfig();
 
     expect(config.providers).toEqual({});
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadConfig accounts', () => {
+  it('keeps valid accounts and drops an invalid one, logging the error', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    writeAccountsConfig([
+      validAccount,
+      // Missing the api-key `key` — fails the credential union.
+      { id: 'acc_2', label: 'Bad', credential: { type: 'api-key' }, createdAt: 0 },
+    ]);
+
+    const config = loadConfig();
+
+    expect(config.accounts).toEqual([validAccount]);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('falls back to an empty array when accounts is not an array', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    writeAccountsConfig({ not: 'an array' });
+
+    const config = loadConfig();
+
+    expect(config.accounts).toEqual([]);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('defaults to an empty array without logging when accounts is absent', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    writeAccountsConfig(undefined);
+
+    const config = loadConfig();
+
+    expect(config.accounts).toEqual([]);
     expect(errorSpy).not.toHaveBeenCalled();
   });
 });

@@ -95,6 +95,28 @@ function tectonicArtifact(
   };
 }
 
+// The first-party Anthropic⇄OpenAI translation sidecar (CODE-133). GitHub-release binaries; digests
+// hand-verified against the downloaded v0.5.0-rc2 assets (2026-07-09). No win32-arm64 build (like tectonic).
+const AIGATEWAY_VERSION = '0.5.0-rc2';
+const AIGATEWAY_RELEASE = `https://github.com/arcboxlabs/aigateway/releases/download/v${AIGATEWAY_VERSION}`;
+
+function aigatewayArtifact(
+  triple: string,
+  format: ManagedAssetFormat,
+  integrity: string,
+  size: number,
+): ArtifactSource {
+  const ext = format === 'zip' ? 'zip' : 'tar.gz';
+  return {
+    kind: 'baked',
+    url: `${AIGATEWAY_RELEASE}/aigateway-${AIGATEWAY_VERSION}-${triple}.${ext}`,
+    integrity,
+    size,
+    member: format === 'zip' ? 'aigateway.exe' : 'aigateway',
+    format,
+  };
+}
+
 export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
   'agent:claude-code': {
     id: 'agent:claude-code',
@@ -174,6 +196,44 @@ export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
         'zip',
         'sha256-ExokYEeFqWAJiaPZEiX1l99SrAbwCu/+hv1Sn5nuXN0=',
         20_035_039,
+      ),
+    },
+  },
+  'tool:aigateway': {
+    id: 'tool:aigateway',
+    binaryBase: 'aigateway',
+    version: { kind: 'pinned', version: AIGATEWAY_VERSION },
+    // Static musl builds on linux; no arm64 windows build.
+    artifacts: {
+      'darwin-arm64': aigatewayArtifact(
+        'aarch64-apple-darwin',
+        'tgz',
+        'sha256-7dF2X2fZOEDlzow1+Vodu9T+XGfyEmOtW/5M+/xQYq4=',
+        3_404_002,
+      ),
+      'darwin-x64': aigatewayArtifact(
+        'x86_64-apple-darwin',
+        'tgz',
+        'sha256-QUG0Ayw9U0Xr8LoBNP3JJtBHq8ohFGScEUoA0jTcebA=',
+        3_612_759,
+      ),
+      'linux-arm64': aigatewayArtifact(
+        'aarch64-unknown-linux-musl',
+        'tgz',
+        'sha256-FeW0CEd1hwoBu91y/1Uc/ZoK+crcXGoq3zDsPa/5xYQ=',
+        3_479_607,
+      ),
+      'linux-x64': aigatewayArtifact(
+        'x86_64-unknown-linux-musl',
+        'tgz',
+        'sha256-fAJd9IRBFOqLf5uhNkoPGMdO2KTuycNh0niZ7ian4Fk=',
+        3_769_337,
+      ),
+      'win32-x64': aigatewayArtifact(
+        'x86_64-pc-windows-msvc',
+        'zip',
+        'sha256-440fIMPnL+5+kp142ffRzTq+XKsOeTU5RljnOnG0ubQ=',
+        3_759_629,
       ),
     },
   },

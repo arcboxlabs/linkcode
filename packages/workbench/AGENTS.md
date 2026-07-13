@@ -21,8 +21,11 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 - `app/` — the composition layer apps mount: the `WorkbenchApp` root, global UI providers
   (toast + i18n), the data-plane providers + connection gate, and the default connection-state
   fallback.
-- `runtime/` — transport SDK client lifecycle and data-fetching plumbing: `WorkbenchRuntimeProvider`
-  and its hooks, the typed tayori instance, the debug toggles.
+- `runtime/` — the centralized connection controller (endpoint resolution, transport/SDK
+  generations, close recovery and retry), `WorkbenchRuntimeProvider` and its hooks, the typed
+  tayori instance, and the debug toggles. SWR retains cached data across generations of the same
+  endpoint, starts a fresh cache after endpoint migration, and revalidates once after a generation
+  becomes protocol-ready; it does not own connection state.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
   contract plus the default shell, and session orchestration hooks.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped

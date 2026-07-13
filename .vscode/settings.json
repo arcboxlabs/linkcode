@@ -1,0 +1,17 @@
+{
+  // Use the native (Go) TypeScript 7 language service in the editor, matching the native `tsc`
+  // that `pnpm typecheck` runs. Requires the "TypeScript 7 (Native Preview)" extension
+  // (TypeScriptTeam.native-preview, recommended in extensions.json); it manages its own tsgo build.
+  // To pin the editor to the workspace copy instead: "js/ts.tsdk.path": "./node_modules/@typescript/native".
+  "js/ts.experimental.useTsgo": true,
+
+  // Format with Biome, fix with ESLint on save — mirrors .zed/settings.json.
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports.biome": "explicit"
+  },
+  "[javascript][javascriptreact][typescript][typescriptreact][json][jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  }
+}

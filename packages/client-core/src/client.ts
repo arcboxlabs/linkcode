@@ -1,4 +1,5 @@
 import type {
+  Accounts,
   AgentEvent,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -21,6 +22,7 @@ import type {
   QuestionOutcome,
   SessionId,
   SessionInfo,
+  SessionNotification,
   SessionRecord,
   StartOptions,
   WireMessage,
@@ -31,6 +33,11 @@ import type {
   WorkspaceScript,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import { extractErrorMessage } from 'foxts/extract-error-message';
+import { noop } from 'foxts/noop';
+import type { AgentLoginHandlers } from './client/agent-login-channel';
+import { AgentLoginChannel } from './client/agent-login-channel';
 import type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
@@ -39,12 +46,14 @@ import type { RequestAck } from './client/pending-registry';
 import { PendingRegistry } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
+export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
+type SessionNotificationCb = (notification: SessionNotification) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 
@@ -65,12 +74,17 @@ export interface AssetSettledEvent {
 type AssetProgressCb = (event: AssetProgressEvent) => void;
 type AssetSettledCb = (event: AssetSettledEvent) => void;
 type AgentRuntimesChangedCb = (runtimes: AgentRuntimes) => void;
+type ConnectionCloseCb = (error: Error) => void;
+type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
+
+const HANDSHAKE_TIMEOUT_MS = 5000;
 
 /**
  * LinkCodeClient: the data-plane client shared across all platforms
  * (docs/ARCHITECTURE.md#packages--repo-layout).
  * Layers session semantics (start / prompt / subscribe / stop) on top of any Transport, agnostic to
  * whether it's a LocalTransport or a WsTransport to the daemon (docs/ARCHITECTURE.md#core-principles).
+ * A client owns one transport generation and becomes ready only after a LinkCode ping/pong handshake.
  *
  * The daemon broadcasts events to every client, so control replies are paired by correlation id rather
  * than by order: each request carries a `clientReqId` and the reply echoes it as `replyTo`. Composed
@@ -83,30 +97,138 @@ export class LinkCodeClient {
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
+  private readonly agentLogin: AgentLoginChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
+  private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
+  private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
-  private closed = false;
+  private state: ConnectionState = 'idle';
+  private connectionError: Error | null = null;
+  private resolveHandshake: (() => void) | null = null;
+  private rejectHandshake: ((error: Error) => void) | null = null;
 
   constructor(private readonly transport: Transport) {
     this.control = new ControlChannel(transport, this.pending);
     this.terminals = new TerminalChannel(transport, this.pending);
+    this.agentLogin = new AgentLoginChannel(transport, this.pending);
   }
 
   async connect(): Promise<void> {
-    this.closed = false;
-    await this.transport.connect();
-    // The caller's effect may have been torn down mid-await (React StrictMode / remount); bail if so.
-    if (this.isClosed()) return;
-    this.unsub?.();
+    if (this.state === 'disposed') throw new Error('LinkCodeClient: client disposed');
+    if (this.state !== 'idle') {
+      throw new Error('LinkCodeClient: connection already started');
+    }
+    this.state = 'connecting';
     this.unsub = this.transport.onMessage((msg) => this.route(msg));
+    this.offClose = this.transport.onClose(() => this.handleTransportClose());
+
+    try {
+      await this.transport.connect();
+      this.throwIfNotConnecting();
+      await this.handshake();
+      this.throwIfNotConnecting();
+      this.state = 'ready';
+    } catch (error_) {
+      const disposed = this.isDisposed();
+      const error = disposed ? new Error('client disposed') : toError(error_);
+      if (!disposed) this.state = 'closed';
+      this.connectionError = error;
+      this.pending.failAll(error);
+      this.clearTransportSubscriptions();
+      await this.transport.close();
+      throw error;
+    }
+  }
+
+  /** Observe an unexpected close after this client has completed its LinkCode handshake. */
+  onClose(cb: ConnectionCloseCb): Unsubscribe {
+    this.connectionCloseSubs.add(cb);
+    return () => this.connectionCloseSubs.delete(cb);
+  }
+
+  private async handshake(): Promise<void> {
+    let settled = false;
+    let cancelTimer: () => void = noop;
+    const pong = new Promise<void>((resolve, reject) => {
+      const clear = (): void => {
+        cancelTimer();
+        this.resolveHandshake = null;
+        this.rejectHandshake = null;
+      };
+      this.resolveHandshake = () => {
+        if (settled) return;
+        settled = true;
+        clear();
+        resolve();
+      };
+      this.rejectHandshake = (error) => {
+        if (settled) return;
+        settled = true;
+        clear();
+        reject(error);
+      };
+      const timer = setTimeout(() => {
+        this.rejectHandshake?.(
+          new Error(
+            `LinkCodeClient: handshake timed out after ${HANDSHAKE_TIMEOUT_MS}ms; daemon unavailable or wire protocol mismatch`,
+          ),
+        );
+      }, HANDSHAKE_TIMEOUT_MS);
+      cancelTimer = () => clearTimeout(timer);
+    });
+
+    let sent: Promise<void>;
+    try {
+      sent = Promise.resolve(this.transport.send(createWireMessage({ kind: 'ping' })));
+    } catch (error) {
+      sent = Promise.reject(toError(error));
+    }
+
+    try {
+      await Promise.all([sent, pong]);
+    } finally {
+      cancelTimer();
+      this.resolveHandshake = null;
+      this.rejectHandshake = null;
+    }
+  }
+
+  private handleTransportClose(): void {
+    if (this.state === 'closed' || this.state === 'disposed') return;
+    const wasReady = this.state === 'ready';
+    const error = new Error('transport connection closed');
+    this.state = 'closed';
+    this.connectionError = error;
+    this.rejectHandshake?.(error);
+    this.pending.failAll(error);
+    this.clearTransportSubscriptions();
+
+    if (wasReady) {
+      const subscribers = [...this.connectionCloseSubs];
+      this.connectionCloseSubs.clear();
+      for (const cb of subscribers) cb(error);
+    }
+  }
+
+  private throwIfNotConnecting(): void {
+    if (this.state === 'connecting') return;
+    if (this.state === 'disposed') throw new Error('client disposed');
+    throw this.connectionError ?? new Error('transport connection closed');
+  }
+
+  private isDisposed(): boolean {
+    return this.state === 'disposed';
+  }
+
+  private clearTransportSubscriptions(): void {
+    this.unsub?.();
+    this.unsub = null;
     this.offClose?.();
-    this.offClose = this.transport.onClose(() =>
-      this.pending.failAll(new Error('transport connection closed')),
-    );
+    this.offClose = null;
   }
 
   private route(msg: WireMessage): void {
@@ -128,7 +250,9 @@ export class LinkCodeClient {
         this.pending.resolve('historyRead', p.replyTo, p.result);
         break;
       case 'config.get.result':
+        // One result carries both; each resolve is a no-op unless a request awaits that reply id.
         this.pending.resolve('configGet', p.replyTo, p.providers);
+        this.pending.resolve('accountsGet', p.replyTo, p.accounts);
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
@@ -173,6 +297,9 @@ export class LinkCodeClient {
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
         break;
+      case 'session.notification':
+        for (const cb of this.sessionNotificationSubs) cb(p.notification);
+        break;
       case 'workspace.listed':
         this.pending.resolve('workspaceList', p.replyTo, p.workspaces);
         break;
@@ -195,6 +322,14 @@ export class LinkCodeClient {
       case 'terminal.output':
       case 'terminal.exit':
         this.terminals.handleMessage(p);
+        break;
+      case 'agent-login.started':
+      case 'agent-login.url':
+      case 'agent-login.settled':
+        this.agentLogin.handleMessage(p);
+        break;
+      case 'pong':
+        this.resolveHandshake?.();
         break;
       default:
         break;
@@ -313,6 +448,10 @@ export class LinkCodeClient {
     return this.control.getProviderConfig();
   }
 
+  getAccounts(): Promise<Accounts> {
+    return this.control.getAccounts();
+  }
+
   listAgentRuntimes(): Promise<AgentRuntimes> {
     return this.control.listAgentRuntimes();
   }
@@ -346,6 +485,10 @@ export class LinkCodeClient {
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.control.setProviderConfig(providers);
+  }
+
+  setAccounts(accounts: Accounts): Promise<RequestAck> {
+    return this.control.setAccounts(accounts);
   }
 
   getGitStatus(cwd: string): Promise<GitStatus> {
@@ -383,6 +526,12 @@ export class LinkCodeClient {
   subscribeScriptStatus(cb: ScriptStatusCb): Unsubscribe {
     this.scriptStatusSubs.add(cb);
     return () => this.scriptStatusSubs.delete(cb);
+  }
+
+  /** Broadcast `session.notification` moments for every session, foreground or background. */
+  subscribeSessionNotification(cb: SessionNotificationCb): Unsubscribe {
+    this.sessionNotificationSubs.add(cb);
+    return () => this.sessionNotificationSubs.delete(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
@@ -463,19 +612,40 @@ export class LinkCodeClient {
     return this.terminals.subscribeOutputSnapshot(terminalId, cb);
   }
 
-  dispose(): void {
-    this.closed = true;
-    this.unsub?.();
-    this.unsub = null;
-    this.offClose?.();
-    this.offClose = null;
-    this.pending.failAll(new Error('client disposed'));
-    this.events.clearAll();
-    this.terminals.disposeAll();
-    this.transport.close();
+  /** Begin an interactive provider login (claude-code); resolves the loginId to subscribe against. */
+  startAgentLogin(agent: AgentKind): Promise<string> {
+    return this.agentLogin.start(agent);
   }
 
-  private isClosed(): boolean {
-    return this.closed;
+  /** Observe the browser URL and terminal outcome of a login started with {@link startAgentLogin}. */
+  subscribeAgentLogin(loginId: string, handlers: AgentLoginHandlers): Unsubscribe {
+    return this.agentLogin.subscribe(loginId, handlers);
   }
+
+  /** Feed the authorization code the user pasted from the browser back to the login. */
+  submitLoginCode(loginId: string, code: string): void {
+    this.agentLogin.submitCode(loginId, code);
+  }
+
+  cancelAgentLogin(loginId: string): void {
+    this.agentLogin.cancel(loginId);
+  }
+
+  dispose(): void {
+    if (this.state === 'disposed') return;
+    this.state = 'disposed';
+    const error = new Error('client disposed');
+    this.rejectHandshake?.(error);
+    this.clearTransportSubscriptions();
+    this.connectionCloseSubs.clear();
+    this.pending.failAll(error);
+    this.events.clearAll();
+    this.terminals.disposeAll();
+    this.agentLogin.disposeAll();
+    this.transport.close();
+  }
+}
+
+function toError(error: unknown): Error {
+  return new Error(extractErrorMessage(error, false) ?? 'Unknown error', { cause: error });
 }

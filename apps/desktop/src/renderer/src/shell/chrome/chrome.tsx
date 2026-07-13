@@ -1,6 +1,7 @@
 import { cn, ShellIconButton } from '@linkcode/ui';
-import type { WorkbenchShellHeader } from '@linkcode/workbench';
+import type { WorkbenchShellHeader, WorkbenchShellNavigation } from '@linkcode/workbench';
 import { nullthrow } from 'foxact/nullthrow';
+import { useIsomorphicLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslations } from 'use-intl';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
 
 type DesktopPanelSide = 'right' | 'bottom';
@@ -27,10 +29,14 @@ export interface DesktopChromeProps {
   expandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
   hasNativeTrafficLights: boolean;
+  /** Draw renderer window controls (minimize/maximize/close) — non-macOS, once the platform is known. */
+  showWindowControls: boolean;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
   onToggleRight: () => void;
   onToggleBottom: () => void;
+  /** Drives the default left-rail ‹ › controls; absent (e.g. Settings) keeps them disabled. */
+  navigation?: WorkbenchShellNavigation;
   /** Pre-formatted shortcut hints for the default sidebar/panel toggles (e.g. "⌘J"). */
   sidebarShortcut?: string;
   rightPanelShortcut?: string;
@@ -61,11 +67,14 @@ export interface DesktopChromePortalProps {
 type DesktopChromeSlotKey = `${DesktopChromeSegment}:${DesktopChromePosition}`;
 type ChromePortalTargetMap = Partial<Record<DesktopChromeSlotKey, HTMLElement>>;
 type SetChromePortalTarget = (key: DesktopChromeSlotKey, target: HTMLElement | null) => void;
+type ChromePortalUseMap = Partial<Record<DesktopChromeSlotKey, number>>;
+type RegisterChromePortalUse = (key: DesktopChromeSlotKey) => () => void;
 type ChromeBackgroundGridStyle = React.CSSProperties & {
   '--lc-chrome-right-segment-w': string;
 };
 
 const ChromePortalTargetContext = createContext<ChromePortalTargetMap | null>(null);
+const ChromePortalRegisterContext = createContext<RegisterChromePortalUse | null>(null);
 
 const CHROME_BACKGROUND_GRID_STYLE = {
   gridTemplateColumns: 'var(--lc-sidebar-w) minmax(0, 1fr) var(--lc-right-w)',
@@ -115,8 +124,17 @@ export function DesktopChromePortal({
     use(ChromePortalTargetContext),
     'Desktop chrome portal targets are missing',
   );
+  const registerUse = nullthrow(
+    use(ChromePortalRegisterContext),
+    'Desktop chrome portal registry is missing',
+  );
 
-  const target = targets[createChromeSlotKey(segment, position)];
+  const slotKey = createChromeSlotKey(segment, position);
+  // Portal-wins: registering suppresses the slot's default content (e.g. the settings title)
+  // while this portal is mounted; layout-effect timing keeps them from double-rendering a frame.
+  useIsomorphicLayoutEffect(() => registerUse(slotKey), [registerUse, slotKey]);
+
+  const target = targets[slotKey];
   if (!target) return null;
 
   return createPortal(
@@ -139,10 +157,12 @@ export function DesktopChrome({
   expandedPanel,
   hasNativeBackdrop,
   hasNativeTrafficLights,
+  showWindowControls,
   onShowSidebar,
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
+  navigation,
   sidebarShortcut,
   rightPanelShortcut,
   bottomPanelShortcut,
@@ -153,6 +173,7 @@ export function DesktopChrome({
   titleChip,
 }: DesktopChromeProps): React.ReactNode {
   const [portalTargets, setPortalTargets] = useState<ChromePortalTargetMap>({});
+  const [portalUse, setPortalUse] = useState<ChromePortalUseMap>({});
   const chromeRootRef = useRef<HTMLDivElement | null>(null);
   const leftRailContentRef = useRef<HTMLDivElement | null>(null);
   const rightRailContentRef = useRef<HTMLDivElement | null>(null);
@@ -168,54 +189,67 @@ export function DesktopChrome({
       return { ...current, [key]: undefined };
     });
   }, []);
+  const registerPortalUse = useCallback<RegisterChromePortalUse>((key) => {
+    setPortalUse((current) => ({ ...current, [key]: (current[key] ?? 0) + 1 }));
+    return () => {
+      setPortalUse((current) => ({ ...current, [key]: Math.max(0, (current[key] ?? 1) - 1) }));
+    };
+  }, []);
 
   return (
-    <ChromePortalTargetContext value={portalTargets}>
-      <div
-        ref={chromeRootRef}
-        className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
-      >
-        <ChromeSegmentGrid
-          header={header}
-          expandedPanel={expandedPanel}
-          hasNativeBackdrop={hasNativeBackdrop}
-          titleContent={titleContent}
-          titleIcon={titleIcon}
-          titleChip={titleChip}
-          setPortalTarget={setPortalTarget}
-        />
-        <StableLeftChrome
-          contentRef={leftRailContentRef}
-          hasNativeTrafficLights={hasNativeTrafficLights}
+    <ChromePortalRegisterContext value={registerPortalUse}>
+      <ChromePortalTargetContext value={portalTargets}>
+        <div
+          ref={chromeRootRef}
+          className="pointer-events-none absolute inset-x-0 top-0 z-30 h-(--lc-chrome-h) text-foreground [-webkit-app-region:drag]"
         >
-          {leftControls === undefined ? (
-            <DefaultLeftChromeControls
-              sidebarOpen={sidebarOpen}
-              sidebarShortcut={sidebarShortcut}
-              onShowSidebar={onShowSidebar}
-              onHideSidebar={onHideSidebar}
-            />
-          ) : (
-            leftControls
-          )}
-        </StableLeftChrome>
-        <StableRightChrome contentRef={rightRailContentRef}>
-          {rightControls === undefined ? (
-            <DefaultRightChromeControls
-              rightPanelOpen={rightPanelOpen}
-              bottomPanelOpen={bottomPanelOpen}
-              rightPanelShortcut={rightPanelShortcut}
-              bottomPanelShortcut={bottomPanelShortcut}
-              onToggleRight={onToggleRight}
-              onToggleBottom={onToggleBottom}
-            />
-          ) : (
-            rightControls
-          )}
-        </StableRightChrome>
-      </div>
-      {children}
-    </ChromePortalTargetContext>
+          <ChromeSegmentGrid
+            header={header}
+            expandedPanel={expandedPanel}
+            hasNativeBackdrop={hasNativeBackdrop}
+            titleContent={titleContent}
+            titleIcon={titleIcon}
+            titleChip={titleChip}
+            portalUse={portalUse}
+            setPortalTarget={setPortalTarget}
+          />
+          <StableLeftChrome
+            contentRef={leftRailContentRef}
+            hasNativeTrafficLights={hasNativeTrafficLights}
+          >
+            {leftControls === undefined ? (
+              <DefaultLeftChromeControls
+                sidebarOpen={sidebarOpen}
+                sidebarShortcut={sidebarShortcut}
+                navigation={navigation}
+                onShowSidebar={onShowSidebar}
+                onHideSidebar={onHideSidebar}
+              />
+            ) : (
+              leftControls
+            )}
+          </StableLeftChrome>
+          <StableRightChrome
+            contentRef={rightRailContentRef}
+            showWindowControls={showWindowControls}
+          >
+            {rightControls === undefined ? (
+              <DefaultRightChromeControls
+                rightPanelOpen={rightPanelOpen}
+                bottomPanelOpen={bottomPanelOpen}
+                rightPanelShortcut={rightPanelShortcut}
+                bottomPanelShortcut={bottomPanelShortcut}
+                onToggleRight={onToggleRight}
+                onToggleBottom={onToggleBottom}
+              />
+            ) : (
+              rightControls
+            )}
+          </StableRightChrome>
+        </div>
+        {children}
+      </ChromePortalTargetContext>
+    </ChromePortalRegisterContext>
   );
 }
 
@@ -226,6 +260,7 @@ function ChromeSegmentGrid({
   titleContent,
   titleIcon,
   titleChip,
+  portalUse,
   setPortalTarget,
 }: {
   header: WorkbenchShellHeader;
@@ -234,6 +269,7 @@ function ChromeSegmentGrid({
   titleContent?: React.ReactNode;
   titleIcon?: React.ReactNode;
   titleChip?: React.ReactNode;
+  portalUse: ChromePortalUseMap;
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
   return (
@@ -252,6 +288,7 @@ function ChromeSegmentGrid({
             : 'border-sidebar-border border-r bg-sidebar backdrop-blur-none'
         }
         slotInsetStyle={SIDEBAR_SLOT_INSET_STYLE}
+        portalUse={portalUse}
         setPortalTarget={setPortalTarget}
       />
       <ChromeSegment
@@ -267,6 +304,7 @@ function ChromeSegmentGrid({
             titleContent
           ),
         }}
+        portalUse={portalUse}
         setPortalTarget={setPortalTarget}
       />
       <ChromeSegment
@@ -274,6 +312,7 @@ function ChromeSegmentGrid({
         divider="main-right"
         className="border-border border-l bg-background/80"
         slotInsetStyle={RIGHT_SLOT_INSET_STYLE}
+        portalUse={portalUse}
         setPortalTarget={setPortalTarget}
       />
     </div>
@@ -286,6 +325,7 @@ function ChromeSegment({
   className,
   slotInsetStyle,
   defaultSlots,
+  portalUse,
   setPortalTarget,
 }: {
   segment: DesktopChromeSegment;
@@ -293,11 +333,17 @@ function ChromeSegment({
   className: string;
   slotInsetStyle: React.CSSProperties;
   defaultSlots?: Partial<Record<DesktopChromePosition, React.ReactNode>>;
+  portalUse: ChromePortalUseMap;
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
   return (
+    // Size container so portaled panel chrome (e.g. the section tab strip) can collapse
+    // its labels to icons when its host segment gets narrow (`@max-*/chrome-segment`).
     <div
-      className={cn('relative min-w-0 overflow-hidden backdrop-blur-xl', className)}
+      className={cn(
+        '@container/chrome-segment relative min-w-0 overflow-hidden backdrop-blur-xl',
+        className,
+      )}
       data-chrome-divider={divider}
     >
       <div
@@ -306,13 +352,28 @@ function ChromeSegment({
         )}
         style={slotInsetStyle}
       >
-        <ChromeSlotTarget segment={segment} position="left" setPortalTarget={setPortalTarget}>
+        <ChromeSlotTarget
+          segment={segment}
+          position="left"
+          portalUse={portalUse}
+          setPortalTarget={setPortalTarget}
+        >
           {defaultSlots?.left}
         </ChromeSlotTarget>
-        <ChromeSlotTarget segment={segment} position="center" setPortalTarget={setPortalTarget}>
+        <ChromeSlotTarget
+          segment={segment}
+          position="center"
+          portalUse={portalUse}
+          setPortalTarget={setPortalTarget}
+        >
           {defaultSlots?.center}
         </ChromeSlotTarget>
-        <ChromeSlotTarget segment={segment} position="right" setPortalTarget={setPortalTarget}>
+        <ChromeSlotTarget
+          segment={segment}
+          position="right"
+          portalUse={portalUse}
+          setPortalTarget={setPortalTarget}
+        >
           {defaultSlots?.right}
         </ChromeSlotTarget>
       </div>
@@ -323,11 +384,13 @@ function ChromeSegment({
 function ChromeSlotTarget({
   segment,
   position,
+  portalUse,
   setPortalTarget,
   children,
 }: {
   segment: DesktopChromeSegment;
   position: DesktopChromePosition;
+  portalUse: ChromePortalUseMap;
   setPortalTarget: SetChromePortalTarget;
   children?: React.ReactNode;
 }): React.ReactNode {
@@ -339,6 +402,10 @@ function ChromeSlotTarget({
     [setPortalTarget, slotKey],
   );
 
+  // Portal-wins: while any DesktopChromePortal targets this slot, the default content yields
+  // to it — hosts never special-case which tab supplies its own chrome.
+  const suppressed = (portalUse[slotKey] ?? 0) > 0;
+
   return (
     <div
       ref={setSlotElement}
@@ -349,7 +416,7 @@ function ChromeSlotTarget({
       data-chrome-segment={segment}
       data-chrome-position={position}
     >
-      {children}
+      {suppressed ? null : children}
     </div>
   );
 }
@@ -379,28 +446,40 @@ function StableLeftChrome({
 function DefaultLeftChromeControls({
   sidebarOpen,
   sidebarShortcut,
+  navigation,
   onShowSidebar,
   onHideSidebar,
 }: {
   sidebarOpen: boolean;
   sidebarShortcut?: string;
+  navigation?: WorkbenchShellNavigation;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
 }): React.ReactNode {
+  const t = useTranslations('workbench.palette');
+
   return (
     <>
       <ShellIconButton
-        label="Toggle sidebar"
+        label={t('toggleSidebar')}
         shortcut={sidebarShortcut}
         aria-pressed={sidebarOpen}
         onClick={sidebarOpen ? onHideSidebar : onShowSidebar}
       >
         <PanelLeftIcon className="size-4" />
       </ShellIconButton>
-      <ShellIconButton label="Back" disabled>
+      <ShellIconButton
+        label={t('goBack')}
+        disabled={navigation?.canGoBack !== true}
+        onClick={navigation?.onBack}
+      >
         <ChevronLeftIcon className="size-4" />
       </ShellIconButton>
-      <ShellIconButton label="Forward" disabled>
+      <ShellIconButton
+        label={t('goForward')}
+        disabled={navigation?.canGoForward !== true}
+        onClick={navigation?.onForward}
+      >
         <ChevronRightIcon className="size-4" />
       </ShellIconButton>
     </>
@@ -432,9 +511,11 @@ function MainChromeTitle({
 
 function StableRightChrome({
   contentRef,
+  showWindowControls,
   children,
 }: {
   contentRef: React.Ref<HTMLDivElement>;
+  showWindowControls: boolean;
   children: React.ReactNode;
 }): React.ReactNode {
   return (
@@ -444,6 +525,9 @@ function StableRightChrome({
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
         {children}
+        {/* Reserve the space the persistent window-controls layer (DesktopWindowControls, mounted at
+            the app root) floats over, so the panel toggles never sit under it. */}
+        {showWindowControls ? <WindowControlsInset /> : null}
       </div>
     </div>
   );
@@ -492,6 +576,10 @@ function DefaultRightChromeControls({
 
 function NativeTrafficLightInset(): React.ReactNode {
   return <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />;
+}
+
+function WindowControlsInset(): React.ReactNode {
+  return <div aria-hidden className="w-(--lc-chrome-window-controls-inset) shrink-0" />;
 }
 
 function createChromeSlotKey(

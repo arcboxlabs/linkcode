@@ -5,7 +5,7 @@ The local runbook: run the apps, run the tests, debug a stuck daemon. For archit
 ## Prerequisites
 
 > [!NOTE]
-> `devenv` is recommended: it pins Node.js 24, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
+> `devenv` is recommended: it pins Node.js 26, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
 
 Without `devenv`, install these yourself:
 
@@ -95,7 +95,7 @@ The release build is used in dev on purpose, so the daemon's fallback path match
 
 ### One runner
 
-There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` (`environment: 'node'`; include globs `packages/**/src/**/__tests__/**/*.test.ts` and `apps/**/src/**/__tests__/**/*.test.ts`). No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. All tests are pure-logic node-env — no jsdom/DOM component render; even renderer tests exercise pure store/reducer functions. Run one area by passing a path or name filter:
+There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` (`environment: 'node'`; include globs cover `*.test.ts` and `*.test.tsx` under package/app `src/**/__tests__`). DOM component tests opt in per file with `@vitest-environment jsdom`; other tests stay in the default node environment. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
 
 ```bash
 pnpm test apps/daemon/src/pty     # just the PTY unit tests
@@ -127,7 +127,7 @@ CI never builds the binary inside the TypeScript job, so this cross-language tes
 
 ## Desktop E2E procedures
 
-There is **no committed E2E/Playwright harness** on master — no `playwright*` dependency, no `_electron.launch` in source, no spec files. Desktop E2E is done ad-hoc: install `playwright-core` in a scratchpad and drive Electron. Neither desktop workflow runs code tests; release only validates packaging (`verify-artifacts`), and the missing CI packaged-boot smoke test is tracked as CODE-89. Hard rule: **packaging verification must actually launch the packaged product** — launch-only bugs (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a dev-shell exit-0 lock theft) never reproduce in dev.
+The first committed E2E script is `apps/desktop/e2e/notifications.e2e.mts` (`pnpm -F @linkcode/desktop e2e:notifications`, `playwright-core` devDependency): it self-orchestrates an isolated daemon + built desktop app and asserts the OS-notification chain end to end — use it as the template for new flows (fresh fake `HOME`, `--user-data-dir`, `--use-mock-keychain`, main-process interception via `app.evaluate`). Everything else is still driven ad-hoc the same way. No E2E runs in CI; release only validates packaging (`verify-artifacts`), and the missing CI packaged-boot smoke test is tracked as CODE-89. Hard rule: **packaging verification must actually launch the packaged product** — launch-only bugs (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a dev-shell exit-0 lock theft) never reproduce in dev.
 
 > Procedure from prior sessions — re-verify each step as you go. Script names and paths below are repo-verified; the keychain service name is observed behavior of the vendored CLI (re-check with `security find-generic-password -s 'Claude Code-credentials'`); the launch/driving switches are memory-sourced Chromium/Electron flags.
 
@@ -137,6 +137,7 @@ There is **no committed E2E/Playwright harness** on master — no `playwright*` 
 
 - `userData` for any unpackaged run on macOS is `~/Library/Application Support/LinkCode Dev` (`IS_DEV_SHELL` pins the app name), shared with your daily dev instance. An E2E run **must** still pass an independent `--user-data-dir=<temp>`, or `requestSingleInstanceLock` against the daily instance makes the second Electron exit 0 (looks like nothing launched). Back up that dir's `settings.json` first.
 - Isolated daemon: `HOME=<tempdir> LINKCODE_PORT=<port> pnpm -F @linkcode/daemon run dev`. Pass the **same** fake `HOME` to Electron and it auto-connects via `runtime.json` (precondition: the real `settings.json` has no `daemonUrl`). Use a **fresh** fake `HOME` per run — a reused one carries an old daemon DB and leaves the composer disabled ("Create or pick a thread first").
+- Always launch Electron with `--use-mock-keychain`: a fake `HOME` has no login keychain, and without the flag macOS pops a blocking "Keychain Not Found / reset" dialog on the developer's screen at every launch.
 - Playwright pins `colorScheme: 'light'`. Theme/dark-mode E2E must pass `_electron.launch({ colorScheme: null })` or dark mode falsely looks broken.
 
 **Keychain (macOS) — exact.** The vendored `claude` CLI reads OAuth from the login Keychain service `Claude Code-credentials` (acct = `<username>`), **not** `~/.claude/.credentials.json`. A fake `HOME` breaks that; symlink it back:
@@ -229,6 +230,8 @@ JavaScript/TypeScript use ESLint for linting and Biome for formatting (Biome's l
 pnpm lint
 pnpm format:check
 ```
+
+`pnpm lint` pins `--concurrency=2`: ESLint's `auto` spawns a worker per core, which measures 1.5–2× slower wall-clock than two workers for this typed-lint workload (and CI runners have 2 vCPUs).
 
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 

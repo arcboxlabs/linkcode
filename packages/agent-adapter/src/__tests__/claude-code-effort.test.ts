@@ -235,3 +235,78 @@ describe('ClaudeCodeAdapter effort switching', () => {
     expect(q2.applyFlagSettings).toHaveBeenCalledWith({ ultracode: null, effortLevel: 'high' });
   });
 });
+
+/** The read-only Stop hook the adapter registers to learn the resolved effort level. */
+function stopHookOf(q: FakeQuery): (input: unknown) => Promise<unknown> {
+  const hooks = q.options.hooks as {
+    Stop: Array<{ hooks: Array<(input: unknown) => Promise<unknown>> }>;
+  };
+  return hooks.Stop[0].hooks[0];
+}
+
+describe('ClaudeCodeAdapter model/effort reflection', () => {
+  it('reflects an explicit effort pick as an effort-update event', async () => {
+    const { adapter, events } = await makeAdapter();
+    await setEffort(adapter, 'high');
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'high' });
+  });
+
+  it('reflects an explicit model pick as a model-update event', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'set-model', model: 'claude-opus-4-8' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'claude-opus-4-8' });
+  });
+
+  it('reflects the served model the CLI reports on its init frame', async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    queries[0].push({
+      type: 'system',
+      subtype: 'init',
+      permissionMode: 'default',
+      model: 'claude-sonnet-5',
+    });
+    await vi.waitFor(() => {
+      expect(events).toContainEqual({ type: 'model-update', model: 'claude-sonnet-5' });
+    });
+  });
+
+  it("learns the resolved default effort from the Stop hook only when the user hasn't picked one", async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    const stopHook = stopHookOf(queries[0]);
+
+    // Effort unset: the hook reflects the CLI's resolved level.
+    await stopHook({ effort: { level: 'medium' } });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
+
+    // After an explicit pick, the hook must not overwrite the authoritative choice.
+    await setEffort(adapter, 'high');
+    events.length = 0;
+    await stopHook({ effort: { level: 'medium' } });
+    expect(events.some((e) => e.type === 'effort-update')).toBe(false);
+  });
+});
+
+describe('ClaudeCodeAdapter auth failure', () => {
+  it('surfaces a 401 result as an authentication_failed error, not a phantom stop', async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    // The SDK reports a 401 as a `success` result carrying api_error_status (CODE-75 swallow point).
+    queries[0].push({
+      type: 'result',
+      subtype: 'success',
+      api_error_status: 401,
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: {},
+    });
+    await waitIdle(events);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'error', code: 'authentication_failed', recoverable: false }),
+    );
+    // The swallowed turn must not emit a usage or a phantom stop.
+    expect(events.some((e) => e.type === 'stop')).toBe(false);
+    expect(events.some((e) => e.type === 'token-usage')).toBe(false);
+  });
+});

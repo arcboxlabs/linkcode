@@ -8,7 +8,6 @@ describe('selectVisibleSessions', () => {
     const sessions = makeSessions(3);
 
     const result = selectVisibleSessions(sessions, {
-      collapsed: false,
       expanded: false,
       activeId: null,
     });
@@ -17,11 +16,10 @@ describe('selectVisibleSessions', () => {
     expect(result.hasOverflow).toBe(false);
   });
 
-  it('truncates to the preview count when not collapsed and not expanded', () => {
+  it('truncates to the preview count when not expanded', () => {
     const sessions = makeSessions(8);
 
     const result = selectVisibleSessions(sessions, {
-      collapsed: false,
       expanded: false,
       activeId: null,
     });
@@ -37,7 +35,6 @@ describe('selectVisibleSessions', () => {
     const activeId = sessions[7].sessionId;
 
     const result = selectVisibleSessions(sessions, {
-      collapsed: false,
       expanded: false,
       activeId,
     });
@@ -54,7 +51,6 @@ describe('selectVisibleSessions', () => {
     const activeId = sessions[0].sessionId;
 
     const result = selectVisibleSessions(sessions, {
-      collapsed: false,
       expanded: false,
       activeId,
     });
@@ -65,54 +61,24 @@ describe('selectVisibleSessions', () => {
   it('returns every session once expanded ("Show more" toggled), independent of other groups', () => {
     const sessions = makeSessions(8);
 
-    const collapsedPreview = selectVisibleSessions(sessions, {
-      collapsed: false,
+    const truncatedPreview = selectVisibleSessions(sessions, {
       expanded: false,
       activeId: null,
     });
     const expandedPreview = selectVisibleSessions(sessions, {
-      collapsed: false,
       expanded: true,
       activeId: null,
     });
 
-    expect(collapsedPreview.sessions).toHaveLength(DEFAULT_GROUP_PREVIEW_COUNT);
+    expect(truncatedPreview.sessions).toHaveLength(DEFAULT_GROUP_PREVIEW_COUNT);
     expect(expandedPreview.sessions).toEqual(sessions);
     expect(expandedPreview.hasOverflow).toBe(true);
-  });
-
-  it('collapsed group shows only its active session, if any', () => {
-    const sessions = makeSessions(8);
-    const activeId = sessions[3].sessionId;
-
-    const result = selectVisibleSessions(sessions, {
-      collapsed: true,
-      expanded: false,
-      activeId,
-    });
-
-    expect(result.sessions.map((s) => s.sessionId)).toEqual([activeId]);
-    expect(result.hasOverflow).toBe(false);
-  });
-
-  it('collapsed group with no active session renders nothing', () => {
-    const sessions = makeSessions(8);
-
-    const result = selectVisibleSessions(sessions, {
-      collapsed: true,
-      expanded: false,
-      activeId: null,
-    });
-
-    expect(result.sessions).toEqual([]);
-    expect(result.hasOverflow).toBe(false);
   });
 
   it('respects a custom previewCount', () => {
     const sessions = makeSessions(4);
 
     const result = selectVisibleSessions(sessions, {
-      collapsed: false,
       expanded: false,
       activeId: null,
       previewCount: 2,

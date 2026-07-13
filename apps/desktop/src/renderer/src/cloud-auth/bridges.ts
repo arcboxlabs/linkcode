@@ -5,6 +5,8 @@
  * across the process boundary, so we mirror the vendor's stable public shape here.
  */
 
+import type { CloudHost, CloudImSource } from '@linkcode/workbench';
+
 /** The authenticated user, as normalized by the electron plugin. Extra IdP fields are preserved. */
 export interface CloudUser {
   id: string;
@@ -21,6 +23,19 @@ export interface RequestAuthOptions {
   scopes?: string[];
 }
 
+/**
+ * Cloud-account data bridge (exposed as `window.linkcodeCloud`). Distinct from the auth bridges above:
+ * these read cloud data the main process fetches with the keychain session, not window/OS capabilities.
+ */
+export interface CloudDataBridges {
+  linkcodeCloud: {
+    /** Lists the signed-in account's online hosts; main attaches the session and validates. */
+    listHosts: () => Promise<CloudHost[]>;
+    /** IM Channel management (`/im/*`); same session-in-main model as listHosts. */
+    im: CloudImSource;
+  };
+}
+
 export interface CloudAuthBridges {
   /** Current user from the persisted session, or null when signed out. Used to seed on boot. */
   getUser: () => Promise<CloudUser | null>;
@@ -35,5 +50,5 @@ export interface CloudAuthBridges {
 }
 
 declare global {
-  interface Window extends CloudAuthBridges {}
+  interface Window extends CloudAuthBridges, CloudDataBridges {}
 }

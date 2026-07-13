@@ -26,10 +26,11 @@ import type {
   PermissionDecision,
   ThreadGroupViewModel,
 } from '@linkcode/ui';
+import { useKeyboardShortcutLabel } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
@@ -38,25 +39,23 @@ import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
-import { groupThreadsByWorkspace } from '../sidebar/group-threads';
+import { extractPinnedGroup, groupThreadsByWorkspace } from '../sidebar/group-threads';
 import { useSidebarOrderStore } from '../sidebar/order-store';
 import { applyThreadDrag, orderGroups, orderThreads } from '../sidebar/ordering';
 import { useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
-import { RuntimeWorkspaceHistory } from '../sidebar/workspace-history';
 import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import { useSeededConversation } from './use-seeded-conversation';
+import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
 
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
-  /** Platform-formatted hint for the palette trigger (e.g. `⌘K`); apps own the label. */
-  paletteShortcut?: string;
 }
 
 /**
@@ -69,14 +68,15 @@ export interface WorkbenchProps {
  */
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
-  paletteShortcut,
 }: WorkbenchProps): React.ReactNode {
+  const rootRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err));
   }
 
   const sessions = useWorkbenchSessions(handleError);
+  useWorkbenchKeyboardShortcuts(rootRef);
   const conversation = useSeededConversation(sessions.active, handleError);
 
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
@@ -85,18 +85,17 @@ export function Workbench({
   // column (the shells key their ConversationSurface), and the permission state below survives
   // switches safely because adapter requestIds are globally unique.
   return (
-    <>
+    <div ref={rootRef} className="h-full min-h-0">
       <WorkbenchSessionSurface
         sessions={sessions}
         conversation={conversation}
         errorMessage={errorMessage}
         ShellComponent={ShellComponent}
-        paletteShortcut={paletteShortcut}
         onClearError={() => setErrorMessage(null)}
         onError={handleError}
       />
       <WorkbenchCommandPalette sessions={sessions} />
-    </>
+    </div>
   );
 }
 
@@ -105,7 +104,6 @@ interface WorkbenchSessionSurfaceProps {
   conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
-  paletteShortcut?: string;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -115,11 +113,11 @@ function WorkbenchSessionSurface({
   conversation,
   errorMessage,
   ShellComponent,
-  paletteShortcut,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
+  const searchShortcut = useKeyboardShortcutLabel('workbench.command-palette');
   const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
@@ -154,6 +152,10 @@ function WorkbenchSessionSurface({
   const archiveWorkspaceMutation = useMutation(archiveWorkspace);
   const collapsedKeys = useSidebarGroupCollapseStore((state) => state.collapsedKeys);
   const toggleGroupCollapsed = useSidebarGroupCollapseStore((state) => state.toggleCollapsed);
+  const collapsedSections = useSidebarGroupCollapseStore((state) => state.collapsedSections);
+  const toggleSectionCollapsed = useSidebarGroupCollapseStore(
+    (state) => state.toggleSectionCollapsed,
+  );
   const pinnedSessionIds = useSidebarPinStore((state) => state.pinnedSessionIds);
   const toggleSessionPinned = useSidebarPinStore((state) => state.togglePinned);
   const groupOrder = useSidebarOrderStore((state) => state.groupOrder);
@@ -165,20 +167,18 @@ function WorkbenchSessionSurface({
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
-  const [historyOpenKeys, addHistoryOpen, removeHistoryOpen] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
-    const groups = groupThreadsByWorkspace(sessions.sessions, workspaces ?? []);
-    return orderGroups(groups, groupOrder).map((group) => {
+    const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
+    const groups = orderGroups(groupThreadsByWorkspace(rest, workspaces ?? []), groupOrder);
+    return (pinnedGroup ? [pinnedGroup, ...groups] : groups).map((group) => {
       const collapsed = collapsedKeys.includes(group.collapseKey);
       const previewExpanded = previewExpandedKeys.has(group.key);
-      const historyOpen = historyOpenKeys.has(group.key);
       const ordered = orderThreads(
         group.sessions,
         pinnedSessionIds,
         threadOrder[group.collapseKey] ?? [],
       );
       const { sessions: visibleSessions, hasOverflow } = selectVisibleSessions(ordered, {
-        collapsed,
         expanded: previewExpanded,
         activeId: sessions.activeId,
       });
@@ -189,7 +189,6 @@ function WorkbenchSessionSurface({
         hasOverflow,
         collapsed,
         previewExpanded,
-        historyOpen,
       };
     });
   }, [
@@ -201,7 +200,6 @@ function WorkbenchSessionSurface({
     groupOrder,
     threadOrder,
     previewExpandedKeys,
-    historyOpenKeys,
   ]);
 
   function handleSend(text: string): void {
@@ -269,11 +267,6 @@ function WorkbenchSessionSurface({
     return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
   }
 
-  function handleImportedSession(sessionId: SessionId): void {
-    sessions.refresh();
-    sessions.select(sessionId);
-  }
-
   // Every workspace-mutating request revalidates the workspace list the same way afterward.
   function afterWorkspacesChange<T>(pending: Promise<T>): Promise<T> {
     return pending.then((result) => {
@@ -298,11 +291,6 @@ function WorkbenchSessionSurface({
   function handleTogglePreviewExpanded(groupKey: string): void {
     if (previewExpandedKeys.has(groupKey)) removePreviewExpanded(groupKey);
     else addPreviewExpanded(groupKey);
-  }
-
-  function handleToggleImportHistory(groupKey: string): void {
-    if (historyOpenKeys.has(groupKey)) removeHistoryOpen(groupKey);
-    else addHistoryOpen(groupKey);
   }
 
   function handleReorderGroups(orderedCollapseKeys: string[]): void {
@@ -343,10 +331,18 @@ function WorkbenchSessionSurface({
     allWorkspaces.some((workspace) => workspace.workspaceId === lastWorkspaceId)
       ? lastWorkspaceId
       : null;
+  // Same validation as the persisted default: the store-held draft outlives daemon switches, so
+  // its preselection can name a workspace this daemon has never heard of.
+  const requestedDraftWorkspaceId = sessions.draft?.workspaceId ?? null;
+  const draftWorkspaceId =
+    requestedDraftWorkspaceId != null &&
+    allWorkspaces.some((workspace) => workspace.workspaceId === requestedDraftWorkspaceId)
+      ? requestedDraftWorkspaceId
+      : null;
   const draft: NewSessionDraft | null = sessions.draft
     ? {
         initialWorkspaceId:
-          sessions.draft.workspaceId ??
+          draftWorkspaceId ??
           persistedWorkspaceId ??
           chatWorkspace?.workspaceId ??
           projectWorkspaces[0]?.workspaceId ??
@@ -405,6 +401,9 @@ function WorkbenchSessionSurface({
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
+      onLoginAgent={onboarding.login}
+      onSubmitLoginCode={onboarding.submitLoginCode}
+      onCancelLogin={onboarding.cancelLogin}
       conversation={conversation}
       permissionDecisions={permissionDecisions}
       respondingPermissions={responding}
@@ -415,8 +414,15 @@ function WorkbenchSessionSurface({
         subtitle: active?.cwd,
         usage: conversation.usage,
       }}
+      navigation={{
+        canGoBack: sessions.canGoBack,
+        canGoForward: sessions.canGoForward,
+        onBack: sessions.goBack,
+        onForward: sessions.goForward,
+      }}
       errorMessage={errorMessage}
       pinnedSessionIds={pinnedSessionIds}
+      collapsedSections={collapsedSections}
       onSelectSession={sessions.select}
       onCloseSession={sessions.close}
       onToggleSessionPinned={toggleSessionPinned}
@@ -424,23 +430,21 @@ function WorkbenchSessionSurface({
       onReorderThreads={handleReorderThreads}
       onStartDraft={sessions.startDraft}
       onSubmitDraft={handleSubmitDraft}
-      onImportSession={handleImportedSession}
       onRegisterWorkspace={handleRegisterWorkspace}
       onRenameWorkspace={handleRenameWorkspace}
       onArchiveWorkspace={handleArchiveWorkspace}
       onToggleGroupCollapsed={toggleGroupCollapsed}
+      onToggleSectionCollapsed={toggleSectionCollapsed}
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
-      onToggleImportHistory={handleToggleImportHistory}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
       onOpenSearch={openCommandPalette}
-      searchShortcut={paletteShortcut}
+      searchShortcut={searchShortcut}
       TerminalBlockComponent={RuntimeTerminalBlock}
       BranchStatusComponent={RuntimeBranchStatus}
-      HistoryComponent={RuntimeWorkspaceHistory}
       onDismissError={onClearError}
       onModeChange={handleModeChange}
       onApprovalPolicyChange={handleApprovalPolicyChange}

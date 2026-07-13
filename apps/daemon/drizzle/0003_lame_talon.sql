@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `created_via` text;

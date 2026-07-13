@@ -11,7 +11,6 @@ import type {
   EffortLevel,
   PermissionOption,
   PermissionOutcome,
-  PlanEntry,
   StartOptions,
   TokenUsage,
   ToolCallContent,
@@ -21,6 +20,7 @@ import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
+import { codexEnv, readAgentCredential } from '../../credential';
 import {
   asHistoryId,
   asMessageId,
@@ -48,6 +48,7 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
+import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
 
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
  * structurally (the class's private fields would otherwise force a top-type cast). */
@@ -149,17 +150,6 @@ export function decisionFromOutcome(
   return 'decline';
 }
 
-function mapCodexPlanStatus(status: string | undefined): PlanEntry['status'] {
-  if (status === 'completed') return 'completed';
-  if (status === 'inProgress') return 'in_progress';
-  return 'pending';
-}
-
-function textContent(text: string): ToolCallContent[] {
-  if (text.length === 0) return [];
-  return [{ type: 'content', content: { type: 'text', text } }];
-}
-
 /**
  * Codex adapter — drives `codex app-server` (line-delimited JSON-RPC over stdio, the protocol
  * behind the official VS Code extension) instead of `@openai/codex-sdk`. One persistent
@@ -222,6 +212,9 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model;
+    // Reflect a model chosen at new-session time; codex has no live channel to observe the
+    // config.toml default when none was picked, so a fresh unset session shows a placeholder.
+    if (this.model) this.emitModel(this.model);
     await this.ensureThread();
   }
 
@@ -332,6 +325,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     invariant(this.opts, 'codex: session not started');
     this.opts.model = model;
     this.model = model;
+    // Reflect the pick now; it applies from the next turn/start.
+    this.emitModel(model);
     return Promise.resolve();
   }
 
@@ -344,6 +339,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       );
     }
     this.effort = effort;
+    // Reflect the pick now; it applies from the next turn/start.
+    this.emitEffort(effort);
     return Promise.resolve();
   }
 
@@ -403,12 +400,13 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   private async openThread(): Promise<void> {
     const opts = nullthrow(this.opts, 'codex: session not started');
-    const apiKey = typeof opts.config?.apiKey === 'string' ? opts.config.apiKey : undefined;
+    // Merged over the inherited env by the app-server: CODEX_API_KEY + optional OPENAI_BASE_URL.
+    const credentialEnv = codexEnv(readAgentCredential(opts.config));
     this.configuredSandbox = await this.readConfiguredSandbox();
     let server: CodexServerHandle;
     try {
       server = await this.startAppServer({
-        env: apiKey ? { CODEX_API_KEY: apiKey } : undefined,
+        env: credentialEnv,
         onNotification: (method, params) => this.handleNotification(method, params),
         onExit: (_code, stderrTail) => this.handleServerExit(stderrTail),
       });
@@ -578,19 +576,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'turn/plan/updated': {
         const plan = params.plan;
         if (!Array.isArray(plan)) break;
-        const entries = plan.reduce<PlanEntry[]>((acc, step) => {
-          if (!isRecord(step)) return acc;
-          const content = stringField(step, 'step');
-          if (content) {
-            acc.push({
-              content,
-              priority: 'medium',
-              status: mapCodexPlanStatus(stringField(step, 'status')),
-            });
-          }
-          return acc;
-        }, []);
-        this.emit({ type: 'plan', plan: { entries } });
+        this.emit({ type: 'plan', plan: { entries: codexPlanEntries(plan) } });
         break;
       }
       case 'thread/tokenUsage/updated': {
@@ -665,16 +651,16 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'commandExecution': {
-        const command = stringField(item, 'command');
-        this.emitTool({
-          toolCallId: id,
-          title: command ?? 'command',
-          kind: 'execute',
-          status: mapCodexItemStatus(stringField(item, 'status')),
-          content: textContent(stringField(item, 'aggregatedOutput') ?? ''),
-          rawInput: { command, cwd: stringField(item, 'cwd') },
-          rawOutput: numberField(item, 'exitCode'),
-        });
+        this.emitTool(
+          execToolCall({
+            toolCallId: id,
+            command: stringField(item, 'command'),
+            cwd: stringField(item, 'cwd'),
+            status: mapCodexItemStatus(stringField(item, 'status')),
+            output: stringField(item, 'aggregatedOutput'),
+            rawOutput: numberField(item, 'exitCode'),
+          }),
+        );
         break;
       }
       case 'fileChange': {
@@ -697,14 +683,14 @@ export class CodexAdapter extends BaseAgentAdapter {
             appendArrayInPlace(content, textContent(`Renamed ${path} → ${movePath}`));
           }
         }
-        this.emitTool({
-          toolCallId: id,
-          title: 'Apply file changes',
-          kind: 'edit',
-          status: mapCodexItemStatus(stringField(item, 'status')),
-          content,
-          locations,
-        });
+        this.emitTool(
+          fileChangeToolCall({
+            toolCallId: id,
+            status: mapCodexItemStatus(stringField(item, 'status')),
+            content,
+            locations,
+          }),
+        );
         break;
       }
       case 'mcpToolCall': {

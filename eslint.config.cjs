@@ -1,26 +1,5 @@
 'use strict';
 
-const path = require('node:path');
-const fs = require('node:fs');
-const { createTypeScriptImportResolver } = require('eslint-import-resolver-typescript');
-
-const tsconfigProjects = [
-  path.join(__dirname, 'tsconfig.base.json'),
-  ...workspaceTsconfigs('apps'),
-  ...workspaceTsconfigs('packages'),
-];
-
-function workspaceTsconfigs(dir) {
-  return fs
-    .readdirSync(path.join(__dirname, dir), { withFileTypes: true })
-    .reduce((configs, entry) => {
-      if (!entry.isDirectory()) return configs;
-      const tsconfig = path.join(__dirname, dir, entry.name, 'tsconfig.json');
-      if (fs.existsSync(tsconfig)) configs.push(tsconfig);
-      return configs;
-    }, []);
-}
-
 module.exports = require('eslint-config-sukka').sukka(
   {
     ignores: {
@@ -34,18 +13,26 @@ module.exports = require('eslint-config-sukka').sukka(
         '**/.vite/**',
         '**/.turbo/**',
         '**/.expo/**',
+        '.vscode/**',
         '.zed/**',
         '**/expo-export/**',
-        'packages/coss-ui/**',
+        'packages/coss-ui/**', // sync from upstream
         'pnpm-lock.yaml',
       ],
     },
     react: {
+      files: [
+        'apps/desktop/**',
+        'apps/mobile/src/**',
+        'apps/webview/src/**',
+        'packages/ui/src/**',
+        'packages/workbench/src/**',
+        'packages/client-core/src/**',
+      ],
       additionalHooks: '(useIsomorphicLayoutEffect|useAbortableEffect)',
     },
     stylistic: false,
     ts: {
-      tsconfigRootDir: __dirname,
       allowDefaultProject: [
         '*.config.ts',
         // apps/daemon/drizzle.config.ts is intentionally absent: it is included by the daemon's
@@ -57,23 +44,6 @@ module.exports = require('eslint-config-sukka').sukka(
         // agent-adapter tests are included by that package's tsconfig like every other package's;
         // listing them here too would breach typescript-eslint's 8-file default-project cap.
         'vitest.config.ts',
-      ],
-    },
-  },
-  {
-    name: 'linkcode/import-resolver',
-    settings: {
-      'import-x/resolver': {
-        typescript: {
-          noWarnOnMultipleProjects: true,
-          project: tsconfigProjects,
-        },
-      },
-      'import-x/resolver-next': [
-        createTypeScriptImportResolver({
-          noWarnOnMultipleProjects: true,
-          project: tsconfigProjects,
-        }),
       ],
     },
   },
@@ -132,9 +102,18 @@ module.exports = require('eslint-config-sukka').sukka(
     // `~icons/*` are unplugin-icons virtual modules resolved by Vite at build time,
     // so the TypeScript import resolver can't see them.
     name: 'linkcode/unplugin-icons-virtual-modules',
-    files: ['packages/ui/src/chat/agent-icon.tsx'],
+    files: ['packages/ui/src/chat/agent-icon.tsx', 'packages/ui/src/shell/service-icon.tsx'],
     rules: {
       'import-x/no-unresolved': ['error', { ignore: ['^~icons/'] }],
+    },
+  },
+  {
+    // tsconfig files are JSONC by spec, and the root tsconfig.json carries a
+    // load-bearing comment about its reference ordering.
+    name: 'linkcode/tsconfig-is-jsonc',
+    files: ['**/tsconfig*.json'],
+    rules: {
+      'jsonc/no-comments': 'off',
     },
   },
 );

@@ -1,16 +1,13 @@
 import type { AgentHistoryId, WirePayload } from '@linkcode/schema';
-import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
-import { LinkCodeClient } from '../client';
+import { createConnectedLocalClient } from './local-client';
 
 const historyId = 'hist-1' as AgentHistoryId;
 
 describe('LinkCodeClient history API', () => {
   it('lists and reads history over wire', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
-    await client.connect();
-    await serverTransport.connect();
+    const { client, serverTransport } = await createConnectedLocalClient();
 
     serverTransport.onMessage((msg) => {
       const p = msg.payload;
@@ -57,10 +54,7 @@ describe('LinkCodeClient history API', () => {
   });
 
   it('rejects pending history requests on request.failed', async () => {
-    const [clientTransport, serverTransport] = createLocalTransportPair();
-    const client = new LinkCodeClient(clientTransport);
-    await client.connect();
-    await serverTransport.connect();
+    const { client, serverTransport } = await createConnectedLocalClient();
 
     serverTransport.onMessage((msg) => {
       const payload = failureFor(msg.payload);

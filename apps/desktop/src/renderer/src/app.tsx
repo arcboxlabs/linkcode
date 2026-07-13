@@ -1,111 +1,124 @@
+import type { CloudHost } from '@linkcode/workbench';
 import {
+  CloudHostsProvider,
+  CloudImProvider,
   ConnectionState,
-  createDaemonTransport,
+  SessionNotifier,
+  useNavigationHistoryStore,
   useWorkbenchRuntimeStatus,
   Workbench,
   WorkbenchAppProviders,
   WorkbenchProviders,
 } from '@linkcode/workbench';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
-import { useSingleton } from 'foxact/use-singleton';
 import { useState } from 'react';
+import { desktopDaemonConnectionSource } from './daemon-connection-source';
 import { systemBridge } from './ipc';
+import { presentDesktopNotification } from './notifications';
 import { SettingsView } from './settings/settings-view';
 import { useDesktopSettingsStore } from './settings/store';
+import { DesktopWindowControls } from './shell/chrome/window-controls';
 import { ConnectionSkeleton } from './shell/connection-skeleton';
 import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
 
+/** Cloud data comes from main (it holds the keychain session); see preload's bridge. */
+const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHosts();
+// The preload bridge implements CloudImSource verbatim; hand it to the provider as-is.
+const cloudImSource = window.linkcodeCloud.im;
+
 export function DesktopApp(): React.ReactNode {
-  const daemonUrl = useDesktopSettingsStore((state) => state.daemonUrl);
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
-  const settingsOpen = useDesktopSettingsStore((state) => state.settingsOpen);
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
-      {/* Hidden (not unmounted) while Settings overlays it: both shells are translucent over the
-          native backdrop, so any workbench pixels underneath would ghost through the settings
-          sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction. */}
-      <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
-        {/* Remount on daemon-URL change: the old transport tears down via WorkbenchProviders cleanup. */}
-        <DaemonConnection key={daemonUrl} daemonUrl={daemonUrl}>
-          <Workbench shellComponent={DesktopWorkbenchShell} />
-        </DaemonConnection>
-      </div>
-      {settingsOpen ? <SettingsView /> : null}
+      <CloudHostsProvider source={listCloudHosts}>
+        <CloudImProvider source={cloudImSource}>
+          <WorkbenchProviders
+            connectionSource={desktopDaemonConnectionSource}
+            // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
+            // URL), yet its history-import panel can still use the data plane once connected.
+            ungated={settingsOpen ? <SettingsView /> : null}
+            fallback={
+              <SettingsUnderlay>
+                <DesktopConnectionFallback />
+              </SettingsUnderlay>
+            }
+          >
+            <SessionNotifier present={presentDesktopNotification} />
+            <SettingsUnderlay>
+              <Workbench shellComponent={DesktopWorkbenchShell} />
+            </SettingsUnderlay>
+          </WorkbenchProviders>
+          {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
+              can always minimize/maximize/close — including while the daemon is connecting or down. */}
+          <DesktopWindowControls />
+        </CloudImProvider>
+      </CloudHostsProvider>
     </WorkbenchAppProviders>
   );
 }
 
-/** The desktop renderer connects to the local daemon (apps/daemon) like every other client. */
-function DaemonConnection({
-  daemonUrl,
-  children,
-}: React.PropsWithChildren<{ daemonUrl: string }>): React.ReactNode {
-  const { current: transport } = useSingleton(() => createDaemonTransport(daemonUrl));
+/**
+ * Hides (never unmounts) the workbench-side layer while Settings covers it: both shells are
+ * translucent over the native backdrop, so painted pixels underneath ghost through the settings
+ * sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction.
+ */
+function SettingsUnderlay({ children }: React.PropsWithChildren): React.ReactNode {
+  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
   return (
-    <WorkbenchProviders
-      transport={transport}
-      daemonUrl={daemonUrl}
-      fallback={<DesktopConnectionFallback daemonUrl={daemonUrl} />}
-    >
+    <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
       {children}
-    </WorkbenchProviders>
+    </div>
   );
 }
 
 /**
  * A supervised daemon needs a beat to boot (fork + engine + listener bind, ~250ms measured);
  * early dial failures within this window are startup, not an outage — keep the skeleton up.
+ * Measured from renderer boot, not from mount: a later successful connection generation replaces
+ * the runtime contexts, so a subsequent outage mounts this fallback again. Restarting the grace
+ * then would hide the error screen — and its Retry button — for another full window.
  */
 const MANAGED_STARTUP_GRACE_MS = 10000;
+const RENDERER_BOOT_AT = Date.now();
 
 /**
  * Desktop connection gate: a shell-shaped skeleton while connecting (plus a startup grace window
- * on managed hosts), the shared `ConnectionState` once genuinely errored — and endpoint
- * rediscovery throughout. The transport retries a fixed URL, but the daemon port-hunts
- * (apps/daemon/src/runtime.ts) — a daemon that (re)started on another port is only reachable by
- * re-resolving discovery. Main pushes a runtime-file change event (fs.watch on ~/.linkcode);
- * mounted only while the gate is closed, so the subscription ends once the transport connects.
+ * on managed hosts), then the shared `ConnectionState` once genuinely errored. Endpoint
+ * rediscovery is owned by the always-on desktop connection source, not this fallback.
  */
-function DesktopConnectionFallback({ daemonUrl }: { daemonUrl: string }): React.ReactNode {
+function DesktopConnectionFallback(): React.ReactNode {
   const status = useWorkbenchRuntimeStatus();
-  const hasOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride !== null);
-  const adoptDiscoveredUrl = useDesktopSettingsStore((state) => state.adoptDiscoveredUrl);
   const managed = useDaemonIsManaged();
 
-  const [withinStartupGrace, setWithinStartupGrace] = useState(true);
+  const [withinStartupGrace, setWithinStartupGrace] = useState(
+    () => Date.now() - RENDERER_BOOT_AT < MANAGED_STARTUP_GRACE_MS,
+  );
   useAbortableEffect((signal) => {
+    const remaining = MANAGED_STARTUP_GRACE_MS - (Date.now() - RENDERER_BOOT_AT);
+    if (remaining <= 0) return;
     const timer = setTimeout(() => {
       if (!signal.aborted) setWithinStartupGrace(false);
-    }, MANAGED_STARTUP_GRACE_MS);
+    }, remaining);
     signal.addEventListener('abort', () => clearTimeout(timer));
   }, []);
 
-  useAbortableEffect(
-    (signal) => {
-      if (hasOverride) return;
-      const rediscover = (): void => {
-        const url = systemBridge.daemon.resolveUrl();
-        if (url !== daemonUrl) adoptDiscoveredUrl(url);
-      };
-      // Catch a change that happened before this mount (e.g. the daemon moved while connected).
-      rediscover();
-      signal.addEventListener('abort', systemBridge.daemon.onRuntimeChanged(rediscover));
-    },
-    [hasOverride, daemonUrl, adoptDiscoveredUrl],
-  );
-
   if (status === 'connecting' || (managed && withinStartupGrace)) return <ConnectionSkeleton />;
-  return <ConnectionState daemonUrl={daemonUrl} managedHost={managed} />;
+  return <ConnectionState managedHost={managed} />;
 }
 
 /** Whether main supervises the daemon (packaged, no override) — picks the failure copy. */
 function useDaemonIsManaged(): boolean {
+  const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);
   const [managed, setManaged] = useState(false);
-  useAbortableEffect((signal) => {
-    void systemBridge.daemon.isManaged().then((value) => {
-      if (!signal.aborted) setManaged(value);
-    });
-  }, []);
+  useAbortableEffect(
+    (signal) => {
+      void systemBridge.daemon.isManaged().then((value) => {
+        if (!signal.aborted) setManaged(value);
+      });
+    },
+    [daemonUrlOverride],
+  );
   return managed;
 }

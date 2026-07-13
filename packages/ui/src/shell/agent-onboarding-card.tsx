@@ -1,8 +1,10 @@
 import type { AgentKind } from '@linkcode/schema';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
+import { Input } from 'coss-ui/components/input';
 import { Progress, ProgressIndicator, ProgressTrack } from 'coss-ui/components/progress';
-import { DownloadIcon, TriangleAlertIcon } from 'lucide-react';
+import { DownloadIcon, Loader2Icon, LogInIcon, TriangleAlertIcon } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 
@@ -15,7 +17,18 @@ export type AgentRuntimeCue =
   | { state: 'missing'; downloadable: boolean }
   | { state: 'downloading'; receivedBytes: number; totalBytes?: number }
   | { state: 'failed'; error: string }
-  | { state: 'unverified'; version?: string };
+  | { state: 'unverified'; version?: string }
+  /**
+   * The CLI is installed but signed out. `phase` tracks the interactive login: `idle` (offer the
+   * button) → `opening` (browser launching) → `awaiting-code` (paste the code from `url`) →
+   * `failed`. Success removes the cue via the runtime re-probe rather than a phase.
+   */
+  | {
+      state: 'needs-login';
+      phase: 'idle' | 'opening' | 'awaiting-code' | 'failed';
+      url?: string;
+      error?: string;
+    };
 
 export type AgentRuntimeCues = Partial<Record<AgentKind, AgentRuntimeCue>>;
 
@@ -33,15 +46,33 @@ export function AgentOnboardingCard({
   cue,
   onDownload,
   onContinueUnverified,
+  onLogin,
+  onSubmitLoginCode,
+  onCancelLogin,
 }: {
   kind: AgentKind;
   cue: AgentRuntimeCue;
   onDownload?: (kind: AgentKind) => void;
   onContinueUnverified?: (kind: AgentKind) => void;
+  onLogin?: (kind: AgentKind) => void;
+  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
+  onCancelLogin?: (kind: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
-  const agent = AGENT_LABELS[kind];
 
+  if (cue.state === 'needs-login') {
+    return (
+      <AgentLoginCard
+        kind={kind}
+        cue={cue}
+        onLogin={onLogin}
+        onSubmitLoginCode={onSubmitLoginCode}
+        onCancelLogin={onCancelLogin}
+      />
+    );
+  }
+
+  const agent = AGENT_LABELS[kind];
   switch (cue.state) {
     case 'missing':
       return (
@@ -127,4 +158,114 @@ export function AgentOnboardingCard({
       );
     // no default
   }
+}
+
+/**
+ * The signed-out branch of {@link AgentOnboardingCard}: a self-contained login flow. `idle` offers
+ * the button; `opening` shows a spinner while the browser launches; `awaiting-code` takes the
+ * authorization code pasted from the browser (with a fallback link to reopen the URL); `failed`
+ * offers a retry. Owns only the ephemeral code-input value — everything else arrives via props.
+ */
+function AgentLoginCard({
+  kind,
+  cue,
+  onLogin,
+  onSubmitLoginCode,
+  onCancelLogin,
+}: {
+  kind: AgentKind;
+  cue: Extract<AgentRuntimeCue, { state: 'needs-login' }>;
+  onLogin?: (kind: AgentKind) => void;
+  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
+  onCancelLogin?: (kind: AgentKind) => void;
+}): React.ReactNode {
+  const t = useTranslations('workbench.agentRuntime');
+  const agent = AGENT_LABELS[kind];
+  const [code, setCode] = useState('');
+
+  if (cue.phase === 'opening') {
+    return (
+      <Alert>
+        <Loader2Icon className="animate-spin" />
+        <AlertTitle>{t('loginOpening', { agent })}</AlertTitle>
+      </Alert>
+    );
+  }
+
+  if (cue.phase === 'awaiting-code') {
+    const submit = (): void => {
+      const trimmed = code.trim();
+      if (trimmed && onSubmitLoginCode) onSubmitLoginCode(kind, trimmed);
+    };
+    return (
+      <Alert>
+        <LogInIcon />
+        <AlertTitle>{t('needsLoginTitle', { agent })}</AlertTitle>
+        <AlertDescription className="w-full">
+          {t('loginAwaitingCode')}
+          {cue.url && (
+            <a
+              className="mt-1 block underline underline-offset-2"
+              href={cue.url}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {t('loginReopenUrl')}
+            </a>
+          )}
+          <div className="mt-2 flex gap-2">
+            <Input
+              autoFocus
+              placeholder={t('loginCodePlaceholder')}
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing) submit();
+              }}
+            />
+            <Button disabled={code.trim().length === 0} size="sm" onClick={submit}>
+              {t('loginSubmit')}
+            </Button>
+            {onCancelLogin && (
+              <Button size="sm" variant="ghost" onClick={() => onCancelLogin(kind)}>
+                {t('loginCancel')}
+              </Button>
+            )}
+          </div>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (cue.phase === 'failed') {
+    return (
+      <Alert variant="error">
+        <TriangleAlertIcon />
+        <AlertTitle>{t('loginFailedTitle', { agent })}</AlertTitle>
+        {cue.error && <AlertDescription>{cue.error}</AlertDescription>}
+        {onLogin && (
+          <AlertAction>
+            <Button size="sm" variant="outline" onClick={() => onLogin(kind)}>
+              {t('retry')}
+            </Button>
+          </AlertAction>
+        )}
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert>
+      <LogInIcon />
+      <AlertTitle>{t('needsLoginTitle', { agent })}</AlertTitle>
+      <AlertDescription>{t('needsLoginBody', { agent })}</AlertDescription>
+      {onLogin && (
+        <AlertAction>
+          <Button size="sm" onClick={() => onLogin(kind)}>
+            {t('login')}
+          </Button>
+        </AlertAction>
+      )}
+    </Alert>
+  );
 }

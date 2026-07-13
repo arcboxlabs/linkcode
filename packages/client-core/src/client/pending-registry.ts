@@ -1,4 +1,5 @@
 import type {
+  Accounts,
   AgentHistoryListResult,
   AgentHistoryReadResult,
   AgentRuntimes,
@@ -41,6 +42,7 @@ export interface PendingValueMap {
   historyList: AgentHistoryListResult;
   historyRead: AgentHistoryReadResult;
   configGet: ProvidersConfig;
+  accountsGet: Accounts;
   agentRuntimeList: AgentRuntimes;
   assetList: ManagedAssetStatus[];
   assetEnsure: ManagedAssetStatus;
@@ -54,6 +56,7 @@ export interface PendingValueMap {
   workspaceRegister: WorkspaceRecord;
   ack: RequestAck;
   terminalOpen: string;
+  agentLoginStart: string;
 }
 
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };
@@ -77,6 +80,7 @@ export class PendingRegistry {
     historyList: new Map(),
     historyRead: new Map(),
     configGet: new Map(),
+    accountsGet: new Map(),
     agentRuntimeList: new Map(),
     assetList: new Map(),
     assetEnsure: new Map(),
@@ -90,6 +94,7 @@ export class PendingRegistry {
     workspaceRegister: new Map(),
     ack: new Map(),
     terminalOpen: new Map(),
+    agentLoginStart: new Map(),
   };
 
   /** Register a new in-flight request and return the promise its eventual `resolve`/`reject` settles. */

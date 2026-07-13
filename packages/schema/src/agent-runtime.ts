@@ -11,6 +11,22 @@ import { AgentKindSchema } from './common';
 export const AgentRuntimeSourceSchema = z.enum(['managed', 'detected', 'sdk', 'builtin']);
 export type AgentRuntimeSource = z.infer<typeof AgentRuntimeSourceSchema>;
 
+/**
+ * Provider login status for an agent CLI, probed alongside `--version` (claude-code only for now,
+ * via `claude auth status --json`). Absent when the host could not determine it — a fail-open the
+ * onboarding UI reads as "don't block", so only an explicit `loggedIn: false` drives the login cue.
+ */
+export const AgentAuthStatusSchema = z.object({
+  loggedIn: z.boolean(),
+  /** Login method the CLI reports, e.g. `claude.ai` (subscription) or `console` (API billing). */
+  method: z.string().optional(),
+  /** Subscription tier for a subscription login, e.g. `max` / `pro`. */
+  subscriptionType: z.string().optional(),
+  /** Signed-in identity the CLI reports — the account email. */
+  email: z.string().optional(),
+});
+export type AgentAuthStatus = z.infer<typeof AgentAuthStatusSchema>;
+
 export const AgentRuntimeAvailabilitySchema = z.object({
   /**
    * `out-of-range` is reserved: it is emitted once the compat manifest (CODE-77) gates detected
@@ -22,6 +38,11 @@ export const AgentRuntimeAvailabilitySchema = z.object({
   path: z.string().optional(),
   /** CLI version as reported by `--version`; absent when the source carries no probeable binary. */
   version: z.string().optional(),
+  /**
+   * Provider login status for a probeable runtime (claude-code only for now). Absent when unprobed
+   * or undeterminable; present with `loggedIn: false` when the CLI is installed but signed out.
+   */
+  auth: AgentAuthStatusSchema.optional(),
 });
 export type AgentRuntimeAvailability = z.infer<typeof AgentRuntimeAvailabilitySchema>;
 

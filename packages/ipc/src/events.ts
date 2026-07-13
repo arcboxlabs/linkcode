@@ -1,5 +1,10 @@
 import { defineInvokeEventa } from '@moeru/eventa';
-import type { DesktopSettings, DesktopSettingsPatch, PickFileOptions } from './context';
+import type {
+  DesktopSettings,
+  DesktopSettingsPatch,
+  PickFileOptions,
+  SystemNotification,
+} from './context';
 
 export const WINDOW_MAXIMIZED_CHANGED_CHANNEL = 'linkcode.system.window.maximizedChanged';
 /** Synchronous boot snapshot of desktop settings (read via `ipcRenderer.sendSync`). */
@@ -12,6 +17,8 @@ export const SETTINGS_OPEN_CHANNEL = 'linkcode.system.settings.open';
 export const UPDATER_STATUS_CHANNEL = 'linkcode.system.app.updaterStatus';
 /** Main → renderer push: the daemon runtime file changed — rediscover the endpoint. */
 export const DAEMON_RUNTIME_CHANGED_CHANNEL = 'linkcode.system.daemon.runtimeChanged';
+/** Main → renderer push: an OS notification was clicked; payload is its `clickToken`. */
+export const NOTIFICATION_CLICKED_CHANNEL = 'linkcode.system.notifications.clicked';
 
 export const systemIpcEvents = {
   windowMinimize: defineInvokeEventa<void>('linkcode.system.window.minimize'),
@@ -22,11 +29,14 @@ export const systemIpcEvents = {
     'linkcode.system.fs.pickFile',
   ),
   appVersion: defineInvokeEventa<string>('linkcode.system.app.version'),
-  appPlatform: defineInvokeEventa<NodeJS.Platform>('linkcode.system.app.platform'),
   appCheckForUpdates: defineInvokeEventa<void>('linkcode.system.app.checkForUpdates'),
   daemonIsManaged: defineInvokeEventa<boolean>('linkcode.system.daemon.isManaged'),
+  daemonRetry: defineInvokeEventa<void>('linkcode.system.daemon.retry'),
   settingsGet: defineInvokeEventa<DesktopSettings>('linkcode.system.settings.get'),
   settingsSet: defineInvokeEventa<DesktopSettings, DesktopSettingsPatch>(
     'linkcode.system.settings.set',
+  ),
+  notificationsNotify: defineInvokeEventa<void, SystemNotification>(
+    'linkcode.system.notifications.notify',
   ),
 };

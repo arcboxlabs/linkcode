@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  createReadStream,
+  existsSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  statSync,
+} from 'node:fs';
 import { join, sep } from 'node:path';
 import process, { argv } from 'node:process';
 /**
@@ -18,6 +27,7 @@ import process, { argv } from 'node:process';
  *   sidecar (Resources), so a build can never again ship a client with no host runtime (CODE-86/87).
  */
 import { listPackage, statFile } from '@electron/asar';
+import { keysLength } from 'foxts/property-count';
 
 const RELEASE_DIR = 'release';
 const FEED_URL_LINE = /^ {2}- url: (.+)$/;
@@ -70,6 +80,16 @@ const EXPECTED: Partial<Record<string, PlatformExpectation>> = {
 };
 
 const SIDECAR_BINARY = argv[2] === 'win' ? 'linkcode-pty.exe' : 'linkcode-pty';
+/**
+ * better-sqlite3's compiled binding, smartUnpacked beside the asar. The daemon requires it at boot;
+ * a build where @electron/rebuild silently rebuilt nothing (the Windows workspace-root miss that
+ * broke every release through 0.2.1) ships a binding for the wrong CPU/ABI, and the daemon dies on
+ * `require` — every client then shows "Unable to connect to the daemon". See package-app.mts.
+ */
+const NATIVE_BINDING = 'node_modules/better-sqlite3/build/Release/better_sqlite3.node'.replaceAll(
+  '/',
+  sep,
+);
 /** Paths inside app.asar that the daemon supervisor and its migrator depend on at runtime. */
 const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.json'];
 /**
@@ -89,6 +109,69 @@ const EXCLUDED_MODULE_PREFIXES = [
  * users download it.
  */
 const MAX_ARTIFACT_BYTES = 200 * 1024 * 1024;
+
+/**
+ * Read the CPU architecture a native binary targets from its header (Mach-O / PE / ELF), so a
+ * binding built for the wrong arch (e.g. an x64 .node shipped in an arm64 app) is caught before
+ * release. Returns 'x64' | 'arm64' | null (null = unrecognized header, reported as a problem).
+ */
+function readBinaryArch(file: string): 'x64' | 'arm64' | null {
+  const fd = openSync(file, 'r');
+  try {
+    const head = Buffer.alloc(64);
+    readSync(fd, head, 0, 64, 0);
+    // Mach-O 64-bit little-endian (CF FA ED FE): cputype is a LE int32 at offset 4.
+    if (head.readUInt32BE(0) === 0xcf_fa_ed_fe) {
+      const cpu = head.readUInt32LE(4);
+      if (cpu === 0x01_00_00_0c) return 'arm64';
+      if (cpu === 0x01_00_00_07) return 'x64';
+      return null;
+    }
+    // PE (MZ …): e_lfanew at 0x3C points at the PE header; Machine is a LE uint16 after "PE\0\0".
+    if (head.readUInt16LE(0) === 0x5a4d) {
+      const pe = Buffer.alloc(6);
+      readSync(fd, pe, 0, 6, head.readUInt32LE(0x3c));
+      if (pe.toString('latin1', 0, 4) !== 'PE\0\0') return null;
+      const machine = pe.readUInt16LE(4);
+      if (machine === 0x8664) return 'x64';
+      if (machine === 0xaa64) return 'arm64';
+      return null;
+    }
+    // ELF (7F 45 4C 46): e_machine is a LE uint16 at offset 18.
+    if (head.readUInt32BE(0) === 0x7f_45_4c_46) {
+      const machine = head.readUInt16LE(18);
+      if (machine === 0x3e) return 'x64';
+      if (machine === 0xb7) return 'arm64';
+      return null;
+    }
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * The daemon's SQLite binding must be present and built for this app's arch. Existence guards the
+ * collector dropping it from the package; the arch match guards @electron/rebuild rebuilding it for
+ * the wrong target. (A right-arch/wrong-ABI binding — Node vs Electron on the same arch — is not
+ * distinguishable from the header; the boot E2E covers that.)
+ */
+function verifyNativeBinding(resourceDir: string, problems: string[]): void {
+  const expectedArch = resourceDir.includes('arm64') ? 'arm64' : 'x64';
+  const binding = join(RELEASE_DIR, resourceDir, 'app.asar.unpacked', NATIVE_BINDING);
+  if (!existsSync(binding)) {
+    problems.push(`${resourceDir}: missing native binding ${NATIVE_BINDING} (better-sqlite3)`);
+    return;
+  }
+  const arch = readBinaryArch(binding);
+  if (arch === null) {
+    problems.push(`${resourceDir}: unrecognized native binding header for ${NATIVE_BINDING}`);
+  } else if (arch !== expectedArch) {
+    problems.push(
+      `${resourceDir}: native binding is ${arch}, expected ${expectedArch} — @electron/rebuild did not rebuild for the target arch`,
+    );
+  }
+}
 
 /** The packed app must carry the host runtime: bundled daemon in the asar, sidecar beside it. */
 function verifyHostRuntime(resourceDir: string, problems: string[]): void {
@@ -248,14 +331,17 @@ async function main(): Promise<number> {
       verifyFeed(feed, archTokens, problems),
     ),
   );
-  for (const resourceDir of expected.resourceDirs) verifyHostRuntime(resourceDir, problems);
+  for (const resourceDir of expected.resourceDirs) {
+    verifyHostRuntime(resourceDir, problems);
+    verifyNativeBinding(resourceDir, problems);
+  }
 
   if (problems.length > 0) {
     for (const problem of problems) console.error(`✗ ${problem}`);
     return 1;
   }
   console.log(
-    `✓ ${platform}: ${expected.artifacts.length} artifacts + ${Object.keys(expected.feeds).length} feed manifest(s) + host runtime in ${expected.resourceDirs.length} app(s) verified`,
+    `✓ ${platform}: ${expected.artifacts.length} artifacts + ${keysLength(expected.feeds)} feed manifest(s) + host runtime in ${expected.resourceDirs.length} app(s) verified`,
   );
   return 0;
 }

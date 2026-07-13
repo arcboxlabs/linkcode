@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AgentEventSchema, AgentInputSchema } from '../agent';
 import { MessageIdSchema, SessionIdSchema, TimestampSchema } from '../common';
+import { agentLoginWireVariants } from './agent-login';
 import { agentRuntimeWireVariants } from './agent-runtime';
 import { artifactWireVariants } from './artifact';
 import { configWireVariants } from './config';
@@ -37,8 +38,9 @@ export {
  * originating client can pair the reply despite the broadcast.
  */
 
-// v18: AgentKindSchema gained 'amp' — the enum rides wire payloads (session.start, history, agent-runtime).
-export const WIRE_PROTOCOL_VERSION = 18 as const;
+// v26: AgentKindSchema gained 'amp' (on top of master's v25) — the enum rides wire payloads
+// (session.start, history, agent-runtime).
+export const WIRE_PROTOCOL_VERSION = 26 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
@@ -46,6 +48,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...historyWireVariants,
   ...configWireVariants,
   ...agentRuntimeWireVariants,
+  ...agentLoginWireVariants,
   ...managedAssetWireVariants,
   ...workspaceWireVariants,
   ...gitWireVariants,

@@ -1,19 +1,33 @@
-import type { WireMessage } from '@linkcode/schema';
+import type { SessionId, WireMessage } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import type { Transport, Unsubscribe } from './transport';
-import { Listeners } from './transport';
+import { createWireMessage, Listeners } from './transport';
+
+/** Connection-scoped `agent.event` delivery, driven by `subscription.set` / `session.attach|detach`. */
+interface ConnectionSubscription {
+  /** `all` (the default) mirrors the historical broadcast; `attached` narrows to attached sessions. */
+  mode: 'all' | 'attached';
+  attached: Set<SessionId>;
+}
 
 /**
  * Hub: composes many client connections into the single `Transport` the daemon's `Host` consumes.
  *
- * Outbound (`send`) is **broadcast** to every connected client, so all devices attached to the daemon see
- * the same `agent.event` stream (multi-device view). Inbound from any client is merged into one stream for
- * the Host. Per-client routing of replies is handled by correlation ids in the schema (`replyTo`,
- * `requestId`) — the Hub itself stays connection-agnostic (docs/ARCHITECTURE.md#transport--wire-protocol).
+ * Outbound (`send`) is broadcast to every connected client, so all devices attached to the daemon see
+ * the same `agent.event` stream (multi-device view) — except connections that opted into a scoped
+ * subscription (`subscription.set { mode: 'attached' }`), which only receive `agent.event`s of the
+ * sessions they attached. Every other payload kind still broadcasts; replies are paired by
+ * correlation ids in the schema (`replyTo`, `requestId`) — the Hub itself stays connection-agnostic
+ * about request routing (docs/ARCHITECTURE.md#transport--wire-protocol).
+ *
+ * Subscription state is connection-scoped, so the Hub owns it: `subscription.set` is answered here
+ * (`request.succeeded`) and never reaches the Host; `session.attach`/`session.detach` update the
+ * subscription and are still forwarded (the Engine may replay buffered state in the future).
  */
 export class Hub implements Transport {
   private readonly conns = new Set<Transport>();
   private readonly unsubs = new Map<Transport, Unsubscribe>();
+  private readonly subscriptions = new Map<Transport, ConnectionSubscription>();
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
 
@@ -21,9 +35,10 @@ export class Hub implements Transport {
   addConnection(conn: Transport): void {
     if (this.conns.has(conn)) return;
     this.conns.add(conn);
+    this.subscriptions.set(conn, { mode: 'all', attached: new Set() });
     this.unsubs.set(
       conn,
-      conn.onMessage((msg) => this.inbound.emit(msg)),
+      conn.onMessage((msg) => this.route(conn, msg)),
     );
   }
 
@@ -31,6 +46,7 @@ export class Hub implements Transport {
   removeConnection(conn: Transport): void {
     this.unsubs.get(conn)?.();
     this.unsubs.delete(conn);
+    this.subscriptions.delete(conn);
     this.conns.delete(conn);
   }
 
@@ -43,9 +59,33 @@ export class Hub implements Transport {
     return Promise.resolve();
   }
 
+  private route(conn: Transport, msg: WireMessage): void {
+    const p = msg.payload;
+    const subscription = this.subscriptions.get(conn);
+    if (subscription) {
+      if (p.kind === 'subscription.set') {
+        subscription.mode = p.mode;
+        bestEffort(() =>
+          conn.send(createWireMessage({ kind: 'request.succeeded', replyTo: p.clientReqId })),
+        );
+        return;
+      }
+      if (p.kind === 'session.attach') subscription.attached.add(p.sessionId);
+      else if (p.kind === 'session.detach') subscription.attached.delete(p.sessionId);
+    }
+    this.inbound.emit(msg);
+  }
+
   /** Broadcast to every attached client; one failing connection never blocks the others. */
   send(msg: WireMessage): void {
+    const p = msg.payload;
     for (const conn of this.conns) {
+      if (p.kind === 'agent.event') {
+        const subscription = this.subscriptions.get(conn);
+        if (subscription?.mode === 'attached' && !subscription.attached.has(p.sessionId)) {
+          continue;
+        }
+      }
       // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
       bestEffort(() => conn.send(msg));
     }
@@ -67,6 +107,7 @@ export class Hub implements Transport {
     for (const unsub of this.unsubs.values()) unsub();
     this.conns.clear();
     this.unsubs.clear();
+    this.subscriptions.clear();
     this.inbound.clear();
     this.closed.emit();
   }

@@ -1,9 +1,12 @@
+import { setKeyboardShortcutPlatform } from '@linkcode/ui';
 import * as Sentry from '@sentry/react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { installTheme } from './settings/theme';
 import './index.css';
+
+setKeyboardShortcutPlatform(navigator.userAgent.includes('Mac') ? 'mac' : 'non-mac');
 
 // The DSN is a publishable identifier (not a secret); injected per-build via Vite's VITE_ env prefix.
 // With no DSN the SDK no-ops, so local dev reports nothing unless VITE_SENTRY_DSN is set.

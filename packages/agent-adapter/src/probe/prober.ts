@@ -65,6 +65,18 @@ export class AgentRuntimeProber {
   }
 
   /**
+   * Binary path for an interactive `auth login`: the same managed/detected spawn path, falling back
+   * to the SDK's platform binary in dev/standalone daemons — where {@link resolveBinary} is
+   * `undefined` (the SDK self-resolves at session start) but the CLI still ships in node_modules and
+   * a login needs a concrete executable to spawn.
+   */
+  loginBinaryPath(kind: ProbeableKind): string | undefined {
+    const probe = this.probes.find((candidate) => candidate.kind === kind);
+    if (!probe) return undefined;
+    return this.resolveBinary(kind) ?? probe.sdkPlatformBinaryPath();
+  }
+
+  /**
    * Availability of every agent runtime this host has evaluated, for the `agent-runtime.list` wire
    * resource. Re-runs the detection probe. opencode is absent until it moves off PATH-spawning
    * (CODE-76); `source: 'sdk'` entries carry no binary facts — the SDK's own resolution is
@@ -78,23 +90,40 @@ export class AgentRuntimeProber {
         const managed = this.managedResolver?.(probe.kind);
         if (managed) {
           // Version is probed (not read from the store) so managed and detected report the same fact.
-          const probed = await probe.probeAt(managed);
+          const [probed, auth] = await Promise.all([
+            probe.probeAt(managed),
+            probe.probeAuth(managed),
+          ]);
           runtimes[probe.kind] = {
             status: 'available',
             source: 'managed',
             path: managed,
             ...probed,
+            ...(auth && { auth }),
           };
-        } else {
-          const found = detected[probe.kind];
-          runtimes[probe.kind] = found
-            ? { status: 'available', source: 'detected', ...found }
-            : probe.sdkPlatformPackagePresent()
-              ? { status: 'available', source: 'sdk' }
-              : // Packaged hosts exclude the platform packages (CODE-114): with no detected
-                // install either, this agent genuinely cannot run — do not advertise it.
-                { status: 'missing' };
+          return;
         }
+        const found = detected[probe.kind];
+        if (found) {
+          const auth = await probe.probeAuth(found.path);
+          runtimes[probe.kind] = {
+            status: 'available',
+            source: 'detected',
+            ...found,
+            ...(auth && { auth }),
+          };
+          return;
+        }
+        if (probe.sdkPlatformPackagePresent()) {
+          // The SDK resolves the spawn path itself, but auth still probes the platform binary.
+          const sdkPath = probe.sdkPlatformBinaryPath();
+          const auth = sdkPath ? await probe.probeAuth(sdkPath) : undefined;
+          runtimes[probe.kind] = { status: 'available', source: 'sdk', ...(auth && { auth }) };
+          return;
+        }
+        // Packaged hosts exclude the platform packages (CODE-114): with no detected install either,
+        // this agent genuinely cannot run — do not advertise it.
+        runtimes[probe.kind] = { status: 'missing' };
       }),
     );
     return runtimes;

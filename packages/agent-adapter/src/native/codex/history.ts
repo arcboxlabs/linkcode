@@ -3,7 +3,12 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { env } from 'node:process';
-import type { AgentHistoryEvent, AgentHistoryId, AgentHistorySession } from '@linkcode/schema';
+import type {
+  AgentHistoryEvent,
+  AgentHistoryId,
+  AgentHistorySession,
+  ToolCall,
+} from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { not } from 'foxts/guard';
 import {
@@ -18,6 +23,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
+import { codexToolAnnounce, codexToolSettle } from './history-tools';
 
 /** Codex persists machine-injected context into the rollout as ordinary user-role messages,
  * recognizable only by their wrapper tag. They are not conversation and must not replay as user
@@ -263,15 +269,73 @@ export function codexIndexEntryToSession(entry: CodexIndexEntry): AgentHistorySe
   };
 }
 
+/** Rollout tool rows come in announce/settle pairs linked by `call_id`: `function_call` (JSON
+ * `arguments`) and `custom_tool_call` (raw string `input`, e.g. apply_patch) announce, their
+ * `*_output` rows settle. `local_shell_call` is the older shell announce shape (an `action`
+ * object), kept for pre-0.140 transcripts. */
+const CODEX_TOOL_ANNOUNCE_TYPES = new Set([
+  'function_call',
+  'custom_tool_call',
+  'local_shell_call',
+]);
+const CODEX_TOOL_OUTPUT_TYPES = new Set([
+  'function_call_output',
+  'custom_tool_call_output',
+  'local_shell_call_output',
+]);
+
+/**
+ * Replays the rollout as the event stream the live turn emitted: text messages plus tool-call
+ * announce/settle pairs correlated by `call_id` (mirrors the claude/amp history mappers), mapped
+ * to the live adapter's presentation shapes by `history-tools.ts` (command titles, unwrapped
+ * outputs, apply_patch diffs, update_plan as a plan event). History ids are NOT converged with
+ * the live app-server item ids — the rollout persists only `call_id` and message rows carry no
+ * id at all — so the seed relies on the `uptoSeq` cut, same as text always has for codex. Known
+ * lossiness, documented on CODE-97: reasoning stays unreplayable (`encrypted_content` only), and
+ * replayed edit diffs are reconstructed from codex's `*** Begin Patch` envelope rather than the
+ * app-server's richer live unified diff.
+ */
 export function mapCodexHistoryEvents(
   historyId: AgentHistoryId,
   rows: JsonRecord[],
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
+  const announced = new Map<string, ToolCall>();
+  /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
+  const planCalls = new Set<string>();
+
+  // Records the snapshot as the call's latest state (settle reads it back as `existing`) AND
+  // builds the history event — both announce and settle go through it, so the latest wins.
+  const recordToolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+    announced.set(toolCall.toolCallId, toolCall);
+    return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
+  };
+
   rows.forEach((row, index) => {
     if (stringField(row, 'type') !== 'response_item') return;
     const payload = recordField(row, 'payload');
     if (!payload) return;
+
+    const payloadType = stringField(payload, 'type');
+    const callId = stringField(payload, 'call_id');
+    if (payloadType !== undefined && callId !== undefined) {
+      if (CODEX_TOOL_ANNOUNCE_TYPES.has(payloadType)) {
+        const mapped = codexToolAnnounce(callId, payload);
+        if ('plan' in mapped) {
+          planCalls.add(callId);
+          events.push({ historyId, itemId: callId, event: { type: 'plan', plan: mapped.plan } });
+        } else {
+          events.push(recordToolEvent(mapped.toolCall));
+        }
+        return;
+      }
+      if (CODEX_TOOL_OUTPUT_TYPES.has(payloadType)) {
+        if (planCalls.has(callId)) return;
+        events.push(recordToolEvent(codexToolSettle(callId, payload, announced.get(callId))));
+        return;
+      }
+    }
+
     const role = stringField(payload, 'role');
     if (role !== 'user' && role !== 'assistant') return;
     if (role === 'user' && isSyntheticCodexUserText(textFromUnknown(payload))) return;

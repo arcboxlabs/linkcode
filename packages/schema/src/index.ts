@@ -8,6 +8,7 @@
  * supported agents (claude-code / codex / opencode / pi) and the front-end, not to any wire protocol.
  */
 
+export * from './account';
 export * from './agent';
 export * from './agent-runtime';
 export * from './artifact';
@@ -17,6 +18,7 @@ export * from './daemon-runtime';
 export * from './file';
 export * from './git';
 export * from './history';
+export * from './im';
 export * from './managed-asset';
 export * from './permission';
 export * from './plan';

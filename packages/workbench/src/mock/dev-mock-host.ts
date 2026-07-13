@@ -1,4 +1,5 @@
 import type {
+  Accounts,
   AgentEvent,
   AgentHistoryId,
   AgentHistorySession,
@@ -87,6 +88,7 @@ export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
+  private accounts: Accounts = [];
   private readonly permissions = new Map<string, PendingPermission>();
   private history: AgentHistorySession[] = [];
   private readonly terminals = new Set<string>();
@@ -227,7 +229,12 @@ export class DevMockHost {
         break;
       case 'config.get':
         await wait(CONTROL_LATENCY_MS);
-        this.send({ kind: 'config.get.result', replyTo: p.clientReqId, providers: this.providers });
+        this.send({
+          kind: 'config.get.result',
+          replyTo: p.clientReqId,
+          providers: this.providers,
+          accounts: this.accounts,
+        });
         break;
       case 'agent-runtime.list':
         await wait(CONTROL_LATENCY_MS);
@@ -250,7 +257,8 @@ export class DevMockHost {
         break;
       case 'config.set':
         await wait(CONTROL_LATENCY_MS);
-        this.providers = structuredClone(p.providers);
+        if (p.providers !== undefined) this.providers = structuredClone(p.providers);
+        if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
         this.sendSuccess(p.clientReqId);
         break;
       case 'workspace.list':
@@ -483,6 +491,12 @@ export class DevMockHost {
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
+    // Reflect a concrete model/effort like a real adapter, so the composer shows them not placeholders.
+    this.emit(sessionId, {
+      type: 'model-update',
+      model: model ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
+    });
+    this.emit(sessionId, { type: 'effort-update', effort: 'high' });
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
@@ -603,9 +617,11 @@ export class DevMockHost {
         break;
       case 'set-model':
         session.model = input.model;
+        this.emit(sessionId, { type: 'model-update', model: input.model });
         this.sendSuccess(replyTo);
         break;
       case 'set-effort':
+        this.emit(sessionId, { type: 'effort-update', effort: input.effort });
         this.sendSuccess(replyTo);
         break;
       case 'set-mode':

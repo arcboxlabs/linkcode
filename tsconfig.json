@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Projects with `paths` aliases (desktop, webview, coss-ui) must come first:
+  // unrs-resolver (ESLint's zero-config import resolver, `references: 'auto'`)
+  // stops applying later projects' paths once it walks a paths-less project that
+  // extends the same base.
+  "references": [
+    { "path": "apps/desktop" },
+    { "path": "apps/webview" },
+    { "path": "packages/coss-ui" },
+    { "path": "apps/daemon" },
+    { "path": "apps/mobile" },
+    { "path": "apps/server" },
+    { "path": "packages/agent-adapter" },
+    { "path": "packages/assets" },
+    { "path": "packages/client-core" },
+    { "path": "packages/common" },
+    { "path": "packages/engine" },
+    { "path": "packages/i18n" },
+    { "path": "packages/im-render" },
+    { "path": "packages/ipc" },
+    { "path": "packages/schema" },
+    { "path": "packages/sdk" },
+    { "path": "packages/transport" },
+    { "path": "packages/ui" },
+    { "path": "packages/workbench" }
+  ],
+  "files": []
+}

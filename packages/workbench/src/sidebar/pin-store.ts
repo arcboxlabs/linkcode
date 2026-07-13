@@ -12,7 +12,7 @@ const PersistedPinnedThreadsSchema = z
 type PersistedPinnedThreads = z.infer<typeof PersistedPinnedThreadsSchema>;
 
 export interface SidebarPinState {
-  /** Session ids pinned to the top of their group — membership only; display order comes from `orderThreads`. */
+  /** Session ids in the sidebar's Pinned section — membership only; display order comes from `orderThreads`. */
   pinnedSessionIds: SessionId[];
   togglePinned: (id: SessionId) => void;
 }

@@ -2,7 +2,11 @@ import { defineInvokeHandlers } from '@moeru/eventa';
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main';
 import type { BrowserWindow, IpcMain, IpcMainEvent } from 'electron';
 import type { SystemContext } from './context';
-import { DesktopSettingsPatchSchema, PickFileOptionsSchema } from './context';
+import {
+  DesktopSettingsPatchSchema,
+  PickFileOptionsSchema,
+  SystemNotificationSchema,
+} from './context';
 import {
   DAEMON_URL_SNAPSHOT_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
@@ -38,11 +42,13 @@ export function bindElectronSystemIpc({
     windowIsMaximized: () => ctx.window.isMaximized(),
     fsPickFile: (opts) => ctx.dialog.pickFile(PickFileOptionsSchema.optional().parse(opts)),
     appVersion: () => ctx.app.getVersion(),
-    appPlatform: () => ctx.app.getPlatform(),
     appCheckForUpdates: () => ctx.app.checkForUpdates(),
     daemonIsManaged: () => ctx.daemon.isManaged(),
+    daemonRetry: () => ctx.daemon.retry(),
     settingsGet: () => ctx.settings.get(),
     settingsSet: (patch) => ctx.settings.set(DesktopSettingsPatchSchema.parse(patch)),
+    notificationsNotify: (notification) =>
+      ctx.notifications.notify(SystemNotificationSchema.parse(notification)),
   });
 
   // Synchronous boot snapshot: the renderer needs locale + daemonUrl before first paint, which the

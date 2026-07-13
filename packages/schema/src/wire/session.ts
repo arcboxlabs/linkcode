@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { StartOptionsSchema } from '../agent';
 import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema } from '../common';
-import { SessionInfoSchema, SessionRecordSchema } from '../session';
+import { SessionInfoSchema, SessionNotificationSchema, SessionRecordSchema } from '../session';
 
 /** Session control wire variants — starting, stopping, listing, and resuming sessions. */
 export const sessionWireVariants = [
@@ -34,6 +34,17 @@ export const sessionWireVariants = [
   }),
   z.object({ kind: z.literal('session.attach'), sessionId: SessionIdSchema }),
   z.object({ kind: z.literal('session.detach'), sessionId: SessionIdSchema }),
+  /**
+   * Connection-scoped `agent.event` delivery (answered by the Hub, not the Engine). `all` — the
+   * default for every new connection — is the historical broadcast behavior desktop/webview rely
+   * on. `attached` narrows delivery to sessions the connection subscribed via `session.attach`,
+   * so a scoped client (the cloud IM bridge) only ever receives events for its bound sessions.
+   */
+  z.object({
+    kind: z.literal('subscription.set'),
+    clientReqId: z.string().min(1),
+    mode: z.enum(['all', 'attached']),
+  }),
   /** Resume a persisted (cold) session by its Link Code id; replies `session.started` with the SAME id. */
   z.object({
     kind: z.literal('session.resume'),
@@ -51,5 +62,13 @@ export const sessionWireVariants = [
     kind: z.literal('session.imported'),
     replyTo: z.string().min(1),
     record: SessionRecordSchema,
+  }),
+  /** Broadcast on a notification-worthy session moment (turn end / approval wait / error), like
+   * `script.status`: no replyTo, fanned out to every client. Must stay a broadcast even once
+   * per-connection subscription modes exist (CODE-72) — background sessions on other devices
+   * drive OS notifications through this frame. */
+  z.object({
+    kind: z.literal('session.notification'),
+    notification: SessionNotificationSchema,
   }),
 ] as const;

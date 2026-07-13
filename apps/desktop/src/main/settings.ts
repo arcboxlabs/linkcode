@@ -32,9 +32,9 @@ export function getSettings(): DesktopSettings {
 
 export function setSettings(patch: DesktopSettingsPatch): DesktopSettings {
   const next = DesktopSettingsSchema.parse({ ...getSettings(), ...patch });
-  cached = next;
   const file = settingsPath();
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  cached = next;
   return next;
 }

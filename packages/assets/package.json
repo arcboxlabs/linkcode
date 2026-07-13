@@ -9,12 +9,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
     "@linkcode/schema": "workspace:*",
-    "foxts": "^5.6.0",
+    "foxts": "^5.8.0",
     "make-fetch-happen": "^16.0.1",
     "semver": "^7.8.5",
     "ssri": "^14.0.0",

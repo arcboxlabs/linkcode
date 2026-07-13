@@ -61,6 +61,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected opts: StartOptions | null = null;
   /** Last announced provider-local id — `emitSessionRef` dedupes against it. */
   private sessionRef: AgentHistoryId | null = null;
+  /** Last announced model / effort — `emitModel` / `emitEffort` dedupe against these. */
+  private reflectedModel: string | null = null;
+  private reflectedEffort: EffortLevel | null = null;
   /** Permission asks awaiting a reply, keyed by requestId. */
   private readonly pending = new Map<string, PermissionResolver>();
   /** Question asks awaiting a reply, keyed by requestId. */
@@ -264,6 +267,18 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected emitApprovalPolicy(state: ApprovalPolicyState): void {
     this.emit({ type: 'approval-policy-update', state });
+  }
+  /** Announce the model the session is running on; re-emits only when it changes. */
+  protected emitModel(model: string): void {
+    if (this.reflectedModel === model) return;
+    this.reflectedModel = model;
+    this.emit({ type: 'model-update', model });
+  }
+  /** Announce the reasoning-effort level the session is running at; re-emits only when it changes. */
+  protected emitEffort(effort: EffortLevel): void {
+    if (this.reflectedEffort === effort) return;
+    this.reflectedEffort = effort;
+    this.emit({ type: 'effort-update', effort });
   }
   protected emitStop(stopReason: StopReason): void {
     this.emit({ type: 'stop', stopReason });

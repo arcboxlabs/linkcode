@@ -1,11 +1,22 @@
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
-import { PinIcon, XIcon } from 'lucide-react';
+import { Button } from 'coss-ui/components/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from 'coss-ui/components/menu';
+import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
+import { EllipsisIcon, PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
+import { withTooltip } from '../../chat/with-tooltip';
 import { cn } from '../../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
+import {
+  ROW_ACTION_CLASS,
+  ROW_HOVER_PE_CLASS,
+  ROW_HOVER_PE_WIDE_CLASS,
+  RowActionsCluster,
+} from './row-actions';
+import type { ThreadImMenuComponentType } from './thread-im-menu';
 
 export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   starting: 'bg-info',
@@ -14,9 +25,6 @@ export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
   'awaiting-input': 'bg-warning',
   stopped: 'bg-muted-foreground/25',
 };
-
-const ROW_ACTION_CLASS =
-  'flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
 
 export interface ThreadRowProps {
   session: SessionInfo;
@@ -30,6 +38,8 @@ export interface ThreadRowProps {
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
   onClose: () => void;
   onTogglePin: () => void;
+  /** Runtime-backed IM menu items; the ellipsis menu only renders when this is provided. */
+  ImMenuComponent?: ThreadImMenuComponentType;
 }
 
 /** One thread row: ghost agent icon, single-line title, status dot. The relative time lives in a tooltip. */
@@ -42,6 +52,7 @@ export function ThreadRow({
   onSelect,
   onClose,
   onTogglePin,
+  ImMenuComponent,
 }: ThreadRowProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const agent = AGENT_LABELS[session.kind];
@@ -58,59 +69,68 @@ export function ThreadRow({
   });
 
   return (
-    <div
-      ref={sortableRef}
-      className={cn(
-        'group relative rounded-md',
-        active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/70',
+    <SidebarMenuItem ref={sortableRef}>
+      {withTooltip(
+        <SidebarMenuButton
+          isActive={active}
+          onClick={onSelect}
+          className={cn(
+            // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
+            // PingFang Medium and mixed-script titles read artificially bold.
+            'data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
+            ImMenuComponent ? ROW_HOVER_PE_WIDE_CLASS : ROW_HOVER_PE_CLASS,
+          )}
+        >
+          <span className="relative shrink-0">
+            <AgentIcon kind={session.kind} variant="ghost" className="text-muted-foreground" />
+            <span
+              aria-hidden
+              className={cn(
+                'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar transition-colors',
+                SESSION_STATUS_DOT_CLASS[session.status],
+              )}
+            />
+          </span>
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+        </SidebarMenuButton>,
+        createdAtLabel,
       )}
-    >
-      {active && (
-        <span className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-primary" />
-      )}
-      <button
-        type="button"
-        title={createdAtLabel}
-        className="flex h-7 w-full min-w-0 items-center gap-[var(--lc-sidebar-gap,0.5rem)] rounded-md px-[var(--lc-sidebar-edge,0.5rem)] pr-14 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onSelect}
-      >
-        <span className="relative shrink-0">
-          <AgentIcon kind={session.kind} variant="ghost" className="text-muted-foreground" />
-          <span
-            aria-hidden
-            className={cn(
-              'absolute -right-1 -bottom-1 size-1.5 rounded-full ring-2 ring-sidebar transition-colors',
-              SESSION_STATUS_DOT_CLASS[session.status],
-            )}
-          />
-        </span>
-        {/* No font-medium: IBM Plex Sans lacks CJK, so 500 falls back to PingFang
-            Medium and mixed-script titles read artificially bold. */}
-        <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
-      </button>
-      <div className="-translate-y-1/2 absolute top-1/2 right-1 flex items-center gap-0.5">
-        <button
-          type="button"
+      <RowActionsCluster>
+        {ImMenuComponent && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={t('threadActions')}
+              title={t('threadActions')}
+              render={<Button className={ROW_ACTION_CLASS} size="icon-xs" variant="ghost" />}
+            >
+              <EllipsisIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-56">
+              <ImMenuComponent session={session} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <Button
           aria-label={pinned ? t('unpinThread') : t('pinThread')}
           title={pinned ? t('unpinThread') : t('pinThread')}
           onClick={onTogglePin}
-          className={cn(
-            ROW_ACTION_CLASS,
-            pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
-          )}
+          className={ROW_ACTION_CLASS}
+          size="icon-xs"
+          variant="ghost"
         >
-          <PinIcon className={cn('size-3.5', pinned && 'fill-current')} />
-        </button>
-        <button
-          type="button"
+          <PinIcon className={cn(pinned && 'fill-current')} />
+        </Button>
+        <Button
           aria-label={t('closeThread')}
           title={t('closeThread')}
           onClick={onClose}
-          className={cn(ROW_ACTION_CLASS, 'opacity-0 group-hover:opacity-100')}
+          className={ROW_ACTION_CLASS}
+          size="icon-xs"
+          variant="ghost"
         >
-          <XIcon className="size-3.5" />
-        </button>
-      </div>
-    </div>
+          <XIcon />
+        </Button>
+      </RowActionsCluster>
+    </SidebarMenuItem>
   );
 }

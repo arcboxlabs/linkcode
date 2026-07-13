@@ -1,13 +1,16 @@
+import { formatKeyboardShortcut } from '@linkcode/ui';
 import type { PanelSide } from '@linkcode/ui/shell/panels';
 import type { PaletteCommand } from '@linkcode/workbench';
 import { useCommandPaletteStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useTranslations } from 'use-intl';
-import { getPanelToggleShortcuts } from './use-desktop-shell-shortcuts';
+import { openDesktopSettings } from '../settings/store';
+
+const SETTINGS_SHORTCUT = { code: 'Comma', modifiers: ['primary'] } as const;
 
 interface UseDesktopPaletteCommandsOptions {
-  desktopPlatform: NodeJS.Platform | null;
+  desktopPlatform: NodeJS.Platform;
   pickDirectory: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => void;
   onOpenSettings?: () => void;
@@ -16,9 +19,10 @@ interface UseDesktopPaletteCommandsOptions {
 }
 
 /**
- * Desktop-owned palette entries: native folder pick, the Settings overlay, and the panel
- * toggles. Registered into the shared palette store so the workbench-rendered palette lists
- * them without desktop threading props through the surface.
+ * Desktop-owned palette entries: native folder pick, the Settings overlay (plus a deep link to
+ * its Import-chat-history pane), and the panel toggles. Registered into the shared palette store
+ * so the workbench-rendered palette lists them without desktop threading props through the
+ * surface.
  */
 export function useDesktopPaletteCommands({
   desktopPlatform,
@@ -31,7 +35,10 @@ export function useDesktopPaletteCommands({
   const tPalette = useTranslations('workbench.palette');
 
   useAbortableEffect(() => {
-    const shortcuts = getPanelToggleShortcuts(desktopPlatform);
+    const settingsShortcut = formatKeyboardShortcut(
+      SETTINGS_SHORTCUT,
+      desktopPlatform === 'darwin' ? 'mac' : 'non-mac',
+    );
     const commands: PaletteCommand[] = [
       {
         id: 'desktop.open-folder',
@@ -48,7 +55,6 @@ export function useDesktopPaletteCommands({
       {
         id: 'desktop.toggle-sidebar',
         label: tPalette('toggleSidebar'),
-        shortcut: shortcuts.sidebar,
         run() {
           updateSidebarOpen((open) => !open);
         },
@@ -56,7 +62,6 @@ export function useDesktopPaletteCommands({
       {
         id: 'desktop.toggle-bottom-panel',
         label: tPalette('toggleBottomPanel'),
-        shortcut: shortcuts.bottom,
         run() {
           togglePanel('bottom');
         },
@@ -64,19 +69,30 @@ export function useDesktopPaletteCommands({
       {
         id: 'desktop.toggle-right-panel',
         label: tPalette('toggleRightPanel'),
-        shortcut: shortcuts.right,
         run() {
           togglePanel('right');
         },
       },
     ];
     if (onOpenSettings) {
-      commands.splice(1, 0, {
-        id: 'desktop.settings',
-        label: tPalette('openSettings'),
-        shortcut: shortcuts.settings,
-        run: onOpenSettings,
-      });
+      commands.splice(
+        1,
+        0,
+        {
+          id: 'desktop.settings',
+          label: tPalette('openSettings'),
+          shortcut: settingsShortcut,
+          run: onOpenSettings,
+        },
+        {
+          id: 'desktop.import-history',
+          label: tPalette('importHistory'),
+          keywords: ['history', 'import', 'chat'],
+          run() {
+            openDesktopSettings('history-import');
+          },
+        },
+      );
     }
     const { registerCommands, unregisterCommands } = useCommandPaletteStore.getState();
     registerCommands('desktop', commands);

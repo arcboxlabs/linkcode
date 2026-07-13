@@ -3,19 +3,30 @@ import type { DragEndEvent, DragOverEvent } from '@dnd-kit/react';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionId, SessionInfo, WorkspaceRecord } from '@linkcode/schema';
+import { Accordion, AccordionItem, AccordionPanel } from 'coss-ui/components/accordion';
+import { SidebarGroup, SidebarMenu } from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { useTranslations } from 'use-intl';
+import { changedAccordionValues, openThreadGroupValues } from './accordion-values';
 import { repositoryLabel } from './repository-label';
-import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
+import type { SidebarSectionKey, ThreadGroupActions, ThreadGroupState } from './sidebar';
 import {
-  AddWorkspaceRow,
+  AddProjectMenu,
   ChatsSection,
+  PinnedSection,
+  SectionAccordionTrigger,
   ShowMoreToggle,
   SIDEBAR_SORTABLE_SENSORS,
   ThreadGroupHeader,
   ThreadRow,
 } from './sidebar';
+
+const SIDEBAR_SECTIONS = [
+  'pinned',
+  'projects',
+  'chats',
+] as const satisfies readonly SidebarSectionKey[];
 
 /** One workspace's sessions, or the fallback bucket (`workspace: null`) for an unmatched `cwd`. */
 export interface ThreadGroupViewModel {
@@ -25,15 +36,16 @@ export interface ThreadGroupViewModel {
   workspace: WorkspaceRecord | null;
   /** Every session in the group, most recent first — the header's count reflects this length. */
   sessions: SessionInfo[];
-  /** The subset actually rendered, honoring the collapse and preview-truncation state below. */
+  /** The preview subset rendered while the group is open. */
   visibleSessions: SessionInfo[];
   /** Whether a Show more/Show less toggle should render. */
   hasOverflow: boolean;
   collapsed: boolean;
   previewExpanded: boolean;
-  historyOpen: boolean;
   /** True for the daemon-owned chat workspace's group — rendered in "Chats", not "Projects". */
   isChat: boolean;
+  /** True for the synthetic pinned group — rendered as the top-level "Pinned" section. */
+  isPinned: boolean;
 }
 
 export interface ThreadsViewProps extends ThreadGroupActions, ThreadGroupState {
@@ -52,6 +64,8 @@ export interface ThreadsViewProps extends ThreadGroupActions, ThreadGroupState {
   ) => void;
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  /** Opens the provider history import surface; desktop only — the menu item hides without it. */
+  onImportHistory?: () => void;
 }
 
 /** The sidebar's two sections: "Projects" (the grouped tree) and the flat "Chats" list. */
@@ -61,30 +75,36 @@ export function ThreadsView({
   sessionsLoading,
   activeId,
   pinnedSessionIds,
+  collapsedSections,
   onSelect,
   onClose,
   onToggleSessionPinned,
   onReorderGroups,
   onReorderThreads,
   onStartDraft,
-  onImportSession,
   onPickDirectory,
   onRegisterWorkspace,
+  onImportHistory,
   onRenameWorkspace,
   onArchiveWorkspace,
   onToggleGroupCollapsed,
+  onToggleSectionCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   BranchStatusComponent,
-  HistoryComponent,
+  ImMenuComponent,
 }: ThreadsViewProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
+  const openSections = SIDEBAR_SECTIONS.filter((section) => !collapsedSections.includes(section));
   const projectGroups: ThreadGroupViewModel[] = [];
+  let pinnedGroup: ThreadGroupViewModel | undefined;
   let chatGroup: ThreadGroupViewModel | undefined;
   for (const group of groups) {
-    if (group.isChat) chatGroup = group;
+    if (group.isPinned) pinnedGroup = group;
+    else if (group.isChat) chatGroup = group;
     else projectGroups.push(group);
   }
+  const projectGroupKeys = projectGroups.map((group) => group.collapseKey);
+  const openGroupKeys = openThreadGroupValues(projectGroups);
 
   // The optimistic preview must never cross the pin boundary: the drop would be clamped anyway
   // (pin membership only changes via the pin button), and committing an order that disagrees
@@ -140,49 +160,88 @@ export function ThreadsView({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="space-y-4">
-        <div className="space-y-3">
-          <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
-            {t('projects')}
-          </div>
-          {projectGroups.length === 0 && workspacesLoading && (
-            <div className="space-y-1">
-              {createFixedArray(3).map((i) => (
-                <Skeleton key={i} className="h-6 w-full rounded-md" />
-              ))}
-            </div>
-          )}
-          {projectGroups.length === 0 && !workspacesLoading && (
-            <div className="px-[calc(var(--lc-sidebar-edge,0.5rem)+0.25rem)] py-6 text-center text-muted-foreground text-sm">
-              {t('emptyTitle')}
-            </div>
-          )}
-          {projectGroups.map((group, index) => (
-            <ThreadGroupSection
-              key={group.key}
-              group={group}
-              sortIndex={index}
-              activeId={activeId}
-              pinnedSessionIds={pinnedSessionIds}
-              onSelect={onSelect}
-              onClose={onClose}
-              onToggleSessionPinned={onToggleSessionPinned}
-              onStartDraft={onStartDraft}
-              onImportSession={onImportSession}
-              onRenameWorkspace={onRenameWorkspace}
-              onArchiveWorkspace={onArchiveWorkspace}
-              onToggleGroupCollapsed={onToggleGroupCollapsed}
-              onTogglePreviewExpanded={onTogglePreviewExpanded}
-              onToggleImportHistory={onToggleImportHistory}
-              BranchStatusComponent={BranchStatusComponent}
-              HistoryComponent={HistoryComponent}
-            />
-          ))}
-          <AddWorkspaceRow
+      {/* Controlled with root-level onValueChange: item-level onOpenChange plus a controlled
+          root leaves base-ui's exit transition stuck (panel never reaches data-ending-style). */}
+      <Accordion
+        multiple
+        className="flex flex-col gap-0.5"
+        value={openSections}
+        onValueChange={(next) => {
+          for (const section of changedAccordionValues(SIDEBAR_SECTIONS, openSections, next)) {
+            onToggleSectionCollapsed(section);
+          }
+        }}
+      >
+        {pinnedGroup && (
+          <PinnedSection
+            sessions={pinnedGroup.visibleSessions}
+            hasOverflow={pinnedGroup.hasOverflow}
+            previewExpanded={pinnedGroup.previewExpanded}
+            groupKey={pinnedGroup.key}
+            sortKey={pinnedGroup.collapseKey}
+            activeId={activeId}
+            onSelect={onSelect}
+            onClose={onClose}
+            onToggleSessionPinned={onToggleSessionPinned}
+            onTogglePreviewExpanded={onTogglePreviewExpanded}
+            ImMenuComponent={ImMenuComponent}
+          />
+        )}
+
+        <AccordionItem value="projects" className="border-b-0" render={<SidebarGroup />}>
+          <SectionAccordionTrigger>{t('projects')}</SectionAccordionTrigger>
+          <AddProjectMenu
+            onStartDraft={() => onStartDraft()}
             onPickDirectory={onPickDirectory}
             onRegisterWorkspace={onRegisterWorkspace}
+            onImportHistory={onImportHistory}
           />
-        </div>
+          <AccordionPanel className="flex flex-col gap-0.5 pb-0 text-sidebar-foreground">
+            {projectGroups.length === 0 && workspacesLoading && (
+              <div className="flex flex-col gap-1">
+                {createFixedArray(3).map((i) => (
+                  <Skeleton key={i} className="h-8 w-full rounded-lg" />
+                ))}
+              </div>
+            )}
+            {projectGroups.length === 0 && !workspacesLoading && (
+              <div className="px-3 py-6 text-center text-muted-foreground text-sm">
+                {t('emptyTitle')}
+              </div>
+            )}
+            {projectGroups.length > 0 && (
+              <Accordion
+                multiple
+                className="flex flex-col gap-0.5"
+                value={openGroupKeys}
+                onValueChange={(next) => {
+                  for (const key of changedAccordionValues(projectGroupKeys, openGroupKeys, next)) {
+                    onToggleGroupCollapsed(key);
+                  }
+                }}
+              >
+                {projectGroups.map((group, index) => (
+                  <ThreadGroupSection
+                    key={group.key}
+                    group={group}
+                    sortIndex={index}
+                    activeId={activeId}
+                    pinnedSessionIds={pinnedSessionIds}
+                    onSelect={onSelect}
+                    onClose={onClose}
+                    onToggleSessionPinned={onToggleSessionPinned}
+                    onStartDraft={onStartDraft}
+                    onRenameWorkspace={onRenameWorkspace}
+                    onArchiveWorkspace={onArchiveWorkspace}
+                    onTogglePreviewExpanded={onTogglePreviewExpanded}
+                    BranchStatusComponent={BranchStatusComponent}
+                    ImMenuComponent={ImMenuComponent}
+                  />
+                ))}
+              </Accordion>
+            )}
+          </AccordionPanel>
+        </AccordionItem>
 
         <ChatsSection
           workspace={chatGroup?.workspace ?? null}
@@ -199,8 +258,9 @@ export function ThreadsView({
           onToggleSessionPinned={onToggleSessionPinned}
           onStartDraft={onStartDraft}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
+          ImMenuComponent={ImMenuComponent}
         />
-      </div>
+      </Accordion>
     </DragDropProvider>
   );
 }
@@ -214,16 +274,24 @@ function ThreadGroupSection({
   onClose,
   onToggleSessionPinned,
   onStartDraft,
-  onImportSession,
   onRenameWorkspace,
   onArchiveWorkspace,
-  onToggleGroupCollapsed,
   onTogglePreviewExpanded,
-  onToggleImportHistory,
   BranchStatusComponent,
-  HistoryComponent,
-}: ThreadGroupActions &
-  ThreadGroupState & {
+  ImMenuComponent,
+}: Pick<
+  ThreadGroupActions,
+  | 'onSelect'
+  | 'onClose'
+  | 'onToggleSessionPinned'
+  | 'onStartDraft'
+  | 'onRenameWorkspace'
+  | 'onArchiveWorkspace'
+  | 'onTogglePreviewExpanded'
+  | 'BranchStatusComponent'
+  | 'ImMenuComponent'
+> &
+  Pick<ThreadGroupState, 'activeId' | 'pinnedSessionIds'> & {
     group: ThreadGroupViewModel;
     /** The group's index among the rendered project groups — feeds the sortable. */
     sortIndex: number;
@@ -243,61 +311,47 @@ function ThreadGroupSection({
     disabled: workspace === null,
   });
 
+  // Keep the open-state preview mounted while the panel closes so base-ui can measure and finish
+  // its height transition before unmounting the rows.
+  const renderRow = (session: SessionInfo, index: number): React.ReactNode => (
+    <ThreadRow
+      key={session.sessionId}
+      active={session.sessionId === activeId}
+      pinned={pinnedSessionIds.includes(session.sessionId)}
+      sortIndex={index}
+      sortGroup={group.collapseKey}
+      session={session}
+      onSelect={() => onSelect(session.sessionId)}
+      onClose={() => onClose(session.sessionId)}
+      onTogglePin={() => onToggleSessionPinned(session.sessionId)}
+      ImMenuComponent={ImMenuComponent}
+    />
+  );
+
   return (
-    <section ref={sectionRef}>
+    <AccordionItem ref={sectionRef} value={group.collapseKey} className="border-b-0">
       <ThreadGroupHeader
         dragHandleRef={workspace ? handleRef : undefined}
         title={title}
         workspace={workspace}
         sessionCount={group.sessions.length}
         collapsed={group.collapsed}
-        onToggleCollapsed={() => onToggleGroupCollapsed(group.collapseKey)}
         onNewThread={workspace ? () => onStartDraft(workspace.workspaceId) : undefined}
         onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}
         onArchive={workspace ? () => onArchiveWorkspace(workspace.workspaceId) : undefined}
-        historyOpen={group.historyOpen}
-        onToggleHistory={
-          workspace && HistoryComponent ? () => onToggleImportHistory(group.key) : undefined
-        }
         BranchStatusComponent={BranchStatusComponent}
       />
-      <div className="pl-3">
-        {group.visibleSessions.length > 0 && (
-          <div className="space-y-0.5">
-            {group.visibleSessions.map((session, index) => (
-              <ThreadRow
-                key={session.sessionId}
-                active={session.sessionId === activeId}
-                pinned={pinnedSessionIds.includes(session.sessionId)}
-                sortIndex={index}
-                sortGroup={group.collapseKey}
-                session={session}
-                onSelect={() => onSelect(session.sessionId)}
-                onClose={() => onClose(session.sessionId)}
-                onTogglePin={() => onToggleSessionPinned(session.sessionId)}
-              />
-            ))}
-          </div>
-        )}
-        {!group.collapsed && group.hasOverflow && (
-          <ShowMoreToggle
-            expanded={group.previewExpanded}
-            onToggle={() => onTogglePreviewExpanded(group.key)}
-          />
-        )}
-      </div>
-      {!group.collapsed &&
-        group.historyOpen &&
-        workspace &&
-        HistoryComponent &&
-        onImportSession && (
-          <div className="pt-1">
-            <div className="px-[var(--lc-sidebar-edge,0.5rem)] pb-1 font-medium text-muted-foreground text-xs">
-              {t('importHistoryTitle')}
-            </div>
-            <HistoryComponent cwd={workspace.cwd} onImported={onImportSession} />
-          </div>
-        )}
-    </section>
+      <AccordionPanel className="pb-0 text-sidebar-foreground">
+        <SidebarMenu className="gap-0.5 pl-3">
+          {group.visibleSessions.map(renderRow)}
+          {group.hasOverflow && (
+            <ShowMoreToggle
+              expanded={group.previewExpanded}
+              onToggle={() => onTogglePreviewExpanded(group.key)}
+            />
+          )}
+        </SidebarMenu>
+      </AccordionPanel>
+    </AccordionItem>
   );
 }

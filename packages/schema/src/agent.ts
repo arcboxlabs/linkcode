@@ -7,6 +7,7 @@ import {
   TimestampSchema,
 } from './common';
 import { ContentBlockSchema } from './content';
+import { ImPlatformSchema } from './im';
 import { PermissionOutcomeSchema, PermissionRequestSchema } from './permission';
 import { PlanSchema } from './plan';
 import { QuestionOutcomeSchema, QuestionRequestSchema } from './question';
@@ -43,6 +44,8 @@ export const StartOptionsSchema = z.object({
   mcpServers: z.array(McpServerSchema).optional(),
   /** Extra directories the agent may access beyond `cwd`. */
   additionalDirectories: z.array(z.string()).optional(),
+  /** The IM platform starting this session (attribution/audit); omitted by LinkCode clients. */
+  createdVia: ImPlatformSchema.optional(),
   /** Free-form adapter-specific parameters. */
   config: z.record(z.string(), z.unknown()).optional(),
 });
@@ -125,11 +128,38 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // ── Tools: one event per state change, each carrying the full current ToolCall snapshot ──
   z.object({ type: z.literal('tool-call'), toolCall: ToolCallSchema }),
 
+  // ── Context compaction: the agent summarized earlier turns in place to free context window ──
+  /** Emitted at the compaction boundary with whatever is known at that moment, and again once the
+   * swapped-in summary text is learned (it arrives on a later frame). Consumers merge events by
+   * `compactionId` — the provider's own boundary id — so partial emits, live re-emits, and history
+   * replay of the same compaction all converge into one timeline marker. */
+  z.object({
+    type: z.literal('compaction'),
+    compactionId: z.string().min(1),
+    trigger: z.enum(['manual', 'auto']).optional(),
+    /** Context tokens before / after the compaction, when the provider reports them. */
+    preTokens: z.number().int().nonnegative().optional(),
+    postTokens: z.number().int().nonnegative().optional(),
+    /** The summary text the provider swapped in for the compacted turns. */
+    summary: z.string().optional(),
+  }),
+
   // ── Planning / meta ──
   z.object({ type: z.literal('plan'), plan: PlanSchema }),
   z.object({ type: z.literal('current-mode-update'), currentModeId: SessionModeIdSchema }),
   /** Full approval-policy state (advertised list + current), at session start and after switches. */
   z.object({ type: z.literal('approval-policy-update'), state: ApprovalPolicyStateSchema }),
+  /** The model the session is actually running on, so clients reflect the true value instead of a
+   * placeholder. The available list is the static UI catalog (not adapter-advertised, unlike
+   * approval policies), so only the current id travels. Emitted once the adapter learns the served
+   * model (claude-code's init/assistant frames report it even when no model was requested) and on
+   * every switch. Adapters that can't observe their model never emit it. */
+  z.object({ type: z.literal('model-update'), model: z.string().min(1) }),
+  /** The reasoning-effort level the session is actually running at. Same rationale as `model-update`.
+   * Emitted on every switch and, for adapters that can observe the resolved default (claude-code via
+   * a Stop hook's `effort.level`), once the default is learned. `undefined`/never-emitted keeps the
+   * client showing a placeholder rather than a guessed value. */
+  z.object({ type: z.literal('effort-update'), effort: EffortLevelSchema }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),

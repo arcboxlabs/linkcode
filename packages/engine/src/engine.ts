@@ -1,17 +1,21 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { createAdapter } from '@linkcode/agent-adapter';
+import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
   AgentHistoryId,
   AgentRuntimes,
   ApprovalPolicyState,
   AssetInstallEvent,
   ContentBlock,
+  EffortLevel,
   InstalledAsset,
   ManagedAssetId,
   ManagedAssetStatus,
   SessionId,
   SessionInfo,
+  SessionNotificationReason,
   SessionRecord,
+  StartOptions,
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
@@ -20,6 +24,8 @@ import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import type { LoginBinaryResolver } from './agent-login-service';
+import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
 import { readWorkspaceFile } from './file-service';
 import { GitService } from './git/git-service';
@@ -32,6 +38,8 @@ import { ScriptService } from './scripts/script-service';
 import type { SessionStore } from './session-store';
 import { InMemorySessionStore } from './session-store';
 import { TerminalService } from './terminal-service';
+import type { TranslatorService } from './translator';
+import { translationUpstream, withTranslatorEndpoint } from './translator';
 import { WorkspaceRegistry } from './workspace-registry';
 import type { WorkspaceStore } from './workspace-store';
 import { InMemoryWorkspaceStore } from './workspace-store';
@@ -43,7 +51,18 @@ interface Session {
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
+  /** Open permission/question asks by requestId, replayed on attach like the approval policy: the
+   * ask event is its only carrier (history reads reproduce no ephemeral events), so without the
+   * replay a client that (re)connects mid-ask has no card to answer and the turn hangs. */
+  pendingAsks: Map<string, PendingAskEvent>;
+  /** Latest model/effort the adapter reported, replayed to freshly-attached clients for the same
+   * reason as `approvalPolicy` — a reconnecting client missed the emit and would otherwise show a
+   * placeholder instead of the value the session is actually running on. */
+  currentModel?: string;
+  currentEffort?: EffortLevel;
 }
+
+type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
@@ -61,6 +80,10 @@ export interface EngineDeps {
   assets?: AssetService;
   /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands. */
   collectAgentRuntimes?: () => Promise<AgentRuntimes>;
+  /** Resolves the CLI to spawn for an interactive `agent-login`; absent hosts reject login requests. */
+  resolveLoginBinary?: LoginBinaryResolver;
+  /** Local Anthropic⇄OpenAI translation sidecar; absent Engines reject cross-protocol accounts. */
+  translator?: TranslatorService;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
@@ -100,6 +123,8 @@ export class Engine {
   /** Boot snapshot, replaced by {@link refreshAgentRuntimes} when a managed install lands. */
   private agentRuntimes: AgentRuntimes;
   private readonly assets?: AssetService;
+  private readonly logins?: AgentLoginService;
+  private readonly translator?: TranslatorService;
   private readonly collectAgentRuntimes?: () => Promise<AgentRuntimes>;
   private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
@@ -129,7 +154,13 @@ export class Engine {
     this.artifactHost = new ArtifactHostService(routes);
     this.agentRuntimes = deps.agentRuntimes ?? {};
     this.assets = deps.assets;
+    this.translator = deps.translator;
     this.collectAgentRuntimes = deps.collectAgentRuntimes;
+    this.logins = deps.resolveLoginBinary
+      ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
+          void this.refreshAgentRuntimes();
+        })
+      : undefined;
     // Lifetime = the daemon's: the engine is never disposed, so the subscription is never torn down.
     this.assets?.subscribe((event) => this.onAssetInstallEvent(event));
   }
@@ -158,18 +189,40 @@ export class Engine {
     return this.workspaces.ensureChatWorkspace(cwd);
   }
 
+  /**
+   * Resolve a session's StartOptions: apply the bound account/provider defaults, then, for a
+   * cross-protocol account, route the agent through the local translation sidecar (rewriting the
+   * endpoint to its loopback URL). A session that needs translation with no sidecar available fails.
+   */
+  private async resolveStartOptions(opts: StartOptions): Promise<StartOptions> {
+    const resolved = applyProviderDefaults(
+      opts,
+      this.providerStore.get(),
+      this.providerStore.getAccounts(),
+    );
+    const upstream = translationUpstream(resolved);
+    if (!upstream) return resolved;
+    if (!this.translator) {
+      throw new Error(
+        'claude-code cross-protocol account needs the translation sidecar, which is unavailable',
+      );
+    }
+    return withTranslatorEndpoint(resolved, await this.translator.ensure(upstream));
+  }
+
   private async handle(msg: WireMessage): Promise<void> {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start': {
         await this.tryReply(p.clientReqId, async () => {
-          const opts = applyProviderDefaults(p.opts, this.providerStore.get());
+          const opts = await this.resolveStartOptions(p.opts);
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
             kind: opts.kind,
             cwd: opts.cwd,
             origin: { type: 'created' },
+            createdVia: opts.createdVia,
             createdAt: now,
             updatedAt: now,
             runs: [{ startedAt: now }],
@@ -199,6 +252,11 @@ export class Engine {
               }),
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
+          }
+          // The answer settles the ask the moment it arrives; drop it before awaiting send so a
+          // concurrent session.attach (handlers aren't serialized) can't replay an already-answered ask.
+          if (p.input.type === 'permission-response' || p.input.type === 'question-response') {
+            session.pendingAsks.delete(p.input.requestId);
           }
           await session.adapter.send(p.input);
           this.sendSuccess(p.clientReqId);
@@ -259,10 +317,10 @@ export class Engine {
           // A never-prompted session has no provider transcript to resume from (the adapter only
           // mints one on the first prompt); waking it is a fresh start under the same Link Code id.
           const historyId = latestHistoryId(record);
-          const startOpts = applyProviderDefaults(
-            { kind: record.kind, cwd: record.cwd },
-            this.providerStore.get(),
-          );
+          const startOpts = await this.resolveStartOptions({
+            kind: record.kind,
+            cwd: record.cwd,
+          });
           record.runs.push({ historyId, startedAt: Date.now() });
           await this.startLiveSession(p.clientReqId, record, (adapter) =>
             historyId === undefined
@@ -318,10 +376,7 @@ export class Engine {
       }
       case 'history.resume': {
         await this.tryReply(p.clientReqId, async () => {
-          const startOpts = applyProviderDefaults(
-            { ...p.startOpts, kind: p.agentKind },
-            this.providerStore.get(),
-          );
+          const startOpts = await this.resolveStartOptions({ ...p.startOpts, kind: p.agentKind });
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -392,13 +447,17 @@ export class Engine {
             kind: 'config.get.result',
             replyTo: p.clientReqId,
             providers: this.providerStore.get(),
+            accounts: this.providerStore.getAccounts(),
           }),
         );
         break;
       }
       case 'config.set': {
         await this.tryReply(p.clientReqId, async () => {
-          await this.providerStore.set(p.providers);
+          // Each field is independent: a client editing only providers preserves the account pool,
+          // and one editing only accounts preserves the provider settings.
+          if (p.providers !== undefined) await this.providerStore.set(p.providers);
+          if (p.accounts !== undefined) await this.providerStore.setAccounts(p.accounts);
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -537,19 +596,30 @@ export class Engine {
         break;
       }
       case 'session.attach': {
-        // Multi-device attach is implicit: events are broadcast to all clients. The one buffered
-        // state an attaching client can't recover otherwise is the approval-policy advertisement
-        // (emitted at adapter start); re-broadcast it — clients fold it idempotently.
+        // Multi-device attach is implicit: events are broadcast to all clients. What gets
+        // re-broadcast here is the buffered state an attaching client can't recover from a
+        // history read: the live status (gates the pending-ask cards and the Stop affordance),
+        // the approval-policy advertisement (emitted once at adapter start), and any open
+        // permission/question asks (ephemeral — their event is the only carrier). Clients fold
+        // status/policy idempotently and dedupe ask events by requestId.
         const attached = this.sessions.get(p.sessionId);
-        if (attached?.approvalPolicy) {
+        if (!attached) break;
+        const replay = (event: AgentEvent): void => {
           this.transport.send(
-            createWireMessage({
-              kind: 'agent.event',
-              sessionId: p.sessionId,
-              event: { type: 'approval-policy-update', state: attached.approvalPolicy },
-            }),
+            createWireMessage({ kind: 'agent.event', sessionId: p.sessionId, event }),
           );
+        };
+        replay({ type: 'status', status: attached.status });
+        if (attached.approvalPolicy) {
+          replay({ type: 'approval-policy-update', state: attached.approvalPolicy });
         }
+        if (attached.currentModel) {
+          replay({ type: 'model-update', model: attached.currentModel });
+        }
+        if (attached.currentEffort) {
+          replay({ type: 'effort-update', effort: attached.currentEffort });
+        }
+        for (const ask of attached.pendingAsks.values()) replay(ask);
         break;
       }
       case 'session.detach': {
@@ -577,6 +647,23 @@ export class Engine {
         this.terminals?.close(p.terminalId);
         break;
       }
+      case 'agent-login.start': {
+        const logins = this.logins;
+        if (!logins) {
+          this.sendFailure(p.clientReqId, new Error('Login is not supported on this host'));
+          break;
+        }
+        logins.start(p.clientReqId, p.agent);
+        break;
+      }
+      case 'agent-login.submit-code': {
+        this.logins?.submitCode(p.loginId, p.code);
+        break;
+      }
+      case 'agent-login.cancel': {
+        this.logins?.cancel(p.loginId);
+        break;
+      }
       case 'ping': {
         this.transport.send(createWireMessage({ kind: 'pong' }));
         break;
@@ -602,6 +689,8 @@ export class Engine {
     this.sessions.clear();
     this.scripts?.shutdown();
     this.terminals?.closeAll();
+    this.logins?.closeAll();
+    await this.translator?.closeAll();
     this.transport.close();
   }
 
@@ -622,7 +711,7 @@ export class Engine {
   ): Promise<void> {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
-    const session: Session = { adapter, unsub: noop, status: 'starting' };
+    const session: Session = { adapter, unsub: noop, status: 'starting', pendingAsks: new Map() };
     session.unsub = adapter.onEvent((event) => {
       // The adapter invokes this synchronously; an uncaught throw here would bubble out of
       // whatever triggered the event (the adapter's own internals, in most cases) instead of
@@ -631,6 +720,9 @@ export class Engine {
         switch (event.type) {
           case 'status':
             session.status = event.status;
+            // A turn boundary settles every ask: the adapter's teardown has resolved them
+            // (cancelled) — replaying one after this would present an unanswerable card.
+            if (event.status === 'idle' || event.status === 'stopped') session.pendingAsks.clear();
             if (event.status === 'stopped') this.sealCurrentRun(sessionId);
             break;
           case 'session-ref':
@@ -639,10 +731,38 @@ export class Engine {
           case 'approval-policy-update':
             session.approvalPolicy = event.state;
             break;
+          case 'permission-request':
+          case 'question-request':
+            session.pendingAsks.set(event.requestId, event);
+            break;
+          case 'tool-call':
+            // Mirrors the client's pending semantics: an ask is open until its tool call reaches
+            // a terminal status (also catches teardown's forced-failed sweep on cancel).
+            if (event.toolCall.status === 'completed' || event.toolCall.status === 'failed') {
+              for (const [requestId, ask] of session.pendingAsks) {
+                if (ask.toolCall.toolCallId === event.toolCall.toolCallId) {
+                  session.pendingAsks.delete(requestId);
+                }
+              }
+            }
+            break;
+          case 'model-update':
+            session.currentModel = event.model;
+            break;
+          case 'effort-update':
+            session.currentEffort = event.effort;
+            break;
+          case 'error':
+            // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
+            // `loggedIn: false` and the client surfaces the login cue, self-healing an out-of-band
+            // auth change the boot-time probe couldn't see.
+            if (event.code === AUTH_FAILED_ERROR_CODE) void this.refreshAgentRuntimes();
+            break;
           default:
             break;
         }
         this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+        this.maybeNotify(sessionId, event);
       } catch (err) {
         console.error(`Error handling adapter event for session ${sessionId}:`, err);
       }
@@ -670,6 +790,28 @@ export class Engine {
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
   }
 
+  /** Broadcast `session.notification` for notification-worthy adapter events. Classification is
+   * daemon-side so clients never fold background sessions' event streams; whether to surface it
+   * (focus suppression, user prefs) is client-side presentation policy. Always a broadcast — even
+   * once per-connection subscription modes exist (CODE-72), this frame must reach every client. */
+  private maybeNotify(sessionId: SessionId, event: AgentEvent): void {
+    const reason = notificationReason(event);
+    const record = this.records.get(sessionId);
+    if (!reason || !record) return;
+    this.transport.send(
+      createWireMessage({
+        kind: 'session.notification',
+        notification: {
+          sessionId,
+          kind: record.kind,
+          cwd: record.cwd,
+          title: record.title,
+          reason,
+        },
+      }),
+    );
+  }
+
   private toSessionInfo(record: SessionRecord): SessionInfo {
     return {
       sessionId: record.sessionId,
@@ -680,6 +822,7 @@ export class Engine {
       updatedAt: record.updatedAt,
       title: record.title,
       origin: record.origin,
+      createdVia: record.createdVia,
       historyId: latestHistoryId(record),
     };
   }
@@ -811,6 +954,24 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
     if (historyId !== undefined) return historyId;
   }
   return record.origin.type === 'imported' ? record.origin.historyId : undefined;
+}
+
+/** The notification-worthy subset of adapter events. `stop` is the turn boundary (`status: 'idle'`
+ * also fires at session start, so it can't be the trigger); a `permission-request` or
+ * `question-request` ask is the only real "awaiting input" signal — no adapter emits an
+ * `awaiting-input` status. */
+function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
+  switch (event.type) {
+    case 'stop':
+      return { type: 'turn-completed', stopReason: event.stopReason };
+    case 'permission-request':
+    case 'question-request':
+      return { type: 'awaiting-approval', toolTitle: event.toolCall.title };
+    case 'error':
+      return { type: 'error', message: event.message };
+    default:
+      return undefined;
+  }
 }
 
 const SESSION_TITLE_MAX_LENGTH = 80;
