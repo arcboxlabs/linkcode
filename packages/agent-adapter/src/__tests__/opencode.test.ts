@@ -73,6 +73,8 @@ class FakeClient {
     create: vi.fn(() => ({ data: { id: 'sess-1' } })),
     promptAsync: vi.fn(() => ({ data: null })),
     abort: vi.fn(() => ({ data: true })),
+    command: vi.fn(() => Promise.resolve({ data: { info: {}, parts: [] } })),
+    shell: vi.fn(() => Promise.resolve({ data: { info: {}, parts: [] } })),
   };
   readonly permission = {
     reply: vi.fn(() => ({ data: true })),
@@ -80,6 +82,12 @@ class FakeClient {
   readonly question = {
     reply: vi.fn(() => ({ data: true })),
     reject: vi.fn(() => ({ data: true })),
+  };
+  readonly command = {
+    list: vi.fn(() => ({ data: [] as unknown[] })),
+  };
+  readonly app = {
+    agents: vi.fn(() => ({ data: [] as unknown[] })),
   };
   readonly event = {
     subscribe: vi.fn(() => {
@@ -933,5 +941,205 @@ describe('OpenCodeAdapter RPC results (the SDK resolves with {error} instead of 
     await drained();
     expect(errors(events)).toHaveLength(0);
     expect(events.some((e) => e.type === 'status' && e.status === 'stopped')).toBe(false);
+  });
+});
+
+describe('OpenCodeAdapter command catalog', () => {
+  afterEach(() => {
+    // Restore the default fresh-client factory the rest of the file (and other describe blocks)
+    // relies on — the tests below swap it out to seed a customized `command.list` return value.
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+  });
+
+  it('emits the catalog mapped from command.list at start', async () => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      client.command.list.mockReturnValueOnce({
+        data: [
+          { name: 'review', description: 'Review code', template: 't', hints: ['<file>'] },
+          { name: 'noop', template: 't', hints: [] },
+        ],
+      });
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const { events } = await makeAdapter();
+
+    const catalog = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'available-commands-update' }> =>
+        e.type === 'available-commands-update',
+    );
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0].commands).toEqual([
+      { name: 'review', description: 'Review code', argumentHint: '<file>' },
+      { name: 'noop', description: undefined, argumentHint: undefined },
+    ]);
+  });
+
+  it('still starts successfully when command.list resolves with an error envelope', async () => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      client.command.list.mockReturnValueOnce({ error: { message: 'boom' } } as never);
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const { events } = await makeAdapter();
+
+    expect(events.some((e) => e.type === 'available-commands-update')).toBe(false);
+    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+  });
+});
+
+describe('OpenCodeAdapter command dispatch', () => {
+  it('calls session.command with the given arguments, emits running, and settles on session.idle', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+
+    await adapter.send({ type: 'command', name: 'review', arguments: 'src' });
+
+    expect(client.session.command).toHaveBeenCalledWith({
+      sessionID: 'sess-1',
+      directory: '/tmp/repo',
+      command: 'review',
+      arguments: 'src',
+      model: undefined,
+    });
+    expect(events.some((e) => e.type === 'status' && e.status === 'running')).toBe(true);
+
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+    });
+    expect(stops(events)).toHaveLength(1);
+    expect(stops(events)[0].stopReason).toBe('end_turn');
+  });
+
+  it('defaults arguments to an empty string when none are given', async () => {
+    const { adapter } = await makeAdapter();
+
+    await adapter.send({ type: 'command', name: 'review' });
+
+    expect(client.session.command).toHaveBeenCalledWith({
+      sessionID: 'sess-1',
+      directory: '/tmp/repo',
+      command: 'review',
+      arguments: '',
+      model: undefined,
+    });
+  });
+
+  it('fails the turn when session.command resolves with an error envelope', async () => {
+    const { adapter, events } = await makeAdapter();
+    client.session.command.mockResolvedValueOnce({ error: { message: 'bad command' } } as never);
+    events.length = 0;
+
+    await adapter.send({ type: 'command', name: 'review', arguments: 'x' });
+
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(errors(events)[0].message).toContain('session.command failed');
+    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+  });
+
+  it('ignores a stale session.command failure once a newer turn has already been dispatched', async () => {
+    const { adapter, events } = await makeAdapter();
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    client.session.command.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }) as never,
+    );
+
+    void adapter.send({ type: 'command', name: 'first' });
+    // A newer turn (dispatched before the first command's HTTP response ever settles) now owns
+    // turnEpoch.
+    await adapter.send({ type: 'command', name: 'second' });
+    events.length = 0;
+
+    resolveFirst?.({ error: { message: 'stale failure' } });
+    await drained();
+    expect(errors(events)).toHaveLength(0);
+    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(false);
+  });
+});
+
+describe('OpenCodeAdapter shell-command dispatch', () => {
+  it('resolves the primary agent from app.agents and calls session.shell with it', async () => {
+    const { adapter, events } = await makeAdapter();
+    client.app.agents.mockReturnValueOnce({
+      data: [
+        { name: 'sub', mode: 'subagent' },
+        { name: 'build', mode: 'primary' },
+      ],
+    });
+    events.length = 0;
+
+    await adapter.send({ type: 'shell-command', command: 'ls' });
+
+    expect(client.app.agents).toHaveBeenCalledWith({ directory: '/tmp/repo' });
+    expect(client.session.shell).toHaveBeenCalledWith({
+      sessionID: 'sess-1',
+      directory: '/tmp/repo',
+      agent: 'build',
+      command: 'ls',
+    });
+    expect(events.some((e) => e.type === 'status' && e.status === 'running')).toBe(true);
+  });
+
+  it('settles the turn via the HTTP-resolve backstop when no session.idle ever arrives', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+
+    await adapter.send({ type: 'shell-command', command: 'ls' });
+
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+    });
+    expect(stops(events)).toHaveLength(1);
+    expect(stops(events)[0].stopReason).toBe('end_turn');
+  });
+
+  it('does not double-settle when session.idle arrives before the HTTP-resolve backstop', async () => {
+    const { adapter, events } = await makeAdapter();
+    let resolveShell: ((value: unknown) => void) | undefined;
+    client.session.shell.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveShell = resolve;
+        }) as never,
+    );
+    events.length = 0;
+
+    await adapter.send({ type: 'shell-command', command: 'ls' });
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events)).toHaveLength(1);
+    });
+
+    // The subprocess-bound response finally comes back after the stream already settled the turn.
+    resolveShell?.({ data: { info: {}, parts: [] } });
+    await drained();
+    expect(stops(events)).toHaveLength(1);
+  });
+
+  it('surfaces a SessionBusyError envelope as a turn failure', async () => {
+    const { adapter, events } = await makeAdapter();
+    client.session.shell.mockResolvedValueOnce({
+      error: { _tag: 'SessionBusyError', sessionID: 'sess-1', message: 'busy' },
+    } as never);
+    events.length = 0;
+
+    await adapter.send({ type: 'shell-command', command: 'ls' });
+
+    await vi.waitFor(() => {
+      expect(errors(events)).toHaveLength(1);
+    });
+    expect(errors(events)[0].message).toContain('session.shell failed');
+    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
   });
 });
