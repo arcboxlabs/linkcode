@@ -88,6 +88,7 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     originType: record.origin.type,
     originHistoryId: record.origin.type === 'imported' ? record.origin.historyId : null,
     originImportedAt: record.origin.type === 'imported' ? record.origin.importedAt : null,
+    createdVia: record.createdVia ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -107,6 +108,7 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
             importedAt: row.originImportedAt,
           }
         : { type: 'created' },
+    createdVia: row.createdVia ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     runs: runRows.map((run) => ({

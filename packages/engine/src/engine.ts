@@ -222,6 +222,7 @@ export class Engine {
             kind: opts.kind,
             cwd: opts.cwd,
             origin: { type: 'created' },
+            createdVia: opts.createdVia,
             createdAt: now,
             updatedAt: now,
             runs: [{ startedAt: now }],
@@ -821,6 +822,7 @@ export class Engine {
       updatedAt: record.updatedAt,
       title: record.title,
       origin: record.origin,
+      createdVia: record.createdVia,
       historyId: latestHistoryId(record),
     };
   }
