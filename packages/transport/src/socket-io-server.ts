@@ -78,6 +78,9 @@ export async function createSocketIoServer(opts: SocketIoServerOptions): Promise
       },
     },
     destroyUpgrade: previewRoutes === undefined,
+    // Default is 1 MB, too small for a base64 image attachment (schema's
+    // MAX_ATTACHMENT_IMAGE_BASE64_LENGTH is ~10.7 MB) plus JSON envelope overhead.
+    maxHttpBufferSize: 16 * 1024 * 1024,
   });
   const connections = new Listeners<Transport>();
 

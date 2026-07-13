@@ -61,3 +61,7 @@ export type ContentBlock = z.infer<typeof ContentBlockSchema>;
 export function textBlock(text: string): ContentBlock {
   return { type: 'text', text };
 }
+
+/** Hard cap on an image/audio/resource block's base64 payload (it crosses the JSON wire and is
+ * held in daemon memory before being forwarded to the adapter). ~8 MB raw. */
+export const MAX_ATTACHMENT_IMAGE_BASE64_LENGTH = Math.ceil((8 * 1024 * 1024 * 4) / 3);
