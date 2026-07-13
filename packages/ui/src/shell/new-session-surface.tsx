@@ -1,4 +1,10 @@
-import type { AgentKind, SessionModeId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  AgentKind,
+  ContentBlock,
+  SessionModeId,
+  WorkspaceId,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -44,7 +50,7 @@ export interface NewSessionSubmission {
   workspaceId: WorkspaceId;
   model?: string;
   modeId?: SessionModeId;
-  prompt: string;
+  content: ContentBlock[];
 }
 
 export interface NewSessionSurfaceProps {
@@ -110,7 +116,7 @@ export function NewSessionSurface({
     selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   const isChatSelected = selected != null && selected === chatWorkspace;
 
-  function handleSend(text: string): void {
+  function handleSend(content: ContentBlock[]): void {
     if (!selected) return;
     // The model rides only when it belongs to the submitted provider — mirroring what the
     // composer's trigger displays (a pick made under another provider shows as "Default").
@@ -124,7 +130,7 @@ export function NewSessionSurface({
       workspaceId: selected.workspaceId,
       model: validModel,
       modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
-      prompt: text,
+      content,
     })
       .catch(noop)
       .finally(() => setPending(false));

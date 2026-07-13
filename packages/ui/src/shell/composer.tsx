@@ -1,10 +1,21 @@
-import type { AgentKind, ApprovalPolicyState, EffortLevel, SessionMode } from '@linkcode/schema';
+import type {
+  AgentKind,
+  ApprovalPolicyState,
+  ContentBlock,
+  EffortLevel,
+  SessionMode,
+} from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Command } from 'coss-ui/components/command';
+import { toastManager } from 'coss-ui/components/toast';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { ChatAttachment } from '../chat/attachments';
+import { Attachments } from '../chat/attachments';
 import {
   PromptInput,
   PromptInputFooter,
@@ -13,9 +24,18 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { preventBaseUIHandler } from '../lib/base-ui';
+import { cn } from '../lib/cn';
+import { AGENT_ATTACHMENT_SUPPORT } from './agent-attachments';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
+import type { ComposerAttachment } from './composer-attachments';
+import {
+  failedComposerAttachment,
+  MAX_ATTACHMENT_TOTAL_BYTES,
+  pendingComposerAttachment,
+  readImageFileAsComposerAttachment,
+} from './composer-attachments';
 import type {
   ComposerCommandEntry,
   ComposerCommandSource,
@@ -76,7 +96,7 @@ export interface ComposerProps {
   /** The reasoning-effort level the session is running at, reflected from `effort-update`; same
    * placeholder rule as `currentModel`. */
   currentEffort?: EffortLevel | null;
-  onSend: (text: string) => void;
+  onSend: (content: ContentBlock[]) => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
@@ -135,6 +155,10 @@ export function Composer({
   const [plusCommandStart, setPlusCommandStart] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingCaretRef = useRef<number | null>(null);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounterRef = useRef(0);
+  const attachmentsSupported = agentKind ? Boolean(AGENT_ATTACHMENT_SUPPORT[agentKind]) : false;
 
   const rawTrigger = computeTextTrigger(value, caret);
   const textTrigger = rawTrigger && rawTrigger.start !== dismissedStart ? rawTrigger : null;
@@ -222,12 +246,108 @@ export function Composer({
 
   function submit(): void {
     const text = value.trim();
-    if (!text || disabled || sendBlocked) return;
-    onSend(text);
+    const readyAttachments = attachments.filter(
+      (attachment): attachment is ComposerAttachment & { block: ContentBlock } =>
+        attachment.status === 'ready' && attachment.block !== undefined,
+    );
+    const hasPendingAttachment = attachments.some((attachment) => attachment.status === 'pending');
+    if (
+      (!text && readyAttachments.length === 0) ||
+      disabled ||
+      sendBlocked ||
+      hasPendingAttachment
+    ) {
+      return;
+    }
+    const content: ContentBlock[] = [
+      ...(text ? [textBlock(text)] : []),
+      ...readyAttachments.map((attachment) => attachment.block),
+    ];
+    onSend(content);
     setValue('');
+    setAttachments([]);
     setCaret(0);
     setDismissedStart(null);
     setPlusCommandStart(null);
+  }
+
+  function ingestFiles(files: File[]): void {
+    if (disabled) return;
+    if (!attachmentsSupported) {
+      if (files.length > 0) {
+        toastManager.add({ title: t('attachmentUnsupportedAgent'), type: 'error' });
+      }
+      return;
+    }
+    let total = attachments.reduce((sum, attachment) => sum + (attachment.sizeBytes ?? 0), 0);
+    for (const file of files) {
+      if (total + file.size > MAX_ATTACHMENT_TOTAL_BYTES) {
+        toastManager.add({ title: t('attachmentTooLarge'), type: 'error' });
+        continue;
+      }
+      total += file.size;
+      const pending = pendingComposerAttachment(file);
+      setAttachments((prev) => [...prev, pending]);
+      void readImageFileAsComposerAttachment(file, {
+        readFailed: t('attachmentReadFailed'),
+        tooLarge: t('attachmentTooLarge'),
+        unsupportedType: t('attachmentUnsupportedType'),
+      })
+        .then((ready) => {
+          setAttachments((prev) =>
+            prev.map((attachment) => (attachment.id === pending.id ? ready : attachment)),
+          );
+        })
+        .catch((err: unknown) => {
+          const message = extractErrorMessage(err) ?? t('attachmentReadFailed');
+          setAttachments((prev) =>
+            prev.map((attachment) =>
+              attachment.id === pending.id ? failedComposerAttachment(file, message) : attachment,
+            ),
+          );
+          toastManager.add({ title: message, type: 'error' });
+        });
+    }
+  }
+
+  function handleRemoveAttachment(attachment: ChatAttachment): void {
+    setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+  }
+
+  function onAttachmentDragEnter(e: React.DragEvent): void {
+    if (disabled) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDraggingOver(true);
+  }
+
+  function onAttachmentDragOver(e: React.DragEvent): void {
+    if (disabled) return;
+    e.preventDefault();
+  }
+
+  function onAttachmentDragLeave(e: React.DragEvent): void {
+    e.preventDefault();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDraggingOver(false);
+  }
+
+  function onAttachmentDrop(e: React.DragEvent): void {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDraggingOver(false);
+    if (disabled) return;
+    ingestFiles(Array.from(e.dataTransfer.files));
+  }
+
+  function onTextareaPaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
+    if (disabled) return;
+    const files = Array.from(e.clipboardData.files).filter((file) =>
+      file.type.startsWith('image/'),
+    );
+    if (files.length === 0) return;
+    e.preventDefault();
+    ingestFiles(files);
   }
 
   function setValueAndCaret(nextValue: string, nextCaret: number): void {
@@ -373,7 +493,16 @@ export function Composer({
   const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
 
   return (
-    <div className="relative px-4 pb-4">
+    <div
+      className={cn(
+        'relative px-4 pb-4',
+        isDraggingOver && 'outline-2 outline-primary outline-dashed -outline-offset-2 rounded-2xl',
+      )}
+      onDragEnter={onAttachmentDragEnter}
+      onDragLeave={onAttachmentDragLeave}
+      onDragOver={onAttachmentDragOver}
+      onDrop={onAttachmentDrop}
+    >
       <div className="mx-auto max-w-3xl">
         <div className="relative isolate">
           <Command
@@ -394,6 +523,14 @@ export function Composer({
               <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
             ) : null}
             <PromptInput onSubmit={submit} className="relative z-10">
+              {attachments.length > 0 ? (
+                <Attachments
+                  attachments={attachments}
+                  className="w-full px-3.5 pt-3"
+                  variant="grid"
+                  onRemove={handleRemoveAttachment}
+                />
+              ) : null}
               <AutocompletePrimitive.Input
                 render={
                   <PromptInputTextarea
@@ -412,6 +549,7 @@ export function Composer({
                       updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
                     }
                     onKeyDown={onKeyDown}
+                    onPaste={onTextareaPaste}
                   />
                 }
               />
@@ -456,7 +594,13 @@ export function Composer({
                 />
                 <PromptInputSubmit
                   aria-label={isRunning ? t('stop') : t('send')}
-                  disabled={!isRunning && (disabled || sendBlocked || value.trim().length === 0)}
+                  disabled={
+                    !isRunning &&
+                    (disabled ||
+                      sendBlocked ||
+                      (value.trim().length === 0 && attachments.length === 0) ||
+                      attachments.some((attachment) => attachment.status === 'pending'))
+                  }
                   onStop={onStop}
                   status={isRunning ? 'streaming' : 'ready'}
                   className="rounded-full"

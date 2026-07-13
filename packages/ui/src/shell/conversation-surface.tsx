@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel, QuestionOutcome } from '@linkcode/schema';
+import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@linkcode/schema';
 import { useRef } from 'react';
 import { ArtifactHostActionsProvider } from '../chat/artifacts';
 import type { PermissionDecision } from '../chat/conversation-prompts';
@@ -26,7 +26,7 @@ export interface ConversationSurfaceProps {
   className?: string;
   conversationClassName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
-  onSendPrompt: (text: string) => void;
+  onSendPrompt: (content: ContentBlock[]) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;

@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  ContentBlock,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -69,7 +70,7 @@ export interface ShellFrameProps
   onSubmitDraft: (submission: NewSessionSubmission) => Promise<void>;
   /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
-  onSendPrompt: (text: string) => void;
+  onSendPrompt: (content: ContentBlock[]) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;

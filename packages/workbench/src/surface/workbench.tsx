@@ -1,5 +1,6 @@
 import type { Conversation } from '@linkcode/client-core';
 import type {
+  ContentBlock,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -11,7 +12,6 @@ import {
   archiveWorkspace,
   cancelTurn,
   hostArtifact,
-  promptText,
   registerWorkspace,
   respondPermission,
   respondQuestion,
@@ -118,14 +118,14 @@ function WorkbenchSessionSurface({
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
   const searchShortcut = useKeyboardShortcutLabel('workbench.command-palette');
-  const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
   const questionMutation = useMutation(respondQuestion, { onError });
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  // Workflow-mode and approval-policy switches ride the generic input op; each reflects back via
-  // its own session event (current-mode-update / approval-policy-update).
+  // Prompts (with any composer attachments) and workflow-mode/approval-policy switches all ride
+  // this generic input op; each reflects back via its own session event (user-message /
+  // current-mode-update / approval-policy-update).
   const inputMutation = useMutation(sendInput, { onError });
   const [permissionDecisions, setPermissionDecisions] = useState(
     () => new Map<string, PermissionDecision>(),
@@ -202,10 +202,12 @@ function WorkbenchSessionSurface({
     previewExpandedKeys,
   ]);
 
-  function handleSend(text: string): void {
+  function handleSend(content: ContentBlock[]): void {
     if (!sessions.activeId) return;
     onClearError();
-    void promptMutation.trigger({ sessionId: sessions.activeId, text }).catch(noop);
+    void inputMutation
+      .trigger({ sessionId: sessions.activeId, input: { type: 'prompt', content } })
+      .catch(noop);
   }
 
   function handleStopTurn(): void {
@@ -225,7 +227,9 @@ function WorkbenchSessionSurface({
     });
     rememberNewSessionDefaults(submission.kind, submission.workspaceId);
     // The first prompt rides behind the started session, like any conversation send.
-    void promptMutation.trigger({ sessionId, text: submission.prompt }).catch(noop);
+    void inputMutation
+      .trigger({ sessionId, input: { type: 'prompt', content: submission.content } })
+      .catch(noop);
   }
 
   async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
