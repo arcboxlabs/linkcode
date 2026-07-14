@@ -109,6 +109,7 @@ function matchesQuery(
 }
 
 export function buildComposerCommandGroups({
+  attachEnabled = true,
   availableModes,
   commandSource,
   currentModeId,
@@ -118,6 +119,9 @@ export function buildComposerCommandGroups({
   plusQuery,
   textTrigger,
 }: {
+  /** Whether the active agent supports image attachments (`AGENT_ATTACHMENT_SUPPORT`) — the
+   * "attach" entry stays visible either way, but disables when the answer is no. */
+  attachEnabled?: boolean;
   availableModes: SessionMode[];
   commandSource: ComposerCommandSource | null;
   currentModeId: string | null;
@@ -158,7 +162,7 @@ export function buildComposerCommandGroups({
   // other providers can contribute composer commands.
   const commandItemCandidates: ActionCommandEntry[] = [
     {
-      disabled: true,
+      disabled: !attachEnabled,
       icon: PaperclipIcon,
       id: 'attach',
       kind: 'action',

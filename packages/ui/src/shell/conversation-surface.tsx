@@ -7,6 +7,7 @@ import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
 import type { ComposerHandle } from './composer';
 import { Composer } from './composer';
+import type { ComposerAttachment } from './composer-attachments';
 import { ConversationPromptDock } from './conversation-prompt-dock';
 
 export interface ConversationSurfaceProps {
@@ -37,6 +38,10 @@ export interface ConversationSurfaceProps {
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
   onOpenPreviewUrl?: (url: string) => void;
+  /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only
+   * (built by combining the system dialog with a daemon file read) — absent on webview, where
+   * the composer's "Attach" action falls back to a plain `<input type="file">`. */
+  onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
@@ -66,6 +71,7 @@ export function ConversationSurface({
   onOpenFileArtifact,
   onHostArtifact,
   onOpenPreviewUrl,
+  onPickAttachmentFiles,
   onModeChange,
   onApprovalPolicyChange,
   onModelChange,
@@ -119,6 +125,7 @@ export function ConversationSurface({
         currentEffort={conversation.currentEffort}
         onSend={onSendPrompt}
         onStop={onStopTurn}
+        onPickAttachmentFiles={onPickAttachmentFiles}
         onModeChange={onModeChange}
         onApprovalPolicyChange={onApprovalPolicyChange}
         onModelChange={onModelChange}

@@ -12,6 +12,7 @@ import {
   archiveWorkspace,
   cancelTurn,
   hostArtifact,
+  readWorkspaceFile,
   registerWorkspace,
   respondPermission,
   respondQuestion,
@@ -21,12 +22,17 @@ import {
   updateWorkspace,
 } from '@linkcode/sdk';
 import type {
+  ComposerAttachment,
   NewSessionDraft,
   NewSessionSubmission,
   PermissionDecision,
   ThreadGroupViewModel,
 } from '@linkcode/ui';
-import { useKeyboardShortcutLabel } from '@linkcode/ui';
+import {
+  attachmentFromReadFile,
+  failedComposerAttachmentFromPath,
+  useKeyboardShortcutLabel,
+} from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -117,6 +123,7 @@ function WorkbenchSessionSurface({
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
+  const tComposer = useTranslations('workbench.composer');
   const searchShortcut = useKeyboardShortcutLabel('workbench.command-palette');
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
@@ -235,6 +242,24 @@ function WorkbenchSessionSurface({
   async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
     const { data } = await hostArtifact({ content, mimeType });
     return { url: data.url };
+  }
+
+  /** Reads a natively-picked attachment path via the daemon's file-read op — the counterpart to
+   * the drag-and-drop/paste path, which reads bytes client-side and never touches the daemon.
+   * `cwd` only matters for a relative `path`; the picker always yields an absolute one. */
+  async function handleReadAttachmentFile(path: string): Promise<ComposerAttachment> {
+    try {
+      const { data } = await readWorkspaceFile({ cwd: '/', path });
+      return attachmentFromReadFile(data, {
+        tooLarge: tComposer('attachmentTooLarge'),
+        unsupportedType: tComposer('attachmentUnsupportedType'),
+      });
+    } catch (err) {
+      return failedComposerAttachmentFromPath(
+        path,
+        extractErrorMessage(err) ?? tComposer('attachmentReadFailed'),
+      );
+    }
   }
 
   function handleModeChange(modeId: string): Promise<void> {
@@ -445,6 +470,7 @@ function WorkbenchSessionSurface({
       onRespondPermission={handleRespond}
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
+      onReadAttachmentFile={handleReadAttachmentFile}
       onOpenSearch={openCommandPalette}
       searchShortcut={searchShortcut}
       TerminalBlockComponent={RuntimeTerminalBlock}

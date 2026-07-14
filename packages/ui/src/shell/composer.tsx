@@ -117,6 +117,9 @@ export interface ComposerProps {
   onProviderChange?: (provider: AgentKind) => Promise<void>;
   /** Strip rendered at the bottom of the composer card (e.g. the new-session workspace bar). */
   contextBar?: React.ReactNode;
+  /** Opens a native file picker and returns the picked images, ready to stage. Absent (webview):
+   * the "Attach" action falls back to a plain `<input type="file">`. */
+  onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
 }
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
@@ -146,6 +149,7 @@ export function Composer({
   runtimeCues,
   onProviderChange,
   contextBar,
+  onPickAttachmentFiles,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const [value, setValue] = useState('');
@@ -158,6 +162,7 @@ export function Composer({
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentsSupported = agentKind ? Boolean(AGENT_ATTACHMENT_SUPPORT[agentKind]) : false;
 
   const rawTrigger = computeTextTrigger(value, caret);
@@ -189,6 +194,7 @@ export function Composer({
   const commandGroups = useMemo(
     () =>
       buildComposerCommandGroups({
+        attachEnabled: attachmentsSupported,
         availableModes: workflowModes,
         commandSource,
         currentModeId,
@@ -203,6 +209,7 @@ export function Composer({
         textTrigger,
       }),
     [
+      attachmentsSupported,
       workflowModes,
       commandSource,
       currentModeId,
@@ -350,6 +357,51 @@ export function Composer({
     ingestFiles(files);
   }
 
+  /** Merges already-resolved attachments (from the native picker) into the staged tray, applying
+   * the same aggregate cap drag-and-drop enforces — the picker's own per-file checks (type/size)
+   * already ran in `attachmentFromReadFile`, so only the running total needs rechecking here. */
+  function mergeAttachments(picked: ComposerAttachment[]): void {
+    if (picked.length === 0) return;
+    let total = attachments.reduce((sum, attachment) => sum + (attachment.sizeBytes ?? 0), 0);
+    const merged = picked.map((attachment) => {
+      if (attachment.status !== 'ready') {
+        if (attachment.errorMessage) {
+          toastManager.add({ title: attachment.errorMessage, type: 'error' });
+        }
+        return attachment;
+      }
+      if (total + (attachment.sizeBytes ?? 0) > MAX_ATTACHMENT_TOTAL_BYTES) {
+        toastManager.add({ title: t('attachmentTooLarge'), type: 'error' });
+        return { ...attachment, status: 'failed' as const, errorMessage: t('attachmentTooLarge') };
+      }
+      total += attachment.sizeBytes ?? 0;
+      return attachment;
+    });
+    setAttachments((prev) => [...prev, ...merged]);
+  }
+
+  function triggerAttachPicker(): void {
+    if (disabled || !attachmentsSupported) return;
+    if (onPickAttachmentFiles) {
+      void onPickAttachmentFiles()
+        .then(mergeAttachments)
+        .catch((err: unknown) => {
+          toastManager.add({
+            title: extractErrorMessage(err) ?? t('attachmentReadFailed'),
+            type: 'error',
+          });
+        });
+      return;
+    }
+    fileInputRef.current?.click();
+  }
+
+  function onFileInputChange(e: React.ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    ingestFiles(files);
+  }
+
   function setValueAndCaret(nextValue: string, nextCaret: number): void {
     setValue(nextValue);
     setCaret(nextCaret);
@@ -409,6 +461,7 @@ export function Composer({
 
     if (entry.kind === 'action') {
       if (entry.id === 'mention-command') selectMentionCommand();
+      if (entry.id === 'attach') triggerAttachPicker();
       return;
     }
 
@@ -503,6 +556,18 @@ export function Composer({
       onDragOver={onAttachmentDragOver}
       onDrop={onAttachmentDrop}
     >
+      {/* Webview fallback for "Attach" when no onPickAttachmentFiles prop supplies a native
+          dialog — desktop always provides one, so this element never activates there. */}
+      <input
+        ref={fileInputRef}
+        // Keep in sync with SUPPORTED_IMAGE_MIME_TYPES in composer-attachments.ts — the lint rule
+        // for this attribute requires a static literal, so it can't be derived at render time.
+        accept="image/jpeg, image/png, image/gif, image/webp"
+        className="hidden"
+        multiple
+        type="file"
+        onChange={onFileInputChange}
+      />
       <div className="mx-auto max-w-3xl">
         <div className="relative isolate">
           <Command

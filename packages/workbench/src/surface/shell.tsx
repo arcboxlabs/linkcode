@@ -1,5 +1,5 @@
 import type { TokenUsage } from '@linkcode/schema';
-import type { ShellFrameProps } from '@linkcode/ui';
+import type { ComposerAttachment, ShellFrameProps } from '@linkcode/ui';
 import { ShellFrame, TitleStrip } from '@linkcode/ui';
 
 export interface WorkbenchShellHeader {
@@ -20,15 +20,21 @@ export interface WorkbenchShellNavigation {
 export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
   navigation: WorkbenchShellNavigation;
+  /** Reads a natively-picked attachment path via the daemon. Only a shell that also supplies its
+   * own native picker trigger (desktop) can do anything with this — the bare fallback shell has
+   * no picker to pair it with, so it's dropped here rather than forwarded to `ShellFrame`. */
+  onReadAttachmentFile?: (path: string) => Promise<ComposerAttachment>;
 }
 
 export type WorkbenchShellComponent = (props: WorkbenchShellProps) => React.ReactNode;
 
-// `navigation` is deliberately dropped here: the bare fallback shell renders no chrome controls —
-// app shells (the desktop chrome, the webview title strip) own the ‹ › buttons.
+// `navigation` and `onReadAttachmentFile` are deliberately dropped here: the bare fallback shell
+// renders no chrome controls and has no native picker to pair a file read with — app shells (the
+// desktop chrome, the webview title strip) own the ‹ › buttons and any picker composition.
 export function DefaultWorkbenchShell({
   header,
   navigation,
+  onReadAttachmentFile,
   ...props
 }: WorkbenchShellProps): React.ReactNode {
   return <ShellFrame {...props} header={<DefaultTitleStrip header={header} />} />;

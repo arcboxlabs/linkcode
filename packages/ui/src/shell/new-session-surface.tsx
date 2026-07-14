@@ -34,6 +34,7 @@ import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import { Composer } from './composer';
+import type { ComposerAttachment } from './composer-attachments';
 import { repositoryLabel } from './repository-label';
 import { DEFAULT_MODE_ID } from './session-modes';
 
@@ -79,6 +80,9 @@ export interface NewSessionSurfaceProps {
   /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only —
+   * absent on webview, where the composer's "Attach" action falls back to `<input type="file">`. */
+  onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
 }
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
@@ -103,6 +107,7 @@ export function NewSessionSurface({
   onSubmit,
   onPickDirectory,
   onRegisterWorkspace,
+  onPickAttachmentFiles,
 }: NewSessionSurfaceProps): React.ReactNode {
   const t = useTranslations('workbench.newSession');
   const [provider, setProvider] = useState(draft.initialProvider);
@@ -192,6 +197,7 @@ export function NewSessionSurface({
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
             onStop={noop}
+            onPickAttachmentFiles={onPickAttachmentFiles}
             onModeChange={handleModeChange}
             onModelChange={handleModelChange}
             onProviderChange={handleProviderChange}

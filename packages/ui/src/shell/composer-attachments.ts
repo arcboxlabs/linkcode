@@ -20,8 +20,12 @@ export const MAX_ATTACHMENT_IMAGE_BYTES = 8 * 1024 * 1024;
  * a wire-level one. */
 export const MAX_ATTACHMENT_TOTAL_BYTES = 12 * 1024 * 1024;
 
+export function isSupportedImageMimeType(mimeType: string | undefined): mimeType is string {
+  return mimeType !== undefined && SUPPORTED_IMAGE_MIME_TYPE_SET.has(mimeType);
+}
+
 export function isSupportedImageFile(file: File): boolean {
-  return SUPPORTED_IMAGE_MIME_TYPE_SET.has(file.type);
+  return isSupportedImageMimeType(file.type);
 }
 
 /** A staged composer attachment: the presentational `ChatAttachment` plus the wire payload once
@@ -94,6 +98,66 @@ export function failedComposerAttachment(file: File, errorMessage: string): Comp
     mimeType: file.type,
     name: file.name,
     sizeBytes: file.size,
+    status: 'failed',
+  };
+}
+
+/** The shape of a daemon `file.read` result relevant here — a structural subset of
+ * `@linkcode/schema`'s `WorkspaceFile`, kept local so this stays a plain data shape rather than
+ * pulling in the whole schema type for four fields. */
+export interface ReadAttachmentFileResult {
+  path: string;
+  content: string;
+  encoding: 'utf8' | 'base64';
+  mimeType?: string;
+  size: number;
+}
+
+const PATH_SEPARATOR_RE = /[/\\]/;
+
+function fileNameFromPath(path: string): string {
+  return path.split(PATH_SEPARATOR_RE).pop() ?? path;
+}
+
+/** Converts a natively-picked file's daemon-read bytes into a staged attachment ready to send —
+ * the counterpart to `readImageFileAsComposerAttachment` for files acquired via the "Attach"
+ * picker (a path) rather than drag-and-drop/paste (a `File`). Synchronous: the bytes are already
+ * in hand, no `FileReader` round trip needed. */
+export function attachmentFromReadFile(
+  file: ReadAttachmentFileResult,
+  errors: { unsupportedType: string; tooLarge: string },
+): ComposerAttachment {
+  const name = fileNameFromPath(file.path);
+  if (file.encoding !== 'base64' || !isSupportedImageMimeType(file.mimeType)) {
+    throw new Error(errors.unsupportedType);
+  }
+  if (file.size > MAX_ATTACHMENT_IMAGE_BYTES) throw new Error(errors.tooLarge);
+  const mimeType = file.mimeType;
+
+  return {
+    id: `${file.path}-${file.size}`,
+    kind: 'image',
+    mimeType,
+    name,
+    sizeBytes: file.size,
+    status: 'ready',
+    url: `data:${mimeType};base64,${file.content}`,
+    block: { type: 'image', data: file.content, mimeType },
+  };
+}
+
+/** Failure counterpart to `attachmentFromReadFile`, for when the daemon read itself throws
+ * (oversized/missing/unreadable) before a `ReadAttachmentFileResult` even exists. */
+export function failedComposerAttachmentFromPath(
+  path: string,
+  errorMessage: string,
+): ComposerAttachment {
+  const name = fileNameFromPath(path);
+  return {
+    id: path,
+    errorMessage,
+    kind: 'image',
+    name,
     status: 'failed',
   };
 }
