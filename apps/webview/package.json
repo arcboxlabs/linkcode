@@ -38,6 +38,7 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
+    "@iconify-json/material-icon-theme": "catalog:",
     "@proj-airi/lobe-icons": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",
