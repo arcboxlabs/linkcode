@@ -26,10 +26,14 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
         const result = await dialog.showOpenDialog(win, {
           title: opts?.title,
           defaultPath: opts?.directory ? await ensureDefaultPickerDirectory() : undefined,
-          properties: [opts?.directory ? 'openDirectory' : 'openFile'],
+          filters: opts?.directory ? undefined : opts?.filters,
+          properties: [
+            opts?.directory ? 'openDirectory' : 'openFile',
+            ...(opts?.directory ? [] : opts?.multiple ? (['multiSelections'] as const) : []),
+          ],
         });
         if (result.canceled || result.filePaths.length === 0) return null;
-        return result.filePaths[0];
+        return result.filePaths;
       },
     },
     app: {

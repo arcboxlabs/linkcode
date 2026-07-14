@@ -263,7 +263,10 @@ export function DesktopShell({
   });
 
   const pickDirectory = useCallback(
-    () => systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true }),
+    () =>
+      systemBridge.fs
+        .pickFile({ title: 'Choose working folder', directory: true })
+        .then((paths) => paths?.[0] ?? null),
     [systemBridge],
   );
 
