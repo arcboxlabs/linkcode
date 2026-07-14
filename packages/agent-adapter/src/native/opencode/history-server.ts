@@ -1,14 +1,20 @@
 import { mkdirSync } from 'node:fs';
-import net from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { allocatePort } from '@linkcode/common/node';
 import crossSpawn from 'cross-spawn';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /** Startup output kept for the failure message when the server never reports readiness. */
 const STARTUP_OUTPUT_CAP = 8192;
-/** The server's readiness line: `opencode server listening on http://127.0.0.1:<port>`. */
-const RE_LISTENING = /listening on\s+(https?:\/\/\S+)/;
+/** Rolling window the readiness regex runs over — a couple of lines is plenty for the readiness
+ * line, and a bounded window (unlike a capped-then-frozen buffer) cannot stop matching just
+ * because a chatty startup produced a lot of output first. */
+const READINESS_WINDOW = 512;
+/** The server's readiness line: `opencode server listening on http://127.0.0.1:<port>`. The
+ * trailing newline is required so a URL split across chunks can't match on its half-arrived
+ * prefix. */
+const RE_LISTENING = /listening on\s+(https?:\/\/\S+)\s*[\r\n]/;
 
 /** The slice of `ChildProcess` this manager drives — a structural type so tests can hand in a
  * plain fake instead of force-casting through `unknown`. */
@@ -54,18 +60,35 @@ export interface OpencodeHistoryServerLike {
 interface ServerGeneration {
   proc: HistoryServerProcess;
   ready: Promise<string>;
-  exited: boolean;
+}
+
+/** Exit is read off the process itself — both fields stay null until it is truly gone, so there
+ * is no shadow flag to drift out of sync with reality. */
+function processExited(proc: HistoryServerProcess): boolean {
+  return proc.exitCode !== null || proc.signalCode !== null;
+}
+
+/** A startup-window death, as opposed to a timeout or spawn failure — the one failure mode worth
+ * one automatic retry, because the pre-allocated port can be stolen between probe and bind. */
+class StartupExitError extends Error {
+  override name = 'StartupExitError';
 }
 
 /**
  * Daemon-shared `opencode serve` for history reads (CODE-171). History `list`/`read` are served to
  * never-started adapter instances (`HistoryService` constructs one per call via the factory), so
  * the server backing them cannot belong to any live session — it is a lazily-spawned, idle-reaped
- * process shared across all history calls. Live sessions keep their own per-session SDK server;
- * consolidating both onto one server (the full paseo model) is a deliberate non-goal here.
+ * process shared across all history calls. Live sessions keep their own per-session SDK server.
  *
  * The server is multi-tenant: history calls carry no `directory`, and the neutral-cwd instance
  * lists and reads sessions across every project (verified live on opencode 1.17.11).
+ *
+ * Scope note for the eventual paseo-style consolidation (live sessions sharing this server,
+ * CODE-140): `withServer`'s callback-scoped single-shot contract deliberately cannot express what
+ * live sessions need — a session-lifetime acquire/release handle plus a "generation rotated,
+ * reconnect" signal after a crash respawn. Consolidation means REWRITING this class's public
+ * interface, not extending it; do not try to squeeze a live session into one long `withServer`
+ * call.
  */
 export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   private readonly spawnServer: (args: { port: number; cwd: string }) => HistoryServerProcess;
@@ -77,16 +100,25 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
 
   private current: ServerGeneration | null = null;
   private startPromise: Promise<string> | null = null;
+  /** In-flight graceful shutdown; a new spawn awaits it so an idle reap racing a fresh call can
+   * never briefly run two servers. */
+  private stopping: Promise<void> | null = null;
   private inFlight = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private exitHookInstalled = false;
+  /** Installed ONCE for the manager's lifetime and never removed: it reads `current` dynamically,
+   * so one registration serves every generation. (Removing it per-generation is how an old
+   * generation's exit once stripped the NEW generation's cleanup — the shared function reference
+   * made `removeListener` blind to which registration it was deleting — orphaning the server on
+   * daemon exit.) Process 'exit' handlers cannot wait; SIGKILL is the only reliable cleanup left. */
   private readonly onProcessExit = (): void => {
-    // Process 'exit' handlers cannot wait; SIGKILL is the only reliable cleanup left.
-    this.current?.proc.kill('SIGKILL');
+    const proc = this.current?.proc;
+    if (proc && !processExited(proc)) proc.kill('SIGKILL');
   };
 
   constructor(options: OpencodeHistoryServerOptions = {}) {
     this.spawnServer = options.spawnServer ?? defaultSpawnServer;
-    this.allocatePort = options.allocatePort ?? findAvailablePort;
+    this.allocatePort = options.allocatePort ?? allocatePort;
     this.neutralCwd = options.neutralCwd ?? join(homedir(), '.linkcode', 'opencode-history');
     this.idleMs = options.idleMs ?? 60000;
     this.readyTimeoutMs = options.readyTimeoutMs ?? 30000;
@@ -113,13 +145,16 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
     const generation = this.current;
     this.current = null;
     this.startPromise = null;
-    if (!generation || generation.exited) return;
-    process.removeListener('exit', this.onProcessExit);
-    await terminate(generation.proc, this.shutdownGraceMs);
+    if (!generation || processExited(generation.proc)) return;
+    const stopping = terminate(generation.proc, this.shutdownGraceMs).finally(() => {
+      if (this.stopping === stopping) this.stopping = null;
+    });
+    this.stopping = stopping;
+    await stopping;
   }
 
   private async ensureRunning(): Promise<string> {
-    if (this.current && !this.current.exited) return this.current.ready;
+    if (this.current && !processExited(this.current.proc)) return this.current.ready;
     if (this.startPromise) return this.startPromise;
     this.startPromise = this.start().finally(() => {
       this.startPromise = null;
@@ -128,16 +163,31 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   }
 
   private async start(): Promise<string> {
-    const port = await this.allocatePort();
+    // An idle reap may still be inside its SIGTERM grace window; overlapping it would briefly run
+    // two servers and waste a full respawn on what should be a fast reuse.
+    if (this.stopping) await this.stopping;
     mkdirSync(this.neutralCwd, { recursive: true });
+    try {
+      return await this.spawnGeneration();
+    } catch (err) {
+      // One retry with a fresh port: allocatePort is check-then-use, so the port can be stolen
+      // between probe and the child's bind — which surfaces as an immediate startup-window exit.
+      // A genuine config failure just fails once more with the same captured output.
+      if (err instanceof StartupExitError) return this.spawnGeneration();
+      throw err;
+    }
+  }
+
+  private async spawnGeneration(): Promise<string> {
+    const port = await this.allocatePort();
     const proc = this.spawnServer({ port, cwd: this.neutralCwd });
-    const generation: ServerGeneration = { proc, ready: Promise.resolve(''), exited: false };
-    generation.ready = this.awaitReadiness(generation);
+    const generation: ServerGeneration = { proc, ready: this.awaitReadiness(proc) };
     this.current = generation;
-    process.once('exit', this.onProcessExit);
+    if (!this.exitHookInstalled) {
+      this.exitHookInstalled = true;
+      process.once('exit', this.onProcessExit);
+    }
     proc.once('exit', () => {
-      generation.exited = true;
-      process.removeListener('exit', this.onProcessExit);
       // A crash (or the idle reap) retires this generation; the next call respawns fresh.
       if (this.current === generation) this.current = null;
     });
@@ -145,15 +195,18 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
       return await generation.ready;
     } catch (err) {
       if (this.current === generation) this.current = null;
-      if (!generation.exited) proc.kill('SIGKILL');
+      if (!processExited(proc)) proc.kill('SIGKILL');
       throw err;
     }
   }
 
-  private awaitReadiness(generation: ServerGeneration): Promise<string> {
-    const { proc } = generation;
+  private awaitReadiness(proc: HistoryServerProcess): Promise<string> {
     return new Promise<string>((resolve, reject) => {
+      /** Capped capture for failure messages only — readiness matching never depends on it. */
       let output = '';
+      /** Bounded rolling tail the readiness regex runs over; grows with every chunk regardless of
+       * how much came before, so verbose startup output cannot freeze detection. */
+      let tail = '';
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       // Listeners stay attached after settling (guarded by `settled`): success destroys the pipes
@@ -164,10 +217,11 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
         if (timer !== undefined) clearTimeout(timer);
         fn();
       };
-      const fail = (headline: string): void => {
+      const fail = (headline: string, startupExit = false): void => {
         settle(() => {
           const detail = output.trim();
-          reject(new Error(detail ? `${headline}\n${detail}` : headline));
+          const message = detail ? `${headline}\n${detail}` : headline;
+          reject(startupExit ? new StartupExitError(message) : new Error(message));
         });
       };
       timer = setTimeout(() => {
@@ -176,8 +230,10 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
       timer.unref();
       proc.stdout?.on('data', (chunk: Buffer) => {
         if (settled) return;
-        if (output.length < STARTUP_OUTPUT_CAP) output += chunk.toString();
-        const match = RE_LISTENING.exec(output);
+        const text = chunk.toString();
+        if (output.length < STARTUP_OUTPUT_CAP) output += text;
+        tail = (tail + text).slice(-READINESS_WINDOW);
+        const match = RE_LISTENING.exec(tail);
         if (!match) return;
         const url = match[1];
         settle(() => {
@@ -198,13 +254,13 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
         );
       });
       proc.once('exit', (code) => {
-        fail(`opencode: history server exited during startup (code ${code})`);
+        fail(`opencode: history server exited during startup (code ${code})`, true);
       });
     });
   }
 
   private armIdleTimer(): void {
-    if (!this.current || this.current.exited) return;
+    if (!this.current || processExited(this.current.proc)) return;
     this.clearIdleTimer();
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null;
@@ -234,7 +290,7 @@ function defaultSpawnServer(args: { port: number; cwd: string }): HistoryServerP
 }
 
 function terminate(proc: HistoryServerProcess, graceMs: number): Promise<void> {
-  if (proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve();
+  if (processExited(proc)) return Promise.resolve();
   return new Promise<void>((resolve) => {
     const killTimer = setTimeout(() => proc.kill('SIGKILL'), graceMs);
     killTimer.unref();
@@ -243,20 +299,6 @@ function terminate(proc: HistoryServerProcess, graceMs: number): Promise<void> {
       resolve();
     });
     proc.kill('SIGTERM');
-  });
-}
-
-function findAvailablePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      server.close(() => {
-        if (typeof address === 'object' && address) resolve(address.port);
-        else reject(new Error('opencode: failed to allocate a port for the history server'));
-      });
-    });
-    server.on('error', reject);
   });
 }
 

@@ -135,18 +135,51 @@ describe('OpencodeHistoryServer', () => {
     spawned[1].emitExit(0);
   });
 
-  it('fails the call with captured output when the server dies during startup, then retries fresh', async () => {
+  it('retries once with a fresh port when the server dies during startup (stolen-port race)', async () => {
+    const { manager, spawned, spawnArgs } = makeManager();
+    const call = manager.withServer((url) => Promise.resolve(url));
+    await vi.waitFor(() => expect(spawned).toHaveLength(1));
+    spawned[0].emitExit(1);
+    // The retry is internal to the same call, on a freshly allocated port.
+    await vi.waitFor(() => expect(spawned).toHaveLength(2));
+    expect(spawnArgs[1].port).not.toBe(spawnArgs[0].port);
+    spawned[1].emitReady(40002);
+    expect(await call).toBe('http://127.0.0.1:40002');
+    spawned[1].emitExit(0);
+  });
+
+  it('fails the call with captured output when both startup attempts die', async () => {
     const { manager, spawned } = makeManager();
     const failing = manager.withServer((url) => Promise.resolve(url));
     await vi.waitFor(() => expect(spawned).toHaveLength(1));
-    spawned[0].stderr.emit('data', Buffer.from('bad config\n'));
+    const rejection = expect(failing).rejects.toThrow(
+      /exited during startup \(code 1\)[\s\S]*bad config/,
+    );
     spawned[0].emitExit(1);
-    await expect(failing).rejects.toThrow(/exited during startup \(code 1\)[\s\S]*bad config/);
+    await vi.waitFor(() => expect(spawned).toHaveLength(2));
+    spawned[1].stderr.emit('data', Buffer.from('bad config\n'));
+    spawned[1].emitExit(1);
+    await rejection;
+  });
 
-    const retry = manager.withServer((url) => Promise.resolve(url));
+  it('a call arriving during the reap grace window waits out the termination, never double-spawning', async () => {
+    const { manager, spawned } = makeManager({ idleMs: 1000 });
+    const first = manager.withServer((url) => Promise.resolve(url));
+    await vi.waitFor(() => expect(spawned).toHaveLength(1));
+    spawned[0].emitReady(40001);
+    await first;
+    // Idle reap fires: SIGTERM sent, old server still inside its grace window.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(spawned[0].signals).toContain('SIGTERM');
+
+    const during = manager.withServer((url) => Promise.resolve(url));
+    // No second spawn while the old generation is still terminating.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(spawned).toHaveLength(1);
+    spawned[0].emitExit(null, 'SIGTERM');
     await vi.waitFor(() => expect(spawned).toHaveLength(2));
     spawned[1].emitReady(40002);
-    expect(await retry).toBe('http://127.0.0.1:40002');
+    expect(await during).toBe('http://127.0.0.1:40002');
     spawned[1].emitExit(0);
   });
 
