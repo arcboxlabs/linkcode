@@ -51,6 +51,11 @@ process.on('unhandledRejection', (reason) => {
  * they spawn CLI subprocesses and hold credentials, so they cannot run inside a browser tab.
  */
 async function main(): Promise<void> {
+  // Resolved before anything touches state paths — including the subcommands below, which read
+  // hq.json/device-key from the profile's state dir: an invalid LINKCODE_PROFILE must abort here,
+  // not surface mid-command or as a half-initialized default-profile daemon.
+  const profile = daemonProfile();
+
   // Subcommands run and exit instead of booting the host (a running daemon
   // picks the new sign-in state up on its next restart).
   const command = process.argv[2];
@@ -61,9 +66,6 @@ async function main(): Promise<void> {
   // desktop app's asar (no-op outside Electron — see asar-spawn.ts).
   installAsarSpawnFix();
 
-  // Resolved before anything touches state paths: an invalid LINKCODE_PROFILE must abort boot
-  // here, not surface as a half-initialized default-profile daemon.
-  const profile = daemonProfile();
   const config = loadConfig();
 
   // One daemon per profile — a second instance would share this profile's daemon.db and split

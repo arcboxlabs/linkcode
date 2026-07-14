@@ -31,9 +31,14 @@ export function parseProfileName(raw: string | undefined): string | undefined {
   return raw;
 }
 
-/** The daemon state directory name under the user's home: `.linkcode`, or a profile sibling. */
+/**
+ * The daemon state directory name under the user's home: `.linkcode`, or a profile sibling.
+ * Validates its input so no caller can interpolate a traversal (`../x`) or separator into a
+ * path segment — safety lives in the helper, not in caller discipline.
+ */
 export function linkcodeStateDirName(profile?: string): string {
-  return profile === undefined ? '.linkcode' : `.linkcode-${profile}`;
+  const parsed = parseProfileName(profile);
+  return parsed === undefined ? '.linkcode' : `.linkcode-${parsed}`;
 }
 
 /** Runtime discovery file the daemon writes after binding, as path segments under the user's home directory. */
