@@ -191,7 +191,13 @@ export function buildComposerCommandGroups({
   const commandItems: ComposerCommandEntry[] = [];
   if (commandSource === 'slash') {
     for (const command of agentCommands) {
-      if (!matchesQuery(command.name, command.name, command.description, commandQuery)) continue;
+      // Aliases match too (typing /cost surfaces /usage); selection inserts the canonical name.
+      if (
+        !matchesQuery(command.name, command.name, command.description, commandQuery) &&
+        !command.aliases?.some((alias) => alias.toLowerCase().includes(commandQuery))
+      ) {
+        continue;
+      }
       commandItems.push({
         command,
         hint: command.description ?? command.argumentHint,

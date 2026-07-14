@@ -21,6 +21,7 @@ import type {
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
+import { agentCommandMatches } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -256,7 +257,9 @@ export class Engine {
             const commandName = p.input.name;
             if (
               !session.capabilities.slashCommands ||
-              !session.availableCommands?.some((command) => command.name === commandName)
+              !session.availableCommands?.some((command) =>
+                agentCommandMatches(command, commandName),
+              )
             ) {
               const error = new Error(`Unknown slash command: /${commandName}`);
               this.broadcastInputRejected(p.sessionId, error.message);

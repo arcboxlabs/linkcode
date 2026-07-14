@@ -66,8 +66,16 @@ export const AgentCommandSchema = z.object({
   description: z.string().optional(),
   /** Hint for the command's arguments (e.g. "<file>"), when the provider supplies one. */
   argumentHint: z.string().optional(),
+  /** Alternate names that invoke the same command (claude-code, e.g. `/cost` → `/usage`), no
+   * leading slash. Input matching accepts them; menus display only the canonical `name`. */
+  aliases: z.array(z.string().min(1)).optional(),
 });
 export type AgentCommand = z.infer<typeof AgentCommandSchema>;
+
+/** True when `name` invokes `command` — its canonical name or one of its provider aliases. */
+export function agentCommandMatches(command: AgentCommand, name: string): boolean {
+  return command.name === name || (command.aliases?.includes(name) ?? false);
+}
 
 /** Input features a live adapter session accepts. Kept separate from command catalogs: catalogs
  * change provider-side, while these booleans describe the adapter's stable input surface. */

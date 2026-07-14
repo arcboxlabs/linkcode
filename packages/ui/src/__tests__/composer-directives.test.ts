@@ -5,6 +5,7 @@ import { parseComposerDirective } from '../shell/composer-directives';
 const CATALOG: AgentCommand[] = [
   { name: 'compact', description: 'Compact the context' },
   { name: 'review', argumentHint: '<pr>' },
+  { name: 'usage', aliases: ['cost', 'stats'] },
 ];
 
 describe('parseComposerDirective', () => {
@@ -17,6 +18,16 @@ describe('parseComposerDirective', () => {
     expect(
       parseComposerDirective('/review src/index.ts  ', { commands: CATALOG, shellEnabled: false }),
     ).toEqual({ kind: 'command', name: 'review', arguments: 'src/index.ts' });
+  });
+
+  it('matches a provider alias, keeping the typed name in the directive', () => {
+    // The alias itself is dispatched (`/cost`), not rewritten to the canonical name — claude's
+    // CLI resolves aliases on any typed slash text, and the echo should show what the user typed.
+    expect(parseComposerDirective('/cost', { commands: CATALOG, shellEnabled: false })).toEqual({
+      kind: 'command',
+      name: 'cost',
+      arguments: undefined,
+    });
   });
 
   it('keeps a slash token outside the catalog as plain text (pass-through preserved)', () => {

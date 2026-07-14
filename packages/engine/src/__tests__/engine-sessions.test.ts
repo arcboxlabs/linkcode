@@ -489,6 +489,28 @@ describe('engine attach replay', () => {
     ]);
   });
 
+  it('accepts a command invoked by a catalog alias, echoing the typed alias', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: false },
+    });
+    adapter.emit({
+      type: 'available-commands-update',
+      commands: [{ name: 'usage', aliases: ['cost'] }],
+    });
+    const mark = sent.length;
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r-alias',
+      sessionId,
+      input: { type: 'command', name: 'cost' },
+    });
+    const echoes = eventsAfter(sent, mark).filter((e) => e.type === 'user-message');
+    expect(echoes).toEqual([{ type: 'user-message', content: [{ type: 'text', text: '/cost' }] }]);
+    expect(sent.slice(mark).some((payload) => payload.kind === 'request.failed')).toBe(false);
+  });
+
   it('rejects unavailable command and shell inputs before echoing them', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({

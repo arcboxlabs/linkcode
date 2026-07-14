@@ -241,13 +241,15 @@ export function mapClaudeStop(reason: string | null): StopReason {
 }
 
 /** Normalize a `SlashCommand` onto the cross-agent `AgentCommand` shape: the provider's empty-string
- * `description`/`argumentHint` (no value, not omitted) become `undefined`, and `aliases` — which the
- * normalized shape has no field for — is dropped. */
+ * `description`/`argumentHint` (no value, not omitted) become `undefined`, and an empty `aliases`
+ * list is dropped. Aliases ride through so composer/engine matching accepts them (e.g. `/cost` →
+ * `/usage`); invocation then pushes the alias itself, which the CLI resolves like any typed `/`. */
 function mapClaudeCommand(command: SlashCommand): AgentCommand {
   return {
     name: command.name,
     description: command.description || undefined,
     argumentHint: command.argumentHint || undefined,
+    aliases: command.aliases?.length ? command.aliases : undefined,
   };
 }
 

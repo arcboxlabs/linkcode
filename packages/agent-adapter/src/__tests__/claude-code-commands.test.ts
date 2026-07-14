@@ -148,8 +148,10 @@ describe('ClaudeCodeAdapter slash commands', () => {
     const { events } = await makeAdapter((q) => {
       q.supportedCommands.mockResolvedValue([
         { name: 'review', description: 'Review the diff', argumentHint: '<path>' },
-        // Empty-string description/argumentHint and an alias — both dropped by the mapper.
+        // Empty-string description/argumentHint are dropped; aliases ride through so the
+        // composer/engine name matching accepts them. An empty aliases list is dropped too.
         { name: 'usage', description: '', argumentHint: '', aliases: ['cost'] },
+        { name: 'clear', description: 'Reset', argumentHint: '', aliases: [] },
       ]);
     });
 
@@ -157,8 +159,14 @@ describe('ClaudeCodeAdapter slash commands', () => {
       expect(commandUpdates(events)).toHaveLength(1);
     });
     expect(commandUpdates(events)[0].commands).toEqual([
-      { name: 'review', description: 'Review the diff', argumentHint: '<path>' },
-      { name: 'usage', description: undefined, argumentHint: undefined },
+      {
+        name: 'review',
+        description: 'Review the diff',
+        argumentHint: '<path>',
+        aliases: undefined,
+      },
+      { name: 'usage', description: undefined, argumentHint: undefined, aliases: ['cost'] },
+      { name: 'clear', description: 'Reset', argumentHint: undefined, aliases: undefined },
     ]);
   });
 
