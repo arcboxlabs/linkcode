@@ -5,7 +5,7 @@ import type {
   EffortLevel,
   SessionMode,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Command } from 'coss-ui/components/command';
 import { toastManager } from 'coss-ui/components/toast';
@@ -32,7 +32,6 @@ import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { ComposerAttachment } from './composer-attachments';
 import {
   failedComposerAttachment,
-  MAX_ATTACHMENT_TOTAL_BYTES,
   pendingComposerAttachment,
   readImageFileAsComposerAttachment,
 } from './composer-attachments';
@@ -298,13 +297,13 @@ export function Composer({
     let total = attachments.reduce((sum, attachment) => sum + (attachment.sizeBytes ?? 0), 0);
     for (const file of files) {
       if (total + file.size > MAX_ATTACHMENT_TOTAL_BYTES) {
-        toastManager.add({ title: t('attachmentTooLarge'), type: 'error' });
+        toastManager.add({ title: t('attachmentsTotalTooLarge'), type: 'error' });
         continue;
       }
       total += file.size;
       const pending = pendingComposerAttachment(file);
       setAttachments((prev) => [...prev, pending]);
-      void readImageFileAsComposerAttachment(file, {
+      void readImageFileAsComposerAttachment(file, pending, {
         readFailed: t('attachmentReadFailed'),
         tooLarge: t('attachmentTooLarge'),
         unsupportedType: t('attachmentUnsupportedType'),
@@ -318,7 +317,9 @@ export function Composer({
           const message = extractErrorMessage(err) ?? t('attachmentReadFailed');
           setAttachments((prev) =>
             prev.map((attachment) =>
-              attachment.id === pending.id ? failedComposerAttachment(file, message) : attachment,
+              attachment.id === pending.id
+                ? failedComposerAttachment(pending, message)
+                : attachment,
             ),
           );
           toastManager.add({ title: message, type: 'error' });
@@ -380,8 +381,12 @@ export function Composer({
         return attachment;
       }
       if (total + (attachment.sizeBytes ?? 0) > MAX_ATTACHMENT_TOTAL_BYTES) {
-        toastManager.add({ title: t('attachmentTooLarge'), type: 'error' });
-        return { ...attachment, status: 'failed' as const, errorMessage: t('attachmentTooLarge') };
+        toastManager.add({ title: t('attachmentsTotalTooLarge'), type: 'error' });
+        return {
+          ...attachment,
+          status: 'failed' as const,
+          errorMessage: t('attachmentsTotalTooLarge'),
+        };
       }
       total += attachment.sizeBytes ?? 0;
       return attachment;
@@ -572,8 +577,8 @@ export function Composer({
           dialog — desktop always provides one, so this element never activates there. */}
       <input
         ref={fileInputRef}
-        // Keep in sync with SUPPORTED_IMAGE_MIME_TYPES in composer-attachments.ts — the lint rule
-        // for this attribute requires a static literal, so it can't be derived at render time.
+        // Keep in sync with SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES in @linkcode/schema — the lint
+        // rule for this attribute requires a static literal, so it can't be derived at render time.
         accept="image/jpeg, image/png, image/gif, image/webp"
         className="hidden"
         multiple

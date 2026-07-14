@@ -145,6 +145,7 @@ export const zhCN = {
       add: '添加',
       attach: '文件与文件夹',
       attachmentTooLarge: '图片超过 8MB 上限',
+      attachmentsTotalTooLarge: '附件总大小超过 12MB 上限',
       attachmentUnsupportedType: '仅支持 JPEG / PNG / GIF / WEBP 图片',
       attachmentUnsupportedAgent: '当前 agent 暂不支持图片附件',
       attachmentReadFailed: '读取文件失败',

@@ -1,27 +1,9 @@
 import type { ContentBlock } from '@linkcode/schema';
+import { isSupportedAttachmentImageMimeType, MAX_ATTACHMENT_BYTES } from '@linkcode/schema';
 import type { ChatAttachment } from '../chat/attachments';
 
-/** The strictest common denominator across the three confirmed-supporting adapters' installed
- * SDKs (Claude's `Base64ImageSource.media_type` enum is the narrowest of the three). */
-export const SUPPORTED_IMAGE_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-] as const;
-const SUPPORTED_IMAGE_MIME_TYPE_SET: ReadonlySet<string> = new Set(SUPPORTED_IMAGE_MIME_TYPES);
-
-/** Per-image raw byte cap, mirroring `MAX_ATTACHMENT_IMAGE_BASE64_LENGTH` in
- * `@linkcode/schema/content` (kept here rather than importing it: the client checks the
- * pre-encode `File.size`, not a base64 string length). */
-export const MAX_ATTACHMENT_IMAGE_BYTES = 8 * 1024 * 1024;
-
-/** Aggregate cap across every attachment staged in one message — a UI-only staging concern, not
- * a wire-level one. */
-export const MAX_ATTACHMENT_TOTAL_BYTES = 12 * 1024 * 1024;
-
 export function isSupportedImageMimeType(mimeType: string | undefined): mimeType is string {
-  return mimeType !== undefined && SUPPORTED_IMAGE_MIME_TYPE_SET.has(mimeType);
+  return mimeType !== undefined && isSupportedAttachmentImageMimeType(mimeType);
 }
 
 export function isSupportedImageFile(file: File): boolean {
@@ -31,6 +13,13 @@ export function isSupportedImageFile(file: File): boolean {
 /** A staged composer attachment: the presentational `ChatAttachment` plus the wire payload once
  * decoding succeeds. `block` is absent while `status` is `pending`/`failed`. */
 export type ComposerAttachment = ChatAttachment & { block?: ContentBlock };
+
+/** Tray-local identity (React keys + pending→settled reconciliation); never crosses the wire.
+ * Random on purpose: the same file staged twice must stay independently addressable, so the id
+ * cannot derive from file stats. */
+function newAttachmentId(): string {
+  return crypto.randomUUID();
+}
 
 /** Reads a `File` into a `data:` URL, used as both the wire payload's base64 `data` and the
  * `ChatAttachment` preview `url` — one read serves both, so there's no object-URL to revoke. */
@@ -45,19 +34,20 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Decodes a dropped/pasted image `File` into a staged attachment ready to send. Throws with a
- * message suitable for a toast when the file is unsupported, oversized, or unreadable. */
+/** Decodes a dropped/pasted image `File` into the ready form of `pending` (same id, so the
+ * staging tray swaps it in place). Throws with a message suitable for a toast when the file is
+ * unsupported, oversized, or unreadable. */
 export async function readImageFileAsComposerAttachment(
   file: File,
+  pending: ComposerAttachment,
   errors: {
     unsupportedType: string;
     tooLarge: string;
     readFailed: string;
   },
 ): Promise<ComposerAttachment> {
-  const id = `${file.name}-${file.size}-${file.lastModified}`;
   if (!isSupportedImageFile(file)) throw new Error(errors.unsupportedType);
-  if (file.size > MAX_ATTACHMENT_IMAGE_BYTES) throw new Error(errors.tooLarge);
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(errors.tooLarge);
 
   let dataUrl: string;
   try {
@@ -68,11 +58,7 @@ export async function readImageFileAsComposerAttachment(
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
 
   return {
-    id,
-    kind: 'image',
-    mimeType: file.type,
-    name: file.name,
-    sizeBytes: file.size,
+    ...pending,
     status: 'ready',
     url: dataUrl,
     block: { type: 'image', data: base64, mimeType: file.type },
@@ -81,7 +67,7 @@ export async function readImageFileAsComposerAttachment(
 
 export function pendingComposerAttachment(file: File): ComposerAttachment {
   return {
-    id: `${file.name}-${file.size}-${file.lastModified}`,
+    id: newAttachmentId(),
     kind: 'image',
     mimeType: file.type,
     name: file.name,
@@ -90,14 +76,14 @@ export function pendingComposerAttachment(file: File): ComposerAttachment {
   };
 }
 
-export function failedComposerAttachment(file: File, errorMessage: string): ComposerAttachment {
+/** Failure form of `pending`, keeping its id so the tray swaps it in place. */
+export function failedComposerAttachment(
+  pending: ComposerAttachment,
+  errorMessage: string,
+): ComposerAttachment {
   return {
-    id: `${file.name}-${file.size}-${file.lastModified}`,
+    ...pending,
     errorMessage,
-    kind: 'image',
-    mimeType: file.type,
-    name: file.name,
-    sizeBytes: file.size,
     status: 'failed',
   };
 }
@@ -131,11 +117,11 @@ export function attachmentFromReadFile(
   if (file.encoding !== 'base64' || !isSupportedImageMimeType(file.mimeType)) {
     throw new Error(errors.unsupportedType);
   }
-  if (file.size > MAX_ATTACHMENT_IMAGE_BYTES) throw new Error(errors.tooLarge);
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(errors.tooLarge);
   const mimeType = file.mimeType;
 
   return {
-    id: `${file.path}-${file.size}`,
+    id: newAttachmentId(),
     kind: 'image',
     mimeType,
     name,
@@ -154,7 +140,7 @@ export function failedComposerAttachmentFromPath(
 ): ComposerAttachment {
   const name = fileNameFromPath(path);
   return {
-    id: path,
+    id: newAttachmentId(),
     errorMessage,
     kind: 'image',
     name,
