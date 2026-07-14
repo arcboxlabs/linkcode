@@ -114,7 +114,10 @@ describe('CodexAdapter shell-command passthrough', () => {
       if (e.type === 'status') acc.push(e.status);
       return acc;
     }, []);
-    expect(statuses).toEqual(['running', 'idle']);
+    // Two 'running's: dispatch announces the turn synchronously (the shellCommand ack precedes
+    // turn/started, and the engine's input gate reads status at send()-resolve), then turn/started
+    // re-emits — the same double-emit the prompt path's startTurn + turn/started produces.
+    expect(statuses).toEqual(['running', 'running', 'idle']);
 
     const toolEvents = events.filter((e) => e.type === 'tool-call');
     expect(toolEvents).toHaveLength(2);
@@ -167,14 +170,24 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(stop?.stopReason).toBe('end_turn');
   });
 
-  it('rejects send() when the app-server returns a JSON-RPC error', async () => {
+  it('rejects send() when the app-server returns a JSON-RPC error, unwinding to idle', async () => {
     const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
     await adapter.start(start);
     adapter.fakeServers[0].rejectMethod = 'thread/shellCommand';
+    events.length = 0;
 
     await expect(adapter.send({ type: 'shell-command', command: 'echo hi' })).rejects.toThrow(
       'codex: invalid request',
     );
+    // The synchronously announced turn must be unwound on failure — a rejected send() that leaves
+    // status at 'running' would keep the engine's input gate closed forever.
+    const statuses = events.reduce<string[]>((acc, e) => {
+      if (e.type === 'status') acc.push(e.status);
+      return acc;
+    }, []);
+    expect(statuses).toEqual(['running', 'idle']);
   });
 
   it('still emits session-ref when a fresh thread’s first action is a shell command', async () => {

@@ -322,7 +322,9 @@ export class Engine {
             throw err;
           }
           // Synchronous controls such as Codex /compact may not produce lifecycle events. A real
-          // turn has reported running by this point and stays gated until its idle/stopped event.
+          // turn has reported running by this point — BaseAgentAdapter's turn contract requires
+          // turn-starting hooks to emit it before send() resolves — and stays gated until its
+          // idle/stopped event.
           if (startsTurn && session.status !== 'running') session.turnInputActive = false;
           this.sendSuccess(p.clientReqId);
         });

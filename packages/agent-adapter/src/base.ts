@@ -161,6 +161,14 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   // ── Lifecycle hooks for subclasses ──
+  //
+  // Turn contract for the turn-starting hooks (onPrompt / onCommand / onShellCommand): a hook that
+  // begins a turn must emit status 'running' BEFORE it resolves, even when the provider's own
+  // lifecycle events arrive later (codex's shellCommand ack precedes turn/started). The engine's
+  // input gate reads status the moment send() settles and treats a still-idle session as a
+  // synchronous control with no lifecycle events (codex /compact), releasing the gate. The flip
+  // side: a hook that already emitted 'running' and then fails must emit 'idle' before rejecting,
+  // or the gate never releases.
   protected abstract onStart(opts: StartOptions): Promise<void>;
   protected abstract onPrompt(content: ContentBlock[]): Promise<void>;
   /** Default: reject. Only adapters that advertise a catalog via `available-commands-update`

@@ -367,7 +367,20 @@ export class CodexAdapter extends BaseAgentAdapter {
     await this.ensureThread();
     const server = nullthrow(this.server, 'codex: session not started');
     const threadId = nullthrow(this.threadId, 'codex: thread not started');
-    await server.request('thread/shellCommand', { threadId, command });
+    // The ack lands before turn/started, but the engine's input gate reads status the moment
+    // send() resolves and treats a still-idle session as a synchronous control — announce the
+    // turn synchronously (base.ts hook contract) or a rapid next submit races the starting
+    // shell turn. turn/started re-emits running, the same double-emit the startTurn path has.
+    this.emitStatus('running');
+    try {
+      await server.request('thread/shellCommand', { threadId, command });
+    } catch (err) {
+      // Mirror startTurn's unwind: without the idle emit the engine sees status 'running' on the
+      // rejected send() and leaves the session gated busy forever.
+      this.teardown();
+      this.emitStatus('idle');
+      throw err;
+    }
   }
 
   protected override async onCancel(): Promise<void> {
