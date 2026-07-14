@@ -120,6 +120,26 @@ describe('listenWithPortHunt', () => {
     expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
     await server.close();
   });
+
+  it('hunts past a live daemon of another profile', async () => {
+    const port = await serveIdentity({ ...identity(4242), profile: 'alpha' });
+    const { server, url } = await listenWithPortHunt(
+      { type: 'ws', port, host: '127.0.0.1' },
+      identity(process.pid),
+    );
+    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    await server.close();
+  });
+
+  it('refuses to hunt past a live daemon of the same profile', async () => {
+    const port = await serveIdentity({ ...identity(4242), profile: 'alpha' });
+    await expect(
+      listenWithPortHunt(
+        { type: 'ws', port, host: '127.0.0.1' },
+        { ...identity(process.pid), profile: 'alpha' },
+      ),
+    ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
 });
 
 describe('findRunningDaemon', () => {

@@ -3,7 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig } from '../config';
+import {
+  daemonProfile,
+  databasePath,
+  hqCredentialsPath,
+  loadConfig,
+  runtimeFilePath,
+} from '../config';
 
 let savedHome: string | undefined;
 
@@ -15,6 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env.HOME = savedHome;
+  delete process.env.LINKCODE_PROFILE;
   vi.restoreAllMocks();
 });
 
@@ -87,6 +94,40 @@ describe('loadConfig providers', () => {
 
     expect(config.providers).toEqual({});
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('profile-scoped state paths', () => {
+  it('resolves under ~/.linkcode for the default profile', () => {
+    expect(daemonProfile()).toBeUndefined();
+    expect(databasePath()).toBe(join(process.env.HOME ?? '', '.linkcode', 'daemon.db'));
+  });
+
+  it('forks every state path into the profile sibling directory', () => {
+    process.env.LINKCODE_PROFILE = 'alpha';
+    const root = join(process.env.HOME ?? '', '.linkcode-alpha');
+    expect(daemonProfile()).toBe('alpha');
+    expect(databasePath()).toBe(join(root, 'daemon.db'));
+    expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
+    expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+  });
+
+  it('treats an empty LINKCODE_PROFILE as the default profile', () => {
+    process.env.LINKCODE_PROFILE = '';
+    expect(daemonProfile()).toBeUndefined();
+    expect(databasePath()).toBe(join(process.env.HOME ?? '', '.linkcode', 'daemon.db'));
+  });
+
+  it('aborts on an invalid profile name instead of using the default universe', () => {
+    process.env.LINKCODE_PROFILE = 'Not_Valid!';
+    expect(() => daemonProfile()).toThrow(TypeError);
+    expect(() => databasePath()).toThrow(TypeError);
+  });
+
+  it('rejects a path-traversal profile instead of resolving outside the home sibling', () => {
+    process.env.LINKCODE_PROFILE = '../evil';
+    expect(() => runtimeFilePath()).toThrow(TypeError);
+    expect(() => databasePath()).toThrow(TypeError);
   });
 });
 
