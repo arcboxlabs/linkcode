@@ -1,0 +1,106 @@
+import { useTranslations } from 'use-intl';
+import { cn } from '../lib/cn';
+import { SettingsSection } from './settings-page';
+
+/** Display-layer theme union — apps map their own store's theme type onto this. */
+export type ThemePreference = 'system' | 'light' | 'dark';
+
+const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
+
+const THEME_LABEL_KEYS = {
+  system: 'themeSystem',
+  light: 'themeLight',
+  dark: 'themeDark',
+} as const;
+
+export interface AppearanceSettingsPanelProps {
+  theme: ThemePreference;
+  onThemeChange: (theme: ThemePreference) => void;
+}
+
+export function AppearanceSettingsPanel({
+  theme,
+  onThemeChange,
+}: AppearanceSettingsPanelProps): React.ReactNode {
+  const t = useTranslations('settings.appearance');
+
+  return (
+    <div className="flex flex-col gap-8">
+      <SettingsSection title={t('theme')}>
+        <div className="flex flex-wrap gap-6">
+          {THEME_PREFERENCES.map((value) => (
+            <ThemePreviewOption
+              key={value}
+              label={t(THEME_LABEL_KEYS[value])}
+              preference={value}
+              selected={theme === value}
+              onSelect={() => onThemeChange(value)}
+            />
+          ))}
+        </div>
+      </SettingsSection>
+    </div>
+  );
+}
+
+function ThemePreviewOption({
+  label,
+  preference,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  preference: ThemePreference;
+  selected: boolean;
+  onSelect: () => void;
+}): React.ReactNode {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className="group flex flex-col items-center gap-2 outline-none"
+    >
+      <span
+        className={cn(
+          'relative block h-20 w-32 overflow-hidden rounded-lg border transition-[border-color,box-shadow]',
+          selected
+            ? 'border-primary ring-2 ring-primary/50'
+            : 'border-border group-hover:border-muted-foreground/40 group-focus-visible:ring-2 group-focus-visible:ring-ring',
+        )}
+      >
+        <PreviewPane dark={preference === 'dark'} />
+        {/* System splits one window down the middle: a dark copy clipped to the right half. */}
+        {preference === 'system' && (
+          <span className="absolute inset-0 [clip-path:inset(0_0_0_50%)]">
+            <PreviewPane dark />
+          </span>
+        )}
+      </span>
+      <span className={cn('text-sm', !selected && 'text-muted-foreground')}>{label}</span>
+    </button>
+  );
+}
+
+/** Fixed-palette window mock — a "light" preview must look light even in dark mode. */
+function PreviewPane({ dark = false }: { dark?: boolean }): React.ReactNode {
+  return (
+    <span
+      className={cn(
+        'flex h-full w-full flex-col gap-1.5 p-2.5',
+        dark ? 'bg-zinc-800' : 'bg-zinc-100',
+      )}
+    >
+      <span className={cn('h-1.5 w-10 rounded-full', dark ? 'bg-zinc-500' : 'bg-zinc-400')} />
+      <span
+        className={cn(
+          'flex flex-1 flex-col gap-1 rounded-md p-1.5',
+          dark ? 'bg-zinc-700' : 'bg-white',
+        )}
+      >
+        <span className={cn('h-1 w-3/4 rounded-full', dark ? 'bg-zinc-500' : 'bg-zinc-300')} />
+        <span className={cn('h-1 w-1/2 rounded-full', dark ? 'bg-zinc-500' : 'bg-zinc-300')} />
+      </span>
+    </span>
+  );
+}

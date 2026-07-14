@@ -17,6 +17,7 @@ import {
   KeyRoundIcon,
   SendIcon,
   SettingsIcon,
+  SunMoonIcon,
   WifiIcon,
 } from 'lucide-react';
 import { useRef } from 'react';
@@ -28,6 +29,7 @@ import type { DesktopShellStyle } from '../shell/layout/shell-style';
 import { DEFAULT_LAYOUT } from '../shell/store/model';
 import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
+import { AppearanceTab } from './appearance-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
@@ -123,77 +125,102 @@ export function SettingsView(): React.ReactNode {
                 backAutoFocus
                 onBack={backFromOverlay}
                 searchPlaceholder={t('searchPlaceholder')}
-                items={[
+                groups={[
                   {
-                    key: 'general',
-                    icon: <SettingsIcon className="size-4" />,
-                    label: t('tabs.general'),
-                    active: category === 'general',
-                    onClick: () => setCategory('general'),
-                  },
-                  {
-                    key: 'connection',
-                    icon: <WifiIcon className="size-4" />,
-                    label: t('tabs.connection'),
-                    active: category === 'connection',
-                    onClick: () => setCategory('connection'),
-                  },
-                  {
-                    key: 'notifications',
-                    icon: <BellIcon className="size-4" />,
-                    label: t('tabs.notifications'),
-                    active: category === 'notifications',
-                    onClick: () => setCategory('notifications'),
-                  },
-                  {
-                    key: 'about',
-                    icon: <InfoIcon className="size-4" />,
-                    label: t('tabs.about'),
-                    active: category === 'about',
-                    onClick: () => setCategory('about'),
-                  },
-                  {
-                    key: 'providers',
-                    icon: <KeyRoundIcon className="size-4" />,
-                    label: t('tabs.providers'),
-                    active: category === 'providers',
-                    onClick: () => setCategory('providers'),
-                  },
-                  {
-                    key: 'agents',
-                    icon: <BotIcon className="size-4" />,
-                    label: t('tabs.agents'),
-                    active: category === 'agents',
-                    onClick: () => setCategory('agents'),
-                  },
-                  {
-                    key: 'imChannel',
-                    icon: <SendIcon className="size-4" />,
-                    label: t('tabs.imChannel'),
-                    active: category === 'imChannel',
-                    onClick: () => setCategory('imChannel'),
-                  },
-                  {
-                    key: 'history-import',
-                    icon: <HistoryIcon className="size-4" />,
-                    label: t('historyImport.portalLabel'),
-                    active: category === 'history-import',
-                    // The disclosure row selects the section's first provider (the accordion
-                    // opens via `active`); it is never highlighted itself.
-                    onClick() {
-                      setCategory('history-import');
-                      setHistoryProvider(DEFAULT_HISTORY_PROVIDER);
-                    },
-                    children: AGENT_KINDS.map((agentKind) => ({
-                      key: agentKind,
-                      icon: <AgentIcon kind={agentKind} variant="ghost" />,
-                      label: AGENT_LABELS[agentKind],
-                      active: category === 'history-import' && historyProvider === agentKind,
-                      onClick() {
-                        setCategory('history-import');
-                        setHistoryProvider(agentKind);
+                    key: 'personal',
+                    label: t('groups.personal'),
+                    items: [
+                      {
+                        key: 'general',
+                        icon: <SettingsIcon className="size-4" />,
+                        label: t('tabs.general'),
+                        active: category === 'general',
+                        onClick: () => setCategory('general'),
                       },
-                    })),
+                      {
+                        key: 'appearance',
+                        icon: <SunMoonIcon className="size-4" />,
+                        label: t('tabs.appearance'),
+                        active: category === 'appearance',
+                        onClick: () => setCategory('appearance'),
+                      },
+                      {
+                        key: 'notifications',
+                        icon: <BellIcon className="size-4" />,
+                        label: t('tabs.notifications'),
+                        active: category === 'notifications',
+                        onClick: () => setCategory('notifications'),
+                      },
+                    ],
+                  },
+                  {
+                    key: 'integrations',
+                    label: t('groups.integrations'),
+                    items: [
+                      {
+                        key: 'agents',
+                        icon: <BotIcon className="size-4" />,
+                        label: t('tabs.agents'),
+                        active: category === 'agents',
+                        onClick: () => setCategory('agents'),
+                      },
+                      {
+                        key: 'providers',
+                        icon: <KeyRoundIcon className="size-4" />,
+                        label: t('tabs.providers'),
+                        active: category === 'providers',
+                        onClick: () => setCategory('providers'),
+                      },
+                      {
+                        key: 'imChannel',
+                        icon: <SendIcon className="size-4" />,
+                        label: t('tabs.imChannel'),
+                        active: category === 'imChannel',
+                        onClick: () => setCategory('imChannel'),
+                      },
+                      {
+                        key: 'history-import',
+                        icon: <HistoryIcon className="size-4" />,
+                        label: t('historyImport.portalLabel'),
+                        active: category === 'history-import',
+                        // The disclosure row selects the section's first provider (the accordion
+                        // opens via `active`); it is never highlighted itself.
+                        onClick() {
+                          setCategory('history-import');
+                          setHistoryProvider(DEFAULT_HISTORY_PROVIDER);
+                        },
+                        children: AGENT_KINDS.map((agentKind) => ({
+                          key: agentKind,
+                          icon: <AgentIcon kind={agentKind} variant="ghost" />,
+                          label: AGENT_LABELS[agentKind],
+                          active: category === 'history-import' && historyProvider === agentKind,
+                          onClick() {
+                            setCategory('history-import');
+                            setHistoryProvider(agentKind);
+                          },
+                        })),
+                      },
+                    ],
+                  },
+                  {
+                    key: 'system',
+                    label: t('groups.system'),
+                    items: [
+                      {
+                        key: 'connection',
+                        icon: <WifiIcon className="size-4" />,
+                        label: t('tabs.connection'),
+                        active: category === 'connection',
+                        onClick: () => setCategory('connection'),
+                      },
+                      {
+                        key: 'about',
+                        icon: <InfoIcon className="size-4" />,
+                        label: t('tabs.about'),
+                        active: category === 'about',
+                        onClick: () => setCategory('about'),
+                      },
+                    ],
                   },
                 ]}
               />
@@ -222,6 +249,8 @@ function renderSettingsPanel(
   switch (category) {
     case 'general':
       return <GeneralTab />;
+    case 'appearance':
+      return <AppearanceTab />;
     case 'connection':
       return <ConnectionTab />;
     case 'notifications':

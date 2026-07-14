@@ -6,6 +6,7 @@ import { systemBridge } from '../ipc';
 
 export type SettingsCategory =
   | 'general'
+  | 'appearance'
   | 'connection'
   | 'notifications'
   | 'about'

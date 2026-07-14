@@ -1,5 +1,6 @@
 import { RootLayout } from '@webview/routes/root-layout';
 import { AgentsSettings } from '@webview/routes/settings/agents';
+import { AppearanceSettings } from '@webview/routes/settings/appearance';
 import { ConnectionSettings } from '@webview/routes/settings/connection';
 import { GeneralSettings } from '@webview/routes/settings/general';
 import { MessagingSettings } from '@webview/routes/settings/messaging';
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <GeneralSettings /> },
+          { path: 'appearance', element: <AppearanceSettings /> },
           { path: 'connection', element: <ConnectionSettings /> },
           { path: 'notifications', element: <NotificationsSettings /> },
           { path: 'providers', element: <ProvidersSettings /> },
