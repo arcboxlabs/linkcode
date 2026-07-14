@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TtlCache } from '../git/cache';
+import { TtlCache } from '../ttl-cache';
 
 beforeEach(() => {
   vi.useFakeTimers();

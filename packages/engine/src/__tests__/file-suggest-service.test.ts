@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { suggestWorkspaceFiles } from '../file-suggest-service';
+import { FileSuggestService } from '../file-suggest-service';
+
+/** Fresh service per call: no TTL-cached file list leaks between tests. */
+function suggest(cwd: string, query: string, limit?: number) {
+  return new FileSuggestService().suggest(cwd, query, limit);
+}
 
 const roots: string[] = [];
 
@@ -23,7 +28,7 @@ afterAll(() => {
   for (const dir of roots) rmSync(dir, { recursive: true, force: true });
 });
 
-describe('suggestWorkspaceFiles', () => {
+describe('FileSuggestService', () => {
   it('respects .gitignore in a git workspace, including untracked files', async () => {
     const dir = makeTempDir();
     git(dir, 'init', '-b', 'main');
@@ -33,7 +38,7 @@ describe('suggestWorkspaceFiles', () => {
     writeFileSync(join(dir, 'ignored.log'), 'c');
     git(dir, 'add', 'tracked.ts');
 
-    const paths = (await suggestWorkspaceFiles(dir, '')).map((s) => s.path);
+    const paths = (await suggest(dir, '')).map((s) => s.path);
     expect(paths).toContain('tracked.ts');
     expect(paths).toContain('untracked.ts');
     expect(paths).not.toContain('ignored.log');
@@ -49,7 +54,7 @@ describe('suggestWorkspaceFiles', () => {
     mkdirSync(join(dir, '.hidden'));
     writeFileSync(join(dir, '.hidden', 'secret.ts'), 'd');
 
-    const paths = (await suggestWorkspaceFiles(dir, '')).map((s) => s.path);
+    const paths = (await suggest(dir, '')).map((s) => s.path);
     expect(paths).toContain('notes.md');
     expect(paths).toContain('src/main.ts');
     expect(paths.some((p) => p.includes('node_modules'))).toBe(false);
@@ -65,7 +70,7 @@ describe('suggestWorkspaceFiles', () => {
     mkdirSync(join(dir, 'deep', 'nested'), { recursive: true });
     writeFileSync(join(dir, 'deep', 'nested', 'composer.tsx'), '');
 
-    const paths = (await suggestWorkspaceFiles(dir, 'composer')).map((s) => s.path);
+    const paths = (await suggest(dir, 'composer')).map((s) => s.path);
     // Tier 1 (basename prefix) before tier 2 (basename substring) before tier 3
     // (path-only substring); within tier 1 shallow beats deep.
     expect(paths[0]).toBe('composer.tsx');
@@ -79,7 +84,7 @@ describe('suggestWorkspaceFiles', () => {
     writeFileSync(join(dir, 'README.md'), '');
     writeFileSync(join(dir, 'other.ts'), '');
 
-    const paths = (await suggestWorkspaceFiles(dir, 'readme')).map((s) => s.path);
+    const paths = (await suggest(dir, 'readme')).map((s) => s.path);
     expect(paths).toEqual(['README.md']);
   });
 
@@ -87,7 +92,7 @@ describe('suggestWorkspaceFiles', () => {
     const dir = makeTempDir();
     for (let i = 0; i < 10; i++) writeFileSync(join(dir, `file-${i}.txt`), '');
 
-    const suggestions = await suggestWorkspaceFiles(dir, 'file', 3);
+    const suggestions = await suggest(dir, 'file', 3);
     expect(suggestions).toHaveLength(3);
   });
 
@@ -97,7 +102,7 @@ describe('suggestWorkspaceFiles', () => {
     writeFileSync(join(dir, 'sub', 'deep.ts'), '');
     writeFileSync(join(dir, 'top.ts'), '');
 
-    const paths = (await suggestWorkspaceFiles(dir, '')).map((s) => s.path);
+    const paths = (await suggest(dir, '')).map((s) => s.path);
     expect(paths).toEqual(['top.ts', 'sub/deep.ts']);
   });
 });

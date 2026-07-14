@@ -29,7 +29,7 @@ import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
 import { assertAttachmentContentAllowed } from './attachment-guard';
 import { readWorkspaceFile } from './file-service';
-import { suggestWorkspaceFiles } from './file-suggest-service';
+import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
@@ -73,6 +73,7 @@ export interface EngineDeps {
   ptyBackend?: PtyBackend;
   providerStore?: ProviderConfigStore;
   git?: GitService;
+  fileSuggest?: FileSuggestService;
   workspaceStore?: WorkspaceStore;
   /** Shared with the transport's reverse proxy; scripts need a PTY backend to run. */
   previewRoutes?: PreviewRouteRegistry;
@@ -120,6 +121,7 @@ export class Engine {
   private readonly providerStore: ProviderConfigStore;
   private readonly sessionStore: SessionStore;
   private readonly git: GitService;
+  private readonly fileSuggest: FileSuggestService;
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
   /** Boot snapshot, replaced by {@link refreshAgentRuntimes} when a managed install lands. */
@@ -139,6 +141,7 @@ export class Engine {
     this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
     this.sessionStore = deps.sessionStore ?? new InMemorySessionStore();
     this.git = deps.git ?? new GitService();
+    this.fileSuggest = deps.fileSuggest ?? new FileSuggestService();
     this.history = new HistoryService(this.factory);
     this.terminals = deps.ptyBackend
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
@@ -546,7 +549,7 @@ export class Engine {
       }
       case 'file.suggest': {
         await this.tryReply(p.clientReqId, async () => {
-          const suggestions = await suggestWorkspaceFiles(p.cwd, p.query, p.limit);
+          const suggestions = await this.fileSuggest.suggest(p.cwd, p.query, p.limit);
           this.transport.send(
             createWireMessage({ kind: 'file.suggest.result', replyTo: p.clientReqId, suggestions }),
           );

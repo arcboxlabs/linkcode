@@ -2,14 +2,7 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileSuggestion } from '@linkcode/schema';
 import { runCommand } from './git/exec';
-
-/**
- * Workspace file search backing `file.suggest` (the composer's @-mention source).
- * Enumeration prefers `git ls-files` (respects the real .gitignore, tracked + untracked);
- * non-git workspaces fall back to a bounded breadth-first readdir walk. Matching is
- * substring-tiered — deliberately consistent with the composer's own client-side
- * substring re-filter, so nothing the daemon returns gets dropped client-side.
- */
+import { TtlCache } from './ttl-cache';
 
 export const DEFAULT_SUGGEST_LIMIT = 50;
 const MAX_ENUMERATED_FILES = 20000;
@@ -30,37 +23,34 @@ const WALK_IGNORED_DIRECTORY_NAMES = new Set([
   '__pycache__',
 ]);
 
-interface CachedFileList {
-  files: string[];
-  expiresAt: number;
-}
+/**
+ * FileSuggestService: workspace file search backing `file.suggest` (the composer's @-mention
+ * source). Sits beside {@link import('./git/git-service').GitService} in the Engine and is keyed
+ * by `cwd` like the other directory-backed services; the TTL cache's in-flight dedup converges
+ * concurrent keystroke queries onto one enumeration. Enumeration prefers `git ls-files` (respects
+ * the real .gitignore, tracked + untracked); non-git workspaces fall back to a bounded
+ * breadth-first readdir walk. Matching is substring-tiered — deliberately consistent with the
+ * composer's own client-side substring re-filter, so nothing the daemon returns gets dropped
+ * client-side.
+ */
+export class FileSuggestService {
+  private readonly listCache = new TtlCache<string[]>(LIST_CACHE_TTL_MS);
 
-const fileListCache = new Map<string, CachedFileList>();
-
-/** Search the workspace under `cwd` for files matching `query` (empty = browse mode:
- * everything matches, shallow files first). Returned paths are cwd-relative. */
-export async function suggestWorkspaceFiles(
-  cwd: string,
-  query: string,
-  limit = DEFAULT_SUGGEST_LIMIT,
-): Promise<FileSuggestion[]> {
-  const files = await enumerateFiles(cwd);
-  return rankFiles(files, query)
-    .slice(0, limit)
-    .map((file) => ({ path: file }));
-}
-
-async function enumerateFiles(cwd: string): Promise<string[]> {
-  const cached = fileListCache.get(cwd);
-  if (cached && cached.expiresAt > Date.now()) return cached.files;
-
-  const files = (await listGitFiles(cwd)) ?? (await walkFiles(cwd));
-  // Prune expired entries opportunistically; the cache is tiny (one entry per open workspace).
-  for (const [key, entry] of fileListCache) {
-    if (entry.expiresAt <= Date.now()) fileListCache.delete(key);
+  /** Search the workspace under `cwd` for files matching `query` (empty = browse mode:
+   * everything matches, shallow files first). Returned paths are cwd-relative. */
+  async suggest(
+    cwd: string,
+    query: string,
+    limit = DEFAULT_SUGGEST_LIMIT,
+  ): Promise<FileSuggestion[]> {
+    const files = await this.listCache.read(
+      cwd,
+      async () => (await listGitFiles(cwd)) ?? walkFiles(cwd),
+    );
+    return rankFiles(files, query)
+      .slice(0, limit)
+      .map((file) => ({ path: file }));
   }
-  fileListCache.set(cwd, { files, expiresAt: Date.now() + LIST_CACHE_TTL_MS });
-  return files;
 }
 
 /** Tracked + untracked-but-not-ignored, NUL-delimited. Resolves null when `cwd` is not
@@ -102,7 +92,9 @@ async function walkFiles(root: string): Promise<string[]> {
           queue.push({ dir: absolute, depth: depth + 1 });
         }
       } else if (entry.isFile()) {
-        files.push(path.relative(root, absolute));
+        // `FileSuggestionSchema` promises forward-slash paths (matching `git ls-files`), but
+        // `path.relative` yields the platform separator — rejoin for Windows daemons.
+        files.push(path.relative(root, absolute).split(path.sep).join('/'));
         if (files.length >= MAX_ENUMERATED_FILES) break;
       }
     }
