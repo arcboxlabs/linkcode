@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WorkspaceFileSchema } from '../file';
+import { FileSuggestionSchema, WorkspaceFileSchema } from '../file';
 
 /** File wire variants — directory-backed: keyed by cwd + path, shared by same-cwd sessions (see file.ts). */
 export const fileWireVariants = [
@@ -15,5 +15,19 @@ export const fileWireVariants = [
     kind: z.literal('file.read.result'),
     replyTo: z.string().min(1),
     file: WorkspaceFileSchema,
+  }),
+  z.object({
+    kind: z.literal('file.suggest'),
+    clientReqId: z.string().min(1),
+    /** Workspace root the search runs under. */
+    cwd: z.string().min(1),
+    /** Substring query; empty lists shallow files first (browse mode). */
+    query: z.string(),
+    limit: z.number().int().positive().max(100).optional(),
+  }),
+  z.object({
+    kind: z.literal('file.suggest.result'),
+    replyTo: z.string().min(1),
+    suggestions: z.array(FileSuggestionSchema),
   }),
 ] as const;

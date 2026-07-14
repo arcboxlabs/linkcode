@@ -29,6 +29,7 @@ import type { LoginBinaryResolver } from './agent-login-service';
 import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
 import { readWorkspaceFile } from './file-service';
+import { suggestWorkspaceFiles } from './file-suggest-service';
 import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
 import type { ProviderConfigStore } from './provider-config';
@@ -541,6 +542,15 @@ export class Engine {
           const file = await readWorkspaceFile(p.cwd, p.path);
           this.transport.send(
             createWireMessage({ kind: 'file.read.result', replyTo: p.clientReqId, file }),
+          );
+        });
+        break;
+      }
+      case 'file.suggest': {
+        await this.tryReply(p.clientReqId, async () => {
+          const suggestions = await suggestWorkspaceFiles(p.cwd, p.query, p.limit);
+          this.transport.send(
+            createWireMessage({ kind: 'file.suggest.result', replyTo: p.clientReqId, suggestions }),
           );
         });
         break;

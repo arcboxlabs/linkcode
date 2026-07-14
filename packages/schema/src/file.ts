@@ -16,3 +16,10 @@ export const WorkspaceFileSchema = z.object({
   mimeType: z.string().optional(),
 });
 export type WorkspaceFile = z.infer<typeof WorkspaceFileSchema>;
+
+/** One workspace-file match from `file.suggest` (the composer's @-mention source). */
+export const FileSuggestionSchema = z.object({
+  /** cwd-relative path, forward slashes. */
+  path: z.string().min(1),
+});
+export type FileSuggestion = z.infer<typeof FileSuggestionSchema>;
