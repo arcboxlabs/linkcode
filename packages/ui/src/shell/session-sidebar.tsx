@@ -12,7 +12,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from 'coss-ui/components/sidebar';
 import {
   BotIcon,
@@ -23,6 +22,7 @@ import {
   FilePlus2Icon,
   LogOutIcon,
   SearchIcon,
+  ServerIcon,
   SettingsIcon,
   SparklesIcon,
 } from 'lucide-react';
@@ -186,18 +186,15 @@ export function DefaultHostFooter({
   if (!latency) return <HostFooter state={state} />;
 
   return (
-    <>
-      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
-      <SidebarFooter className="shrink-0 px-2 py-1">
-        <div className="flex h-8 items-center gap-2 px-2 text-sm">
-          <span className="size-2 rounded-full bg-success" />
-          <span>Local Host</span>
-          {state && <span className="text-muted-foreground">{state}</span>}
-          <span className="text-muted-foreground">{latency}</span>
-          <ChevronUpIcon className="ml-auto size-4 text-muted-foreground" />
-        </div>
-      </SidebarFooter>
-    </>
+    <SidebarFooter className="shrink-0 px-2 py-1">
+      <div className="flex h-8 items-center gap-2 px-2 text-sm">
+        <span className="size-2 rounded-full bg-success" />
+        <span>Local Host</span>
+        {state && <span className="text-muted-foreground">{state}</span>}
+        <span className="text-muted-foreground">{latency}</span>
+        <ChevronUpIcon className="ml-auto size-4 text-muted-foreground" />
+      </div>
+    </SidebarFooter>
   );
 }
 
@@ -240,37 +237,69 @@ export function HostFooter({
   const tPalette = useTranslations('workbench.palette');
   const pendingPermissionLabel =
     pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
-  const openingSettingsRef = useRef(false);
+  const footerRef = useRef<HTMLDivElement>(null);
 
   return (
     <Popover>
-      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
       <SidebarFooter className="shrink-0 px-2 py-1">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <PopoverTrigger
-              render={
-                <SidebarMenuButton className="hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset">
-                  <span className="size-2 rounded-full bg-success" />
-                  <span>Local Host</span>
-                  {state && <span className="text-muted-foreground">{state}</span>}
-                  <ChevronUpIcon className="ml-auto text-muted-foreground" />
-                </SidebarMenuButton>
-              }
-            />
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div ref={footerRef} className="flex items-center gap-1">
+          <PopoverTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="relative"
+                aria-label={state ? `Local Host · ${state}` : 'Local Host'}
+              >
+                <ServerIcon />
+                <span className="absolute right-1 bottom-1 size-2 rounded-full bg-success ring-2 ring-sidebar" />
+              </Button>
+            }
+          />
+          <div className="ml-auto flex items-center gap-1">
+            {account ? (
+              <PopoverTrigger
+                render={
+                  <Button size="icon-sm" variant="ghost" aria-label={t('account')}>
+                    <Avatar className="size-6">
+                      {account.image && <AvatarImage src={account.image} alt={account.name} />}
+                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
+                        {accountInitial(account)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                }
+              />
+            ) : (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t('signInCloud')}
+                loading={authPending}
+                disabled={!onSignIn}
+                onClick={onSignIn}
+              >
+                <CloudIcon />
+              </Button>
+            )}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={tPalette('openSettings')}
+              disabled={!onOpenSettings}
+              onClick={onOpenSettings}
+            >
+              <SettingsIcon />
+            </Button>
+          </div>
+        </div>
       </SidebarFooter>
       <PopoverPopup
         side="top"
         align="start"
         sideOffset={8}
+        anchor={footerRef}
         className="w-80 text-sm"
-        finalFocus={(closeType) => {
-          const restoreFocus = closeType === 'keyboard' && !openingSettingsRef.current;
-          openingSettingsRef.current = false;
-          return restoreFocus;
-        }}
       >
         <div className="flex items-center gap-2 py-1.5">
           <span className="size-2 rounded-full bg-success" />
@@ -374,22 +403,6 @@ export function HostFooter({
               }
             />
           )}
-          <PopoverClose
-            render={
-              <Button
-                disabled={!onOpenSettings}
-                size="icon-sm"
-                variant="outline"
-                aria-label={tPalette('openSettings')}
-                onClick={() => {
-                  openingSettingsRef.current = true;
-                  onOpenSettings?.();
-                }}
-              >
-                <SettingsIcon />
-              </Button>
-            }
-          />
         </div>
       </PopoverPopup>
     </Popover>
@@ -474,14 +487,11 @@ function HostFooterRow({
 
 export function EmptyHostFooter(): React.ReactNode {
   return (
-    <>
-      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
-      <SidebarFooter className="shrink-0 px-2 py-1">
-        <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
-          <BotIcon className="size-4" />
-          Local Host
-        </div>
-      </SidebarFooter>
-    </>
+    <SidebarFooter className="shrink-0 px-2 py-1">
+      <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
+        <BotIcon className="size-4" />
+        Local Host
+      </div>
+    </SidebarFooter>
   );
 }

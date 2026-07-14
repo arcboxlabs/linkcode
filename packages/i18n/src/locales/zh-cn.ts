@@ -256,6 +256,7 @@ export const zhCN = {
       registerWorkspaceError: '添加工作区失败：{message}',
       organization: '组织',
       signInCloud: '登录 LinkCode Cloud',
+      account: '账户',
       manageAccount: '管理账户',
       signOut: '退出登录',
       remoteSignedOut: '登录后可连接远程主机',
