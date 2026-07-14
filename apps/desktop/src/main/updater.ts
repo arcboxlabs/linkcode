@@ -2,10 +2,10 @@ import type { UpdaterStatus } from '@linkcode/ipc';
 import { dialog } from 'electron';
 import log from 'electron-log';
 import { autoUpdater } from 'electron-updater';
-import { IS_DEV_SHELL } from './constants';
+import { CHANNEL } from './constants';
 
 /** A dev shell must never pull the production feed and replace itself with the release build. */
-const updatesDisabled = (): boolean => IS_DEV_SHELL;
+const updatesDisabled = (): boolean => CHANNEL === 'development';
 
 /**
  * Auto-update wiring (system plane only — never carries business data).

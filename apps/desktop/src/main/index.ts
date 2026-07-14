@@ -1,12 +1,14 @@
+// The identity side effect (app name, userData, AppUserModelID) must run before every other
+// import's module body — see identity.ts.
+import './identity';
+
 import { join } from 'node:path';
 import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, Menu } from 'electron';
-import log from 'electron-log';
 import { applyThemePreference } from './appearance';
 import { setupCloudAuth } from './cloud-auth/client';
 import { registerCloudImBridge } from './cloud-auth/im';
 import { registerCloudTunnelBridge } from './cloud-auth/tunnel';
-import { APP_ID, APP_NAME } from './constants';
 import { startDaemonSupervisor } from './daemon-supervisor';
 import { buildAppMenu } from './menu';
 import { getSettings } from './settings';
@@ -16,20 +18,6 @@ import { createDesktopWindow } from './window';
 Sentry.init({
   dsn: import.meta.env.MAIN_VITE_SENTRY_DSN,
 });
-
-app.setName(APP_NAME);
-// setName alone is not enough: Electron pins userData from package.json's productName before
-// any app code runs, and electron-builder bakes the release productName ("LinkCode") into the
-// asar even for dev-shell packages. Without this, a packaged dev shell shares the release app's
-// settings and single-instance lock — the second one to start exits silently.
-app.setPath('userData', join(app.getPath('appData'), APP_NAME));
-// Self-evidence for identity drift: any module that resolves a path before the lines above
-// lands in the wrong profile, and this line makes that visible on day one.
-log.info(`userData: ${app.getPath('userData')}`);
-
-// Windows keys the taskbar icon, pinning, and notification identity off the AppUserModelID; without
-// this the taskbar shows a blank/default icon. No-op on macOS/Linux.
-if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 // settings.ts caches settings in memory and rewrites the whole file on save, so two instances
 // would last-write-wins clobber each other. Only one instance may run; a second launch just

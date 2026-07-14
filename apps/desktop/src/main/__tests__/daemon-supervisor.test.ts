@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   app: {
     isPackaged: true,
     on: vi.fn(),
+    // constants.ts resolves the profile at import time (supervisor → constants).
+    commandLine: { hasSwitch: () => false, getSwitchValue: () => '' },
   },
   fork: vi.fn(),
   getSettings: vi.fn(),

@@ -135,7 +135,7 @@ The first committed E2E script is `apps/desktop/e2e/notifications.e2e.mts` (`pnp
 
 **Isolation (do not skip).**
 
-- `userData` for any unpackaged run on macOS is `~/Library/Application Support/LinkCode Dev` (`IS_DEV_SHELL` pins the app name), shared with your daily dev instance. An E2E run **must** still pass an independent `--user-data-dir=<temp>`, or `requestSingleInstanceLock` against the daily instance makes the second Electron exit 0 (looks like nothing launched). Back up that dir's `settings.json` first.
+- `userData` for any unpackaged run on macOS is `~/Library/Application Support/LinkCode Development` (the `development` channel pins the app name), shared with your daily dev instance. An E2E run **must** still pass an independent `--user-data-dir=<temp>`, or `requestSingleInstanceLock` against the daily instance makes the second Electron exit 0 (looks like nothing launched). Back up that dir's `settings.json` first.
 - Isolated daemon: `HOME=<tempdir> LINKCODE_PORT=<port> pnpm -F @linkcode/daemon run dev`. Pass the **same** fake `HOME` to Electron and it auto-connects via `runtime.json` (precondition: the real `settings.json` has no `daemonUrl`). Use a **fresh** fake `HOME` per run — a reused one carries an old daemon DB and leaves the composer disabled ("Create or pick a thread first").
 - Always launch Electron with `--use-mock-keychain`: a fake `HOME` has no login keychain, and without the flag macOS pops a blocking "Keychain Not Found / reset" dialog on the developer's screen at every launch.
 - Playwright pins `colorScheme: 'light'`. Theme/dark-mode E2E must pass `_electron.launch({ colorScheme: null })` or dark mode falsely looks broken.
@@ -149,7 +149,7 @@ HOME=<fakeHOME> <vendored>/claude -p 'Reply ok' --model haiku   # smoke test
 
 Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/LinkCode`). Detect turn-end by `form button[type="submit"]` reappearing (it is `type=button` while a run is active / showing Stop). Auto/bypass here is the approval-policy "Bypass permissions" option wired through the SDK's `setPermissionMode` (`claude-code.ts`) — there is no daemon env var for it (the CLI-side `CLAUDE_CODE_ENABLE_AUTO_MODE` concerns Bedrock/gateway auth only; see `packages/agent-adapter/AGENTS.md`).
 
-**Packaged product.** Build with `pnpm -F @linkcode/desktop run package:devshell` (there is **no** `run package` script). It stages the host runtime, runs `electron-vite build --mode devshell`, then `electron-builder --dir --config electron-builder.devshell.yml` (`productName: LinkCode Dev`, `identity: null` — unsigned by design), so you launch `LinkCode Dev.app`. `dev:mock` (`electron-vite dev --mode mock`) exists for the CDP-attach flow. Memory-only driving switches (real flags, not repo-verifiable): `--use-mock-keychain` for the keychain modal, a packaged-vs-unpackaged `--user-data-dir` inversion, the asar-unpack debug trick, and passing `--remoteDebuggingPort` as a first-class electron-vite option (before `--`).
+**Packaged product.** Build with `pnpm -F @linkcode/desktop run package:devshell` (there is **no** `run package` script). It stages the host runtime, runs `electron-vite build --mode devshell`, then `electron-builder --dir --config electron-builder.devshell.yml` (`productName: LinkCode Development`, `identity: null` — unsigned by design), so you launch `LinkCode Development.app`. `dev:mock` (`electron-vite dev --mode mock`) exists for the CDP-attach flow. Memory-only driving switches (real flags, not repo-verifiable): `--use-mock-keychain` for the keychain modal, a packaged-vs-unpackaged `--user-data-dir` inversion, the asar-unpack debug trick, and passing `--remoteDebuggingPort` as a first-class electron-vite option (before `--`).
 
 **Feature gotchas (memory-sourced).** The composer is disabled with no thread ("Create or pick a thread first") — click the Chats `+` first. "Ask permissions" stalls a Task at approval — switch to "Bypass permissions" before spawning an agent. Clicking a sidebar thread row needs Playwright `force: true`. Match the active row by `classList.contains('bg-sidebar-accent')` exactly (`className.includes` also matches the hover variant). Webview artifact E2E (`pnpm -F @linkcode/webview run dev:mock`): mock `blob:` URLs can't cross the Electron webview process (promotion fails `ERR_FILE_NOT_FOUND`) — use a real http URL.
 
@@ -184,7 +184,7 @@ The daemon advertises its bound endpoints in `~/.linkcode/runtime.json`; a clien
 
 ### Log locations
 
-Packaged: the supervisor pipes the daemon child's stdout to electron-log `info` and stderr to `warn`, in a file keyed on the Electron app name (`LinkCode` release / `LinkCode Dev` dev shell):
+Packaged: the supervisor pipes the daemon child's stdout to electron-log `info` and stderr to `warn`, in a file keyed on the Electron app name (`LinkCode` release / `LinkCode Development` dev shell; a `--profile` suffixes ` (<name>)`):
 
 - macOS `~/Library/Logs/<appName>/main.log`
 - Windows `%APPDATA%/<appName>/logs/main.log`
@@ -212,15 +212,22 @@ prek stashes unstaged tracked changes to `.devenv/state/prek/patches/<timestamp>
 git apply --3way "$(ls -t .devenv/state/prek/patches/*.patch | head -1)"
 ```
 
-## Dev shell vs installed release isolation
+## Identity: channel × profile isolation
 
-A local unpackaged "dev shell" build must stay isolated from an installed release on **four** axes: app name, `userData` dir, single-instance lock, and OS keychain (safeStorage). The predicate is `IS_DEV_SHELL = MODE !== 'production' || !app.isPackaged` (a production bundle run by the dev Electron binary is still a dev shell). `APP_NAME` is `'LinkCode Dev'` for dev, `'LinkCode'` for release; main calls `app.setName(APP_NAME)` **and** `app.setPath('userData', appData/APP_NAME)`. Skipping any axis clobbers release settings, steals its instance lock (the second instance exits 0 silently), or writes a safeStorage key under the dev binary's code signature — after which the release app prompts for the keychain password on first launch (macOS keychain ACLs pin the creator cdhash). Clean a polluted machine:
+The desktop identity is two orthogonal axes (`apps/desktop/src/main/constants.ts`), and app name, `userData` dir, single-instance lock, and OS keychain (safeStorage) all derive from them; `src/main/identity.ts` applies the identity as main's **first import**, and boot logs a `userData: <path>` line as self-evidence.
+
+- **channel** — `CHANNEL === 'development'` for any build that is not the released app: `MODE !== 'production' || !app.isPackaged` (a production bundle run by the dev Electron binary is still a dev shell). `APP_NAME` is `'LinkCode Development'` for dev, `'LinkCode'` for release. Skipping any isolation axis clobbers release settings, steals its instance lock (the second instance exits 0 silently), or writes a safeStorage key under the dev binary's code signature — after which the release app prompts for the keychain password on first launch (macOS keychain ACLs pin the creator cdhash).
+- **profile** — an optional isolated universe: `--profile=<name>` (or `LINKCODE_PROFILE`; `[a-z0-9-]`, ≤32 chars, invalid aborts boot). It suffixes the app name (`LinkCode Development (alpha)`) — forking the same four axes again — and is injected as `LINKCODE_PROFILE` into the supervised daemon, which forks its state dir to `~/.linkcode-<name>` and its HQ device identity with it. Two profiles therefore run side by side: daemons hunt past each other's ports, and each desktop follows its own `runtime.json`. In dev, start the daemon with the matching `LINKCODE_PROFILE` yourself.
+
+Clean a polluted machine (also after the `LinkCode Dev` → `LinkCode Development` rename, which orphaned the old dir and keychain entry by design — a rename migration would carry ciphertext the new keychain entry cannot decrypt):
 
 ```bash
 security delete-generic-password -s "LinkCode Safe Storage"
+security delete-generic-password -s "LinkCode Dev Safe Storage"   # pre-rename leftover
+rm -rf "$HOME/Library/Application Support/LinkCode Dev"           # pre-rename leftover
 ```
 
-Dev shell and release deliberately **share** `~/.linkcode` (daemon) and `~/LinkCode` (workspaces). `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
+Every channel and the default profile deliberately **share** `~/.linkcode` (daemon) and `~/LinkCode` (workspaces); only an explicit `--profile` forks the daemon state, and `~/LinkCode` plus the managed asset store stay shared even then. `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
 
 ## Formatting and linting
 
