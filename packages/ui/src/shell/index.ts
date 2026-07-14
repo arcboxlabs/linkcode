@@ -1,4 +1,3 @@
-export * from './agent-attachments';
 export * from './agent-efforts';
 export * from './agent-models';
 export * from './agent-onboarding-card';

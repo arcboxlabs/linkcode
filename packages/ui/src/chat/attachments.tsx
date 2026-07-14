@@ -18,13 +18,25 @@ import { cn } from '../lib/cn';
 export interface ChatAttachment {
   id: string;
   name: string;
-  kind: 'file' | 'image' | 'document' | 'directory' | 'url' | 'unknown';
+  kind: ChatAttachmentKind;
   mimeType?: string;
   sizeBytes?: number;
   url?: string;
   status?: 'pending' | 'ready' | 'failed';
   errorMessage?: string;
 }
+
+// TODO(linkcode-schema): Promote the prepared non-image kinds when the data plane supports them.
+export type ChatAttachmentKind =
+  | 'audio'
+  | 'directory'
+  | 'document'
+  | 'file'
+  | 'image'
+  | 'pdf'
+  | 'unknown'
+  | 'url'
+  | 'video';
 
 export type AttachmentVariant = 'grid' | 'inline' | 'list';
 

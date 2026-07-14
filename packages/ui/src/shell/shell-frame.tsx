@@ -13,7 +13,11 @@ import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { MentionItem } from './composer';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
-import type { NewSessionDraft, NewSessionSubmission } from './new-session-surface';
+import type {
+  AttachmentSupportByAgent,
+  NewSessionDraft,
+  NewSessionSubmission,
+} from './new-session-surface';
 import { NewSessionSurface } from './new-session-surface';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
 import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
@@ -38,6 +42,8 @@ export interface ShellFrameProps
   draft: NewSessionDraft | null;
   /** Agent runtime availability cues for the new-session page's onboarding flow (CODE-112). */
   runtimeCues?: AgentRuntimeCues;
+  /** Frontend capability stub used until attachment support is advertised by sessions. */
+  attachmentSupport?: AttachmentSupportByAgent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
@@ -104,6 +110,7 @@ export function ShellFrame({
   activeSession,
   draft,
   runtimeCues,
+  attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -193,6 +200,7 @@ export function ShellFrame({
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}
             runtimeCues={runtimeCues}
+            attachmentSupport={attachmentSupport}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}
             onLoginAgent={onLoginAgent}
@@ -209,6 +217,7 @@ export function ShellFrame({
             conversation={conversation}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
+            attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}
             cwd={active?.cwd}

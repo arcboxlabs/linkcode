@@ -54,6 +54,8 @@ export interface NewSessionSubmission {
   content: ContentBlock[];
 }
 
+export type AttachmentSupportByAgent = Readonly<Partial<Record<AgentKind, true>>>;
+
 export interface NewSessionSurfaceProps {
   draft: NewSessionDraft;
   /** Project workspaces offered by the picker; the chat workspace arrives separately. */
@@ -64,6 +66,8 @@ export interface NewSessionSurfaceProps {
   /** Runtime availability per agent (CODE-112): a cue renders the onboarding card for the picked
    * provider and blocks sending until the runtime is ready; badges ride the provider submenu. */
   runtimeCues?: AgentRuntimeCues;
+  /** Frontend capability stub used until attachment support is advertised by sessions. */
+  attachmentSupport?: AttachmentSupportByAgent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
@@ -81,7 +85,7 @@ export interface NewSessionSurfaceProps {
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
   /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only —
-   * absent on webview, where the composer's "Attach" action falls back to `<input type="file">`. */
+   * absent on webview, where the composer's "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
 }
 
@@ -99,6 +103,7 @@ export function NewSessionSurface({
   className,
   topContent,
   runtimeCues,
+  attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -188,6 +193,7 @@ export function NewSessionSurface({
           <Composer
             agentLabel={AGENT_LABELS[provider]}
             agentKind={provider}
+            attachmentsSupported={Boolean(attachmentSupport?.[provider])}
             disabled={pending || !selected}
             isRunning={false}
             runtimeCues={runtimeCues}

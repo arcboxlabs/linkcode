@@ -7,11 +7,12 @@ import type {
   EffortLevel,
   SessionMode,
 } from '@linkcode/schema';
-import { MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
 import { Badge } from 'coss-ui/components/badge';
 import { Command } from 'coss-ui/components/command';
 import { Frame, FrameFooter } from 'coss-ui/components/frame';
+import { Input } from 'coss-ui/components/input';
 import { toastManager } from 'coss-ui/components/toast';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
@@ -31,13 +32,13 @@ import {
 } from '../chat/prompt-input';
 import { preventBaseUIHandler } from '../lib/base-ui';
 import { cn } from '../lib/cn';
-import { AGENT_ATTACHMENT_SUPPORT } from './agent-attachments';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { ComposerAttachment } from './composer-attachments';
 import {
   failedComposerAttachment,
+  isSupportedImageFile,
   pendingComposerAttachment,
   readImageFileAsComposerAttachment,
 } from './composer-attachments';
@@ -80,6 +81,8 @@ export interface ComposerProps {
   agentLabel?: string;
   /** Which adapter is running the active session; picks the model list to show (if any). */
   agentKind?: AgentKind;
+  /** Whether the current frontend capability stub allows image attachments. */
+  attachmentsSupported?: boolean;
   /** No active session: the composer is inert. */
   disabled: boolean;
   /** Blocks sending only (agent runtime not ready — CODE-112): typing and every menu, including
@@ -138,7 +141,7 @@ export interface ComposerProps {
   /** Strip rendered at the bottom of the composer card (e.g. the new-session workspace bar). */
   contextBar?: React.ReactNode;
   /** Opens a native file picker and returns the picked images, ready to stage. Absent (webview):
-   * the "Attach" action falls back to a plain `<input type="file">`. */
+   * the "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
 }
 
@@ -147,10 +150,18 @@ const EMPTY_AGENT_COMMANDS: AgentCommand[] = [];
 const WHITESPACE_RE = /\s/;
 const LEADING_WHITESPACE_RE = /^\s/;
 
+function attachmentPayloadBytes(attachments: readonly ComposerAttachment[]): number {
+  return attachments.reduce(
+    (sum, attachment) => (attachment.status === 'failed' ? sum : sum + (attachment.sizeBytes ?? 0)),
+    0,
+  );
+}
+
 export function Composer({
   handleRef,
   agentLabel,
   agentKind,
+  attachmentsSupported = false,
   disabled,
   sendBlocked = false,
   isRunning,
@@ -190,7 +201,10 @@ export function Composer({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const attachmentsSupported = agentKind ? Boolean(AGENT_ATTACHMENT_SUPPORT[agentKind]) : false;
+  const hasPendingAttachment = attachments.some((attachment) => attachment.status === 'pending');
+  const hasReadyAttachment = attachments.some(
+    (attachment) => attachment.status === 'ready' && attachment.block !== undefined,
+  );
 
   const catalog = agentCapabilities?.slashCommands
     ? (agentCommands ?? EMPTY_AGENT_COMMANDS)
@@ -318,7 +332,6 @@ export function Composer({
       (attachment): attachment is ComposerAttachment & { block: ContentBlock } =>
         attachment.status === 'ready' && attachment.block !== undefined,
     );
-    const hasPendingAttachment = attachments.some((attachment) => attachment.status === 'pending');
     if (
       (!text && readyAttachments.length === 0) ||
       disabled ||
@@ -357,8 +370,19 @@ export function Composer({
       }
       return;
     }
-    let total = attachments.reduce((sum, attachment) => sum + (attachment.sizeBytes ?? 0), 0);
+    let total = attachmentPayloadBytes(attachments);
     for (const file of files) {
+      const validationError = isSupportedImageFile(file)
+        ? file.size > MAX_ATTACHMENT_BYTES
+          ? t('attachmentTooLarge')
+          : null
+        : t('attachmentUnsupportedType');
+      if (validationError) {
+        const failed = failedComposerAttachment(pendingComposerAttachment(file), validationError);
+        setAttachments((prev) => [...prev, failed]);
+        toastManager.add({ title: validationError, type: 'error' });
+        continue;
+      }
       if (total + file.size > MAX_ATTACHMENT_TOTAL_BYTES) {
         toastManager.add({ title: t('attachmentsTotalTooLarge'), type: 'error' });
         continue;
@@ -366,11 +390,7 @@ export function Composer({
       total += file.size;
       const pending = pendingComposerAttachment(file);
       setAttachments((prev) => [...prev, pending]);
-      void readImageFileAsComposerAttachment(file, pending, {
-        readFailed: t('attachmentReadFailed'),
-        tooLarge: t('attachmentTooLarge'),
-        unsupportedType: t('attachmentUnsupportedType'),
-      })
+      void readImageFileAsComposerAttachment(file, pending, t('attachmentReadFailed'))
         .then((ready) => {
           setAttachments((prev) =>
             prev.map((attachment) => (attachment.id === pending.id ? ready : attachment)),
@@ -435,7 +455,7 @@ export function Composer({
    * already ran in `attachmentFromReadFile`, so only the running total needs rechecking here. */
   function mergeAttachments(picked: ComposerAttachment[]): void {
     if (picked.length === 0) return;
-    let total = attachments.reduce((sum, attachment) => sum + (attachment.sizeBytes ?? 0), 0);
+    let total = attachmentPayloadBytes(attachments);
     const merged = picked.map((attachment) => {
       if (attachment.status !== 'ready') {
         if (attachment.errorMessage) {
@@ -634,25 +654,23 @@ export function Composer({
 
   return (
     <div
-      className={cn(
-        'relative px-4 pb-4',
-        isDraggingOver && 'outline-2 outline-primary outline-dashed -outline-offset-2 rounded-2xl',
-      )}
+      className="relative px-4 pb-4"
       onDragEnter={onAttachmentDragEnter}
       onDragLeave={onAttachmentDragLeave}
       onDragOver={onAttachmentDragOver}
       onDrop={onAttachmentDrop}
     >
-      {/* Webview fallback for "Attach" when no onPickAttachmentFiles prop supplies a native
-          dialog — desktop always provides one, so this element never activates there. */}
-      <input
+      {/* Coss file-input fallback for webview; desktop supplies a native dialog instead. */}
+      <Input
         ref={fileInputRef}
         // Keep in sync with SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES in @linkcode/schema — the lint
         // rule for this attribute requires a static literal, so it can't be derived at render time.
         accept="image/jpeg, image/png, image/gif, image/webp"
         className="hidden"
         multiple
+        nativeInput
         type="file"
+        unstyled
         onChange={onFileInputChange}
       />
       <div className="mx-auto max-w-3xl">
@@ -677,6 +695,7 @@ export function Composer({
                 frameVisible
                   ? 'duration-200 ease-[cubic-bezier(0.2,0,0,1)]'
                   : 'bg-transparent p-0 duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                isDraggingOver && 'ring-2 ring-ring',
               )}
             >
               <div aria-hidden={!commandOpen} inert={!commandOpen} className="min-h-0">
@@ -804,8 +823,8 @@ export function Composer({
                       !isRunning &&
                       (disabled ||
                         sendBlocked ||
-                        (value.trim().length === 0 && attachments.length === 0) ||
-                        attachments.some((attachment) => attachment.status === 'pending'))
+                        (value.trim().length === 0 && !hasReadyAttachment) ||
+                        hasPendingAttachment)
                     }
                     onStop={onStop}
                     status={isRunning ? 'streaming' : 'ready'}

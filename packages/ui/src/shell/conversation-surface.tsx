@@ -14,6 +14,8 @@ export interface ConversationSurfaceProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   agentLabel?: string;
+  /** Frontend capability stub used until attachment support is advertised by the session. */
+  attachmentsSupported?: boolean;
   cwd?: string;
   /** TODO(backend): thread the session's active model here once the daemon reflects it. */
   modelName?: string;
@@ -44,7 +46,7 @@ export interface ConversationSurfaceProps {
   onOpenPreviewUrl?: (url: string) => void;
   /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only
    * (built by combining the system dialog with a daemon file read) — absent on webview, where
-   * the composer's "Attach" action falls back to a plain `<input type="file">`. */
+   * the composer's "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
@@ -60,6 +62,7 @@ export function ConversationSurface({
   conversation,
   agentKind,
   agentLabel,
+  attachmentsSupported = false,
   cwd,
   modelName,
   permissionDecisions,
@@ -129,6 +132,7 @@ export function ConversationSurface({
         handleRef={composerRef}
         agentLabel={agentLabel}
         agentKind={agentKind}
+        attachmentsSupported={attachmentsSupported}
         disabled={disabled}
         isRunning={isRunning}
         mentionItems={mentionItems}

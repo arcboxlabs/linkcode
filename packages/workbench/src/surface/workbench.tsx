@@ -22,6 +22,7 @@ import {
   updateWorkspace,
 } from '@linkcode/sdk';
 import type {
+  AttachmentSupportByAgent,
   ComposerAttachment,
   NewSessionDraft,
   NewSessionSubmission,
@@ -60,6 +61,14 @@ import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
+
+// TODO(backend): replace this frontend stub with attachment support advertised by each session.
+const ATTACHMENT_SUPPORT: AttachmentSupportByAgent = {
+  'claude-code': true,
+  codex: true,
+  opencode: true,
+  pi: true,
+};
 
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
@@ -443,6 +452,7 @@ function WorkbenchSessionSurface({
 
   return (
     <ShellComponent
+      attachmentSupport={ATTACHMENT_SUPPORT}
       threadGroups={threadGroups}
       workspaces={projectWorkspaces}
       workspacesLoading={workspacesLoading}

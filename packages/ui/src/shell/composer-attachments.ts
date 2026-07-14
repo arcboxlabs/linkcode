@@ -1,13 +1,44 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { isSupportedAttachmentImageMimeType, MAX_ATTACHMENT_BYTES } from '@linkcode/schema';
-import type { ChatAttachment } from '../chat/attachments';
+import type { ChatAttachment, ChatAttachmentKind } from '../chat/attachments';
 
-export function isSupportedImageMimeType(mimeType: string | undefined): mimeType is string {
+const AUDIO_EXTENSIONS = new Set(['aac', 'flac', 'm4a', 'mp3', 'ogg', 'wav']);
+const DOCUMENT_EXTENSIONS = new Set([
+  'csv',
+  'doc',
+  'docx',
+  'json',
+  'md',
+  'markdown',
+  'odt',
+  'rtf',
+  'tsv',
+  'txt',
+  'xls',
+  'xlsx',
+  'yaml',
+  'yml',
+]);
+const VIDEO_EXTENSIONS = new Set(['avi', 'm4v', 'mkv', 'mov', 'mp4', 'webm']);
+
+export function isSupportedImageMimeType(mimeType: string | undefined): boolean {
   return mimeType !== undefined && isSupportedAttachmentImageMimeType(mimeType);
 }
 
 export function isSupportedImageFile(file: File): boolean {
   return isSupportedImageMimeType(file.type);
+}
+
+function attachmentKindForFile(name: string, mimeType?: string): ChatAttachmentKind {
+  if (isSupportedImageMimeType(mimeType)) return 'image';
+
+  const dot = name.lastIndexOf('.');
+  const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+  if (mimeType === 'application/pdf' || extension === 'pdf') return 'pdf';
+  if (mimeType?.startsWith('audio/') || AUDIO_EXTENSIONS.has(extension)) return 'audio';
+  if (mimeType?.startsWith('video/') || VIDEO_EXTENSIONS.has(extension)) return 'video';
+  if (mimeType?.startsWith('text/') || DOCUMENT_EXTENSIONS.has(extension)) return 'document';
+  return 'file';
 }
 
 /** A staged composer attachment: the presentational `ChatAttachment` plus the wire payload once
@@ -34,26 +65,19 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Decodes a dropped/pasted image `File` into the ready form of `pending` (same id, so the
- * staging tray swaps it in place). Throws with a message suitable for a toast when the file is
- * unsupported, oversized, or unreadable. */
+/** Decodes a validated dropped/pasted image `File` into the ready form of `pending` (same id, so
+ * the staging tray swaps it in place). Throws with a message suitable for a toast when the file
+ * cannot be read. */
 export async function readImageFileAsComposerAttachment(
   file: File,
   pending: ComposerAttachment,
-  errors: {
-    unsupportedType: string;
-    tooLarge: string;
-    readFailed: string;
-  },
+  readFailed: string,
 ): Promise<ComposerAttachment> {
-  if (!isSupportedImageFile(file)) throw new Error(errors.unsupportedType);
-  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(errors.tooLarge);
-
   let dataUrl: string;
   try {
     dataUrl = await readFileAsDataUrl(file);
   } catch {
-    throw new Error(errors.readFailed);
+    throw new Error(readFailed);
   }
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
 
@@ -68,7 +92,7 @@ export async function readImageFileAsComposerAttachment(
 export function pendingComposerAttachment(file: File): ComposerAttachment {
   return {
     id: newAttachmentId(),
-    kind: 'image',
+    kind: attachmentKindForFile(file.name, file.type),
     mimeType: file.type,
     name: file.name,
     sizeBytes: file.size,
@@ -114,7 +138,11 @@ export function attachmentFromReadFile(
   errors: { unsupportedType: string; tooLarge: string },
 ): ComposerAttachment {
   const name = fileNameFromPath(file.path);
-  if (file.encoding !== 'base64' || !isSupportedImageMimeType(file.mimeType)) {
+  if (
+    file.encoding !== 'base64' ||
+    file.mimeType === undefined ||
+    !isSupportedImageMimeType(file.mimeType)
+  ) {
     throw new Error(errors.unsupportedType);
   }
   if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(errors.tooLarge);
@@ -142,7 +170,7 @@ export function failedComposerAttachmentFromPath(
   return {
     id: newAttachmentId(),
     errorMessage,
-    kind: 'image',
+    kind: attachmentKindForFile(name),
     name,
     status: 'failed',
   };

@@ -61,6 +61,7 @@ export function DesktopShell({
   activeSession,
   draft,
   runtimeCues,
+  attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
   conversation,
@@ -178,6 +179,7 @@ export function DesktopShell({
   }, [bottomContentTarget, bottomContentHost]);
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
+  const tComposer = useTranslations('workbench.composer');
   const syncSidebarPaneSize = useCallback((size: number): void => {
     setShellPaneCssSize(shellRootRef.current, '--lc-sidebar-w', size);
   }, []);
@@ -276,13 +278,18 @@ export function DesktopShell({
 
   const pickAttachmentFiles = useCallback(async (): Promise<ComposerAttachment[]> => {
     const paths = await systemBridge.fs.pickFile({
-      title: 'Attach images',
+      title: tComposer('attachmentPickerTitle'),
       multiple: true,
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+      filters: [
+        {
+          name: tComposer('attachmentPickerFilter'),
+          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+        },
+      ],
     });
     if (!paths || !onReadAttachmentFile) return [];
     return Promise.all(paths.map((path) => onReadAttachmentFile(path)));
-  }, [systemBridge, onReadAttachmentFile]);
+  }, [systemBridge, onReadAttachmentFile, tComposer]);
 
   useDesktopPaletteCommands({
     desktopPlatform,
@@ -317,6 +324,7 @@ export function DesktopShell({
           workspaces={workspaces}
           chatWorkspace={chatWorkspace}
           runtimeCues={runtimeCues}
+          attachmentSupport={attachmentSupport}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
           onDownloadAgent={onDownloadAgent}
@@ -333,6 +341,7 @@ export function DesktopShell({
           conversation={conversation}
           agentKind={active?.kind}
           agentLabel={agentLabel}
+          attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
           permissionDecisions={permissionDecisions}
           respondingPermissions={respondingPermissions}
