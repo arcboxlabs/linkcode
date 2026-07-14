@@ -10,6 +10,7 @@ import {
   FrameTitle,
 } from 'coss-ui/components/frame';
 import { InputPrimitive } from 'coss-ui/components/input';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import { ArrowDownIcon, ArrowUpIcon, CornerDownLeftIcon, PencilIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -401,19 +402,24 @@ function PromptChoiceRow({
         <span className="min-w-0 flex-1 flex items-center gap-2 text-left">
           <span
             className={cn(
-              'block truncate font-medium text-foreground text-sm',
+              'block font-medium text-foreground text-sm',
               choice.tone === 'danger' && 'text-destructive-foreground',
             )}
           >
             {choice.label}
           </span>
           {choice.description ? (
-            <span
-              className="block truncate text-muted-foreground text-xs"
-              title={choice.description}
-            >
-              {choice.description}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                delay={300}
+                render={
+                  <span className="block truncate text-muted-foreground text-xs">
+                    {choice.description}
+                  </span>
+                }
+              />
+              <TooltipContent className="max-w-xl">{choice.description}</TooltipContent>
+            </Tooltip>
           ) : null}
         </span>
         {checked ? (
