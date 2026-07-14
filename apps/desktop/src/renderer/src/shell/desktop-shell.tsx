@@ -84,6 +84,8 @@ export function DesktopShell({
   onToggleGroupCollapsed,
   onToggleSectionCollapsed,
   onTogglePreviewExpanded,
+  mentionItems,
+  onMentionQueryChange,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -340,6 +342,8 @@ export function DesktopShell({
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
+          mentionItems={mentionItems}
+          onMentionQueryChange={onMentionQueryChange}
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}

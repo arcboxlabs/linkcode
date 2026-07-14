@@ -39,6 +39,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
+import { useFileMentionSource } from '../files/mentions';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -141,6 +142,7 @@ function WorkbenchSessionSurface({
   const [answeredQuestions, addAnsweredQuestion] = useSet<string>();
   const [respondingQuestions, addRespondingQuestion, removeRespondingQuestion] = useSet<string>();
   const active = sessions.active;
+  const { mentionItems, onMentionQueryChange } = useFileMentionSource(active?.cwd);
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -465,6 +467,8 @@ function WorkbenchSessionSurface({
       onToggleGroupCollapsed={toggleGroupCollapsed}
       onToggleSectionCollapsed={toggleSectionCollapsed}
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
+      mentionItems={mentionItems}
+      onMentionQueryChange={onMentionQueryChange}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}

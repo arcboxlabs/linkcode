@@ -82,6 +82,9 @@ export interface ComposerProps {
   isRunning: boolean;
   /** Entries for the `@` menu (default: none). */
   mentionItems?: MentionItem[];
+  /** Reports the live `@` query (null when no mention trigger is active) so the app can
+   * fetch `mentionItems` for it — the data source stays pluggable and app-owned. */
+  onMentionQueryChange?: (query: string | null) => void;
   /** Active workflow mode id, reflected from the session's `current-mode-update` event. */
   currentModeId: string | null;
   /** Agent-advertised workflow modes (plan / goal / … — see session-modes.ts). Defaults to the
@@ -134,6 +137,7 @@ export function Composer({
   sendBlocked = false,
   isRunning,
   mentionItems = EMPTY_MENTION_ITEMS,
+  onMentionQueryChange,
   currentModeId,
   availableModes = STUB_SESSION_MODES,
   approvalPolicy,
@@ -226,7 +230,11 @@ export function Composer({
 
   function updateCaret(nextCaret: number, nextValue = value): void {
     setCaret(nextCaret);
-    if (!computeTextTrigger(nextValue, nextCaret)) setDismissedStart(null);
+    const trigger = computeTextTrigger(nextValue, nextCaret);
+    if (!trigger) setDismissedStart(null);
+    // Event-driven query reporting (never an effect watching state): every caret/value
+    // change flows through here, so the app's mention source stays in sync with typing.
+    onMentionQueryChange?.(trigger?.kind === 'mention' ? trigger.query : null);
   }
 
   function updateValue(nextValue: string, event: Event): void {
@@ -276,6 +284,7 @@ export function Composer({
     setCaret(0);
     setDismissedStart(null);
     setPlusCommandStart(null);
+    onMentionQueryChange?.(null);
   }
 
   function ingestFiles(files: File[]): void {
@@ -433,10 +442,13 @@ export function Composer({
     // Avoid a double space when the trigger token is already followed by whitespace.
     const rest = value.slice(caret);
     const sep = LEADING_WHITESPACE_RE.test(rest) ? '' : ' ';
-    const insert = `@${entry.mention.value}`;
+    // A quoted path, replacing the whole @token: every agent understands a quoted relative
+    // path in prose (its own fs tools read it), whereas @path is Claude-specific syntax.
+    const insert = `"${entry.mention.value.replaceAll('"', String.raw`\"`)}"`;
     const next = `${value.slice(0, textTrigger.start)}${insert}${sep}${rest}`;
     setPlusCommandStart(null);
     setValueAndCaret(next, textTrigger.start + insert.length + sep.length);
+    onMentionQueryChange?.(null);
   }
 
   function selectMentionCommand(): void {

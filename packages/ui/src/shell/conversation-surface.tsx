@@ -5,7 +5,7 @@ import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
-import type { ComposerHandle } from './composer';
+import type { ComposerHandle, MentionItem } from './composer';
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
 import { ConversationPromptDock } from './conversation-prompt-dock';
@@ -27,6 +27,10 @@ export interface ConversationSurfaceProps {
   className?: string;
   conversationClassName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
+  mentionItems?: MentionItem[];
+  /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
+  onMentionQueryChange?: (query: string | null) => void;
   onSendPrompt: (content: ContentBlock[]) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
@@ -64,6 +68,8 @@ export function ConversationSurface({
   className,
   conversationClassName,
   TerminalBlockComponent,
+  mentionItems,
+  onMentionQueryChange,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -119,6 +125,8 @@ export function ConversationSurface({
         agentKind={agentKind}
         disabled={disabled}
         isRunning={isRunning}
+        mentionItems={mentionItems}
+        onMentionQueryChange={onMentionQueryChange}
         currentModeId={conversation.currentModeId}
         approvalPolicy={conversation.approvalPolicy}
         currentModel={conversation.currentModel}
