@@ -8,7 +8,7 @@ import type {
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Message, Part, Session } from '@opencode-ai/sdk/v2';
-import { asHistoryId, asMessageId, compactRecord } from '../../history-util';
+import { asHistoryId, asMessageId, compactRecord, textHistoryEvent } from '../../history-util';
 import { locationsFromToolInput, toolKindFromName } from '../../util';
 
 type ToolPart = Extract<Part, { type: 'tool' }>;
@@ -116,34 +116,19 @@ export function mapOpencodeHistoryEvents(
           return texts;
         }, [])
         .join('\n');
-      if (text.length === 0) continue;
-      events.push({
-        historyId,
-        itemId: info.id,
-        ts,
-        event: {
-          type: 'user-message',
-          messageId: asMessageId(info.id),
-          content: [textBlock(text)],
-        },
-      });
+      // textHistoryEvent owns the empty-text-drops-the-event rule and the wire shape (shared with
+      // the codex history path).
+      const event = textHistoryEvent(historyId, 'user', info.id, text, ts);
+      if (event) events.push(event);
       continue;
     }
     for (const part of parts) {
       switch (part.type) {
-        case 'text':
-          if (part.text.trim().length === 0) break;
-          events.push({
-            historyId,
-            itemId: part.id,
-            ts,
-            event: {
-              type: 'agent-message-chunk',
-              messageId: asMessageId(part.id),
-              content: textBlock(part.text),
-            },
-          });
+        case 'text': {
+          const event = textHistoryEvent(historyId, 'assistant', part.id, part.text, ts);
+          if (event) events.push(event);
           break;
+        }
         case 'reasoning':
           if (part.text.trim().length === 0) break;
           events.push({

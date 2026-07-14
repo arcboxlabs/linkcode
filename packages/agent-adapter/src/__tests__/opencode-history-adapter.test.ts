@@ -1,9 +1,10 @@
 import type { AgentEvent, AgentHistoryId } from '@linkcode/schema';
-import type { Event, Session } from '@opencode-ai/sdk/v2';
+import type { Session } from '@opencode-ai/sdk/v2';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import { OpenCodeAdapter } from '../native/opencode';
 import type { OpencodeHistoryServerLike } from '../native/opencode/history-server';
+import { FakeEventStream } from './fake-event-stream';
 
 const sdkMock = vi.hoisted(() => ({
   createOpencode: null as ((opts: unknown) => unknown) | null,
@@ -77,7 +78,11 @@ describe('OpenCodeAdapter.listHistory', () => {
 describe('OpenCodeAdapter.readHistory', () => {
   it('rejects clearly when the session does not exist', async () => {
     sdkMock.createOpencodeClient = () => ({
-      session: { get: vi.fn(() => Promise.resolve({ error: { status: 404 } })) },
+      session: {
+        get: vi.fn(() => Promise.resolve({ error: { status: 404 } })),
+        // Fetched concurrently with `get`; existence is judged off `get`, so this error is unread.
+        messages: vi.fn(() => Promise.resolve({ error: { status: 404 } })),
+      },
     });
     const adapter = new HistoryTestAdapter();
     await expect(
@@ -146,32 +151,6 @@ describe('OpenCodeAdapter.readHistory', () => {
     expect(page2.cursor).toBeUndefined();
   });
 });
-
-/** Minimal async-iterable SSE stand-in for the live-path tests. */
-class FakeEventStream {
-  private readonly queued: Event[] = [];
-  private waiting: (() => void) | null = null;
-
-  push(event: Event): void {
-    this.queued.push(event);
-    const wake = this.waiting;
-    this.waiting = null;
-    wake?.();
-  }
-
-  async *[Symbol.asyncIterator](): AsyncGenerator<Event> {
-    while (true) {
-      if (this.queued.length === 0) {
-        // eslint-disable-next-line no-await-in-loop -- queue iterator: the await IS the next-event signal
-        await new Promise<void>((resolve) => {
-          this.waiting = resolve;
-        });
-        continue;
-      }
-      yield this.queued.shift()!;
-    }
-  }
-}
 
 function makeLiveClient(resumedSession: Session | null) {
   const stream = new FakeEventStream();
