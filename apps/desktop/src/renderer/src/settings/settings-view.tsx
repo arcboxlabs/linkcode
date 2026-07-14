@@ -246,7 +246,15 @@ export function SettingsView(): React.ReactNode {
                 searchValue={searchQuery}
                 onSearchChange={setSearchQuery}
                 onSearchSubmit={() => {
-                  visibleGroups.flatMap((group) => group.items)[0]?.onClick?.();
+                  const first = visibleGroups.flatMap((group) => group.items)[0];
+                  if (first === undefined) return;
+                  // A query that matched an accordion child by name lands on that child, not
+                  // the parent's default selection ("codex" → History import → Codex).
+                  const query = searchQuery.trim().toLowerCase();
+                  const child = first.children?.find((item) =>
+                    item.label.toLowerCase().includes(query),
+                  );
+                  (child ?? first).onClick?.();
                 }}
                 searchEmptyLabel={t('searchNoResults')}
                 groups={visibleGroups}

@@ -105,6 +105,8 @@ export function SettingsSidebarNav({
             value={searchValue}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
             onKeyDown={(event) => {
+              // An IME candidate-commit Enter (or composition cancel) is not a submit.
+              if (event.nativeEvent.isComposing || event.key === 'Process') return;
               if (event.key === 'Enter') {
                 onSearchSubmit?.();
                 return;
