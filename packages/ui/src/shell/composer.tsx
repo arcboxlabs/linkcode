@@ -746,7 +746,11 @@ export function Composer({
                   <Attachments
                     attachments={attachments}
                     className="w-full px-3.5 pt-3"
-                    variant="grid"
+                    labels={{
+                      failed: t('attachmentFailed'),
+                      pending: t('attachmentPending'),
+                      remove: t('removeAttachment'),
+                    }}
                     onRemove={handleRemoveAttachment}
                   />
                 ) : null}

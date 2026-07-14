@@ -1,17 +1,12 @@
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
+import { Card } from 'coss-ui/components/card';
 import { Spinner } from 'coss-ui/components/spinner';
-import {
-  AlertCircleIcon,
-  FileArchiveIcon,
-  FileIcon,
-  FileImageIcon,
-  FileTextIcon,
-  FolderIcon,
-  GlobeIcon,
-  XIcon,
-} from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
+import { AlertCircleIcon, FileImageIcon, XIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { FileIconComponent } from '../lib/file-icon';
+import { fileIconFor } from '../lib/file-icon';
 
 // TODO(linkcode-schema): Provisional UI-only attachment model, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when uploads/context files are supported by the data plane.
@@ -38,30 +33,31 @@ export type ChatAttachmentKind =
   | 'url'
   | 'video';
 
-export type AttachmentVariant = 'grid' | 'inline' | 'list';
+export interface AttachmentLabels {
+  failed: string;
+  pending: string;
+  remove: string;
+}
 
 export type AttachmentsProps = React.ComponentProps<'div'> & {
   attachments?: readonly ChatAttachment[];
-  variant?: AttachmentVariant;
+  labels: AttachmentLabels;
   onRemove?: (attachment: ChatAttachment) => void;
 };
 
 export function Attachments({
   className,
   attachments,
-  variant = 'grid',
+  labels,
   onRemove,
   children,
   ...props
 }: AttachmentsProps): React.ReactNode {
+  const compact = attachments?.some((attachment) => attachment.kind !== 'image') ?? false;
+
   return (
     <div
-      className={cn(
-        'flex items-start',
-        variant === 'list' ? 'flex-col gap-2' : 'flex-wrap gap-2',
-        className,
-      )}
-      data-variant={variant}
+      className={cn('flex min-w-0 flex-nowrap items-stretch gap-2 overflow-x-auto', className)}
       {...props}
     >
       {children ??
@@ -69,68 +65,76 @@ export function Attachments({
           <Attachment
             key={attachment.id}
             attachment={attachment}
+            compact={compact}
+            labels={labels}
             onRemove={onRemove ? () => onRemove(attachment) : undefined}
-            variant={variant}
           />
         ))}
     </div>
   );
 }
 
-export type AttachmentProps = React.ComponentProps<'div'> & {
+type AttachmentProps = React.ComponentProps<typeof Card> & {
   attachment: ChatAttachment;
-  variant?: AttachmentVariant;
+  compact: boolean;
+  labels: AttachmentLabels;
   onRemove?: () => void;
 };
 
-export function Attachment({
+function Attachment({
   className,
   attachment,
-  variant = 'grid',
+  compact,
+  labels,
   onRemove,
   children,
   ...props
 }: AttachmentProps): React.ReactNode {
+  const isImage = attachment.kind === 'image';
+
   return (
-    <div
+    <Card
       className={cn(
-        'group relative min-w-0 overflow-hidden border border-border bg-card',
-        variant === 'grid' && 'size-24 rounded-lg',
-        variant === 'inline' && 'flex h-8 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-xs',
-        variant === 'list' && 'flex w-full items-center gap-3 rounded-lg p-3 text-sm',
+        'group min-w-0 shrink-0 overflow-hidden rounded-xl',
+        isImage
+          ? compact
+            ? 'size-14'
+            : 'size-24'
+          : 'h-14 w-48 flex-row items-center gap-2 px-2 py-0',
         className,
       )}
       {...props}
     >
       {children ?? (
         <>
-          <AttachmentPreview attachment={attachment} variant={variant} />
-          <AttachmentInfo attachment={attachment} variant={variant} />
-          <AttachmentStatus attachment={attachment} variant={variant} />
-          <AttachmentRemove attachmentVariant={variant} onRemove={onRemove} />
+          {isImage ? (
+            <Tooltip>
+              <TooltipTrigger delay={300} render={<AttachmentImage attachment={attachment} />} />
+              <TooltipContent>{attachment.name}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <AttachmentFile attachment={attachment} labels={labels} />
+          )}
+          {isImage ? <AttachmentStatus attachment={attachment} labels={labels} overlay /> : null}
+          <AttachmentRemove removeLabel={labels.remove} onRemove={onRemove} />
         </>
       )}
-    </div>
+    </Card>
   );
 }
 
-export type AttachmentPreviewProps = React.ComponentProps<'div'> & {
+type AttachmentImageProps = React.ComponentProps<'div'> & {
   attachment: ChatAttachment;
-  variant?: AttachmentVariant;
 };
 
-export function AttachmentPreview({
+function AttachmentImage({
   className,
   attachment,
-  variant = 'grid',
   ...props
-}: AttachmentPreviewProps): React.ReactNode {
-  if (attachment.kind === 'image' && attachment.url) {
+}: AttachmentImageProps): React.ReactNode {
+  if (attachment.url) {
     return (
-      <div
-        className={cn('shrink-0 overflow-hidden bg-muted', previewClass(variant), className)}
-        {...props}
-      >
+      <div className={cn('size-full overflow-hidden', className)} {...props}>
         <img alt={attachment.name} className="size-full object-cover" src={attachment.url} />
       </div>
     );
@@ -138,102 +142,80 @@ export function AttachmentPreview({
 
   return (
     <div
-      className={cn(
-        'flex shrink-0 items-center justify-center bg-muted text-muted-foreground',
-        previewClass(variant),
-        className,
-      )}
+      className={cn('flex size-full items-center justify-center text-muted-foreground', className)}
       {...props}
     >
-      <AttachmentKindIcon
-        className={variant === 'inline' ? 'size-3.5' : 'size-5'}
-        kind={attachment.kind}
-      />
+      <FileImageIcon className="size-5" />
     </div>
   );
 }
 
-export type AttachmentInfoProps = React.ComponentProps<'div'> & {
+type AttachmentFileProps = React.ComponentProps<'div'> & {
   attachment: ChatAttachment;
-  variant?: AttachmentVariant;
+  labels: AttachmentLabels;
 };
 
-export function AttachmentInfo({
+function AttachmentFile({
   className,
   attachment,
-  variant = 'grid',
+  labels,
   ...props
-}: AttachmentInfoProps): React.ReactNode {
-  if (variant === 'grid') {
-    return attachment.status === 'failed' ? (
-      <div className="absolute inset-x-1 bottom-1 rounded bg-background/90 px-1 text-xs text-destructive-foreground">
-        Failed
-      </div>
-    ) : null;
-  }
-
+}: AttachmentFileProps): React.ReactNode {
   return (
-    <div className={cn('min-w-0 flex-1', className)} {...props}>
-      <div className="truncate font-medium text-foreground">{attachment.name}</div>
-      {variant === 'list' ? (
-        <div className="truncate text-xs text-muted-foreground">
-          {attachment.errorMessage ?? attachment.mimeType ?? formatBytes(attachment.sizeBytes)}
+    <>
+      <div className="flex size-8 p-1.5 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <AttachmentKindIcon icon={fileIconFor(attachment)} />
+      </div>
+      <div className={cn('min-w-0 flex flex-col flex-1 gap-0.5', className)} {...props}>
+        <div className="truncate font-medium text-xs text-foreground">{attachment.name}</div>
+        <div className="flex min-h-4 items-center gap-1">
+          <span className="truncate text-xs text-muted-foreground">
+            {attachmentExtensionLabel(attachment)}
+          </span>
+          <AttachmentStatus attachment={attachment} labels={labels} />
         </div>
-      ) : null}
-    </div>
+      </div>
+    </>
   );
 }
 
-export type AttachmentStatusProps = React.ComponentProps<'div'> & {
+type AttachmentStatusProps = Omit<React.ComponentProps<typeof Badge>, 'variant'> & {
   attachment: ChatAttachment;
-  variant?: AttachmentVariant;
+  labels: AttachmentLabels;
+  overlay?: boolean;
 };
 
-export function AttachmentStatus({
+function AttachmentStatus({
   className,
   attachment,
-  variant = 'grid',
+  labels,
+  overlay = false,
   ...props
 }: AttachmentStatusProps): React.ReactNode {
   const status = attachment.status;
   if (!status || status === 'ready') return null;
 
-  if (variant === 'grid') {
-    return (
-      <div
-        className={cn(
-          'absolute top-1 left-1 rounded-full bg-background/90 p-1 text-muted-foreground',
-          status === 'failed' && 'text-destructive-foreground',
-          className,
-        )}
-        {...props}
-      >
-        {status === 'pending' ? (
-          <Spinner className="size-3" />
-        ) : (
-          <AlertCircleIcon className="size-3" />
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className={className} {...props}>
-      <Badge size="sm" variant={status === 'failed' ? 'error' : 'warning'}>
-        {status}
-      </Badge>
-    </div>
+    <Badge
+      {...props}
+      className={cn(overlay && 'absolute bottom-2 left-2', className)}
+      size="sm"
+      variant={status === 'failed' ? 'error' : 'warning'}
+    >
+      {status === 'pending' ? <Spinner /> : <AlertCircleIcon />}
+      {labels[status]}
+    </Badge>
   );
 }
 
-export type AttachmentRemoveProps = React.ComponentProps<typeof Button> & {
-  attachmentVariant?: AttachmentVariant;
+type AttachmentRemoveProps = React.ComponentProps<typeof Button> & {
+  removeLabel: string;
   onRemove?: () => void;
 };
 
-export function AttachmentRemove({
+function AttachmentRemove({
   className,
-  attachmentVariant = 'grid',
+  removeLabel,
   onRemove,
   children,
   ...props
@@ -242,64 +224,31 @@ export function AttachmentRemove({
 
   return (
     <Button
-      aria-label="Remove attachment"
+      aria-label={removeLabel}
       className={cn(
-        'shrink-0',
-        attachmentVariant === 'grid' &&
-          'absolute top-1 right-1 size-6 rounded-full bg-background/90',
-        attachmentVariant === 'inline' && 'size-5',
+        'absolute top-1 right-1 bg-background opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 hover:bg-background',
         className,
       )}
       onClick={onRemove}
       size="icon-xs"
       type="button"
-      variant="ghost"
+      variant="outline"
       {...props}
     >
-      {children ?? <XIcon className="size-3" />}
+      {children ?? <XIcon />}
     </Button>
   );
 }
 
-function AttachmentKindIcon({
-  kind,
-  className,
-}: {
-  kind: ChatAttachment['kind'];
-  className?: string;
-}): React.ReactNode {
-  switch (kind) {
-    case 'image':
-      return <FileImageIcon className={className} />;
-    case 'document':
-      return <FileTextIcon className={className} />;
-    case 'directory':
-      return <FolderIcon className={className} />;
-    case 'url':
-      return <GlobeIcon className={className} />;
-    case 'file':
-      return <FileArchiveIcon className={className} />;
-    default:
-      return <FileIcon className={className} />;
-  }
+function AttachmentKindIcon({ icon: Icon }: { icon: FileIconComponent }): React.ReactNode {
+  return <Icon className="size-full" />;
 }
 
-function previewClass(variant: AttachmentVariant): string {
-  switch (variant) {
-    case 'grid':
-      return 'size-full';
-    case 'inline':
-      return 'size-5 rounded';
-    case 'list':
-      return 'size-10 rounded-md';
-    default:
-      return 'size-5 rounded';
+function attachmentExtensionLabel(attachment: ChatAttachment): string {
+  const dot = attachment.name.lastIndexOf('.');
+  if (dot > 0 && dot < attachment.name.length - 1) {
+    return attachment.name.slice(dot + 1).toUpperCase();
   }
-}
-
-function formatBytes(sizeBytes: number | undefined): string {
-  if (sizeBytes === undefined) return '';
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  const mimeSubtype = attachment.mimeType?.split('/', 2)[1];
+  return (mimeSubtype ?? attachment.kind).toUpperCase();
 }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { AgentCommand, AgentKind, SessionMode } from '@linkcode/schema';
+import { MAX_ATTACHMENT_BYTES } from '@linkcode/schema';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -27,12 +28,14 @@ function composer({
   agentKind,
   contextBar,
   disabled = false,
+  mentionItems,
   onInvokeCommand,
   onSend = vi.fn(),
 }: {
   agentKind?: AgentKind;
   contextBar?: React.ReactNode;
   disabled?: boolean;
+  mentionItems?: React.ComponentProps<typeof Composer>['mentionItems'];
   onInvokeCommand?: (name: string, args?: string) => void;
   onSend?: React.ComponentProps<typeof Composer>['onSend'];
 } = {}): React.ReactNode {
@@ -41,11 +44,13 @@ function composer({
       agentCapabilities={{ shellCommand: false, slashCommands: true }}
       agentCommands={COMMANDS}
       agentKind={agentKind}
+      attachmentsSupported={agentKind !== undefined}
       availableModes={MODES}
       currentModeId={null}
       contextBar={contextBar}
       disabled={disabled}
       isRunning={false}
+      mentionItems={mentionItems}
       onInvokeCommand={onInvokeCommand}
       onModeChange={vi.fn().mockResolvedValue(undefined)}
       onSend={onSend}
@@ -58,9 +63,34 @@ function renderComposer(): void {
   render(composer());
 }
 
+function imageFileWithSize(name: string, size: number): File {
+  const file = new File([Uint8Array.from([137, 80, 78, 71])], name, { type: 'image/png' });
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
+}
+
 afterEach(cleanup);
 
 describe('Composer command menu', () => {
+  it('renders an icon for matched and fallback file mentions', async () => {
+    const user = userEvent.setup();
+    render(
+      composer({
+        mentionItems: [
+          { id: 'env', label: '.envrc', value: '.envrc' },
+          { id: 'unknown', label: 'notes.unknown', value: 'notes.unknown' },
+        ],
+      }),
+    );
+
+    await user.type(screen.getByRole('textbox'), '@');
+
+    expect(screen.getByRole('option', { name: '.envrc' }).querySelector('svg')).not.toBeNull();
+    expect(
+      screen.getByRole('option', { name: 'notes.unknown' }).querySelector('svg'),
+    ).not.toBeNull();
+  });
+
   it('keeps normal plus actions and modes searchable', async () => {
     const user = userEvent.setup();
     renderComposer();
@@ -169,6 +199,41 @@ describe('Composer command menu', () => {
       { type: 'image', data: expect.any(String) as string, mimeType: 'image/png' },
     ]);
     expect(screen.queryByRole('img', { name: 'probe.png' })).toBeNull();
+  });
+
+  it('localizes failed attachment controls and keeps a failed-only prompt unsendable', async () => {
+    render(composer({ agentKind: 'claude-code' }));
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [imageFileWithSize('too-large.png', MAX_ATTACHMENT_BYTES + 1)],
+      },
+    });
+
+    expect(await screen.findByText('attachmentFailed')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'removeAttachment' })).toBeDefined();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
+  });
+
+  it('does not count failed attachments toward the aggregate size limit', async () => {
+    render(composer({ agentKind: 'claude-code' }));
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [imageFileWithSize('too-large.png', MAX_ATTACHMENT_BYTES + 1)],
+      },
+    });
+    await screen.findByText('attachmentFailed');
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [imageFileWithSize('valid.png', MAX_ATTACHMENT_BYTES)],
+      },
+    });
+
+    expect(await screen.findByRole('img', { name: 'valid.png' })).toBeDefined();
   });
 
   it('renders new-session context as a separate frame footer outside the form', () => {

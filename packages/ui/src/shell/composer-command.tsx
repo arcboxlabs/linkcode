@@ -17,6 +17,8 @@ import {
   SlidersHorizontalIcon,
   TargetIcon,
 } from 'lucide-react';
+import type { FileIconComponent } from '../lib/file-icon';
+import { fileIconFor } from '../lib/file-icon';
 
 /** A thing the `@` menu can mention. The data source is pluggable; today the apps pass none. */
 export interface MentionItem {
@@ -37,7 +39,7 @@ export type ComposerCommandSource = 'mention' | 'plus' | 'slash';
 interface BaseCommandEntry {
   disabled?: boolean;
   hint?: string;
-  icon?: LucideIcon;
+  icon?: FileIconComponent;
   id: string;
   label: string;
   source: ComposerCommandSource;
@@ -132,8 +134,8 @@ export function buildComposerCommandGroups({
 }: {
   /** The session's advertised slash-command catalog (empty when the agent has none). */
   agentCommands: readonly AgentCommand[];
-  /** Whether the active agent supports image attachments (`AGENT_ATTACHMENT_SUPPORT`) — the
-   * "attach" entry stays visible either way, but disables when the answer is no. */
+  /** Whether the active frontend capability stub supports image attachments — the "attach" entry
+   * stays visible either way, but disables when the answer is no. */
   attachEnabled?: boolean;
   availableModes: SessionMode[];
   commandSource: ComposerCommandSource | null;
@@ -157,6 +159,7 @@ export function buildComposerCommandGroups({
         matches.push({
           hint: mention.hint,
           id: `mention:${mention.id}`,
+          icon: fileIconFor({ name: mention.value }),
           kind: 'mention',
           label: mention.label,
           mention,
@@ -244,7 +247,9 @@ export function buildComposerCommandGroups({
 function CommandIcon({ entry }: { entry: ComposerCommandEntry }): React.ReactNode {
   const Icon = entry.icon;
   if (!Icon) return null;
-  return <Icon className="size-4 shrink-0 opacity-80" />;
+  return (
+    <Icon className={entry.kind === 'mention' ? 'size-4 shrink-0' : 'size-4 shrink-0 opacity-80'} />
+  );
 }
 
 export function ComposerCommandMenu({
@@ -258,7 +263,7 @@ export function ComposerCommandMenu({
     <div className="flex max-h-80 min-h-0 flex-col **:data-[slot=scroll-area-viewport]:max-h-80 **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-0!">
       <CommandEmpty>{emptyLabel}</CommandEmpty>
       <div className="min-h-0 flex-1">
-        <CommandList className="in-data-has-overflow-y:pe-2!">
+        <CommandList className="in-data-has-overflow-y:pe-2! not-empty:scroll-py-1 not-empty:p-1 not-empty:pb-2">
           {(group: ComposerCommandGroup) => (
             <CommandGroup key={group.value} items={group.items}>
               <CommandGroupLabel>{group.label}</CommandGroupLabel>
