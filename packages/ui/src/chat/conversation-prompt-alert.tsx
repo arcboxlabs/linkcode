@@ -373,6 +373,47 @@ function PromptChoiceRow({
   multiple: boolean;
   onSelect: () => void;
 }) {
+  const button = (
+    <Button
+      className="h-auto w-full justify-start whitespace-normal px-2 py-1.5 text-left"
+      data-prompt-choice=""
+      aria-pressed={multiple || checked ? checked : undefined}
+      autoFocus={autoFocus}
+      disabled={disabled}
+      type="button"
+      variant="ghost"
+      onClick={onSelect}
+    >
+      <span
+        className={cn(
+          'flex size-5 shrink-0 items-center justify-center rounded-full border border-input bg-background text-muted-foreground',
+          checked && 'border-foreground bg-foreground text-background',
+        )}
+      >
+        <span className="text-xs tabular-nums">{index + 1}</span>
+      </span>
+      <span className="min-w-0 flex-1 flex items-center gap-2 text-left">
+        <span
+          className={cn(
+            'block font-medium text-foreground text-sm',
+            choice.tone === 'danger' && 'text-destructive-foreground',
+          )}
+        >
+          {choice.label}
+        </span>
+        {choice.description ? (
+          <span className="block truncate text-muted-foreground text-xs">{choice.description}</span>
+        ) : null}
+      </span>
+      {checked ? (
+        <span className="ms-auto flex shrink-0 items-center gap-1 text-muted-foreground">
+          <ArrowUpIcon className="size-3.5" />
+          <ArrowDownIcon className="size-3.5" />
+        </span>
+      ) : null}
+    </Button>
+  );
+
   return (
     <div
       className={cn(
@@ -381,54 +422,14 @@ function PromptChoiceRow({
         choice.tone === 'danger' && checked && 'bg-destructive/8',
       )}
     >
-      <Button
-        className="h-auto w-full justify-start whitespace-normal px-2 py-1.5 text-left"
-        data-prompt-choice=""
-        aria-pressed={multiple || checked ? checked : undefined}
-        autoFocus={autoFocus}
-        disabled={disabled}
-        type="button"
-        variant="ghost"
-        onClick={onSelect}
-      >
-        <span
-          className={cn(
-            'flex size-5 shrink-0 items-center justify-center rounded-full border border-input bg-background text-muted-foreground',
-            checked && 'border-foreground bg-foreground text-background',
-          )}
-        >
-          <span className="text-xs tabular-nums">{index + 1}</span>
-        </span>
-        <span className="min-w-0 flex-1 flex items-center gap-2 text-left">
-          <span
-            className={cn(
-              'block font-medium text-foreground text-sm',
-              choice.tone === 'danger' && 'text-destructive-foreground',
-            )}
-          >
-            {choice.label}
-          </span>
-          {choice.description ? (
-            <Tooltip>
-              <TooltipTrigger
-                delay={300}
-                render={
-                  <span className="block truncate text-muted-foreground text-xs">
-                    {choice.description}
-                  </span>
-                }
-              />
-              <TooltipContent className="max-w-xl">{choice.description}</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </span>
-        {checked ? (
-          <span className="ms-auto flex shrink-0 items-center gap-1 text-muted-foreground">
-            <ArrowUpIcon className="size-3.5" />
-            <ArrowDownIcon className="size-3.5" />
-          </span>
-        ) : null}
-      </Button>
+      {choice.description ? (
+        <Tooltip>
+          <TooltipTrigger delay={300} render={button} />
+          <TooltipContent className="max-w-xl">{choice.description}</TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
     </div>
   );
 }

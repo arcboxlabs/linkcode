@@ -23,6 +23,8 @@ const CHOICES = [
   { id: 'second', label: 'Second' },
 ] as const;
 const FIRST_CHOICE_NAME = /First$/;
+const FIRST_CHOICE_WITH_DESCRIPTION_NAME = /First.*Full choice description$/;
+const FULL_CHOICE_DESCRIPTION = 'Full choice description';
 const SECOND_CHOICE_NAME = /Second$/;
 
 afterEach(cleanup);
@@ -46,6 +48,22 @@ function renderPrompt(overrides: Partial<ConversationPromptAlertProps> = {}) {
 }
 
 describe('ConversationPromptAlert keyboard behavior', () => {
+  it('shows a choice description when its row receives keyboard focus', async () => {
+    const user = userEvent.setup();
+    renderPrompt({
+      choices: [{ id: 'first', label: 'First', description: FULL_CHOICE_DESCRIPTION }],
+    });
+    const choice = screen.getByRole('button', { name: FIRST_CHOICE_WITH_DESCRIPTION_NAME });
+
+    await user.tab();
+
+    expect(document.activeElement).toBe(choice);
+    expect(Object.hasOwn(choice.dataset, 'popupOpen')).toBe(true);
+    expect(document.querySelector('[data-slot="tooltip-popup"][data-open]')?.textContent).toBe(
+      FULL_CHOICE_DESCRIPTION,
+    );
+  });
+
   it('submits a single choice directly when clicked', async () => {
     const user = userEvent.setup();
     const { onSubmit } = renderPrompt();
