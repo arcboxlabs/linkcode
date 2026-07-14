@@ -637,6 +637,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: ^0.80.6
         version: 0.80.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
+      '@linkcode/common':
+        specifier: workspace:*
+        version: link:../common
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
@@ -792,6 +795,9 @@ importers:
       '@linkcode/agent-adapter':
         specifier: workspace:*
         version: link:../agent-adapter
+      '@linkcode/common':
+        specifier: workspace:*
+        version: link:../common
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
