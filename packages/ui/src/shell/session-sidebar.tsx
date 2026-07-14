@@ -13,6 +13,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from 'coss-ui/components/sidebar';
+import type { LucideIcon } from 'lucide-react';
 import {
   BotIcon,
   CheckIcon,
@@ -20,10 +21,12 @@ import {
   CloudIcon,
   ExternalLinkIcon,
   FilePlus2Icon,
+  GlobeIcon,
   LogOutIcon,
   SearchIcon,
   ServerIcon,
   SettingsIcon,
+  ShieldIcon,
   SparklesIcon,
 } from 'lucide-react';
 import { useRef } from 'react';
@@ -235,8 +238,6 @@ export function HostFooter({
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const tPalette = useTranslations('workbench.palette');
-  const pendingPermissionLabel =
-    pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
   const footerRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -302,47 +303,49 @@ export function HostFooter({
         className="w-80 text-sm"
       >
         <div className="flex items-center gap-2 py-1.5">
-          <span className="size-2 rounded-full bg-success" />
+          <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
           <span className="font-semibold">Local Host</span>
-          {state && (
-            <Badge size="sm" variant="success">
-              {state}
-            </Badge>
-          )}
-          {appVersion && (
-            <span className="ml-auto font-mono text-muted-foreground text-xs">{appVersion}</span>
-          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            {state && (
+              <Badge size="sm" variant="success">
+                {state}
+              </Badge>
+            )}
+            {appVersion && (
+              <span className="font-mono text-muted-foreground text-xs">{appVersion}</span>
+            )}
+          </div>
         </div>
 
         <Separator className="my-1" />
 
-        <div className="py-1">
-          <div className="flex h-8 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate">Remote access</span>
+        <div className="py-0.5">
+          <HostRow icon={GlobeIcon} label="Remote access">
             {!account && (
               <span className="text-muted-foreground text-xs">{t('remoteSignedOut')}</span>
             )}
-          </div>
+          </HostRow>
           {account && (
-            <RemoteHostList
-              hosts={remoteHosts}
-              loading={remoteHostsLoading}
-              selectedHostId={selectedHostId}
-              onSelectHost={onSelectHost}
-              loadingLabel={t('remoteHostsLoading')}
-              emptyLabel={t('remoteHostsEmpty')}
-            />
+            <div className="pl-6">
+              <RemoteHostList
+                hosts={remoteHosts}
+                loading={remoteHostsLoading}
+                selectedHostId={selectedHostId}
+                onSelectHost={onSelectHost}
+                loadingLabel={t('remoteHostsLoading')}
+                emptyLabel={t('remoteHostsEmpty')}
+              />
+            </div>
           )}
         </div>
-        <HostFooterRow label="Permission requests">
-          <span className="text-muted-foreground text-xs">{pendingPermissionLabel}</span>
-        </HostFooterRow>
-
-        <Separator className="my-1" />
-
-        <HostFooterRow label="Agent availability">
+        <HostRow icon={ShieldIcon} label="Permission requests">
+          <Badge size="sm" variant={pendingPermissionCount > 0 ? 'warning' : 'secondary'}>
+            {pendingPermissionCount}
+          </Badge>
+        </HostRow>
+        <HostRow icon={BotIcon} label="Agent availability">
           <span className="text-muted-foreground text-xs">Not reported</span>
-        </HostFooterRow>
+        </HostRow>
 
         <Separator className="my-1" />
 
@@ -470,15 +473,18 @@ function RemoteHostList({
   );
 }
 
-function HostFooterRow({
+function HostRow({
+  icon: Icon,
   label,
   children,
 }: {
+  icon: LucideIcon;
   label: string;
   children?: React.ReactNode;
 }): React.ReactNode {
   return (
     <div className="flex h-8 items-center gap-2">
+      <Icon className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {children}
     </div>
