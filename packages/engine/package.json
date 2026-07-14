@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@linkcode/agent-adapter": "workspace:*",
+    "@linkcode/common": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "foxts": "^5.8.0",
