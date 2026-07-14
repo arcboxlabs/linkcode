@@ -8,10 +8,36 @@ import Sqlite from 'better-sqlite3';
 import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { sessionRuns, sessions } from './db/schema';
 
 type SessionRow = typeof sessions.$inferSelect;
 type RunRow = typeof sessionRuns.$inferSelect;
+
+/**
+ * drizzle's migrator decides "already applied?" by comparing each migration's journal `when`
+ * (`folderMillis`) against the newest recorded `created_at` — it never looks at the content hash.
+ * A migration regenerated during development keeps identical SQL but gets a fresh, larger `when`,
+ * so the migrator re-runs it; the resulting non-idempotent DDL (`ALTER TABLE … ADD COLUMN`) then
+ * crashes the daemon at boot on a DB that recorded the older timestamp. Since the stored hash is
+ * the sha256 of the migration SQL, a recorded hash proves that exact migration already ran — so we
+ * realign its `created_at` to the current journal before migrating. Steady state writes nothing;
+ * genuinely new migrations (unrecorded hash) still run and still fail loudly on real errors.
+ */
+function reconcileMigrationLedger(sqlite: Sqlite.Database, migrationsFolder: string): void {
+  const hasLedger = sqlite
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '__drizzle_migrations'")
+    .get();
+  if (!hasLedger) return; // First boot — nothing has been applied yet.
+  const realign = sqlite.prepare(
+    'UPDATE __drizzle_migrations SET created_at = ? WHERE hash = ? AND created_at <> ?',
+  );
+  sqlite.transaction(() => {
+    for (const migration of readMigrationFiles({ migrationsFolder })) {
+      realign.run(migration.folderMillis, migration.hash, migration.folderMillis);
+    }
+  })();
+}
 
 /**
  * SQLite-backed `SessionStore` (drizzle over better-sqlite3), owning the session registry at
@@ -24,7 +50,9 @@ export function createSessionStore(dbPath: string): SessionStore {
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
   const db = drizzle(sqlite);
-  migrate(db, { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });
+  const migrationsFolder = fileURLToPath(new URL('../drizzle', import.meta.url));
+  reconcileMigrationLedger(sqlite, migrationsFolder);
+  migrate(db, { migrationsFolder });
 
   return {
     load(): Promise<SessionRecord[]> {

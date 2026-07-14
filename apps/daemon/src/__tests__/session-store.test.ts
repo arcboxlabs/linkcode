@@ -1,6 +1,10 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { SessionRecord } from '@linkcode/schema';
 import { SessionRecordSchema } from '@linkcode/schema';
-import { describe, expect, it } from 'vitest';
+import Sqlite from 'better-sqlite3';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createSessionStore } from '../session-store';
 
 function makeRecord(value: Record<string, unknown>): SessionRecord {
@@ -17,6 +21,11 @@ function makeRecord(value: Record<string, unknown>): SessionRecord {
 }
 
 describe('daemon sqlite session store', () => {
+  const tmpDirs: string[] = [];
+  afterEach(() => {
+    while (tmpDirs.length > 0) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+  });
+
   it('round-trips created and imported records', async () => {
     const store = createSessionStore(':memory:');
     const created = makeRecord({
@@ -51,6 +60,31 @@ describe('daemon sqlite session store', () => {
 
     const loaded = await store.load();
     expect(loaded).toEqual([next]);
+  });
+
+  it('reboots without re-running an already-applied migration whose journal timestamp drifted', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'linkcode-session-store-'));
+    tmpDirs.push(dir);
+    const dbPath = join(dir, 'daemon.db');
+
+    const first = createSessionStore(dbPath);
+    const record = makeRecord({ runs: [{ startedAt: 1 }] });
+    await first.save(record);
+
+    // Simulate a dev DB migrated under an older journal: the newest migration is applied, but its
+    // recorded created_at predates the current journal's `when`, which without reconciliation makes
+    // the migrator re-run it and crash on the duplicate column.
+    const raw = new Sqlite(dbPath);
+    raw
+      .prepare(
+        'UPDATE __drizzle_migrations SET created_at = created_at - 1000 ' +
+          'WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)',
+      )
+      .run();
+    raw.close();
+
+    const second = createSessionStore(dbPath);
+    expect(await second.load()).toEqual([record]);
   });
 
   it('deletes a record together with its runs', async () => {
