@@ -1,4 +1,5 @@
 import type {
+  AgentCommand,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -49,6 +50,47 @@ import {
 } from './history';
 import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
 import { diffContentFromUnified } from './unified-diff';
+
+interface CodexSkillCommand extends AgentCommand {
+  path: string;
+}
+
+type CodexTurnInput =
+  | { type: 'text'; text: string; text_elements: never[] }
+  | { type: 'image'; url: string }
+  | { type: 'skill'; name: string; path: string };
+
+const COMPACT_COMMAND: AgentCommand = {
+  name: 'compact',
+  description: 'Summarize conversation to prevent hitting the context limit',
+};
+
+/** Map the app-server's `skills/list` response onto the normalized command catalog. Codex returns
+ * one entry per requested cwd; only enabled skills are invokable, and duplicate names resolve to
+ * the first provider result just like the TUI's name-based mention lookup. */
+export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
+  if (!isRecord(response) || !Array.isArray(response.data)) return [];
+  const commands = new Map<string, CodexSkillCommand>();
+  for (const entry of response.data) {
+    if (!isRecord(entry) || !Array.isArray(entry.skills)) continue;
+    for (const skill of entry.skills) {
+      if (!isRecord(skill) || skill.enabled !== true) continue;
+      const name = stringField(skill, 'name');
+      const path = stringField(skill, 'path');
+      if (!name || !path || commands.has(name)) continue;
+      const interfaceMetadata = recordField(skill, 'interface');
+      commands.set(name, {
+        name,
+        description:
+          stringField(skill, 'description') ??
+          (interfaceMetadata && stringField(interfaceMetadata, 'shortDescription')) ??
+          stringField(skill, 'shortDescription'),
+        path,
+      });
+    }
+  }
+  return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
 
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
  * structurally (the class's private fields would otherwise force a top-type cast). */
@@ -162,6 +204,7 @@ export function decisionFromOutcome(
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
+  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -187,8 +230,12 @@ export class CodexAdapter extends BaseAgentAdapter {
   private holdSessionRef = false;
   /** A turn id that already completed; a late `turn/start` response for it must not re-activate. */
   private lastCompletedTurnId: string | null = null;
-  /** Prompts received while a turn is running; drained one per `turn/completed`. */
-  private pendingPrompts: ContentBlock[][] = [];
+  /** Prompt/skill inputs received while a turn is running; drained one per `turn/completed`. */
+  private pendingTurnInputs: CodexTurnInput[][] = [];
+  /** Enabled skills from the latest `skills/list`, keyed by the normalized command name. */
+  private readonly skillCommands = new Map<string, CodexSkillCommand>();
+  /** Monotonic refresh id: a slow stale `skills/list` response must not overwrite a newer push. */
+  private skillsRefreshGeneration = 0;
   /** Thread id to resume at the next spawn — set by `resumeHistory`, and re-armed after an
    * unexpected app-server exit so the next prompt continues the same conversation. */
   private resumeFrom: string | undefined;
@@ -266,19 +313,92 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     await this.ensureThread();
-    if (this.activeTurnId !== null || this.turnStartsInFlight > 0) {
-      // A turn is running: queue, mirroring claude-code's streaming-input queueing. Drained
-      // one prompt per turn/completed.
-      this.pendingPrompts.push(content);
+    // `turn/start`'s image item shape ({type:'image', url: 'data:<mime>;base64,<data>'}) was
+    // live-verified against a real codex app-server (0.144.1): a solid-red probe image sent
+    // this way was correctly identified by the model. Not documented anywhere in the JS
+    // package (codex has no .d.ts) — verify again if the app-server pin moves.
+    const imageInputItems = imageBlocksFrom(content).map((image) => ({
+      type: 'image' as const,
+      url: `data:${image.mimeType};base64,${image.data}`,
+    }));
+    await this.submitTurnInput([
+      { type: 'text', text: contentToText(content), text_elements: [] },
+      ...imageInputItems,
+    ]);
+  }
+
+  /** Codex slash commands are either the app-server's manual compaction control or an enabled
+   * skill advertised by `skills/list`. The TUI sends a skill as a structured `skill` input plus
+   * the visible `$name args` text; mirror that provider-native shape here. */
+  protected override async onCommand(name: string, args?: string): Promise<void> {
+    await this.ensureThread();
+    const server = nullthrow(this.server, 'codex: session not started');
+    const threadId = nullthrow(this.threadId, 'codex: thread not started');
+    if (name === COMPACT_COMMAND.name) {
+      await server.request('thread/compact/start', { threadId });
       return;
     }
-    await this.startTurn(content);
+    const skill = this.skillCommands.get(name);
+    if (!skill) throw new Error(`codex: unknown slash command '/${name}'`);
+    const text = `$${skill.name}${args ? ` ${args}` : ''}`;
+    await this.submitTurnInput([
+      { type: 'skill', name: skill.name, path: skill.path },
+      { type: 'text', text, text_elements: [] },
+    ]);
+  }
+
+  private async submitTurnInput(input: CodexTurnInput[]): Promise<void> {
+    if (this.activeTurnId !== null || this.turnStartsInFlight > 0) {
+      // A turn is running: queue, mirroring claude-code's streaming-input queueing. Drained
+      // one input per turn/completed.
+      this.pendingTurnInputs.push(input);
+      return;
+    }
+    await this.startTurn(input);
+  }
+
+  /** `$`-prefixed shell passthrough — the user's own command, not agent-driven, so it bypasses
+   * both the sandbox and the approval policy by design (verified live, codex-cli 0.144.1).
+   * `thread/shellCommand` acks with an empty object before the turn machinery starts; the command
+   * then runs as a genuine turn on the thread (thread/status/changed(active) → turn/started →
+   * item/started → item/commandExecution/outputDelta (not consumed here, same as agent-driven
+   * execs) → item/completed → thread/status/changed(idle) → turn/completed), so the existing
+   * notification dispatch does everything else: running status, the execute tool card
+   * (handleItem's commandExecution case, unaware of and unaffected by source:'userShell'),
+   * output at item/completed's aggregatedOutput, stop + idle at turn/completed. turn/completed's
+   * status is ALWAYS 'completed' even when the command exits non-zero — only the ITEM carries
+   * status:'failed'/exitCode, which mapCodexItemStatus folds into a failed tool call; the turn
+   * itself still resolves via handleTurnCompleted to stop:end_turn. No approval request ever
+   * fires for this path. Works with no turn active (creates its own turn on the thread); if the
+   * fresh thread's first action is a shell command, the turn/started notification's existing
+   * `activateTurn` call still releases `holdSessionRef` — that path isn't keyed to `turn/start`,
+   * so no extra handling is needed here. Overlapping shell commands (or a shell command sent
+   * while a turn is already running) coalesce into that turn server-side, so this deliberately
+   * does not gate on `activeTurnId`/`turnStartsInFlight` the way `onPrompt` queues prompts. */
+  protected override async onShellCommand(command: string): Promise<void> {
+    await this.ensureThread();
+    const server = nullthrow(this.server, 'codex: session not started');
+    const threadId = nullthrow(this.threadId, 'codex: thread not started');
+    // The ack lands before turn/started, but the engine's input gate reads status the moment
+    // send() resolves and treats a still-idle session as a synchronous control — announce the
+    // turn synchronously (base.ts hook contract) or a rapid next submit races the starting
+    // shell turn. turn/started re-emits running, the same double-emit the startTurn path has.
+    this.emitStatus('running');
+    try {
+      await server.request('thread/shellCommand', { threadId, command });
+    } catch (err) {
+      // Mirror startTurn's unwind: without the idle emit the engine sees status 'running' on the
+      // rejected send() and leaves the session gated busy forever.
+      this.teardown();
+      this.emitStatus('idle');
+      throw err;
+    }
   }
 
   protected override async onCancel(): Promise<void> {
     // Cancel means stop: the in-flight turn is interrupted and queued prompts are dropped
     // (running them after an explicit cancel would surprise).
-    this.pendingPrompts = [];
+    this.pendingTurnInputs = [];
     if (!this.server || !this.threadId) return;
     const turnId = this.activeTurnId;
     if (!turnId) {
@@ -452,6 +572,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       if (threadId && !this.holdSessionRef) this.emitSessionRef(asHistoryId(threadId));
       // Advertise the axis so the composer's picker appears with the session's real state.
       this.emitApprovalPolicy(this.approvalPolicyState());
+      await this.publishCommands(server);
     } catch (err) {
       // Re-arm the resume point: a transient thread/resume failure must not silently downgrade
       // the next attempt into a brand-new thread that abandons the conversation.
@@ -462,26 +583,42 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
   }
 
-  private async startTurn(content: ContentBlock[]): Promise<void> {
+  /** Best-effort full catalog refresh. `skills/changed` invalidates every cached provider path
+   * before re-running `skills/list`; refresh failures therefore fail closed while the local
+   * `/compact` control remains available. */
+  private async publishCommands(server: CodexServerHandle): Promise<void> {
+    const generation = ++this.skillsRefreshGeneration;
+    try {
+      const response = await server.request('skills/list', {
+        cwds: [nullthrow(this.opts, 'codex: session not started').cwd],
+        forceReload: false,
+      });
+      if (this.server !== server || generation !== this.skillsRefreshGeneration) return;
+      // LinkCode's provider control wins a name collision, matching Paseo's client-command
+      // precedence: `/compact` must always invoke the thread compaction RPC.
+      const skills = codexSkillCommands(response).filter(
+        (skill) => skill.name !== COMPACT_COMMAND.name,
+      );
+      this.skillCommands.clear();
+      for (const skill of skills) this.skillCommands.set(skill.name, skill);
+      this.emitCommands([COMPACT_COMMAND, ...skills.map(({ path: _path, ...command }) => command)]);
+    } catch {
+      if (this.server === server && generation === this.skillsRefreshGeneration) {
+        this.skillCommands.clear();
+        this.emitCommands([COMPACT_COMMAND]);
+      }
+    }
+  }
+
+  private async startTurn(input: CodexTurnInput[]): Promise<void> {
     const server = nullthrow(this.server, 'codex: session not started');
     const threadId = nullthrow(this.threadId, 'codex: thread not started');
     this.turnStartsInFlight += 1;
     this.emitStatus('running');
     try {
-      // `turn/start`'s image item shape ({type:'image', url: 'data:<mime>;base64,<data>'}) was
-      // live-verified against a real codex app-server (0.144.1): a solid-red probe image sent
-      // this way was correctly identified by the model. Not documented anywhere in the JS
-      // package (codex has no .d.ts) — verify again if the app-server pin moves.
-      const imageInputItems = imageBlocksFrom(content).map((image) => ({
-        type: 'image' as const,
-        url: `data:${image.mimeType};base64,${image.data}`,
-      }));
       const response = await server.request('turn/start', {
         threadId,
-        input: [
-          { type: 'text', text: contentToText(content), text_elements: [] },
-          ...imageInputItems,
-        ],
+        input,
         ...(this.model !== undefined && { model: this.model }),
         ...(this.effort !== undefined && { effort: this.effort }),
         // Idempotent policy override — this is how a set-approval-policy lands on codex.
@@ -515,7 +652,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     // slot — resetting here would double-release against a late finally.
     this.cancelRequested = false;
     this.holdSessionRef = false;
-    this.pendingPrompts = [];
+    this.pendingTurnInputs = [];
     this.resumeFrom = this.threadId ?? this.resumeFrom;
     this.threadId = null;
     this.emitError(`codex: app-server exited unexpectedly${detail ? ` (${detail})` : ''}`);
@@ -599,6 +736,15 @@ export class CodexAdapter extends BaseAgentAdapter {
         if (total) this.emitUsage(mapCodexTokenUsage(total));
         break;
       }
+      case 'skills/changed': {
+        const server = this.server;
+        if (server) {
+          this.skillCommands.clear();
+          this.emitCommands([COMPACT_COMMAND]);
+          void this.publishCommands(server);
+        }
+        break;
+      }
       case 'error': {
         const error = recordField(params, 'error');
         const message = error ? stringField(error, 'message') : undefined;
@@ -628,9 +774,13 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.emitStop('end_turn');
     }
     this.teardown();
-    const next = this.pendingPrompts.shift();
-    if (next) void this.startTurn(next);
-    else this.emitStatus('idle');
+    if (this.pendingTurnInputs.length === 0) {
+      this.emitStatus('idle');
+      return;
+    }
+    const [next, ...remaining] = this.pendingTurnInputs;
+    this.pendingTurnInputs = remaining;
+    void this.startTurn(next);
   }
 
   private handleItem(item: Record<string, unknown>, completed: boolean): void {

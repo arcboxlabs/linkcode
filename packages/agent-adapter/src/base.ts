@@ -1,4 +1,6 @@
 import type {
+  AgentCapabilities,
+  AgentCommand,
   AgentEvent,
   AgentHistoryCapabilities,
   AgentHistoryId,
@@ -51,6 +53,11 @@ type QuestionResolver = (outcome: QuestionOutcome) => void;
 export abstract class BaseAgentAdapter implements AgentAdapter {
   abstract readonly kind: AgentKind;
 
+  readonly capabilities: AgentCapabilities = {
+    slashCommands: false,
+    shellCommand: false,
+  };
+
   readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
     read: false,
@@ -80,6 +87,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   async start(opts: StartOptions): Promise<void> {
     this.opts = opts;
     this.emitStatus('starting');
+    this.emit({ type: 'capabilities-update', capabilities: this.capabilities });
     await this.onStart(opts);
     this.emitStatus('idle');
   }
@@ -100,6 +108,12 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     switch (input.type) {
       case 'prompt':
         await this.onPrompt(input.content);
+        return;
+      case 'command':
+        await this.onCommand(input.name, input.arguments);
+        return;
+      case 'shell-command':
+        await this.onShellCommand(input.command);
         return;
       case 'cancel':
         await this.onCancel();
@@ -147,8 +161,25 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   // ── Lifecycle hooks for subclasses ──
+  //
+  // Turn contract for the turn-starting hooks (onPrompt / onCommand / onShellCommand): a hook that
+  // begins a turn must emit status 'running' BEFORE it resolves, even when the provider's own
+  // lifecycle events arrive later (codex's shellCommand ack precedes turn/started). The engine's
+  // input gate reads status the moment send() settles and treats a still-idle session as a
+  // synchronous control with no lifecycle events (codex /compact), releasing the gate. The flip
+  // side: a hook that already emitted 'running' and then fails must emit 'idle' before rejecting,
+  // or the gate never releases.
   protected abstract onStart(opts: StartOptions): Promise<void>;
   protected abstract onPrompt(content: ContentBlock[]): Promise<void>;
+  /** Default: reject. Only adapters that advertise a catalog via `available-commands-update`
+   * override this. */
+  protected onCommand(_name: string, _args?: string): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: slash commands are not supported`));
+  }
+  /** Default: reject. Only adapters whose provider has a shell passthrough override this. */
+  protected onShellCommand(_command: string): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: shell commands are not supported`));
+  }
   protected onCancel(): Promise<void> {
     return Promise.resolve();
   }
@@ -279,6 +310,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     if (this.reflectedEffort === effort) return;
     this.reflectedEffort = effort;
     this.emit({ type: 'effort-update', effort });
+  }
+  /** Announce the session's slash-command catalog (full-replace semantics — see schema). */
+  protected emitCommands(commands: AgentCommand[]): void {
+    this.emit({ type: 'available-commands-update', commands });
   }
   protected emitStop(stopReason: StopReason): void {
     this.emit({ type: 'stop', stopReason });

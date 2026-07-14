@@ -145,6 +145,17 @@ export class ControlChannel {
     return this.prompt(sessionId, [{ type: 'text', text }]);
   }
 
+  /** Invoke a provider slash command by name. Rejects if the adapter has no command catalog. */
+  invokeCommand(sessionId: SessionId, name: string, args?: string): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'command', name, arguments: args });
+  }
+
+  /** Run a raw shell command in the session's cwd, outside the model loop (the user's `$` input).
+   * Rejects if the adapter's provider has no shell passthrough. */
+  runShellCommand(sessionId: SessionId, command: string): Promise<RequestAck> {
+    return this.send(sessionId, { type: 'shell-command', command });
+  }
+
   /** Cancel the in-flight turn. */
   cancel(sessionId: SessionId): Promise<RequestAck> {
     return this.send(sessionId, { type: 'cancel' });

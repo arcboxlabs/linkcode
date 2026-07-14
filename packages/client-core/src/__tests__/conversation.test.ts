@@ -28,7 +28,37 @@ describe('buildConversation', () => {
     expect(c.items).toEqual([]);
     expect(c.status).toBeNull();
     expect(c.usage).toBeNull();
+    expect(c.availableCommands).toBeNull();
+    expect(c.capabilities).toBeNull();
     expect(c.pendingPermissionIds).toEqual([]);
+  });
+
+  it('reflects the latest adapter capabilities without adding timeline items', () => {
+    const c = buildConversation([
+      {
+        type: 'capabilities-update',
+        capabilities: { slashCommands: false, shellCommand: false },
+      },
+      {
+        type: 'capabilities-update',
+        capabilities: { slashCommands: true, shellCommand: true },
+      },
+    ]);
+    expect(c.capabilities).toEqual({ slashCommands: true, shellCommand: true });
+    expect(c.items).toEqual([]);
+  });
+
+  it('replaces the command catalog wholesale on each available-commands-update', () => {
+    const c = buildConversation([
+      { type: 'available-commands-update', commands: [{ name: 'stale' }] },
+      {
+        type: 'available-commands-update',
+        commands: [{ name: 'compact', description: 'Compact the context' }],
+      },
+    ]);
+    expect(c.availableCommands).toEqual([{ name: 'compact', description: 'Compact the context' }]);
+    // Catalog updates never add timeline items.
+    expect(c.items).toEqual([]);
   });
 
   it('coalesces same-messageId agent chunks into one streaming block', () => {

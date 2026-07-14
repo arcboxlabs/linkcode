@@ -1,4 +1,6 @@
 import type {
+  AgentCapabilities,
+  AgentCommand,
   AgentKind,
   ApprovalPolicyState,
   ContentBlock,
@@ -7,11 +9,15 @@ import type {
 } from '@linkcode/schema';
 import { MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
+import { Badge } from 'coss-ui/components/badge';
 import { Command } from 'coss-ui/components/command';
+import { Frame, FrameFooter } from 'coss-ui/components/frame';
 import { toastManager } from 'coss-ui/components/toast';
 import { noop } from 'foxact/noop';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { TerminalIcon } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { ChatAttachment } from '../chat/attachments';
@@ -36,6 +42,7 @@ import {
   readImageFileAsComposerAttachment,
 } from './composer-attachments';
 import type {
+  AgentCommandEntry,
   ComposerCommandEntry,
   ComposerCommandSource,
   MentionCommandEntry,
@@ -54,6 +61,7 @@ import {
   ModelSelectorMenu,
   SessionModeChip,
 } from './composer-controls';
+import { parseComposerDirective } from './composer-directives';
 import { movePlusCommandStart } from './composer-plus-search';
 import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
@@ -98,7 +106,17 @@ export interface ComposerProps {
   /** The reasoning-effort level the session is running at, reflected from `effort-update`; same
    * placeholder rule as `currentModel`. */
   currentEffort?: EffortLevel | null;
+  /** The session's slash-command catalog, reflected from `available-commands-update`. Empty or
+   * absent means the agent advertised none — the `/` menu then offers no command entries and a
+   * typed `/name` submits as plain text. */
+  agentCommands?: AgentCommand[] | null;
+  /** Stable input features advertised by the live adapter session. */
+  agentCapabilities?: AgentCapabilities | null;
   onSend: (content: ContentBlock[]) => void;
+  /** Sends a catalog command invocation; absent routes a matched `/name` through `onSend`. */
+  onInvokeCommand?: (name: string, args?: string) => void;
+  /** Sends a `$`-prefixed shell passthrough when the session advertises it. */
+  onRunShellCommand?: (command: string) => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
@@ -125,6 +143,7 @@ export interface ComposerProps {
 }
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
+const EMPTY_AGENT_COMMANDS: AgentCommand[] = [];
 const WHITESPACE_RE = /\s/;
 const LEADING_WHITESPACE_RE = /^\s/;
 
@@ -142,7 +161,11 @@ export function Composer({
   approvalPolicy,
   currentModel,
   currentEffort,
+  agentCommands,
+  agentCapabilities,
   onSend,
+  onInvokeCommand,
+  onRunShellCommand,
   onStop,
   onModeChange,
   onApprovalPolicyChange,
@@ -155,6 +178,7 @@ export function Composer({
   onPickAttachmentFiles,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
+  const reducedMotion = useReducedMotion() ?? false;
   const [value, setValue] = useState('');
   const [caret, setCaret] = useState(0);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
@@ -168,8 +192,19 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentsSupported = agentKind ? Boolean(AGENT_ATTACHMENT_SUPPORT[agentKind]) : false;
 
-  const rawTrigger = computeTextTrigger(value, caret);
-  const textTrigger = rawTrigger && rawTrigger.start !== dismissedStart ? rawTrigger : null;
+  const catalog = agentCapabilities?.slashCommands
+    ? (agentCommands ?? EMPTY_AGENT_COMMANDS)
+    : EMPTY_AGENT_COMMANDS;
+  const shellEnabled = Boolean(agentCapabilities?.shellCommand && onRunShellCommand && !disabled);
+  // The whole draft is one shell command while it starts with `$` — the composer shows the badge
+  // and routes the submit; slash/mention menus stay out of the way (a path like /tmp inside the
+  // command must not pop the command menu).
+  const shellActive = shellEnabled && value.trimStart()[0] === '$';
+
+  const textTrigger = useMemo(() => {
+    const trigger = computeTextTrigger(value, caret);
+    return trigger && trigger.start !== dismissedStart && !shellActive ? trigger : null;
+  }, [caret, dismissedStart, shellActive, value]);
   const commandSource: ComposerCommandSource | null =
     plusCommandStart === null
       ? textTrigger?.kind === 'mention'
@@ -197,6 +232,7 @@ export function Composer({
   const commandGroups = useMemo(
     () =>
       buildComposerCommandGroups({
+        agentCommands: catalog,
         attachEnabled: attachmentsSupported,
         availableModes: workflowModes,
         commandSource,
@@ -213,6 +249,7 @@ export function Composer({
       }),
     [
       attachmentsSupported,
+      catalog,
       workflowModes,
       commandSource,
       currentModeId,
@@ -226,6 +263,21 @@ export function Composer({
 
   const hasCommandItems = commandGroups.some((group) => group.items.length > 0);
   const commandOpen = !disabled && Boolean(commandSource);
+  const frameVisible = commandOpen || contextBar != null;
+  const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
+  const [exitCommandGroups, setExitCommandGroups] = useState(() => commandGroups);
+  const [exitCommandEmptyLabel, setExitCommandEmptyLabel] = useState(emptyCommandLabel);
+
+  // Commit the open catalog before rendering children so every close path can animate that exact view.
+  if (commandOpen) {
+    if (exitCommandGroups !== commandGroups) setExitCommandGroups(commandGroups);
+    if (exitCommandEmptyLabel !== emptyCommandLabel) {
+      setExitCommandEmptyLabel(emptyCommandLabel);
+    }
+  }
+
+  const renderedCommandGroups = commandOpen ? commandGroups : exitCommandGroups;
+  const renderedEmptyCommandLabel = commandOpen ? emptyCommandLabel : exitCommandEmptyLabel;
 
   function updateCaret(nextCaret: number, nextValue = value): void {
     setCaret(nextCaret);
@@ -237,12 +289,14 @@ export function Composer({
   }
 
   function updateValue(nextValue: string, event: Event): void {
+    const control = textControlFromEvent(event);
+    const nextCaret = control?.selectionStart ?? nextValue.length;
+    const nextTrigger = computeTextTrigger(nextValue, nextCaret);
     setPlusCommandStart((start) =>
-      start === null ? null : movePlusCommandStart(value, nextValue, start),
+      start === null || nextTrigger ? null : movePlusCommandStart(value, nextValue, start),
     );
     setValue(nextValue);
-    const control = textControlFromEvent(event);
-    updateCaret(control?.selectionStart ?? nextValue.length, nextValue);
+    updateCaret(nextCaret, nextValue);
   }
 
   // Layout effect (not a passive one) so the caret lands before paint — a mention insertion
@@ -273,13 +327,22 @@ export function Composer({
     ) {
       return;
     }
-    const content: ContentBlock[] = [
-      ...(text ? [textBlock(text)] : []),
-      ...readyAttachments.map((attachment) => attachment.block),
-    ];
-    onSend(content);
+    const directive = parseComposerDirective(text, { commands: catalog, shellEnabled });
+    if (directive.kind === 'command' && onInvokeCommand) {
+      onInvokeCommand(directive.name, directive.arguments);
+    } else if (directive.kind === 'shell' && onRunShellCommand) {
+      onRunShellCommand(directive.command);
+    } else {
+      const content: ContentBlock[] = [
+        ...(text ? [textBlock(text)] : []),
+        ...readyAttachments.map((attachment) => attachment.block),
+      ];
+      onSend(content);
+      // Attachments travel only with plain prompts — a command/shell directive can't carry them,
+      // so they stay staged in the tray instead of being silently dropped unsent.
+      setAttachments([]);
+    }
     setValue('');
-    setAttachments([]);
     setCaret(0);
     setDismissedStart(null);
     setPlusCommandStart(null);
@@ -457,15 +520,19 @@ export function Composer({
   }
 
   function selectMentionCommand(): void {
-    if (textTrigger?.kind === 'slash') {
-      const next = `${value.slice(0, textTrigger.start)}@${value.slice(caret)}`;
-      setPlusCommandStart(null);
-      setDismissedStart(null);
-      setValueAndCaret(next, textTrigger.start + 1);
-      return;
-    }
-
     insertMentionTrigger(value, textareaRef.current?.selectionStart ?? caret);
+  }
+
+  /** Replace the `/query` trigger token with `/name ` so the user can type arguments; Enter then
+   * submits it as a command directive (see `submit`). */
+  function selectAgentCommand(entry: AgentCommandEntry): void {
+    if (textTrigger?.kind !== 'slash') return;
+    const rest = value.slice(caret);
+    const sep = LEADING_WHITESPACE_RE.test(rest) ? '' : ' ';
+    const insert = `/${entry.command.name}`;
+    const next = `${value.slice(0, textTrigger.start)}${insert}${sep}${rest}`;
+    setPlusCommandStart(null);
+    setValueAndCaret(next, textTrigger.start + insert.length + sep.length);
   }
 
   function selectCommand(entry: ComposerCommandEntry): void {
@@ -473,6 +540,11 @@ export function Composer({
 
     if (entry.kind === 'mention') {
       selectMention(entry);
+      return;
+    }
+
+    if (entry.kind === 'command') {
+      selectAgentCommand(entry);
       return;
     }
 
@@ -560,8 +632,6 @@ export function Composer({
     void onEffortChange?.(effort).catch(noop);
   }
 
-  const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
-
   return (
     <div
       className={cn(
@@ -591,7 +661,7 @@ export function Composer({
             autoHighlight="always"
             filter={null}
             inline={false}
-            items={commandGroups}
+            items={renderedCommandGroups}
             itemToStringValue={commandEntryToString}
             keepHighlight
             open={commandOpen}
@@ -601,97 +671,151 @@ export function Composer({
             }}
             onValueChange={(nextValue, details) => updateValue(nextValue, details.event)}
           >
-            {commandOpen ? (
-              <ComposerCommandMenu emptyLabel={emptyCommandLabel} onSelect={selectCommand} />
-            ) : null}
-            <PromptInput onSubmit={submit} className="relative z-10">
-              {attachments.length > 0 ? (
-                <Attachments
-                  attachments={attachments}
-                  className="w-full px-3.5 pt-3"
-                  variant="grid"
-                  onRemove={handleRemoveAttachment}
-                />
-              ) : null}
-              <AutocompletePrimitive.Input
-                render={
-                  <PromptInputTextarea
-                    ref={textareaRef}
-                    disabled={disabled}
-                    rows={1}
-                    placeholder={
-                      disabled
-                        ? t('placeholderDisconnected')
-                        : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
-                    }
-                    onClick={(e) =>
-                      updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                    }
-                    onKeyUp={(e) =>
-                      updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                    }
-                    onKeyDown={onKeyDown}
-                    onPaste={onTextareaPaste}
+            <Frame
+              className={cn(
+                'transition-[background-color,padding] motion-reduce:transition-none',
+                frameVisible
+                  ? 'duration-200 ease-[cubic-bezier(0.2,0,0,1)]'
+                  : 'bg-transparent p-0 duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+              )}
+            >
+              <div aria-hidden={!commandOpen} inert={!commandOpen} className="min-h-0">
+                <AnimatePresence initial={false}>
+                  {commandOpen ? (
+                    <motion.div
+                      key="composer-command-menu"
+                      data-slot="composer-command-menu"
+                      className="max-h-80 min-h-0 overflow-hidden"
+                      initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+                      animate={{
+                        height: 'auto',
+                        opacity: 1,
+                        transition: reducedMotion
+                          ? { duration: 0 }
+                          : {
+                              height: { duration: 0.22, ease: [0.2, 0, 0, 1] },
+                              opacity: { duration: 0.18, ease: [0.2, 0, 0, 1] },
+                            },
+                      }}
+                      exit={{
+                        height: 0,
+                        opacity: 0,
+                        transition: reducedMotion
+                          ? { duration: 0 }
+                          : {
+                              height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                              opacity: { duration: 0.22, ease: [0.4, 0, 0.2, 1] },
+                            },
+                      }}
+                    >
+                      <ComposerCommandMenu
+                        emptyLabel={renderedEmptyCommandLabel}
+                        onSelect={selectCommand}
+                      />
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+              <PromptInput
+                onSubmit={submit}
+                className={cn(
+                  'relative z-10',
+                  frameVisible && '*:[[data-slot=input-group]]:rounded-xl',
+                )}
+              >
+                {attachments.length > 0 ? (
+                  <Attachments
+                    attachments={attachments}
+                    className="w-full px-3.5 pt-3"
+                    variant="grid"
+                    onRemove={handleRemoveAttachment}
                   />
-                }
-              />
-              <PromptInputFooter>
-                <PromptInputTools>
-                  <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
-                  {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
-                    <ApprovalPolicyMenu
-                      agentLabel={placeholderAgent}
-                      currentPolicyId={approvalPolicy.currentPolicyId}
+                ) : null}
+                <AutocompletePrimitive.Input
+                  render={
+                    <PromptInputTextarea
+                      ref={textareaRef}
                       disabled={disabled}
-                      policies={approvalPolicy.availablePolicies}
-                      onSelect={selectPolicy}
+                      rows={1}
+                      placeholder={
+                        disabled
+                          ? t('placeholderDisconnected')
+                          : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
+                      }
+                      onClick={(e) =>
+                        updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                      }
+                      onKeyUp={(e) =>
+                        updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
+                      }
+                      onKeyDown={onKeyDown}
+                      onPaste={onTextareaPaste}
                     />
-                  ) : null}
-                  {activeMode && onModeChange ? (
-                    <SessionModeChip
-                      disabled={disabled}
-                      mode={activeMode}
-                      onToggle={() => toggleMode(activeMode)}
-                    />
-                  ) : null}
-                </PromptInputTools>
-                <ModelSelectorMenu
-                  disabled={disabled}
-                  effortOptions={effortOptions}
-                  modelOptions={modelOptions}
-                  provider={agentKind}
-                  runtimeCues={runtimeCues}
-                  selectableProviders={selectableProviders}
-                  selectedEffortId={currentEffort ?? null}
-                  selectedModelId={currentModel ?? null}
-                  onSelectEffort={selectEffort}
-                  onSelectModel={selectModel}
-                  onSelectProvider={
-                    onProviderChange
-                      ? (provider) => {
-                          void onProviderChange(provider).catch(noop);
-                        }
-                      : undefined
                   }
                 />
-                <PromptInputSubmit
-                  aria-label={isRunning ? t('stop') : t('send')}
-                  disabled={
-                    !isRunning &&
-                    (disabled ||
-                      sendBlocked ||
-                      (value.trim().length === 0 && attachments.length === 0) ||
-                      attachments.some((attachment) => attachment.status === 'pending'))
-                  }
-                  onStop={onStop}
-                  status={isRunning ? 'streaming' : 'ready'}
-                  className="rounded-full"
-                  variant={isRunning ? 'secondary' : 'default'}
-                />
-              </PromptInputFooter>
-              {/* Sibling of the footer addon, which is `order-last` — this must match to stay below it. */}
-              {contextBar ? <div className="order-last w-full">{contextBar}</div> : null}
-            </PromptInput>
+                <PromptInputFooter>
+                  <PromptInputTools>
+                    <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
+                    {shellActive ? (
+                      <Badge className="gap-1" variant="secondary">
+                        <TerminalIcon aria-hidden className="size-3" />
+                        {t('shellCommand')}
+                      </Badge>
+                    ) : null}
+                    {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
+                      <ApprovalPolicyMenu
+                        agentLabel={placeholderAgent}
+                        currentPolicyId={approvalPolicy.currentPolicyId}
+                        disabled={disabled}
+                        policies={approvalPolicy.availablePolicies}
+                        onSelect={selectPolicy}
+                      />
+                    ) : null}
+                    {activeMode && onModeChange ? (
+                      <SessionModeChip
+                        disabled={disabled}
+                        mode={activeMode}
+                        onToggle={() => toggleMode(activeMode)}
+                      />
+                    ) : null}
+                  </PromptInputTools>
+                  <ModelSelectorMenu
+                    disabled={disabled}
+                    effortOptions={effortOptions}
+                    modelOptions={modelOptions}
+                    provider={agentKind}
+                    runtimeCues={runtimeCues}
+                    selectableProviders={selectableProviders}
+                    selectedEffortId={currentEffort ?? null}
+                    selectedModelId={currentModel ?? null}
+                    onSelectEffort={selectEffort}
+                    onSelectModel={selectModel}
+                    onSelectProvider={
+                      onProviderChange
+                        ? (provider) => {
+                            void onProviderChange(provider).catch(noop);
+                          }
+                        : undefined
+                    }
+                  />
+                  <PromptInputSubmit
+                    aria-label={isRunning ? t('stop') : t('send')}
+                    disabled={
+                      !isRunning &&
+                      (disabled ||
+                        sendBlocked ||
+                        (value.trim().length === 0 && attachments.length === 0) ||
+                        attachments.some((attachment) => attachment.status === 'pending'))
+                    }
+                    onStop={onStop}
+                    status={isRunning ? 'streaming' : 'ready'}
+                    className="rounded-full"
+                    variant={isRunning ? 'secondary' : 'default'}
+                  />
+                </PromptInputFooter>
+              </PromptInput>
+              {contextBar ? <FrameFooter className="p-0">{contextBar}</FrameFooter> : null}
+            </Frame>
           </Command>
         </div>
       </div>

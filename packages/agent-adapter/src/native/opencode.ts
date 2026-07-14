@@ -1,4 +1,5 @@
 import type {
+  AgentCommand,
   ContentBlock,
   PermissionOption,
   Question,
@@ -93,6 +94,7 @@ type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['cli
  */
 export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'opencode' as const;
+  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
 
   private client: OpencodeClient | null = null;
   private closeServer: (() => void) | null = null;
@@ -126,6 +128,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * `message.updated {role:'user'}` precedes its parts), and replaying that text would
    * double-render the prompt as an agent bubble. Cleared at each turn settle. */
   private readonly userMessageIds = new Set<string>();
+  /** Cached result of `resolveShellAgent` — resolved lazily, once, on first shell command. */
+  private shellAgent: string | null = null;
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
@@ -159,7 +163,42 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const id = created.data?.id;
     if (!id) throw new Error('opencode: failed to create session');
     this.sessionId = id;
+    // Catalog fetch is best-effort: there is no SSE event for catalog changes (poll-only), and a
+    // failed list must not fail session start — catalog absence is itself a capability signal (no
+    // `available-commands-update` ever fires for this session).
+    try {
+      const listed = await this.client.command.list({ directory: opts.cwd });
+      if (listed.error === undefined && listed.data.length > 0) {
+        this.emitCommands(
+          listed.data.map(
+            (c): AgentCommand => ({
+              name: c.name,
+              description: c.description,
+              argumentHint: c.hints.join(' ') || undefined,
+            }),
+          ),
+        );
+      }
+    } catch {
+      // Non-fatal — see comment above.
+    }
     void this.consumeEvents();
+  }
+
+  /** Turn-state setup shared by every turn-initiating input (prompt / command / shell command):
+   * bumps the epoch, arms the turn-liveness flags, and announces `running`. Returns the epoch so a
+   * fire-and-not-await RPC failure can check it still owns the turn before touching it. */
+  private beginTurn(): number {
+    if (this.turnActive || this.cancelling) {
+      throw new Error('opencode: session is busy');
+    }
+    this.turnEpoch += 1;
+    this.turnActive = true;
+    this.turnStarted = false;
+    this.cancelling = false;
+    this.turnFailed = false;
+    this.emitStatus('running');
+    return this.turnEpoch;
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -174,12 +213,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         }),
       ),
     ];
-    this.turnEpoch += 1;
-    this.turnActive = true;
-    this.turnStarted = false;
-    this.cancelling = false;
-    this.turnFailed = false;
-    this.emitStatus('running');
+    this.beginTurn();
     // promptAsync, not prompt: the blocking variant's HTTP response only resolves once the whole
     // turn finishes, which would hold send() open for the turn's full duration and risks HTTP-layer
     // timeouts on long turns. The SSE stream is the single source of turn lifecycle either way.
@@ -195,6 +229,102 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.emitStatus('idle');
       okOrThrow(result, 'opencode: session.promptAsync');
     }
+  }
+
+  /** Invoke a provider slash command (catalog announced at `onStart`). Executing a command runs the
+   * exact same internal turn as a prompt (the server expands the template and feeds it through the
+   * same model loop) — same SSE lifecycle, so the turn-state setup mirrors `onPrompt` exactly. Fires
+   * `session.command` without awaiting its HTTP response: that response only resolves once the whole
+   * turn finishes, and the SSE stream (session.status busy / message parts / session.idle) is the
+   * turn's real settle signal either way. */
+  protected override onCommand(name: string, args?: string): Promise<void> {
+    if (!this.client || !this.sessionId) throw new Error('opencode: session not started');
+    const epoch = this.beginTurn();
+    void this.client.session
+      .command({
+        sessionID: this.sessionId,
+        directory: this.opts?.cwd,
+        command: name,
+        arguments: args ?? '',
+        model: this.opts?.model,
+      })
+      .then((result) => {
+        if (result.error === undefined) return;
+        // A newer turn (a later command/prompt/shell, or a cancel) already owns the flags by the
+        // time this settles — this failure belongs to a superseded turn and must not touch it.
+        if (this.turnEpoch !== epoch) return;
+        // The turn never actually started server-side (same as an immediate promptAsync failure):
+        // put the session back to rest and surface the failure. Nothing was fire-and-awaited here,
+        // so there is no rejected send() to carry the error — emit it instead.
+        this.turnActive = false;
+        try {
+          okOrThrow(result, 'opencode: session.command');
+        } catch (err) {
+          this.emitError(extractErrorMessage(err) ?? 'opencode: session.command failed');
+        }
+        this.emitStatus('idle');
+      });
+    return Promise.resolve();
+  }
+
+  /** Run a raw shell command outside the model loop. Upstream, `session.shell` does NOT call the
+   * model: it synthesizes a user + assistant message and streams the subprocess output through the
+   * same part machinery as a real turn, toggling the session busy/idle run-state the same way (both
+   * upstream-verified) — so the turn-state setup mirrors `onPrompt` and the SSE stream is expected to
+   * drive rendering and settle. Fire-and-not-await for the same reason as `onCommand`, plus a settle
+   * backstop below: the HTTP response only resolves once the subprocess exits, and whether
+   * `session.status` busy/idle actually fires for shell turns (as opposed to only for model turns) is
+   * the one bit this hasn't been verified live for. */
+  protected override async onShellCommand(command: string): Promise<void> {
+    if (!this.client || !this.sessionId) throw new Error('opencode: session not started');
+    const agent = await this.resolveShellAgent();
+    const epoch = this.beginTurn();
+    void this.client.session
+      .shell({
+        sessionID: this.sessionId,
+        directory: this.opts?.cwd,
+        agent,
+        command,
+      })
+      .then((result) => {
+        // A newer turn already owns the flags by the time this settles — same rule as `onCommand`.
+        if (this.turnEpoch !== epoch) return;
+        if (result.error !== undefined) {
+          this.turnActive = false;
+          try {
+            okOrThrow(result, 'opencode: session.shell');
+          } catch (err) {
+            this.emitError(extractErrorMessage(err) ?? 'opencode: session.shell failed');
+          }
+          this.emitStatus('idle');
+          return;
+        }
+        // Belt-and-braces backstop: if the turn is still active (no `session.idle` settled it via
+        // the stream by the time the subprocess-bound response came back), force the settle rather
+        // than leave it hanging at `running`.
+        if (this.turnActive) this.settleTurn(true);
+      });
+  }
+
+  /** Resolves (and caches) the agent name `session.shell` runs under: the session's current primary
+   * agent, mirroring the upstream TUI's own shell dispatch. Fallback chain on any failure to read the
+   * catalog — no primary found, an empty catalog, or the RPC itself failing — bottoms out at
+   * `'build'`, opencode's config-defined default primary agent (not a protocol constant). */
+  private async resolveShellAgent(): Promise<string> {
+    if (this.shellAgent) return this.shellAgent;
+    let agents: Array<{ name: string; mode: string }> = [];
+    try {
+      if (this.client) {
+        const result = await this.client.app.agents({ directory: this.opts?.cwd });
+        if (result.error === undefined) agents = result.data;
+      }
+    } catch {
+      // Falls through to the literal default below.
+    }
+    const resolved =
+      agents.find((a) => a.mode === 'primary')?.name ?? agents.at(0)?.name ?? 'build';
+    this.shellAgent = resolved;
+    return resolved;
   }
 
   protected override async onCancel(): Promise<void> {
@@ -378,9 +508,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Turn settle on `session.idle`. Guarded on turn liveness AND the on-stream turn-start marker:
    * opencode emits a duplicate idle after an abort (observed live: error → idle → idle), and that
    * straggler can land after the NEXT prompt was already dispatched — without the `turnStarted`
-   * gate it would falsely settle the new turn and then swallow its real settle. */
-  private settleTurn(): void {
-    const started = this.turnActive && this.turnStarted;
+   * gate it would falsely settle the new turn and then swallow its real settle.
+   *
+   * `force` bypasses that gate: it's the shell-command settle backstop's escape hatch for the one
+   * unverified bit — whether `session.status` busy (and so `turnStarted`) fires for shell turns at
+   * all — so a turn that legitimately finished without ever setting `turnStarted` still settles
+   * instead of hanging at `running`. */
+  private settleTurn(force = false): void {
+    const started = force || (this.turnActive && this.turnStarted);
     if (!started && !this.cancelling && !this.turnFailed) {
       if (this.turnActive) {
         // Normally the previous turn's post-settle straggler. But if the server never emits

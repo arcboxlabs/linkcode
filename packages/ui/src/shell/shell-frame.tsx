@@ -91,6 +91,8 @@ export interface ShellFrameProps
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
+  onInvokeCommand?: (name: string, args?: string) => void;
+  onRunShellCommand?: (command: string) => void;
 }
 
 export function ShellFrame({
@@ -145,6 +147,8 @@ export function ShellFrame({
   onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
+  onInvokeCommand,
+  onRunShellCommand,
 }: ShellFrameProps): React.ReactNode {
   const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -224,6 +228,8 @@ export function ShellFrame({
             onApprovalPolicyChange={onApprovalPolicyChange}
             onModelChange={onModelChange}
             onEffortChange={onEffortChange}
+            onInvokeCommand={onInvokeCommand}
+            onRunShellCommand={onRunShellCommand}
           />
         )}
       </main>

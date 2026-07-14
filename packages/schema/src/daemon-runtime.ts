@@ -12,8 +12,13 @@ export {
   DAEMON_DEFAULT_PORT,
   DAEMON_DEFAULT_URL,
   DAEMON_EXIT_ALREADY_RUNNING,
-  DAEMON_RUNTIME_FILE_SEGMENTS,
+  daemonRuntimeFileSegments,
+  linkcodeStateDirName,
+  PROFILE_NAME_PATTERN,
+  parseProfileName,
 } from './daemon-runtime-constants';
+
+import { PROFILE_NAME_PATTERN } from './daemon-runtime-constants';
 
 /** HTTP path every daemon listener answers with its `DaemonIdentity`. */
 export const DAEMON_IDENTITY_PATH = '/linkcode';
@@ -23,6 +28,8 @@ export const DaemonIdentitySchema = z.object({
   name: z.literal('linkcode-daemon'),
   pid: z.number().int().positive(),
   startedAt: TimestampSchema,
+  /** The daemon's profile; absent means the default profile (pre-profile daemons included). */
+  profile: z.string().regex(PROFILE_NAME_PATTERN).optional(),
 });
 export type DaemonIdentity = z.infer<typeof DaemonIdentitySchema>;
 

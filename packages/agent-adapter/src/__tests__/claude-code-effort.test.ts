@@ -32,6 +32,7 @@ class FakeQuery {
   readonly options: Record<string, unknown>;
   /** Messages the SDK-side read loop has pulled off the streaming prompt so far. */
   readonly received: SDKUserMessage[] = [];
+  readonly setModel = vi.fn<(model: string) => Promise<void>>(asyncNoop);
   readonly applyFlagSettings =
     vi.fn<(settings: Record<string, unknown>) => Promise<void>>(asyncNoop);
   readonly close = vi.fn(() => {
@@ -112,35 +113,33 @@ async function waitIdle(events: AgentEvent[]): Promise<void> {
 }
 
 describe('ClaudeCodeAdapter effort switching', () => {
-  it('applies a pre-set switchable level before the first message reaches the CLI', async () => {
+  it('applies a switchable level before the first message reaches the CLI', async () => {
     const { adapter } = await makeAdapter();
-    await setEffort(adapter, 'high');
+    const q0 = queries[0];
 
     let resolveFlags: (() => void) | undefined;
-    nextQuerySetup = (q) => {
-      q.applyFlagSettings.mockImplementation(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveFlags = resolve;
-          }),
-      );
-    };
-    const promptDone = prompt(adapter);
+    q0.applyFlagSettings.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveFlags = resolve;
+        }),
+    );
+    const effortDone = setEffort(adapter, 'high');
+    const promptDone = effortDone.then(() => prompt(adapter));
     await vi.waitFor(() => {
-      expect(queries).toHaveLength(1);
-      expect(queries[0].applyFlagSettings).toHaveBeenCalledWith({
+      expect(q0.applyFlagSettings).toHaveBeenCalledWith({
         ultracode: null,
         effortLevel: 'high',
       });
     });
     // The prompt must not enter the queue while the effort switch is still in flight.
     await wait(0);
-    expect(queries[0].received).toHaveLength(0);
+    expect(q0.received).toHaveLength(0);
 
     resolveFlags?.();
     await promptDone;
     await vi.waitFor(() => {
-      expect(queries[0].received).toHaveLength(1);
+      expect(q0.received).toHaveLength(1);
     });
   });
 
@@ -184,6 +183,9 @@ describe('ClaudeCodeAdapter effort switching', () => {
 
   it('drops and reports a stored level the rebuild cannot apply, without failing the prompt', async () => {
     const { adapter, events } = await makeAdapter();
+    const q0 = queries[0];
+    q0.push(null);
+    await waitIdle(events);
     await setEffort(adapter, 'ultracode');
 
     nextQuerySetup = (q) => {
@@ -194,18 +196,18 @@ describe('ClaudeCodeAdapter effort switching', () => {
       events.some((e) => e.type === 'error' && e.message.includes('dynamic workflows disabled')),
     ).toBe(true);
     // The turn itself still runs, at the CLI's default level.
-    const q0 = queries[0];
+    const q1 = queries[1];
     await vi.waitFor(() => {
-      expect(q0.received).toHaveLength(1);
+      expect(q1.received).toHaveLength(1);
     });
 
     // The rejected level was dropped: the next rebuild applies nothing.
-    q0.push(null);
+    q1.push(null);
     await waitIdle(events);
     await prompt(adapter);
-    const q1 = queries[1];
-    expect(q1.applyFlagSettings).not.toHaveBeenCalled();
-    expect(q1.options.effort).toBeUndefined();
+    const q2 = queries[2];
+    expect(q2.applyFlagSettings).not.toHaveBeenCalled();
+    expect(q2.options.effort).toBeUndefined();
   });
 
   it('restarts across max transitions and resumes from the last session id', async () => {

@@ -50,6 +50,10 @@ export interface ConversationSurfaceProps {
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
+  /** Sends a catalog slash-command invocation (see Composer.onInvokeCommand). */
+  onInvokeCommand?: (name: string, args?: string) => void;
+  /** Sends a `$` shell passthrough (see Composer.onRunShellCommand). */
+  onRunShellCommand?: (command: string) => void;
 }
 
 export function ConversationSurface({
@@ -82,6 +86,8 @@ export function ConversationSurface({
   onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
+  onInvokeCommand,
+  onRunShellCommand,
 }: ConversationSurfaceProps): React.ReactNode {
   const composerRef = useRef<ComposerHandle | null>(null);
   // Artifact interactions (click-to-reference) land in this surface's own composer;
@@ -131,7 +137,11 @@ export function ConversationSurface({
         approvalPolicy={conversation.approvalPolicy}
         currentModel={conversation.currentModel}
         currentEffort={conversation.currentEffort}
+        agentCommands={conversation.availableCommands}
+        agentCapabilities={conversation.capabilities}
         onSend={onSendPrompt}
+        onInvokeCommand={onInvokeCommand}
+        onRunShellCommand={onRunShellCommand}
         onStop={onStopTurn}
         onPickAttachmentFiles={onPickAttachmentFiles}
         onModeChange={onModeChange}

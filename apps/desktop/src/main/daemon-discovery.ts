@@ -2,11 +2,12 @@ import { mkdirSync, watch } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { daemonRuntimeFilePath, isPidAlive, readJsonFileSync } from '@linkcode/common/node';
 import { DAEMON_DEFAULT_URL, DaemonRuntimeInfoSchema } from '@linkcode/schema';
+import { PROFILE } from './constants';
 import { getSettings } from './settings';
 
 /**
  * Resolve the daemon endpoint the renderer should dial: the explicit settings override when
- * present, else the endpoint the running daemon advertises in `~/.linkcode/runtime.json`,
+ * present, else the endpoint the running daemon advertises in the profile's runtime.json,
  * else the default port. Synchronous so it can serve the renderer's boot snapshot.
  */
 export function resolveDaemonUrl(): string {
@@ -14,7 +15,7 @@ export function resolveDaemonUrl(): string {
 }
 
 function discoverRuntimeUrl(): string | null {
-  const file = daemonRuntimeFilePath();
+  const file = daemonRuntimeFilePath(PROFILE);
   const parsed = DaemonRuntimeInfoSchema.safeParse(readJsonFileSync(file));
   if (!parsed.success || !isPidAlive(parsed.data.pid)) return null;
   // The renderer connects over Socket.IO; ignore listeners it cannot dial.
@@ -31,8 +32,8 @@ const RUNTIME_WATCH_DEBOUNCE_MS = 100;
  * lifetimes, and a watcher pinned to a deleted inode goes blind.
  */
 export function watchDaemonRuntime(onChange: () => void): () => void {
-  const file = daemonRuntimeFilePath();
-  // The daemon creates ~/.linkcode on first start; create it up front so watching never races that.
+  const file = daemonRuntimeFilePath(PROFILE);
+  // The daemon creates its state dir on first start; create it up front so watching never races that.
   mkdirSync(dirname(file), { recursive: true });
   let debounce: NodeJS.Timeout | null = null;
   const watcher = watch(dirname(file), (_event, filename) => {

@@ -1,4 +1,4 @@
-import type { SessionMode } from '@linkcode/schema';
+import type { AgentCommand, SessionMode } from '@linkcode/schema';
 import {
   CommandCollection,
   CommandEmpty,
@@ -6,11 +6,11 @@ import {
   CommandGroupLabel,
   CommandItem,
   CommandList,
-  CommandPanel,
 } from 'coss-ui/components/command';
 import type { LucideIcon } from 'lucide-react';
 import {
   AtSignIcon,
+  BookTextIcon,
   CheckIcon,
   ListTodoIcon,
   PaperclipIcon,
@@ -61,7 +61,17 @@ export interface ModeCommandEntry extends BaseCommandEntry {
   mode: SessionMode;
 }
 
-export type ComposerCommandEntry = ActionCommandEntry | MentionCommandEntry | ModeCommandEntry;
+/** A provider slash command from the session's advertised catalog. */
+export interface AgentCommandEntry extends BaseCommandEntry {
+  command: AgentCommand;
+  kind: 'command';
+}
+
+export type ComposerCommandEntry =
+  | ActionCommandEntry
+  | AgentCommandEntry
+  | MentionCommandEntry
+  | ModeCommandEntry;
 
 export interface ComposerCommandGroup {
   items: ComposerCommandEntry[];
@@ -109,6 +119,7 @@ function matchesQuery(
 }
 
 export function buildComposerCommandGroups({
+  agentCommands,
   attachEnabled = true,
   availableModes,
   commandSource,
@@ -119,6 +130,8 @@ export function buildComposerCommandGroups({
   plusQuery,
   textTrigger,
 }: {
+  /** The session's advertised slash-command catalog (empty when the agent has none). */
+  agentCommands: readonly AgentCommand[];
   /** Whether the active agent supports image attachments (`AGENT_ATTACHMENT_SUPPORT`) — the
    * "attach" entry stays visible either way, but disables when the answer is no. */
   attachEnabled?: boolean;
@@ -175,14 +188,36 @@ export function buildComposerCommandGroups({
       id: 'mention-command',
       kind: 'action',
       label: labels.mentions,
-      source: commandSource,
+      source: 'plus',
       value: 'mention',
     },
   ];
-  const commandItems: ComposerCommandEntry[] = commandItemCandidates.filter((item) => {
-    if (commandSource === 'slash' && item.source === 'plus') return false;
-    return matchesQuery(item.label, item.value, item.hint, commandQuery);
-  });
+  const commandItems: ComposerCommandEntry[] = [];
+  if (commandSource === 'slash') {
+    for (const command of agentCommands) {
+      // Aliases match too (typing /cost surfaces /usage); selection inserts the canonical name.
+      if (
+        !matchesQuery(command.name, command.name, command.description, commandQuery) &&
+        !command.aliases?.some((alias) => alias.toLowerCase().includes(commandQuery))
+      ) {
+        continue;
+      }
+      commandItems.push({
+        command,
+        hint: command.description ?? command.argumentHint,
+        icon: BookTextIcon,
+        id: `command:${command.name}`,
+        kind: 'command',
+        label: `/${command.name}`,
+        source: 'slash',
+        value: command.name,
+      });
+    }
+  }
+  for (const item of commandItemCandidates) {
+    if (commandSource === 'slash' && item.source === 'plus') continue;
+    if (matchesQuery(item.label, item.value, item.hint, commandQuery)) commandItems.push(item);
+  }
 
   if (commandSource === 'plus' && modesEnabled) {
     for (const mode of availableModes) {
@@ -220,10 +255,10 @@ export function ComposerCommandMenu({
   onSelect: (entry: ComposerCommandEntry) => void;
 }): React.ReactNode {
   return (
-    <div className="absolute inset-x-0 bottom-full z-0 translate-y-4 rounded-2xl rounded-b-none border border-b-0 bg-background">
-      <CommandPanel className="border-0 bg-muted/32 pb-4">
-        <CommandEmpty>{emptyLabel}</CommandEmpty>
-        <CommandList>
+    <div className="flex max-h-80 min-h-0 flex-col **:data-[slot=scroll-area-viewport]:max-h-80 **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-0!">
+      <CommandEmpty>{emptyLabel}</CommandEmpty>
+      <div className="min-h-0 flex-1">
+        <CommandList className="in-data-has-overflow-y:pe-2!">
           {(group: ComposerCommandGroup) => (
             <CommandGroup key={group.value} items={group.items}>
               <CommandGroupLabel>{group.label}</CommandGroupLabel>
@@ -243,7 +278,10 @@ export function ComposerCommandMenu({
                     <span className="flex min-w-0 flex-1 items-baseline gap-2">
                       <span className="shrink-0">{entry.label}</span>
                       {entry.hint ? (
-                        <span className="min-w-0 truncate text-muted-foreground text-xs">
+                        <span
+                          className="min-w-0 truncate text-muted-foreground text-xs"
+                          title={entry.hint}
+                        >
                           {entry.hint}
                         </span>
                       ) : null}
@@ -257,7 +295,7 @@ export function ComposerCommandMenu({
             </CommandGroup>
           )}
         </CommandList>
-      </CommandPanel>
+      </div>
     </div>
   );
 }

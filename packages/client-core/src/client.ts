@@ -391,6 +391,14 @@ export class LinkCodeClient {
     return this.control.promptText(sessionId, text);
   }
 
+  invokeCommand(sessionId: SessionId, name: string, args?: string): Promise<RequestAck> {
+    return this.control.invokeCommand(sessionId, name, args);
+  }
+
+  runShellCommand(sessionId: SessionId, command: string): Promise<RequestAck> {
+    return this.control.runShellCommand(sessionId, command);
+  }
+
   cancel(sessionId: SessionId): Promise<RequestAck> {
     return this.control.cancel(sessionId);
   }

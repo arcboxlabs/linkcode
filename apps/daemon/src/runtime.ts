@@ -16,8 +16,9 @@ import { runtimeFilePath } from './config';
 
 /**
  * Daemon runtime discovery: bind listeners with port hunting, refuse to double-start
- * (one daemon per machine — they would share `~/.linkcode/daemon.db`), and advertise the
+ * (one daemon per profile — they would share that profile's `daemon.db`), and advertise the
  * actually-bound endpoints in the runtime file for local clients (desktop main, cli) to read.
+ * Daemons of other profiles are just port neighbors: the hunt skips past them.
  */
 
 const PORT_HUNT_ATTEMPTS = 10;
@@ -80,7 +81,9 @@ async function huntFrom(
     const probeUrl = httpUrl(listener.host, port);
     const occupant = await probeDaemonIdentity(probeUrl);
     // Our own pid means another of this daemon's listeners hunted onto the port — keep going.
-    if (occupant && occupant.pid !== identity.pid) {
+    // A daemon of another profile (absent field = default profile) is not a double-start
+    // either: profiles are isolated universes, so hunt past it like any foreign process.
+    if (occupant && occupant.pid !== identity.pid && occupant.profile === identity.profile) {
       throw new DaemonAlreadyRunningError(occupant, probeUrl);
     }
     if (attempt + 1 >= PORT_HUNT_ATTEMPTS) {
