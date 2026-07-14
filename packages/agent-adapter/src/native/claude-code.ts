@@ -34,10 +34,11 @@ import type {
   PermissionOption,
   StartOptions,
   StopReason,
+  SupportedAttachmentImageMimeType,
   ToolCall,
   ToolCallContent,
 } from '@linkcode/schema';
-import { EffortLevelSchema, textBlock } from '@linkcode/schema';
+import { EffortLevelSchema, isSupportedAttachmentImageMimeType, textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
@@ -65,18 +66,6 @@ type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
 type AssistantMessage = AssistantSDKMessage['message'];
 type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
-
-/** The SDK's `Base64ImageSource.media_type` enum. Our own schema's `ContentBlock.image.mimeType`
- * is an unconstrained string, so this narrows it before it reaches the SDK. */
-type ClaudeImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-function isClaudeImageMediaType(mimeType: string): mimeType is ClaudeImageMediaType {
-  return (
-    mimeType === 'image/jpeg' ||
-    mimeType === 'image/png' ||
-    mimeType === 'image/gif' ||
-    mimeType === 'image/webp'
-  );
-}
 
 /** Claude's subagent-spawning tool: named `Agent` in current CLIs (verified live against the
  * vendored 0.3.x), `Task` in older transcripts — history replay still meets the old name. Exact
@@ -443,11 +432,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitStatus('running');
     type ClaudeImageBlock = {
       type: 'image';
-      source: { type: 'base64'; media_type: ClaudeImageMediaType; data: string };
+      source: { type: 'base64'; media_type: SupportedAttachmentImageMimeType; data: string };
     };
     const imageBlocksForClaude = imageBlocksFrom(content).reduce<ClaudeImageBlock[]>(
       (blocks, image) => {
-        if (isClaudeImageMediaType(image.mimeType)) {
+        // The engine's attachment guard already rejected other types; the check here narrows our
+        // schema's unconstrained mimeType string to the SDK's `Base64ImageSource.media_type` enum.
+        if (isSupportedAttachmentImageMimeType(image.mimeType)) {
           blocks.push({
             type: 'image',
             source: { type: 'base64', media_type: image.mimeType, data: image.data },
@@ -457,10 +448,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       },
       [],
     );
+    const text = contentToText(content);
     const messageContent: MessageParam['content'] =
       imageBlocksForClaude.length === 0
-        ? contentToText(content)
-        : [{ type: 'text', text: contentToText(content) }, ...imageBlocksForClaude];
+        ? text
+        : [
+            // The Messages API rejects an empty-string text block — an image-only send (allowed
+            // by the composer) must carry the images alone.
+            ...(text.length > 0 ? [{ type: 'text' as const, text }] : []),
+            ...imageBlocksForClaude,
+          ];
     const message: SDKUserMessage = {
       type: 'user',
       message: { role: 'user', content: messageContent },
