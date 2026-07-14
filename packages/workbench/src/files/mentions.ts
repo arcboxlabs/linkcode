@@ -14,17 +14,46 @@ export interface FileMentionSource {
   onMentionQueryChange: (query: string | null) => void;
 }
 
+/** The live `@` query plus which open-trigger it belongs to. The generation bumps every time a
+ * trigger opens (null → string), so a trailing debounced value is recognizable as belonging to
+ * the current trigger or to a previous one — `useDebouncedValue` itself never resets, and right
+ * after a reopen it still holds the previous trigger's settled query for up to the debounce
+ * window. */
+interface MentionQuery {
+  query: string | null;
+  generation: number;
+}
+
+const NO_MENTION_QUERY: MentionQuery = { query: null, generation: 0 };
+
 /**
  * Backs the composer's `@` menu with `file.suggest` daemon searches for the active
  * session's workspace. Queries are debounced; the previous result stays visible while a
  * new one loads (stale-but-visible) so the menu never flashes empty between keystrokes.
  */
 export function useFileMentionSource(cwd: string | undefined): FileMentionSource {
-  const [query, setQuery] = useState<string | null>(null);
-  const debouncedQuery = useDebouncedValue(query, MENTION_QUERY_DEBOUNCE_MS);
-  // While debounce lags a just-opened mention, fetch eagerly with the live value so the
-  // first menu render isn't a guaranteed 180ms behind the trigger keystroke.
-  const effectiveQuery = query === null ? null : (debouncedQuery ?? query);
+  const [live, setLive] = useState<MentionQuery>(NO_MENTION_QUERY);
+  const debounced = useDebouncedValue(live, MENTION_QUERY_DEBOUNCE_MS);
+  // Debounce trails typing within one open trigger. A same-generation debounced value is a valid
+  // prefix of what the user is typing — fetch it. A previous-generation one belongs to the last
+  // trigger — fall back to the live query, which also makes the first menu render after opening
+  // immediate instead of a guaranteed 180ms late.
+  const effectiveQuery =
+    live.query === null
+      ? null
+      : debounced.generation === live.generation
+        ? (debounced.query ?? live.query)
+        : live.query;
+
+  const onMentionQueryChange = (query: string | null): void => {
+    setLive((prev) =>
+      query === null
+        ? prev.query === null
+          ? prev
+          : { query: null, generation: prev.generation }
+        : { query, generation: prev.query === null ? prev.generation + 1 : prev.generation },
+    );
+  };
 
   const { data } = useData(
     suggestWorkspaceFiles,
@@ -48,5 +77,5 @@ export function useFileMentionSource(cwd: string | undefined): FileMentionSource
     [data],
   );
 
-  return { mentionItems, onMentionQueryChange: setQuery };
+  return { mentionItems, onMentionQueryChange };
 }
