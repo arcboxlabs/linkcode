@@ -1,6 +1,8 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
+  AgentCapabilities,
+  AgentCommand,
   AgentEvent,
   AgentHistoryId,
   AgentRuntimes,
@@ -19,6 +21,7 @@ import type {
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
+import { agentCommandMatches } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -48,6 +51,9 @@ interface Session {
   adapter: AgentAdapter;
   unsub: Unsubscribe;
   status: SessionInfo['status'];
+  /** Engine-owned input gate: adapters differ in whether send() blocks for dispatch or a full turn,
+   * so the host serializes turn-initiating inputs until the adapter reports idle/stopped. */
+  turnInputActive: boolean;
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
@@ -60,6 +66,11 @@ interface Session {
    * placeholder instead of the value the session is actually running on. */
   currentModel?: string;
   currentEffort?: EffortLevel;
+  /** Latest slash-command catalog the adapter advertised, replayed on attach for the same reason —
+   * without it a reconnecting client's composer loses the command menu. */
+  availableCommands?: AgentCommand[];
+  /** Stable adapter input surface, replayed on attach so clients never infer it from agent kind. */
+  capabilities: AgentCapabilities;
 }
 
 type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
@@ -238,11 +249,38 @@ export class Engine {
             this.sessions.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
+          const startsTurn =
+            p.input.type === 'prompt' ||
+            p.input.type === 'command' ||
+            p.input.type === 'shell-command';
+          if (p.input.type === 'command') {
+            const commandName = p.input.name;
+            if (
+              !session.capabilities.slashCommands ||
+              !session.availableCommands?.some((command) =>
+                agentCommandMatches(command, commandName),
+              )
+            ) {
+              const error = new Error(`Unknown slash command: /${commandName}`);
+              this.broadcastInputRejected(p.sessionId, error.message);
+              throw error;
+            }
+          }
+          if (p.input.type === 'shell-command' && !session.capabilities.shellCommand) {
+            const error = new Error('Shell commands are not supported by this session');
+            this.broadcastInputRejected(p.sessionId, error.message);
+            throw error;
+          }
+          if (startsTurn && session.turnInputActive) {
+            const error = new Error(`Session is busy: ${p.sessionId}`);
+            this.broadcastInputRejected(p.sessionId, error.message);
+            throw error;
+          }
+          if (startsTurn) session.turnInputActive = true;
           // Echo the user's prompt into the broadcast stream (and set the title) before awaiting
-          // send: turn-blocking adapters (e.g. CodexAdapter, whose `send` waits for the whole
-          // streamed turn to resolve) would otherwise delay the echo until after the assistant's
-          // reply — or forever, if the turn hangs. A failed send still surfaces to the client, via
-          // tryReply's `request.failed` reply, so this doesn't reintroduce a silent "ghost" message.
+          // send: provider events can outrun the dispatch acknowledgement, so waiting would let
+          // assistant output arrive before its user turn. A failed send is broadcast as an explicit
+          // input_rejected error below as well as replying request.failed to the originating client.
           if (p.input.type === 'prompt') {
             this.transport.send(
               createWireMessage({
@@ -253,12 +291,44 @@ export class Engine {
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
           }
+          // Command/shell inputs echo as the text the user typed (`/name args` / `$ cmd`) so the
+          // transcript shows the invocation; they never drive the title (a session named "/compact"
+          // helps nobody).
+          if (p.input.type === 'command' || p.input.type === 'shell-command') {
+            const text =
+              p.input.type === 'command'
+                ? `/${p.input.name}${p.input.arguments ? ` ${p.input.arguments}` : ''}`
+                : `$ ${p.input.command}`;
+            this.transport.send(
+              createWireMessage({
+                kind: 'agent.event',
+                sessionId: p.sessionId,
+                event: { type: 'user-message', content: [{ type: 'text', text }] },
+              }),
+            );
+          }
           // The answer settles the ask the moment it arrives; drop it before awaiting send so a
           // concurrent session.attach (handlers aren't serialized) can't replay an already-answered ask.
           if (p.input.type === 'permission-response' || p.input.type === 'question-response') {
             session.pendingAsks.delete(p.input.requestId);
           }
-          await session.adapter.send(p.input);
+          try {
+            await session.adapter.send(p.input);
+          } catch (err) {
+            if (startsTurn && session.status !== 'running') session.turnInputActive = false;
+            if (startsTurn) {
+              this.broadcastInputRejected(
+                p.sessionId,
+                extractErrorMessage(err) ?? 'Agent input was rejected',
+              );
+            }
+            throw err;
+          }
+          // Synchronous controls such as Codex /compact may not produce lifecycle events. A real
+          // turn has reported running by this point — BaseAgentAdapter's turn contract requires
+          // turn-starting hooks to emit it before send() resolves — and stays gated until its
+          // idle/stopped event.
+          if (startsTurn && session.status !== 'running') session.turnInputActive = false;
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -599,9 +669,9 @@ export class Engine {
         // Multi-device attach is implicit: events are broadcast to all clients. What gets
         // re-broadcast here is the buffered state an attaching client can't recover from a
         // history read: the live status (gates the pending-ask cards and the Stop affordance),
-        // the approval-policy advertisement (emitted once at adapter start), and any open
-        // permission/question asks (ephemeral — their event is the only carrier). Clients fold
-        // status/policy idempotently and dedupe ask events by requestId.
+        // the adapter capabilities and approval-policy advertisement (emitted at adapter start),
+        // the latest command catalog, and any open permission/question asks (ephemeral — their
+        // event is the only carrier). Clients fold state idempotently and dedupe asks by requestId.
         const attached = this.sessions.get(p.sessionId);
         if (!attached) break;
         const replay = (event: AgentEvent): void => {
@@ -618,6 +688,10 @@ export class Engine {
         }
         if (attached.currentEffort) {
           replay({ type: 'effort-update', effort: attached.currentEffort });
+        }
+        replay({ type: 'capabilities-update', capabilities: attached.capabilities });
+        if (attached.availableCommands) {
+          replay({ type: 'available-commands-update', commands: attached.availableCommands });
         }
         for (const ask of attached.pendingAsks.values()) replay(ask);
         break;
@@ -711,7 +785,14 @@ export class Engine {
   ): Promise<void> {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
-    const session: Session = { adapter, unsub: noop, status: 'starting', pendingAsks: new Map() };
+    const session: Session = {
+      adapter,
+      unsub: noop,
+      status: 'starting',
+      turnInputActive: false,
+      pendingAsks: new Map(),
+      capabilities: adapter.capabilities,
+    };
     session.unsub = adapter.onEvent((event) => {
       // The adapter invokes this synchronously; an uncaught throw here would bubble out of
       // whatever triggered the event (the adapter's own internals, in most cases) instead of
@@ -720,6 +801,10 @@ export class Engine {
         switch (event.type) {
           case 'status':
             session.status = event.status;
+            if (event.status === 'running') session.turnInputActive = true;
+            if (event.status === 'idle' || event.status === 'stopped') {
+              session.turnInputActive = false;
+            }
             // A turn boundary settles every ask: the adapter's teardown has resolved them
             // (cancelled) — replaying one after this would present an unanswerable card.
             if (event.status === 'idle' || event.status === 'stopped') session.pendingAsks.clear();
@@ -751,6 +836,12 @@ export class Engine {
             break;
           case 'effort-update':
             session.currentEffort = event.effort;
+            break;
+          case 'available-commands-update':
+            session.availableCommands = event.commands;
+            break;
+          case 'capabilities-update':
+            session.capabilities = event.capabilities;
             break;
           case 'error':
             // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
@@ -788,6 +879,16 @@ export class Engine {
       throw new Error(`Session was closed while starting: ${sessionId}`);
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  private broadcastInputRejected(sessionId: SessionId, message: string): void {
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent.event',
+        sessionId,
+        event: { type: 'error', message, code: 'input_rejected', recoverable: true },
+      }),
+    );
   }
 
   /** Broadcast `session.notification` for notification-worthy adapter events. Classification is

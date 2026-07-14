@@ -14,8 +14,10 @@ import type {
   SDKSessionInfo,
   SDKUserMessage,
   SessionMessage,
+  SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
+  AgentCommand,
   AgentEvent,
   AgentHistoryCapabilities,
   AgentHistoryEvent,
@@ -238,6 +240,19 @@ export function mapClaudeStop(reason: string | null): StopReason {
   }
 }
 
+/** Normalize a `SlashCommand` onto the cross-agent `AgentCommand` shape: the provider's empty-string
+ * `description`/`argumentHint` (no value, not omitted) become `undefined`, and an empty `aliases`
+ * list is dropped. Aliases ride through so composer/engine matching accepts them (e.g. `/cost` →
+ * `/usage`); invocation then pushes the alias itself, which the CLI resolves like any typed `/`. */
+function mapClaudeCommand(command: SlashCommand): AgentCommand {
+  return {
+    name: command.name,
+    description: command.description || undefined,
+    argumentHint: command.argumentHint || undefined,
+    aliases: command.aliases?.length ? command.aliases : undefined,
+  };
+}
+
 const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
 
 /**
@@ -252,6 +267,7 @@ const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), dropp
  */
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
+  override readonly capabilities = { slashCommands: true, shellCommand: false } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -260,8 +276,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private q: Query | null = null;
   private inputQueue: AsyncMessageQueue | null = null;
-  /** Session id to resume *once*, at the first `onPrompt`, when this adapter was started from saved
-   * history — not updated afterwards; the persistent `Query` carries the conversation itself now. */
+  /** Session id to resume *once*, when the persistent Query starts from saved history — not updated
+   * afterwards; the Query carries the conversation itself from there. */
   private resumeFrom: string | undefined;
   /** Suppresses `emitError` for the interrupt-induced stream failure `onCancel` triggers on purpose. */
   private cancelling = false;
@@ -286,13 +302,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   } | null = null;
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    // The persistent Query is created lazily on the first onPrompt; just verify the SDK is installed.
     await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
+    // Query initialization is also the only authoritative slash-command catalog source. Start the
+    // persistent streaming Query with an empty input queue so a fresh session can advertise `/`
+    // commands before the user sends its first message.
+    await this.createQuery();
   }
 
   private approvalPolicyState(): ApprovalPolicyState {
@@ -425,7 +444,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    const opts = nullthrow(this.opts, 'claude-code: session not started');
     this.freshSegment();
     this.emitStatus('running');
     const message: SDKUserMessage = {
@@ -438,6 +456,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.inputQueue.push(message);
       return;
     }
+    // A crashed or deliberately rebuilt process is recreated on demand. Normal sessions already
+    // own their Query from onStart so the command catalog is available before this first prompt.
+    const queue = await this.createQuery();
+    queue.push(message);
+  }
+
+  private async createQuery(): Promise<AsyncMessageQueue> {
+    const opts = nullthrow(this.opts, 'claude-code: session not started');
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const queue = new AsyncMessageQueue();
     this.inputQueue = queue;
@@ -487,6 +513,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
     this.q = q;
     void this.consume(q);
+    // Catalog discovery is optional and may wait on CLI initialization indefinitely. Do not hold
+    // session.start behind it; publish whenever the snapshot becomes available.
+    void this.publishCommands(q);
     if (this.effort !== undefined && this.effort !== 'max') {
       try {
         await q.applyFlagSettings(effortFlagSettings(this.effort));
@@ -498,9 +527,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         this.emitError(extractErrorMessage(err) ?? 'claude-code: effort switch rejected');
       }
     }
-    // Pushed only after the effort is applied, so the first turn cannot start at — or race the
-    // control request from — the CLI's default level.
-    queue.push(message);
+    return queue;
   }
 
   /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
@@ -522,6 +549,21 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The process is gone; finalize anything a mid-flight turn left dangling.
     this.teardown();
     this.emitStatus('idle');
+  }
+
+  /** `supportedCommands()` is a snapshot captured at Query init — not updated afterwards on its
+   * own — so this fires once per Query to seed the catalog; later provider-side changes arrive
+   * via the `commands_changed` push (see `handleMessage`). Failure is non-fatal: a command
+   * catalog's absence IS the capability signal (see `AgentEvent.available-commands-update`), so a
+   * transient failure here must not surface as a session error — it just leaves the client with
+   * no command menu until (if ever) a `commands_changed` push arrives. */
+  private async publishCommands(q: Query): Promise<void> {
+    try {
+      const commands = await q.supportedCommands();
+      this.emitCommands(commands.map(mapClaudeCommand));
+    } catch {
+      // Dropped on purpose — see above.
+    }
   }
 
   protected override async onCancel(): Promise<void> {
@@ -547,8 +589,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   /** Real live model switch via the persistent `Query`'s `setModel()` (streaming-input-mode-only
    * control request) — the single-message + `resume` design this replaced could not do this: the CLI
-   * ignores a changed `model` option once a session is resumed. Before the first prompt, the `Query`
-   * doesn't exist yet; fall back to updating `opts.model`, which `onPrompt` reads when it creates it. */
+   * ignores a changed `model` option once a session is resumed. */
   protected override async onSetModel(model: string): Promise<void> {
     if (this.q) {
       await this.q.setModel(model);
@@ -561,10 +602,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitModel(model);
   }
 
-  /** Live switch rides the streaming-input control request `Query#setPermissionMode`; before the
-   * first prompt the `Query` doesn't exist yet, so the pick is only stashed and applied at creation
-   * via `options.permissionMode`. The new state reflects only after the CLI accepted the switch, so
-   * a rejected one (e.g. auto mode unavailable for the account) leaves the previous policy shown. */
+  /** Live switch rides the streaming-input control request `Query#setPermissionMode`. The new state
+   * reflects only after the CLI accepted the switch, so a rejected one (e.g. auto mode unavailable
+   * for the account) leaves the previous policy shown. */
   protected override async onSetApprovalPolicy(policyId: string): Promise<void> {
     const policy = APPROVAL_POLICIES.find((p) => p.policyId === policyId);
     if (!policy) throw new Error(`claude-code: unknown approval policy: ${policyId}`);
@@ -610,6 +650,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.resumeFrom = this.lastSessionRef;
     q.close();
     queue?.close();
+  }
+
+  /** Invoking a command is pushing a plain user message through the existing prompt path: the
+   * vendored CLI parses a leading "/" on every user message even in streaming-input mode (verified
+   * against the vendored binary), so there is no separate "run this command" control request — a
+   * command's status/settle rides the normal turn lifecycle exactly like a typed prompt. */
+  protected override onCommand(name: string, args?: string): Promise<void> {
+    const text = `/${name}${args ? ` ${args}` : ''}`;
+    return this.onPrompt([textBlock(text)]);
   }
 
   /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs.
@@ -739,6 +788,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         else if (msg.subtype === 'init') {
           this.syncApprovalPolicy(msg.permissionMode);
           this.syncModel(msg.model);
+        } else if (msg.subtype === 'commands_changed') {
+          // Fire-and-forget full-replace push (`supportedCommands()` is captured once at init and
+          // never reflects mid-session changes) — swap the cached catalog wholesale.
+          this.emitCommands(msg.commands.map(mapClaudeCommand));
+        } else if (msg.subtype === 'local_command_output') {
+          // A local command (e.g. /usage) produces no assistant frame of its own; the SDK's own doc
+          // comment says to display it "as assistant-style text in the transcript". Bracket it in
+          // its own segment so it never merges with narration on either side of it — the command
+          // invocation itself (`onCommand`) rides the normal prompt path and its status/settle
+          // comes from the matching `result` frame like any other turn (verified live: a local
+          // command still ends in a normal zero-token `result`, not a distinct settle shape).
+          this.freshSegment();
+          this.emitAssistantText(msg.content, this.messageId);
+          this.freshSegment();
         }
         break;
       default:

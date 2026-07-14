@@ -1,4 +1,4 @@
-import type { AgentEvent, ContentBlock, ToolCallUpdate } from '@linkcode/schema';
+import type { AgentCommand, AgentEvent, ContentBlock, ToolCallUpdate } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { BaseAgentAdapter } from '../base';
 
@@ -26,6 +26,9 @@ class TestAdapter extends BaseAgentAdapter {
     return this.requestPermission({ toolCallId: 't1' }, [
       { optionId: 'ok', name: 'Allow', kind: 'allow_once' },
     ]);
+  }
+  commands(catalog: AgentCommand[]): void {
+    this.emitCommands(catalog);
   }
   askQuestion(): Promise<unknown> {
     return this.requestQuestion({ toolCallId: 't1' }, [
@@ -157,5 +160,39 @@ describe('BaseAgentAdapter question round-trip', () => {
     // Still pending: only teardown resolves it now.
     await a.send({ type: 'cancel' });
     await expect(pending).resolves.toEqual({ outcome: 'cancelled' });
+  });
+});
+
+describe('BaseAgentAdapter command/shell defaults', () => {
+  it('advertises its input capabilities at adapter start', async () => {
+    const a = new TestAdapter();
+    await a.start({ kind: 'pi', cwd: '/repo' });
+    expect(a.seen).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: false, shellCommand: false },
+    });
+  });
+
+  it('rejects a command input unless the adapter overrides onCommand', async () => {
+    const a = new TestAdapter();
+    await expect(a.send({ type: 'command', name: 'compact' })).rejects.toThrow(
+      'pi: slash commands are not supported',
+    );
+  });
+
+  it('rejects a shell-command input unless the adapter overrides onShellCommand', async () => {
+    const a = new TestAdapter();
+    await expect(a.send({ type: 'shell-command', command: 'ls' })).rejects.toThrow(
+      'pi: shell commands are not supported',
+    );
+  });
+
+  it('emitCommands emits the full-replace catalog event', () => {
+    const a = new TestAdapter();
+    a.commands([{ name: 'compact', description: 'Compact the context' }]);
+    expect(a.seen.at(-1)).toEqual({
+      type: 'available-commands-update',
+      commands: [{ name: 'compact', description: 'Compact the context' }],
+    });
   });
 });

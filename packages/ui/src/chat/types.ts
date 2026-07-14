@@ -1,4 +1,6 @@
 import type {
+  AgentCapabilities,
+  AgentCommand,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -85,6 +87,10 @@ export interface ConversationViewModel {
   currentModel: string | null;
   /** The reasoning-effort level the session is running at, from `effort-update`; null until reported. */
   currentEffort: EffortLevel | null;
+  /** Slash-command catalog from `available-commands-update`; null hides the composer's command menu. */
+  availableCommands: AgentCommand[] | null;
+  /** Adapter input features from `capabilities-update`; null until the session advertises. */
+  capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /** Permission requests still awaiting a decision. */

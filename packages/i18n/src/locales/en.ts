@@ -152,6 +152,7 @@ export const en = {
       approvalTitle: 'How should {agent} actions be approved?',
       reasoning: 'Reasoning',
       provider: 'Provider',
+      shellCommand: 'Shell command',
     },
     mode: {
       label: 'Mode',

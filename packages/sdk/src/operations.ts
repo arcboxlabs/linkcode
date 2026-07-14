@@ -97,6 +97,18 @@ export function promptText(
   return resolveClient(options).promptText(options.sessionId, options.text);
 }
 
+export function invokeCommand(
+  options: Options<{ sessionId: SessionId; name: string; arguments?: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).invokeCommand(options.sessionId, options.name, options.arguments);
+}
+
+export function runShellCommand(
+  options: Options<{ sessionId: SessionId; command: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).runShellCommand(options.sessionId, options.command);
+}
+
 export function cancelTurn(
   options: Options<{ sessionId: SessionId }>,
 ): RequestResult<{ ok: true }> {
