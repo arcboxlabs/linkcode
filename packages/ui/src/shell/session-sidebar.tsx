@@ -12,8 +12,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from 'coss-ui/components/sidebar';
+import type { LucideIcon } from 'lucide-react';
 import {
   BotIcon,
   CheckIcon,
@@ -21,9 +21,12 @@ import {
   CloudIcon,
   ExternalLinkIcon,
   FilePlus2Icon,
+  GlobeIcon,
   LogOutIcon,
   SearchIcon,
+  ServerIcon,
   SettingsIcon,
+  ShieldIcon,
   SparklesIcon,
 } from 'lucide-react';
 import { useRef } from 'react';
@@ -186,18 +189,15 @@ export function DefaultHostFooter({
   if (!latency) return <HostFooter state={state} />;
 
   return (
-    <>
-      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
-      <SidebarFooter className="shrink-0 px-2 py-1">
-        <div className="flex h-8 items-center gap-2 px-2 text-sm">
-          <span className="size-2 rounded-full bg-success" />
-          <span>Local Host</span>
-          {state && <span className="text-muted-foreground">{state}</span>}
-          <span className="text-muted-foreground">{latency}</span>
-          <ChevronUpIcon className="ml-auto size-4 text-muted-foreground" />
-        </div>
-      </SidebarFooter>
-    </>
+    <SidebarFooter className="shrink-0 px-2 py-1">
+      <div className="flex h-8 items-center gap-2 px-2 text-sm">
+        <span className="size-2 rounded-full bg-success" />
+        <span>Local Host</span>
+        {state && <span className="text-muted-foreground">{state}</span>}
+        <span className="text-muted-foreground">{latency}</span>
+        <ChevronUpIcon className="ml-auto size-4 text-muted-foreground" />
+      </div>
+    </SidebarFooter>
   );
 }
 
@@ -238,82 +238,122 @@ export function HostFooter({
 }): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const tPalette = useTranslations('workbench.palette');
-  const pendingPermissionLabel =
-    pendingPermissionCount === 1 ? '1 pending' : `${pendingPermissionCount} pending`;
-  const openingSettingsRef = useRef(false);
+  const footerRef = useRef<HTMLDivElement>(null);
 
   return (
     <Popover>
-      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
       <SidebarFooter className="shrink-0 px-2 py-1">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <PopoverTrigger
+        <div ref={footerRef} className="flex items-center gap-1">
+          <PopoverTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="relative"
+                aria-label={state ? `Local Host · ${state}` : 'Local Host'}
+              >
+                <ServerIcon />
+                <span className="absolute right-1 bottom-1 size-2 rounded-full bg-success ring-2 ring-sidebar" />
+              </Button>
+            }
+          />
+          <div className="ml-auto flex items-center gap-1">
+            {account ? (
+              <PopoverTrigger
+                render={
+                  <Button size="icon-sm" variant="ghost" aria-label={t('account')}>
+                    <Avatar className="size-6">
+                      {account.image && <AvatarImage src={account.image} alt={account.name} />}
+                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
+                        {accountInitial(account)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                }
+              />
+            ) : (
+              <PopoverClose
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t('signInCloud')}
+                    loading={authPending}
+                    disabled={!onSignIn}
+                    onClick={onSignIn}
+                  >
+                    <CloudIcon />
+                  </Button>
+                }
+              />
+            )}
+            <PopoverClose
               render={
-                <SidebarMenuButton className="hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset">
-                  <span className="size-2 rounded-full bg-success" />
-                  <span>Local Host</span>
-                  {state && <span className="text-muted-foreground">{state}</span>}
-                  <ChevronUpIcon className="ml-auto text-muted-foreground" />
-                </SidebarMenuButton>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={tPalette('openSettings')}
+                  disabled={!onOpenSettings}
+                  onClick={onOpenSettings}
+                >
+                  <SettingsIcon />
+                </Button>
               }
             />
-          </SidebarMenuItem>
-        </SidebarMenu>
+          </div>
+        </div>
       </SidebarFooter>
       <PopoverPopup
         side="top"
         align="start"
         sideOffset={8}
+        anchor={footerRef}
         className="w-80 text-sm"
-        finalFocus={(closeType) => {
-          const restoreFocus = closeType === 'keyboard' && !openingSettingsRef.current;
-          openingSettingsRef.current = false;
-          return restoreFocus;
-        }}
       >
         <div className="flex items-center gap-2 py-1.5">
-          <span className="size-2 rounded-full bg-success" />
+          <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
           <span className="font-semibold">Local Host</span>
-          {state && (
-            <Badge size="sm" variant="success">
-              {state}
-            </Badge>
-          )}
-          {appVersion && (
-            <span className="ml-auto font-mono text-muted-foreground text-xs">{appVersion}</span>
-          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            {state && (
+              <Badge size="sm" variant="success">
+                {state}
+              </Badge>
+            )}
+            {appVersion && (
+              <span className="font-mono text-muted-foreground text-xs">{appVersion}</span>
+            )}
+          </div>
         </div>
 
         <Separator className="my-1" />
 
-        <div className="py-1">
-          <div className="flex h-8 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate">Remote access</span>
+        <div className="py-0.5">
+          <HostRow icon={GlobeIcon} label="Remote access">
             {!account && (
               <span className="text-muted-foreground text-xs">{t('remoteSignedOut')}</span>
             )}
-          </div>
+          </HostRow>
           {account && (
-            <RemoteHostList
-              hosts={remoteHosts}
-              loading={remoteHostsLoading}
-              selectedHostId={selectedHostId}
-              onSelectHost={onSelectHost}
-              loadingLabel={t('remoteHostsLoading')}
-              emptyLabel={t('remoteHostsEmpty')}
-            />
+            <div className="pl-6">
+              <RemoteHostList
+                hosts={remoteHosts}
+                loading={remoteHostsLoading}
+                selectedHostId={selectedHostId}
+                onSelectHost={onSelectHost}
+                loadingLabel={t('remoteHostsLoading')}
+                emptyLabel={t('remoteHostsEmpty')}
+              />
+            </div>
           )}
         </div>
-        <HostFooterRow label="Permission requests">
-          <span className="text-muted-foreground text-xs">{pendingPermissionLabel}</span>
-        </HostFooterRow>
-
-        <Separator className="my-1" />
-
-        <HostFooterRow label="Agent availability">
+        <HostRow icon={ShieldIcon} label="Permission requests">
+          <Badge size="sm" variant={pendingPermissionCount > 0 ? 'warning' : 'secondary'}>
+            {pendingPermissionCount}
+          </Badge>
+        </HostRow>
+        <HostRow icon={BotIcon} label="Agent availability">
           <span className="text-muted-foreground text-xs">Not reported</span>
-        </HostFooterRow>
+        </HostRow>
 
         <Separator className="my-1" />
 
@@ -374,22 +414,6 @@ export function HostFooter({
               }
             />
           )}
-          <PopoverClose
-            render={
-              <Button
-                disabled={!onOpenSettings}
-                size="icon-sm"
-                variant="outline"
-                aria-label={tPalette('openSettings')}
-                onClick={() => {
-                  openingSettingsRef.current = true;
-                  onOpenSettings?.();
-                }}
-              >
-                <SettingsIcon />
-              </Button>
-            }
-          />
         </div>
       </PopoverPopup>
     </Popover>
@@ -457,15 +481,18 @@ function RemoteHostList({
   );
 }
 
-function HostFooterRow({
+function HostRow({
+  icon: Icon,
   label,
   children,
 }: {
+  icon: LucideIcon;
   label: string;
   children?: React.ReactNode;
 }): React.ReactNode {
   return (
     <div className="flex h-8 items-center gap-2">
+      <Icon className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {children}
     </div>
@@ -474,14 +501,11 @@ function HostFooterRow({
 
 export function EmptyHostFooter(): React.ReactNode {
   return (
-    <>
-      <SidebarSeparator className="mx-0 self-center data-[orientation=horizontal]:w-[calc(100%-1rem)]" />
-      <SidebarFooter className="shrink-0 px-2 py-1">
-        <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
-          <BotIcon className="size-4" />
-          Local Host
-        </div>
-      </SidebarFooter>
-    </>
+    <SidebarFooter className="shrink-0 px-2 py-1">
+      <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
+        <BotIcon className="size-4" />
+        Local Host
+      </div>
+    </SidebarFooter>
   );
 }

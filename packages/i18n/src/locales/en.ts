@@ -262,6 +262,7 @@ export const en = {
       registerWorkspaceError: 'Failed to add workspace: {message}',
       organization: 'Organization',
       signInCloud: 'Sign in to LinkCode Cloud',
+      account: 'Account',
       manageAccount: 'Manage account',
       signOut: 'Sign out',
       remoteSignedOut: 'Sign in to connect',
