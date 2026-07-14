@@ -18,13 +18,15 @@ export interface FileMentionSource {
  * trigger opens (null → string), so a trailing debounced value is recognizable as belonging to
  * the current trigger or to a previous one — `useDebouncedValue` itself never resets, and right
  * after a reopen it still holds the previous trigger's settled query for up to the debounce
- * window. */
+ * window. `openingQuery` is the query the trigger opened with: the one value worth fetching
+ * before the debounce first catches up, stable across a typing burst. */
 interface MentionQuery {
   query: string | null;
+  openingQuery: string | null;
   generation: number;
 }
 
-const NO_MENTION_QUERY: MentionQuery = { query: null, generation: 0 };
+const NO_MENTION_QUERY: MentionQuery = { query: null, openingQuery: null, generation: 0 };
 
 /**
  * Backs the composer's `@` menu with `file.suggest` daemon searches for the active
@@ -34,25 +36,27 @@ const NO_MENTION_QUERY: MentionQuery = { query: null, generation: 0 };
 export function useFileMentionSource(cwd: string | undefined): FileMentionSource {
   const [live, setLive] = useState<MentionQuery>(NO_MENTION_QUERY);
   const debounced = useDebouncedValue(live, MENTION_QUERY_DEBOUNCE_MS);
-  // Debounce trails typing within one open trigger. A same-generation debounced value is a valid
-  // prefix of what the user is typing — fetch it. A previous-generation one belongs to the last
-  // trigger — fall back to the live query, which also makes the first menu render after opening
-  // immediate instead of a guaranteed 180ms late.
+  // Until the debounce first catches up with THIS trigger (generation mismatch: the trailing
+  // value still belongs to a previous one), fetch the query the trigger opened with — immediate
+  // first render, one stable key across the opening burst, and never a stale previous-trigger
+  // query. Once caught up, the trailing debounced query takes over; the composer's client-side
+  // substring re-filter keeps the menu responsive between fetches either way.
   const effectiveQuery =
     live.query === null
       ? null
       : debounced.generation === live.generation
         ? (debounced.query ?? live.query)
-        : live.query;
+        : (live.openingQuery ?? live.query);
 
   const onMentionQueryChange = (query: string | null): void => {
-    setLive((prev) =>
-      query === null
-        ? prev.query === null
-          ? prev
-          : { query: null, generation: prev.generation }
-        : { query, generation: prev.query === null ? prev.generation + 1 : prev.generation },
-    );
+    setLive((prev) => {
+      if (query === null) {
+        return prev.query === null ? prev : { ...prev, query: null };
+      }
+      return prev.query === null
+        ? { query, openingQuery: query, generation: prev.generation + 1 }
+        : { ...prev, query };
+    });
   };
 
   const { data } = useData(
