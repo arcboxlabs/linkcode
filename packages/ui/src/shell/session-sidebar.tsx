@@ -272,26 +272,34 @@ export function HostFooter({
                 }
               />
             ) : (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('signInCloud')}
-                loading={authPending}
-                disabled={!onSignIn}
-                onClick={onSignIn}
-              >
-                <CloudIcon />
-              </Button>
+              <PopoverClose
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t('signInCloud')}
+                    loading={authPending}
+                    disabled={!onSignIn}
+                    onClick={onSignIn}
+                  >
+                    <CloudIcon />
+                  </Button>
+                }
+              />
             )}
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={tPalette('openSettings')}
-              disabled={!onOpenSettings}
-              onClick={onOpenSettings}
-            >
-              <SettingsIcon />
-            </Button>
+            <PopoverClose
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={tPalette('openSettings')}
+                  disabled={!onOpenSettings}
+                  onClick={onOpenSettings}
+                >
+                  <SettingsIcon />
+                </Button>
+              }
+            />
           </div>
         </div>
       </SidebarFooter>
