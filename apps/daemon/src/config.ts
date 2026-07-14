@@ -7,14 +7,17 @@ import {
   AccountSchema,
   AgentKindSchema,
   DAEMON_DEFAULT_PORT,
+  linkcodeStateDirName,
   ProviderConfigSchema,
+  parseProfileName,
 } from '@linkcode/schema';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 
 /**
- * Daemon configuration, loaded from `~/.linkcode/config.json` (optional) with env overrides.
- * Per-provider settings (API keys / default model) are typed by `ProvidersConfigSchema` (data plane)
- * and applied to a session's StartOptions by the Engine; the daemon reads/writes them here.
+ * Daemon configuration, loaded from `config.json` in the profile's state dir (optional) with env
+ * overrides. Per-provider settings (API keys / default model) are typed by `ProvidersConfigSchema`
+ * (data plane) and applied to a session's StartOptions by the Engine; the daemon reads/writes them
+ * here.
  */
 export type DaemonListenerConfig = TransportServerOptions;
 
@@ -37,33 +40,48 @@ interface ConfigFile {
   accounts?: unknown;
 }
 
+/**
+ * The daemon's profile, from `LINKCODE_PROFILE`; `undefined` is the default profile. Each profile
+ * is a fully isolated state universe — every path below (and therefore the device identity HQ
+ * sees) forks with it. Resolved per call so tests can vary the env like they vary `$HOME`; an
+ * invalid name throws and aborts boot rather than silently landing in the default universe.
+ */
+export function daemonProfile(): string | undefined {
+  return parseProfileName(process.env.LINKCODE_PROFILE);
+}
+
+/** The daemon's state directory: `~/.linkcode`, or the profile sibling `~/.linkcode-<name>`. */
+function stateDir(): string {
+  return join(homedir(), linkcodeStateDirName(daemonProfile()));
+}
+
 function configPath(): string {
-  return join(homedir(), '.linkcode', 'config.json');
+  return join(stateDir(), 'config.json');
 }
 
 /** The daemon's SQLite database (session registry), next to config.json. */
 export function databasePath(): string {
-  return join(homedir(), '.linkcode', 'daemon.db');
+  return join(stateDir(), 'daemon.db');
 }
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
 export function runtimeFilePath(): string {
-  return daemonRuntimeFilePath();
+  return daemonRuntimeFilePath(daemonProfile());
 }
 
 /** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
 export function hqCredentialsPath(): string {
-  return join(homedir(), '.linkcode', 'hq.json');
+  return join(stateDir(), 'hq.json');
 }
 
 /** The device's Ed25519 private key (PKCS#8 PEM), next to config.json; written 0600. */
 export function deviceKeyPath(): string {
-  return join(homedir(), '.linkcode', 'device-key.pem');
+  return join(stateDir(), 'device-key.pem');
 }
 
 /** Hardware-wrapped device-key handles (@arcboxlabs/deviceid), next to config.json. */
 export function deviceKeysDir(): string {
-  return join(homedir(), '.linkcode', 'keys');
+  return join(stateDir(), 'keys');
 }
 
 /**

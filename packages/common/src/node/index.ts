@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { DAEMON_RUNTIME_FILE_SEGMENTS } from '@linkcode/schema/daemon-runtime-constants';
+import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime-constants';
 
 /**
  * Node-only utilities, exposed via the `@linkcode/common/node` subpath so they never
@@ -31,6 +31,6 @@ export function isPidAlive(pid: number): boolean {
 }
 
 /** Path of the daemon's runtime discovery file under the user's home directory. */
-export function daemonRuntimeFilePath(): string {
-  return join(homedir(), ...DAEMON_RUNTIME_FILE_SEGMENTS);
+export function daemonRuntimeFilePath(profile?: string): string {
+  return join(homedir(), ...daemonRuntimeFileSegments(profile));
 }

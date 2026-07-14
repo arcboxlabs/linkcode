@@ -10,7 +10,7 @@ import { noop } from 'foxts/noop';
 import { once } from 'foxts/once';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
-import { chatWorkspaceRoot, databasePath, loadConfig } from './config';
+import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
 import { createProviderConfigStore } from './provider-store';
@@ -61,9 +61,13 @@ async function main(): Promise<void> {
   // desktop app's asar (no-op outside Electron — see asar-spawn.ts).
   installAsarSpawnFix();
 
+  // Resolved before anything touches state paths: an invalid LINKCODE_PROFILE must abort boot
+  // here, not surface as a half-initialized default-profile daemon.
+  const profile = daemonProfile();
   const config = loadConfig();
 
-  // One daemon per machine — a second instance would share ~/.linkcode/daemon.db and split sessions.
+  // One daemon per profile — a second instance would share this profile's daemon.db and split
+  // sessions. Daemons of other profiles live in sibling state dirs and are not visible here.
   const running = await findRunningDaemon();
   if (running) {
     const urls = running.listeners.map((listener) => listener.url).join(', ');
@@ -77,6 +81,7 @@ async function main(): Promise<void> {
     name: 'linkcode-daemon',
     pid: process.pid,
     startedAt: Date.now(),
+    ...(profile !== undefined && { profile }),
   };
   const hub = new Hub();
   const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
