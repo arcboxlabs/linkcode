@@ -11,10 +11,10 @@ import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { falseFn } from 'foxts/noop';
-import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../adapter';
-import { BaseAgentAdapter } from '../base';
-import { readAgentCredential } from '../credential';
-import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
+import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
+import { BaseAgentAdapter } from '../../base';
+import { readAgentCredential } from '../../credential';
+import { contentToText, locationsFromToolInput, toolKindFromName } from '../../util';
 
 type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
 type PermissionAsked = Extract<Event, { type: 'permission.asked' }>['properties'];
