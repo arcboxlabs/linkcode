@@ -1,4 +1,5 @@
 import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
+import type { ComposerAttachment } from '@linkcode/ui';
 import {
   AgentIcon,
   ConversationSurface,
@@ -88,6 +89,7 @@ export function DesktopShell({
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
+  onReadAttachmentFile,
   onOpenSearch,
   searchShortcut,
   TerminalBlockComponent,
@@ -270,6 +272,16 @@ export function DesktopShell({
     [systemBridge],
   );
 
+  const pickAttachmentFiles = useCallback(async (): Promise<ComposerAttachment[]> => {
+    const paths = await systemBridge.fs.pickFile({
+      title: 'Attach images',
+      multiple: true,
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+    });
+    if (!paths || !onReadAttachmentFile) return [];
+    return Promise.all(paths.map((path) => onReadAttachmentFile(path)));
+  }, [systemBridge, onReadAttachmentFile]);
+
   useDesktopPaletteCommands({
     desktopPlatform,
     pickDirectory,
@@ -309,6 +321,7 @@ export function DesktopShell({
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
+          onPickAttachmentFiles={pickAttachmentFiles}
         />
       ) : (
         // Keyed per session: switching resets the composer draft and scroll without touching the shell.
@@ -334,6 +347,7 @@ export function DesktopShell({
           onOpenFileArtifact={openFileArtifact}
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}
+          onPickAttachmentFiles={pickAttachmentFiles}
           onApprovalPolicyChange={onApprovalPolicyChange}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}
