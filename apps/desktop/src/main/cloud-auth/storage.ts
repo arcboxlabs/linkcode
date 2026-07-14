@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import log from 'electron-log';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /**
  * Storage backing the better-auth electron client's session + cookie data. The plugin's
@@ -27,6 +28,10 @@ function readMap(file: string): Record<string, string> {
   }
 }
 
+function writeMap(file: string, map: Record<string, string>): void {
+  writeFileSync(file, JSON.stringify(map), { mode: 0o600 });
+}
+
 function encode(value: unknown): string {
   const json = JSON.stringify(value);
   if (safeStorage.isEncryptionAvailable()) {
@@ -43,24 +48,38 @@ function decode(stored: string): unknown {
   return JSON.parse(json);
 }
 
-export function createSafeStorage(): Storage {
-  const file = join(app.getPath('userData'), 'cloud-auth.json');
+// Resolved per call, never at module scope: this module is imported (via the auth client)
+// before main sets the app name and userData path, so an eager join would pin the store to
+// the productName-derived directory and leak dev-shell data into the release profile.
+function storageFile(): string {
+  return join(app.getPath('userData'), 'cloud-auth.json');
+}
 
+export function createSafeStorage(): Storage {
   return {
     getItem(name) {
+      const file = storageFile();
       const map = readMap(file);
       if (!Object.hasOwn(map, name)) return null;
       try {
         return decode(map[name]);
       } catch (err) {
-        log.warn('[cloud-auth] failed to decode stored session data:', err);
+        // Undecryptable ciphertext (e.g. written under another app identity's safeStorage
+        // key) can never heal on its own — drop the entry so the failure logs once instead
+        // of on every session refresh.
+        log.warn(
+          `[cloud-auth] failed to decode stored session data; discarding entry: ${extractErrorMessage(err)}`,
+        );
+        const { [name]: _dropped, ...rest } = map;
+        writeMap(file, rest);
         return null;
       }
     },
     setItem(name, value) {
+      const file = storageFile();
       const map = readMap(file);
       map[name] = encode(value);
-      writeFileSync(file, JSON.stringify(map), { mode: 0o600 });
+      writeMap(file, map);
     },
   };
 }
