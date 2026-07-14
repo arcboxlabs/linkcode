@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import log from 'electron-log';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /**
  * Storage backing the better-auth electron client's session + cookie data. The plugin's
@@ -27,6 +28,10 @@ function readMap(file: string): Record<string, string> {
   }
 }
 
+function writeMap(file: string, map: Record<string, string>): void {
+  writeFileSync(file, JSON.stringify(map), { mode: 0o600 });
+}
+
 function encode(value: unknown): string {
   const json = JSON.stringify(value);
   if (safeStorage.isEncryptionAvailable()) {
@@ -43,24 +48,43 @@ function decode(stored: string): unknown {
   return JSON.parse(json);
 }
 
-export function createSafeStorage(): Storage {
-  const file = join(app.getPath('userData'), 'cloud-auth.json');
+// Resolved per call, never at module scope: this module is imported (via the auth client)
+// before main sets the app name and userData path, so an eager join would pin the store to
+// the productName-derived directory and leak dev-shell data into the release profile.
+function storageFile(): string {
+  return join(app.getPath('userData'), 'cloud-auth.json');
+}
 
+// A decode failure is indistinguishable from a transient keychain failure (locked keychain,
+// declined ACL prompt after a binary change), so the entry must survive for the next attempt;
+// a truly foreign entry is overwritten by the next successful sign-in anyway. Deduping the
+// warning is what keeps a permanent failure from logging on every session refresh.
+const warnedKeys = new Set<string>();
+
+export function createSafeStorage(): Storage {
   return {
     getItem(name) {
-      const map = readMap(file);
+      const map = readMap(storageFile());
       if (!Object.hasOwn(map, name)) return null;
       try {
-        return decode(map[name]);
+        const value = decode(map[name]);
+        warnedKeys.delete(name);
+        return value;
       } catch (err) {
-        log.warn('[cloud-auth] failed to decode stored session data:', err);
+        if (!warnedKeys.has(name)) {
+          warnedKeys.add(name);
+          log.warn(
+            `[cloud-auth] failed to decode stored session data for "${name}": ${extractErrorMessage(err)}`,
+          );
+        }
         return null;
       }
     },
     setItem(name, value) {
+      const file = storageFile();
       const map = readMap(file);
       map[name] = encode(value);
-      writeFileSync(file, JSON.stringify(map), { mode: 0o600 });
+      writeMap(file, map);
     },
   };
 }

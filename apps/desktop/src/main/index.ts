@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, Menu } from 'electron';
+import log from 'electron-log';
 import { applyThemePreference } from './appearance';
 import { setupCloudAuth } from './cloud-auth/client';
 import { registerCloudImBridge } from './cloud-auth/im';
@@ -22,6 +23,9 @@ app.setName(APP_NAME);
 // asar even for dev-shell packages. Without this, a packaged dev shell shares the release app's
 // settings and single-instance lock — the second one to start exits silently.
 app.setPath('userData', join(app.getPath('appData'), APP_NAME));
+// Self-evidence for identity drift: any module that resolves a path before the lines above
+// lands in the wrong profile, and this line makes that visible on day one.
+log.info(`userData: ${app.getPath('userData')}`);
 
 // Windows keys the taskbar icon, pinning, and notification identity off the AppUserModelID; without
 // this the taskbar shows a blank/default icon. No-op on macOS/Linux.
