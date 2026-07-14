@@ -163,9 +163,6 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   }
 
   private async start(): Promise<string> {
-    // An idle reap may still be inside its SIGTERM grace window; overlapping it would briefly run
-    // two servers and waste a full respawn on what should be a fast reuse.
-    if (this.stopping) await this.stopping;
     mkdirSync(this.neutralCwd, { recursive: true });
     try {
       return await this.spawnGeneration();
@@ -179,6 +176,10 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   }
 
   private async spawnGeneration(): Promise<string> {
+    // A dispose (idle reap, or a future external caller) may still be inside its SIGTERM grace
+    // window; overlapping it would briefly run two servers. Checked per attempt — the startup
+    // retry must honor it too, not just the first spawn.
+    if (this.stopping) await this.stopping;
     const port = await this.allocatePort();
     const proc = this.spawnServer({ port, cwd: this.neutralCwd });
     const generation: ServerGeneration = { proc, ready: this.awaitReadiness(proc) };

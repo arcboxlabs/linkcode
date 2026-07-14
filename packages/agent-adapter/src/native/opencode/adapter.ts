@@ -1,5 +1,5 @@
 import { realpath } from 'node:fs/promises';
-import { sep } from 'node:path';
+import { parse, sep } from 'node:path';
 import type {
   AgentCommand,
   AgentHistoryCapabilities,
@@ -58,7 +58,9 @@ function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): strin
  * through a symlink (macOS `/tmp` → `/private/tmp`) or with a trailing separator — resolve it the
  * same way or matching sessions silently vanish from the cwd-filtered list. */
 async function canonicalDirectory(cwd: string): Promise<string> {
-  const trimmed = cwd.length > 1 && cwd.endsWith(sep) ? cwd.slice(0, -1) : cwd;
+  // Roots keep their separator: stripping '/' or Windows 'C:\' would change meaning ('C:' is
+  // "current directory on drive C", not the drive root).
+  const trimmed = cwd.endsWith(sep) && cwd !== parse(cwd).root ? cwd.slice(0, -1) : cwd;
   try {
     return await realpath(trimmed);
   } catch {
