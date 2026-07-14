@@ -7,10 +7,11 @@ import {
 
 /** Raw byte count of a base64 payload. Counting the padding back out keeps the daemon's boundary
  * exactly where the clients' pre-encode `File.size` checks sit — no off-by-one window at the cap
- * where a client-approved file gets rejected here. */
+ * where a client-approved file gets rejected here. Clamped at zero: malformed non-base64 input
+ * (e.g. a bare "=") must not go negative and erode the caller's aggregate accounting. */
 function base64RawByteLength(data: string): number {
   const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
-  return Math.floor((data.length / 4) * 3) - padding;
+  return Math.max(0, Math.floor((data.length / 4) * 3) - padding);
 }
 
 function attachmentData(block: ContentBlock): string | undefined {

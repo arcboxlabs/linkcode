@@ -1,5 +1,6 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES } from '@linkcode/schema';
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { describe, expect, it } from 'vitest';
 import { assertAttachmentContentAllowed } from '../attachment-guard';
 
@@ -61,5 +62,18 @@ describe('assertAttachmentContentAllowed', () => {
       },
     };
     expect(() => assertAttachmentContentAllowed([resource])).toThrow(/maximum allowed size/);
+  });
+
+  it('never lets malformed base64 erode the aggregate accounting', () => {
+    // A bare "=" would naively decode to -1 bytes; interleaving such blocks must not offset the
+    // running total below what the legitimate blocks actually occupy.
+    const garbage: ContentBlock[] = createFixedArray(8).map(() => ({
+      type: 'resource' as const,
+      resource: { uri: 'file:///x', blob: '=' },
+    }));
+    const half = MAX_ATTACHMENT_TOTAL_BYTES / 2;
+    expect(() =>
+      assertAttachmentContentAllowed([...garbage, imageOfBytes(half), imageOfBytes(half + 3)]),
+    ).toThrow(/maximum allowed total size/);
   });
 });
