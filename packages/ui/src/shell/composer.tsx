@@ -516,9 +516,9 @@ export function Composer({
     focusTextareaAtCaret();
   }
 
-  function insertMentionTrigger(nextValue = value, nextCaret = caret): void {
+  function insertTextTrigger(trigger: '@' | '/', nextValue = value, nextCaret = caret): void {
     const before = nextValue.slice(0, nextCaret);
-    const insert = `${before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : ''}@`;
+    const insert = `${before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : ''}${trigger}`;
     const updated = `${before}${insert}${nextValue.slice(nextCaret)}`;
     setPlusCommandStart(null);
     setDismissedStart(null);
@@ -540,7 +540,12 @@ export function Composer({
   }
 
   function selectMentionCommand(): void {
-    insertMentionTrigger(value, textareaRef.current?.selectionStart ?? caret);
+    insertTextTrigger('@', value, textareaRef.current?.selectionStart ?? caret);
+    onMentionQueryChange?.('');
+  }
+
+  function selectSlashCommand(): void {
+    insertTextTrigger('/', value, textareaRef.current?.selectionStart ?? caret);
   }
 
   /** Replace the `/query` trigger token with `/name ` so the user can type arguments; Enter then
@@ -570,6 +575,7 @@ export function Composer({
 
     if (entry.kind === 'action') {
       if (entry.id === 'mention-command') selectMentionCommand();
+      if (entry.id === 'slash-command') selectSlashCommand();
       if (entry.id === 'attach') triggerAttachPicker();
       return;
     }
@@ -582,6 +588,7 @@ export function Composer({
   function closeCommand(): void {
     setPlusCommandStart(null);
     if (textTrigger) setDismissedStart(textTrigger.start);
+    if (textTrigger?.kind === 'mention') onMentionQueryChange?.(null);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {

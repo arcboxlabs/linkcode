@@ -21,17 +21,23 @@ export interface FileMentionSource {
  * window. `openingQuery` is the query the trigger opened with: the one value worth fetching
  * before the debounce first catches up, stable across a typing burst. */
 interface MentionQuery {
+  cwd: string | undefined;
   query: string | null;
   openingQuery: string | null;
   generation: number;
 }
 
-const NO_MENTION_QUERY: MentionQuery = { query: null, openingQuery: null, generation: 0 };
+const NO_MENTION_QUERY: MentionQuery = {
+  cwd: undefined,
+  query: null,
+  openingQuery: null,
+  generation: 0,
+};
 
 /**
  * Backs the composer's `@` menu with `file.suggest` daemon searches for the active
- * session's workspace. Queries are debounced; the previous result stays visible while a
- * new one loads (stale-but-visible) so the menu never flashes empty between keystrokes.
+ * session's workspace. Queries are debounced and scoped to the cwd that opened the trigger, so a
+ * session switch cannot reuse the old query or file list.
  */
 export function useFileMentionSource(cwd: string | undefined): FileMentionSource {
   const [live, setLive] = useState<MentionQuery>(NO_MENTION_QUERY);
@@ -42,7 +48,7 @@ export function useFileMentionSource(cwd: string | undefined): FileMentionSource
   // query. Once caught up, the trailing debounced query takes over; the composer's client-side
   // substring re-filter keeps the menu responsive between fetches either way.
   const effectiveQuery =
-    live.query === null
+    cwd === undefined || live.cwd !== cwd || live.query === null
       ? null
       : debounced.generation === live.generation
         ? (debounced.query ?? live.query)
@@ -53,8 +59,8 @@ export function useFileMentionSource(cwd: string | undefined): FileMentionSource
       if (query === null) {
         return prev.query === null ? prev : { ...prev, query: null };
       }
-      return prev.query === null
-        ? { query, openingQuery: query, generation: prev.generation + 1 }
+      return prev.query === null || prev.cwd !== cwd
+        ? { cwd, query, openingQuery: query, generation: prev.generation + 1 }
         : { ...prev, query };
     });
   };
@@ -64,21 +70,22 @@ export function useFileMentionSource(cwd: string | undefined): FileMentionSource
     cwd === undefined || effectiveQuery === null
       ? null
       : { cwd, query: effectiveQuery, limit: MENTION_SUGGEST_LIMIT },
-    { keepPreviousData: true },
   );
 
   const mentionItems = useMemo<MentionItem[]>(
     () =>
-      (data ?? []).map((suggestion) => {
-        const separator = suggestion.path.lastIndexOf('/');
-        return {
-          id: suggestion.path,
-          value: suggestion.path,
-          label: separator === -1 ? suggestion.path : suggestion.path.slice(separator + 1),
-          hint: separator === -1 ? undefined : suggestion.path.slice(0, separator),
-        };
-      }),
-    [data],
+      effectiveQuery === null
+        ? []
+        : (data ?? []).map((suggestion) => {
+            const separator = suggestion.path.lastIndexOf('/');
+            return {
+              id: suggestion.path,
+              value: suggestion.path,
+              label: separator === -1 ? suggestion.path : suggestion.path.slice(separator + 1),
+              hint: separator === -1 ? undefined : suggestion.path.slice(0, separator),
+            };
+          }),
+    [data, effectiveQuery],
   );
 
   return { mentionItems, onMentionQueryChange };

@@ -14,6 +14,7 @@ import {
   CheckIcon,
   ListTodoIcon,
   PaperclipIcon,
+  SlashIcon,
   SlidersHorizontalIcon,
   TargetIcon,
 } from 'lucide-react';
@@ -185,6 +186,15 @@ export function buildComposerCommandGroups({
       label: labels.attach,
       source: 'plus',
       value: 'attach',
+    },
+    {
+      disabled: agentCommands.length === 0,
+      icon: SlashIcon,
+      id: 'slash-command',
+      kind: 'action',
+      label: labels.commands,
+      source: 'plus',
+      value: 'command',
     },
     {
       icon: AtSignIcon,

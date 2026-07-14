@@ -23,6 +23,8 @@ const MODES: SessionMode[] = [
   { modeId: 'plan', name: 'Plan', description: 'Research and propose changes' },
   { modeId: 'goal', name: 'Goal', description: 'Keep working toward a goal' },
 ];
+const RE_COMPACT_COMMAND = /\/compact/;
+const RE_REVIEW_COMMAND = /\/review/;
 
 function composer({
   agentKind,
@@ -30,6 +32,7 @@ function composer({
   disabled = false,
   mentionItems,
   onInvokeCommand,
+  onMentionQueryChange,
   onSend = vi.fn(),
 }: {
   agentKind?: AgentKind;
@@ -37,6 +40,7 @@ function composer({
   disabled?: boolean;
   mentionItems?: React.ComponentProps<typeof Composer>['mentionItems'];
   onInvokeCommand?: (name: string, args?: string) => void;
+  onMentionQueryChange?: React.ComponentProps<typeof Composer>['onMentionQueryChange'];
   onSend?: React.ComponentProps<typeof Composer>['onSend'];
 } = {}): React.ReactNode {
   return (
@@ -52,6 +56,7 @@ function composer({
       isRunning={false}
       mentionItems={mentionItems}
       onInvokeCommand={onInvokeCommand}
+      onMentionQueryChange={onMentionQueryChange}
       onModeChange={vi.fn().mockResolvedValue(undefined)}
       onSend={onSend}
       onStop={vi.fn()}
@@ -98,6 +103,7 @@ describe('Composer command menu', () => {
 
     await user.click(screen.getByRole('button', { name: 'add' }));
     expect(screen.getByText('attach')).toBeDefined();
+    expect(screen.getByRole('option', { name: 'commands' })).toBeDefined();
     expect(screen.getByText('mentions')).toBeDefined();
     expect(screen.getByText('Plan')).toBeDefined();
     expect(screen.getByText('Goal')).toBeDefined();
@@ -105,6 +111,38 @@ describe('Composer command menu', () => {
     await user.type(input, 'pla');
     expect(screen.getByText('Plan')).toBeDefined();
     expect(screen.queryByText('Goal')).toBeNull();
+  });
+
+  it('opens a fresh mention query when the plus action inserts @', async () => {
+    const user = userEvent.setup();
+    const onMentionQueryChange = vi.fn();
+    render(
+      composer({
+        mentionItems: [{ id: 'readme', label: 'README.md', value: 'README.md' }],
+        onMentionQueryChange,
+      }),
+    );
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    await user.click(screen.getByRole('button', { name: 'add' }));
+    await user.click(screen.getByRole('option', { name: 'mentions' }));
+
+    expect(input.value).toBe('@');
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith('');
+    expect(screen.getByRole('option', { name: 'README.md' })).toBeDefined();
+  });
+
+  it('opens the slash command list from the plus menu', async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    await user.click(screen.getByRole('button', { name: 'add' }));
+    await user.click(screen.getByRole('option', { name: 'commands' }));
+
+    expect(input.value).toBe('/');
+    expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_REVIEW_COMMAND })).toBeDefined();
   });
 
   it('gives a typed slash ownership of an open plus search', async () => {
@@ -137,8 +175,8 @@ describe('Composer command menu', () => {
     await user.type(input, '/');
 
     expect(screen.getByRole('listbox')).toBeDefined();
-    expect(screen.getByRole('option', { name: /\/compact/ })).toBeDefined();
-    expect(screen.getByRole('option', { name: /\/review/ })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_REVIEW_COMMAND })).toBeDefined();
     expect(screen.getByTitle('Compact the context').textContent).toBe('Compact the context');
     expect(screen.queryByText('mentions')).toBeNull();
     expect(screen.queryByText('Plan')).toBeNull();
@@ -150,7 +188,7 @@ describe('Composer command menu', () => {
 
     await user.keyboard('{Backspace}/');
     expect(screen.getByRole('listbox')).toBeDefined();
-    expect(screen.getByRole('option', { name: /\/compact/ })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
   });
 
   it('retains command rows only for the visual exit when disabled externally', async () => {
