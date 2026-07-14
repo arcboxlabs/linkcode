@@ -14,6 +14,7 @@ import type {
   AgentKind,
   AgentRuntimes,
   EffortLevel,
+  FileSuggestion,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -242,6 +243,11 @@ export class LinkCodeSdkClient {
   /** Read a file contained to a workspace directory (directory-backed, like git.*). */
   readFile(cwd: string, path: string): RequestResult<WorkspaceFile> {
     return toResult(this.raw.readFile(cwd, path));
+  }
+
+  /** Search workspace files by substring query (directory-backed, like git.*). */
+  suggestFiles(cwd: string, query: string, limit?: number): RequestResult<FileSuggestion[]> {
+    return toResult(this.raw.suggestFiles(cwd, query, limit));
   }
 
   /** The workspace's declared scripts with live lifecycle/health (directory-backed). */
