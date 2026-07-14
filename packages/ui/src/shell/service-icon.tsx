@@ -47,7 +47,7 @@ export function ServiceIcon({
   return (
     <span
       className={cn(
-        'flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted font-semibold text-[0.625rem] text-foreground',
+        'flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted font-semibold text-xs text-foreground',
         className,
       )}
     >

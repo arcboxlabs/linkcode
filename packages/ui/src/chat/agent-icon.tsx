@@ -42,7 +42,7 @@ export function AgentIcon({
     return (
       <span
         className={cn(
-          'flex size-4 shrink-0 items-center justify-center font-semibold text-[0.625rem]',
+          'flex size-4 shrink-0 items-center justify-center font-semibold text-xs',
           className,
         )}
       >
