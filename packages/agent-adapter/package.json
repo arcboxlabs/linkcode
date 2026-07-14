@@ -19,11 +19,13 @@
     "@linkcode/transport": "workspace:*",
     "@openai/codex": "^0.144.1",
     "@opencode-ai/sdk": "^1.17.18",
+    "cross-spawn": "^7.0.6",
     "foxts": "^5.8.0",
     "smol-toml": "^1.7.0",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "catalog:",
     "typescript": "catalog:"
   },
