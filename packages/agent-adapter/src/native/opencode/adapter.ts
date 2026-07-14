@@ -1,3 +1,5 @@
+import { realpath } from 'node:fs/promises';
+import { sep } from 'node:path';
 import type {
   AgentCommand,
   AgentHistoryCapabilities,
@@ -50,6 +52,18 @@ const ABORT_TIMED_OUT = Symbol('opencode-abort-timeout');
 function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): string {
   const message = (error.data as { message?: unknown } | undefined)?.message;
   return typeof message === 'string' && message.length > 0 ? message : error.name;
+}
+
+/** opencode records server-canonical (symlink-resolved) directories; the caller's cwd may arrive
+ * through a symlink (macOS `/tmp` → `/private/tmp`) or with a trailing separator — resolve it the
+ * same way or matching sessions silently vanish from the cwd-filtered list. */
+async function canonicalDirectory(cwd: string): Promise<string> {
+  const trimmed = cwd.length > 1 && cwd.endsWith(sep) ? cwd.slice(0, -1) : cwd;
+  try {
+    return await realpath(trimmed);
+  } catch {
+    return trimmed;
+  }
 }
 
 /** The generated client resolves with `{error}` on HTTP and network failures alike (nothing here
@@ -400,6 +414,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const offset = cursorOffset(opts?.cursor);
     const limit = boundedLimit(opts?.limit, 50, 200);
+    const cwdFilter = opts?.cwd ? await canonicalDirectory(opts.cwd) : undefined;
     const sessions = await this.withHistoryClient(async (client) => {
       // `roots` excludes subagent child sessions; the neutral-cwd shared server lists sessions
       // across every project without directory scoping (verified live on 1.17.11).
@@ -412,7 +427,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           (session) =>
             session.time.archived === undefined &&
             !session.parentID &&
-            (!opts?.cwd || session.directory === opts.cwd),
+            (!cwdFilter || session.directory === cwdFilter),
         )
         .sort((a, b) => b.time.updated - a.time.updated)
         .map(opencodeSessionToHistorySession);
@@ -427,17 +442,19 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const { session, events } = await this.withHistoryClient(async (client) => {
-      const got = await client.session.get({ sessionID: opts.historyId });
+      // `get` (revert marker + summary) and the full message fetch are independent — one round
+      // trip of latency instead of two; existence is judged off `get` once both land. The full
+      // fetch + event-level slicing is the codex contract, and unavoidable here: the messages
+      // RPC's own `limit` returns the LAST n messages, not the first n (verified live on
+      // 1.17.11), so it cannot implement forward pagination.
+      const [got, messages] = await Promise.all([
+        client.session.get({ sessionID: opts.historyId }),
+        client.session.messages({ sessionID: opts.historyId }),
+      ]);
       if (got.error !== undefined || !got.data) {
         throw new Error(`opencode: history '${opts.historyId}' was not found`);
       }
-      // Full fetch, then event-level slicing (the codex contract). The messages RPC's own `limit`
-      // returns the LAST n messages, not the first n (verified live on 1.17.11), so it cannot
-      // implement forward pagination.
-      const messages = okOrThrow(
-        await client.session.messages({ sessionID: got.data.id }),
-        'opencode: session.messages',
-      );
+      okOrThrow(messages, 'opencode: session.messages');
       return {
         session: opencodeSessionToHistorySession(got.data),
         events: mapOpencodeHistoryEvents(
