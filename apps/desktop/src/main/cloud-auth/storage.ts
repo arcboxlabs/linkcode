@@ -55,23 +55,28 @@ function storageFile(): string {
   return join(app.getPath('userData'), 'cloud-auth.json');
 }
 
+// A decode failure is indistinguishable from a transient keychain failure (locked keychain,
+// declined ACL prompt after a binary change), so the entry must survive for the next attempt;
+// a truly foreign entry is overwritten by the next successful sign-in anyway. Deduping the
+// warning is what keeps a permanent failure from logging on every session refresh.
+const warnedKeys = new Set<string>();
+
 export function createSafeStorage(): Storage {
   return {
     getItem(name) {
-      const file = storageFile();
-      const map = readMap(file);
+      const map = readMap(storageFile());
       if (!Object.hasOwn(map, name)) return null;
       try {
-        return decode(map[name]);
+        const value = decode(map[name]);
+        warnedKeys.delete(name);
+        return value;
       } catch (err) {
-        // Undecryptable ciphertext (e.g. written under another app identity's safeStorage
-        // key) can never heal on its own — drop the entry so the failure logs once instead
-        // of on every session refresh.
-        log.warn(
-          `[cloud-auth] failed to decode stored session data; discarding entry: ${extractErrorMessage(err)}`,
-        );
-        const { [name]: _dropped, ...rest } = map;
-        writeMap(file, rest);
+        if (!warnedKeys.has(name)) {
+          warnedKeys.add(name);
+          log.warn(
+            `[cloud-auth] failed to decode stored session data for "${name}": ${extractErrorMessage(err)}`,
+          );
+        }
         return null;
       }
     },

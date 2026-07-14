@@ -74,21 +74,26 @@ describe('cloud-auth safe storage', () => {
     expect(storage.getItem('session')).toEqual({ token: 't' });
   });
 
-  it('discards an undecryptable entry and keeps the rest', async () => {
+  it('keeps an undecryptable entry on disk and warns once', async () => {
     const storage = await createStorage();
     storage.setItem('good', 'kept');
     mocks.keychainKey = 'B';
-    storage.setItem('foreign', 'poison');
+    storage.setItem('stuck', 'recoverable');
     mocks.keychainKey = 'A';
 
-    expect(storage.getItem('foreign')).toBeNull();
-    expect(mocks.warn).toHaveBeenCalledTimes(1);
-    expect(Object.keys(JSON.parse(readFileSync(storeFile(), 'utf8')))).toEqual(['good']);
-
-    // The pruned entry is gone from the store, so later reads stay silent.
-    expect(storage.getItem('foreign')).toBeNull();
+    expect(storage.getItem('stuck')).toBeNull();
+    expect(storage.getItem('stuck')).toBeNull();
     expect(mocks.warn).toHaveBeenCalledTimes(1);
     expect(storage.getItem('good')).toBe('kept');
+
+    // The entry survives on disk, so a transient keychain failure (e.g. a declined ACL
+    // prompt) does not destroy the session: once decryption works again, the value is back.
+    expect(Object.keys(JSON.parse(readFileSync(storeFile(), 'utf8'))).sort()).toEqual([
+      'good',
+      'stuck',
+    ]);
+    mocks.keychainKey = 'B';
+    expect(storage.getItem('stuck')).toBe('recoverable');
   });
 
   it('round-trips through the plain fallback when the keychain is unavailable', async () => {
