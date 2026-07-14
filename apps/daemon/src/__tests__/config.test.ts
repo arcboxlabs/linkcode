@@ -123,6 +123,12 @@ describe('profile-scoped state paths', () => {
     expect(() => daemonProfile()).toThrow(TypeError);
     expect(() => databasePath()).toThrow(TypeError);
   });
+
+  it('rejects a path-traversal profile instead of resolving outside the home sibling', () => {
+    process.env.LINKCODE_PROFILE = '../evil';
+    expect(() => runtimeFilePath()).toThrow(TypeError);
+    expect(() => databasePath()).toThrow(TypeError);
+  });
 });
 
 describe('loadConfig accounts', () => {
