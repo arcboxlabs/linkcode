@@ -23,8 +23,11 @@ export const CHANNEL: Channel =
   import.meta.env.MODE !== 'production' || !app.isPackaged ? 'development' : 'release';
 
 function resolveProfile(): string | undefined {
-  // An explicit switch outranks the inherited environment.
-  const raw = app.commandLine.getSwitchValue('profile') || process.env.LINKCODE_PROFILE;
+  // An explicit switch outranks the inherited environment — including a bare `--profile=`,
+  // which pins the default universe (getSwitchValue alone cannot tell "absent" from "empty").
+  const raw = app.commandLine.hasSwitch('profile')
+    ? app.commandLine.getSwitchValue('profile')
+    : process.env.LINKCODE_PROFILE;
   try {
     return parseProfileName(raw === '' ? undefined : raw);
   } catch (err) {
