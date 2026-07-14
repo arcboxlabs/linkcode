@@ -4,8 +4,12 @@ Standalone Node process (no browser APIs, no React): constructs the shared `Engi
 `Hub`, hosts the agent adapters and the PTY sidecar, and serves the data plane over the transport.
 Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in prod (`pnpm -F @linkcode/daemon build`).
 
-## State surfaces — all under `~/.linkcode/`
+## State surfaces — all under the profile's state dir
 
+- Default state dir is `~/.linkcode/`; `LINKCODE_PROFILE=<name>` (`[a-z0-9-]`, ≤32 chars, invalid
+  aborts boot) forks the whole universe to the sibling `~/.linkcode-<name>/` — including `hq.json` /
+  `device-key.pem`, so each profile registers as its own HQ device (deliberate: the relay allows one
+  uplink per device id). `~/LinkCode` workspaces and the managed asset store stay shared.
 - **Paths are owned by `src/config.ts`** (`configPath` / `databasePath` / `runtimeFilePath`) — never
   scatter `homedir()` joins elsewhere. `os.homedir()` is read at call time, so a fake `$HOME` fully
   redirects config/db/runtime (this is what isolates an E2E daemon).
@@ -19,17 +23,20 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 - **`runtime.json`** — endpoint discovery (`{name,pid,startedAt,listeners:[{type,url}]}`), written
   `0600` only AFTER every listener binds and removed on graceful `SIGINT`/`SIGTERM` shutdown.
 
-## Ports & one-per-machine
+## Ports & one-per-profile
 
 - Default listener is `socket.io` on `127.0.0.1:19523` (`0x4C43` = ascii `'LC'`, `DAEMON_DEFAULT_PORT`
   in `packages/schema`). `LINKCODE_PORT` / `LINKCODE_HOST` override every listener. On `EADDRINUSE` a
   listener hunts **upward** up to 10 ports (19523–19532); clients must read `runtime.json`, never
   assume 19523.
-- **One daemon per machine**, enforced by the daemon (not the desktop supervisor): `main()` calls
-  `findRunningDaemon()` — parse `runtime.json` → pid alive? → `GET /linkcode` identity pid matches? A
-  live one makes the new process log `already running (pid N)` and `process.exit(3)`
+- **One daemon per profile**, enforced by the daemon (not the desktop supervisor): `main()` calls
+  `findRunningDaemon()` — parse the profile's `runtime.json` → pid alive? → `GET /linkcode` identity
+  pid matches? A live one makes the new process log `already running (pid N)` and `process.exit(3)`
   (`DAEMON_EXIT_ALREADY_RUNNING`) — an **explicit** exit because Electron's `utilityProcess` keeps the
-  parent IPC channel and the event loop alive forever. Health: `curl http://127.0.0.1:19523/linkcode`.
+  parent IPC channel and the event loop alive forever. The identity (and `runtime.json`) carries an
+  optional `profile` field (absent = default profile): the port hunt treats a live daemon of
+  **another** profile as a port neighbor and hunts past it, so profiles coexist on adjacent ports.
+  Health: `curl http://127.0.0.1:19523/linkcode`.
 
 ## Packaging: spawn, binaries & bundle
 

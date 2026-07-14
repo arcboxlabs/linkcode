@@ -4,6 +4,7 @@ import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
 import type { UtilityProcess } from 'electron';
 import { app, utilityProcess } from 'electron';
 import log from 'electron-log';
+import { PROFILE } from './constants';
 import { watchDaemonRuntime } from './daemon-discovery';
 import { getSettings } from './settings';
 
@@ -12,8 +13,8 @@ import { getSettings } from './settings';
  * under Electron's Node via `utilityProcess` and ties its lifetime to the app — started when the
  * app is ready, SIGTERMed on quit (Cmd+Q). Closing windows (Cmd+W on macOS) leaves it running.
  *
- * The supervisor just spawns; the one-daemon-per-machine contract lives in the daemon itself
- * (apps/daemon/src/runtime.ts). When another daemon already serves this machine the child exits
+ * The supervisor just spawns; the one-daemon-per-profile contract lives in the daemon itself
+ * (apps/daemon/src/runtime.ts). When another daemon already serves this profile the child exits
  * with DAEMON_EXIT_ALREADY_RUNNING and the supervisor stands down — which daemon clients dial is
  * discovery's job (runtime.json), not the supervisor's.
  */
@@ -78,6 +79,10 @@ function spawnDaemon(): void {
   if (quitting || !isDaemonManaged()) return;
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = { ...process.env };
+  // The child must live in the desktop's resolved universe: a `--profile` switch outranks any
+  // inherited LINKCODE_PROFILE, and the default universe must not leak a stray env value through.
+  if (PROFILE === undefined) delete env.LINKCODE_PROFILE;
+  else env.LINKCODE_PROFILE = PROFILE;
   const sidecar = sidecarPath();
   if (existsSync(sidecar)) env.LINKCODE_PTY_SIDECAR_PATH = sidecar;
   else log.warn(`[linkcode/desktop] pty sidecar missing at ${sidecar}; terminals unavailable`);
