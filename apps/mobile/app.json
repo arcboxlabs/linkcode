@@ -89,6 +89,27 @@
         {
           "faceIDPermission": "LinkCode uses Face ID to unlock the app and protect your connected machines and account."
         }
+      ],
+      [
+        "expo-sharing",
+        {
+          "ios": {
+            "enabled": true,
+            "appGroupId": "group.com.arcboxlabs.linkcode.mobile",
+            "activationRule": {
+              "supportsText": true,
+              "supportsWebUrlWithMaxCount": 1,
+              "supportsImageWithMaxCount": 10,
+              "supportsMovieWithMaxCount": 1,
+              "supportsFileWithMaxCount": 10
+            }
+          },
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["text/*", "image/*", "video/*", "application/*"],
+            "multipleShareMimeTypes": ["image/*", "application/*"]
+          }
+        }
       ]
     ]
   }
