@@ -22,7 +22,7 @@ function recordingTransport(): { transport: Transport; sent: WirePayload[] } {
 
 /** A `startLogin` seam that captures the callbacks so a test can drive url/settled itself. */
 function captureLogin() {
-  const captured: { callbacks?: AgentLoginCallbacks; binaryPath?: string } = {};
+  const captured: { callbacks?: AgentLoginCallbacks; binaryPath?: string; agent?: string } = {};
   const handle: AgentLoginHandle & { submitted: string[]; cancelled: boolean } = {
     submitted: [],
     cancelled: false,
@@ -33,7 +33,8 @@ function captureLogin() {
       this.cancelled = true;
     },
   };
-  const startLogin: StartLogin = (binaryPath, callbacks) => {
+  const startLogin: StartLogin = (agent, binaryPath, callbacks) => {
+    captured.agent = agent;
     captured.binaryPath = binaryPath;
     captured.callbacks = callbacks;
     return handle;
@@ -80,22 +81,60 @@ describe('AgentLoginService', () => {
     expect(handle.cancelled).toBe(false);
   });
 
-  it('settles with an error and never starts a child for a non-claude agent', () => {
+  it('settles with an error and never starts a child for an unsupported agent kind', () => {
     const { transport, sent } = recordingTransport();
     const onSuccess = vi.fn();
     const startLogin = vi.fn<StartLogin>();
     const service = new AgentLoginService(transport, () => '/bin/x', onSuccess, startLogin);
 
-    service.start('req-2', 'codex');
+    service.start('req-2', 'pi');
     const id = loginId(sent);
     expect(startLogin).not.toHaveBeenCalled();
     expect(sent).toContainEqual({
       kind: 'agent-login.settled',
       loginId: id,
       ok: false,
-      error: 'login is not supported for codex',
+      error: 'login is not supported for pi',
     });
     expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it('routes a codex login through the seam with the codex kind and binary', () => {
+    const { transport, sent } = recordingTransport();
+    const onSuccess = vi.fn();
+    const { startLogin, captured } = captureLogin();
+    const service = new AgentLoginService(transport, () => '/bin/codex', onSuccess, startLogin);
+
+    service.start('req-5', 'codex');
+    const id = loginId(sent);
+    expect(captured.agent).toBe('codex');
+    expect(captured.binaryPath).toBe('/bin/codex');
+
+    captured.callbacks?.onUrl('https://auth.openai.com/oauth/authorize?x=1');
+    expect(sent).toContainEqual({
+      kind: 'agent-login.url',
+      loginId: id,
+      url: 'https://auth.openai.com/oauth/authorize?x=1',
+    });
+    captured.callbacks?.onSettled({ ok: true });
+    expect(onSuccess).toHaveBeenCalledOnce();
+  });
+
+  it('settles unsupported when the seam has no flow for the kind', () => {
+    const { transport, sent } = recordingTransport();
+    // A bare vi.fn already resolves to undefined — "no flow implemented for this kind".
+    const startLogin = vi.fn<StartLogin>();
+    const service = new AgentLoginService(transport, () => '/bin/codex', noop, startLogin);
+
+    service.start('req-6', 'codex');
+    const id = loginId(sent);
+    expect(startLogin).toHaveBeenCalledOnce();
+    expect(sent).toContainEqual({
+      kind: 'agent-login.settled',
+      loginId: id,
+      ok: false,
+      error: 'login is not supported for codex',
+    });
   });
 
   it('settles with an error when the CLI binary cannot be resolved', () => {

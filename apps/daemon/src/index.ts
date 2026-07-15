@@ -115,9 +115,11 @@ async function main(): Promise<void> {
     assets,
     // Lets the engine refresh (and push) the runtime snapshot after a managed install lands.
     collectAgentRuntimes: () => agentRuntimeProber.collect(),
-    // Spawn path for an interactive claude-code login (managed/detected/SDK platform binary).
+    // Spawn path for an interactive claude-code/codex login (managed/detected/SDK platform binary).
     resolveLoginBinary: (agent) =>
-      agent === 'claude-code' ? agentRuntimeProber.loginBinaryPath(agent) : undefined,
+      agent === 'claude-code' || agent === 'codex'
+        ? agentRuntimeProber.loginBinaryPath(agent)
+        : undefined,
     // Local Anthropic⇄OpenAI translation for cross-protocol accounts (arcboxlabs/aigateway sidecar).
     // The binary installs on demand from the managed-asset store; LINKCODE_AIGATEWAY_PATH overrides.
     translator: createAiGatewaySidecar({
