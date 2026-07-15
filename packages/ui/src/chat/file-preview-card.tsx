@@ -53,7 +53,7 @@ export function FilePreviewCard({
   );
   const header = onOpen ? (
     <Button
-      className="w-full justify-start rounded-none border-0 px-3 font-normal text-muted-foreground text-xs focus-visible:ring-inset sm:text-xs"
+      className="w-full justify-start rounded-none border-0 px-3 py-1.5 font-normal text-muted-foreground text-xs focus-visible:ring-inset sm:text-xs"
       size="sm"
       variant="ghost"
       onClick={onOpen}
