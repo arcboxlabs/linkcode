@@ -12,7 +12,6 @@
     "src",
     "scripts",
     "e2e",
-    "electron.vite.config.ts",
     "vite.shared.ts",
     "vite.main.config.ts",
     "vite.preload.config.ts",
