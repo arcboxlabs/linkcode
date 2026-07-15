@@ -1,6 +1,6 @@
 import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@linkcode/schema';
 import { useRef } from 'react';
-import { ArtifactHostActionsProvider } from '../chat/artifacts';
+import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
@@ -122,6 +122,7 @@ export function ConversationSurface({
   const artifactActions = {
     referenceToComposer: (text: string) => composerRef.current?.insertText(text),
     openFile: onOpenFileArtifact,
+    reviewChanges: onReviewChanges,
     hostArtifact: onHostArtifact,
     openPreviewUrl: onOpenPreviewUrl,
   };

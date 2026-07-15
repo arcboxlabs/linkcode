@@ -5,6 +5,12 @@
     "description": "Every Code Agent in the Palm of your hand.",
     "privacy": "public",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b06b97b7-e026-4f7e-afd5-ac936c93d666"
+    },
     "scheme": "linkcode",
     "orientation": "portrait",
     "icon": "../../assets/icon.png",
@@ -29,6 +35,7 @@
         "NSDownloadsFolderUsageDescription": "LinkCode needs downloads folder access to save coding-agent artifacts.",
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
+        "NSSupportsLiveActivities": true,
         "NSBonjourServices": ["_linkcode._tcp"]
       }
     },
@@ -67,10 +74,46 @@
     "plugins": [
       "expo-router",
       "@sentry/react-native/expo",
+      "expo-apple-authentication",
       "expo-sqlite",
       "expo-secure-store",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-notifications",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "LinkCode needs microphone access to dictate prompts to coding agents by voice."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "LinkCode uses Face ID to unlock the app and protect your connected machines and account."
+        }
+      ],
+      [
+        "expo-sharing",
+        {
+          "ios": {
+            "enabled": true,
+            "appGroupId": "group.com.arcboxlabs.linkcode.mobile",
+            "activationRule": {
+              "supportsText": true,
+              "supportsWebUrlWithMaxCount": 1,
+              "supportsImageWithMaxCount": 10,
+              "supportsMovieWithMaxCount": 1,
+              "supportsFileWithMaxCount": 10
+            }
+          },
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["text/*", "image/*", "video/*", "application/*"],
+            "multipleShareMimeTypes": ["image/*", "application/*"]
+          }
+        }
+      ],
+      "@bacons/apple-targets"
     ]
   }
 }

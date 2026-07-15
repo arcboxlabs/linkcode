@@ -108,7 +108,12 @@ nsis:
   buildUniversalInstaller: false
 
 linux:
-  icon: ../../assets/icon.png # shared repo-root raster
+  # A DIRECTORY of per-size PNGs, not a single raster: app-builder-lib 26+ no longer expands one
+  # PNG into a size set (a lone 1024² lands in hicolor/1024x1024, which gtk-update-icon-cache skips
+  # → GNOME shows the generic-executable fallback). The dir installs the standard 16→512 hicolor
+  # sizes so the launcher resolves the icon. Uses the full app-icon squircle (like mac), not the
+  # bare mark shared with Windows. Regenerate from assets/icon-dock.png; see scripts/package-app.mts.
+  icon: ../../assets/linux-icons
   category: Development
   # The npm package name (@linkcode/desktop) sanitizes to an invalid binary name; name the
   # executable explicitly.

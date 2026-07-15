@@ -51,6 +51,9 @@ jobs:
     env:
       R2_BUCKET: linkcode-releases
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      # Gate for the Homebrew cask bump (below). Either secret absent ⇒ the bump steps self-skip.
+      BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+      BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -114,6 +117,65 @@ jobs:
             artifacts/*.snap
             artifacts/*.yml
             artifacts/*.blockmap
+
+      - name: Mint Homebrew tap token
+        # Keep the LinkCode cask in arcboxlabs/homebrew-tap in step with releases so
+        # `brew upgrade --cask arcboxlabs/tap/linkcode` tracks the latest version. Auth mirrors
+        # arcbox's release flow: the org GitHub App (BOT_APP_ID / BOT_APP_PRIVATE_KEY) mints a
+        # short-lived token scoped to the tap repo. Release version tags only: `startsWith(…, 'v')`
+        # keeps a manual dispatch of a branch/SHA from bumping the cask to a non-version (the
+        # artifact names are `LinkCode-<semver>-<arch>.dmg`), and `!contains(…, '-')` keeps a
+        # prerelease tag (v*.*.*-…) from moving the stable cask. Self-skips when either App secret
+        # is absent (later steps gate on the empty token output) so a release still succeeds.
+        id: tap-token
+        if: ${{ (github.event_name == 'push' || inputs.dry_run == false) && startsWith(steps.meta.outputs.tag, 'v') && !contains(steps.meta.outputs.tag, '-') && env.BOT_APP_ID != '' && env.BOT_APP_PRIVATE_KEY != '' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: homebrew-tap
+
+      - name: Check out Homebrew tap
+        if: ${{ steps.tap-token.outputs.token != '' }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/homebrew-tap
+          token: ${{ steps.tap-token.outputs.token }}
+          path: homebrew-tap
+
+      - name: Bump Homebrew cask
+        if: ${{ steps.tap-token.outputs.token != '' }}
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          arm_sha="$(sha256sum "artifacts/LinkCode-${version}-arm64.dmg" | cut -d' ' -f1)"
+          x64_sha="$(sha256sum "artifacts/LinkCode-${version}-x64.dmg" | cut -d' ' -f1)"
+
+          cask=homebrew-tap/Casks/linkcode.rb
+          # The 64-hex-length anchor keeps these off the `arch arm:/intel:` labels (arm64/x64).
+          sed -i -E \
+            -e "s/^(  version )\"[^\"]*\"/\1\"${version}\"/" \
+            -e "s/(arm:[[:space:]]+)\"[0-9a-f]{64}\"/\1\"${arm_sha}\"/" \
+            -e "s/(intel:[[:space:]]+)\"[0-9a-f]{64}\"/\1\"${x64_sha}\"/" \
+            "$cask"
+
+          # Fail loudly if any substitution missed (cask format drift) instead of committing a stale hash.
+          grep -q "  version \"${version}\"" "$cask"
+          grep -q "\"${arm_sha}\"" "$cask"
+          grep -q "\"${x64_sha}\"" "$cask"
+
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Cask already at v${version}; nothing to bump."
+          else
+            git commit -am "linkcode v${version}"
+            git push
+          fi
 
       - name: Dry-run summary
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}

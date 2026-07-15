@@ -5,7 +5,8 @@ import { BotIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { ToolTimelineItem } from './activity-groups';
-import { SubagentTranscript, subagentTaskInput } from './subagent-card';
+import { SubagentTranscript } from './subagent-card';
+import { subagentTaskInput } from './subagent-task-input';
 import type { ConversationItem } from './types';
 
 export interface SubagentViewerProps {

@@ -27,7 +27,7 @@ import { AgentIcon } from '../chat/agent-icon';
 import { useKeyboardShortcut } from '../keyboard';
 import { preventBaseUIHandler } from '../lib/base-ui';
 import { cn } from '../lib/cn';
-import { SESSION_STATUS_DOT_CLASS } from './sidebar/thread-row';
+import { SESSION_STATUS_DOT_CLASS } from './sidebar/thread-status';
 
 export interface PaletteThreadViewModel {
   sessionId: SessionId;

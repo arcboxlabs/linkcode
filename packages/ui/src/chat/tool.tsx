@@ -7,10 +7,14 @@ import {
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
 import { ChevronRightIcon, ShieldIcon } from 'lucide-react';
+import { useRef } from 'react';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
 import type { DiffStats } from './diff-utils';
 import { TOOL_KIND_ICONS } from './tool-utils';
+import { FilePathTooltip } from './with-tooltip';
+
+export const TOOL_DETAIL_SCROLL_CLASS_NAME = 'max-h-96 overflow-y-auto';
 
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
 
@@ -22,6 +26,8 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   title: string;
   /** Curated context such as a path, query, URL, or command. */
   summary?: string;
+  /** Unshortened context for a compact summary. */
+  tooltip?: string;
   diffStats?: DiffStats;
   badge?: string;
   /** Localized marker for a call whose gating permission the user declined. */
@@ -39,6 +45,7 @@ export function ToolHeader({
   className,
   title,
   summary,
+  tooltip,
   diffStats,
   badge,
   declinedBadge,
@@ -49,29 +56,54 @@ export function ToolHeader({
   hasBody = false,
   ...props
 }: ToolHeaderProps): React.ReactNode {
-  return (
-    <CollapsibleTrigger
-      className={cn(
-        'group/header flex w-full items-center gap-2 py-1 text-left text-sm disabled:cursor-default',
-        className,
-      )}
-      disabled={!hasBody}
-      {...props}
-    >
+  const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
+  const titleAnchorRef = tooltip && !summary ? tooltipAnchorRef : undefined;
+  const content = (
+    <>
       <ToolIcon awaitingApproval={awaitingApproval} icon={icon} kind={kind} status={status} />
-      <span className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}>
+      <span
+        className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}
+        ref={titleAnchorRef}
+      >
         {title}
       </span>
       {diffStats ? <DiffCounter stats={diffStats} /> : null}
       {summary ? (
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground" ref={tooltipAnchorRef}>
+          · {summary}
+        </span>
       ) : null}
       {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
       {badge ? <Badge variant="secondary">{badge}</Badge> : null}
       {hasBody ? (
         <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />
       ) : null}
-    </CollapsibleTrigger>
+    </>
+  );
+  const headerClassName = cn(
+    'group/header flex w-full items-center gap-2 py-1 text-left text-sm',
+    className,
+  );
+
+  return (
+    <FilePathTooltip anchor={tooltipAnchorRef} tooltip={tooltip}>
+      {hasBody ? (
+        <CollapsibleTrigger className={headerClassName} {...props}>
+          {content}
+        </CollapsibleTrigger>
+      ) : (
+        <div
+          className={cn(
+            headerClassName,
+            tooltip &&
+              'rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+          )}
+          tabIndex={tooltip ? 0 : undefined}
+        >
+          {content}
+        </div>
+      )}
+    </FilePathTooltip>
   );
 }
 
@@ -105,12 +137,22 @@ export function ToolIcon({
   );
 }
 
-export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent> & {
+  constrainHeight?: boolean;
+};
 
-export function ToolContent({ className, ...props }: ToolContentProps): React.ReactNode {
+export function ToolContent({
+  className,
+  constrainHeight = true,
+  ...props
+}: ToolContentProps): React.ReactNode {
   return (
     <CollapsibleContent
-      className={cn('mt-1 space-y-2 border-l-2 border-border pl-3', className)}
+      className={cn(
+        'mt-1 space-y-2 border-l-2 border-border pl-3',
+        constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
+        className,
+      )}
       {...props}
     />
   );
