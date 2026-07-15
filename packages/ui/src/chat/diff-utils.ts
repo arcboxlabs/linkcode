@@ -1,3 +1,4 @@
+import type { ToolCall } from '@linkcode/schema';
 import { createFixedArray } from 'foxact/create-fixed-array';
 
 interface DiffRow {
@@ -74,13 +75,27 @@ export function diffLines(oldStr: string, newStr: string): DiffRow[] {
 }
 
 /** Line-level add/delete counts for a diff, shared with group headers that sum across files. */
-export function diffStats(
-  oldText: string | undefined,
-  newText: string,
-): { additions: number; deletions: number } {
+export interface DiffStats {
+  additions: number;
+  deletions: number;
+}
+
+export function diffStats(oldText: string | undefined, newText: string): DiffStats {
   const rows = diffLines(oldText ?? '', newText);
   return {
     additions: rows.filter((row) => row.type === 'add').length,
     deletions: rows.filter((row) => row.type === 'del').length,
   };
+}
+
+export function toolCallDiffStats(toolCall: Pick<ToolCall, 'content'>): DiffStats {
+  let additions = 0;
+  let deletions = 0;
+  for (const content of toolCall.content) {
+    if (content.type !== 'diff') continue;
+    const stats = diffStats(content.oldText, content.newText);
+    additions += stats.additions;
+    deletions += stats.deletions;
+  }
+  return { additions, deletions };
 }

@@ -12,7 +12,7 @@ const ICON_BY_KIND: Record<string, React.ReactNode> = {
 };
 
 /**
- * Produced-file card shown in chat (under completed edit tools, Codex end-resource
+ * Produced-file card shown in chat (under completed move tools, Codex end-resource
  * style). Clicking opens the file in the host viewer when the shell provides one.
  */
 export function FileArtifactCard({

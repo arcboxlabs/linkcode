@@ -8,6 +8,8 @@ import {
 import { Spinner } from 'coss-ui/components/spinner';
 import { ChevronRightIcon, ShieldIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { DiffCounter } from './diff-block';
+import type { DiffStats } from './diff-utils';
 import { TOOL_KIND_ICONS } from './tool-utils';
 
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
@@ -20,6 +22,7 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   title: string;
   /** Curated context such as a path, query, URL, or command. */
   summary?: string;
+  diffStats?: DiffStats;
   badge?: string;
   /** Localized marker for a call whose gating permission the user declined. */
   declinedBadge?: string;
@@ -36,6 +39,7 @@ export function ToolHeader({
   className,
   title,
   summary,
+  diffStats,
   badge,
   declinedBadge,
   status,
@@ -64,6 +68,7 @@ export function ToolHeader({
           </>
         ) : null}
       </span>
+      {diffStats ? <DiffCounter stats={diffStats} /> : null}
       {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
       {badge ? <Badge variant="secondary">{badge}</Badge> : null}
       {hasBody ? (
