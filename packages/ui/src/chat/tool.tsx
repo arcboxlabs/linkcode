@@ -59,16 +59,13 @@ export function ToolHeader({
       {...props}
     >
       <ToolIcon awaitingApproval={awaitingApproval} icon={icon} kind={kind} status={status} />
-      <span className="min-w-0 flex-1 truncate text-foreground">
+      <span className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}>
         {title}
-        {summary ? (
-          <>
-            {' '}
-            <span className="ml-1 text-muted-foreground">· {summary}</span>
-          </>
-        ) : null}
       </span>
       {diffStats ? <DiffCounter stats={diffStats} /> : null}
+      {summary ? (
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
+      ) : null}
       {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
       {badge ? <Badge variant="secondary">{badge}</Badge> : null}
       {hasBody ? (

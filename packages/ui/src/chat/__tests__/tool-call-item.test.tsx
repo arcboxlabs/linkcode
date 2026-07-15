@@ -18,6 +18,7 @@ vi.mock('use-intl', () => ({
 }));
 
 const LiveTerminal = vi.fn(({ terminalId }: { terminalId: string }) => <div>{terminalId}</div>);
+const RE_APPLY_GUARDED_EDIT = /^Apply guarded edit/;
 
 afterEach(() => {
   cleanup();
@@ -106,8 +107,12 @@ describe('ToolCallItem', () => {
 
     render(<ToolCallItem toolCall={toolCall} />);
 
+    const headerText = screen.getByRole('button', { name: RE_APPLY_GUARDED_EDIT }).textContent;
     expect(screen.getByText('+1')).toBeDefined();
     expect(screen.getByText('-1')).toBeDefined();
+    expect(headerText.indexOf('+1')).toBeLessThan(
+      headerText.indexOf('packages/ui/src/chat/target.ts'),
+    );
     expect(screen.queryByText('target.ts')).toBeNull();
   });
 
