@@ -72,6 +72,41 @@ describe('ToolCallBody', () => {
     expect(container.textContent).not.toContain('debug');
   });
 
+  it('renders source reads literally instead of interpreting Markdown-looking code', () => {
+    const source = '# not-a-heading\nconst answer = 42;';
+    const toolCall: ToolCall = {
+      toolCallId: 'read-source',
+      title: 'Read source',
+      kind: 'read',
+      status: 'completed',
+      locations: [{ path: 'src/answer.ts' }],
+      content: [{ type: 'content', content: { type: 'text', text: source } }],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    expect(container.querySelector('h1')).toBeNull();
+    expect(container.querySelector('pre')?.textContent).toBe(source);
+    expect(screen.getAllByText('src/answer.ts')).toHaveLength(2);
+  });
+
+  it('renders Markdown file reads as a document preview', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'read-markdown',
+      title: 'Read document',
+      kind: 'read',
+      status: 'completed',
+      locations: [{ path: 'docs/preview.md' }],
+      content: [{ type: 'content', content: { type: 'text', text: '# Preview\n\n- First item' } }],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    expect(container.querySelector('h1')?.textContent).toBe('Preview');
+    expect(container.querySelector('li')?.textContent).toBe('First item');
+    expect(container.querySelector('pre')).toBeNull();
+  });
+
   it('surfaces an execute failure message without its raw result envelope', () => {
     const toolCall: ToolCall = {
       toolCallId: 'bash-2',
@@ -107,6 +142,24 @@ describe('ToolCallBody', () => {
 
     expect(container.querySelector('pre')?.textContent).toBe('825 tests passed');
     expect(container.textContent).not.toContain('exitCode');
+  });
+
+  it('does not mistake a Codex scalar exit code for terminal output', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'codex-exit-1',
+      title: 'Bash',
+      kind: 'execute',
+      status: 'completed',
+      rawInput: { command: 'true' },
+      rawOutput: 0,
+      content: [],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    expect(screen.getByText('true')).toBeDefined();
+    expect(container.querySelector('pre')).toBeNull();
+    expect(container.textContent).not.toContain('0');
   });
 });
 
