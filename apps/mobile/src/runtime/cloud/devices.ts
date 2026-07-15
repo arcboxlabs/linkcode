@@ -2,7 +2,7 @@ import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { z } from 'zod';
-import { HQ_URL, hqAuthClient } from './client';
+import { CLOUD_URL, cloudAuthClient } from './client';
 
 /**
  * Device enrollment and registry access. Mobile enrollment is keyless (no
@@ -12,7 +12,7 @@ import { HQ_URL, hqAuthClient } from './client';
  * signing in re-enrolls under itself.
  */
 
-const ENROLLMENT_KEY = 'linkcode.hq.device:v2';
+const ENROLLMENT_KEY = 'linkcode.cloud.device:v2';
 
 const EnrollmentSchema = z.object({
   deviceId: z.string().min(1),
@@ -31,7 +31,7 @@ async function readEnrollment(): Promise<z.infer<typeof EnrollmentSchema> | null
 }
 
 /**
- * Register this phone in HQ's device registry once per (install, account).
+ * Register this phone in the cloud device registry once per (install, account).
  * Registration is what lists the phone under the account's devices (and lets
  * it be revoked); connecting to hosts works either way, so callers treat
  * failures as best-effort until the next attempt.
@@ -39,7 +39,7 @@ async function readEnrollment(): Promise<z.infer<typeof EnrollmentSchema> | null
 export async function ensureDeviceRegistered(userId: string): Promise<void> {
   const enrollment = await readEnrollment();
   if (enrollment?.userId === userId) return;
-  const { data, error } = await hqAuthClient.$fetch<unknown>(`${HQ_URL}/devices`, {
+  const { data, error } = await cloudAuthClient.$fetch<unknown>(`${CLOUD_URL}/devices`, {
     method: 'POST',
     body: {
       kind: 'mobile',
@@ -65,8 +65,8 @@ export async function clearDeviceEnrollment(): Promise<void> {
   await SecureStore.deleteItemAsync(ENROLLMENT_KEY);
 }
 
-/** Client view of HQ's device rows; timestamps arrive as ISO strings over JSON. */
-export const HqDeviceSchema = z.object({
+/** Client view of cloud device rows; timestamps arrive as ISO strings over JSON. */
+export const CloudDeviceSchema = z.object({
   id: z.string().min(1),
   kind: z.enum(['daemon', 'desktop', 'mobile']),
   name: z.string(),
@@ -75,20 +75,20 @@ export const HqDeviceSchema = z.object({
   lastSeenAt: z.string().nullable(),
   createdAt: z.string(),
 });
-export type HqDevice = z.infer<typeof HqDeviceSchema>;
+export type CloudDevice = z.infer<typeof CloudDeviceSchema>;
 
 /** The account's active (non-revoked) devices (`GET /devices`). */
-export async function fetchDevices(): Promise<HqDevice[]> {
-  const { data, error } = await hqAuthClient.$fetch<unknown>(`${HQ_URL}/devices`, {});
+export async function fetchDevices(): Promise<CloudDevice[]> {
+  const { data, error } = await cloudAuthClient.$fetch<unknown>(`${CLOUD_URL}/devices`, {});
   if (error) throw new Error(`device list failed (${error.status})`);
-  const parsed = z.object({ devices: z.array(HqDeviceSchema) }).safeParse(data);
+  const parsed = z.object({ devices: z.array(CloudDeviceSchema) }).safeParse(data);
   if (!parsed.success) throw new Error('device list returned an unexpected shape');
   return parsed.data.devices;
 }
 
-/** Revoke a device: HQ soft-deletes the row and kills its sessions. */
+/** Revoke a device: the cloud soft-deletes the row and kills its sessions. */
 export async function revokeDevice(id: string): Promise<void> {
-  const { error } = await hqAuthClient.$fetch<unknown>(`${HQ_URL}/devices/${id}/revoke`, {
+  const { error } = await cloudAuthClient.$fetch<unknown>(`${CLOUD_URL}/devices/${id}/revoke`, {
     method: 'POST',
   });
   if (error) throw new Error(`device revoke failed (${error.status})`);

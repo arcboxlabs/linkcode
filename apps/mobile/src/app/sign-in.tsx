@@ -5,7 +5,7 @@ import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 import { BrandMark } from '../components/brand-mark';
-import { signInToHq, useHqAccount } from '../runtime/hq/account';
+import { signInToCloud, useCloudAccount } from '../runtime/cloud/account';
 
 /**
  * First-run welcome: sign in through LinkCode Cloud, or skip to manual host
@@ -15,7 +15,7 @@ export default function SignInScreen() {
   const t = useTranslations('mobile.signIn');
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const account = useHqAccount();
+  const account = useCloudAccount();
   const [busy, setBusy] = useState(false);
 
   if (account.status === 'loading') {
@@ -31,7 +31,7 @@ export default function SignInScreen() {
   const signIn = async () => {
     setBusy(true);
     try {
-      await signInToHq();
+      await signInToCloud();
     } finally {
       setBusy(false);
     }

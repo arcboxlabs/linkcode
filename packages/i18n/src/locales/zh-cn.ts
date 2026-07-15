@@ -613,7 +613,7 @@ export const zhCN = {
       title: 'Link Code · Mobile',
       contract: '共享数据契约 · wire v{version} · 来自 @linkcode/schema',
       registeredAgents: '已登记的 agent 适配',
-      note: '直连 Link Code host（daemon）的 transport。经 HQ tunnel 的远程接入将随设备配对到来。',
+      note: '直连 Link Code host（daemon）的 transport。经 LinkCode Cloud tunnel 的远程接入将随设备配对到来。',
     },
     connect: {
       title: '连接 host',
@@ -631,7 +631,7 @@ export const zhCN = {
       remove: '移除',
       viaTunnel: '经由 LinkCode Cloud',
       addManually: '通过地址添加 host',
-      hq: {
+      cloud: {
         title: 'LinkCode Cloud',
         hint: '登录后即可通过 LinkCode Cloud 随时随地连接你的机器。',
         signIn: '登录',

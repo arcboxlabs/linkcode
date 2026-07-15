@@ -5,20 +5,20 @@ import { Avatar, Button, Card, Chip, ListGroup, Spinner } from 'heroui-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { useFormatter, useTranslations } from 'use-intl';
-import type { HqUser } from '../runtime/hq/account';
-import { signOutOfHq, useHqAccount } from '../runtime/hq/account';
-import type { HqDevice } from '../runtime/hq/devices';
+import type { CloudUser } from '../runtime/cloud/account';
+import { signOutOfCloud, useCloudAccount } from '../runtime/cloud/account';
+import type { CloudDevice } from '../runtime/cloud/devices';
 import {
   clearDeviceEnrollment,
   fetchDevices,
   getEnrolledDeviceId,
   revokeDevice,
-} from '../runtime/hq/devices';
+} from '../runtime/cloud/devices';
 
 /** Account screen: profile, the account's device registry, and sign-out. */
 export default function AccountScreen() {
   const t = useTranslations('mobile.account');
-  const account = useHqAccount();
+  const account = useCloudAccount();
 
   if (account.status === 'loading') {
     return (
@@ -36,7 +36,7 @@ export default function AccountScreen() {
       <Button
         variant="danger-soft"
         onPress={() => {
-          void signOutOfHq();
+          void signOutOfCloud();
         }}
       >
         <Button.Label>{t('signOut')}</Button.Label>
@@ -45,7 +45,7 @@ export default function AccountScreen() {
   );
 }
 
-function ProfileCard({ user }: { user: HqUser }) {
+function ProfileCard({ user }: { user: CloudUser }) {
   return (
     <Card>
       <Card.Body className="flex-row items-center gap-4">
@@ -66,14 +66,14 @@ function ProfileCard({ user }: { user: HqUser }) {
 
 /**
  * The account's registered devices. Revoking cuts a device's access to new
- * tunnel tokens; revoking this phone also signs it out, since HQ kills its
+ * tunnel tokens; revoking this phone also signs it out, since the cloud kills its
  * sessions with the device.
  */
 function DevicesSection() {
   const t = useTranslations('mobile.account');
   const format = useFormatter();
 
-  const [devices, setDevices] = useState<HqDevice[] | null>(null);
+  const [devices, setDevices] = useState<CloudDevice[] | null>(null);
   const [devicesError, setDevicesError] = useState(false);
   const [enrolledId, setEnrolledId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -95,15 +95,15 @@ function DevicesSection() {
     load();
   };
 
-  const revoke = async (device: HqDevice) => {
+  const revoke = async (device: CloudDevice) => {
     setBusyId(device.id);
     try {
       await revokeDevice(device.id);
       if (device.id === enrolledId) {
-        // HQ already killed this phone's sessions along with the device; the
+        // The cloud already killed this phone's sessions along with the device; the
         // sign-out is local cookie/enrollment cleanup against a dead session.
         await clearDeviceEnrollment().catch(noop);
-        await signOutOfHq().catch(noop);
+        await signOutOfCloud().catch(noop);
         return;
       }
       refresh();
@@ -114,7 +114,7 @@ function DevicesSection() {
     }
   };
 
-  const confirmRevoke = (device: HqDevice) => {
+  const confirmRevoke = (device: CloudDevice) => {
     Alert.alert(
       t('revokeTitle', { name: device.name }),
       device.id === enrolledId ? t('revokeThisDeviceMessage') : t('revokeMessage'),
@@ -131,7 +131,7 @@ function DevicesSection() {
     );
   };
 
-  const describeDevice = (device: HqDevice): string => {
+  const describeDevice = (device: CloudDevice): string => {
     const kind = t(`deviceKind.${device.kind}`);
     const platform = device.platform ? `${kind} · ${device.platform}` : kind;
     return device.lastSeenAt
