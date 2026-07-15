@@ -1,7 +1,7 @@
 import type { Transport } from '@linkcode/transport';
 import { SocketIoTransport, TunnelTransport, WsTransport } from '@linkcode/transport';
 import type { HostProfile } from '../stores/host-store';
-import { fetchTunnelJwt, HQ_URL } from './hq';
+import { fetchTunnelJwt, HQ_URL } from './hq/client';
 
 /**
  * Pick the transport by host kind. Tunnel entries dial the HQ relay as a

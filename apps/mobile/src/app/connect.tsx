@@ -5,14 +5,10 @@ import { Button, Card, Input, Label, ListGroup, Spinner, TextField } from 'herou
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
-import type { OnlineHost } from '../runtime/hq';
-import {
-  ensureDeviceRegistered,
-  fetchOnlineHosts,
-  hqAuthClient,
-  signInToHq,
-  signOutOfHq,
-} from '../runtime/hq';
+import { hqAuthClient, signInToHq, signOutOfHq } from '../runtime/hq/client';
+import { ensureDeviceRegistered } from '../runtime/hq/devices';
+import type { OnlineHost } from '../runtime/hq/hosts';
+import { fetchOnlineHosts } from '../runtime/hq/hosts';
 import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 
 /**
