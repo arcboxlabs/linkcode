@@ -97,9 +97,10 @@ async function buildTerminalFonts(preferredFamily: string): Promise<ResttyFontIn
   const colorEmoji = pickLocalFamily(local, COLOR_EMOJI_FAMILIES);
   const mono = pickLocalFamily(local, MONO_FAMILIES);
   // A user-chosen family leads the chain (`local: 'prefer'` falls back to the bundled fonts when
-  // the machine lacks it); `'default'` keeps the bundled IBM Plex Mono as the primary face.
+  // the machine lacks it); empty keeps the bundled IBM Plex Mono as the primary face.
+  const trimmed = preferredFamily.trim();
   const preferred: ResttyFontInput[] =
-    preferredFamily === 'default' ? [] : [{ family: preferredFamily, local: 'prefer' }];
+    trimmed === '' || trimmed === 'default' ? [] : [{ family: trimmed, local: 'prefer' }];
   return [
     ...preferred,
     // restty renders on a GPU canvas with its own text shaper and needs raw font bytes; its
