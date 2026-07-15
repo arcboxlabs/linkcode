@@ -403,6 +403,10 @@ export class Engine {
               ? adapter.start(startOpts)
               : this.history.resume(adapter, historyId, startOpts),
           );
+          // Same contract as session.start / history.resume: waking a session (re)registers its
+          // directory, so imported records and roots archived since still pass the file.suggest
+          // workspace check once their session is live again.
+          if (record.cwd) this.workspaces.touch(record.cwd);
         });
         break;
       }
@@ -619,7 +623,16 @@ export class Engine {
       }
       case 'file.suggest': {
         await this.tryReply(p.clientReqId, async () => {
-          const suggestions = await this.fileSuggest.suggest(p.cwd, p.query, p.limit);
+          // Scope suggestions to roots the user has opened: session start/resume `touch`-registers
+          // its cwd, so every legitimate composer root is in the registry, while a stray cwd no
+          // session ever ran in is refused instead of enumerated. (Not a hard boundary — clients
+          // can register workspaces — just the same opened-roots scoping the rest of the product
+          // uses.) The search runs under the registered record's cwd, not the caller's spelling.
+          const workspace = nullthrow(
+            this.workspaces.findByCwd(p.cwd),
+            `Unknown workspace: ${p.cwd}`,
+          );
+          const suggestions = await this.fileSuggest.suggest(workspace.cwd, p.query, p.limit);
           this.transport.send(
             createWireMessage({ kind: 'file.suggest.result', replyTo: p.clientReqId, suggestions }),
           );

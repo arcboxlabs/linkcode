@@ -209,7 +209,8 @@ export function readWorkspaceFile(
   return resolveClient(options).readFile(options.cwd, options.path);
 }
 
-/** Search workspace files by substring query (directory-backed, like git.*). */
+/** Search workspace files by substring query. Unlike file.read/git.*, `cwd` must be a
+ * registered workspace root (session start/resume registers it); unknown roots are rejected. */
 export function suggestWorkspaceFiles(
   options: Options<{ cwd: string; query: string; limit?: number }>,
 ): RequestResult<FileSuggestion[]> {

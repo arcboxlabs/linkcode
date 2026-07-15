@@ -19,7 +19,8 @@ export const fileWireVariants = [
   z.object({
     kind: z.literal('file.suggest'),
     clientReqId: z.string().min(1),
-    /** Workspace root the search runs under. */
+    /** Workspace root the search runs under; must be a registered workspace
+     * (the engine rejects unknown roots — see WorkspaceRegistry). */
     cwd: z.string().min(1),
     /** Substring query; empty lists shallow files first (browse mode). */
     query: z.string(),
