@@ -64,9 +64,9 @@ catalog:
 
   # Client data layer
   swr: ^2.4.2
-  use-intl: ^4.13.0
+  use-intl: ^4.13.1
   zustand: ^5.0.14
-  lucide-react: ^1.18.0
+  lucide-react: ^1.23.0
 
   # Web build
   vite: ^8.1.4
@@ -75,9 +75,9 @@ catalog:
   babel-plugin-react-compiler: ^1.0.0
 
   # Styling for web / desktop renderers
-  tailwindcss: ^4.3.1
+  tailwindcss: ^4.3.2
   "@tailwindcss/postcss": ^4.3.1
-  "@tailwindcss/vite": ^4.3.1
+  "@tailwindcss/vite": ^4.3.2
 
   # Desktop / Electron
   electron: ^42.4.1
@@ -90,11 +90,11 @@ catalog:
   socket.io-client: ^4.8.3
 
   # Build / runtime tools
-  tsx: ^4.22.4
+  tsx: ^4.23.0
   tsup: ^8.5.1
 
   # Testing
-  vitest: ^4.1.9
+  vitest: ^4.1.10
   unplugin-icons: ^23.0.1
   "@svgr/core": ^8.1.0
   "@svgr/plugin-jsx": ^8.1.0
