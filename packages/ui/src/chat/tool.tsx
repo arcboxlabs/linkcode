@@ -107,14 +107,20 @@ export function ToolIcon({
   );
 }
 
-export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent> & {
+  constrainHeight?: boolean;
+};
 
-export function ToolContent({ className, ...props }: ToolContentProps): React.ReactNode {
+export function ToolContent({
+  className,
+  constrainHeight = true,
+  ...props
+}: ToolContentProps): React.ReactNode {
   return (
     <CollapsibleContent
       className={cn(
         'mt-1 space-y-2 border-l-2 border-border pl-3',
-        TOOL_DETAIL_SCROLL_CLASS_NAME,
+        constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
         className,
       )}
       {...props}
