@@ -58,19 +58,43 @@
     "unplugin-icons": "catalog:"
   },
   "peerDependencies": {
+    "@gorhom/bottom-sheet": ">=5.0.0",
+    "@ronradtke/react-native-markdown-display": ">=9.0.0",
+    "heroui-native": ">=1.0.0",
+    "lucide-react-native": ">=1.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-native": ">=0.80",
-    "react-native-safe-area-context": ">=5.0.0"
+    "react-native-reanimated": ">=4.0.0",
+    "react-native-safe-area-context": ">=5.0.0",
+    "uniwind": ">=1.0.0"
   },
   "peerDependenciesMeta": {
+    "@gorhom/bottom-sheet": {
+      "optional": true
+    },
+    "@ronradtke/react-native-markdown-display": {
+      "optional": true
+    },
+    "heroui-native": {
+      "optional": true
+    },
+    "lucide-react-native": {
+      "optional": true
+    },
     "react-dom": {
       "optional": true
     },
     "react-native": {
       "optional": true
     },
+    "react-native-reanimated": {
+      "optional": true
+    },
     "react-native-safe-area-context": {
+      "optional": true
+    },
+    "uniwind": {
       "optional": true
     }
   }
