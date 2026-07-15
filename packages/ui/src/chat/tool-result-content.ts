@@ -2,6 +2,8 @@ import type { ContentBlock, ToolCall, ToolCallContent } from '@linkcode/schema';
 import { ContentBlockSchema, textBlock } from '@linkcode/schema';
 
 export const TOOL_PATH_KEYS = ['file_path', 'path', 'file', 'notebook_path', 'filePath'] as const;
+const CLAUDE_SYSTEM_REMINDER_OPEN = '<system-reminder>';
+const CLAUDE_SYSTEM_REMINDER_CLOSE = '</system-reminder>\n';
 
 export function recordValue(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
@@ -65,6 +67,67 @@ export function toolCallExecuteText(toolCall: ToolCall): string | undefined {
   if (displayText) return displayText;
   if (typeof toolCall.rawOutput === 'string') return toolCall.rawOutput;
   return stringValue(recordValue(toolCall.rawOutput), ['message']);
+}
+
+/**
+ * Claude's Read `tool_result.content` numbers every line even though its parallel
+ * `toolUseResult.file.content` is clean, and may prepend an unnumbered system reminder. ToolCall has
+ * no adapter id and currently receives only that rendered block, so unwrap only the exact Claude
+ * title/input shape and a complete consecutive run.
+ */
+export function toolCallReadPreviewText(toolCall: ToolCall, text: string): string {
+  const input = recordValue(toolCall.rawInput);
+  if (
+    toolCall.kind !== 'read' ||
+    toolCall.title !== 'Read' ||
+    !stringValue(input, ['file_path']) ||
+    text.length === 0
+  ) {
+    return text;
+  }
+
+  let numberedText = text;
+  if (text.startsWith(CLAUDE_SYSTEM_REMINDER_OPEN)) {
+    const reminderEnd = text.indexOf(CLAUDE_SYSTEM_REMINDER_CLOSE);
+    if (reminderEnd === -1) return text;
+    numberedText = text.slice(reminderEnd + CLAUDE_SYSTEM_REMINDER_CLOSE.length);
+    if (numberedText.length === 0) return text;
+  }
+
+  const offset = input?.offset;
+  if (
+    offset !== undefined &&
+    (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 1)
+  ) {
+    return text;
+  }
+
+  let cursor = 0;
+  let expectedLine = typeof offset === 'number' ? offset : 1;
+  const lines: string[] = [];
+  while (cursor < numberedText.length) {
+    const lineFeed = numberedText.indexOf('\n', cursor);
+    const lineEnd = lineFeed === -1 ? numberedText.length : lineFeed;
+    let prefixEnd = cursor;
+    while (prefixEnd < lineEnd) {
+      const codePoint = numberedText.codePointAt(prefixEnd);
+      if (codePoint === undefined || codePoint < 48 || codePoint > 57) break;
+      prefixEnd += 1;
+    }
+
+    if (prefixEnd === cursor || numberedText.codePointAt(prefixEnd) !== 9) return text;
+    const lineNumber = Number.parseInt(numberedText.slice(cursor, prefixEnd), 10);
+    if (!Number.isSafeInteger(lineNumber) || lineNumber < 1 || lineNumber !== expectedLine) {
+      return text;
+    }
+
+    expectedLine = lineNumber + 1;
+    lines.push(numberedText.slice(prefixEnd + 1, lineFeed === -1 ? lineEnd : lineFeed + 1));
+    if (lineFeed === -1) break;
+    cursor = lineFeed + 1;
+  }
+
+  return lines.join('');
 }
 
 function fallbackContent(toolCall: ToolCall): ContentBlock[] {

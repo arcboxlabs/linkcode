@@ -61,17 +61,17 @@ const components: Components = {
     </p>
   ),
   h1: ({ className, children, node: _node, ...rest }) => (
-    <h1 className={cn('mt-4 mb-2 font-semibold text-lg', className)} {...rest}>
+    <h1 className={cn('mt-4 mb-2 font-semibold text-lg first:mt-0', className)} {...rest}>
       {children}
     </h1>
   ),
   h2: ({ className, children, node: _node, ...rest }) => (
-    <h2 className={cn('mt-4 mb-2 font-semibold text-base', className)} {...rest}>
+    <h2 className={cn('mt-4 mb-2 font-semibold text-base first:mt-0', className)} {...rest}>
       {children}
     </h2>
   ),
   h3: ({ className, children, node: _node, ...rest }) => (
-    <h3 className={cn('mt-3 mb-1.5 font-semibold text-sm', className)} {...rest}>
+    <h3 className={cn('mt-3 mb-1.5 font-semibold text-sm first:mt-0', className)} {...rest}>
       {children}
     </h3>
   ),

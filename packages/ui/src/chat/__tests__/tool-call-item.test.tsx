@@ -77,11 +77,17 @@ describe('ToolCallBody', () => {
     const source = '# not-a-heading\nconst answer = 42;';
     const toolCall: ToolCall = {
       toolCallId: 'read-source',
-      title: 'Read source',
+      title: 'Read',
       kind: 'read',
       status: 'completed',
       locations: [{ path: 'src/answer.ts' }],
-      content: [{ type: 'content', content: { type: 'text', text: source } }],
+      rawInput: { file_path: 'src/answer.ts' },
+      content: [
+        {
+          type: 'content',
+          content: { type: 'text', text: '1\t# not-a-heading\n2\tconst answer = 42;' },
+        },
+      ],
     };
 
     const { container } = render(<ToolCallBody toolCall={toolCall} />);
@@ -94,11 +100,17 @@ describe('ToolCallBody', () => {
   it('renders Markdown file reads as a document preview', () => {
     const toolCall: ToolCall = {
       toolCallId: 'read-markdown',
-      title: 'Read document',
+      title: 'Read',
       kind: 'read',
       status: 'completed',
       locations: [{ path: 'docs/preview.md' }],
-      content: [{ type: 'content', content: { type: 'text', text: '# Preview\n\n- First item' } }],
+      rawInput: { file_path: 'docs/preview.md' },
+      content: [
+        {
+          type: 'content',
+          content: { type: 'text', text: '1\t# Preview\n2\t\n3\t- First item' },
+        },
+      ],
     };
 
     const { container } = render(<ToolCallBody toolCall={toolCall} />);

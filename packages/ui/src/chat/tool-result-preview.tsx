@@ -14,6 +14,7 @@ import {
   toolCallFetchStatus,
   toolCallFetchUrl,
   toolCallFilePath,
+  toolCallReadPreviewText,
   toolCallSearchQuery,
 } from './tool-result-content';
 import { TOOL_KIND_ICONS, toolCallCommand } from './tool-utils';
@@ -85,12 +86,13 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
     case 'read': {
       const path = toolCallFilePath(toolCall) ?? toolCall.title;
       const language = fileExtension(path) || undefined;
+      const previewText = toolCallReadPreviewText(toolCall, text);
       return artifactKindForPath(path) === 'markdown' ? (
         <ToolPreviewCard badge={language} icon={FileTextIcon} title={path}>
-          <Markdown>{text}</Markdown>
+          <Markdown>{previewText}</Markdown>
         </ToolPreviewCard>
       ) : (
-        <CodeBlock code={text} language={language} title={path} />
+        <CodeBlock code={previewText} language={language} title={path} />
       );
     }
     case 'edit':
