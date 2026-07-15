@@ -4,6 +4,7 @@ import {
   toolCallDisplayContent,
   toolCallDisplayText,
   toolCallExecuteText,
+  toolCallReadPreviewText,
 } from '../tool-result-content';
 
 function call(overrides: Partial<ToolCall>): ToolCall {
@@ -75,5 +76,50 @@ describe('tool result content policy', () => {
         call({ kind: 'execute', rawOutput: { exitCode: 1, message: 'command failed' } }),
       ),
     ).toBe('command failed');
+  });
+
+  it('unwraps a complete Claude Read line-number sequence', () => {
+    const toolCall = call({
+      kind: 'read',
+      title: 'Read',
+      rawInput: { file_path: '/repo/docs/preview.md', offset: 7 },
+    });
+
+    expect(
+      toolCallReadPreviewText(toolCall, '7\t# Preview\r\n8\t\r\n9\t1. First\r\n10\t2. Second\r\n'),
+    ).toBe('# Preview\r\n\r\n1. First\r\n2. Second\r\n');
+    expect(toolCallReadPreviewText(toolCall, '7\t7\talpha\n8\t8\tbeta')).toBe('7\talpha\n8\tbeta');
+    expect(toolCallReadPreviewText(toolCall, '7\talpha\r99\tbeta\u{2028}123\tgamma')).toBe(
+      'alpha\r99\tbeta\u{2028}123\tgamma',
+    );
+    expect(
+      toolCallReadPreviewText(
+        toolCall,
+        '<system-reminder>Provider metadata.</system-reminder>\n7\t# Preview\n8\t',
+      ),
+    ).toBe('# Preview\n');
+  });
+
+  it('preserves non-Claude and incomplete numbered content', () => {
+    const text = '1\talpha\n2\tbeta';
+    expect(
+      toolCallReadPreviewText(
+        call({ kind: 'read', title: 'read', rawInput: { path: '/repo/data.tsv' } }),
+        text,
+      ),
+    ).toBe(text);
+    expect(
+      toolCallReadPreviewText(
+        call({ kind: 'read', title: 'Read', rawInput: { file_path: '/repo/data.tsv' } }),
+        '1\talpha\n3\tbeta',
+      ),
+    ).toBe('1\talpha\n3\tbeta');
+    const reminder = '<system-reminder>Short-offset warning.</system-reminder>';
+    expect(
+      toolCallReadPreviewText(
+        call({ kind: 'read', title: 'Read', rawInput: { file_path: '/repo/data.tsv' } }),
+        reminder,
+      ),
+    ).toBe(reminder);
   });
 });

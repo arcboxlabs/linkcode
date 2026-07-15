@@ -14,9 +14,9 @@ export function ToolPreviewCard({
 }): React.ReactNode {
   return (
     <Card className="my-1 overflow-hidden">
-      <CardHeader className="grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 border-b px-3 py-2">
+      <CardHeader className="grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 border-b bg-muted/32 px-3 py-1.5 in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-1.5">
         <Icon className="size-3.5 text-muted-foreground" />
-        <CardTitle className="truncate font-mono font-normal text-xs leading-normal">
+        <CardTitle className="truncate font-mono font-normal text-muted-foreground text-xs leading-normal">
           {title}
         </CardTitle>
         {badge ? (
@@ -25,7 +25,7 @@ export function ToolPreviewCard({
           </Badge>
         ) : null}
       </CardHeader>
-      <CardPanel className="p-3">{children}</CardPanel>
+      <CardPanel className="px-3 py-2">{children}</CardPanel>
     </Card>
   );
 }
