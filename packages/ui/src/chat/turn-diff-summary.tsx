@@ -6,6 +6,7 @@ import {
 } from 'coss-ui/components/collapsible';
 import { ChevronDownIcon, FileDiffIcon, Undo2Icon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { useArtifactHostActions } from './artifacts/context';
 import type { TurnEdits, TurnFileEdit } from './turn-edits';
 
 const COLLAPSED_FILE_COUNT = 3;
@@ -19,10 +20,11 @@ export function TurnDiffSummary({
   edits: TurnEdits;
   /** TODO(git): wire to checkpoint restore once the git integration lands; disabled until then. */
   onUndo?: () => void;
-  /** TODO(review): open the diff review once conversation↔panel navigation is designed. */
+  /** Opens the host's review surface; disabled when the current shell has none. */
   onReview?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.diffSummary');
+  const openFile = useArtifactHostActions()?.openFile;
   const visibleFiles = edits.files.slice(0, COLLAPSED_FILE_COUNT);
   const overflowFiles = edits.files.slice(COLLAPSED_FILE_COUNT);
 
@@ -44,13 +46,13 @@ export function TurnDiffSummary({
       </div>
       <Collapsible className="border-border border-t px-3 py-1">
         {visibleFiles.map((file) => (
-          <FileRow key={file.path} file={file} />
+          <FileRow key={file.path} file={file} onOpenFile={openFile} />
         ))}
         {overflowFiles.length > 0 && (
           <>
             <CollapsibleContent>
               {overflowFiles.map((file) => (
-                <FileRow key={file.path} file={file} />
+                <FileRow key={file.path} file={file} onOpenFile={openFile} />
               ))}
             </CollapsibleContent>
             <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-muted-foreground text-sm hover:text-foreground">
@@ -67,17 +69,36 @@ export function TurnDiffSummary({
   );
 }
 
-function FileRow({ file }: { file: TurnFileEdit }): React.ReactNode {
+function FileRow({
+  file,
+  onOpenFile,
+}: {
+  file: TurnFileEdit;
+  onOpenFile?: (path: string) => void;
+}): React.ReactNode {
   const basenameStart = file.path.lastIndexOf('/') + 1;
-
-  return (
-    <div className="flex items-center gap-2 py-1">
-      <span className="min-w-0 flex-1 truncate text-sm text-ellipsis">
-        <span className="text-muted-foreground">{file.path.slice(0, basenameStart)}</span>
+  const body = (
+    <>
+      <span className="min-w-0 flex-1 truncate text-ellipsis text-sm">
+        <span className="text-muted-foreground transition-colors group-hover/file:text-foreground">
+          {file.path.slice(0, basenameStart)}
+        </span>
         <span className="text-foreground">{file.path.slice(basenameStart)}</span>
       </span>
       <DiffStat additions={file.additions} deletions={file.deletions} />
-    </div>
+    </>
+  );
+
+  if (!onOpenFile) return <div className="flex items-center gap-2 py-1">{body}</div>;
+
+  return (
+    <Button
+      className="group/file h-auto w-full justify-start rounded-none border-0 px-0 py-1 text-left font-normal text-sm hover:bg-transparent sm:text-sm"
+      variant="ghost"
+      onClick={() => onOpenFile(file.path)}
+    >
+      {body}
+    </Button>
   );
 }
 

@@ -43,6 +43,8 @@ export interface ConversationViewProps {
   /** requestIds answered in this client, including cancelled skips. */
   permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  /** Opens this turn's workspace changes in the host review surface. */
+  onReviewChanges?: () => void;
 }
 
 /** The centered message stream — the main reading surface. Auto-follows only while pinned to the bottom. */
@@ -53,6 +55,7 @@ export function ConversationView({
   modelName,
   permissionDecisions,
   TerminalBlockComponent,
+  onReviewChanges,
 }: ConversationViewProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const tk = useTranslations('workbench.agentKind');
@@ -225,7 +228,7 @@ export function ConversationView({
               {hasAgentTurnContent ? (
                 <div className="group/turn flex flex-col gap-3">
                   {agentEntries.map((entry) => renderEntry(entry, childrenByParent))}
-                  {edits ? <TurnDiffSummary edits={edits} /> : null}
+                  {edits ? <TurnDiffSummary edits={edits} onReview={onReviewChanges} /> : null}
                   {replyText ? (
                     <AgentTurnActions
                       agentKind={agentKind}

@@ -45,6 +45,8 @@ export interface ConversationSurfaceProps {
   /** Opens a produced-file artifact in the shell's viewer (desktop right panel). Absent
    * when the shell has no viewer — file cards then render without the open affordance. */
   onOpenFileArtifact?: (path: string) => void;
+  /** Opens workspace changes in the shell's review surface. */
+  onReviewChanges?: () => void;
   /** Hosts inline content on the daemon's ephemeral origin (sandboxed html previews). */
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
@@ -84,6 +86,7 @@ export function ConversationSurface({
   onRespondPermission,
   onRespondQuestion,
   onOpenFileArtifact,
+  onReviewChanges,
   onHostArtifact,
   onOpenPreviewUrl,
   onModeChange,
@@ -120,6 +123,7 @@ export function ConversationSurface({
             modelName={modelName}
             permissionDecisions={permissionDecisions}
             TerminalBlockComponent={TerminalBlockComponent}
+            onReviewChanges={onReviewChanges}
           />
         </ArtifactHostActionsProvider>
       </div>
