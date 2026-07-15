@@ -44,7 +44,7 @@ function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): R
   let resultCount = 0;
   let lineStart = 0;
   for (let index = 0; index < text.length; index += 1) {
-    if (text.charCodeAt(index) !== 10) continue;
+    if (text.codePointAt(index) !== 10) continue;
     if (index > lineStart) resultCount += 1;
     lineStart = index + 1;
   }

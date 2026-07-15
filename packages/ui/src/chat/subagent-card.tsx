@@ -1,5 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
+import { Button } from 'coss-ui/components/button';
 import {
   Collapsible,
   CollapsibleContent,
@@ -9,10 +10,14 @@ import { Spinner } from 'coss-ui/components/spinner';
 import { BotIcon, ChevronRightIcon, Maximize2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
 import { Message, MessageContent } from './message';
 import { ThoughtBlock } from './thought-block';
+import { TOOL_DETAIL_SCROLL_CLASS_NAME } from './tool';
 import { ToolCallBody, ToolCallItem } from './tool-call-item';
+import { toolCallDisplayText } from './tool-result-content';
+import { toolCallFailureMessage } from './tool-utils';
 import type { ConversationItem } from './types';
 
 export interface SubagentTaskInput {
@@ -48,7 +53,7 @@ interface SubagentTranscriptProps {
  * which recurses into its own SubagentCard — partitioning buckets grandchildren under the inner
  * task, so a plain tool row would silently drop them. The Task's own rawOutput is not repeated —
  * the transcript already ends with the subagent's report — except as the empty-transcript
- * fallback (e.g. a degraded history read), so the report is never lost. */
+ * fallback when a degraded/partial history does not contain that report. */
 export function SubagentTranscript({
   toolCall,
   items,
@@ -58,6 +63,8 @@ export function SubagentTranscript({
   TerminalBlockComponent,
   onExpand,
 }: SubagentTranscriptProps): React.ReactNode {
+  const taskResult =
+    toolCallDisplayText(toolCall).trim() || toolCallFailureMessage(toolCall)?.trim();
   if (items.length === 0) {
     return (
       <div className="space-y-2">
@@ -85,10 +92,11 @@ export function SubagentTranscript({
           case 'tool':
             if (item.toolCall.kind === 'task') {
               return (
-                <SubagentCard
+                <SubagentCardContent
                   key={item.id}
                   awaitingApproval={awaitingApproval}
                   childrenByParent={childrenByParent}
+                  constrainHeight={false}
                   declined={declined}
                   items={childrenByParent.get(item.toolCall.toolCallId) ?? []}
                   onExpand={onExpand}
@@ -101,6 +109,7 @@ export function SubagentTranscript({
               <ToolCallItem
                 key={item.id}
                 awaitingApproval={awaitingApproval.has(item.toolCall.toolCallId)}
+                constrainHeight={false}
                 declined={declined.has(item.toolCall.toolCallId)}
                 toolCall={item.toolCall}
                 TerminalBlockComponent={TerminalBlockComponent}
@@ -110,16 +119,34 @@ export function SubagentTranscript({
             return null;
         }
       })}
+      {taskResult && !transcriptIncludes(items, taskResult) ? (
+        <div className="space-y-2">
+          <ToolCallBody TerminalBlockComponent={TerminalBlockComponent} toolCall={toolCall} />
+        </div>
+      ) : null}
     </>
+  );
+}
+
+function transcriptIncludes(items: readonly ConversationItem[], text: string): boolean {
+  return items.some(
+    (item) =>
+      item.kind === 'message' &&
+      item.role === 'assistant' &&
+      item.blocks.some((block) => block.type === 'text' && block.text.includes(text)),
   );
 }
 
 export type SubagentCardProps = SubagentTranscriptProps;
 
+export function SubagentCard(props: SubagentCardProps): React.ReactNode {
+  return <SubagentCardContent {...props} constrainHeight />;
+}
+
 /** Inline collapsible card for one subagent run: header shows the agent type + task description
  * and live status; the body nests the full transcript. Auto-open while running but the user's
  * toggle always wins (unlike ActivityGroup's forced-open) — a subagent can run for minutes. */
-export function SubagentCard({
+function SubagentCardContent({
   toolCall,
   items,
   childrenByParent,
@@ -127,7 +154,8 @@ export function SubagentCard({
   declined,
   TerminalBlockComponent,
   onExpand,
-}: SubagentCardProps): React.ReactNode {
+  constrainHeight,
+}: SubagentCardProps & { constrainHeight: boolean }): React.ReactNode {
   const t = useTranslations('workbench.subagent');
   const tg = useTranslations('workbench.toolGroup');
 
@@ -174,18 +202,26 @@ export function SubagentCard({
           <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
         </CollapsibleTrigger>
         {onExpand ? (
-          <button
+          <Button
             aria-label={t('viewTranscript')}
-            className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="shrink-0"
             onClick={() => onExpand(toolCall.toolCallId)}
+            size="icon-xs"
             title={t('viewTranscript')}
             type="button"
+            variant="ghost"
           >
             <Maximize2Icon className="size-3.5" />
-          </button>
+          </Button>
         ) : null}
       </div>
-      <CollapsibleContent className="mt-1 space-y-2 border-l-2 border-border pl-3">
+      <CollapsibleContent
+        className={cn(
+          'mt-1 space-y-2 border-l-2 border-border pl-3',
+          // Nested task cards share the root card's scroll container to avoid scroll traps.
+          constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
+        )}
+      >
         <SubagentTranscript
           awaitingApproval={awaitingApproval}
           childrenByParent={childrenByParent}

@@ -1,3 +1,5 @@
+import { Button } from 'coss-ui/components/button';
+import { Card } from 'coss-ui/components/card';
 import { FileIcon, FileTextIcon, FileTypeIcon, ImageIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
@@ -42,21 +44,26 @@ export function FileArtifactCard({
     </>
   );
 
-  const frame =
-    'my-1 flex w-full max-w-md items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2';
+  const frame = 'my-1 w-full max-w-md overflow-hidden';
 
   if (!openFile) {
-    return <div className={cn(frame, className)}>{body}</div>;
+    return (
+      <Card className={cn(frame, 'flex-row items-center gap-2.5 px-2.5 py-2', className)}>
+        {body}
+      </Card>
+    );
   }
 
   return (
-    <button
-      type="button"
-      className={cn(frame, 'transition-colors hover:bg-accent', className)}
-      title={t('openFile')}
-      onClick={() => openFile(path)}
-    >
-      {body}
-    </button>
+    <Card className={cn(frame, className)}>
+      <Button
+        className="h-auto w-full justify-start rounded-2xl border-0 px-2.5 py-2 font-normal focus-visible:ring-inset"
+        title={t('openFile')}
+        variant="ghost"
+        onClick={() => openFile(path)}
+      >
+        {body}
+      </Button>
+    </Card>
   );
 }

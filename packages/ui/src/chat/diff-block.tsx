@@ -1,4 +1,5 @@
 import { Button } from 'coss-ui/components/button';
+import { Card, CardHeader, CardPanel } from 'coss-ui/components/card';
 import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
@@ -48,8 +49,8 @@ export function DiffBlock({
   );
 
   return (
-    <div className="my-1 overflow-hidden rounded-lg border border-border">
-      <div className="border-b border-border bg-muted/32">
+    <Card className="my-1 overflow-hidden">
+      <CardHeader className="grid-cols-1 grid-rows-[auto] border-b bg-muted/32 p-0">
         {openFile ? (
           <Button
             className="w-full justify-start rounded-none border-0 px-3 font-normal text-xs sm:text-xs"
@@ -63,8 +64,8 @@ export function DiffBlock({
         ) : (
           <div className="flex items-center gap-2 px-3 py-1.5 text-xs">{header}</div>
         )}
-      </div>
-      <div className="overflow-x-auto font-mono text-xs leading-relaxed">
+      </CardHeader>
+      <CardPanel className="overflow-x-auto p-0 font-mono text-xs leading-relaxed">
         {rows.map((row) => (
           <div
             key={row.id}
@@ -81,7 +82,7 @@ export function DiffBlock({
             {row.text}
           </div>
         ))}
-      </div>
-    </div>
+      </CardPanel>
+    </Card>
   );
 }

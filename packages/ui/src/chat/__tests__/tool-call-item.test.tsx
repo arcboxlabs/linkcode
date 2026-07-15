@@ -5,6 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
+import { SubagentTranscript } from '../subagent-card';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 
 function translateKey(key: string): string {
@@ -237,5 +238,88 @@ describe('ToolCallItem', () => {
     render(<ToolCallItem toolCall={toolCall} />);
 
     expect(screen.getByText('moved.ts')).toBeDefined();
+  });
+});
+
+describe('SubagentTranscript', () => {
+  const taskToolCall: ToolCall = {
+    toolCallId: 'task-1',
+    title: 'Review previews',
+    kind: 'task',
+    status: 'completed',
+    rawOutput: 'Final review report',
+    content: [],
+  };
+  const sharedProps = {
+    awaitingApproval: new Set<string>(),
+    childrenByParent: new Map(),
+    declined: new Set<string>(),
+    toolCall: taskToolCall,
+  };
+
+  it('uses the task result as the empty-transcript fallback', () => {
+    render(<SubagentTranscript {...sharedProps} items={[]} />);
+
+    expect(screen.getByText('Final review report')).toBeDefined();
+  });
+
+  it('does not repeat the task result after the transcript report', () => {
+    render(
+      <SubagentTranscript
+        {...sharedProps}
+        items={[
+          {
+            id: 'message-1',
+            kind: 'message',
+            role: 'assistant',
+            turnId: null,
+            isStreaming: false,
+            blocks: [{ type: 'text', text: 'Final review report' }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText('Final review report')).toHaveLength(1);
+  });
+
+  it('appends the task result when a partial transcript does not contain it', () => {
+    render(
+      <SubagentTranscript
+        {...sharedProps}
+        items={[
+          {
+            id: 'message-1',
+            kind: 'message',
+            role: 'assistant',
+            turnId: null,
+            isStreaming: false,
+            blocks: [{ type: 'text', text: 'Reviewed the preview boundary.' }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Reviewed the preview boundary.')).toBeDefined();
+    expect(screen.getByText('Final review report')).toBeDefined();
+  });
+
+  it('does not mistake private reasoning for the user-facing task report', () => {
+    render(
+      <SubagentTranscript
+        {...sharedProps}
+        items={[
+          {
+            id: 'reasoning-1',
+            kind: 'reasoning',
+            turnId: null,
+            isStreaming: false,
+            blocks: [{ type: 'text', text: 'Final review report' }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText('Final review report')).toHaveLength(2);
   });
 });
