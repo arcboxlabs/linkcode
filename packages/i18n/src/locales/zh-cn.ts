@@ -367,8 +367,14 @@ export const zhCN = {
     title: '设置',
     back: '返回',
     searchPlaceholder: '搜索设置...',
+    groups: {
+      personal: '个人',
+      integrations: '集成',
+      system: '系统',
+    },
     tabs: {
       general: '通用',
+      appearance: '外观',
       connection: '连接',
       notifications: '通知',
       about: '关于',
@@ -398,15 +404,15 @@ export const zhCN = {
       messageCount: '{count} 条消息',
     },
     general: {
-      appearance: '外观',
-      appearanceHint: 'LinkCode 在此设备上的外观。',
+      language: '语言',
+      languageHint: '界面语言。「自动」跟随系统。',
+      languageAuto: '自动',
+    },
+    appearance: {
       theme: '主题',
       themeSystem: '跟随系统',
       themeLight: '浅色',
       themeDark: '深色',
-      language: '语言',
-      languageHint: '界面语言。「自动」跟随系统。',
-      languageAuto: '自动',
     },
     connection: {
       title: 'Daemon',

@@ -1,5 +1,8 @@
 import { Collapsible, CollapsiblePanel } from 'coss-ui/components/collapsible';
 import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
@@ -36,6 +39,12 @@ export interface SettingsSidebarNavItem {
   children?: SettingsSidebarNavSubItem[];
 }
 
+export interface SettingsSidebarNavGroup {
+  key: string;
+  label: React.ReactNode;
+  items: SettingsSidebarNavItem[];
+}
+
 export interface SettingsSidebarNavProps {
   backLabel: React.ReactNode;
   onBack?: () => void;
@@ -44,17 +53,17 @@ export interface SettingsSidebarNavProps {
   /** Focuses the back control when a non-routed settings overlay opens. */
   backAutoFocus?: boolean;
   searchPlaceholder: string;
-  items: SettingsSidebarNavItem[];
+  groups: SettingsSidebarNavGroup[];
 }
 
-/** The settings sidebar's inner nav: back row, search placeholder, and category items. */
+/** The settings sidebar's inner nav: back row, search placeholder, and grouped category items. */
 export function SettingsSidebarNav({
   backLabel,
   onBack,
   backRender,
   backAutoFocus,
   searchPlaceholder,
-  items,
+  groups,
 }: SettingsSidebarNavProps): React.ReactNode {
   return (
     <div className="px-2">
@@ -81,58 +90,68 @@ export function SettingsSidebarNav({
       </div>
 
       <nav>
-        <SidebarMenu>
-          {items.map((item) =>
-            item.children === undefined ? (
-              <SidebarMenuItem key={item.key}>
-                <SidebarMenuButton
-                  isActive={Boolean(item.active)}
-                  aria-current={item.active ? 'page' : undefined}
-                  onClick={item.onClick}
-                  render={item.render}
-                >
-                  {item.icon}
-                  {item.label}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : (
-              // Accordion category: a disclosure row (never the selected pill) whose expansion +
-              // single highlighted sub-item carry the selection signal.
-              <SidebarMenuItem key={item.key}>
-                <Collapsible open={Boolean(item.active)}>
-                  <SidebarMenuButton onClick={item.onClick} render={item.render}>
-                    {item.icon}
-                    <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
-                    <ChevronDownIcon
-                      className={cn(
-                        'size-3.5 shrink-0 text-muted-foreground transition-transform',
-                        !item.active && '-rotate-90',
-                      )}
-                    />
-                  </SidebarMenuButton>
-                  <CollapsiblePanel>
-                    <SidebarMenuSub className="my-1">
-                      {item.children.map((child) => (
-                        <SidebarMenuSubItem key={child.key}>
-                          <SidebarMenuButton
-                            className="h-7"
-                            isActive={Boolean(child.active)}
-                            aria-current={child.active ? 'page' : undefined}
-                            onClick={child.onClick}
-                          >
-                            {child.icon}
-                            {child.label}
-                          </SidebarMenuButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsiblePanel>
-                </Collapsible>
-              </SidebarMenuItem>
-            ),
-          )}
-        </SidebarMenu>
+        {groups.map((group) => (
+          <SidebarGroup key={group.key} className="p-0 pb-3">
+            <SidebarGroupLabel className="text-muted-foreground">{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{group.items.map(renderNavItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </nav>
     </div>
+  );
+}
+
+function renderNavItem(item: SettingsSidebarNavItem): React.ReactNode {
+  if (item.children === undefined) {
+    return (
+      <SidebarMenuItem key={item.key}>
+        <SidebarMenuButton
+          isActive={Boolean(item.active)}
+          aria-current={item.active ? 'page' : undefined}
+          onClick={item.onClick}
+          render={item.render}
+        >
+          {item.icon}
+          {item.label}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+  // Accordion category: a disclosure row (never the selected pill) whose expansion +
+  // single highlighted sub-item carry the selection signal.
+  return (
+    <SidebarMenuItem key={item.key}>
+      <Collapsible open={Boolean(item.active)}>
+        <SidebarMenuButton onClick={item.onClick} render={item.render}>
+          {item.icon}
+          <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+          <ChevronDownIcon
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground transition-transform',
+              !item.active && '-rotate-90',
+            )}
+          />
+        </SidebarMenuButton>
+        <CollapsiblePanel>
+          <SidebarMenuSub className="my-1">
+            {item.children.map((child) => (
+              <SidebarMenuSubItem key={child.key}>
+                <SidebarMenuButton
+                  className="h-7"
+                  isActive={Boolean(child.active)}
+                  aria-current={child.active ? 'page' : undefined}
+                  onClick={child.onClick}
+                >
+                  {child.icon}
+                  {child.label}
+                </SidebarMenuButton>
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsiblePanel>
+      </Collapsible>
+    </SidebarMenuItem>
   );
 }

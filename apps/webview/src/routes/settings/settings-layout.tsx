@@ -1,5 +1,13 @@
 import { SettingsSidebarNav, ShellSidebar, TitleStrip } from '@linkcode/ui';
-import { BellIcon, BotIcon, KeyRoundIcon, SendIcon, SettingsIcon, WifiIcon } from 'lucide-react';
+import {
+  BellIcon,
+  BotIcon,
+  KeyRoundIcon,
+  SendIcon,
+  SettingsIcon,
+  SunMoonIcon,
+  WifiIcon,
+} from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { useTranslations } from 'use-intl';
 
@@ -15,48 +23,73 @@ export function SettingsLayout(): React.ReactNode {
             backLabel={t('back')}
             backRender={<Link to="/" />}
             searchPlaceholder={t('searchPlaceholder')}
-            items={[
+            groups={[
               {
-                key: 'general',
-                icon: <SettingsIcon className="size-4" />,
-                label: t('tabs.general'),
-                active: isActive(pathname, ''),
-                render: <Link to="/settings" />,
+                key: 'personal',
+                label: t('groups.personal'),
+                items: [
+                  {
+                    key: 'general',
+                    icon: <SettingsIcon className="size-4" />,
+                    label: t('tabs.general'),
+                    active: isActive(pathname, ''),
+                    render: <Link to="/settings" />,
+                  },
+                  {
+                    key: 'appearance',
+                    icon: <SunMoonIcon className="size-4" />,
+                    label: t('tabs.appearance'),
+                    active: isActive(pathname, 'appearance'),
+                    render: <Link to="/settings/appearance" />,
+                  },
+                  {
+                    key: 'notifications',
+                    icon: <BellIcon className="size-4" />,
+                    label: t('tabs.notifications'),
+                    active: isActive(pathname, 'notifications'),
+                    render: <Link to="/settings/notifications" />,
+                  },
+                ],
               },
               {
-                key: 'connection',
-                icon: <WifiIcon className="size-4" />,
-                label: t('tabs.connection'),
-                active: isActive(pathname, 'connection'),
-                render: <Link to="/settings/connection" />,
+                key: 'integrations',
+                label: t('groups.integrations'),
+                items: [
+                  {
+                    key: 'agents',
+                    icon: <BotIcon className="size-4" />,
+                    label: t('tabs.agents'),
+                    active: isActive(pathname, 'agents'),
+                    render: <Link to="/settings/agents" />,
+                  },
+                  {
+                    key: 'providers',
+                    icon: <KeyRoundIcon className="size-4" />,
+                    label: t('tabs.providers'),
+                    active: isActive(pathname, 'providers'),
+                    render: <Link to="/settings/providers" />,
+                  },
+                  {
+                    key: 'messaging',
+                    icon: <SendIcon className="size-4" />,
+                    label: t('tabs.imChannel'),
+                    active: isActive(pathname, 'messaging'),
+                    render: <Link to="/settings/messaging" />,
+                  },
+                ],
               },
               {
-                key: 'notifications',
-                icon: <BellIcon className="size-4" />,
-                label: t('tabs.notifications'),
-                active: isActive(pathname, 'notifications'),
-                render: <Link to="/settings/notifications" />,
-              },
-              {
-                key: 'providers',
-                icon: <KeyRoundIcon className="size-4" />,
-                label: t('tabs.providers'),
-                active: isActive(pathname, 'providers'),
-                render: <Link to="/settings/providers" />,
-              },
-              {
-                key: 'agents',
-                icon: <BotIcon className="size-4" />,
-                label: t('tabs.agents'),
-                active: isActive(pathname, 'agents'),
-                render: <Link to="/settings/agents" />,
-              },
-              {
-                key: 'messaging',
-                icon: <SendIcon className="size-4" />,
-                label: t('tabs.imChannel'),
-                active: isActive(pathname, 'messaging'),
-                render: <Link to="/settings/messaging" />,
+                key: 'system',
+                label: t('groups.system'),
+                items: [
+                  {
+                    key: 'connection',
+                    icon: <WifiIcon className="size-4" />,
+                    label: t('tabs.connection'),
+                    active: isActive(pathname, 'connection'),
+                    render: <Link to="/settings/connection" />,
+                  },
+                ],
               },
             ]}
           />
@@ -81,7 +114,14 @@ export function SettingsLayout(): React.ReactNode {
 
 function isActive(
   pathname: string,
-  section: '' | 'connection' | 'notifications' | 'providers' | 'agents' | 'messaging',
+  section:
+    | ''
+    | 'appearance'
+    | 'connection'
+    | 'notifications'
+    | 'providers'
+    | 'agents'
+    | 'messaging',
 ): boolean {
   return pathname.replace(/\/$/, '') === `/settings${section ? `/${section}` : ''}`;
 }

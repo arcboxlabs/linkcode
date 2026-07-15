@@ -373,8 +373,14 @@ export const en = {
     title: 'Settings',
     back: 'Back',
     searchPlaceholder: 'Search settings...',
+    groups: {
+      personal: 'Personal',
+      integrations: 'Integrations',
+      system: 'System',
+    },
     tabs: {
       general: 'General',
+      appearance: 'Appearance',
       connection: 'Connection',
       notifications: 'Notifications',
       about: 'About',
@@ -405,15 +411,15 @@ export const en = {
       messageCount: '{count, plural, one {# message} other {# messages}}',
     },
     general: {
-      appearance: 'Appearance',
-      appearanceHint: 'How LinkCode looks on this device.',
+      language: 'Language',
+      languageHint: 'Interface language. Auto follows your system.',
+      languageAuto: 'Auto',
+    },
+    appearance: {
       theme: 'Theme',
       themeSystem: 'System',
       themeLight: 'Light',
       themeDark: 'Dark',
-      language: 'Language',
-      languageHint: 'Interface language. Auto follows your system.',
-      languageAuto: 'Auto',
     },
     connection: {
       title: 'Daemon',
