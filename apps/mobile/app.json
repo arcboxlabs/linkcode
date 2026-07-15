@@ -5,6 +5,12 @@
     "description": "Every Code Agent in the Palm of your hand.",
     "privacy": "public",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b06b97b7-e026-4f7e-afd5-ac936c93d666"
+    },
     "scheme": "linkcode",
     "orientation": "portrait",
     "icon": "../../assets/icon.png",
