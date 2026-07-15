@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./chat": "./src/chat/index.ts",
     "./node": "./src/node/index.ts",
     "./zustand": "./src/zustand/index.ts"
   },
@@ -12,6 +13,7 @@
   },
   "dependencies": {
     "@linkcode/schema": "workspace:*",
+    "foxts": "^5.8.0",
     "zod": "catalog:",
     "zustand": "catalog:"
   },

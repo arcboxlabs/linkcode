@@ -826,6 +826,9 @@ importers:
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
+      foxts:
+        specifier: ^5.8.0
+        version: 5.8.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -1023,6 +1026,9 @@ importers:
       '@fontsource/ibm-plex-mono':
         specifier: ^5.2.7
         version: 5.2.7
+      '@linkcode/common':
+        specifier: workspace:*
+        version: link:../common
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema

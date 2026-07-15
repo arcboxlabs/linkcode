@@ -27,6 +27,7 @@
     "@dnd-kit/react": "^0.5.0",
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@linkcode/common": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@pierre/diffs": "^1.2.12",
     "@streamdown/cjk": "^1.0.3",
