@@ -76,7 +76,7 @@ export function Workbench({
   }
 
   const sessions = useWorkbenchSessions(handleError);
-  useWorkbenchKeyboardShortcuts(rootRef);
+  useWorkbenchKeyboardShortcuts(rootRef, sessions);
   const conversation = useSeededConversation(sessions.active, handleError);
 
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
