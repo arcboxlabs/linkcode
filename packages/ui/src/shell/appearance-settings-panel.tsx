@@ -7,6 +7,8 @@ import {
 } from 'coss-ui/components/select';
 import { Switch } from 'coss-ui/components/switch';
 import { useTranslations } from 'use-intl';
+import type { CodeThemeDarkId, CodeThemeLightId } from '../code-themes';
+import { CODE_THEME_DARK_IDS, CODE_THEME_LABELS, CODE_THEME_LIGHT_IDS } from '../code-themes';
 import { cn } from '../lib/cn';
 import { SettingsCard, SettingsRow, SettingsSection } from './settings-page';
 
@@ -38,6 +40,10 @@ export interface AppearanceSettingsPanelProps {
   onTextSizeChange: (textSize: TextSize) => void;
   reduceMotion: boolean;
   onReduceMotionChange: (reduceMotion: boolean) => void;
+  codeThemeLight: CodeThemeLightId;
+  onCodeThemeLightChange: (codeThemeLight: CodeThemeLightId) => void;
+  codeThemeDark: CodeThemeDarkId;
+  onCodeThemeDarkChange: (codeThemeDark: CodeThemeDarkId) => void;
 }
 
 export function AppearanceSettingsPanel({
@@ -47,11 +53,23 @@ export function AppearanceSettingsPanel({
   onTextSizeChange,
   reduceMotion,
   onReduceMotionChange,
+  codeThemeLight,
+  onCodeThemeLightChange,
+  codeThemeDark,
+  onCodeThemeDarkChange,
 }: AppearanceSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.appearance');
   const textSizeItems = TEXT_SIZES.map((value) => ({
     value,
     label: t(TEXT_SIZE_LABEL_KEYS[value]),
+  }));
+  const codeThemeLightItems = CODE_THEME_LIGHT_IDS.map((value) => ({
+    value,
+    label: CODE_THEME_LABELS[value],
+  }));
+  const codeThemeDarkItems = CODE_THEME_DARK_IDS.map((value) => ({
+    value,
+    label: CODE_THEME_LABELS[value],
   }));
 
   return (
@@ -94,6 +112,51 @@ export function AppearanceSettingsPanel({
         </SettingsRow>
         <SettingsRow title={t('reduceMotion')} description={t('reduceMotionHint')}>
           <Switch checked={reduceMotion} onCheckedChange={onReduceMotionChange} />
+        </SettingsRow>
+      </SettingsCard>
+
+      <SettingsCard>
+        <SettingsRow title={t('codeThemeLight')} description={t('codeThemeHint')}>
+          <Select
+            items={codeThemeLightItems}
+            value={codeThemeLight}
+            onValueChange={(value) => {
+              const next = CODE_THEME_LIGHT_IDS.find((id) => id === value);
+              if (next) onCodeThemeLightChange(next);
+            }}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {codeThemeLightItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </SettingsRow>
+        <SettingsRow title={t('codeThemeDark')}>
+          <Select
+            items={codeThemeDarkItems}
+            value={codeThemeDark}
+            onValueChange={(value) => {
+              const next = CODE_THEME_DARK_IDS.find((id) => id === value);
+              if (next) onCodeThemeDarkChange(next);
+            }}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {codeThemeDarkItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
         </SettingsRow>
       </SettingsCard>
     </div>

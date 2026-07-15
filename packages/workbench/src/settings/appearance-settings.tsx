@@ -21,6 +21,10 @@ export function AppearanceSettingsContainer({
   const setTextSize = useAppearancePrefsStore((state) => state.setTextSize);
   const reduceMotion = useAppearancePrefsStore((state) => state.reduceMotion);
   const setReduceMotion = useAppearancePrefsStore((state) => state.setReduceMotion);
+  const codeThemeLight = useAppearancePrefsStore((state) => state.codeThemeLight);
+  const setCodeThemeLight = useAppearancePrefsStore((state) => state.setCodeThemeLight);
+  const codeThemeDark = useAppearancePrefsStore((state) => state.codeThemeDark);
+  const setCodeThemeDark = useAppearancePrefsStore((state) => state.setCodeThemeDark);
 
   return (
     <AppearanceSettingsPanel
@@ -30,6 +34,10 @@ export function AppearanceSettingsContainer({
       onTextSizeChange={setTextSize}
       reduceMotion={reduceMotion}
       onReduceMotionChange={setReduceMotion}
+      codeThemeLight={codeThemeLight}
+      onCodeThemeLightChange={setCodeThemeLight}
+      codeThemeDark={codeThemeDark}
+      onCodeThemeDarkChange={setCodeThemeDark}
     />
   );
 }

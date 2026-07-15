@@ -3,6 +3,7 @@ import { code } from '@streamdown/code';
 import type { Components, PluginConfig } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
+import { useRenderPrefs } from '../render-prefs';
 import { ArtifactFenceRenderer, artifactFenceLanguages, useArtifactHostActions } from './artifacts';
 import { detectInlineFilePath } from './artifacts/file-kind';
 
@@ -149,6 +150,7 @@ export function Markdown({
   children: string;
   className?: string;
 }): React.ReactNode {
+  const { codeTheme } = useRenderPrefs();
   return (
     <Streamdown
       // space-y-0: block rhythm comes from the per-element my-* overrides above,
@@ -156,6 +158,7 @@ export function Markdown({
       className={cn('space-y-0 break-words text-sm leading-relaxed', className)}
       components={components}
       plugins={plugins}
+      shikiTheme={codeTheme}
     >
       {children}
     </Streamdown>

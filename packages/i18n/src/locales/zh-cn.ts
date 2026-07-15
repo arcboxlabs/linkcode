@@ -440,6 +440,9 @@ export const zhCN = {
       textSizeLarge: '大',
       reduceMotion: '减弱动效',
       reduceMotionHint: '尽量减少动画与过渡效果。',
+      codeThemeLight: '浅色代码主题',
+      codeThemeDark: '深色代码主题',
+      codeThemeHint: '聊天中代码块的语法高亮配色。',
     },
     connection: {
       title: 'Daemon',

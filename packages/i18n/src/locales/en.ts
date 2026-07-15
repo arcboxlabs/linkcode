@@ -447,6 +447,9 @@ export const en = {
       textSizeLarge: 'Large',
       reduceMotion: 'Reduce motion',
       reduceMotionHint: 'Minimize animations and transitions.',
+      codeThemeLight: 'Light code theme',
+      codeThemeDark: 'Dark code theme',
+      codeThemeHint: 'Syntax highlighting theme for code blocks in chat.',
     },
     connection: {
       title: 'Daemon',
