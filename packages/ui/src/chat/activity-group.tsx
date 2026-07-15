@@ -15,7 +15,7 @@ import {
   TerminalIcon,
   WrenchIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { ActivityBucket, TimelineEntry } from './activity-groups';
@@ -24,7 +24,7 @@ import { toolCallDiffStats } from './diff-utils';
 import { TOOL_DETAIL_SCROLL_CLASS_NAME } from './tool';
 import { ToolCallBody } from './tool-call-item';
 import { hasToolBody, toolCallHeaderSummary } from './tool-utils';
-import { FILE_PATH_TOOLTIP_CLASS_NAME, withTooltip } from './with-tooltip';
+import { FilePathTooltip } from './with-tooltip';
 
 export type ActivityToolGroup = Extract<TimelineEntry, { type: 'group' }>;
 
@@ -36,6 +36,7 @@ export function ActivityGroup({
   group: ActivityToolGroup;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
+  const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
   const t = useTranslations('workbench.toolGroup');
   const hasRunning = group.items.some((item) => item.toolCall.status === 'in_progress');
   const failedCount = group.items.reduce(
@@ -54,7 +55,10 @@ export function ActivityGroup({
 
   return (
     <Collapsible className="w-full" onOpenChange={setManualOpen} open={open}>
-      {withTooltip(
+      <FilePathTooltip
+        anchor={tooltipAnchorRef}
+        tooltip={!open && summaryTooltip.length > 0 ? summaryTooltip.join(', ') : undefined}
+      >
         <CollapsibleTrigger className="group flex w-full items-center gap-2 py-1 text-left text-sm">
           <ActivityBucketIcon bucket={group.bucket} running={hasRunning} />
           <span className="shrink-0 text-foreground">{t(group.bucket)}</span>
@@ -67,7 +71,7 @@ export function ActivityGroup({
             </Badge>
           ) : null}
           {diffTotals ? <DiffCounter stats={diffTotals} /> : null}
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
+          <span className="min-w-0 flex-1 truncate text-muted-foreground/70" ref={tooltipAnchorRef}>
             {open
               ? ''
               : summaries
@@ -75,10 +79,8 @@ export function ActivityGroup({
                   .join(', ')}
           </span>
           <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
-        </CollapsibleTrigger>,
-        summaryTooltip.length > 0 ? summaryTooltip.join(', ') : undefined,
-        FILE_PATH_TOOLTIP_CLASS_NAME,
-      )}
+        </CollapsibleTrigger>
+      </FilePathTooltip>
       <CollapsibleContent
         className={cn(
           'mt-1 space-y-0.5 border-l-2 border-border pl-3',
@@ -138,18 +140,26 @@ function ActivityGroupRow({
   toolCall: ToolCall;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
+  const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
   const summary = toolCallHeaderSummary(toolCall);
+  const summaryIsTitle = summary?.label === toolCall.title;
+  const titleAnchorRef = summaryIsTitle ? tooltipAnchorRef : undefined;
   const titleClassName = cn(
     'flex min-w-0 items-center py-0.5 text-left text-sm',
     toolCall.status === 'failed' ? 'text-destructive-foreground' : 'text-muted-foreground',
   );
   const label = (
     <>
-      <span className="min-w-0 truncate">{toolCall.title}</span>
-      {summary && summary.label !== toolCall.title ? (
+      <span className="min-w-0 truncate" ref={titleAnchorRef}>
+        {toolCall.title}
+      </span>
+      {summary && !summaryIsTitle ? (
         <>
           {' '}
-          <span className="ml-1 min-w-0 flex-1 truncate text-muted-foreground/70 text-xs">
+          <span
+            className="ml-1 min-w-0 flex-1 truncate text-muted-foreground/70 text-xs"
+            ref={tooltipAnchorRef}
+          >
             · {summary.label}
           </span>
         </>
@@ -158,31 +168,29 @@ function ActivityGroupRow({
   );
 
   if (!hasToolBody(toolCall)) {
-    return withTooltip(
-      <div
-        className={cn(
-          titleClassName,
-          summary?.tooltip &&
-            'rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        )}
-        tabIndex={summary?.tooltip ? 0 : undefined}
-      >
-        {label}
-      </div>,
-      summary?.tooltip,
-      FILE_PATH_TOOLTIP_CLASS_NAME,
+    return (
+      <FilePathTooltip anchor={tooltipAnchorRef} tooltip={summary?.tooltip}>
+        <div
+          className={cn(
+            titleClassName,
+            summary?.tooltip &&
+              'rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          )}
+          tabIndex={summary?.tooltip ? 0 : undefined}
+        >
+          {label}
+        </div>
+      </FilePathTooltip>
     );
   }
 
   return (
     <Collapsible>
-      {withTooltip(
+      <FilePathTooltip anchor={tooltipAnchorRef} tooltip={summary?.tooltip}>
         <CollapsibleTrigger className={cn(titleClassName, 'w-full hover:text-foreground')}>
           {label}
-        </CollapsibleTrigger>,
-        summary?.tooltip,
-        FILE_PATH_TOOLTIP_CLASS_NAME,
-      )}
+        </CollapsibleTrigger>
+      </FilePathTooltip>
       <CollapsibleContent className="my-1 space-y-2 pl-1.5">
         <ToolCallBody TerminalBlockComponent={TerminalBlockComponent} toolCall={toolCall} />
       </CollapsibleContent>

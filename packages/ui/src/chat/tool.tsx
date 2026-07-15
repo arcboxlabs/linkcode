@@ -7,13 +7,14 @@ import {
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
 import { ChevronRightIcon, ShieldIcon } from 'lucide-react';
+import { useRef } from 'react';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
 import type { DiffStats } from './diff-utils';
 import { TOOL_KIND_ICONS } from './tool-utils';
-import { FILE_PATH_TOOLTIP_CLASS_NAME, withTooltip } from './with-tooltip';
+import { FilePathTooltip } from './with-tooltip';
 
-export const TOOL_DETAIL_SCROLL_CLASS_NAME = 'max-h-96 overflow-y-auto overscroll-contain';
+export const TOOL_DETAIL_SCROLL_CLASS_NAME = 'max-h-96 overflow-y-auto';
 
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
 
@@ -55,15 +56,22 @@ export function ToolHeader({
   hasBody = false,
   ...props
 }: ToolHeaderProps): React.ReactNode {
+  const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
+  const titleAnchorRef = tooltip && !summary ? tooltipAnchorRef : undefined;
   const content = (
     <>
       <ToolIcon awaitingApproval={awaitingApproval} icon={icon} kind={kind} status={status} />
-      <span className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}>
+      <span
+        className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}
+        ref={titleAnchorRef}
+      >
         {title}
       </span>
       {diffStats ? <DiffCounter stats={diffStats} /> : null}
       {summary ? (
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground" ref={tooltipAnchorRef}>
+          · {summary}
+        </span>
       ) : null}
       {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
       {badge ? <Badge variant="secondary">{badge}</Badge> : null}
@@ -77,25 +85,25 @@ export function ToolHeader({
     className,
   );
 
-  return withTooltip(
-    hasBody ? (
-      <CollapsibleTrigger className={headerClassName} {...props}>
-        {content}
-      </CollapsibleTrigger>
-    ) : (
-      <div
-        className={cn(
-          headerClassName,
-          tooltip &&
-            'rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-        )}
-        tabIndex={tooltip ? 0 : undefined}
-      >
-        {content}
-      </div>
-    ),
-    tooltip,
-    FILE_PATH_TOOLTIP_CLASS_NAME,
+  return (
+    <FilePathTooltip anchor={tooltipAnchorRef} tooltip={tooltip}>
+      {hasBody ? (
+        <CollapsibleTrigger className={headerClassName} {...props}>
+          {content}
+        </CollapsibleTrigger>
+      ) : (
+        <div
+          className={cn(
+            headerClassName,
+            tooltip &&
+              'rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+          )}
+          tabIndex={tooltip ? 0 : undefined}
+        >
+          {content}
+        </div>
+      )}
+    </FilePathTooltip>
   );
 }
 

@@ -10,12 +10,14 @@ function FileIcon({ icon: Icon }: { icon: FileIconComponent }): React.ReactNode 
 export function FileIdentityIcon({
   className,
   path,
+  ref,
 }: {
   className?: string;
   path: string;
+  ref?: React.Ref<HTMLSpanElement>;
 }): React.ReactNode {
   return (
-    <span aria-hidden className={cn('inline-flex size-3.5 shrink-0', className)}>
+    <span aria-hidden className={cn('inline-flex size-3.5 shrink-0', className)} ref={ref}>
       <FileIcon icon={fileIconFor({ name: path })} />
     </span>
   );
