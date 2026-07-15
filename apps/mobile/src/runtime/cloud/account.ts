@@ -29,10 +29,16 @@ export function useCloudAccount(): CloudAccount {
   return { status: 'signed-in', user: data.user };
 }
 
-export function signInToCloud(): Promise<unknown> {
+export async function signInToCloud(): Promise<void> {
   // Generic OAuth shares the social sign-in flow as of better-auth 1.7. The
   // system browser runs the IdP flow; the deep link lands back on /connect.
-  return cloudAuthClient.signIn.social({ provider: IDP_PROVIDER_ID, callbackURL: '/connect' });
+  // better-auth reports failures as a value, not a rejection — rethrow so the
+  // caller can show them (a dismissed browser session resolves without error).
+  const { error } = await cloudAuthClient.signIn.social({
+    provider: IDP_PROVIDER_ID,
+    callbackURL: '/connect',
+  });
+  if (error) throw new Error(`sign-in failed (${error.status})`);
 }
 
 export async function signOutOfCloud(): Promise<void> {
