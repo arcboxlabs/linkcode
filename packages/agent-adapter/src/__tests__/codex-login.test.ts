@@ -74,6 +74,16 @@ describe('startCodexLogin', () => {
     expect(settles).toEqual([{ ok: false, error: 'Login server error: Login was not completed' }]);
   });
 
+  it('falls back to a generic message when the failure carries no error string', async () => {
+    const { servers, settles } = harness();
+    await wait(0);
+    servers[0].opts.onNotification('account/login/completed', {
+      loginId: 'login-1',
+      success: false,
+    });
+    expect(settles).toEqual([{ ok: false, error: 'login failed' }]);
+  });
+
   it('settles once: cancel closes the child and later notifications are ignored', async () => {
     const { servers, settles, handle } = harness();
     await wait(0);
