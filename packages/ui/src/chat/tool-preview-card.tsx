@@ -14,7 +14,7 @@ export function ToolPreviewCard({
 }): React.ReactNode {
   return (
     <Card className="my-1 overflow-hidden">
-      <CardHeader className="grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 border-b bg-muted/32 px-3 py-1.5 in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-1.5">
+      <CardHeader className="grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 border-b bg-muted px-3 py-1.5 in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-1.5">
         <Icon className="size-3.5 text-muted-foreground" />
         <CardTitle className="truncate font-mono font-normal text-muted-foreground text-xs leading-normal">
           {title}

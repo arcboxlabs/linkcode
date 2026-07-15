@@ -45,7 +45,7 @@ export function TerminalHeader({ className, ...props }: TerminalHeaderProps): Re
   return (
     <CardHeader
       className={cn(
-        'grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 px-3 py-2 text-xs',
+        'grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 px-3 py-1.5 text-xs',
         className,
       )}
       {...props}
@@ -84,7 +84,7 @@ export function TerminalContent({
   return (
     <pre
       className={cn(
-        'max-h-80 overflow-auto border-t border-border px-3 py-2 font-mono text-xs leading-relaxed',
+        'max-h-80 overflow-auto border-t border-border px-3 py-2 font-mono text-xs leading-relaxed bg-background',
         className,
       )}
       {...props}
