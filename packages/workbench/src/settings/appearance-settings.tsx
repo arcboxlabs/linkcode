@@ -1,0 +1,35 @@
+import type { ThemePreference } from '@linkcode/ui';
+import { AppearanceSettingsPanel } from '@linkcode/ui';
+import { useAppearancePrefsStore } from './appearance-store';
+
+export interface AppearanceSettingsContainerProps {
+  /** Theme lives in each app's own store (system plane on desktop), so it is passed in. */
+  theme: ThemePreference;
+  onThemeChange: (theme: ThemePreference) => void;
+}
+
+/**
+ * Wires the shared appearance store into the presentational {@link AppearanceSettingsPanel}. The
+ * theme control is app-owned and threaded through as props; everything else reads the store here so
+ * both apps' Appearance tabs stay in sync without duplicating the store reads.
+ */
+export function AppearanceSettingsContainer({
+  theme,
+  onThemeChange,
+}: AppearanceSettingsContainerProps): React.ReactNode {
+  const textSize = useAppearancePrefsStore((state) => state.textSize);
+  const setTextSize = useAppearancePrefsStore((state) => state.setTextSize);
+  const reduceMotion = useAppearancePrefsStore((state) => state.reduceMotion);
+  const setReduceMotion = useAppearancePrefsStore((state) => state.setReduceMotion);
+
+  return (
+    <AppearanceSettingsPanel
+      theme={theme}
+      onThemeChange={onThemeChange}
+      textSize={textSize}
+      onTextSizeChange={setTextSize}
+      reduceMotion={reduceMotion}
+      onReduceMotionChange={setReduceMotion}
+    />
+  );
+}

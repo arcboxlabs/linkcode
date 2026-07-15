@@ -440,6 +440,13 @@ export const en = {
       themeSystem: 'System',
       themeLight: 'Light',
       themeDark: 'Dark',
+      textSize: 'Text size',
+      textSizeHint: 'Scale text and UI elements across the whole interface.',
+      textSizeSmall: 'Small',
+      textSizeDefault: 'Default',
+      textSizeLarge: 'Large',
+      reduceMotion: 'Reduce motion',
+      reduceMotionHint: 'Minimize animations and transitions.',
     },
     connection: {
       title: 'Daemon',

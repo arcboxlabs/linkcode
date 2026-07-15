@@ -57,6 +57,8 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('appearance.themeSystem'),
       t('appearance.themeLight'),
       t('appearance.themeDark'),
+      t('appearance.textSize'),
+      t('appearance.reduceMotion'),
     ],
     notifications: [
       t('notifications.enable'),

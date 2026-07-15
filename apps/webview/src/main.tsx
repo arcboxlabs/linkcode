@@ -1,4 +1,5 @@
 import { setKeyboardShortcutPlatform } from '@linkcode/ui';
+import { installAppearancePrefs } from '@linkcode/workbench';
 import * as Sentry from '@sentry/react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
@@ -19,7 +20,8 @@ Sentry.init({
 const el = document.getElementById('root');
 if (!el) throw new Error('#root not found');
 
-// Apply the stored theme before first paint; the app keeps it in sync thereafter.
+// Apply the stored theme and appearance prefs before first paint; the app keeps them in sync after.
 installTheme();
+installAppearancePrefs();
 
 createRoot(el).render(<RouterProvider router={router} />);

@@ -1,9 +1,19 @@
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from 'coss-ui/components/select';
+import { Switch } from 'coss-ui/components/switch';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import { SettingsSection } from './settings-page';
+import { SettingsCard, SettingsRow, SettingsSection } from './settings-page';
 
 /** Display-layer theme union — apps map their own store's theme type onto this. */
 export type ThemePreference = 'system' | 'light' | 'dark';
+/** Display-layer text-size union — mirrors the workbench appearance store's `TextSize`. */
+export type TextSize = 'small' | 'default' | 'large';
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
 
@@ -13,16 +23,36 @@ const THEME_LABEL_KEYS = {
   dark: 'themeDark',
 } as const;
 
+const TEXT_SIZES: readonly TextSize[] = ['small', 'default', 'large'];
+
+const TEXT_SIZE_LABEL_KEYS = {
+  small: 'textSizeSmall',
+  default: 'textSizeDefault',
+  large: 'textSizeLarge',
+} as const;
+
 export interface AppearanceSettingsPanelProps {
   theme: ThemePreference;
   onThemeChange: (theme: ThemePreference) => void;
+  textSize: TextSize;
+  onTextSizeChange: (textSize: TextSize) => void;
+  reduceMotion: boolean;
+  onReduceMotionChange: (reduceMotion: boolean) => void;
 }
 
 export function AppearanceSettingsPanel({
   theme,
   onThemeChange,
+  textSize,
+  onTextSizeChange,
+  reduceMotion,
+  onReduceMotionChange,
 }: AppearanceSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.appearance');
+  const textSizeItems = TEXT_SIZES.map((value) => ({
+    value,
+    label: t(TEXT_SIZE_LABEL_KEYS[value]),
+  }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -39,6 +69,33 @@ export function AppearanceSettingsPanel({
           ))}
         </div>
       </SettingsSection>
+
+      <SettingsCard>
+        <SettingsRow title={t('textSize')} description={t('textSizeHint')}>
+          <Select
+            items={textSizeItems}
+            value={textSize}
+            onValueChange={(value) => {
+              const next = TEXT_SIZES.find((size) => size === value);
+              if (next) onTextSizeChange(next);
+            }}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {textSizeItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </SettingsRow>
+        <SettingsRow title={t('reduceMotion')} description={t('reduceMotionHint')}>
+          <Switch checked={reduceMotion} onCheckedChange={onReduceMotionChange} />
+        </SettingsRow>
+      </SettingsCard>
     </div>
   );
 }

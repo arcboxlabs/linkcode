@@ -31,6 +31,18 @@
     "Courier New", monospace;
 }
 
+/* Reduce-motion preference (appearance setting, not the OS query — it can differ from the system
+   default). Neutralizes CSS transitions/animations app-wide; JS-driven motion (framer Shimmer)
+   opts out through the RenderPrefs context instead. Unlayered + !important so it wins everywhere. */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
 @layer base {
   html,
   body,

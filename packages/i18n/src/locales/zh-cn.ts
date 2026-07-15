@@ -433,6 +433,13 @@ export const zhCN = {
       themeSystem: '跟随系统',
       themeLight: '浅色',
       themeDark: '深色',
+      textSize: '文字大小',
+      textSizeHint: '调整整个界面的文字与元素缩放。',
+      textSizeSmall: '小',
+      textSizeDefault: '默认',
+      textSizeLarge: '大',
+      reduceMotion: '减弱动效',
+      reduceMotionHint: '尽量减少动画与过渡效果。',
     },
     connection: {
       title: 'Daemon',

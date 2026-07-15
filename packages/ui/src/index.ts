@@ -7,4 +7,5 @@ export * from './brand/animated-mark';
 export * from './chat';
 export * from './keyboard';
 export { cn } from './lib/cn';
+export * from './render-prefs';
 export * from './shell';
