@@ -20,6 +20,7 @@ import type {
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
 import {
@@ -94,6 +95,21 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
  * structurally (the class's private fields would otherwise force a top-type cast). */
 export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHandler' | 'close'>;
+
+const CODEX_AUTH_FAILED_MESSAGE = 'Codex authentication failed — sign in to your ChatGPT account';
+
+/** Whether an app-server `error` notification reports the 401 of a signed-out/expired login. The
+ * structured status rides only the mid-retry notifications
+ * (`codexErrorInfo.responseStreamDisconnected.httpStatusCode`); the final no-retry error degrades
+ * to `codexErrorInfo: "other"` with the 401 left in prose — match both (verified live on
+ * codex-cli 0.144.1). */
+function isCodexAuthError(error: Record<string, unknown>): boolean {
+  const info = recordField(error, 'codexErrorInfo');
+  const disconnected = info && recordField(info, 'responseStreamDisconnected');
+  if (disconnected && numberField(disconnected, 'httpStatusCode') === 401) return true;
+  const prose = `${stringField(error, 'message') ?? ''}\n${stringField(error, 'additionalDetails') ?? ''}`;
+  return prose.includes('401 Unauthorized');
+}
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -255,6 +271,11 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Streamed text length per item id: converts `item/completed` full texts into the missing
    * remainder (delta backstop), and suppresses re-emitting reasoning that already streamed. */
   private readonly streamedTextLen = new Map<string, number>();
+  /** Latched on the first 401 the app-server reports; cleared when a fresh server spawns. The
+   * process caches its credentials for its whole lifetime (verified live — an `auth.json` written
+   * after spawn is never re-read), so the flag both dedupes the retry storm's banners and marks
+   * this server as unable to recover in place. */
+  private authFailed = false;
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model;
@@ -530,6 +551,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.handleApproval(params, 'edit'),
     );
     this.server = server;
+    // A fresh process re-read the on-disk credentials — its auth state is unknown again.
+    this.authFailed = false;
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
     const preset = POLICY_PRESETS[this.policyId];
@@ -622,7 +645,11 @@ export class CodexAdapter extends BaseAgentAdapter {
       if (turnId && this.activeTurnId === null) this.activateTurn(turnId);
     } catch (err) {
       this.cancelRequested = false;
-      this.emitError(extractErrorMessage(err) ?? 'codex: turn failed to start');
+      // An auth retirement rejects any in-flight turn/start when it closes the server — the
+      // auth-coded error already told that story, so don't stack a connection-closed banner.
+      if (!this.authFailed) {
+        this.emitError(extractErrorMessage(err) ?? 'codex: turn failed to start');
+      }
       this.teardown();
       this.emitStatus('idle');
     } finally {
@@ -633,17 +660,36 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** The app-server died out from under the session (crash, external kill). Finalize the turn
    * like claude-code's consume() unwind, and arm the next prompt to respawn + resume in place. */
   private handleServerExit(detail: string): void {
+    this.emitError(`codex: app-server exited unexpectedly${detail ? ` (${detail})` : ''}`);
+    this.finalizeServer();
+  }
+
+  /** One auth-coded error per failed server (the engine's login re-probe keys on the code), then
+   * retire it: the 401 retry storm (5× websocket + 5× https, ~27 s, verified live) can never
+   * succeed against process-cached credentials, so waiting it out only burns time and banners. */
+  private handleAuthFailure(): void {
+    if (this.authFailed) return;
+    this.authFailed = true;
+    this.emitError(CODEX_AUTH_FAILED_MESSAGE, AUTH_FAILED_ERROR_CODE, false);
+    // Deliberate close(): CodexAppServer suppresses onExit for it, so no exit alarm follows.
+    this.server?.close();
+    this.finalizeServer();
+  }
+
+  /** Shared unwind for a server that is gone (crashed) or being retired (auth failure): finalize
+   * the turn and arm the next prompt to respawn + `thread/resume` in place — the respawn re-reads
+   * the on-disk credentials, which is what makes retry-after-login work at all. */
+  private finalizeServer(): void {
     this.server = null;
     this.activeTurnId = null;
-    // turnStartsInFlight is deliberately untouched: the exit already rejected any in-flight
-    // turn/start (failAllPending runs before onExit), so each frame's finally releases its own
-    // slot — resetting here would double-release against a late finally.
+    // turnStartsInFlight is deliberately untouched: the exit/close already rejected any in-flight
+    // turn/start (failAllPending runs first), so each frame's finally releases its own slot —
+    // resetting here would double-release against a late finally.
     this.cancelRequested = false;
     this.holdSessionRef = false;
     this.pendingTurnInputs = [];
     this.resumeFrom = this.threadId ?? this.resumeFrom;
     this.threadId = null;
-    this.emitError(`codex: app-server exited unexpectedly${detail ? ` (${detail})` : ''}`);
     this.teardown();
     this.emitStatus('idle');
   }
@@ -735,6 +781,11 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
       case 'error': {
         const error = recordField(params, 'error');
+        if (error && isCodexAuthError(error)) {
+          // Every 401 retry re-reports the same failure; the first one settles it.
+          this.handleAuthFailure();
+          break;
+        }
         const message = error ? stringField(error, 'message') : undefined;
         // Turn-fatal errors also arrive as turn/completed(status failed), which finalizes; this
         // event alone (e.g. a retryable stream hiccup) must not tear the turn down.
@@ -755,7 +806,11 @@ export class CodexAdapter extends BaseAgentAdapter {
     const status = stringField(turn, 'status');
     if (status === 'failed') {
       const error = recordField(turn, 'error');
-      this.emitError((error && stringField(error, 'message')) ?? 'Codex returned an error');
+      // A 401 turn's failed settle can still arrive from buffered stdout after the auth
+      // retirement — the auth-coded error already surfaced, so swallow the duplicate.
+      if (!this.authFailed) {
+        this.emitError((error && stringField(error, 'message')) ?? 'Codex returned an error');
+      }
     } else if (status === 'interrupted') {
       this.emitStop('cancelled');
     } else {
