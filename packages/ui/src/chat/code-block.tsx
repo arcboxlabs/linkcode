@@ -42,7 +42,7 @@ export function CodeBlockHeader({ className, ...props }: CodeBlockHeaderProps): 
   return (
     <CardHeader
       className={cn(
-        'grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 border-b bg-muted/32 px-3 py-1.5 text-xs in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-1.5',
+        'grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 border-b bg-muted px-3 py-1.5 text-xs in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-1.5',
         className,
       )}
       {...props}

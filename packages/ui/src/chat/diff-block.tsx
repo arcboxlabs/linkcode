@@ -50,7 +50,7 @@ export function DiffBlock({
 
   return (
     <Card className="my-1 overflow-hidden">
-      <CardHeader className="grid-cols-1 grid-rows-[auto] border-b bg-muted/32 p-0 in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-0">
+      <CardHeader className="grid-cols-1 grid-rows-[auto] border-b bg-muted p-0 in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-0">
         {openFile ? (
           <Button
             className="w-full justify-start rounded-none border-0 px-3 font-normal text-xs sm:text-xs"
