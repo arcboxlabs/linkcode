@@ -22,6 +22,7 @@ vi.mock('use-intl', () => ({
 
 const LiveTerminal = vi.fn(({ terminalId }: { terminalId: string }) => <div>{terminalId}</div>);
 const RE_APPLY_GUARDED_EDIT = /^Apply guarded edit/;
+const RE_TARGET_PREVIEW_HEADER = /^target\.ts/;
 
 afterEach(() => {
   cleanup();
@@ -230,7 +231,7 @@ describe('ToolCallItem', () => {
     );
 
     await user.click(screen.getByRole('button', { name: RE_APPLY_GUARDED_EDIT }));
-    await user.click(screen.getByTitle('openFile'));
+    await user.click(screen.getByRole('button', { name: RE_TARGET_PREVIEW_HEADER }));
 
     expect(openFile).toHaveBeenCalledOnce();
     expect(openFile).toHaveBeenCalledWith(path);
