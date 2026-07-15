@@ -148,8 +148,12 @@ export class Engine {
   private runtimesCollect: Promise<void> = Promise.resolve();
   /** Queued + running collect passes; read-triggered revalidation coalesces onto them. */
   private runtimesCollectActive = 0;
-  /** When the last collect pass settled — the read-revalidation cooldown reference. */
+  /** When the last collect pass SUCCEEDED — the read-revalidation cooldown reference. A failed
+   * pass leaves it alone so the next read retries immediately instead of serving stale data
+   * behind a cooldown nothing actually refreshed. */
   private runtimesCollectedAt = 0;
+  /** An event-triggered pass that has not started probing yet; simultaneous events join it. */
+  private pendingEventPass: Promise<void> | undefined;
   private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
 
@@ -1048,9 +1052,19 @@ export class Engine {
    * failed with `authentication_failed`): the push is unconditional — clients treat it as the
    * settle signal for install/login activity — and the pass queues behind any in-flight collect,
    * which may have probed before the event's effect (credentials, binaries) hit disk.
+   * Simultaneous events (e.g. every open session 401ing on one expired credential) coalesce onto
+   * a queued pass that has not started probing — it observes all their effects; a pass already
+   * probing may predate them and cannot be joined.
    */
   private refreshAgentRuntimes(): Promise<void> {
-    return this.enqueueRuntimesCollect(true);
+    if (!this.collectAgentRuntimes) return Promise.resolve();
+    const pending = this.pendingEventPass;
+    if (pending) return pending;
+    const pass = this.enqueueRuntimesCollect(true, () => {
+      if (this.pendingEventPass === pass) this.pendingEventPass = undefined;
+    });
+    this.pendingEventPass = pass;
+    return pass;
   }
 
   /**
@@ -1067,23 +1081,25 @@ export class Engine {
     void this.enqueueRuntimesCollect(false);
   }
 
-  /** Append one collect pass to the queue; `pushUnchanged` lifts the diff gate on the broadcast. */
-  private enqueueRuntimesCollect(pushUnchanged: boolean): Promise<void> {
+  /** Append one collect pass to the queue; `pushUnchanged` lifts the diff gate on the broadcast
+   * and `onStart` fires when the pass begins probing (after any queued predecessors drained). */
+  private enqueueRuntimesCollect(pushUnchanged: boolean, onStart?: () => void): Promise<void> {
     const collect = this.collectAgentRuntimes;
     if (!collect) return Promise.resolve();
     this.runtimesCollectActive += 1;
     const pass = this.runtimesCollect.then(async () => {
+      onStart?.();
       try {
         const next = await collect();
         const changed = !jsonValueEqual(next, this.agentRuntimes);
         this.agentRuntimes = next;
+        this.runtimesCollectedAt = Date.now();
         if (changed || pushUnchanged) {
           this.transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes: next }));
         }
       } catch (err) {
         console.error('Re-probing agent runtimes failed:', err);
       } finally {
-        this.runtimesCollectedAt = Date.now();
         this.runtimesCollectActive -= 1;
       }
     });

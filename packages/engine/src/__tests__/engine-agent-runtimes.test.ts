@@ -147,4 +147,30 @@ describe('agent-runtime.list revalidation (CODE-172)', () => {
     await flushBackground();
     expect(sent.filter((p) => p.kind === 'agent-runtime.changed')).toEqual([]);
   });
+
+  it('a failed pass consumes no cooldown — the next read retries immediately', async () => {
+    const now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const fresh: AgentRuntimes = {
+      ...boot,
+      'claude-code': { ...nullthrow(boot['claude-code']), auth: { loggedIn: false } },
+    };
+    let calls = 0;
+    const { engine, sent, inject } = harness(boot, () => {
+      calls += 1;
+      return calls === 1 ? Promise.reject(new Error('probe died')) : Promise.resolve(fresh);
+    });
+    await engine.start();
+
+    inject({ kind: 'agent-runtime.list', clientReqId: 'r1' }); // pass rejects
+    await flushBackground();
+    expect(sent.filter((p) => p.kind === 'agent-runtime.changed')).toEqual([]);
+
+    // Same instant (well inside the 5s window): the failure must not have armed the cooldown,
+    // and the active-pass counter must have unwound, or this read could never re-probe.
+    inject({ kind: 'agent-runtime.list', clientReqId: 'r2' });
+    await flushBackground();
+    expect(calls).toBe(2);
+    expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: fresh });
+  });
 });
