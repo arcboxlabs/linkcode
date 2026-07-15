@@ -29,7 +29,8 @@ const AGENT_ASSET_IDS: Partial<Record<AgentKind, ManagedAssetId>> = {
  * Client-local install activity per asset, layered over the pulled snapshots: `downloading` and
  * `failed` come from the `asset.progress` / `asset.settled` broadcasts, `installed` bridges the
  * gap between a successful settle and the `agent-runtime.changed` re-probe that confirms it
- * (cleared when that push lands, so probe truth always wins).
+ * (cleared once a push shows this asset's own agent `available`, so probe truth wins — see
+ * {@link dropConfirmedInstalls}).
  */
 export type AssetActivity =
   | { kind: 'downloading'; receivedBytes: number; totalBytes?: number }
@@ -37,6 +38,39 @@ export type AssetActivity =
   | { kind: 'installed' };
 
 export type AssetActivityMap = Partial<Record<ManagedAssetId, AssetActivity>>;
+
+/** The agent kind an installable asset backs — the inverse of {@link AGENT_ASSET_IDS}. */
+function installedAssetKind(id: ManagedAssetId): AgentKind | undefined {
+  for (const [kind, assetId] of Object.entries(AGENT_ASSET_IDS) as Array<
+    [AgentKind, ManagedAssetId]
+  >) {
+    if (assetId === id) return kind;
+  }
+  return undefined;
+}
+
+/**
+ * Drop the `installed` bridge entries a runtime push confirms — only those whose own agent now
+ * probes `available`. Since reads revalidate the snapshot (CODE-172), a push can be caused by an
+ * unrelated kind while this asset's probe hasn't caught up yet; clearing on any push would flash
+ * the Download card back over a just-settled install. Entries with no owning agent (tool assets)
+ * have no cue to guard and drop on any push, as before.
+ */
+export function dropConfirmedInstalls(
+  activity: AssetActivityMap,
+  runtimes: AgentRuntimes,
+): AssetActivityMap {
+  const next: AssetActivityMap = {};
+  for (const [id, entry] of Object.entries(activity) as Array<[ManagedAssetId, AssetActivity]>) {
+    if (entry.kind !== 'installed') {
+      next[id] = entry;
+      continue;
+    }
+    const kind = installedAssetKind(id);
+    if (kind && runtimes[kind]?.status !== 'available') next[id] = entry;
+  }
+  return next;
+}
 
 /**
  * Client-local progress of an interactive `agent-login`, layered over the probed `loggedIn: false`.
@@ -211,20 +245,12 @@ export function useAgentRuntimeOnboarding(): {
     [client],
   );
 
-  // The re-probe push is the truth an `installed` bridge waits for — drop the bridge entries.
+  // The re-probe push is the truth an `installed` bridge waits for — drop confirmed entries.
   useAbortableEffect(
     (signal) =>
-      client.subscribeAgentRuntimesChanged(() => {
+      client.subscribeAgentRuntimesChanged((runtimes) => {
         if (signal.aborted) return;
-        setActivity((previous) => {
-          const next: AssetActivityMap = {};
-          for (const [id, entry] of Object.entries(previous) as Array<
-            [ManagedAssetId, AssetActivity]
-          >) {
-            if (entry.kind !== 'installed') next[id] = entry;
-          }
-          return next;
-        });
+        setActivity((previous) => dropConfirmedInstalls(previous, runtimes));
       }),
     [client],
   );
