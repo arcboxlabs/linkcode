@@ -1,17 +1,17 @@
 import { resolve } from 'node:path';
+import babel from '@rolldown/plugin-babel';
 import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import { ExternalPackageIconLoader } from 'unplugin-icons/loaders';
 import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [
-    react({
-      babel: {
-        plugins: ['babel-plugin-react-compiler'],
-      },
-    }),
+    react(),
+    // plugin-react 6 dropped its built-in babel pass; React Compiler runs via rolldown's babel
+    // plugin instead.
+    babel({ presets: [reactCompilerPreset()] }),
     tailwindcss(),
     Icons({
       compiler: 'jsx',
@@ -23,7 +23,7 @@ export default defineConfig({
     alias: { '@webview': resolve(import.meta.dirname, 'src') },
     // pnpm's hoisted layout can nest a second react under a dep whose peer resolved to another
     // version (e.g. use-intl(react@19.2.3) via Expo) — pin every import to the root copy, like
-    // the desktop renderer's electron.vite.config already does.
+    // the desktop renderer's vite.renderer.config already does.
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
   },
   server: { port: 5173 },

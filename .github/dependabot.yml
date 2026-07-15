@@ -40,13 +40,6 @@ updates:
       # expects; bump react/react-dom together with Expo upgrades, not via Dependabot.
       - dependency-name: react
       - dependency-name: react-dom
-      # electron-vite (desktop renderer build) peer-caps vite at ^7; a vite 8 bump installs
-      # but breaks the desktop build, which typecheck can't catch (Invariant 4). Mirror that
-      # ceiling: hold vite on 7 until electron-vite stable supports vite 8 (only 6.0.0-beta
-      # does today), then lift this and bump both together.
-      - dependency-name: vite
-        update-types:
-          - "version-update:semver-major"
 
   - package-ecosystem: cargo # workspace: crates/linkcode-pty
     directory: /

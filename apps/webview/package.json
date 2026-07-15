@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@proj-airi/lobe-icons": "catalog:",
+    "@rolldown/plugin-babel": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",
     "@tailwindcss/vite": "catalog:",

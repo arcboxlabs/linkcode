@@ -38,6 +38,7 @@
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
     "@proj-airi/lobe-icons": "catalog:",
+    "@rolldown/plugin-babel": "catalog:",
     "@sentry/react": "10.60.0",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",

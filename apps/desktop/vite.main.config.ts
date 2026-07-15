@@ -22,7 +22,7 @@ export default defineConfig({
       entry: resolve(__dirname, 'src/main/index.ts'),
       formats: ['cjs'],
     },
-    rollupOptions: {
+    rolldownOptions: {
       external: nodeExternals(),
       output: {
         entryFileNames: '[name].js',

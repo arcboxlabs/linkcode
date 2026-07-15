@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
+import babel from '@rolldown/plugin-babel';
 import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import { ExternalPackageIconLoader } from 'unplugin-icons/loaders';
 import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vite';
@@ -14,11 +15,10 @@ export default defineConfig(({ command }) => ({
   envDir: __dirname,
   envPrefix: ['RENDERER_VITE_', 'VITE_'],
   plugins: [
-    react({
-      babel: {
-        plugins: ['babel-plugin-react-compiler'],
-      },
-    }),
+    react(),
+    // plugin-react 6 dropped its built-in babel pass; React Compiler runs via rolldown's babel
+    // plugin instead.
+    babel({ presets: [reactCompilerPreset()] }),
     tailwindcss(),
     Icons({
       compiler: 'jsx',
@@ -51,7 +51,7 @@ export default defineConfig(({ command }) => ({
     outDir: resolve(__dirname, 'out/renderer'),
     emptyOutDir: true,
     modulePreload: { polyfill: false },
-    rollupOptions: {
+    rolldownOptions: {
       input: { index: resolve(__dirname, 'src/renderer/index.html') },
     },
     minify: false,
