@@ -4,8 +4,8 @@ import { useRef } from 'react';
 import { cn } from '../../lib/cn';
 import { FileIdentityIcon } from '../file-identity-icon';
 import { FilePathTooltip } from '../with-tooltip';
-import { useArtifactHostActions } from './context';
 import { fileBasename } from './file-kind';
+import { useArtifactHostActions } from './host-actions';
 
 /** Compact produced-file artifact; opens the host file viewer when available. */
 export function FileArtifactCard({

@@ -1,6 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
-import type { ArtifactNavigation } from './artifacts/context';
 import { fileBasename } from './artifacts/file-kind';
+import type { ArtifactNavigation } from './artifacts/host-actions';
 import { recordValue, stringValue, TOOL_PATH_KEYS, toolCallFilePath } from './tool-result-content';
 
 const MOVE_SOURCE_KEYS = ['source', 'from', 'old_path', 'oldPath', ...TOOL_PATH_KEYS] as const;

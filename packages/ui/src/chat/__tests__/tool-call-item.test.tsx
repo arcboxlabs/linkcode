@@ -170,7 +170,7 @@ describe('ToolCallBody', () => {
     const tooltipTrigger = screen
       .getByText('preview.md')
       .closest<HTMLElement>('[data-slot="tooltip-trigger"]');
-    expect(tooltipTrigger?.tabIndex).toBe(0);
+    expect(tooltipTrigger?.tabIndex).toBe(-1);
   });
 
   it('surfaces an execute failure message without its raw result envelope', () => {

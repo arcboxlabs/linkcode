@@ -3,8 +3,8 @@ import { AppWindowIcon, PlayIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ArtifactFrame } from './artifact-frame';
-import { useArtifactHostActions } from './context';
 import { FenceFallback } from './fence-fallback';
+import { useArtifactHostActions } from './host-actions';
 import type { InlineArtifactProps } from './types';
 
 const HTML_MIME = 'text/html; charset=utf-8';

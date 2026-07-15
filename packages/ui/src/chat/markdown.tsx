@@ -3,8 +3,10 @@ import { code } from '@streamdown/code';
 import type { Components, PluginConfig } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
-import { ArtifactFenceRenderer, artifactFenceLanguages, useArtifactHostActions } from './artifacts';
+import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
 import { detectInlineFilePath } from './artifacts/file-kind';
+import { useArtifactHostActions } from './artifacts/host-actions';
+import { artifactFenceLanguages } from './artifacts/registry';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
 
