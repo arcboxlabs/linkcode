@@ -13,6 +13,9 @@ module.exports = require('eslint-config-sukka').sukka(
         '**/.vite/**',
         '**/.turbo/**',
         '**/.expo/**',
+        // expo prebuild output (gitignored continuous native generation)
+        'apps/mobile/ios/**',
+        'apps/mobile/android/**',
         '.vscode/**',
         '.zed/**',
         '**/expo-export/**',
