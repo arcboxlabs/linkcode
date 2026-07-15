@@ -652,6 +652,11 @@ export const zhCN = {
         refresh: '刷新',
       },
     },
+    signIn: {
+      tagline: '你的智能体，随身可达。登录后即可从这台手机连接运行 LinkCode 的机器。',
+      signIn: '使用 LinkCode 登录',
+      skip: '跳过，手动连接',
+    },
     sessions: {
       title: '会话',
       emptyTitle: '暂无会话',
