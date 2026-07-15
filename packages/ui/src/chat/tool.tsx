@@ -12,6 +12,8 @@ import { DiffCounter } from './diff-block';
 import type { DiffStats } from './diff-utils';
 import { TOOL_KIND_ICONS } from './tool-utils';
 
+export const TOOL_DETAIL_SCROLL_CLASS_NAME = 'max-h-96 overflow-y-auto overscroll-contain';
+
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
 
 export function Tool({ className, ...props }: ToolProps): React.ReactNode {
@@ -110,7 +112,11 @@ export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent>;
 export function ToolContent({ className, ...props }: ToolContentProps): React.ReactNode {
   return (
     <CollapsibleContent
-      className={cn('mt-1 space-y-2 border-l-2 border-border pl-3', className)}
+      className={cn(
+        'mt-1 space-y-2 border-l-2 border-border pl-3',
+        TOOL_DETAIL_SCROLL_CLASS_NAME,
+        className,
+      )}
       {...props}
     />
   );

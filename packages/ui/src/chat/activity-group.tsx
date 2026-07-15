@@ -21,6 +21,7 @@ import { cn } from '../lib/cn';
 import type { ActivityBucket, TimelineEntry } from './activity-groups';
 import { DiffCounter } from './diff-block';
 import { toolCallDiffStats } from './diff-utils';
+import { TOOL_DETAIL_SCROLL_CLASS_NAME } from './tool';
 import { ToolCallBody } from './tool-call-item';
 import { hasToolBody, toolCallSummary } from './tool-utils';
 
@@ -69,7 +70,12 @@ export function ActivityGroup({
         </span>
         <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 space-y-0.5 border-l-2 border-border pl-3">
+      <CollapsibleContent
+        className={cn(
+          'mt-1 space-y-0.5 border-l-2 border-border pl-3',
+          TOOL_DETAIL_SCROLL_CLASS_NAME,
+        )}
+      >
         {group.items.map((item) => (
           <ActivityGroupRow
             key={item.id}

@@ -3,6 +3,7 @@ import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
   closeSectionTabState,
+  createDefaultDesktopShellState,
   createDefaultRightPanelState,
   createPanelState,
   createRightFileTab,
@@ -207,6 +208,23 @@ describe('desktop shell state persistence', () => {
     expect(parsed.rightPanel.files.activeTabId).toBe(parsed.rightPanel.files.tabs[0].id);
     expect(parsed.rightPanel.browser.url).toBe('http://web--app-1a2b3c.localhost:19523');
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
+  });
+
+  it('drops renderer-scoped blob URLs from persisted browser state', () => {
+    const source = createDefaultDesktopShellState();
+    source.rightPanel.browser.url = 'blob:http://localhost:5173/expired-preview';
+
+    const serialized = serializeDesktopShellState(source);
+    expect(serialized.rightPanel.browserUrl).toBeNull();
+
+    const parsed = parsePersistedDesktopShellState({
+      ...serialized,
+      rightPanel: {
+        ...serialized.rightPanel,
+        browserUrl: 'blob:http://localhost:5173/expired-preview',
+      },
+    });
+    expect(parsed.rightPanel.browser.url).toBeNull();
   });
 });
 
