@@ -26,6 +26,15 @@ const AGENT_ASSET_IDS: Partial<Record<AgentKind, ManagedAssetId>> = {
 };
 
 /**
+ * Kinds whose login CLI opens the browser ITSELF with its loopback-redirect URL (CODE-175):
+ * claude prints only the manual code-page URL to stdout while racing an auto-completing
+ * localhost callback in the tab it opens — opening the printed URL too would put the user on
+ * the paste-code page of a second tab. codex is absent: its app-server returns the URL without
+ * opening anything, so the client must open it.
+ */
+const SELF_OPENING_LOGIN_KINDS: ReadonlySet<AgentKind> = new Set(['claude-code']);
+
+/**
  * Client-local install activity per asset, layered over the pulled snapshots: `downloading` and
  * `failed` come from the `asset.progress` / `asset.settled` broadcasts, `installed` bridges the
  * gap between a successful settle and the `agent-runtime.changed` re-probe that confirms it
@@ -297,7 +306,11 @@ export function useAgentRuntimeOnboarding(): {
           onUrl(url) {
             // Desktop routes `_blank` to the system browser (main-process window handler); webview
             // opens a tab. A fallback link in the card reopens `url` if the launch was blocked.
-            window.open(url, '_blank', 'noopener,noreferrer');
+            // Self-opening CLIs already launched their auto-completing loopback tab — the printed
+            // manual URL stays on the card as the fallback instead of racing it in a second tab.
+            if (!SELF_OPENING_LOGIN_KINDS.has(kind)) {
+              window.open(url, '_blank', 'noopener,noreferrer');
+            }
             setLogin(kind, { kind: 'awaiting-code', url });
           },
           onSettled({ ok, error }) {
