@@ -101,6 +101,50 @@ describe('tool metadata policy', () => {
     expect(hasToolBody(toolCall)).toBe(false);
   });
 
+  it('projects Pi AgentToolResult content without exposing its details envelope', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'pi-read-1',
+      title: 'read',
+      kind: 'read',
+      status: 'completed',
+      rawOutput: {
+        content: [{ type: 'text', text: 'Pi file contents', textSignature: 'opaque' }],
+        details: { durationMs: 12, internalPath: '/private/result' },
+      },
+      content: [],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    expect(hasToolBody(toolCall)).toBe(true);
+    expect(screen.getByText('Pi file contents')).toBeDefined();
+    expect(container.textContent).not.toContain('durationMs');
+    expect(container.textContent).not.toContain('internalPath');
+  });
+
+  it('projects live Codex MCP result content without exposing its raw envelopes', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'codex-mcp-1',
+      title: 'linear.get_issue',
+      kind: 'other',
+      status: 'completed',
+      rawInput: { issueId: 'CODE-173', trace: true },
+      rawOutput: {
+        content: [{ type: 'text', text: 'CODE-173 is in progress' }],
+        structuredContent: { internalId: 'opaque-173' },
+      },
+      content: [],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    expect(hasToolBody(toolCall)).toBe(true);
+    expect(screen.getByText('CODE-173 is in progress')).toBeDefined();
+    expect(container.textContent).not.toContain('issueId');
+    expect(container.textContent).not.toContain('structuredContent');
+    expect(container.textContent).not.toContain('opaque-173');
+  });
+
   it('keeps live execute calls on their terminal adapter without raw metadata', () => {
     const toolCall: ToolCall = {
       toolCallId: 'bash-live',

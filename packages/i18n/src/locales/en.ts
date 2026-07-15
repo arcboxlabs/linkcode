@@ -88,6 +88,7 @@ export const en = {
       file: 'File',
       command: 'Command',
       url: 'URL',
+      arguments: 'Arguments',
       question: 'Do you want to allow "{action}"?',
       steerPlaceholder: 'No, and tell Codex what to do differently',
     },

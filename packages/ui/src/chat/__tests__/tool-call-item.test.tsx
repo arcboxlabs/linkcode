@@ -2,7 +2,9 @@
 
 import type { ToolCall } from '@linkcode/schema';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ArtifactHostActionsProvider } from '../artifacts/context';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 
 function translateKey(key: string): string {
@@ -86,6 +88,26 @@ describe('ToolCallBody', () => {
     expect(container.querySelector('pre')?.textContent).toBe('stale preview import');
     expect(container.textContent).not.toContain('exitCode');
   });
+
+  it('renders Pi execute output from its AgentToolResult content', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'pi-bash-1',
+      title: 'bash',
+      kind: 'execute',
+      status: 'completed',
+      rawInput: { command: 'pnpm test' },
+      rawOutput: {
+        content: [{ type: 'text', text: '825 tests passed' }],
+        details: { exitCode: 0 },
+      },
+      content: [],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    expect(container.querySelector('pre')?.textContent).toBe('825 tests passed');
+    expect(container.textContent).not.toContain('exitCode');
+  });
 });
 
 describe('ToolCallItem', () => {
@@ -114,6 +136,38 @@ describe('ToolCallItem', () => {
       headerText.indexOf('packages/ui/src/chat/target.ts'),
     );
     expect(screen.queryByText('target.ts')).toBeNull();
+  });
+
+  it('opens an edited file from the shared diff header', async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn();
+    const path = 'packages/ui/src/chat/target.ts';
+    const toolCall: ToolCall = {
+      toolCallId: 'edit-open-1',
+      title: 'Apply guarded edit',
+      kind: 'edit',
+      status: 'completed',
+      content: [
+        {
+          type: 'diff',
+          path,
+          oldText: "const coverage = 'thin';\n",
+          newText: "const coverage = 'rich';\n",
+        },
+      ],
+    };
+
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
+        <ToolCallItem toolCall={toolCall} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_APPLY_GUARDED_EDIT }));
+    await user.click(screen.getByTitle('openFile'));
+
+    expect(openFile).toHaveBeenCalledOnce();
+    expect(openFile).toHaveBeenCalledWith(path);
   });
 
   it('keeps the produced-file artifact for a completed move', () => {

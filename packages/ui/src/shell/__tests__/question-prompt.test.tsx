@@ -201,6 +201,42 @@ describe('QuestionPrompt', () => {
 });
 
 describe('ConversationPromptDock', () => {
+  it('shows complete custom-tool arguments on the approval surface', () => {
+    const rawInput = {
+      issueId: 'CODE-173',
+      options: { includeComments: true, labels: ['frontend', 'review'] },
+    };
+    const customPermission: PermissionConversationItem = {
+      ...PERMISSION_ITEM,
+      toolCall: {
+        toolCallId: 'mcp-approval-1',
+        title: 'linear.update_issue',
+        kind: 'other',
+        rawInput,
+      },
+    };
+    const customConversation = conversation([customPermission], {
+      pendingPermissionIds: [customPermission.requestId],
+    });
+
+    render(
+      <ConversationPromptDock
+        answeredQuestionIds={new Set()}
+        conversation={customConversation}
+        permissionDecisions={new Map()}
+        respondingPermissions={new Set()}
+        respondingQuestions={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    const argumentsValue = screen.getByText('arguments').nextElementSibling;
+    expect(argumentsValue?.textContent).toBe(JSON.stringify(rawInput, null, 2));
+    expect(argumentsValue?.classList.contains('truncate')).toBe(false);
+    expect(argumentsValue?.classList.contains('whitespace-pre-wrap')).toBe(true);
+  });
+
   it('exercises the frontend-only batch API stub without calling the backend', async () => {
     const user = userEvent.setup();
     const onRespondQuestion = vi.fn();

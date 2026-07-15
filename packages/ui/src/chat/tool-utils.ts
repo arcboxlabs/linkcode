@@ -1,4 +1,5 @@
-import type { ToolCall } from '@linkcode/schema';
+import type { ContentBlock, ToolCall } from '@linkcode/schema';
+import { ContentBlockSchema } from '@linkcode/schema';
 import {
   BotIcon,
   BrainIcon,
@@ -80,6 +81,22 @@ export function toolCallFailureMessage(toolCall: ToolCall): string | undefined {
   return stringValue(recordValue(toolCall.rawOutput), ['message']);
 }
 
+/**
+ * Pi AgentToolResult and live Codex MCP results currently arrive in `rawOutput.content` while
+ * canonical tool content is empty. Project only schema-valid content blocks so the useful result
+ * survives without exposing the rest of either backend envelope in the transcript.
+ */
+export function toolCallFallbackContent(toolCall: ToolCall): ContentBlock[] {
+  if (toolCall.content.length > 0) return [];
+  const rawContent = recordValue(toolCall.rawOutput)?.content;
+  if (!Array.isArray(rawContent)) return [];
+
+  return rawContent.flatMap((value) => {
+    const result = ContentBlockSchema.safeParse(value);
+    return result.success ? [result.data] : [];
+  });
+}
+
 /** Whitelisted normal-mode metadata. Arbitrary raw payloads stay in the model, not the transcript. */
 export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
   const input = recordValue(toolCall.rawInput);
@@ -156,6 +173,7 @@ export function toolCallSummary(toolCall: ToolCall): string | undefined {
 
 export function hasToolBody(toolCall: ToolCall): boolean {
   if (toolCall.content.length > 0) return true;
+  if (toolCallFallbackContent(toolCall).length > 0) return true;
   if (toolCall.kind === 'execute') {
     if (toolCallCommand(toolCall)) return true;
     if (typeof toolCall.rawOutput === 'string') return true;

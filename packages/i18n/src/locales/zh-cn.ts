@@ -86,6 +86,7 @@ export const zhCN = {
       file: '文件',
       command: '命令',
       url: 'URL',
+      arguments: '参数',
       question: '要允许「{action}」吗？',
       steerPlaceholder: '不允许，并告诉 Codex 要如何调整',
     },

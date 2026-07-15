@@ -30,6 +30,7 @@ export interface ConversationPromptDetail {
   label: string;
   value: string;
   monospace?: boolean;
+  multiline?: boolean;
 }
 
 export interface ConversationPromptAlertProps {
@@ -284,11 +285,17 @@ function PromptDetails({ details }: { details: readonly ConversationPromptDetail
   return (
     <div className="min-w-0 space-y-0.5">
       {details.map((detail) => (
-        <div key={`${detail.label}:${detail.value}`} className="flex min-w-0 items-baseline gap-2">
+        <div
+          key={`${detail.label}:${detail.value}`}
+          className={cn('flex min-w-0 gap-2', detail.multiline ? 'items-start' : 'items-baseline')}
+        >
           <span className="shrink-0 text-muted-foreground text-xs">{detail.label}</span>
           <span
             className={cn(
-              'min-w-0 truncate text-foreground text-xs',
+              'min-w-0 text-foreground text-xs',
+              detail.multiline
+                ? 'max-h-24 overflow-auto whitespace-pre-wrap break-all'
+                : 'truncate',
               detail.monospace && 'font-mono',
             )}
           >
