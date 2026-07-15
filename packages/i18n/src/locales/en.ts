@@ -130,7 +130,7 @@ export const en = {
       login: 'Sign in to {agent}',
       loginOpening: 'Opening the browser to sign in to {agent}…',
       loginAwaitingCode:
-        'A sign-in page opened in your browser. After authorizing, paste the code from that page below.',
+        'A sign-in page opened in your browser — authorizing there usually completes on its own. If the page shows an authorization code instead, paste it below.',
       loginAwaitingBrowser:
         'A sign-in page opened in your browser. Finish signing in there — this updates automatically.',
       loginCodePlaceholder: 'Paste the authorization code',

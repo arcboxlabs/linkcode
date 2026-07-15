@@ -125,7 +125,8 @@ export const zhCN = {
       needsLoginBody: '登录你的 {agent} 账号后即可开始使用。',
       login: '登录 {agent}',
       loginOpening: '正在打开浏览器登录 {agent}…',
-      loginAwaitingCode: '已在浏览器打开登录页。完成授权后，把页面上的授权码粘贴到下面。',
+      loginAwaitingCode:
+        '已在浏览器打开登录页，授权后通常会自动完成。如果页面显示了授权码，再把它粘贴到下面。',
       loginAwaitingBrowser: '已在浏览器打开登录页。在浏览器中完成登录后，这里会自动更新。',
       loginCodePlaceholder: '粘贴授权码',
       loginSubmit: '完成登录',
