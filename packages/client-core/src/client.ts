@@ -9,6 +9,7 @@ import type {
   AgentRuntimes,
   ContentBlock,
   EffortLevel,
+  FileSuggestion,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -288,6 +289,9 @@ export class LinkCodeClient {
       case 'file.read.result':
         this.pending.resolve('fileRead', p.replyTo, p.file);
         break;
+      case 'file.suggest.result':
+        this.pending.resolve('fileSuggest', p.replyTo, p.suggestions);
+        break;
       case 'script.listed':
         this.pending.resolve('scriptList', p.replyTo, p.scripts);
         break;
@@ -514,6 +518,12 @@ export class LinkCodeClient {
   /** Read a file contained to a workspace directory (directory-backed, like git.*). */
   readFile(cwd: string, path: string): Promise<WorkspaceFile> {
     return this.control.readFile(cwd, path);
+  }
+
+  /** Search workspace files by substring query. Unlike file.read/git.*, `cwd` must be a
+   * registered workspace root (session start/resume registers it); unknown roots are rejected. */
+  suggestFiles(cwd: string, query: string, limit?: number): Promise<FileSuggestion[]> {
+    return this.control.suggestFiles(cwd, query, limit);
   }
 
   /** The workspace's declared scripts with live lifecycle/health (directory-backed). */

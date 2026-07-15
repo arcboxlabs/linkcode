@@ -94,6 +94,7 @@ catalog:
   "@svgr/core": ^8.1.0
   "@svgr/plugin-jsx": ^8.1.0
   "@proj-airi/lobe-icons": ^1.0.19
+  "@iconify-json/material-icon-theme": ^1.2.69
 
 minimumReleaseAgeExclude:
   # codex platform artifacts are versions of @openai/codex keyed <ver>-<platform>-<arch>.

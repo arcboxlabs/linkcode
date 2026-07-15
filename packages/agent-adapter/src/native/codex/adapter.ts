@@ -35,7 +35,7 @@ import {
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
-import { contentToText } from '../../util';
+import { contentToText, imageBlocksFrom } from '../../util';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
@@ -58,6 +58,7 @@ interface CodexSkillCommand extends AgentCommand {
 
 type CodexTurnInput =
   | { type: 'text'; text: string; text_elements: never[] }
+  | { type: 'image'; url: string }
   | { type: 'skill'; name: string; path: string };
 
 const COMPACT_COMMAND: AgentCommand = {
@@ -337,7 +338,18 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     await this.ensureThread();
-    await this.submitTurnInput([{ type: 'text', text: contentToText(content), text_elements: [] }]);
+    // `turn/start`'s image item shape ({type:'image', url: 'data:<mime>;base64,<data>'}) was
+    // live-verified against a real codex app-server (0.144.1): a solid-red probe image sent
+    // this way was correctly identified by the model. Not documented anywhere in the JS
+    // package (codex has no .d.ts) — verify again if the app-server pin moves.
+    const imageInputItems = imageBlocksFrom(content).map((image) => ({
+      type: 'image' as const,
+      url: `data:${image.mimeType};base64,${image.data}`,
+    }));
+    await this.submitTurnInput([
+      { type: 'text', text: contentToText(content), text_elements: [] },
+      ...imageInputItems,
+    ]);
   }
 
   /** Codex slash commands are either the app-server's manual compaction control or an enabled

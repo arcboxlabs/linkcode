@@ -16,6 +16,7 @@ import type {
   SessionMessage,
   SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
+import type { MessageParam } from '@anthropic-ai/sdk/resources';
 import type {
   AgentCommand,
   AgentEvent,
@@ -35,10 +36,11 @@ import type {
   PermissionOption,
   StartOptions,
   StopReason,
+  SupportedAttachmentImageMimeType,
   ToolCall,
   ToolCallContent,
 } from '@linkcode/schema';
-import { EffortLevelSchema, textBlock } from '@linkcode/schema';
+import { EffortLevelSchema, isSupportedAttachmentImageMimeType, textBlock } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
@@ -59,7 +61,7 @@ import {
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
-import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
+import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
@@ -446,9 +448,37 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     this.freshSegment();
     this.emitStatus('running');
+    type ClaudeImageBlock = {
+      type: 'image';
+      source: { type: 'base64'; media_type: SupportedAttachmentImageMimeType; data: string };
+    };
+    const imageBlocksForClaude = imageBlocksFrom(content).reduce<ClaudeImageBlock[]>(
+      (blocks, image) => {
+        // The engine's attachment guard already rejected other types; the check here narrows our
+        // schema's unconstrained mimeType string to the SDK's `Base64ImageSource.media_type` enum.
+        if (isSupportedAttachmentImageMimeType(image.mimeType)) {
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: image.mimeType, data: image.data },
+          });
+        }
+        return blocks;
+      },
+      [],
+    );
+    const text = contentToText(content);
+    const messageContent: MessageParam['content'] =
+      imageBlocksForClaude.length === 0
+        ? text
+        : [
+            // The Messages API rejects an empty-string text block — an image-only send (allowed
+            // by the composer) must carry the images alone.
+            ...(text.length > 0 ? [{ type: 'text' as const, text }] : []),
+            ...imageBlocksForClaude,
+          ];
     const message: SDKUserMessage = {
       type: 'user',
-      message: { role: 'user', content: contentToText(content) },
+      message: { role: 'user', content: messageContent },
       parent_tool_use_id: null,
     };
     if (this.inputQueue) {

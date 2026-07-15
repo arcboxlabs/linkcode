@@ -30,7 +30,9 @@ import { noop } from 'foxts/noop';
 import type { LoginBinaryResolver } from './agent-login-service';
 import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
+import { assertAttachmentContentAllowed } from './attachment-guard';
 import { readWorkspaceFile } from './file-service';
+import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
 import { jsonValueEqual } from './json-equal';
@@ -83,6 +85,7 @@ export interface EngineDeps {
   ptyBackend?: PtyBackend;
   providerStore?: ProviderConfigStore;
   git?: GitService;
+  fileSuggest?: FileSuggestService;
   workspaceStore?: WorkspaceStore;
   /** Shared with the transport's reverse proxy; scripts need a PTY backend to run. */
   previewRoutes?: PreviewRouteRegistry;
@@ -134,6 +137,7 @@ export class Engine {
   private readonly providerStore: ProviderConfigStore;
   private readonly sessionStore: SessionStore;
   private readonly git: GitService;
+  private readonly fileSuggest: FileSuggestService;
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
   /** Boot snapshot, replaced by every {@link enqueueRuntimesCollect} pass (install/login/auth
@@ -165,6 +169,7 @@ export class Engine {
     this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
     this.sessionStore = deps.sessionStore ?? new InMemorySessionStore();
     this.git = deps.git ?? new GitService();
+    this.fileSuggest = deps.fileSuggest ?? new FileSuggestService();
     this.history = new HistoryService(this.factory);
     this.terminals = deps.ptyBackend
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
@@ -299,6 +304,7 @@ export class Engine {
           // assistant output arrive before its user turn. A failed send is broadcast as an explicit
           // input_rejected error below as well as replying request.failed to the originating client.
           if (p.input.type === 'prompt') {
+            assertAttachmentContentAllowed(p.input.content);
             this.transport.send(
               createWireMessage({
                 kind: 'agent.event',
@@ -414,6 +420,10 @@ export class Engine {
               ? adapter.start(startOpts)
               : this.history.resume(adapter, historyId, startOpts),
           );
+          // Same contract as session.start / history.resume: waking a session (re)registers its
+          // directory, so imported records and roots archived since still pass the file.suggest
+          // workspace check once their session is live again.
+          if (record.cwd) this.workspaces.touch(record.cwd);
         });
         break;
       }
@@ -628,6 +638,24 @@ export class Engine {
           const file = await readWorkspaceFile(p.cwd, p.path);
           this.transport.send(
             createWireMessage({ kind: 'file.read.result', replyTo: p.clientReqId, file }),
+          );
+        });
+        break;
+      }
+      case 'file.suggest': {
+        await this.tryReply(p.clientReqId, async () => {
+          // Scope suggestions to roots the user has opened: session start/resume `touch`-registers
+          // its cwd, so every legitimate composer root is in the registry, while a stray cwd no
+          // session ever ran in is refused instead of enumerated. (Not a hard boundary — clients
+          // can register workspaces — just the same opened-roots scoping the rest of the product
+          // uses.) The search runs under the registered record's cwd, not the caller's spelling.
+          const workspace = nullthrow(
+            this.workspaces.findByCwd(p.cwd),
+            `Unknown workspace: ${p.cwd}`,
+          );
+          const suggestions = await this.fileSuggest.suggest(workspace.cwd, p.query, p.limit);
+          this.transport.send(
+            createWireMessage({ kind: 'file.suggest.result', replyTo: p.clientReqId, suggestions }),
           );
         });
         break;

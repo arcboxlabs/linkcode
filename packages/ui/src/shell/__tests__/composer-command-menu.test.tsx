@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import type { AgentCommand, SessionMode } from '@linkcode/schema';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import type { AgentCommand, AgentKind, SessionMode } from '@linkcode/schema';
+import { MAX_ATTACHMENT_BYTES } from '@linkcode/schema';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Composer } from '../composer';
@@ -22,25 +23,42 @@ const MODES: SessionMode[] = [
   { modeId: 'plan', name: 'Plan', description: 'Research and propose changes' },
   { modeId: 'goal', name: 'Goal', description: 'Keep working toward a goal' },
 ];
+const RE_COMPACT_COMMAND = /\/compact/;
+const RE_REVIEW_COMMAND = /\/review/;
 
 function composer({
+  agentKind,
   contextBar,
   disabled = false,
+  mentionItems,
+  onInvokeCommand,
+  onMentionQueryChange,
+  onSend = vi.fn(),
 }: {
+  agentKind?: AgentKind;
   contextBar?: React.ReactNode;
   disabled?: boolean;
+  mentionItems?: React.ComponentProps<typeof Composer>['mentionItems'];
+  onInvokeCommand?: (name: string, args?: string) => void;
+  onMentionQueryChange?: React.ComponentProps<typeof Composer>['onMentionQueryChange'];
+  onSend?: React.ComponentProps<typeof Composer>['onSend'];
 } = {}): React.ReactNode {
   return (
     <Composer
       agentCapabilities={{ shellCommand: false, slashCommands: true }}
       agentCommands={COMMANDS}
+      agentKind={agentKind}
+      attachmentsSupported={agentKind !== undefined}
       availableModes={MODES}
       currentModeId={null}
       contextBar={contextBar}
       disabled={disabled}
       isRunning={false}
+      mentionItems={mentionItems}
+      onInvokeCommand={onInvokeCommand}
+      onMentionQueryChange={onMentionQueryChange}
       onModeChange={vi.fn().mockResolvedValue(undefined)}
-      onSend={vi.fn()}
+      onSend={onSend}
       onStop={vi.fn()}
     />
   );
@@ -50,9 +68,34 @@ function renderComposer(): void {
   render(composer());
 }
 
+function imageFileWithSize(name: string, size: number): File {
+  const file = new File([Uint8Array.from([137, 80, 78, 71])], name, { type: 'image/png' });
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
+}
+
 afterEach(cleanup);
 
 describe('Composer command menu', () => {
+  it('renders an icon for matched and fallback file mentions', async () => {
+    const user = userEvent.setup();
+    render(
+      composer({
+        mentionItems: [
+          { id: 'env', label: '.envrc', value: '.envrc' },
+          { id: 'unknown', label: 'notes.unknown', value: 'notes.unknown' },
+        ],
+      }),
+    );
+
+    await user.type(screen.getByRole('textbox'), '@');
+
+    expect(screen.getByRole('option', { name: '.envrc' }).querySelector('svg')).not.toBeNull();
+    expect(
+      screen.getByRole('option', { name: 'notes.unknown' }).querySelector('svg'),
+    ).not.toBeNull();
+  });
+
   it('keeps normal plus actions and modes searchable', async () => {
     const user = userEvent.setup();
     renderComposer();
@@ -60,6 +103,7 @@ describe('Composer command menu', () => {
 
     await user.click(screen.getByRole('button', { name: 'add' }));
     expect(screen.getByText('attach')).toBeDefined();
+    expect(screen.getByRole('option', { name: 'commands' })).toBeDefined();
     expect(screen.getByText('mentions')).toBeDefined();
     expect(screen.getByText('Plan')).toBeDefined();
     expect(screen.getByText('Goal')).toBeDefined();
@@ -67,6 +111,38 @@ describe('Composer command menu', () => {
     await user.type(input, 'pla');
     expect(screen.getByText('Plan')).toBeDefined();
     expect(screen.queryByText('Goal')).toBeNull();
+  });
+
+  it('opens a fresh mention query when the plus action inserts @', async () => {
+    const user = userEvent.setup();
+    const onMentionQueryChange = vi.fn();
+    render(
+      composer({
+        mentionItems: [{ id: 'readme', label: 'README.md', value: 'README.md' }],
+        onMentionQueryChange,
+      }),
+    );
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    await user.click(screen.getByRole('button', { name: 'add' }));
+    await user.click(screen.getByRole('option', { name: 'mentions' }));
+
+    expect(input.value).toBe('@');
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith('');
+    expect(screen.getByRole('option', { name: 'README.md' })).toBeDefined();
+  });
+
+  it('opens the slash command list from the plus menu', async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    await user.click(screen.getByRole('button', { name: 'add' }));
+    await user.click(screen.getByRole('option', { name: 'commands' }));
+
+    expect(input.value).toBe('/');
+    expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_REVIEW_COMMAND })).toBeDefined();
   });
 
   it('gives a typed slash ownership of an open plus search', async () => {
@@ -99,8 +175,8 @@ describe('Composer command menu', () => {
     await user.type(input, '/');
 
     expect(screen.getByRole('listbox')).toBeDefined();
-    expect(screen.getByRole('option', { name: /\/compact/ })).toBeDefined();
-    expect(screen.getByRole('option', { name: /\/review/ })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_REVIEW_COMMAND })).toBeDefined();
     expect(screen.getByTitle('Compact the context').textContent).toBe('Compact the context');
     expect(screen.queryByText('mentions')).toBeNull();
     expect(screen.queryByText('Plan')).toBeNull();
@@ -112,7 +188,7 @@ describe('Composer command menu', () => {
 
     await user.keyboard('{Backspace}/');
     expect(screen.getByRole('listbox')).toBeDefined();
-    expect(screen.getByRole('option', { name: /\/compact/ })).toBeDefined();
+    expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
   });
 
   it('retains command rows only for the visual exit when disabled externally', async () => {
@@ -126,6 +202,76 @@ describe('Composer command menu', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(screen.getByText('/compact')).toBeDefined();
     await waitFor(() => expect(screen.queryByText('/compact')).toBeNull());
+  });
+
+  it('keeps staged attachments out of a command invocation, then sends them with the next prompt', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onInvokeCommand = vi.fn();
+    render(composer({ agentKind: 'claude-code', onInvokeCommand, onSend }));
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [new File([Uint8Array.from([137, 80, 78, 71])], 'probe.png', { type: 'image/png' })],
+      },
+    });
+    // The tray shows the preview image only once the file read settles into `ready`.
+    await screen.findByRole('img', { name: 'probe.png' });
+
+    await user.type(input, '/compact');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    await user.keyboard('{Enter}');
+
+    expect(onInvokeCommand).toHaveBeenCalledWith('compact', undefined);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(input.value).toBe('');
+    expect(screen.getByRole('img', { name: 'probe.png' })).toBeDefined();
+
+    await user.type(input, 'ship it');
+    await user.keyboard('{Enter}');
+
+    expect(onSend).toHaveBeenCalledExactlyOnceWith([
+      { type: 'text', text: 'ship it' },
+      { type: 'image', data: expect.any(String) as string, mimeType: 'image/png' },
+    ]);
+    expect(screen.queryByRole('img', { name: 'probe.png' })).toBeNull();
+  });
+
+  it('localizes failed attachment controls and keeps a failed-only prompt unsendable', async () => {
+    render(composer({ agentKind: 'claude-code' }));
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [imageFileWithSize('too-large.png', MAX_ATTACHMENT_BYTES + 1)],
+      },
+    });
+
+    expect(await screen.findByText('attachmentFailed')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'removeAttachment' })).toBeDefined();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
+  });
+
+  it('does not count failed attachments toward the aggregate size limit', async () => {
+    render(composer({ agentKind: 'claude-code' }));
+    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [imageFileWithSize('too-large.png', MAX_ATTACHMENT_BYTES + 1)],
+      },
+    });
+    await screen.findByText('attachmentFailed');
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [imageFileWithSize('valid.png', MAX_ATTACHMENT_BYTES)],
+      },
+    });
+
+    expect(await screen.findByRole('img', { name: 'valid.png' })).toBeDefined();
   });
 
   it('renders new-session context as a separate frame footer outside the form', () => {

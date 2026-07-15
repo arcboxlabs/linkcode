@@ -1,4 +1,10 @@
-import type { AgentKind, SessionModeId, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type {
+  AgentKind,
+  ContentBlock,
+  SessionModeId,
+  WorkspaceId,
+  WorkspaceRecord,
+} from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -28,6 +34,7 @@ import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import { Composer } from './composer';
+import type { ComposerAttachment } from './composer-attachments';
 import { repositoryLabel } from './repository-label';
 import { DEFAULT_MODE_ID } from './session-modes';
 
@@ -44,8 +51,10 @@ export interface NewSessionSubmission {
   workspaceId: WorkspaceId;
   model?: string;
   modeId?: SessionModeId;
-  prompt: string;
+  content: ContentBlock[];
 }
+
+export type AttachmentSupportByAgent = Readonly<Partial<Record<AgentKind, true>>>;
 
 export interface NewSessionSurfaceProps {
   draft: NewSessionDraft;
@@ -57,6 +66,8 @@ export interface NewSessionSurfaceProps {
   /** Runtime availability per agent (CODE-112): a cue renders the onboarding card for the picked
    * provider and blocks sending until the runtime is ready; badges ride the provider submenu. */
   runtimeCues?: AgentRuntimeCues;
+  /** Frontend capability stub used until attachment support is advertised by sessions. */
+  attachmentSupport?: AttachmentSupportByAgent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
@@ -73,6 +84,9 @@ export interface NewSessionSurfaceProps {
   /** Opens the native directory picker; desktop only — omit to hide "Choose directory…". */
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only —
+   * absent on webview, where the composer's "Attach" action falls back to the Coss file input. */
+  onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
 }
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
@@ -89,6 +103,7 @@ export function NewSessionSurface({
   className,
   topContent,
   runtimeCues,
+  attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -97,6 +112,7 @@ export function NewSessionSurface({
   onSubmit,
   onPickDirectory,
   onRegisterWorkspace,
+  onPickAttachmentFiles,
 }: NewSessionSurfaceProps): React.ReactNode {
   const t = useTranslations('workbench.newSession');
   const [provider, setProvider] = useState(draft.initialProvider);
@@ -110,7 +126,7 @@ export function NewSessionSurface({
     selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   const isChatSelected = selected != null && selected === chatWorkspace;
 
-  function handleSend(text: string): void {
+  function handleSend(content: ContentBlock[]): void {
     if (!selected) return;
     // The model rides only when it belongs to the submitted provider — mirroring what the
     // composer's trigger displays (a pick made under another provider shows as "Default").
@@ -124,7 +140,7 @@ export function NewSessionSurface({
       workspaceId: selected.workspaceId,
       model: validModel,
       modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
-      prompt: text,
+      content,
     })
       .catch(noop)
       .finally(() => setPending(false));
@@ -177,6 +193,7 @@ export function NewSessionSurface({
           <Composer
             agentLabel={AGENT_LABELS[provider]}
             agentKind={provider}
+            attachmentsSupported={Boolean(attachmentSupport?.[provider])}
             disabled={pending || !selected}
             isRunning={false}
             runtimeCues={runtimeCues}
@@ -186,6 +203,7 @@ export function NewSessionSurface({
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
             onStop={noop}
+            onPickAttachmentFiles={onPickAttachmentFiles}
             onModeChange={handleModeChange}
             onModelChange={handleModelChange}
             onProviderChange={handleProviderChange}

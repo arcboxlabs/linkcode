@@ -10,6 +10,7 @@ import type {
   AgentRuntimes,
   ContentBlock,
   EffortLevel,
+  FileSuggestion,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -229,6 +230,18 @@ export class ControlChannel {
       clientReqId,
       cwd,
       path,
+    }));
+  }
+
+  /** Search workspace files by substring query. Unlike file.read/git.*, `cwd` must be a
+   * registered workspace root (session start/resume registers it); unknown roots are rejected. */
+  suggestFiles(cwd: string, query: string, limit?: number): Promise<FileSuggestion[]> {
+    return this.sendCorrelated('fileSuggest', (clientReqId) => ({
+      kind: 'file.suggest',
+      clientReqId,
+      cwd,
+      query,
+      limit,
     }));
   }
 

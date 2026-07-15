@@ -25,7 +25,7 @@ export const systemIpcEvents = {
   windowToggleMaximize: defineInvokeEventa<void>('linkcode.system.window.toggleMaximize'),
   windowClose: defineInvokeEventa<void>('linkcode.system.window.close'),
   windowIsMaximized: defineInvokeEventa<boolean>('linkcode.system.window.isMaximized'),
-  fsPickFile: defineInvokeEventa<string | null, PickFileOptions | undefined>(
+  fsPickFile: defineInvokeEventa<string[] | null, PickFileOptions | undefined>(
     'linkcode.system.fs.pickFile',
   ),
   appVersion: defineInvokeEventa<string>('linkcode.system.app.version'),

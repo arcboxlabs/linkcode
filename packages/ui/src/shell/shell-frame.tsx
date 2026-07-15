@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  ContentBlock,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -9,9 +10,14 @@ import type {
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
+import type { MentionItem } from './composer';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
-import type { NewSessionDraft, NewSessionSubmission } from './new-session-surface';
+import type {
+  AttachmentSupportByAgent,
+  NewSessionDraft,
+  NewSessionSubmission,
+} from './new-session-surface';
 import { NewSessionSurface } from './new-session-surface';
 import { DefaultHostFooter, SessionSidebar } from './session-sidebar';
 import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
@@ -37,6 +43,8 @@ export interface ShellFrameProps
   /** Agent runtime availability cues: the new-session page's onboarding flow (CODE-112) and the
    * active session's needs-login recovery card (CODE-172). */
   runtimeCues?: AgentRuntimeCues;
+  /** Frontend capability stub used until attachment support is advertised by sessions. */
+  attachmentSupport?: AttachmentSupportByAgent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
@@ -70,7 +78,11 @@ export interface ShellFrameProps
   onSubmitDraft: (submission: NewSessionSubmission) => Promise<void>;
   /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
-  onSendPrompt: (text: string) => void;
+  /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
+  mentionItems?: MentionItem[];
+  /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
+  onMentionQueryChange?: (query: string | null) => void;
+  onSendPrompt: (content: ContentBlock[]) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
@@ -99,6 +111,7 @@ export function ShellFrame({
   activeSession,
   draft,
   runtimeCues,
+  attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -126,6 +139,8 @@ export function ShellFrame({
   onToggleGroupCollapsed,
   onToggleSectionCollapsed,
   onTogglePreviewExpanded,
+  mentionItems,
+  onMentionQueryChange,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -186,6 +201,7 @@ export function ShellFrame({
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}
             runtimeCues={runtimeCues}
+            attachmentSupport={attachmentSupport}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}
             onLoginAgent={onLoginAgent}
@@ -202,6 +218,7 @@ export function ShellFrame({
             conversation={conversation}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
+            attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}
             cwd={active?.cwd}
@@ -214,6 +231,8 @@ export function ShellFrame({
             answeredQuestionIds={answeredQuestionIds}
             respondingQuestions={respondingQuestions}
             TerminalBlockComponent={TerminalBlockComponent}
+            mentionItems={mentionItems}
+            onMentionQueryChange={onMentionQueryChange}
             onSendPrompt={onSendPrompt}
             onStopTurn={onStopTurn}
             onRespondPermission={onRespondPermission}

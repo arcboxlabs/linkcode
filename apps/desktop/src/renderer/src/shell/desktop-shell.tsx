@@ -1,4 +1,5 @@
 import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
+import type { ComposerAttachment } from '@linkcode/ui';
 import {
   AgentIcon,
   ConversationSurface,
@@ -60,6 +61,7 @@ export function DesktopShell({
   activeSession,
   draft,
   runtimeCues,
+  attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -86,11 +88,14 @@ export function DesktopShell({
   onToggleGroupCollapsed,
   onToggleSectionCollapsed,
   onTogglePreviewExpanded,
+  mentionItems,
+  onMentionQueryChange,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
+  onReadAttachmentFile,
   onOpenSearch,
   searchShortcut,
   TerminalBlockComponent,
@@ -177,6 +182,7 @@ export function DesktopShell({
   }, [bottomContentTarget, bottomContentHost]);
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
+  const tComposer = useTranslations('workbench.composer');
   const syncSidebarPaneSize = useCallback((size: number): void => {
     setShellPaneCssSize(shellRootRef.current, '--lc-sidebar-w', size);
   }, []);
@@ -266,9 +272,27 @@ export function DesktopShell({
   });
 
   const pickDirectory = useCallback(
-    () => systemBridge.fs.pickFile({ title: 'Choose working folder', directory: true }),
+    () =>
+      systemBridge.fs
+        .pickFile({ title: 'Choose working folder', directory: true })
+        .then((paths) => paths?.[0] ?? null),
     [systemBridge],
   );
+
+  const pickAttachmentFiles = useCallback(async (): Promise<ComposerAttachment[]> => {
+    const paths = await systemBridge.fs.pickFile({
+      title: tComposer('attachmentPickerTitle'),
+      multiple: true,
+      filters: [
+        {
+          name: tComposer('attachmentPickerFilter'),
+          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+        },
+      ],
+    });
+    if (!paths || !onReadAttachmentFile) return [];
+    return Promise.all(paths.map((path) => onReadAttachmentFile(path)));
+  }, [systemBridge, onReadAttachmentFile, tComposer]);
 
   useDesktopPaletteCommands({
     desktopPlatform,
@@ -307,6 +331,7 @@ export function DesktopShell({
           workspaces={workspaces}
           chatWorkspace={chatWorkspace}
           runtimeCues={runtimeCues}
+          attachmentSupport={attachmentSupport}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
           onDownloadAgent={onDownloadAgent}
@@ -316,6 +341,7 @@ export function DesktopShell({
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
+          onPickAttachmentFiles={pickAttachmentFiles}
         />
       ) : (
         // Keyed per session: switching resets the composer draft and scroll without touching the shell.
@@ -325,6 +351,7 @@ export function DesktopShell({
           conversation={conversation}
           agentKind={active?.kind}
           agentLabel={agentLabel}
+          attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
           runtimeCues={runtimeCues}
           onLoginAgent={onLoginAgent}
@@ -338,6 +365,8 @@ export function DesktopShell({
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
+          mentionItems={mentionItems}
+          onMentionQueryChange={onMentionQueryChange}
           onSendPrompt={onSendPrompt}
           onStopTurn={onStopTurn}
           onRespondPermission={onRespondPermission}
@@ -346,6 +375,7 @@ export function DesktopShell({
           onReviewChanges={reviewChanges}
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}
+          onPickAttachmentFiles={pickAttachmentFiles}
           onApprovalPolicyChange={onApprovalPolicyChange}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}

@@ -21,7 +21,9 @@ export interface SystemBridge {
     onMaximizedChange(cb: (value: boolean) => void): () => void;
   };
   fs: {
-    pickFile(opts?: PickFileOptions): Promise<string | null>;
+    /** Resolves to every picked path, or `null` if the dialog was cancelled — a single pick is a
+     * one-element array. */
+    pickFile(opts?: PickFileOptions): Promise<string[] | null>;
   };
   app: {
     version(): Promise<string>;

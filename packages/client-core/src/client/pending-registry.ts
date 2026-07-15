@@ -3,6 +3,7 @@ import type {
   AgentHistoryListResult,
   AgentHistoryReadResult,
   AgentRuntimes,
+  FileSuggestion,
   GitDiff,
   GitPullRequestStatus,
   GitStatus,
@@ -50,6 +51,7 @@ export interface PendingValueMap {
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
   fileRead: WorkspaceFile;
+  fileSuggest: FileSuggestion[];
   scriptList: WorkspaceScript[];
   artifactHost: HostedArtifact;
   workspaceList: WorkspaceRecord[];
@@ -88,6 +90,7 @@ export class PendingRegistry {
     gitPrStatus: new Map(),
     gitDiff: new Map(),
     fileRead: new Map(),
+    fileSuggest: new Map(),
     scriptList: new Map(),
     artifactHost: new Map(),
     workspaceList: new Map(),

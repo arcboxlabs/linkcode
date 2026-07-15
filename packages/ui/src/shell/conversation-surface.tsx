@@ -1,4 +1,4 @@
-import type { AgentKind, EffortLevel, QuestionOutcome } from '@linkcode/schema';
+import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@linkcode/schema';
 import { useRef } from 'react';
 import { ArtifactHostActionsProvider } from '../chat/artifacts';
 import type { PermissionDecision } from '../chat/conversation-prompts';
@@ -7,14 +7,17 @@ import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
-import type { ComposerHandle } from './composer';
+import type { ComposerHandle, MentionItem } from './composer';
 import { Composer } from './composer';
+import type { ComposerAttachment } from './composer-attachments';
 import { ConversationPromptDock } from './conversation-prompt-dock';
 
 export interface ConversationSurfaceProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   agentLabel?: string;
+  /** Frontend capability stub used until attachment support is advertised by the session. */
+  attachmentsSupported?: boolean;
   cwd?: string;
   /** TODO(backend): thread the session's active model here once the daemon reflects it. */
   modelName?: string;
@@ -38,7 +41,11 @@ export interface ConversationSurfaceProps {
   className?: string;
   conversationClassName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
-  onSendPrompt: (text: string) => void;
+  /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
+  mentionItems?: MentionItem[];
+  /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
+  onMentionQueryChange?: (query: string | null) => void;
+  onSendPrompt: (content: ContentBlock[]) => void;
   onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
@@ -51,6 +58,10 @@ export interface ConversationSurfaceProps {
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
   onOpenPreviewUrl?: (url: string) => void;
+  /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only
+   * (built by combining the system dialog with a daemon file read) — absent on webview, where
+   * the composer's "Attach" action falls back to the Coss file input. */
+  onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   onModelChange?: (model: string) => Promise<void>;
@@ -65,6 +76,7 @@ export function ConversationSurface({
   conversation,
   agentKind,
   agentLabel,
+  attachmentsSupported = false,
   cwd,
   modelName,
   permissionDecisions,
@@ -81,6 +93,8 @@ export function ConversationSurface({
   className,
   conversationClassName,
   TerminalBlockComponent,
+  mentionItems,
+  onMentionQueryChange,
   onSendPrompt,
   onStopTurn,
   onRespondPermission,
@@ -89,6 +103,7 @@ export function ConversationSurface({
   onReviewChanges,
   onHostArtifact,
   onOpenPreviewUrl,
+  onPickAttachmentFiles,
   onModeChange,
   onApprovalPolicyChange,
   onModelChange,
@@ -155,8 +170,11 @@ export function ConversationSurface({
         handleRef={composerRef}
         agentLabel={agentLabel}
         agentKind={agentKind}
+        attachmentsSupported={attachmentsSupported}
         disabled={disabled}
         isRunning={isRunning}
+        mentionItems={mentionItems}
+        onMentionQueryChange={onMentionQueryChange}
         sendBlocked={loginCue !== undefined}
         currentModeId={conversation.currentModeId}
         approvalPolicy={conversation.approvalPolicy}
@@ -168,6 +186,7 @@ export function ConversationSurface({
         onInvokeCommand={onInvokeCommand}
         onRunShellCommand={onRunShellCommand}
         onStop={onStopTurn}
+        onPickAttachmentFiles={onPickAttachmentFiles}
         onModeChange={onModeChange}
         onApprovalPolicyChange={onApprovalPolicyChange}
         onModelChange={onModelChange}

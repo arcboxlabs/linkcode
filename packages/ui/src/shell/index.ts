@@ -4,6 +4,7 @@ export * from './agent-onboarding-card';
 export * from './appearance-settings-panel';
 export * from './command-palette';
 export * from './composer';
+export * from './composer-attachments';
 export * from './conversation-surface';
 export * from './error-banner';
 export * from './general-settings-panel';

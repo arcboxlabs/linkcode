@@ -1,5 +1,6 @@
 import type { Conversation } from '@linkcode/client-core';
 import type {
+  ContentBlock,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -11,7 +12,7 @@ import {
   archiveWorkspace,
   cancelTurn,
   hostArtifact,
-  promptText,
+  readWorkspaceFile,
   registerWorkspace,
   respondPermission,
   respondQuestion,
@@ -21,18 +22,25 @@ import {
   updateWorkspace,
 } from '@linkcode/sdk';
 import type {
+  AttachmentSupportByAgent,
+  ComposerAttachment,
   NewSessionDraft,
   NewSessionSubmission,
   PermissionDecision,
   ThreadGroupViewModel,
 } from '@linkcode/ui';
-import { useKeyboardShortcutLabel } from '@linkcode/ui';
+import {
+  attachmentFromReadFile,
+  failedComposerAttachmentFromPath,
+  useKeyboardShortcutLabel,
+} from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
+import { useFileMentionSource } from '../files/mentions';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -53,6 +61,14 @@ import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
+
+// TODO(backend): replace this frontend stub with attachment support advertised by each session.
+const ATTACHMENT_SUPPORT: AttachmentSupportByAgent = {
+  'claude-code': true,
+  codex: true,
+  opencode: true,
+  pi: true,
+};
 
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
@@ -117,15 +133,16 @@ function WorkbenchSessionSurface({
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
+  const tComposer = useTranslations('workbench.composer');
   const searchShortcut = useKeyboardShortcutLabel('workbench.command-palette');
-  const promptMutation = useMutation(promptText, { onError });
   const cancelMutation = useMutation(cancelTurn, { onError });
   const permissionMutation = useMutation(respondPermission, { onError });
   const questionMutation = useMutation(respondQuestion, { onError });
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  // Workflow-mode and approval-policy switches ride the generic input op; each reflects back via
-  // its own session event (current-mode-update / approval-policy-update).
+  // Prompts (with any composer attachments) and workflow-mode/approval-policy switches all ride
+  // this generic input op; each reflects back via its own session event (user-message /
+  // current-mode-update / approval-policy-update).
   const inputMutation = useMutation(sendInput, { onError });
   const [permissionDecisions, setPermissionDecisions] = useState(
     () => new Map<string, PermissionDecision>(),
@@ -134,6 +151,7 @@ function WorkbenchSessionSurface({
   const [answeredQuestions, addAnsweredQuestion] = useSet<string>();
   const [respondingQuestions, addRespondingQuestion, removeRespondingQuestion] = useSet<string>();
   const active = sessions.active;
+  const { mentionItems, onMentionQueryChange } = useFileMentionSource(active?.cwd);
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -202,10 +220,12 @@ function WorkbenchSessionSurface({
     previewExpandedKeys,
   ]);
 
-  function handleSend(text: string): void {
+  function handleSend(content: ContentBlock[]): void {
     if (!sessions.activeId) return;
     onClearError();
-    void promptMutation.trigger({ sessionId: sessions.activeId, text }).catch(noop);
+    void inputMutation
+      .trigger({ sessionId: sessions.activeId, input: { type: 'prompt', content } })
+      .catch(noop);
   }
 
   function handleStopTurn(): void {
@@ -246,12 +266,32 @@ function WorkbenchSessionSurface({
     });
     rememberNewSessionDefaults(submission.kind, submission.workspaceId);
     // The first prompt rides behind the started session, like any conversation send.
-    void promptMutation.trigger({ sessionId, text: submission.prompt }).catch(noop);
+    void inputMutation
+      .trigger({ sessionId, input: { type: 'prompt', content: submission.content } })
+      .catch(noop);
   }
 
   async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
     const { data } = await hostArtifact({ content, mimeType });
     return { url: data.url };
+  }
+
+  /** Reads a natively-picked attachment path via the daemon's file-read op — the counterpart to
+   * the drag-and-drop/paste path, which reads bytes client-side and never touches the daemon.
+   * `cwd` only matters for a relative `path`; the picker always yields an absolute one. */
+  async function handleReadAttachmentFile(path: string): Promise<ComposerAttachment> {
+    try {
+      const { data } = await readWorkspaceFile({ cwd: '/', path });
+      return attachmentFromReadFile(data, {
+        tooLarge: tComposer('attachmentTooLarge'),
+        unsupportedType: tComposer('attachmentUnsupportedType'),
+      });
+    } catch (err) {
+      return failedComposerAttachmentFromPath(
+        path,
+        extractErrorMessage(err) ?? tComposer('attachmentReadFailed'),
+      );
+    }
   }
 
   function handleModeChange(modeId: string): Promise<void> {
@@ -412,6 +452,7 @@ function WorkbenchSessionSurface({
 
   return (
     <ShellComponent
+      attachmentSupport={ATTACHMENT_SUPPORT}
       threadGroups={threadGroups}
       workspaces={projectWorkspaces}
       workspacesLoading={workspacesLoading}
@@ -457,11 +498,14 @@ function WorkbenchSessionSurface({
       onToggleGroupCollapsed={toggleGroupCollapsed}
       onToggleSectionCollapsed={toggleSectionCollapsed}
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
+      mentionItems={mentionItems}
+      onMentionQueryChange={onMentionQueryChange}
       onSendPrompt={handleSend}
       onStopTurn={handleStopTurn}
       onRespondPermission={handleRespond}
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
+      onReadAttachmentFile={handleReadAttachmentFile}
       onOpenSearch={openCommandPalette}
       searchShortcut={searchShortcut}
       TerminalBlockComponent={RuntimeTerminalBlock}

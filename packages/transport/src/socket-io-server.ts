@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
-import { parseWireMessage } from '@linkcode/schema';
+import { MAX_ATTACHMENT_TOTAL_BASE64_LENGTH, parseWireMessage } from '@linkcode/schema';
 import type { Socket } from 'socket.io';
 import { Server as SocketIoServerImpl } from 'socket.io';
 import {
@@ -78,6 +78,11 @@ export async function createSocketIoServer(opts: SocketIoServerOptions): Promise
       },
     },
     destroyUpgrade: previewRoutes === undefined,
+    // Default is 1 MB — too small for image attachments. A frame carrying a maximal prompt's
+    // attachments occupies MAX_ATTACHMENT_TOTAL_BASE64_LENGTH; exceeding this buffer doesn't fail
+    // one request, it kills the whole connection (ws close 1009), so the headroom must absorb the
+    // JSON envelope, text blocks, and per-attachment base64 padding.
+    maxHttpBufferSize: MAX_ATTACHMENT_TOTAL_BASE64_LENGTH + 4 * 1024 * 1024,
   });
   const connections = new Listeners<Transport>();
 

@@ -43,6 +43,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
     "@eslint-sukka/react": "^8.13.5",
+    "@iconify-json/material-icon-theme": "catalog:",
     "@proj-airi/lobe-icons": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",

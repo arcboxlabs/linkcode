@@ -14,7 +14,9 @@ export interface SystemContext {
     isMaximized(): boolean;
   };
   dialog: {
-    pickFile(opts?: PickFileOptions): Promise<string | null>;
+    /** Resolves to every picked path, or `null` if the dialog was cancelled — a single pick is a
+     * one-element array. */
+    pickFile(opts?: PickFileOptions): Promise<string[] | null>;
   };
   app: {
     getVersion(): string;
@@ -39,10 +41,20 @@ export interface SystemContext {
   };
 }
 
+export const FileFilterSchema = z.object({
+  name: z.string(),
+  extensions: z.array(z.string()),
+});
+export type FileFilter = z.infer<typeof FileFilterSchema>;
+
 export const PickFileOptionsSchema = z.object({
   title: z.string().optional(),
   /** Whether to select a directory rather than a file. */
   directory: z.boolean().optional(),
+  /** Allow picking more than one path at once (ignored when `directory` is set). */
+  multiple: z.boolean().optional(),
+  /** Restrict selectable files by extension (ignored when `directory` is set). */
+  filters: z.array(FileFilterSchema).optional(),
 });
 export type PickFileOptions = z.infer<typeof PickFileOptionsSchema>;
 
