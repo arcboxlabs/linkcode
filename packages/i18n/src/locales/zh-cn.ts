@@ -367,6 +367,7 @@ export const zhCN = {
     title: '设置',
     back: '返回',
     searchPlaceholder: '搜索设置...',
+    searchNoResults: '没有匹配的设置。',
     groups: {
       personal: '个人',
       integrations: '集成',

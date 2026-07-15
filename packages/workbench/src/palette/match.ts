@@ -90,11 +90,14 @@ function awaitingBoost(session: SessionInfo): number {
   return session.status === 'awaiting-input' ? 1 : 0;
 }
 
-/** Empty query: every command in registration order. With a query: label scoring, then keywords. */
-export function matchPaletteCommands(
-  commands: readonly PaletteCommand[],
+/**
+ * Empty query: every command in registration order. With a query: label scoring, then keywords.
+ * Generic over anything label+keywords-shaped so other searchable lists (settings nav) reuse it.
+ */
+export function matchPaletteCommands<T extends Pick<PaletteCommand, 'label' | 'keywords'>>(
+  commands: readonly T[],
   query: string,
-): PaletteCommand[] {
+): T[] {
   const normalizedQuery = normalize(query);
   if (!normalizedQuery) return [...commands];
 

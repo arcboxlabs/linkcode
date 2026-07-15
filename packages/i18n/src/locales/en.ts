@@ -373,6 +373,7 @@ export const en = {
     title: 'Settings',
     back: 'Back',
     searchPlaceholder: 'Search settings...',
+    searchNoResults: 'No matching settings.',
     groups: {
       personal: 'Personal',
       integrations: 'Integrations',

@@ -1,9 +1,9 @@
 import { Collapsible, CollapsiblePanel } from 'coss-ui/components/collapsible';
+import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -20,7 +20,7 @@ type SettingsSidebarNavRender = React.ComponentProps<typeof SidebarMenuButton>['
 export interface SettingsSidebarNavSubItem {
   key: string;
   icon: React.ReactNode;
-  label: React.ReactNode;
+  label: string;
   active?: boolean;
   onClick?: () => void;
 }
@@ -28,7 +28,9 @@ export interface SettingsSidebarNavSubItem {
 export interface SettingsSidebarNavItem {
   key: string;
   icon: React.ReactNode;
-  label: React.ReactNode;
+  label: string;
+  /** Extra searchable terms (per-tab field labels); never rendered. */
+  keywords?: readonly string[];
   /** For items with `children`, drives the accordion expansion only — the row itself never
    * takes the selected pill; the highlighted sub-item is the "you are here" signal. */
   active?: boolean;
@@ -53,18 +55,32 @@ export interface SettingsSidebarNavProps {
   /** Focuses the back control when a non-routed settings overlay opens. */
   backAutoFocus?: boolean;
   searchPlaceholder: string;
+  /** Controlled search query; the caller filters `groups` with it. */
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  /** Enter in the search field — the caller activates the first visible item. */
+  onSearchSubmit?: () => void;
+  /** Shown instead of the nav when a query matches nothing. */
+  searchEmptyLabel: string;
   groups: SettingsSidebarNavGroup[];
 }
 
-/** The settings sidebar's inner nav: back row, search placeholder, and grouped category items. */
+/** The settings sidebar's inner nav: back row, search field, and grouped category items. */
 export function SettingsSidebarNav({
   backLabel,
   onBack,
   backRender,
   backAutoFocus,
   searchPlaceholder,
+  searchValue,
+  onSearchChange,
+  onSearchSubmit,
+  searchEmptyLabel,
   groups,
 }: SettingsSidebarNavProps): React.ReactNode {
+  const searching = searchValue.trim() !== '';
+  const noMatches = searching && groups.every((group) => group.items.length === 0);
+
   return (
     <div className="px-2">
       <SidebarMenu>
@@ -76,29 +92,54 @@ export function SettingsSidebarNav({
         </SidebarMenuItem>
       </SidebarMenu>
 
-      <div className="relative py-2">
-        <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 text-muted-foreground" />
-        {/* Visual placeholder until settings search is backed by the shared registry. */}
-        <SidebarInput
-          aria-label={searchPlaceholder}
-          className="[&_[data-slot=input]]:pl-8"
-          nativeInput
-          placeholder={searchPlaceholder}
-          readOnly
-          type="search"
-        />
+      <div className="py-2">
+        <InputGroup className="h-8 bg-background shadow-none">
+          <InputGroupAddon>
+            <SearchIcon className="text-muted-foreground" />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label={searchPlaceholder}
+            nativeInput
+            placeholder={searchPlaceholder}
+            type="search"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              // An IME candidate-commit Enter (or composition cancel) is not a submit.
+              if (event.nativeEvent.isComposing || event.key === 'Process') return;
+              if (event.key === 'Enter') {
+                onSearchSubmit?.();
+                return;
+              }
+              // Escape clears an active query locally; when empty it bubbles on to the
+              // surface-level handler (the desktop overlay closes on Escape).
+              if (event.key === 'Escape' && searchValue !== '') {
+                event.stopPropagation();
+                onSearchChange('');
+              }
+            }}
+          />
+        </InputGroup>
       </div>
 
-      <nav>
-        {groups.map((group) => (
-          <SidebarGroup key={group.key} className="p-0 pb-3">
-            <SidebarGroupLabel className="text-muted-foreground">{group.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>{group.items.map(renderNavItem)}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
-      </nav>
+      {noMatches ? (
+        <p className="px-2 py-4 text-muted-foreground text-sm">{searchEmptyLabel}</p>
+      ) : (
+        <nav>
+          {groups.map((group) =>
+            group.items.length === 0 ? null : (
+              <SidebarGroup key={group.key} className="p-0 pb-3">
+                <SidebarGroupLabel className="text-muted-foreground">
+                  {group.label}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>{group.items.map(renderNavItem)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ),
+          )}
+        </nav>
+      )}
     </div>
   );
 }
