@@ -79,7 +79,9 @@ export default function SignInScreen() {
                 : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
             }
             cornerRadius={26}
-            style={{ height: 52, opacity: busy ? 0.5 : 1 }}
+            // The docs require an explicit width and height via style; the
+            // flex column happens to stretch it, but don't rely on that.
+            style={{ height: 52, width: '100%', opacity: busy ? 0.5 : 1 }}
             onPress={() => {
               if (!busy) void run(signInWithApple);
             }}
