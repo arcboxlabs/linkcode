@@ -213,11 +213,11 @@ export const SHOWCASE_COMMANDS_NARRATION = textBlock(
 export interface ShowcaseToolBursts {
   /** Contiguous read/search calls — renders as an "Explored" group. */
   explore: ToolCall[];
-  /** Contiguous edit/delete calls with diffs — renders as an "Edited files" group with summed +/-. */
+  /** Contiguous file calls — renders as an "Edited files" group with curated paths and summed +/-. */
   files: ToolCall[];
   /** Contiguous execute calls (one failed) — renders as a "Ran commands" group. */
   commands: ToolCall[];
-  /** Trailing singletons: failed fetch, think, and the permission-gated edit. */
+  /** Trailing singletons: failed fetch, think, custom tool, subagent, and permission asks. */
   wrapUp: ToolCall[];
 }
 
@@ -236,7 +236,12 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
             content: textBlock('Read the architecture sections for data-plane boundaries.'),
           },
         ],
-        rawInput: { path: 'docs/ARCHITECTURE.md' },
+        rawInput: {
+          path: 'docs/ARCHITECTURE.md',
+          offset: 0,
+          limit: 120,
+          internalRequestId: 'mock-read-173',
+        },
       },
       {
         toolCallId: 'mock-tool-search',
@@ -244,12 +249,18 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         kind: 'search',
         status: 'completed',
         content: [],
-        rawInput: { query: 'permission-request|tool-call|plan' },
+        rawInput: {
+          query: 'permission-request|tool-call|plan',
+          glob: '**/*.{ts,tsx}',
+          cwd: '/mock/linkcode',
+        },
         rawOutput: {
           matches: [
             'packages/ui/src/chat/conversation-view.tsx',
             'packages/client-core/src/conversation.ts',
           ],
+          files: 2,
+          elapsedMs: 17,
         },
       },
     ],
@@ -305,6 +316,20 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
           },
         ],
       },
+      {
+        toolCallId: 'mock-tool-move-preview',
+        title: 'Move preview renderer',
+        kind: 'move',
+        status: 'completed',
+        locations: [{ path: 'packages/ui/src/chat/artifacts/preview.tsx' }],
+        content: [],
+        rawInput: {
+          path: 'packages/ui/src/chat/preview.tsx',
+          move_path: 'packages/ui/src/chat/artifacts/preview.tsx',
+          overwrite: false,
+          internalRequestId: 'mock-move-173',
+        },
+      },
     ],
     commands: [
       {
@@ -344,8 +369,16 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         kind: 'fetch',
         status: 'failed',
         content: [],
-        rawInput: { url: 'https://mock.invalid/preview' },
-        rawOutput: { status: 503, message: 'Mocked fetch failure for error-state coverage' },
+        rawInput: {
+          url: 'https://mock.invalid/preview',
+          headers: { authorization: 'Bearer mock-token' },
+          traceId: 'mock-fetch-173',
+        },
+        rawOutput: {
+          status: 503,
+          message: 'Mocked fetch failure for error-state coverage',
+          responseBody: '<internal diagnostic>',
+        },
       },
       {
         toolCallId: 'mock-tool-think',
@@ -358,6 +391,42 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
             content: textBlock('Covered all currently schema-backed chat items.'),
           },
         ],
+      },
+      {
+        toolCallId: 'mock-tool-other-capability',
+        title: 'workspace.inspectCapability',
+        kind: 'other',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('Workspace capability is available.'),
+          },
+        ],
+        rawInput: {
+          workspaceId: 'mock-workspace-internal',
+          includeDebug: true,
+          traceId: 'mock-other-173',
+        },
+        rawOutput: { ok: true, internalRequestId: 'mock-other-result-173' },
+      },
+      {
+        toolCallId: 'mock-tool-task-review',
+        title: 'Review metadata policy',
+        kind: 'task',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('Reviewed the normal-mode metadata allowlist.'),
+          },
+        ],
+        rawInput: {
+          description: 'Review metadata policy',
+          prompt: 'Inspect every adapter payload and report internal implementation details.',
+          subagent_type: 'Explore',
+        },
+        rawOutput: { agentId: 'mock-subagent-internal', traceId: 'mock-task-173' },
       },
       ...SHOWCASE_PERMISSIONS.map((permission) => permission.toolCall),
     ],
