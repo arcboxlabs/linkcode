@@ -5,7 +5,7 @@ import type { PtyTransport } from 'restty';
 import { Restty } from 'restty';
 import { cn } from '../../lib/cn';
 import { resolveTerminalFonts } from './fonts';
-import type { TerminalColorScheme, TerminalFontFamily } from './prefs';
+import type { TerminalColorScheme } from './prefs';
 import {
   DEFAULT_TERMINAL_COLOR_SCHEME,
   DEFAULT_TERMINAL_FONT_FAMILY,
@@ -100,7 +100,7 @@ export function LiveTerminal({
   session: TerminalSession;
   suspended?: boolean;
   className?: string;
-  fontFamily?: TerminalFontFamily;
+  fontFamily?: string;
   fontSize?: number;
   colorScheme?: TerminalColorScheme;
 }): React.ReactNode {

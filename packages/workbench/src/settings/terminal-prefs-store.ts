@@ -1,11 +1,10 @@
 import { zodPersist } from '@linkcode/common/zustand';
-import type { TerminalColorScheme, TerminalFontFamily } from '@linkcode/ui';
+import type { TerminalColorScheme } from '@linkcode/ui';
 import {
   DEFAULT_TERMINAL_COLOR_SCHEME,
   DEFAULT_TERMINAL_FONT_FAMILY,
   DEFAULT_TERMINAL_FONT_SIZE,
   TERMINAL_COLOR_SCHEMES,
-  TERMINAL_FONT_FAMILIES,
 } from '@linkcode/ui';
 import { z } from 'zod';
 import { create } from 'zustand';
@@ -13,7 +12,7 @@ import { create } from 'zustand';
 /** Persisted subset — every field optional so partial/stale storage merges over the defaults. */
 const PersistedTerminalPrefsSchema = z
   .object({
-    fontFamily: z.enum(TERMINAL_FONT_FAMILIES),
+    fontFamily: z.string(),
     fontSize: z.number().int().min(8).max(32),
     colorScheme: z.enum(TERMINAL_COLOR_SCHEMES),
   })
@@ -26,12 +25,13 @@ type PersistedTerminalPrefs = z.infer<typeof PersistedTerminalPrefsSchema>;
  * but webview persists the same prefs for parity).
  */
 export interface TerminalPrefsState {
-  fontFamily: TerminalFontFamily;
+  /** Monospace family name, or empty for the bundled default chain. */
+  fontFamily: string;
   /** Font size in CSS pixels. */
   fontSize: number;
   /** `'auto'` follows the app light/dark mode; a named restty theme applies regardless. */
   colorScheme: TerminalColorScheme;
-  setFontFamily: (fontFamily: TerminalFontFamily) => void;
+  setFontFamily: (fontFamily: string) => void;
   setFontSize: (fontSize: number) => void;
   setColorScheme: (colorScheme: TerminalColorScheme) => void;
 }

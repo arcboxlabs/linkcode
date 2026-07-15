@@ -437,8 +437,8 @@ export const zhCN = {
     },
     terminal: {
       fontFamily: '字体',
-      fontFamilyHint: '终端使用的等宽字体。系统缺失时回退到内置字体。',
-      fontFamilyDefault: '默认',
+      fontFamilyHint: '终端使用的等宽字体名，可从建议中选或直接输入；系统缺失时回退到内置字体。',
+      fontFamilyPlaceholder: '例如 JetBrains Mono',
       fontSize: '字号',
       colorScheme: '配色方案',
       colorSchemeHint: '终端配色。「跟随主题」随应用浅色 / 深色切换。',

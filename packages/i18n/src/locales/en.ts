@@ -445,8 +445,8 @@ export const en = {
     terminal: {
       fontFamily: 'Font',
       fontFamilyHint:
-        'Monospace font for the terminal. Falls back to the bundled font when unavailable.',
-      fontFamilyDefault: 'Default',
+        'Monospace font for the terminal — pick a suggestion or type any family; falls back to the bundled font if unavailable.',
+      fontFamilyPlaceholder: 'e.g. JetBrains Mono',
       fontSize: 'Font size',
       colorScheme: 'Color scheme',
       colorSchemeHint: 'Terminal colors. "Follow theme" tracks the app light/dark mode.',

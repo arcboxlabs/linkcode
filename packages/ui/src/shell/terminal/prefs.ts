@@ -1,11 +1,11 @@
 import type { ResttyBuiltinThemeName } from 'restty';
 
 /**
- * Monospace family the terminal renders in. `'default'` is the bundled IBM Plex Mono chain; a named
- * family is prepended to that chain (`local: 'prefer'`) so a machine that lacks it falls back cleanly.
+ * Monospace family the terminal renders in — a free-form family name, or empty for the bundled IBM
+ * Plex Mono chain. A named family is prepended to that chain (`local: 'prefer'`) so a machine that
+ * lacks it falls back cleanly. The list seeds the field's suggestions; any other name is accepted.
  */
-export const TERMINAL_FONT_FAMILIES = [
-  'default',
+export const TERMINAL_FONT_SUGGESTIONS = [
   'SF Mono',
   'Menlo',
   'Monaco',
@@ -14,9 +14,9 @@ export const TERMINAL_FONT_FAMILIES = [
   'Cascadia Code',
   'Hack',
   'Source Code Pro',
+  'IBM Plex Mono',
 ] as const;
-export type TerminalFontFamily = (typeof TERMINAL_FONT_FAMILIES)[number];
-export const DEFAULT_TERMINAL_FONT_FAMILY: TerminalFontFamily = 'default';
+export const DEFAULT_TERMINAL_FONT_FAMILY = '';
 
 /** Terminal font size in CSS pixels. */
 export const TERMINAL_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20] as const;
