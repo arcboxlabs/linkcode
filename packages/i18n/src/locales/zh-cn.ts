@@ -395,6 +395,7 @@ export const zhCN = {
     tabs: {
       general: '通用',
       appearance: '外观',
+      terminal: '终端',
       connection: '连接',
       notifications: '通知',
       about: '关于',
@@ -433,6 +434,15 @@ export const zhCN = {
       themeSystem: '跟随系统',
       themeLight: '浅色',
       themeDark: '深色',
+    },
+    terminal: {
+      fontFamily: '字体',
+      fontFamilyHint: '终端使用的等宽字体。系统缺失时回退到内置字体。',
+      fontFamilyDefault: '默认',
+      fontSize: '字号',
+      colorScheme: '配色方案',
+      colorSchemeHint: '终端配色。「跟随主题」随应用浅色 / 深色切换。',
+      colorSchemeAuto: '跟随主题',
     },
     connection: {
       title: 'Daemon',
