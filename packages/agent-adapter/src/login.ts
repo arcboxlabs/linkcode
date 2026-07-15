@@ -1,5 +1,7 @@
 import { spawn as nodeSpawn } from 'node:child_process';
+import type { AgentKind } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { startCodexLogin } from './native/codex/login';
 
 /** The authorize URL claude prints as `…visit: https://…/oauth/authorize?…`. */
 const CLAUDE_LOGIN_URL_RE = /https:\/\/\S*\/oauth\/authorize\S*/i;
@@ -100,4 +102,26 @@ export function startClaudeLogin(
 function defaultSpawn(command: string, args: string[]): LoginChildProcess {
   // No `env` override: inherit the daemon's environment so credentials land where the SDK reads them.
   return nodeSpawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+}
+
+/** Agent kinds whose CLI login LinkCode can drive headlessly; the engine rejects the rest. */
+export const AGENT_LOGIN_KINDS: ReadonlySet<AgentKind> = new Set(['claude-code', 'codex']);
+
+/**
+ * Per-kind dispatcher over the two implemented flows: claude's paste-code child process and
+ * codex's app-server browser callback (`native/codex/login.ts`). `undefined` = unsupported kind.
+ */
+export function startAgentCliLogin(
+  kind: AgentKind,
+  binaryPath: string,
+  callbacks: AgentLoginCallbacks,
+): AgentLoginHandle | undefined {
+  switch (kind) {
+    case 'claude-code':
+      return startClaudeLogin(binaryPath, callbacks);
+    case 'codex':
+      return startCodexLogin(binaryPath, callbacks);
+    default:
+      return undefined;
+  }
 }

@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "tailwindcss": "^4.3.1",
+    "tailwindcss": "^4.3.2",
     "typescript": "catalog:"
   }
 }

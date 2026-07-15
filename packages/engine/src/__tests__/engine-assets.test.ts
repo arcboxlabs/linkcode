@@ -211,6 +211,157 @@ describe('asset install broadcasts', () => {
     });
   });
 
+  it('pushes agent-runtime.changed for an agent install even when the snapshot is unchanged', async () => {
+    // Clients treat the push as the install's settle signal (the 'installed' activity bridge), so
+    // an event-triggered re-probe must broadcast even a byte-identical result — unlike the
+    // diff-gated read-triggered revalidation.
+    const runtimes: AgentRuntimes = {
+      codex: { status: 'available', source: 'managed', path: INSTALLED_CODEX.path },
+    };
+    const { service, emit } = fakeAssets();
+    const { engine, sent } = harness({
+      assets: service,
+      agentRuntimes: runtimes,
+      collectAgentRuntimes: () => Promise.resolve(runtimes),
+    });
+    await engine.start();
+    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+    await vi.waitFor(() => {
+      expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes });
+    });
+  });
+
+  it('queues an event re-probe behind an in-flight read revalidation', async () => {
+    // The read-triggered pass may have probed before the install landed on disk; the event's own
+    // pass must run after it so the pushed snapshot reflects the install.
+    const boot: AgentRuntimes = { codex: { status: 'missing' } };
+    const refreshed: AgentRuntimes = {
+      codex: { status: 'available', source: 'managed', path: INSTALLED_CODEX.path },
+    };
+    const resolvers: Array<(runtimes: AgentRuntimes) => void> = [];
+    const collect = vi.fn(
+      () =>
+        new Promise<AgentRuntimes>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { service, emit } = fakeAssets();
+    const { engine, sent, inject } = harness({
+      assets: service,
+      agentRuntimes: boot,
+      collectAgentRuntimes: collect,
+    });
+    await engine.start();
+
+    inject({ kind: 'agent-runtime.list', clientReqId: 'r1' }); // pass 1: read-triggered
+    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX }); // pass 2: queued
+    await vi.waitFor(() => {
+      expect(collect).toHaveBeenCalledTimes(1); // pass 2 must NOT start while pass 1 is in flight
+    });
+
+    nullthrow(resolvers[0])(boot); // pass 1 sees the pre-install truth — unchanged, no push
+    await vi.waitFor(() => {
+      expect(collect).toHaveBeenCalledTimes(2);
+    });
+    nullthrow(resolvers[1])(refreshed);
+    await vi.waitFor(() => {
+      expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: refreshed });
+    });
+    expect(sent.filter((p) => p.kind === 'agent-runtime.changed')).toHaveLength(1);
+  });
+
+  it('an install event re-probes straight through the read-revalidation cooldown', async () => {
+    const now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const runtimes: AgentRuntimes = { codex: { status: 'missing' } };
+      const collect = vi.fn(() => Promise.resolve(runtimes));
+      const { service, emit } = fakeAssets();
+      const { engine, inject } = harness({
+        assets: service,
+        agentRuntimes: runtimes,
+        collectAgentRuntimes: collect,
+      });
+      await engine.start();
+
+      inject({ kind: 'agent-runtime.list', clientReqId: 'r1' });
+      await vi.waitFor(() => {
+        expect(collect).toHaveBeenCalledTimes(1);
+      });
+      inject({ kind: 'agent-runtime.list', clientReqId: 'r2' }); // cooldown active → skipped
+      await vi.waitFor(() => {
+        expect(collect).toHaveBeenCalledTimes(1);
+      });
+
+      // The event path must not inherit the read cooldown: the client's 'installed' activity
+      // bridge waits on this push landing promptly.
+      emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+      await vi.waitFor(() => {
+        expect(collect).toHaveBeenCalledTimes(2);
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('coalesces simultaneous install events onto one queued pass', async () => {
+    const runtimes: AgentRuntimes = {
+      codex: { status: 'available', source: 'managed', path: INSTALLED_CODEX.path },
+    };
+    const collect = vi.fn(() => Promise.resolve(runtimes));
+    const { service, emit } = fakeAssets();
+    const { engine, sent } = harness({
+      assets: service,
+      agentRuntimes: {},
+      collectAgentRuntimes: collect,
+    });
+    await engine.start();
+
+    // Same tick, before the queued pass starts probing: both events' effects are already on
+    // disk, so one pass observes them both.
+    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+    emit({ kind: 'installed', id: 'agent:claude-code', installed: INSTALLED_CODEX });
+    await vi.waitFor(() => {
+      expect(sent.filter((p) => p.kind === 'agent-runtime.changed')).toHaveLength(1);
+    });
+    expect(collect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not join an event onto a pass that is already probing', async () => {
+    const runtimes: AgentRuntimes = {
+      codex: { status: 'available', source: 'managed', path: INSTALLED_CODEX.path },
+    };
+    const resolvers: Array<(value: AgentRuntimes) => void> = [];
+    const collect = vi.fn(
+      () =>
+        new Promise<AgentRuntimes>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { service, emit } = fakeAssets();
+    const { engine, sent } = harness({
+      assets: service,
+      agentRuntimes: {},
+      collectAgentRuntimes: collect,
+    });
+    await engine.start();
+
+    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+    await vi.waitFor(() => {
+      expect(collect).toHaveBeenCalledTimes(1); // pass 1 is probing now
+    });
+    // This event's install landed after pass 1 began — it needs its own pass.
+    emit({ kind: 'installed', id: 'agent:claude-code', installed: INSTALLED_CODEX });
+    nullthrow(resolvers[0])(runtimes);
+    await vi.waitFor(() => {
+      expect(collect).toHaveBeenCalledTimes(2);
+    });
+    nullthrow(resolvers[1])(runtimes);
+    await vi.waitFor(() => {
+      expect(sent.filter((p) => p.kind === 'agent-runtime.changed')).toHaveLength(2);
+    });
+  });
+
   it('does not re-probe for tool installs', async () => {
     const collect = vi.fn(() => Promise.resolve({}));
     const { service, emit } = fakeAssets();

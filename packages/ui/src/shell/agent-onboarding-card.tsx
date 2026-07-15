@@ -160,11 +160,17 @@ export function AgentOnboardingCard({
   }
 }
 
+/** Kinds whose flow hands the user an authorization code to paste back (claude's remote callback
+ * page); the rest (codex) complete on the CLI's own localhost callback — the awaiting phase just
+ * waits for the browser. */
+const PASTE_CODE_KINDS: ReadonlySet<AgentKind> = new Set(['claude-code']);
+
 /**
  * The signed-out branch of {@link AgentOnboardingCard}: a self-contained login flow. `idle` offers
  * the button; `opening` shows a spinner while the browser launches; `awaiting-code` takes the
- * authorization code pasted from the browser (with a fallback link to reopen the URL); `failed`
- * offers a retry. Owns only the ephemeral code-input value — everything else arrives via props.
+ * authorization code pasted from the browser (with a fallback link to reopen the URL) — or, for
+ * kinds without a code hand-back, waits for the browser flow to settle; `failed` offers a retry.
+ * Owns only the ephemeral code-input value — everything else arrives via props.
  */
 function AgentLoginCard({
   kind,
@@ -188,6 +194,35 @@ function AgentLoginCard({
       <Alert>
         <Loader2Icon className="animate-spin" />
         <AlertTitle>{t('loginOpening', { agent })}</AlertTitle>
+      </Alert>
+    );
+  }
+
+  if (cue.phase === 'awaiting-code' && !PASTE_CODE_KINDS.has(kind)) {
+    return (
+      <Alert>
+        <Loader2Icon className="animate-spin" />
+        <AlertTitle>{t('needsLoginTitle', { agent })}</AlertTitle>
+        <AlertDescription className="w-full">
+          {t('loginAwaitingBrowser')}
+          {cue.url && (
+            <a
+              className="mt-1 block underline underline-offset-2"
+              href={cue.url}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {t('loginReopenUrl')}
+            </a>
+          )}
+          {onCancelLogin && (
+            <div className="mt-2">
+              <Button size="sm" variant="ghost" onClick={() => onCancelLogin(kind)}>
+                {t('loginCancel')}
+              </Button>
+            </div>
+          )}
+        </AlertDescription>
       </Alert>
     );
   }
@@ -262,7 +297,7 @@ function AgentLoginCard({
       {onLogin && (
         <AlertAction>
           <Button size="sm" onClick={() => onLogin(kind)}>
-            {t('login')}
+            {t('login', { agent })}
           </Button>
         </AlertAction>
       )}

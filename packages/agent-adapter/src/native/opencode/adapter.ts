@@ -1,22 +1,35 @@
+import { realpath } from 'node:fs/promises';
+import { parse, sep } from 'node:path';
 import type {
   AgentCommand,
+  AgentHistoryCapabilities,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
+  AgentHistoryResumeOptions,
   ContentBlock,
   PermissionOption,
   Question,
   StartOptions,
-  ToolCallContent,
-  ToolCallStatus,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
 import type { Event, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { falseFn } from 'foxts/noop';
-import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../adapter';
-import { BaseAgentAdapter } from '../base';
-import { readAgentCredential } from '../credential';
-import { contentToText, locationsFromToolInput, toolKindFromName } from '../util';
+import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
+import { BaseAgentAdapter } from '../../base';
+import { readAgentCredential } from '../../credential';
+import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
+import { contentToText, toolKindFromName } from '../../util';
+import {
+  filterRevertedMessages,
+  mapOpencodeHistoryEvents,
+  opencodeSessionToHistorySession,
+  toolCallFromPart,
+} from './history';
+import type { OpencodeHistoryServerLike } from './history-server';
+import { sharedOpencodeHistoryServer } from './history-server';
 
-type ToolPartState = Extract<Part, { type: 'tool' }>['state'];
 type PermissionAsked = Extract<Event, { type: 'permission.asked' }>['properties'];
 type QuestionAsked = Extract<Event, { type: 'question.asked' }>['properties'];
 type SessionErrored = Extract<Event, { type: 'session.error' }>['properties'];
@@ -41,6 +54,20 @@ function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): strin
   return typeof message === 'string' && message.length > 0 ? message : error.name;
 }
 
+/** opencode records server-canonical (symlink-resolved) directories; the caller's cwd may arrive
+ * through a symlink (macOS `/tmp` → `/private/tmp`) or with a trailing separator — resolve it the
+ * same way or matching sessions silently vanish from the cwd-filtered list. */
+async function canonicalDirectory(cwd: string): Promise<string> {
+  // Roots keep their separator: stripping '/' or Windows 'C:\' would change meaning ('C:' is
+  // "current directory on drive C", not the drive root).
+  const trimmed = cwd.endsWith(sep) && cwd !== parse(cwd).root ? cwd.slice(0, -1) : cwd;
+  try {
+    return await realpath(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
 /** The generated client resolves with `{error}` on HTTP and network failures alike (nothing here
  * passes `throwOnError`), so every RPC result must be checked — an unchecked failure silently
  * reads as success. Throws with the error detail when the result carries one. */
@@ -59,31 +86,6 @@ function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T
   throw new Error(`${context} failed: ${detail}`);
 }
 
-/** Map OpenCode's tool part state to our ToolCallStatus (running → in_progress, error → failed). */
-function mapOpencodeToolStatus(status: ToolPartState['status']): ToolCallStatus {
-  switch (status) {
-    case 'running':
-      return 'in_progress';
-    case 'completed':
-      return 'completed';
-    case 'error':
-      return 'failed';
-    default:
-      return 'pending';
-  }
-}
-
-/** Surface a terminal tool state's output (completed) or error message (error) as tool-call content. */
-function toolStateContent(state: ToolPartState): ToolCallContent[] {
-  if (state.status === 'completed' && state.output.length > 0) {
-    return [{ type: 'content', content: textBlock(state.output) }];
-  }
-  if (state.status === 'error' && state.error.length > 0) {
-    return [{ type: 'content', content: textBlock(state.error) }];
-  }
-  return [];
-}
-
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
 type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['client'];
 
@@ -95,10 +97,23 @@ type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['cli
 export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'opencode' as const;
   override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: true,
+    read: true,
+    resume: true,
+  };
 
   private client: OpencodeClient | null = null;
   private closeServer: (() => void) | null = null;
   private sessionId: string | null = null;
+  /** Provider session id to adopt at the next start — set by `resumeHistory`. OpenCode sessions
+   * live server-side, so a native resume is just prompting the existing id again. */
+  private resumeFrom: string | null = null;
+  /** Directory scope for every session-bound RPC and the event subscription: the session's own
+   * home. Equal to `opts.cwd` for fresh sessions; a resumed session keeps the (server-canonical)
+   * directory it was created under, which the resume's `startOpts.cwd` need not match — and a
+   * mismatched scope silently misses every event on the per-directory instance bus. */
+  private directory: string | undefined;
   private stopped = false;
   /** True while a turn is in flight (prompt sent, `session.idle` not yet seen) — gates whether the
    * event stream ending is an unexpected failure or an expected side effect of the turn finishing. */
@@ -156,18 +171,32 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     this.client = started.client;
     this.closeServer = () => started.server.close();
-    const created = okOrThrow(
-      await this.client.session.create({ directory: opts.cwd }),
-      'opencode: session.create',
-    );
-    const id = created.data?.id;
-    if (!id) throw new Error('opencode: failed to create session');
-    this.sessionId = id;
+    if (this.resumeFrom) {
+      // Adopt the existing provider session instead of creating one, and announce its id right
+      // away — a resumed session's transcript is real, so the seed read is safe immediately
+      // (unlike the fresh path below).
+      const got = await this.client.session.get({ sessionID: this.resumeFrom });
+      if (got.error !== undefined || !got.data) {
+        throw new Error(`opencode: history '${this.resumeFrom}' was not found`);
+      }
+      this.sessionId = got.data.id;
+      this.directory = got.data.directory;
+      this.emitSessionRef(asHistoryId(got.data.id));
+    } else {
+      const created = okOrThrow(
+        await this.client.session.create({ directory: opts.cwd }),
+        'opencode: session.create',
+      );
+      const id = created.data?.id;
+      if (!id) throw new Error('opencode: failed to create session');
+      this.sessionId = id;
+      this.directory = opts.cwd;
+    }
     // Catalog fetch is best-effort: there is no SSE event for catalog changes (poll-only), and a
     // failed list must not fail session start — catalog absence is itself a capability signal (no
     // `available-commands-update` ever fires for this session).
     try {
-      const listed = await this.client.command.list({ directory: opts.cwd });
+      const listed = await this.client.command.list({ directory: this.directory });
       if (listed.error === undefined && listed.data.length > 0) {
         this.emitCommands(
           listed.data.map(
@@ -210,7 +239,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // timeouts on long turns. The SSE stream is the single source of turn lifecycle either way.
     const result = await this.client.session.promptAsync({
       sessionID: this.sessionId,
-      directory: this.opts?.cwd,
+      directory: this.directory,
       model: this.model(),
       parts,
     });
@@ -234,7 +263,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     void this.client.session
       .command({
         sessionID: this.sessionId,
-        directory: this.opts?.cwd,
+        directory: this.directory,
         command: name,
         arguments: args ?? '',
         model: this.opts?.model,
@@ -273,7 +302,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     void this.client.session
       .shell({
         sessionID: this.sessionId,
-        directory: this.opts?.cwd,
+        directory: this.directory,
         agent,
         command,
       })
@@ -306,7 +335,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     let agents: Array<{ name: string; mode: string }> = [];
     try {
       if (this.client) {
-        const result = await this.client.app.agents({ directory: this.opts?.cwd });
+        const result = await this.client.app.agents({ directory: this.directory });
         if (result.error === undefined) agents = result.data;
       }
     } catch {
@@ -331,7 +360,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (!this.client || !this.sessionId) return;
     const abort = this.client.session.abort({
       sessionID: this.sessionId,
-      directory: this.opts?.cwd,
+      directory: this.directory,
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -376,6 +405,86 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
+  override async resumeHistory(
+    opts: AgentHistoryResumeOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    this.resumeFrom = opts.historyId;
+    await this.start(startOpts);
+  }
+
+  override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
+    const offset = cursorOffset(opts?.cursor);
+    const limit = boundedLimit(opts?.limit, 50, 200);
+    const cwdFilter = opts?.cwd ? await canonicalDirectory(opts.cwd) : undefined;
+    const sessions = await this.withHistoryClient(async (client) => {
+      // `roots` excludes subagent child sessions; the neutral-cwd shared server lists sessions
+      // across every project without directory scoping (verified live on 1.17.11).
+      const listed = okOrThrow(
+        await client.session.list({ roots: true }),
+        'opencode: session.list',
+      );
+      return (listed.data ?? [])
+        .filter(
+          (session) =>
+            session.time.archived === undefined &&
+            !session.parentID &&
+            (!cwdFilter || session.directory === cwdFilter),
+        )
+        .sort((a, b) => b.time.updated - a.time.updated)
+        .map(opencodeSessionToHistorySession);
+    });
+    return {
+      sessions: sessions.slice(offset, offset + limit),
+      cursor: cursorFromTotal(offset, sessions.length, limit),
+    };
+  }
+
+  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    const offset = cursorOffset(opts.cursor);
+    const limit = boundedLimit(opts.limit, 1000, 1000);
+    const { session, events } = await this.withHistoryClient(async (client) => {
+      // `get` (revert marker + summary) and the full message fetch are independent — one round
+      // trip of latency instead of two; existence is judged off `get` once both land. The full
+      // fetch + event-level slicing is the codex contract, and unavoidable here: the messages
+      // RPC's own `limit` returns the LAST n messages, not the first n (verified live on
+      // 1.17.11), so it cannot implement forward pagination.
+      const [got, messages] = await Promise.all([
+        client.session.get({ sessionID: opts.historyId }),
+        client.session.messages({ sessionID: opts.historyId }),
+      ]);
+      if (got.error !== undefined || !got.data) {
+        throw new Error(`opencode: history '${opts.historyId}' was not found`);
+      }
+      okOrThrow(messages, 'opencode: session.messages');
+      return {
+        session: opencodeSessionToHistorySession(got.data),
+        events: mapOpencodeHistoryEvents(
+          opts.historyId,
+          filterRevertedMessages(messages.data ?? [], got.data.revert),
+        ),
+      };
+    });
+    return {
+      session,
+      events: events.slice(offset, offset + limit),
+      cursor: cursorFromTotal(offset, events.length, limit),
+    };
+  }
+
+  /** Test seam — the real thing is the process-wide shared history server (CODE-171). */
+  protected historyServer(): OpencodeHistoryServerLike {
+    return sharedOpencodeHistoryServer();
+  }
+
+  private async withHistoryClient<T>(fn: (client: OpencodeClient) => Promise<T>): Promise<T> {
+    // Plain import, not loadSdk: history calls run on never-started adapter instances
+    // (HistoryService constructs one per call via the factory) where the sdk-unavailable error
+    // event has no listeners — the rejection reaching HistoryService is the whole story.
+    const mod = await import('@opencode-ai/sdk/v2');
+    return this.historyServer().withServer((baseUrl) => fn(mod.createOpencodeClient({ baseUrl })));
+  }
+
   // No onSetModel override: like claude-code's persistent Query (BaseAgentAdapter#onSetModel calls
   // Query#setModel()), opencode's this.model() also re-derives from this.opts?.model fresh every
   // onPrompt call — the mechanism looks live-switchable — but this has not been verified against a
@@ -407,7 +516,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // Events are scoped to the per-directory instance: a bare subscribe() only carries the
       // server-cwd instance's bus and silently misses every session event whenever the daemon cwd
       // differs from the session cwd (verified live on opencode 1.17.11).
-      const sub = await this.client.event.subscribe({ directory: this.opts?.cwd });
+      const sub = await this.client.event.subscribe({ directory: this.directory });
       for await (const ev of sub.stream) {
         if (this.stopped) break;
         this.handleEvent(ev);
@@ -475,6 +584,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
             ev.properties.status.type !== 'idle'
           ) {
             this.turnStarted = true;
+            // First on-stream acknowledgement of a turn: safe to announce the provider-local id
+            // now. Announcing at session.create would trigger the client's transcript seed
+            // against an empty session, and the seed's uptoSeq cut would swallow the first
+            // prompt (codex defers fresh-thread session-ref for the same reason). Re-announces
+            // dedupe in the base class.
+            this.emitSessionRef(asHistoryId(this.sessionId));
           }
           break;
         case 'session.error':
@@ -592,7 +707,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       okOrThrow(
         await this.client.permission.reply({
           requestID: props.id,
-          directory: this.opts?.cwd,
+          directory: this.directory,
           reply,
         }),
         'opencode: permission.reply',
@@ -609,7 +724,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * exactly that shape — and a decline (or teardown cancel) rejects so the asking tool settles. */
   private async handleQuestionAsked(props: QuestionAsked): Promise<void> {
     const requestID = props.id;
-    const directory = this.opts?.cwd;
+    const directory = this.directory;
     if (props.questions.length === 0 || props.questions.some((q) => q.options.length === 0)) {
       // The Question schema requires ≥1 option per question; an ask we can't render must still be
       // answered or it gates the turn server-side forever.
@@ -695,16 +810,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
       case 'tool': {
         this.toolPartIdByCallId.set(part.callID, part.id);
-        this.emitTool({
-          toolCallId: part.id,
-          title: part.tool,
-          kind: toolKindFromName(part.tool),
-          status: mapOpencodeToolStatus(part.state.status),
-          content: toolStateContent(part.state),
-          rawInput: part.state.input,
-          rawOutput: part.state.status === 'completed' ? part.state.output : undefined,
-          locations: locationsFromToolInput(part.state.input),
-        });
+        // Same part→snapshot mapping history replay uses, so live and cold cards converge by id.
+        this.emitTool(toolCallFromPart(part));
 
         break;
       }

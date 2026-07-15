@@ -33,6 +33,7 @@ import { ArtifactHostService } from './artifacts/host-service';
 import { readWorkspaceFile } from './file-service';
 import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
+import { jsonValueEqual } from './json-equal';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
 import type { PtyBackend } from './pty-backend';
@@ -89,7 +90,8 @@ export interface EngineDeps {
   agentRuntimes?: AgentRuntimes;
   /** Managed-asset store, served on `asset.list` and driven by `asset.ensure`. */
   assets?: AssetService;
-  /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands. */
+  /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands,
+   * a login settles, a turn fails on auth, or a client read revalidates it (CODE-172). */
   collectAgentRuntimes?: () => Promise<AgentRuntimes>;
   /** Resolves the CLI to spawn for an interactive `agent-login`; absent hosts reject login requests. */
   resolveLoginBinary?: LoginBinaryResolver;
@@ -106,6 +108,9 @@ export interface AssetService {
 
 /** Progress broadcasts are throttled per asset so a fast download can't flood the wire. */
 const ASSET_PROGRESS_INTERVAL_MS = 150;
+
+/** A read-triggered re-probe spawns agent CLIs (`--version`, `auth status`) — bound how often. */
+const RUNTIME_REVALIDATE_COOLDOWN_MS = 5000;
 
 /**
  * Engine: the local core engine — the "host" that runs the agents
@@ -131,12 +136,24 @@ export class Engine {
   private readonly git: GitService;
   private readonly scripts?: ScriptService;
   private readonly artifactHost: ArtifactHostService;
-  /** Boot snapshot, replaced by {@link refreshAgentRuntimes} when a managed install lands. */
+  /** Boot snapshot, replaced by every {@link enqueueRuntimesCollect} pass (install/login/auth
+   * events and read-triggered revalidation alike). */
   private agentRuntimes: AgentRuntimes;
   private readonly assets?: AssetService;
   private readonly logins?: AgentLoginService;
   private readonly translator?: TranslatorService;
   private readonly collectAgentRuntimes?: () => Promise<AgentRuntimes>;
+  /** Tail of the runtime-collect queue: passes never overlap, so a pass queued for an event
+   * (login settle, install) always probes after that event's effect landed on disk. */
+  private runtimesCollect: Promise<void> = Promise.resolve();
+  /** Queued + running collect passes; read-triggered revalidation coalesces onto them. */
+  private runtimesCollectActive = 0;
+  /** When the last collect pass SUCCEEDED — the read-revalidation cooldown reference. A failed
+   * pass leaves it alone so the next read retries immediately instead of serving stale data
+   * behind a cooldown nothing actually refreshed. */
+  private runtimesCollectedAt = 0;
+  /** An event-triggered pass that has not started probing yet; simultaneous events join it. */
+  private pendingEventPass: Promise<void> | undefined;
   private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
 
@@ -472,6 +489,10 @@ export class Engine {
             runtimes: this.agentRuntimes,
           }),
         );
+        // Serve-stale-then-revalidate (CODE-172): login state and user CLI installs change behind
+        // the daemon's back, so a read also kicks a background re-probe; a differing result is
+        // pushed as `agent-runtime.changed`.
+        this.revalidateAgentRuntimes();
         break;
       }
       case 'asset.list': {
@@ -1026,16 +1047,64 @@ export class Engine {
     }
   }
 
-  private async refreshAgentRuntimes(): Promise<void> {
+  /**
+   * Event-triggered re-probe (managed agent install landed, interactive login settled, a turn
+   * failed with `authentication_failed`): the push is unconditional — clients treat it as the
+   * settle signal for install/login activity — and the pass queues behind any in-flight collect,
+   * which may have probed before the event's effect (credentials, binaries) hit disk.
+   * Simultaneous events (e.g. every open session 401ing on one expired credential) coalesce onto
+   * a queued pass that has not started probing — it observes all their effects; a pass already
+   * probing may predate them and cannot be joined.
+   */
+  private refreshAgentRuntimes(): Promise<void> {
+    if (!this.collectAgentRuntimes) return Promise.resolve();
+    const pending = this.pendingEventPass;
+    if (pending) return pending;
+    const pass = this.enqueueRuntimesCollect(true, () => {
+      if (this.pendingEventPass === pass) this.pendingEventPass = undefined;
+    });
+    this.pendingEventPass = pass;
+    return pass;
+  }
+
+  /**
+   * Read-triggered revalidation for `agent-runtime.list` (CODE-172): out-of-band changes the boot
+   * probe can't see (`claude auth logout`, a hand-installed CLI) surface on the next read instead
+   * of on the next failed turn. Coalesced onto any queued collect and rate-limited, because every
+   * client re-reads on the very `agent-runtime.changed` push this can produce; that push is also
+   * diff-gated, or the read→push→read cycle would never converge.
+   */
+  private revalidateAgentRuntimes(): void {
     if (!this.collectAgentRuntimes) return;
-    try {
-      this.agentRuntimes = await this.collectAgentRuntimes();
-      this.transport.send(
-        createWireMessage({ kind: 'agent-runtime.changed', runtimes: this.agentRuntimes }),
-      );
-    } catch (err) {
-      console.error('Re-probing agent runtimes after a managed install failed:', err);
-    }
+    if (this.runtimesCollectActive > 0) return;
+    if (Date.now() - this.runtimesCollectedAt < RUNTIME_REVALIDATE_COOLDOWN_MS) return;
+    void this.enqueueRuntimesCollect(false);
+  }
+
+  /** Append one collect pass to the queue; `pushUnchanged` lifts the diff gate on the broadcast
+   * and `onStart` fires when the pass begins probing (after any queued predecessors drained). */
+  private enqueueRuntimesCollect(pushUnchanged: boolean, onStart?: () => void): Promise<void> {
+    const collect = this.collectAgentRuntimes;
+    if (!collect) return Promise.resolve();
+    this.runtimesCollectActive += 1;
+    const pass = this.runtimesCollect.then(async () => {
+      onStart?.();
+      try {
+        const next = await collect();
+        const changed = !jsonValueEqual(next, this.agentRuntimes);
+        this.agentRuntimes = next;
+        this.runtimesCollectedAt = Date.now();
+        if (changed || pushUnchanged) {
+          this.transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes: next }));
+        }
+      } catch (err) {
+        console.error('Re-probing agent runtimes failed:', err);
+      } finally {
+        this.runtimesCollectActive -= 1;
+      }
+    });
+    this.runtimesCollect = pass;
+    return pass;
   }
 
   private sendFailure(replyTo: string, err: unknown): void {

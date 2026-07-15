@@ -5,6 +5,8 @@ import type { PermissionDecision } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
+import type { AgentRuntimeCues } from './agent-onboarding-card';
+import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerHandle } from './composer';
 import { Composer } from './composer';
 import { ConversationPromptDock } from './conversation-prompt-dock';
@@ -20,6 +22,16 @@ export interface ConversationSurfaceProps {
   respondingPermissions: ReadonlySet<string>;
   answeredQuestionIds: ReadonlySet<string>;
   respondingQuestions: ReadonlySet<string>;
+  /** Runtime availability cues (CODE-172): only a `needs-login` cue for this session's agent
+   * surfaces here — the sign-in recovery after an auth-failed turn. Install/version cues never
+   * block a session that is already running. */
+  runtimeCues?: AgentRuntimeCues;
+  /** Starts (or retries) the interactive login for the signed-out agent. */
+  onLoginAgent?: (kind: AgentKind) => void;
+  /** Submits the authorization code pasted from the browser during a login. */
+  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
+  /** Aborts an in-flight login. */
+  onCancelLogin?: (kind: AgentKind) => void;
   disabled?: boolean;
   isRunning: boolean;
   topContent?: React.ReactNode;
@@ -57,6 +69,10 @@ export function ConversationSurface({
   respondingPermissions,
   answeredQuestionIds,
   respondingQuestions,
+  runtimeCues,
+  onLoginAgent,
+  onSubmitLoginCode,
+  onCancelLogin,
   disabled = false,
   isRunning,
   topContent,
@@ -78,6 +94,11 @@ export function ConversationSurface({
   onRunShellCommand,
 }: ConversationSurfaceProps): React.ReactNode {
   const composerRef = useRef<ComposerHandle | null>(null);
+  // Only the signed-out cue matters mid-session: the next turn would fail on auth anyway, so
+  // block it and offer the login flow in place. A missing/unverified CLI stays a new-session
+  // concern — this session's process is already running.
+  const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
+  const loginCue = cue?.state === 'needs-login' ? cue : undefined;
   // Artifact interactions (click-to-reference) land in this surface's own composer;
   // the loop stays inside the presentation layer.
   const artifactActions = {
@@ -111,6 +132,19 @@ export function ConversationSurface({
         onRespondPermission={onRespondPermission}
         onRespondQuestion={onRespondQuestion}
       />
+      {loginCue && agentKind && (
+        <div className="px-4 pb-3">
+          <div className="mx-auto max-w-3xl">
+            <AgentOnboardingCard
+              cue={loginCue}
+              kind={agentKind}
+              onCancelLogin={onCancelLogin}
+              onLogin={onLoginAgent}
+              onSubmitLoginCode={onSubmitLoginCode}
+            />
+          </div>
+        </div>
+      )}
       {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) once the daemon
           emits it; the composer stubs the workflow-mode list today. */}
       <Composer
@@ -119,6 +153,7 @@ export function ConversationSurface({
         agentKind={agentKind}
         disabled={disabled}
         isRunning={isRunning}
+        sendBlocked={loginCue !== undefined}
         currentModeId={conversation.currentModeId}
         approvalPolicy={conversation.approvalPolicy}
         currentModel={conversation.currentModel}
