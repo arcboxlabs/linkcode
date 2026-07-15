@@ -401,6 +401,7 @@ export const en = {
     tabs: {
       general: 'General',
       appearance: 'Appearance',
+      terminal: 'Terminal',
       connection: 'Connection',
       notifications: 'Notifications',
       about: 'About',
@@ -440,6 +441,16 @@ export const en = {
       themeSystem: 'System',
       themeLight: 'Light',
       themeDark: 'Dark',
+    },
+    terminal: {
+      fontFamily: 'Font',
+      fontFamilyHint:
+        'Monospace font for the terminal. Falls back to the bundled font when unavailable.',
+      fontFamilyDefault: 'Default',
+      fontSize: 'Font size',
+      colorScheme: 'Color scheme',
+      colorSchemeHint: 'Terminal colors. "Follow theme" tracks the app light/dark mode.',
+      colorSchemeAuto: 'Follow theme',
     },
     connection: {
       title: 'Daemon',

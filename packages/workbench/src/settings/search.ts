@@ -21,6 +21,7 @@ export function filterSettingsNavGroups(
 export interface SettingsSearchKeywords {
   general: readonly string[];
   appearance: readonly string[];
+  terminal: readonly string[];
   notifications: readonly string[];
   connection: readonly string[];
   about: readonly string[];
@@ -58,6 +59,7 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('appearance.themeLight'),
       t('appearance.themeDark'),
     ],
+    terminal: [t('terminal.fontFamily'), t('terminal.fontSize'), t('terminal.colorScheme')],
     notifications: [
       t('notifications.enable'),
       t('notifications.turnCompleted'),
