@@ -1,8 +1,10 @@
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import { useRef } from 'react';
+import { falseFn, noop } from 'foxts/noop';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import type { PtyTransport } from 'restty';
 import { Restty } from 'restty';
+import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { resolveTerminalFonts } from './fonts';
 import type { TerminalSession } from './session';
@@ -13,6 +15,11 @@ import { applyTerminalTheme } from './terminal-theme';
 // MutationObserver across all instances instead of one per terminal.
 const themeChangeListeners = new Set<() => void>();
 let themeChangeObserver: MutationObserver | null = null;
+const ignoreTerminalResize: (cols: number, rows: number) => void = noop;
+
+function isAborted(signal: AbortSignal): boolean {
+  return signal.aborted;
+}
 
 function subscribeThemeChange(listener: () => void): () => void {
   themeChangeListeners.add(listener);
@@ -41,9 +48,13 @@ function subscribeThemeChange(listener: () => void): () => void {
  * locally echoes every keystroke — which, on top of the shell's own echo, shows each character
  * twice and breaks backspace.
  */
-function createSessionPtyTransport(session: TerminalSession): PtyTransport {
+export function createSessionPtyTransport(
+  session: TerminalSession,
+  applyHostResize: (cols: number, rows: number) => void,
+): PtyTransport {
   let unsubscribe: (() => void) | null = null;
   let connected = false;
+  let applyingHostResize = false;
   const close = (): void => {
     connected = false;
     unsubscribe?.();
@@ -52,21 +63,42 @@ function createSessionPtyTransport(session: TerminalSession): PtyTransport {
   return {
     connect({ callbacks }) {
       close();
-      unsubscribe = session.subscribe(
-        (data) => callbacks.onData?.(data),
-        (code) => callbacks.onExit?.(code ?? 0),
+      const subscriptionState = { exited: false };
+      const nextUnsubscribe = session.subscribe(
+        (event) => {
+          if (event.type === 'write') {
+            callbacks.onData?.(event.data);
+            return;
+          }
+          applyingHostResize = true;
+          try {
+            applyHostResize(event.cols, event.rows);
+          } finally {
+            applyingHostResize = false;
+          }
+        },
+        (code) => {
+          subscriptionState.exited = true;
+          connected = false;
+          callbacks.onExit?.(code ?? 0);
+        },
       );
+      if (subscriptionState.exited) {
+        nextUnsubscribe();
+        return;
+      }
+      unsubscribe = nextUnsubscribe;
       connected = true;
       callbacks.onConnect?.();
     },
     disconnect: close,
     destroy: close,
     sendInput(data) {
-      session.sendInput(data);
+      if (session.canControl()) session.sendInput(data);
       return true;
     },
     resize(cols, rows) {
-      session.resize(cols, rows);
+      if (!applyingHostResize && session.canControl()) session.resize(cols, rows);
       return true;
     },
     isConnected: () => connected,
@@ -92,8 +124,18 @@ export function LiveTerminal({
   suspended?: boolean;
   className?: string;
 }): React.ReactNode {
+  const t = useTranslations('workbench.panel');
   const frameRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const subscribeReplayTruncated = useCallback(
+    (onStoreChange: () => void) => session.subscribeReplayTruncated(onStoreChange),
+    [session],
+  );
+  const replayTruncated = useSyncExternalStore(
+    subscribeReplayTruncated,
+    () => session.replayWasTruncated(),
+    falseFn,
+  );
 
   // Layout effect so the freeze lands before the panel's first shrink frame paints. Freeze only
   // when the terminal's content box has real extent: a collapsed mount (panel never opened yet)
@@ -122,13 +164,17 @@ export function LiveTerminal({
       if (!frame || !container) return;
 
       let revealFrame = 0;
-      let restty: Restty | null = null;
+      let destroyTerminal = noop;
+      let applyCurrentTheme = noop;
+      let unsubscribeController = noop;
+      let disconnectContainerResize = noop;
+      const hostResize = { apply: ignoreTerminalResize };
       void (async () => {
         // Font resolution is async (Local Font Access probe) but cached module-wide, so only the
         // first terminal of a renderer session pays for it.
         const fonts = await resolveTerminalFonts();
         if (signal.aborted) return;
-        restty = new Restty({
+        const restty = new Restty({
           root: container,
           // Init manually: connectPty must land only once the renderer core is ready, so the
           // shell's initial prompt (replayed from the client prebuffer on subscribe) isn't
@@ -136,15 +182,36 @@ export function LiveTerminal({
           // LinkCode owns terminal tabs/panels. Restty's unscoped Cmd/Ctrl+D pane splitter would
           // otherwise fire once per mounted terminal, including hidden tabs.
           surface: { autoInit: false, shortcuts: false },
-          terminal: { autoResize: true, fonts },
-          services: { ptyTransport: createSessionPtyTransport(session) },
+          terminal: { autoResize: false, fonts, forwardTerminalReplies: false },
+          services: {
+            beforeInput: () => (session.canControl() ? undefined : null),
+            ptyTransport: createSessionPtyTransport(session, (cols, rows) =>
+              hostResize.apply(cols, rows),
+            ),
+          },
         });
+        destroyTerminal = () => restty.destroy();
         const pane = restty.getActivePane();
         if (!pane) return;
         await pane.runtime.lifecycle.init();
-        if (signal.aborted) return;
-        applyTerminalTheme(restty, frame);
+        if (isAborted(signal)) return;
+        const initialSize = session.initialSize();
+        if (initialSize) {
+          pane.runtime.interaction.resize(initialSize.cols, initialSize.rows);
+        }
+        hostResize.apply = (cols, rows) => pane.runtime.interaction.resize(cols, rows);
+        applyCurrentTheme = () => applyTerminalTheme(restty, frame);
+        applyCurrentTheme();
         restty.connectPty('session://terminal');
+        const containerResize = new ResizeObserver(() => {
+          if (session.canControl()) restty.updateSize();
+        });
+        containerResize.observe(container);
+        disconnectContainerResize = () => containerResize.disconnect();
+        unsubscribeController = session.subscribeController((canControl) => {
+          if (canControl) restty.updateSize(true);
+        });
+        if (session.canControl()) restty.updateSize(true);
         // Reveal only once a themed frame can be painted, so the default black frames restty
         // draws while the WASM core boots are never shown.
         revealFrame = requestAnimationFrame(() => {
@@ -154,14 +221,14 @@ export function LiveTerminal({
 
       // The terminal theme follows the app's `.dark` class, so re-apply whenever it flips
       // (light/dark mode change) — no need to tear down the terminal.
-      const unsubscribeThemeChange = subscribeThemeChange(() => {
-        if (restty) applyTerminalTheme(restty, frame);
-      });
+      const unsubscribeThemeChange = subscribeThemeChange(() => applyCurrentTheme());
 
       return () => {
         cancelAnimationFrame(revealFrame);
+        disconnectContainerResize();
+        unsubscribeController();
         unsubscribeThemeChange();
-        restty?.destroy();
+        destroyTerminal();
       };
     },
     [session],
@@ -173,9 +240,14 @@ export function LiveTerminal({
     <div
       ref={frameRef}
       data-keyboard-shortcut-local=""
-      className={cn('p-2 opacity-0 transition-opacity duration-150', className)}
+      className={cn('relative p-2 opacity-0 transition-opacity duration-150', className)}
     >
       <div ref={containerRef} className="size-full" />
+      {replayTruncated && (
+        <div className="pointer-events-none absolute right-3 bottom-3 rounded-md border border-border bg-background/95 px-2 py-1 text-muted-foreground text-xs shadow-sm">
+          {t('terminalReplayTruncated')}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,10 @@
-import type { SessionId, WireMessage } from '@linkcode/schema';
+import type {
+  SessionId,
+  TerminalAttachmentCredentials,
+  TerminalAttachmentId,
+  TerminalId,
+  WireMessage,
+} from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import type { Transport, Unsubscribe } from './transport';
 import { createWireMessage, Listeners } from './transport';
@@ -8,17 +14,21 @@ interface ConnectionSubscription {
   /** `all` (the default) mirrors the historical broadcast; `attached` narrows to attached sessions. */
   mode: 'all' | 'attached';
   attached: Set<SessionId>;
+  /** Terminal attachments owned by this connection, retained so disconnect can detach them. */
+  terminals: Map<TerminalId, Map<TerminalAttachmentId, string>>;
+}
+
+interface PendingTerminalRequest extends TerminalAttachmentCredentials {
+  conn: Transport;
 }
 
 /**
  * Hub: composes many client connections into the single `Transport` the daemon's `Host` consumes.
  *
- * Outbound (`send`) is broadcast to every connected client, so all devices attached to the daemon see
- * the same `agent.event` stream (multi-device view) — except connections that opted into a scoped
- * subscription (`subscription.set { mode: 'attached' }`), which only receive `agent.event`s of the
- * sessions they attached. Every other payload kind still broadcasts; replies are paired by
- * correlation ids in the schema (`replyTo`, `requestId`) — the Hub itself stays connection-agnostic
- * about request routing (docs/ARCHITECTURE.md#transport--wire-protocol).
+ * Correlated replies return only to their request's connection. Session events keep their historical
+ * broadcast/scoped behavior; terminal events go only to connections attached to that terminal. The
+ * Hub also turns a connection close into `terminal.detach` frames, so attachment lifetime follows
+ * the real local or tunnel peer rather than the daemon's aggregate uplink.
  *
  * Subscription state is connection-scoped, so the Hub owns it: `subscription.set` is answered here
  * (`request.succeeded`) and never reaches the Host; `session.attach`/`session.detach` update the
@@ -28,6 +38,9 @@ export class Hub implements Transport {
   private readonly conns = new Set<Transport>();
   private readonly unsubs = new Map<Transport, Unsubscribe>();
   private readonly subscriptions = new Map<Transport, ConnectionSubscription>();
+  /** Kept through origin disconnect so a late host reply cannot collide with a reused request id. */
+  private readonly pendingReplies = new Map<string, Transport>();
+  private readonly pendingTerminals = new Map<string, PendingTerminalRequest>();
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();
 
@@ -35,7 +48,7 @@ export class Hub implements Transport {
   addConnection(conn: Transport): void {
     if (this.conns.has(conn)) return;
     this.conns.add(conn);
-    this.subscriptions.set(conn, { mode: 'all', attached: new Set() });
+    this.subscriptions.set(conn, { mode: 'all', attached: new Set(), terminals: new Map() });
     this.unsubs.set(
       conn,
       conn.onMessage((msg) => this.route(conn, msg)),
@@ -46,8 +59,22 @@ export class Hub implements Transport {
   removeConnection(conn: Transport): void {
     this.unsubs.get(conn)?.();
     this.unsubs.delete(conn);
-    this.subscriptions.delete(conn);
     this.conns.delete(conn);
+    const subscription = this.subscriptions.get(conn);
+    this.subscriptions.delete(conn);
+    if (!subscription) return;
+    for (const [terminalId, attachments] of subscription.terminals) {
+      for (const [attachmentId, attachmentSecret] of attachments) {
+        this.inbound.emit(
+          createWireMessage({
+            kind: 'terminal.detach',
+            terminalId,
+            attachmentId,
+            attachmentSecret,
+          }),
+        );
+      }
+    }
   }
 
   /** Number of currently attached clients. */
@@ -62,6 +89,18 @@ export class Hub implements Transport {
   private route(conn: Transport, msg: WireMessage): void {
     const p = msg.payload;
     const subscription = this.subscriptions.get(conn);
+    if ('clientReqId' in p && this.pendingReplies.has(p.clientReqId)) {
+      bestEffort(() =>
+        conn.send(
+          createWireMessage({
+            kind: 'request.failed',
+            replyTo: p.clientReqId,
+            message: 'duplicate clientReqId',
+          }),
+        ),
+      );
+      return;
+    }
     if (subscription) {
       if (p.kind === 'subscription.set') {
         subscription.mode = p.mode;
@@ -70,15 +109,80 @@ export class Hub implements Transport {
         );
         return;
       }
+      if (p.kind === 'ping') {
+        bestEffort(() => conn.send(createWireMessage({ kind: 'pong' })));
+        return;
+      }
       if (p.kind === 'session.attach') subscription.attached.add(p.sessionId);
       else if (p.kind === 'session.detach') subscription.attached.delete(p.sessionId);
+      else if (p.kind === 'terminal.detach') {
+        const attachments = subscription.terminals.get(p.terminalId);
+        if (attachments?.get(p.attachmentId) === p.attachmentSecret) {
+          attachments.delete(p.attachmentId);
+          if (attachments.size === 0) subscription.terminals.delete(p.terminalId);
+        }
+      }
+    }
+    if ('clientReqId' in p) {
+      this.pendingReplies.set(p.clientReqId, conn);
+      if (p.kind === 'terminal.open' || p.kind === 'terminal.attach') {
+        this.pendingTerminals.set(p.clientReqId, {
+          conn,
+          attachmentId: p.attachmentId,
+          attachmentSecret: p.attachmentSecret,
+        });
+      }
     }
     this.inbound.emit(msg);
   }
 
-  /** Broadcast to every attached client; one failing connection never blocks the others. */
+  /** Route one host frame; one failing connection never blocks the others. */
   send(msg: WireMessage): void {
     const p = msg.payload;
+    if ('replyTo' in p) {
+      const conn = this.pendingReplies.get(p.replyTo);
+      const pendingTerminal = this.pendingTerminals.get(p.replyTo);
+      this.pendingReplies.delete(p.replyTo);
+      this.pendingTerminals.delete(p.replyTo);
+
+      if (pendingTerminal && (p.kind === 'terminal.opened' || p.kind === 'terminal.attached')) {
+        const terminalId = p.terminal.terminalId;
+        if (this.conns.has(pendingTerminal.conn)) {
+          this.addTerminalAttachment(terminalId, pendingTerminal);
+        } else {
+          // The PTY operation completed after its peer disconnected: detach the capability now.
+          this.inbound.emit(
+            createWireMessage({
+              kind: 'terminal.detach',
+              terminalId,
+              attachmentId: pendingTerminal.attachmentId,
+              attachmentSecret: pendingTerminal.attachmentSecret,
+            }),
+          );
+        }
+      }
+      if (conn && this.conns.has(conn)) bestEffort(() => conn.send(msg));
+      return;
+    }
+
+    if (
+      p.kind === 'terminal.output' ||
+      p.kind === 'terminal.resized' ||
+      p.kind === 'terminal.controller.changed' ||
+      p.kind === 'terminal.exit'
+    ) {
+      for (const conn of this.conns) {
+        if (!this.subscriptions.get(conn)?.terminals.has(p.terminalId)) continue;
+        bestEffort(() => conn.send(msg));
+      }
+      if (p.kind === 'terminal.exit') {
+        for (const subscription of this.subscriptions.values()) {
+          subscription.terminals.delete(p.terminalId);
+        }
+      }
+      return;
+    }
+
     for (const conn of this.conns) {
       if (p.kind === 'agent.event') {
         const subscription = this.subscriptions.get(conn);
@@ -89,6 +193,17 @@ export class Hub implements Transport {
       // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
       bestEffort(() => conn.send(msg));
     }
+  }
+
+  private addTerminalAttachment(terminalId: TerminalId, attachment: PendingTerminalRequest): void {
+    const subscription = this.subscriptions.get(attachment.conn);
+    if (!subscription) return;
+    let attachments = subscription.terminals.get(terminalId);
+    if (!attachments) {
+      attachments = new Map();
+      subscription.terminals.set(terminalId, attachments);
+    }
+    attachments.set(attachment.attachmentId, attachment.attachmentSecret);
   }
 
   onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
@@ -108,6 +223,8 @@ export class Hub implements Transport {
     this.conns.clear();
     this.unsubs.clear();
     this.subscriptions.clear();
+    this.pendingReplies.clear();
+    this.pendingTerminals.clear();
     this.inbound.clear();
     this.closed.emit();
   }

@@ -1,4 +1,5 @@
 import { LinkCodeClient } from '@linkcode/client-core';
+import { randomUUID } from 'expo-crypto';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useState } from 'react';
 import type { HostProfile } from '../stores/host-store';
@@ -19,7 +20,7 @@ export interface HostClientState {
  * recreating the transport + client pair.
  */
 export function useHostClient(host: HostProfile): HostClientState {
-  const [client, setClient] = useState(() => new LinkCodeClient(createHostTransport(host)));
+  const [client, setClient] = useState(() => createClient(host));
   const [status, setStatus] = useState<HostConnectionStatus>('connecting');
 
   // Render-time reset keeps the client in sync when the same mounted screen
@@ -28,12 +29,12 @@ export function useHostClient(host: HostProfile): HostClientState {
   if (trackedId !== host.id) {
     setTrackedId(host.id);
     setStatus('connecting');
-    setClient(new LinkCodeClient(createHostTransport(host)));
+    setClient(createClient(host));
   }
 
   const retry = useCallback(() => {
     setStatus('connecting');
-    setClient(new LinkCodeClient(createHostTransport(host)));
+    setClient(createClient(host));
   }, [host]);
 
   // Status is already 'connecting' wherever a client is (re)created: initial state,
@@ -61,4 +62,8 @@ export function useHostClient(host: HostProfile): HostClientState {
   );
 
   return { client, status, retry };
+}
+
+function createClient(host: HostProfile): LinkCodeClient {
+  return new LinkCodeClient(createHostTransport(host), { randomUUID });
 }

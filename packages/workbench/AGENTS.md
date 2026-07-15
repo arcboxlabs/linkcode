@@ -29,8 +29,9 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
   contract plus the default shell, and session orchestration hooks.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
-  session registry that owns PTY lifetime across remounts, and the transport-backed
-  `TerminalSession`.
+  session registry that retains/detaches (rather than kills) a PTY across remounts, viewer
+  attachment containers, and the transport-backed `TerminalSession`. Only the current controller
+  forwards input/resize; controller changes must not remount Restty.
 - `git/` — daemon-backed git status/PR polling hooks (`useGitStatus`, `useGitPullRequestStatus`)
   and the Diff-section container (`GitPanel`) that assembles them for `packages/ui`'s
   `GitOverview`.

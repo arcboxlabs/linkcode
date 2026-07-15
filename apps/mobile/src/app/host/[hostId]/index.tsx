@@ -49,9 +49,14 @@ export default function SessionsScreen(): React.ReactNode {
       keyboardAware
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       headerRight={
-        <Button variant="ghost" size="sm" onPress={() => router.push('/settings')}>
-          <Button.Label>{t('settings')}</Button.Label>
-        </Button>
+        <View className="flex-row gap-1">
+          <Button variant="ghost" size="sm" onPress={() => router.push(`/host/${hostId}/terminal`)}>
+            <Button.Label>{t('terminals')}</Button.Label>
+          </Button>
+          <Button variant="ghost" size="sm" onPress={() => router.push('/settings')}>
+            <Button.Label>{t('settings')}</Button.Label>
+          </Button>
+        </View>
       }
     >
       {loading ? (

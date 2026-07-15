@@ -1,5 +1,5 @@
 import { hostname } from 'node:os';
-import { TunnelTransport } from '@linkcode/transport';
+import { TunnelTransportServer } from '@linkcode/transport';
 import type { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
@@ -13,12 +13,11 @@ const log = (message: string): void => console.log(`[linkcode/daemon] ${message}
 const CONNECT_RETRY_MS = 30000;
 
 /**
- * Attach this daemon to the HQ relay as the account's host. The relay merges
- * every remote client onto this one connection and broadcasts our frames back
- * to them — the same fan-out contract as the {@link Hub} — so the uplink is
- * just one more Hub connection and reply routing works unchanged.
+ * Attach this daemon to the cloud relay as the account's host. The relay
+ * attests remote peer ids, and {@link TunnelTransportServer} presents each
+ * peer as its own Hub connection.
  *
- * Transient drops reconnect inside {@link TunnelTransport}; only a first
+ * Transient drops reconnect inside {@link TunnelTransportServer}; only a first
  * dial that never succeeds is retried here (the daemon may boot offline).
  * A *permanent* close — replaced by another daemon under the same device id,
  * credential revoked, signed out — stops the uplink for good: retrying would
@@ -36,13 +35,12 @@ export function startHqUplink(hub: Hub): () => void {
 
   const key = ensureDeviceKey();
   let stopped = false;
-  let active: TunnelTransport | null = null;
+  let active: TunnelTransportServer | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   const attempt = async (): Promise<void> => {
-    const transport = new TunnelTransport({
+    const transport = new TunnelTransportServer({
       baseUrl: credentials.baseUrl,
-      role: 'host',
       hostId: credentials.deviceId,
       name: hostname(),
       getToken: () => fetchTunnelToken(credentials.baseUrl, credentials.sessionToken),
@@ -51,6 +49,10 @@ export function startHqUplink(hub: Hub): () => void {
       signToken: (accessToken) => key.sign(accessToken),
     });
     transport.onStateChange((state) => log(`cloud uplink ${state}`));
+    transport.onConnection((connection) => {
+      hub.addConnection(connection);
+      connection.onClose(() => hub.removeConnection(connection));
+    });
     try {
       await transport.connect();
     } catch (err) {
@@ -64,13 +66,11 @@ export function startHqUplink(hub: Hub): () => void {
       return;
     }
     if (stopped) {
-      transport.close();
+      void transport.close();
       return;
     }
     active = transport;
-    hub.addConnection(transport);
     transport.onClose(() => {
-      hub.removeConnection(transport);
       active = null;
       if (!stopped) {
         log('cloud uplink stopped — sign in again and restart the daemon to restore remote access');
@@ -82,6 +82,6 @@ export function startHqUplink(hub: Hub): () => void {
   return () => {
     stopped = true;
     if (retryTimer !== null) clearTimeout(retryTimer);
-    active?.close();
+    void active?.close();
   };
 }

@@ -6,33 +6,69 @@ import { acquireTerminalSession, peekTerminalSnapshot } from '../session-registr
 interface FakeClient extends TerminalSessionClient {
   opened: string[];
   closed: string[];
+  detached: string[];
+  attachments: Set<string>;
+  controlled: Set<string>;
   exitCbs: Map<string, (code: number | null) => void>;
+  controllerCbs: Map<string, (canControl: boolean) => void>;
 }
 
 function createFakeClient(): FakeClient {
   let seq = 0;
   const opened: string[] = [];
   const closed: string[] = [];
+  const detached: string[] = [];
   const exitCbs = new Map<string, (code: number | null) => void>();
+  const controllerCbs = new Map<string, (canControl: boolean) => void>();
+  const attached = new Set<string>();
+  const controlled = new Set<string>();
 
   return {
     opened,
     closed,
+    detached,
+    attachments: attached,
+    controlled,
     exitCbs,
+    controllerCbs,
     openTerminal() {
       seq += 1;
       const id = `term-${seq}`;
       opened.push(id);
+      attached.add(id);
+      controlled.add(id);
       return Promise.resolve(id);
     },
-    closeTerminal(terminalId) {
-      closed.push(terminalId);
+    detachTerminal(terminalId) {
+      if (!attached.delete(terminalId)) return;
+      detached.push(terminalId);
+      controlled.delete(terminalId);
     },
-    subscribeTerminalOutput: () => noop,
+    closeTerminal(terminalId) {
+      if (!attached.delete(terminalId) || !controlled.has(terminalId)) return;
+      closed.push(terminalId);
+      controlled.delete(terminalId);
+    },
+    subscribeTerminalEvents: () => noop,
     subscribeTerminalExit(terminalId, cb) {
-      exitCbs.set(terminalId, cb);
+      exitCbs.set(terminalId, (code) => {
+        cb(code);
+        attached.delete(terminalId);
+        controlled.delete(terminalId);
+      });
       return () => exitCbs.delete(terminalId);
     },
+    subscribeTerminalController(terminalId, cb) {
+      controllerCbs.set(terminalId, (canControl) => {
+        if (canControl) controlled.add(terminalId);
+        else controlled.delete(terminalId);
+        cb(canControl);
+      });
+      return () => controllerCbs.delete(terminalId);
+    },
+    terminalCanControl: (terminalId) => controlled.has(terminalId),
+    terminalReplayWasTruncated: () => false,
+    subscribeTerminalReplayTruncated: () => noop,
     terminalInput: noop,
     resizeTerminal: noop,
   };
@@ -62,13 +98,15 @@ describe('terminal session registry', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(client.opened).toEqual(['term-1']);
     expect(client.closed).toEqual([]);
+    expect(client.detached).toEqual([]);
     expect(second.getSnapshot().session).toBe(session);
     expect(peekTerminalSnapshot(client, 'tab-1').session).toBe(session);
 
-    // Final release with no re-acquire actually closes the host terminal.
+    // Final release with no re-acquire only detaches; another device may still own the PTY.
     second.release();
     await vi.advanceTimersByTimeAsync(1000);
-    expect(client.closed).toEqual(['term-1']);
+    expect(client.closed).toEqual([]);
+    expect(client.detached).toEqual(['term-1']);
     expect(peekTerminalSnapshot(client, 'tab-1').session).toBeNull();
   });
 
@@ -85,7 +123,7 @@ describe('terminal session registry', () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
 
-  it('closes a terminal whose open resolves after the lease already expired', async () => {
+  it('detaches a terminal whose open resolves after the lease already expired', async () => {
     const client = createFakeClient();
     let resolveOpen: (id: string) => void = noop;
     client.openTerminal = () =>
@@ -95,11 +133,13 @@ describe('terminal session registry', () => {
 
     const lease = acquireTerminalSession(client, 'tab-1', dims);
     lease.release();
-    // The close timer fires while the open is still pending, expiring the entry.
+    // The release timer fires while the open is still pending, expiring the entry.
     await vi.advanceTimersByTimeAsync(1000);
+    client.attachments.add('term-late');
+    client.controlled.add('term-late');
     resolveOpen('term-late');
     await vi.advanceTimersByTimeAsync(0);
-    expect(client.closed).toEqual(['term-late']);
+    expect(client.detached).toEqual(['term-late']);
     expect(peekTerminalSnapshot(client, 'tab-1').session).toBeNull();
   });
 
@@ -121,7 +161,7 @@ describe('terminal session registry', () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
 
-  it('fails a hung open on timeout and closes its late terminal', async () => {
+  it('fails a hung open on timeout and detaches its late terminal', async () => {
     const client = createFakeClient();
     let resolveOpen: (id: string) => void = noop;
     client.openTerminal = () =>
@@ -133,9 +173,11 @@ describe('terminal session registry', () => {
     await vi.advanceTimersByTimeAsync(20000);
     expect(lease.getSnapshot().failed).toBe(true);
 
+    client.attachments.add('term-late');
+    client.controlled.add('term-late');
     resolveOpen('term-late');
     await vi.advanceTimersByTimeAsync(0);
-    expect(client.closed).toEqual(['term-late']);
+    expect(client.detached).toEqual(['term-late']);
     expect(lease.getSnapshot().failed).toBe(true);
     lease.release();
     await vi.advanceTimersByTimeAsync(1000);
@@ -148,14 +190,61 @@ describe('terminal session registry', () => {
     const { session } = lease.getSnapshot();
 
     client.exitCbs.get('term-1')?.(3);
-    expect(lease.getSnapshot()).toMatchObject({ session, exitCode: 3 });
+    expect(lease.getSnapshot()).toMatchObject({ session, exit: { code: 3 } });
 
     lease.restart();
     await vi.advanceTimersByTimeAsync(0);
     expect(client.opened).toEqual(['term-1', 'term-2']);
-    expect(client.closed).toEqual(['term-1']);
-    expect(lease.getSnapshot()).toMatchObject({ exitCode: null, failed: false });
+    expect(client.closed).toEqual([]);
+    expect(lease.getSnapshot()).toMatchObject({ exit: null, failed: false });
     expect(lease.getSnapshot().session).not.toBe(session);
+    lease.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('preserves a signal exit as distinct from a running terminal', async () => {
+    const client = createFakeClient();
+    const lease = acquireTerminalSession(client, 'tab-1', dims);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(lease.getSnapshot().exit).toBeNull();
+    client.exitCbs.get('term-1')?.(null);
+    expect(lease.getSnapshot().exit).toEqual({ code: null });
+
+    lease.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('preserves an exit delivered synchronously while the terminal opens', async () => {
+    const client = createFakeClient();
+    client.subscribeTerminalExit = (_terminalId, cb) => {
+      cb(7);
+      return noop;
+    };
+
+    const lease = acquireTerminalSession(client, 'tab-1', dims);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(lease.getSnapshot()).toMatchObject({
+      terminalId: 'term-1',
+      failed: false,
+      exit: { code: 7 },
+      canControl: false,
+    });
+    lease.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('updates the mounted session when another attachment takes control', async () => {
+    const client = createFakeClient();
+    const lease = acquireTerminalSession(client, 'tab-1', dims);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lease.getSnapshot().canControl).toBe(true);
+
+    client.controllerCbs.get('term-1')?.(false);
+    expect(lease.getSnapshot().canControl).toBe(false);
+    expect(lease.getSnapshot().session?.canControl()).toBe(false);
+
     lease.release();
     await vi.advanceTimersByTimeAsync(1000);
   });

@@ -33,7 +33,7 @@ interface WorkspaceScriptsState {
   /** Planned ports for every declared service, allocated together on first need. */
   plan: Map<string, number>;
   running: Map<string, RunningScript>;
-  lastExit: Map<string, number | null>;
+  stopped: Map<string, { terminalId: string; exitCode: number | null }>;
 }
 
 /**
@@ -70,6 +70,8 @@ export class ScriptService {
     if (state.running.has(scriptName)) throw new Error(`Script already running: ${scriptName}`);
     await this.ensurePortPlan(declarations, state);
 
+    let registered = false;
+    let pendingExit: { exitCode: number | null } | undefined;
     const terminalId = await this.terminals.openManaged(
       {
         cols: SERVICE_PTY_COLS,
@@ -79,7 +81,10 @@ export class ScriptService {
         args: ['-c', decl.command],
         env: this.scriptEnv(cwd, decl, declarations, state),
       },
-      (exitCode) => this.onScriptExit(cwd, scriptName, exitCode),
+      (exitCode) => {
+        if (registered) this.onScriptExit(cwd, scriptName, exitCode);
+        else pendingExit = { exitCode };
+      },
     );
 
     const run: RunningScript = {
@@ -90,7 +95,12 @@ export class ScriptService {
       consecutiveProbeFailures: 0,
     };
     state.running.set(scriptName, run);
-    state.lastExit.delete(scriptName);
+    state.stopped.delete(scriptName);
+    registered = true;
+    if (pendingExit) {
+      this.onScriptExit(cwd, scriptName, pendingExit.exitCode);
+      return;
+    }
 
     if (decl.type === 'service') {
       const port = state.plan.get(scriptName)!;
@@ -109,7 +119,7 @@ export class ScriptService {
     const run = this.stateFor(cwd).running.get(scriptName);
     if (!run) throw new Error(`Script not running: ${scriptName}`);
     // Cleanup and the status broadcast follow from the PTY exit event.
-    this.terminals.close(run.terminalId);
+    this.terminals.closeManaged(run.terminalId);
   }
 
   /** Stop probes and kill script PTYs (engine shutdown; TerminalService reaps the processes). */
@@ -117,7 +127,7 @@ export class ScriptService {
     for (const state of this.workspaces.values()) {
       for (const run of state.running.values()) {
         if (run.probeTimer) clearInterval(run.probeTimer);
-        this.terminals.close(run.terminalId);
+        this.terminals.closeManaged(run.terminalId);
       }
     }
   }
@@ -129,7 +139,7 @@ export class ScriptService {
     if (run.probeTimer) clearInterval(run.probeTimer);
     if (run.hostname) this.routes.unregister(run.hostname, ownerKey(cwd, scriptName));
     state.running.delete(scriptName);
-    state.lastExit.set(scriptName, exitCode);
+    state.stopped.set(scriptName, { terminalId: run.terminalId, exitCode });
 
     const decl = readWorkspaceScripts(cwd).find((d) => d.name === scriptName);
     this.broadcast(cwd, {
@@ -138,6 +148,7 @@ export class ScriptService {
       command: decl?.command ?? '',
       lifecycle: 'stopped',
       health: 'unknown',
+      terminalId: run.terminalId,
       exitCode,
     });
   }
@@ -169,19 +180,20 @@ export class ScriptService {
     state: WorkspaceScriptsState,
   ): WorkspaceScript {
     const run = state.running.get(decl.name);
+    const stopped = state.stopped.get(decl.name);
     const port = decl.type === 'service' ? state.plan.get(decl.name) : undefined;
     const hostname = decl.type === 'service' ? this.hostnameFor(cwd, decl.name) : undefined;
     return {
       scriptName: decl.name,
       type: decl.type,
       command: decl.command,
-      lifecycle: run?.lifecycle ?? (state.lastExit.has(decl.name) ? 'stopped' : 'idle'),
+      lifecycle: run?.lifecycle ?? (stopped ? 'stopped' : 'idle'),
       health: run?.health ?? 'unknown',
       port,
       hostname,
       localProxyUrl: hostname ? this.proxyUrl(hostname) : undefined,
-      terminalId: run?.terminalId,
-      exitCode: state.lastExit.get(decl.name),
+      terminalId: run?.terminalId ?? stopped?.terminalId,
+      exitCode: stopped?.exitCode,
     };
   }
 
@@ -236,7 +248,7 @@ export class ScriptService {
     const key = normalizeCwdKey(cwd);
     let state = this.workspaces.get(key);
     if (!state) {
-      state = { plan: new Map(), running: new Map(), lastExit: new Map() };
+      state = { plan: new Map(), running: new Map(), stopped: new Map() };
       this.workspaces.set(key, state);
     }
     return state;

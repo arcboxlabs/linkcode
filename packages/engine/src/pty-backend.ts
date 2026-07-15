@@ -26,8 +26,9 @@ export interface PtyOpenOptions {
  * decode so the rest of the engine (and the JSON wire) never handle raw bytes or base64.
  */
 export interface PtyProcess {
+  /** The first subscriber receives any output that arrived between spawn and `open()` resolving. */
   onData(cb: (data: string) => void): Unsubscribe;
-  /** `exitCode` is null when the shell was terminated by a signal rather than exiting with a code. */
+  /** The first subscriber observes a pre-resolve exit; null means termination by signal. */
   onExit(cb: (exitCode: number | null) => void): Unsubscribe;
   write(data: string): void;
   resize(cols: number, rows: number): void;

@@ -18,7 +18,11 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// 3) Apply Uniwind, compiling ./src/global.css and generating className typings.
+// 3) Bundle the terminal's self-hosted font in native and web exports.
+// expo-sqlite's web worker imports WASM, while the DOM terminal bundles local WOFF2 fonts.
+config.resolver.assetExts.push('wasm', 'woff2');
+
+// 4) Apply Uniwind, compiling ./src/global.css and generating className typings.
 module.exports = withUniwindConfig(config, {
   cssEntryFile: './src/global.css',
   dtsFile: './src/uniwind-types.d.ts',

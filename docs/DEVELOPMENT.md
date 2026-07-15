@@ -70,7 +70,7 @@ pnpm -F @linkcode/webview run dev   # vite
 ### Mobile (Expo, iOS)
 
 ```bash
-devenv run mobile
+devenv shell -- mobile
 # without devenv:
 pnpm -F @linkcode/mobile run ios    # expo start --ios
 ```
@@ -124,6 +124,20 @@ pnpm test
 ```
 
 CI never builds the binary inside the TypeScript job, so this cross-language test no-ops in CI — you must run it locally. `cargo test --locked` runs `smoke.rs` self-contained.
+
+The multi-device terminal contract has a separate in-process integration check. It opens from a
+desktop peer, attaches a late mobile controller through the Hub, verifies replay plus live output,
+rejects stale desktop input, and keeps the PTY alive after the desktop peer disconnects:
+
+```bash
+pnpm test packages/engine/src/__tests__/terminal-takeover.test.ts
+```
+
+For the manual flow, open a terminal in desktop and produce recognizable output, then open the same
+terminal from mobile and take control. The old output must appear before new live bytes; input and
+resize must come only from mobile after takeover. Closing the desktop tab detaches its view and must
+not terminate the mobile-controlled PTY. Use the explicit terminate action when process death is the
+intended operation.
 
 ## Desktop E2E procedures
 
