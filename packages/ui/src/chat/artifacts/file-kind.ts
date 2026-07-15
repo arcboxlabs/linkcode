@@ -20,7 +20,7 @@ export function fileExtension(path: string): string {
 }
 
 export function fileBasename(path: string): string {
-  const slash = path.lastIndexOf('/');
+  const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
   return slash === -1 ? path : path.slice(slash + 1);
 }
 

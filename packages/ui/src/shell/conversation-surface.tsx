@@ -122,6 +122,7 @@ export function ConversationSurface({
   const artifactActions = {
     referenceToComposer: (text: string) => composerRef.current?.insertText(text),
     openFile: onOpenFileArtifact,
+    reviewChanges: onReviewChanges,
     hostArtifact: onHostArtifact,
     openPreviewUrl: onOpenPreviewUrl,
   };
