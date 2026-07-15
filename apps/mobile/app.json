@@ -67,6 +67,7 @@
     "plugins": [
       "expo-router",
       "@sentry/react-native/expo",
+      "expo-apple-authentication",
       "expo-sqlite",
       "expo-secure-store",
       "expo-status-bar",

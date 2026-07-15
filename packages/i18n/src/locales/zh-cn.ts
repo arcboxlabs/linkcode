@@ -644,6 +644,7 @@ export const zhCN = {
     signIn: {
       tagline: '你的智能体，随身可达。登录后即可从这台手机连接运行 LinkCode 的机器。',
       signIn: '使用 LinkCode 登录',
+      other: '其他登录方式',
       skip: '跳过，手动连接',
       error: '登录失败，请检查网络后重试。',
     },
