@@ -26,7 +26,7 @@ const HostProfileBase = {
 export const DirectHostProfileSchema = z.object({ ...HostProfileBase, url: HostUrlSchema });
 export type DirectHostProfile = z.infer<typeof DirectHostProfileSchema>;
 
-/** A host reached through the HQ tunnel; the id is the daemon's registered device id. */
+/** A host reached through the cloud tunnel; the id is the daemon's registered device id. */
 export const TunnelHostProfileSchema = z.object({
   ...HostProfileBase,
   tunnelHostId: z.string().min(1),

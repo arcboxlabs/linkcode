@@ -635,7 +635,7 @@ export const en = {
       title: 'Link Code · Mobile',
       contract: 'Shared data contract · wire v{version} · from @linkcode/schema',
       registeredAgents: 'Registered agent adapters',
-      note: 'Connects directly to a Link Code host (daemon) over its transport. Remote access through the HQ tunnel arrives with device pairing.',
+      note: 'Connects directly to a Link Code host (daemon) over its transport. Remote access through the LinkCode Cloud tunnel arrives with device pairing.',
     },
     connect: {
       title: 'Connect to a host',
@@ -653,7 +653,7 @@ export const en = {
       remove: 'Remove',
       viaTunnel: 'via LinkCode Cloud',
       addManually: 'Add a host by URL',
-      hq: {
+      cloud: {
         title: 'LinkCode Cloud',
         hint: 'Sign in to reach your machines from anywhere through LinkCode Cloud.',
         signIn: 'Sign in',
