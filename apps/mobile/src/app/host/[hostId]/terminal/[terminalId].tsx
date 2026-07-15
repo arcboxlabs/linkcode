@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { batchTerminalEvents } from '../../../../components/terminal-events';
 import type { TerminalRendererRef } from '../../../../components/terminal-renderer';
 import TerminalRenderer from '../../../../components/terminal-renderer';
 
@@ -106,9 +105,7 @@ export default function TerminalScreen(): React.ReactNode {
     if (rendererGeneration === 0 || status !== 'ready' || !terminalId) return;
 
     const deliver = (events: readonly TerminalReplayEvent[]) => {
-      const renderer = rendererRef.current;
-      if (!renderer) return;
-      for (const batch of batchTerminalEvents(events)) renderer.events(batch);
+      rendererRef.current?.events(events);
     };
     let replaying = true;
     const replay: TerminalReplayEvent[] = [];
@@ -132,24 +129,20 @@ export default function TerminalScreen(): React.ReactNode {
   const onInput = useCallback(
     (data: string) => {
       if (terminalId) client.terminalInput(terminalId, data);
-      return Promise.resolve();
     },
     [client, terminalId],
   );
   const onResize = useCallback(
     (cols: number, rows: number) => {
       if (terminalId) client.resizeTerminal(terminalId, cols, rows);
-      return Promise.resolve();
     },
     [client, terminalId],
   );
   const onRendererReady = useCallback(() => {
     setRendererGeneration((current) => current + 1);
-    return Promise.resolve();
   }, []);
   const onRendererError = useCallback((message: string) => {
     setError(message);
-    return Promise.resolve();
   }, []);
 
   const takeControl = async () => {
@@ -240,19 +233,11 @@ export default function TerminalScreen(): React.ReactNode {
       ) : (
         <TerminalRenderer
           ref={rendererRef}
-          initialCols={terminal?.cols ?? 80}
-          initialRows={terminal?.rows ?? 24}
           canControl={canControl && exit === null}
           onInput={onInput}
           onResize={onResize}
           onReady={onRendererReady}
           onError={onRendererError}
-          dom={{
-            style: { flex: 1 },
-            scrollEnabled: false,
-            useExpoDOMWebView: true,
-            unstable_useExpoModulesBridge: false,
-          }}
         />
       )}
 
