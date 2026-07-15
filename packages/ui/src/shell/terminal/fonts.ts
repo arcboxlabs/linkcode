@@ -84,19 +84,24 @@ async function queryLocalFontsSafe(): Promise<readonly LocalFontData[]> {
   }
 }
 
-let terminalFontsPromise: Promise<ResttyFontInput[]> | null = null;
+const terminalFontsCache = new Map<string, Promise<ResttyFontInput[]>>();
 
-async function buildTerminalFonts(): Promise<ResttyFontInput[]> {
+async function buildTerminalFonts(preferredFamily: string): Promise<ResttyFontInput[]> {
   const local = await queryLocalFontsSafe();
   // An empty probe usually means a transient failure (Electron grants Local Font Access without
   // a gesture, but a denial or a flaky first call shouldn't pin the degraded bundled-only list
   // for the whole session) — serve the fallback now, retry on the next terminal open.
-  if (local.length === 0) terminalFontsPromise = null;
+  if (local.length === 0) terminalFontsCache.delete(preferredFamily);
   const symbols = pickLocalFamily(local, SYMBOLS_FAMILIES);
   const cjk = pickLocalFamily(local, CJK_FAMILIES);
   const colorEmoji = pickLocalFamily(local, COLOR_EMOJI_FAMILIES);
   const mono = pickLocalFamily(local, MONO_FAMILIES);
+  // A user-chosen family leads the chain (`local: 'prefer'` falls back to the bundled fonts when
+  // the machine lacks it); `'default'` keeps the bundled IBM Plex Mono as the primary face.
+  const preferred: ResttyFontInput[] =
+    preferredFamily === 'default' ? [] : [{ family: preferredFamily, local: 'prefer' }];
   return [
+    ...preferred,
     // restty renders on a GPU canvas with its own text shaper and needs raw font bytes; its
     // default font chain fetches from cdn.jsdelivr.net, which the renderer CSP blocks — always
     // pass fonts explicitly. Both Plex weights ship inline so bold is a real face, not the
@@ -113,8 +118,12 @@ async function buildTerminalFonts(): Promise<ResttyFontInput[]> {
   ];
 }
 
-/** Resolve the terminal font list once per renderer session (installed fonts don't change mid-run). */
-export function resolveTerminalFonts(): Promise<ResttyFontInput[]> {
-  terminalFontsPromise ??= buildTerminalFonts();
-  return terminalFontsPromise;
+/** Resolve the terminal font list for a chosen family (cached — installed fonts don't change mid-run). */
+export function resolveTerminalFonts(preferredFamily = 'default'): Promise<ResttyFontInput[]> {
+  let fonts = terminalFontsCache.get(preferredFamily);
+  if (!fonts) {
+    fonts = buildTerminalFonts(preferredFamily);
+    terminalFontsCache.set(preferredFamily, fonts);
+  }
+  return fonts;
 }
