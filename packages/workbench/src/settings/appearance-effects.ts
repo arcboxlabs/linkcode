@@ -11,10 +11,29 @@ const TEXT_SIZE_ROOT_PX: Record<TextSize, string> = {
   large: '18px',
 };
 
+// Base font stacks (mirroring styles.css `:root`); a user override is prepended so a family the
+// machine lacks degrades to the bundled fonts.
+const BASE_SANS =
+  '"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+const BASE_MONO =
+  '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+
+function applyFontOverride(property: '--font-sans' | '--font-mono', family: string): void {
+  const trimmed = family.trim();
+  if (trimmed === '') {
+    document.documentElement.style.removeProperty(property);
+    return;
+  }
+  const base = property === '--font-sans' ? BASE_SANS : BASE_MONO;
+  document.documentElement.style.setProperty(property, `"${trimmed}", ${base}`);
+}
+
 function applyAppearancePrefs(state: AppearancePrefsState): void {
   document.documentElement.style.fontSize = TEXT_SIZE_ROOT_PX[state.textSize];
   // Drives the CSS `.reduce-motion` reset in styles.css; JS-driven motion opts out via RenderPrefs.
   document.documentElement.classList.toggle('reduce-motion', state.reduceMotion);
+  applyFontOverride('--font-sans', state.uiFont);
+  applyFontOverride('--font-mono', state.codeFont);
 }
 
 /**

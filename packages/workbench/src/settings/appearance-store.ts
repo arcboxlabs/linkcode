@@ -14,6 +14,8 @@ const PersistedAppearanceSchema = z
     reduceMotion: z.boolean(),
     codeThemeLight: z.enum(CODE_THEME_LIGHT_IDS),
     codeThemeDark: z.enum(CODE_THEME_DARK_IDS),
+    uiFont: z.string(),
+    codeFont: z.string(),
   })
   .partial();
 type PersistedAppearance = z.infer<typeof PersistedAppearanceSchema>;
@@ -33,10 +35,16 @@ export interface AppearancePrefsState {
   codeThemeLight: CodeThemeLightId;
   /** Shiki theme for chat code blocks under a dark background. */
   codeThemeDark: CodeThemeDarkId;
+  /** Interface font family override (`--font-sans`); empty = the bundled sans stack. */
+  uiFont: string;
+  /** Monospace font family override (`--font-mono`, code blocks + inline code); empty = bundled. */
+  codeFont: string;
   setTextSize: (textSize: TextSize) => void;
   setReduceMotion: (reduceMotion: boolean) => void;
   setCodeThemeLight: (codeThemeLight: CodeThemeLightId) => void;
   setCodeThemeDark: (codeThemeDark: CodeThemeDarkId) => void;
+  setUiFont: (uiFont: string) => void;
+  setCodeFont: (codeFont: string) => void;
 }
 
 export const useAppearancePrefsStore = create<AppearancePrefsState>()(
@@ -46,10 +54,14 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
       reduceMotion: false,
       codeThemeLight: 'github-light',
       codeThemeDark: 'github-dark',
+      uiFont: '',
+      codeFont: '',
       setTextSize: (textSize) => set({ textSize }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
       setCodeThemeLight: (codeThemeLight) => set({ codeThemeLight }),
       setCodeThemeDark: (codeThemeDark) => set({ codeThemeDark }),
+      setUiFont: (uiFont) => set({ uiFont }),
+      setCodeFont: (codeFont) => set({ codeFont }),
     }),
     {
       name: 'linkcode.workbench.appearance:v1',
@@ -59,6 +71,8 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
         reduceMotion: state.reduceMotion,
         codeThemeLight: state.codeThemeLight,
         codeThemeDark: state.codeThemeDark,
+        uiFont: state.uiFont,
+        codeFont: state.codeFont,
       }),
     },
   ),

@@ -25,6 +25,10 @@ export function AppearanceSettingsContainer({
   const setCodeThemeLight = useAppearancePrefsStore((state) => state.setCodeThemeLight);
   const codeThemeDark = useAppearancePrefsStore((state) => state.codeThemeDark);
   const setCodeThemeDark = useAppearancePrefsStore((state) => state.setCodeThemeDark);
+  const uiFont = useAppearancePrefsStore((state) => state.uiFont);
+  const setUiFont = useAppearancePrefsStore((state) => state.setUiFont);
+  const codeFont = useAppearancePrefsStore((state) => state.codeFont);
+  const setCodeFont = useAppearancePrefsStore((state) => state.setCodeFont);
 
   return (
     <AppearanceSettingsPanel
@@ -38,6 +42,10 @@ export function AppearanceSettingsContainer({
       onCodeThemeLightChange={setCodeThemeLight}
       codeThemeDark={codeThemeDark}
       onCodeThemeDarkChange={setCodeThemeDark}
+      uiFont={uiFont}
+      onUiFontChange={setUiFont}
+      codeFont={codeFont}
+      onCodeFontChange={setCodeFont}
     />
   );
 }

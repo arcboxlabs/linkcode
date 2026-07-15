@@ -450,6 +450,12 @@ export const en = {
       codeThemeLight: 'Light code theme',
       codeThemeDark: 'Dark code theme',
       codeThemeHint: 'Syntax highlighting theme for code blocks in chat.',
+      uiFont: 'UI font',
+      uiFontHint: 'Font family for the interface (blank = default; falls back if not installed).',
+      uiFontPlaceholder: 'e.g. Inter',
+      codeFont: 'Code font',
+      codeFontHint: 'Font family for code blocks and monospace text (blank = default).',
+      codeFontPlaceholder: 'e.g. JetBrains Mono',
     },
     connection: {
       title: 'Daemon',

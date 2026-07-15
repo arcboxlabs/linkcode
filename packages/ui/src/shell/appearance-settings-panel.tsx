@@ -1,3 +1,4 @@
+import { Input } from 'coss-ui/components/input';
 import {
   Select,
   SelectItem,
@@ -44,6 +45,12 @@ export interface AppearanceSettingsPanelProps {
   onCodeThemeLightChange: (codeThemeLight: CodeThemeLightId) => void;
   codeThemeDark: CodeThemeDarkId;
   onCodeThemeDarkChange: (codeThemeDark: CodeThemeDarkId) => void;
+  /** Interface font family override; empty follows the bundled sans stack. */
+  uiFont: string;
+  onUiFontChange: (uiFont: string) => void;
+  /** Monospace font family override for code; empty follows the bundled mono stack. */
+  codeFont: string;
+  onCodeFontChange: (codeFont: string) => void;
 }
 
 export function AppearanceSettingsPanel({
@@ -57,6 +64,10 @@ export function AppearanceSettingsPanel({
   onCodeThemeLightChange,
   codeThemeDark,
   onCodeThemeDarkChange,
+  uiFont,
+  onUiFontChange,
+  codeFont,
+  onCodeFontChange,
 }: AppearanceSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.appearance');
   const textSizeItems = TEXT_SIZES.map((value) => ({
@@ -113,6 +124,14 @@ export function AppearanceSettingsPanel({
         <SettingsRow title={t('reduceMotion')} description={t('reduceMotionHint')}>
           <Switch checked={reduceMotion} onCheckedChange={onReduceMotionChange} />
         </SettingsRow>
+        <SettingsRow title={t('uiFont')} description={t('uiFontHint')}>
+          <Input
+            value={uiFont}
+            onChange={(event) => onUiFontChange(event.target.value)}
+            placeholder={t('uiFontPlaceholder')}
+            className="w-56"
+          />
+        </SettingsRow>
       </SettingsCard>
 
       <SettingsCard>
@@ -157,6 +176,14 @@ export function AppearanceSettingsPanel({
               ))}
             </SelectPopup>
           </Select>
+        </SettingsRow>
+        <SettingsRow title={t('codeFont')} description={t('codeFontHint')}>
+          <Input
+            value={codeFont}
+            onChange={(event) => onCodeFontChange(event.target.value)}
+            placeholder={t('codeFontPlaceholder')}
+            className="w-56"
+          />
         </SettingsRow>
       </SettingsCard>
     </div>

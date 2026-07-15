@@ -443,6 +443,12 @@ export const zhCN = {
       codeThemeLight: '浅色代码主题',
       codeThemeDark: '深色代码主题',
       codeThemeHint: '聊天中代码块的语法高亮配色。',
+      uiFont: '界面字体',
+      uiFontHint: '界面文字的字体名（留空用默认；本机未安装则回退）。',
+      uiFontPlaceholder: '例如 Inter',
+      codeFont: '代码字体',
+      codeFontHint: '代码块与等宽文本的字体名（留空用默认）。',
+      codeFontPlaceholder: '例如 JetBrains Mono',
     },
     connection: {
       title: 'Daemon',
