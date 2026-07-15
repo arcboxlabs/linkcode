@@ -16,7 +16,10 @@ export default function StartupScreen() {
   const hosts = useHostRegistryStore((state) => state.hosts);
   const lastActiveHostId = useHostRegistryStore((state) => state.lastActiveHostId);
 
-  if (!hydrated || account.status === 'loading') {
+  // Saved hosts decide the target on their own — only first-run routing
+  // needs the account state, so a LAN/direct user is never held hostage to
+  // a slow or offline cloud session check.
+  if (!hydrated || (hosts.length === 0 && account.status === 'loading')) {
     return (
       <View className="flex-1 items-center justify-center gap-6 bg-background">
         <BrandMark />
