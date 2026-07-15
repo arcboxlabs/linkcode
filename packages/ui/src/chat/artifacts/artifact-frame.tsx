@@ -1,3 +1,4 @@
+import { Card } from 'coss-ui/components/card';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import {
@@ -29,10 +30,7 @@ export function ArtifactFrame({
   const t = useTranslations('workbench.artifact');
 
   return (
-    <div
-      className={cn('my-2 overflow-hidden rounded-lg border border-border bg-card', className)}
-      data-artifact-kind={kindLabel}
-    >
+    <Card className={cn('my-2 overflow-hidden', className)} data-artifact-kind={kindLabel}>
       <CodeBlockHeader>
         <CodeBlockTitle>{kindLabel}</CodeBlockTitle>
         <CodeBlockActions>
@@ -43,6 +41,6 @@ export function ArtifactFrame({
         </CodeBlockActions>
       </CodeBlockHeader>
       {children}
-    </div>
+    </Card>
   );
 }

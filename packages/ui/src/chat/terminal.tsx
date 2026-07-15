@@ -1,4 +1,5 @@
 import AnsiImport from 'ansi-to-react';
+import { Card, CardHeader, CardTitle } from 'coss-ui/components/card';
 import { TerminalIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Shimmer } from './shimmer';
@@ -10,7 +11,7 @@ type AnsiComponent = typeof AnsiImport;
 const ansiModule = AnsiImport as AnsiComponent | { default: AnsiComponent };
 const Ansi = typeof ansiModule === 'function' ? ansiModule : ansiModule.default;
 
-export interface TerminalProps extends React.ComponentProps<'div'> {
+export interface TerminalProps extends React.ComponentProps<typeof Card> {
   title?: string;
   output?: string;
   isStreaming?: boolean;
@@ -25,11 +26,8 @@ export function Terminal({
   ...props
 }: TerminalProps): React.ReactNode {
   return (
-    <div
-      className={cn(
-        'my-1 overflow-hidden rounded-lg border border-border bg-muted text-muted-foreground',
-        className,
-      )}
+    <Card
+      className={cn('my-1 overflow-hidden bg-muted text-muted-foreground', className)}
       {...props}
     >
       <TerminalHeader>
@@ -37,22 +35,25 @@ export function Terminal({
         {isStreaming ? <Shimmer className="text-xs">running</Shimmer> : null}
       </TerminalHeader>
       {children ?? (output ? <TerminalContent>{output}</TerminalContent> : null)}
-    </div>
+    </Card>
   );
 }
 
-export type TerminalHeaderProps = React.ComponentProps<'div'>;
+export type TerminalHeaderProps = React.ComponentProps<typeof CardHeader>;
 
 export function TerminalHeader({ className, ...props }: TerminalHeaderProps): React.ReactNode {
   return (
-    <div
-      className={cn('flex items-center justify-between gap-2 px-3 py-2 text-xs', className)}
+    <CardHeader
+      className={cn(
+        'grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 px-3 py-2 text-xs',
+        className,
+      )}
       {...props}
     />
   );
 }
 
-export type TerminalTitleProps = React.ComponentProps<'div'>;
+export type TerminalTitleProps = React.ComponentProps<typeof CardTitle>;
 
 export function TerminalTitle({
   className,
@@ -60,10 +61,16 @@ export function TerminalTitle({
   ...props
 }: TerminalTitleProps): React.ReactNode {
   return (
-    <div className={cn('flex min-w-0 items-center gap-2 font-mono', className)} {...props}>
+    <CardTitle
+      className={cn(
+        'flex min-w-0 items-center gap-2 font-mono font-normal text-xs leading-normal',
+        className,
+      )}
+      {...props}
+    >
       <TerminalIcon className="size-3.5 shrink-0" />
       <span className="truncate">{children ?? 'Terminal'}</span>
-    </div>
+    </CardTitle>
   );
 }
 
