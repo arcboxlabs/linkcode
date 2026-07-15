@@ -1,16 +1,28 @@
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { MobileHome, ScreenScroll } from '@linkcode/ui/native';
 import { useRouter } from 'expo-router';
-import { Button, Card, ListGroup } from 'heroui-native';
+import { Button, Card, Chip, ListGroup } from 'heroui-native';
 import { useTranslations } from 'use-intl';
 import { useCloudAccount } from '../runtime/cloud/account';
+import type { ThemePreference } from '../stores/settings-store';
+import { useSettingsStore } from '../stores/settings-store';
 
-/** App settings: account + host management entries plus the About/contract summary. */
+const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
+
+const THEME_LABEL_KEY = {
+  system: 'appearanceSystem',
+  light: 'appearanceLight',
+  dark: 'appearanceDark',
+} as const;
+
+/** App settings: account + host management, appearance, and the About/contract summary. */
 export default function SettingsScreen(): React.ReactNode {
   const t = useTranslations('mobile.settings');
   const tAbout = useTranslations('mobile.about');
   const router = useRouter();
   const account = useCloudAccount();
+  const themePreference = useSettingsStore((state) => state.themePreference);
+  const setThemePreference = useSettingsStore((state) => state.setThemePreference);
 
   return (
     <ScreenScroll title={t('title')}>
@@ -36,6 +48,24 @@ export default function SettingsScreen(): React.ReactNode {
             <ListGroup.ItemTitle>{t('manageHosts')}</ListGroup.ItemTitle>
           </ListGroup.ItemContent>
           <ListGroup.ItemSuffix />
+        </ListGroup.Item>
+        <ListGroup.Item>
+          <ListGroup.ItemContent>
+            <ListGroup.ItemTitle>{t('appearance')}</ListGroup.ItemTitle>
+          </ListGroup.ItemContent>
+          <ListGroup.ItemSuffix>
+            {THEME_PREFERENCES.map((preference) => (
+              <Chip
+                key={preference}
+                variant={themePreference === preference ? 'primary' : 'soft'}
+                size="sm"
+                color={themePreference === preference ? 'accent' : 'default'}
+                onPress={() => setThemePreference(preference)}
+              >
+                <Chip.Label>{t(THEME_LABEL_KEY[preference])}</Chip.Label>
+              </Chip>
+            ))}
+          </ListGroup.ItemSuffix>
         </ListGroup.Item>
       </ListGroup>
 
