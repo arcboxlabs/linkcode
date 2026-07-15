@@ -1,12 +1,20 @@
 import type { ToolCall } from '@linkcode/schema';
+import { Badge } from 'coss-ui/components/badge';
 import { useTranslations } from 'use-intl';
 import { FileArtifactCard } from './artifacts/file-card';
 import { ContentBlockView } from './content-block-view';
 import { DiffBlock } from './diff-block';
 import { Terminal } from './terminal';
 import { TerminalBlock } from './terminal-block';
-import { Tool, ToolContent, ToolHeader, ToolJson, ToolSection } from './tool';
-import { hasToolBody } from './tool-utils';
+import { Tool, ToolContent, ToolHeader } from './tool';
+import type { ToolMetadata } from './tool-utils';
+import {
+  hasToolBody,
+  toolCallCommand,
+  toolCallFailureMessage,
+  toolCallMetadata,
+  toolCallSummary,
+} from './tool-utils';
 
 const MAX_PRODUCED_FILE_CARDS = 4;
 
@@ -20,18 +28,6 @@ function producedFilePaths(toolCall: ToolCall): string[] {
     if (content.type === 'diff') paths.add(content.path);
   }
   return [...paths].slice(0, MAX_PRODUCED_FILE_CARDS);
-}
-
-function executeCommand(toolCall: ToolCall): string {
-  const input = toolCall.rawInput;
-  if (typeof input !== 'object' || input === null) return toolCall.title;
-
-  const command = 'command' in input ? input.command : 'cmd' in input ? input.cmd : undefined;
-  if (typeof command === 'string' && command.length > 0) return command;
-  if (Array.isArray(command) && command.every((part) => typeof part === 'string')) {
-    return command.join(' ');
-  }
-  return toolCall.title;
 }
 
 function executeOutput(toolCall: ToolCall): string | undefined {
@@ -51,7 +47,28 @@ function executeOutput(toolCall: ToolCall): string | undefined {
   ) {
     return toolCall.rawOutput.message;
   }
-  return JSON.stringify(toolCall.rawOutput, null, 2);
+  return undefined;
+}
+
+function ToolMetadataList({ metadata }: { metadata: ToolMetadata[] }): React.ReactNode {
+  const t = useTranslations('workbench.tool');
+  if (metadata.length === 0) return null;
+
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1.5">
+      {metadata.map((item) => (
+        <Badge
+          className="max-w-full gap-1.5 font-normal"
+          key={`${item.key}:${item.value}`}
+          size="sm"
+          variant={item.tone === 'error' ? 'error' : 'secondary'}
+        >
+          <span className="text-muted-foreground">{t(item.key)}</span>
+          <code className="truncate">{item.value}</code>
+        </Badge>
+      ))}
+    </div>
+  );
 }
 
 function ToolCallContentView({
@@ -71,8 +88,8 @@ function ToolCallContentView({
   return <TerminalBlock terminalId={content.terminalId} />;
 }
 
-/** The expandable detail of one call. Static execute output uses the read-only terminal surface;
- * live terminal references and other tool kinds keep their structured presentation. */
+/** The expandable detail of one call. Raw adapter payloads never render directly: known scalar
+ * metadata is projected into badges, while structured content keeps its purpose-built surface. */
 export function ToolCallBody({
   toolCall,
   TerminalBlockComponent,
@@ -80,39 +97,33 @@ export function ToolCallBody({
   toolCall: ToolCall;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
-  const t = useTranslations('workbench.tool');
   const isStaticExecute =
     toolCall.kind === 'execute' && toolCall.content.every((content) => content.type !== 'terminal');
-
-  if (isStaticExecute) {
-    return (
-      <>
-        <Terminal title={executeCommand(toolCall)} output={executeOutput(toolCall)} />
-        {toolCall.content.map((content, index) => {
-          if (content.type === 'content' && content.content.type === 'text') return null;
-          // Tool content is a full snapshot replaced by id each event, so index+type is stable.
-          const key = `${index}:${content.type}`;
-          return (
-            <ToolCallContentView
-              key={key}
-              TerminalBlockComponent={TerminalBlockComponent}
-              content={content}
-            />
-          );
-        })}
-      </>
-    );
-  }
+  const contentText = toolCall.content
+    .flatMap((content) =>
+      content.type === 'content' && content.content.type === 'text' ? [content.content.text] : [],
+    )
+    .join('\n');
+  const rawFailureMessage =
+    toolCall.kind === 'execute' ? undefined : toolCallFailureMessage(toolCall);
+  const failureMessage =
+    rawFailureMessage && !contentText.includes(rawFailureMessage) ? rawFailureMessage : undefined;
 
   return (
     <>
-      {toolCall.rawInput !== undefined && (
-        <ToolSection label={t('input')}>
-          <ToolJson value={toolCall.rawInput} />
-        </ToolSection>
-      )}
+      <ToolMetadataList metadata={toolCallMetadata(toolCall)} />
+
+      {isStaticExecute ? (
+        <Terminal
+          title={toolCallCommand(toolCall) ?? toolCall.title}
+          output={executeOutput(toolCall)}
+        />
+      ) : null}
 
       {toolCall.content.map((content, index) => {
+        if (isStaticExecute && content.type === 'content' && content.content.type === 'text') {
+          return null;
+        }
         // Tool content is a full snapshot replaced by id each event, so index+type is stable.
         const key = `${index}:${content.type}`;
         return (
@@ -124,11 +135,9 @@ export function ToolCallBody({
         );
       })}
 
-      {toolCall.content.length === 0 && toolCall.rawOutput !== undefined && (
-        <ToolSection label={t('output')}>
-          <ToolJson value={toolCall.rawOutput} />
-        </ToolSection>
-      )}
+      {failureMessage ? (
+        <p className="text-destructive-foreground text-sm">{failureMessage}</p>
+      ) : null}
     </>
   );
 }
@@ -155,6 +164,7 @@ export function ToolCallItem({
   const kindKey = `kind${toolCall.kind[0].toUpperCase()}${toolCall.kind.slice(1)}`;
   const hasBody = hasToolBody(toolCall);
   const producedFiles = producedFilePaths(toolCall);
+  const summary = toolCallSummary(toolCall);
 
   return (
     <Tool>
@@ -166,6 +176,7 @@ export function ToolCallItem({
         icon={icon}
         kind={toolCall.kind}
         status={toolCall.status}
+        summary={summary === toolCall.title ? undefined : summary}
         title={toolCall.title}
       />
 

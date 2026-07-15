@@ -21,7 +21,7 @@ import { cn } from '../lib/cn';
 import type { ActivityBucket, TimelineEntry } from './activity-groups';
 import { diffStats } from './diff-utils';
 import { ToolCallBody } from './tool-call-item';
-import { hasToolBody } from './tool-utils';
+import { hasToolBody, toolCallSummary } from './tool-utils';
 
 export type ActivityToolGroup = Extract<TimelineEntry, { type: 'group' }>;
 
@@ -65,7 +65,11 @@ export function ActivityGroup({
           </span>
         ) : null}
         <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-          {open ? '' : group.items.map((item) => item.toolCall.title).join(', ')}
+          {open
+            ? ''
+            : group.items
+                .map((item) => toolCallSummary(item.toolCall) ?? item.toolCall.title)
+                .join(', ')}
         </span>
         <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
       </CollapsibleTrigger>
@@ -126,19 +130,33 @@ function ActivityGroupRow({
   toolCall: ToolCall;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
+  const summary = toolCallSummary(toolCall);
   const titleClassName = cn(
-    'truncate py-0.5 text-left text-sm',
+    'flex min-w-0 items-center py-0.5 text-left text-sm',
     toolCall.status === 'failed' ? 'text-destructive-foreground' : 'text-muted-foreground',
+  );
+  const label = (
+    <>
+      <span className="min-w-0 truncate">{toolCall.title}</span>
+      {summary && summary !== toolCall.title ? (
+        <>
+          {' '}
+          <span className="ml-1 min-w-0 flex-1 truncate text-muted-foreground/70 text-xs">
+            · {summary}
+          </span>
+        </>
+      ) : null}
+    </>
   );
 
   if (!hasToolBody(toolCall)) {
-    return <div className={titleClassName}>{toolCall.title}</div>;
+    return <div className={titleClassName}>{label}</div>;
   }
 
   return (
     <Collapsible>
-      <CollapsibleTrigger className={cn(titleClassName, 'block w-full hover:text-foreground')}>
-        {toolCall.title}
+      <CollapsibleTrigger className={cn(titleClassName, 'w-full hover:text-foreground')}>
+        {label}
       </CollapsibleTrigger>
       <CollapsibleContent className="my-1 space-y-2 pl-1.5">
         <ToolCallBody TerminalBlockComponent={TerminalBlockComponent} toolCall={toolCall} />

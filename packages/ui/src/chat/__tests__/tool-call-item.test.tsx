@@ -49,20 +49,24 @@ describe('ToolCallBody', () => {
     expect(LiveTerminal).not.toHaveBeenCalled();
   });
 
-  it('keeps the generic input presentation for non-execute tools', () => {
+  it('projects file metadata without exposing the raw read request', () => {
     const toolCall: ToolCall = {
       toolCallId: 'read-1',
       title: 'Read file',
       kind: 'read',
       status: 'completed',
-      rawInput: { path: 'README.md' },
+      locations: [{ path: 'README.md', line: 12 }],
+      rawInput: { path: 'README.md', offset: 11, limit: 200, debug: true },
       content: [],
     };
 
     const { container } = render(<ToolCallBody toolCall={toolCall} />);
 
-    expect(screen.getByText('input')).toBeDefined();
-    expect(container.textContent).toContain('"path": "README.md"');
+    expect(screen.getByText('path')).toBeDefined();
+    expect(screen.getByText('README.md:12')).toBeDefined();
+    expect(screen.queryByText('input')).toBeNull();
+    expect(container.textContent).not.toContain('offset');
+    expect(container.textContent).not.toContain('debug');
   });
 
   it('surfaces an execute failure message without its raw result envelope', () => {
