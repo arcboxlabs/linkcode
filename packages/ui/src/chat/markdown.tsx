@@ -1,5 +1,5 @@
 import { cjk } from '@streamdown/cjk';
-import { code } from '@streamdown/code';
+import { createCodePlugin } from '@streamdown/code';
 import type { Components, PluginConfig } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
@@ -133,15 +133,13 @@ const components: Components = {
   ),
 };
 
-const plugins: PluginConfig = {
-  cjk,
-  code,
-  // Fences whose language a registered artifact kind claims render as inline
-  // artifacts; everything else stays on the default shiki code block. The language
-  // list is snapshotted here, hence the module-scope registration constraint
-  // documented in artifacts/registry.ts.
-  renderers: [{ language: artifactFenceLanguages(), component: ArtifactFenceRenderer }],
-};
+// Fences whose language a registered artifact kind claims render as inline
+// artifacts; everything else stays on the default shiki code block. The language
+// list is snapshotted here, hence the module-scope registration constraint
+// documented in artifacts/registry.ts.
+const artifactRenderers = [
+  { language: artifactFenceLanguages(), component: ArtifactFenceRenderer },
+];
 
 export function Markdown({
   children,
@@ -151,6 +149,13 @@ export function Markdown({
   className?: string;
 }): React.ReactNode {
   const { codeTheme } = useRenderPrefs();
+  // The @streamdown/code plugin's getThemes() wins over the shikiTheme prop, so the selected theme
+  // must be baked into the plugin. createCodePlugin is cheap — its highlighter is created lazily.
+  const plugins: PluginConfig = {
+    cjk,
+    code: createCodePlugin({ themes: codeTheme }),
+    renderers: artifactRenderers,
+  };
   return (
     <Streamdown
       // space-y-0: block rhythm comes from the per-element my-* overrides above,
@@ -158,7 +163,6 @@ export function Markdown({
       className={cn('space-y-0 break-words text-sm leading-relaxed', className)}
       components={components}
       plugins={plugins}
-      shikiTheme={codeTheme}
     >
       {children}
     </Streamdown>

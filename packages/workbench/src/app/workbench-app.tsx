@@ -1,5 +1,4 @@
 import type { WorkbenchConnectionSource } from '../runtime/connection-controller';
-import { AppearanceRenderPrefsProvider } from '../settings/appearance-render-prefs';
 import type { WorkbenchShellComponent } from '../surface/shell';
 import { Workbench } from '../surface/workbench';
 import { WorkbenchAppProviders } from './app-providers';
@@ -16,11 +15,9 @@ export function WorkbenchApp({
 }: WorkbenchAppProps): React.ReactNode {
   return (
     <WorkbenchAppProviders>
-      <AppearanceRenderPrefsProvider>
-        <WorkbenchProviders connectionSource={connectionSource}>
-          <Workbench shellComponent={shellComponent} />
-        </WorkbenchProviders>
-      </AppearanceRenderPrefsProvider>
+      <WorkbenchProviders connectionSource={connectionSource}>
+        <Workbench shellComponent={shellComponent} />
+      </WorkbenchProviders>
     </WorkbenchAppProviders>
   );
 }
