@@ -660,6 +660,29 @@ export const en = {
       signIn: 'Sign in with LinkCode',
       skip: 'Skip — connect manually',
     },
+    account: {
+      title: 'Account',
+      signOut: 'Sign out',
+      devices: 'Devices',
+      refresh: 'Refresh',
+      devicesEmpty: 'No devices registered on this account yet.',
+      devicesError: 'Could not load your devices.',
+      thisDevice: 'This device',
+      lastSeen: 'seen {time}',
+      deviceKind: {
+        daemon: 'Daemon',
+        desktop: 'Desktop',
+        mobile: 'Mobile',
+      },
+      revoke: 'Revoke',
+      revokeTitle: 'Revoke “{name}”?',
+      revokeMessage:
+        'The device can no longer reach your machines through LinkCode Cloud until it signs in again.',
+      revokeThisDeviceMessage:
+        'This is the phone you are using — revoking it also signs you out here.',
+      revokeCancel: 'Cancel',
+      revokeError: 'Could not revoke the device.',
+    },
     sessions: {
       title: 'Sessions',
       emptyTitle: 'No sessions',
@@ -699,6 +722,7 @@ export const en = {
     },
     settings: {
       title: 'Settings',
+      signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
       about: 'About',
       back: 'Back',
