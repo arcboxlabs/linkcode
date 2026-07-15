@@ -1,7 +1,14 @@
-import Ansi from 'ansi-to-react';
+import AnsiImport from 'ansi-to-react';
 import { TerminalIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Shimmer } from './shimmer';
+
+type AnsiComponent = typeof AnsiImport;
+
+// ansi-to-react is CommonJS with its component stored on `exports.default` while also
+// advertising `__esModule`; Vite 8 therefore exposes either the component or that wrapper.
+const ansiModule = AnsiImport as AnsiComponent | { default: AnsiComponent };
+const Ansi = typeof ansiModule === 'function' ? ansiModule : ansiModule.default;
 
 export interface TerminalProps extends React.ComponentProps<'div'> {
   title?: string;
