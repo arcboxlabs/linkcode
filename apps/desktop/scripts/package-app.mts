@@ -131,7 +131,9 @@ function build(): void {
     `-c.directories.output=${releaseDir}`,
     `-c.mac.icon=${join(assetsDir, 'linkcode.icon')}`,
     `-c.win.icon=${join(assetsDir, 'icon.png')}`,
-    `-c.linux.icon=${join(assetsDir, 'icon.png')}`,
+    // A directory of per-size PNGs — app-builder-lib 26+ won't expand a single PNG into a size set,
+    // so a lone raster installs only hicolor/1024x1024 (unindexed → GNOME fallback icon).
+    `-c.linux.icon=${join(assetsDir, 'linux-icons')}`,
     ...(devshell ? ['--dir'] : []),
     ...passthrough,
   ];
