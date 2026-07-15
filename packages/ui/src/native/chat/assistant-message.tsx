@@ -3,7 +3,7 @@ import type { MarkdownStyleMap } from '@ronradtke/react-native-markdown-display'
 import Markdown from '@ronradtke/react-native-markdown-display';
 import { useMemo } from 'react';
 import { Pressable, View } from 'react-native';
-import { useCSSVariable } from 'uniwind';
+import { useCSSVariable, useUniwind } from 'uniwind';
 
 import { blocksToText } from './format';
 import { MONO_FONT } from './mono';
@@ -50,12 +50,14 @@ export function AssistantMessage({
       },
       code_inline: {
         backgroundColor: String(surfaceSecondary),
+        color: String(foreground),
         borderRadius: 4,
         fontFamily: MONO_FONT,
         fontSize: 13,
       },
       code_block: {
         backgroundColor: String(surfaceSecondary),
+        color: String(foreground),
         borderColor: String(border),
         borderWidth: 1,
         borderRadius: 8,
@@ -66,6 +68,7 @@ export function AssistantMessage({
       },
       fence: {
         backgroundColor: String(surfaceSecondary),
+        color: String(foreground),
         borderColor: String(border),
         borderWidth: 1,
         borderRadius: 8,
@@ -82,6 +85,7 @@ export function AssistantMessage({
   );
 
   const text = blocksToText(blocks);
+  const { theme } = useUniwind();
 
   return (
     <Pressable
@@ -89,7 +93,10 @@ export function AssistantMessage({
       onLongPress={onCopyText ? () => onCopyText(text) : undefined}
       className="w-full"
     >
-      <Markdown style={style}>{text}</Markdown>
+      {/* colorScheme swaps the library's base style table; our overrides layer on top. */}
+      <Markdown style={style} colorScheme={theme === 'dark' ? 'dark' : 'light'}>
+        {text}
+      </Markdown>
       {isStreaming ? <View className="h-4 w-2 rounded-[2px] bg-foreground opacity-70" /> : null}
     </Pressable>
   );

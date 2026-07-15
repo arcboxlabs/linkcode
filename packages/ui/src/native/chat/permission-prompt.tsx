@@ -33,6 +33,13 @@ function detailRows(toolCall: ToolCallUpdate): DetailRow[] {
   const input = toolCall.rawInput;
   if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
     const record = input as Record<string, unknown>;
+    for (const key of ['file_path', 'path', 'notebook_path', 'filePath']) {
+      const value = record[key];
+      if (typeof value === 'string' && !rows.some((row) => row.value === value)) {
+        rows.push({ key: `path:${key}`, value });
+        break;
+      }
+    }
     if (typeof record.command === 'string') rows.push({ key: 'command', value: record.command });
     if (typeof record.url === 'string') rows.push({ key: 'url', value: record.url });
   }
