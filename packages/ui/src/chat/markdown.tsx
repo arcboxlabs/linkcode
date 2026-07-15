@@ -3,8 +3,10 @@ import { code } from '@streamdown/code';
 import type { Components, PluginConfig } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
-import { ArtifactFenceRenderer, artifactFenceLanguages, useArtifactHostActions } from './artifacts';
+import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
 import { detectInlineFilePath } from './artifacts/file-kind';
+import { useArtifactHostActions } from './artifacts/host-actions';
+import { artifactFenceLanguages } from './artifacts/registry';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
 
@@ -61,17 +63,17 @@ const components: Components = {
     </p>
   ),
   h1: ({ className, children, node: _node, ...rest }) => (
-    <h1 className={cn('mt-4 mb-2 font-semibold text-lg', className)} {...rest}>
+    <h1 className={cn('mt-4 mb-2 font-semibold text-lg first:mt-0', className)} {...rest}>
       {children}
     </h1>
   ),
   h2: ({ className, children, node: _node, ...rest }) => (
-    <h2 className={cn('mt-4 mb-2 font-semibold text-base', className)} {...rest}>
+    <h2 className={cn('mt-4 mb-2 font-semibold text-base first:mt-0', className)} {...rest}>
       {children}
     </h2>
   ),
   h3: ({ className, children, node: _node, ...rest }) => (
-    <h3 className={cn('mt-3 mb-1.5 font-semibold text-sm', className)} {...rest}>
+    <h3 className={cn('mt-3 mb-1.5 font-semibold text-sm first:mt-0', className)} {...rest}>
       {children}
     </h3>
   ),

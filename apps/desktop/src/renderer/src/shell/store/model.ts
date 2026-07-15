@@ -291,6 +291,10 @@ export function serializeDesktopShellState(state: DesktopShellState): PersistedD
   };
 }
 
+function durableBrowserUrl(url: string | null): string | null {
+  return url?.startsWith('blob:') ? null : url;
+}
+
 function createPersistedShellStateSchema(): z.ZodType<DesktopShellState> {
   const fallback = createDefaultDesktopShellState();
   const rightPanelSchema = createPersistedRightPanelSchema();
@@ -407,7 +411,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
             tabs: fileTabs,
             activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
           },
-          browser: { url: browserUrl },
+          browser: { url: durableBrowserUrl(browserUrl) },
         };
       },
     );
@@ -429,7 +433,7 @@ function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
       0,
       Math.max(0, panel.files.tabs.length - 1),
     ),
-    browserUrl: panel.browser.url,
+    browserUrl: durableBrowserUrl(panel.browser.url),
   };
 }
 

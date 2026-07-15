@@ -20,6 +20,7 @@ describe('artifactKindForPath', () => {
 describe('fileBasename', () => {
   it('strips directories', () => {
     expect(fileBasename('/a/b/c.md')).toBe('c.md');
+    expect(fileBasename(String.raw`C:\repo\docs\c.md`)).toBe('c.md');
     expect(fileBasename('c.md')).toBe('c.md');
   });
 });

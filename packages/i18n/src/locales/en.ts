@@ -646,7 +646,7 @@ export const en = {
       title: 'Link Code · Mobile',
       contract: 'Shared data contract · wire v{version} · from @linkcode/schema',
       registeredAgents: 'Registered agent adapters',
-      note: 'Connects directly to a Link Code host (daemon) over its transport. Remote access through the HQ tunnel arrives with device pairing.',
+      note: 'Connects directly to a Link Code host (daemon) over its transport. Remote access through the LinkCode Cloud tunnel arrives with device pairing.',
     },
     connect: {
       title: 'Connect to a host',
@@ -663,18 +663,48 @@ export const en = {
       open: 'Open',
       remove: 'Remove',
       viaTunnel: 'via LinkCode Cloud',
-      hq: {
+      addManually: 'Add a host by URL',
+      cloud: {
         title: 'LinkCode Cloud',
         hint: 'Sign in to reach your machines from anywhere through LinkCode Cloud.',
         signIn: 'Sign in',
-        signedInAs: 'Signed in as {name}',
-        signOut: 'Sign out',
-        hosts: 'Online machines',
+        machines: 'My machines',
         empty:
           'No machines online. On the machine, run linkcode-daemon login once and keep the daemon running.',
         error: 'Could not load your machines.',
         refresh: 'Refresh',
       },
+    },
+    signIn: {
+      tagline:
+        'Your agents, wherever you are. Sign in to reach the machines running LinkCode from this phone.',
+      signIn: 'Sign in with LinkCode',
+      other: 'More sign-in options',
+      skip: 'Skip — connect manually',
+      error: 'Sign-in failed. Check your connection and try again.',
+    },
+    account: {
+      title: 'Account',
+      signOut: 'Sign out',
+      devices: 'Devices',
+      refresh: 'Refresh',
+      devicesEmpty: 'No devices registered on this account yet.',
+      devicesError: 'Could not load your devices.',
+      thisDevice: 'This device',
+      lastSeen: 'seen {time}',
+      deviceKind: {
+        daemon: 'Daemon',
+        desktop: 'Desktop',
+        mobile: 'Mobile',
+      },
+      revoke: 'Revoke',
+      revokeTitle: 'Revoke “{name}”?',
+      revokeMessage:
+        'The device can no longer reach your machines through LinkCode Cloud until it signs in again.',
+      revokeThisDeviceMessage:
+        'This is the phone you are using — revoking it also signs you out here.',
+      revokeCancel: 'Cancel',
+      revokeError: 'Could not revoke the device.',
     },
     sessions: {
       title: 'Sessions',
@@ -715,6 +745,7 @@ export const en = {
     },
     settings: {
       title: 'Settings',
+      signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
       about: 'About',
       back: 'Back',
