@@ -3,7 +3,7 @@
 /* eslint-disable -- This file is pulled from https://github.com/cosscom/coss/commits/main/packages/ui */
 "use client";
 
-import { OTPFieldPreview as OTPFieldPrimitive } from "@base-ui/react/otp-field";
+import { OTPField as OTPFieldPrimitive } from "@base-ui/react/otp-field";
 import type * as React from "react";
 import { cn } from "coss-ui/lib/utils";
 import { Separator } from "coss-ui/components/separator";

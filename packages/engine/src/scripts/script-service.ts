@@ -1,4 +1,5 @@
 import { Socket } from 'node:net';
+import { allocatePort } from '@linkcode/common/node';
 import type { ScriptHealth, ScriptLifecycle, WirePayload, WorkspaceScript } from '@linkcode/schema';
 import { normalizeCwdKey } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -7,7 +8,6 @@ import type { TerminalService } from '../terminal-service';
 import type { ScriptDeclaration } from './config';
 import { readWorkspaceScripts } from './config';
 import { scriptHostname } from './hostname';
-import { allocatePort } from './ports';
 import type { PreviewRouteRegistry } from './route-registry';
 
 const HEALTH_PROBE_INTERVAL_MS = 3000;

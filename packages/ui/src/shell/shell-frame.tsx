@@ -40,7 +40,8 @@ export interface ShellFrameProps
   activeSession: SessionInfo | null;
   /** Non-null while the new-session page is up — it replaces the conversation column. */
   draft: NewSessionDraft | null;
-  /** Agent runtime availability cues for the new-session page's onboarding flow (CODE-112). */
+  /** Agent runtime availability cues: the new-session page's onboarding flow (CODE-112) and the
+   * active session's needs-login recovery card (CODE-172). */
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
@@ -221,6 +222,10 @@ export function ShellFrame({
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}
             cwd={active?.cwd}
+            runtimeCues={runtimeCues}
+            onLoginAgent={onLoginAgent}
+            onSubmitLoginCode={onSubmitLoginCode}
+            onCancelLogin={onCancelLogin}
             permissionDecisions={permissionDecisions}
             respondingPermissions={respondingPermissions}
             answeredQuestionIds={answeredQuestionIds}

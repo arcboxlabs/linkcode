@@ -2,7 +2,13 @@ import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AgentRuntimeProber, ClaudeCodeProbe, CodexProbe, parseClaudeAuthStatus } from '../probe';
+import {
+  AgentRuntimeProber,
+  ClaudeCodeProbe,
+  CodexProbe,
+  parseClaudeAuthStatus,
+  parseCodexLoginStatus,
+} from '../probe';
 
 function fakeCli(dir: string, name: string, versionLine: string): string {
   const file = join(dir, name);
@@ -91,6 +97,56 @@ describe('ClaudeCodeProbe.probeAuth', () => {
   });
 });
 
+describe('parseCodexLoginStatus', () => {
+  it('maps the three verified wordings (codex-cli 0.144.1)', () => {
+    expect(parseCodexLoginStatus('Logged in using ChatGPT\n')).toEqual({
+      loggedIn: true,
+      method: 'chatgpt',
+    });
+    expect(parseCodexLoginStatus('Logged in using an API key - ***\n')).toEqual({
+      loggedIn: true,
+      method: 'apikey',
+    });
+    expect(parseCodexLoginStatus('\nNot logged in\n')).toEqual({ loggedIn: false });
+  });
+
+  it('fails open on unrecognized wording', () => {
+    expect(parseCodexLoginStatus('')).toBeUndefined();
+    expect(parseCodexLoginStatus('Signed in via SSO')).toBeUndefined();
+    // Rephrased lines must not half-match ("mentions logged in somewhere").
+    expect(parseCodexLoginStatus('You are not logged in')).toBeUndefined();
+  });
+});
+
+describe('CodexProbe.probeAuth', () => {
+  /** A fake `codex` answering `login status`; the signed-out line rides STDERR + exit 1, like the
+   * real CLI. */
+  function fakeCodexCli(dir: string, statusLine: string, exit: number, stream: 1 | 2): string {
+    const file = join(dir, 'codex');
+    writeFileSync(
+      file,
+      `#!/bin/sh\nif [ "$1" = "login" ]; then echo '${statusLine}' >&${stream}; exit ${exit}; fi\necho "codex-cli 9.9.9"\n`,
+    );
+    chmodSync(file, 0o755);
+    return file;
+  }
+
+  it('reads a signed-in status from stdout', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const file = fakeCodexCli(dir, 'Logged in using ChatGPT', 0, 1);
+    await expect(new CodexProbe().probeAuth(file)).resolves.toEqual({
+      loggedIn: true,
+      method: 'chatgpt',
+    });
+  });
+
+  it('reads the signed-out status from stderr despite the non-zero exit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const file = fakeCodexCli(dir, 'Not logged in', 1, 2);
+    await expect(new CodexProbe().probeAuth(file)).resolves.toEqual({ loggedIn: false });
+  });
+});
+
 describe('AgentCliProbe.probeAt', () => {
   it('returns path+version for a marker-verified binary', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'probe-'));
@@ -164,7 +220,18 @@ describe('AgentRuntimeProber.collect', () => {
     const dir = mkdtempSync(join(tmpdir(), 'probe-'));
     const claude = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
 
-    const runtimes = await proberAt(dir).collect();
+    // Hermetic sdk tier: a codex whose vendored binary is unresolvable (the packaged-app shape) —
+    // the real resolver would spawn this machine's CLI and leak its login state into the assert.
+    class NoBinaryCodexProbe extends CodexProbe {
+      override sdkPlatformBinaryPath(): string | undefined {
+        return undefined;
+      }
+    }
+    const prober = new AgentRuntimeProber([
+      new ClaudeCodeProbe([join(dir, 'claude')]),
+      new NoBinaryCodexProbe([join(dir, 'codex')]),
+    ]);
+    const runtimes = await prober.collect();
     expect(runtimes['claude-code']).toEqual({
       status: 'available',
       source: 'detected',
@@ -174,6 +241,24 @@ describe('AgentRuntimeProber.collect', () => {
     expect(runtimes.codex).toEqual({ status: 'available', source: 'sdk' });
     expect(runtimes.pi).toEqual({ status: 'available', source: 'builtin' });
     expect(runtimes.opencode).toBeUndefined();
+  });
+
+  it('attaches probed auth to an sdk-resolved codex runtime', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const file = join(dir, 'codex');
+    writeFileSync(file, "#!/bin/sh\necho 'Not logged in' >&2; exit 1\n");
+    chmodSync(file, 0o755);
+    class FakeBinaryCodexProbe extends CodexProbe {
+      override sdkPlatformBinaryPath(): string | undefined {
+        return file;
+      }
+    }
+    const runtimes = await new AgentRuntimeProber([new FakeBinaryCodexProbe([])]).collect();
+    expect(runtimes.codex).toEqual({
+      status: 'available',
+      source: 'sdk',
+      auth: { loggedIn: false },
+    });
   });
 
   it('reports missing when nothing is managed, detected, or SDK-resolvable', async () => {

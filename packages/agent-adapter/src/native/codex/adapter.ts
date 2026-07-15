@@ -20,6 +20,7 @@ import type {
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
 import {
@@ -95,6 +96,21 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
  * structurally (the class's private fields would otherwise force a top-type cast). */
 export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHandler' | 'close'>;
+
+const CODEX_AUTH_FAILED_MESSAGE = 'Codex authentication failed — sign in to your ChatGPT account';
+
+/** Whether an app-server `error` notification reports the 401 of a signed-out/expired login. The
+ * structured status rides only the mid-retry notifications
+ * (`codexErrorInfo.responseStreamDisconnected.httpStatusCode`); the final no-retry error degrades
+ * to `codexErrorInfo: "other"` with the 401 left in prose — match both (verified live on
+ * codex-cli 0.144.1). */
+function isCodexAuthError(error: Record<string, unknown>): boolean {
+  const info = recordField(error, 'codexErrorInfo');
+  const disconnected = info && recordField(info, 'responseStreamDisconnected');
+  if (disconnected && numberField(disconnected, 'httpStatusCode') === 401) return true;
+  const prose = `${stringField(error, 'message') ?? ''}\n${stringField(error, 'additionalDetails') ?? ''}`;
+  return prose.includes('401 Unauthorized');
+}
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
@@ -212,6 +228,10 @@ export class CodexAdapter extends BaseAgentAdapter {
   };
 
   private server: CodexServerHandle | null = null;
+  /** Bumped whenever a server is retired/crashed and whenever a new one spawns: a dead child's
+   * already-buffered stdout lines (and its late exit alarm) carry the old generation and are
+   * dropped at the callback gate instead of corrupting the successor's session state. */
+  private serverGeneration = 0;
   /** In-flight spawn+thread-open, shared by concurrent callers so two prompts racing into a dead
    * session cannot double-spawn app-server processes. */
   private starting: Promise<void> | null = null;
@@ -256,6 +276,11 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Streamed text length per item id: converts `item/completed` full texts into the missing
    * remainder (delta backstop), and suppresses re-emitting reasoning that already streamed. */
   private readonly streamedTextLen = new Map<string, number>();
+  /** Latched on the first 401 the app-server reports; cleared when a fresh server spawns. The
+   * process caches its credentials for its whole lifetime (verified live — an `auth.json` written
+   * after spawn is never re-read), so the flag both dedupes the retry storm's banners and marks
+   * this server as unable to recover in place. */
+  private authFailed = false;
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model;
@@ -332,8 +357,7 @@ export class CodexAdapter extends BaseAgentAdapter {
    * the visible `$name args` text; mirror that provider-native shape here. */
   protected override async onCommand(name: string, args?: string): Promise<void> {
     await this.ensureThread();
-    const server = nullthrow(this.server, 'codex: session not started');
-    const threadId = nullthrow(this.threadId, 'codex: thread not started');
+    const { server, threadId } = this.liveThread();
     if (name === COMPACT_COMMAND.name) {
       await server.request('thread/compact/start', { threadId });
       return;
@@ -377,8 +401,7 @@ export class CodexAdapter extends BaseAgentAdapter {
    * does not gate on `activeTurnId`/`turnStartsInFlight` the way `onPrompt` queues prompts. */
   protected override async onShellCommand(command: string): Promise<void> {
     await this.ensureThread();
-    const server = nullthrow(this.server, 'codex: session not started');
-    const threadId = nullthrow(this.threadId, 'codex: thread not started');
+    const { server, threadId } = this.liveThread();
     // The ack lands before turn/started, but the engine's input gate reads status the moment
     // send() resolves and treats a still-idle session as a synchronous control — announce the
     // turn synchronously (base.ts hook contract) or a rapid next submit races the starting
@@ -387,6 +410,9 @@ export class CodexAdapter extends BaseAgentAdapter {
     try {
       await server.request('thread/shellCommand', { threadId, command });
     } catch (err) {
+      // An auth retirement rejected this in-flight request and already finalized status — reject
+      // the input with the auth story instead of the raw connection-closed fallout.
+      if (this.authFailed) throw new Error(CODEX_AUTH_FAILED_MESSAGE, { cause: err });
       // Mirror startTurn's unwind: without the idle emit the engine sees status 'running' on the
       // rejected send() and leaves the session gated busy forever.
       this.teardown();
@@ -524,11 +550,16 @@ export class CodexAdapter extends BaseAgentAdapter {
     const credentialEnv = codexEnv(readAgentCredential(opts.config));
     this.configuredSandbox = await this.readConfiguredSandbox();
     let server: CodexServerHandle;
+    const generation = ++this.serverGeneration;
     try {
       server = await this.startAppServer({
         env: credentialEnv,
-        onNotification: (method, params) => this.handleNotification(method, params),
-        onExit: (_code, stderrTail) => this.handleServerExit(stderrTail),
+        onNotification: (method, params) => {
+          if (generation === this.serverGeneration) this.handleNotification(method, params);
+        },
+        onExit: (_code, stderrTail) => {
+          if (generation === this.serverGeneration) this.handleServerExit(stderrTail);
+        },
       });
     } catch (err) {
       const message = extractErrorMessage(err) ?? 'codex: app-server failed to start';
@@ -542,6 +573,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.handleApproval(params, 'edit'),
     );
     this.server = server;
+    // A fresh process re-read the on-disk credentials — its auth state is unknown again.
+    this.authFailed = false;
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
     const preset = POLICY_PRESETS[this.policyId];
@@ -577,6 +610,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       // Re-arm the resume point: a transient thread/resume failure must not silently downgrade
       // the next attempt into a brand-new thread that abandons the conversation.
       this.resumeFrom = resume;
+      // Retire this generation too — the closed child may still flush buffered stdout.
+      this.serverGeneration += 1;
       server.close();
       this.server = null;
       throw err;
@@ -610,9 +645,17 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
   }
 
+  /** Server+thread after `ensureThread()`, or the clearest rejection when the 401 retirement
+   * emptied them in the same tick the input was dispatched (the ensureThread await window). */
+  private liveThread(): { server: CodexServerHandle; threadId: string } {
+    const server = this.server;
+    const threadId = this.threadId;
+    if (server && threadId) return { server, threadId };
+    throw new Error(this.authFailed ? CODEX_AUTH_FAILED_MESSAGE : 'codex: session not started');
+  }
+
   private async startTurn(input: CodexTurnInput[]): Promise<void> {
-    const server = nullthrow(this.server, 'codex: session not started');
-    const threadId = nullthrow(this.threadId, 'codex: thread not started');
+    const { server, threadId } = this.liveThread();
     this.turnStartsInFlight += 1;
     this.emitStatus('running');
     try {
@@ -634,9 +677,13 @@ export class CodexAdapter extends BaseAgentAdapter {
       if (turnId && this.activeTurnId === null) this.activateTurn(turnId);
     } catch (err) {
       this.cancelRequested = false;
-      this.emitError(extractErrorMessage(err) ?? 'codex: turn failed to start');
-      this.teardown();
-      this.emitStatus('idle');
+      // An auth retirement rejects any in-flight turn/start when it closes the server; it already
+      // finalized the turn and told the auth story — unwinding again would double-emit idle.
+      if (!this.authFailed) {
+        this.emitError(extractErrorMessage(err) ?? 'codex: turn failed to start');
+        this.teardown();
+        this.emitStatus('idle');
+      }
     } finally {
       this.turnStartsInFlight -= 1;
     }
@@ -645,17 +692,45 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** The app-server died out from under the session (crash, external kill). Finalize the turn
    * like claude-code's consume() unwind, and arm the next prompt to respawn + resume in place. */
   private handleServerExit(detail: string): void {
+    this.emitError(`codex: app-server exited unexpectedly${detail ? ` (${detail})` : ''}`);
+    this.finalizeServer();
+  }
+
+  /** One auth-coded error per failed server (the engine's login re-probe keys on the code), then
+   * retire it: the 401 retry storm (5× websocket + 5× https, ~27 s, verified live) can never
+   * succeed against process-cached credentials, so waiting it out only burns time and banners. */
+  private handleAuthFailure(): void {
+    if (this.authFailed) return;
+    this.authFailed = true;
+    this.emitError(CODEX_AUTH_FAILED_MESSAGE, AUTH_FAILED_ERROR_CODE, false);
+    // Deliberate close(): CodexAppServer suppresses onExit for it, so no exit alarm follows.
+    this.server?.close();
+    this.finalizeServer();
+  }
+
+  /** Shared unwind for a server that is gone (crashed) or being retired (auth failure): finalize
+   * the turn and arm the next prompt to respawn + `thread/resume` in place — the respawn re-reads
+   * the on-disk credentials, which is what makes retry-after-login work at all. */
+  private finalizeServer(): void {
+    // Anything the dead child still flushes to stdout is stale — drop it at the callback gate.
+    this.serverGeneration += 1;
     this.server = null;
     this.activeTurnId = null;
-    // turnStartsInFlight is deliberately untouched: the exit already rejected any in-flight
-    // turn/start (failAllPending runs before onExit), so each frame's finally releases its own
-    // slot — resetting here would double-release against a late finally.
+    // turnStartsInFlight is deliberately untouched: the exit/close already rejected any in-flight
+    // turn/start (failAllPending runs first), so each frame's finally releases its own slot —
+    // resetting here would double-release against a late finally.
     this.cancelRequested = false;
     this.holdSessionRef = false;
-    this.pendingTurnInputs = [];
+    if (this.pendingTurnInputs.length > 0) {
+      // Their send() already resolved into the queue, so an event is the only remaining channel
+      // to tell the user those prompts will never run.
+      this.emitError(
+        `codex: ${this.pendingTurnInputs.length} queued prompt(s) did not run — send them again`,
+      );
+      this.pendingTurnInputs = [];
+    }
     this.resumeFrom = this.threadId ?? this.resumeFrom;
     this.threadId = null;
-    this.emitError(`codex: app-server exited unexpectedly${detail ? ` (${detail})` : ''}`);
     this.teardown();
     this.emitStatus('idle');
   }
@@ -747,6 +822,11 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
       case 'error': {
         const error = recordField(params, 'error');
+        if (error && isCodexAuthError(error)) {
+          // Every 401 retry re-reports the same failure; the first one settles it.
+          this.handleAuthFailure();
+          break;
+        }
         const message = error ? stringField(error, 'message') : undefined;
         // Turn-fatal errors also arrive as turn/completed(status failed), which finalizes; this
         // event alone (e.g. a retryable stream hiccup) must not tear the turn down.

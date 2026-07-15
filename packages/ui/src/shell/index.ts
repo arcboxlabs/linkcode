@@ -1,6 +1,7 @@
 export * from './agent-efforts';
 export * from './agent-models';
 export * from './agent-onboarding-card';
+export * from './appearance-settings-panel';
 export * from './command-palette';
 export * from './composer';
 export * from './composer-attachments';
@@ -15,6 +16,7 @@ export * from './new-session-surface';
 export * from './notifications-settings-panel';
 export * from './service-icon';
 export * from './session-sidebar';
+export * from './settings-page';
 export * from './settings-sidebar-nav';
 export * from './shell-control';
 export * from './shell-frame';

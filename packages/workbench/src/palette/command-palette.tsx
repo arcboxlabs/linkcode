@@ -10,6 +10,7 @@ import {
 import { AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { recentThreadJumpActionId } from '../surface/use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from '../surface/use-workbench-sessions';
 import { useWorkspaces } from '../workspace/hooks';
 import type { PaletteCommand, PaletteThreadCandidate } from './match';
@@ -113,12 +114,15 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
   const matchedThreads = matchPaletteThreads(candidates, query);
   const matchedCommands = matchPaletteCommands(commands, query);
   const threadViewModels: PaletteThreadViewModel[] = matchedThreads.map(
-    ({ session, title, workspaceLabel }) => ({
+    ({ session, title, workspaceLabel }, index) => ({
       sessionId: session.sessionId,
       title,
       kind: session.kind,
       status: session.status,
       workspaceLabel,
+      // ⌘n targets the empty-query Recent ordering; a queried ranking no longer lines up, so
+      // hints show only on the Recent view. Labels come from the registry — hints match bindings.
+      shortcut: query === '' ? shortcutLabels.get(recentThreadJumpActionId(index + 1)) : undefined,
     }),
   );
 

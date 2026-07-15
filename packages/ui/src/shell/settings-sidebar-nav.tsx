@@ -1,6 +1,9 @@
 import { Collapsible, CollapsiblePanel } from 'coss-ui/components/collapsible';
+import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import {
-  SidebarInput,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -17,7 +20,7 @@ type SettingsSidebarNavRender = React.ComponentProps<typeof SidebarMenuButton>['
 export interface SettingsSidebarNavSubItem {
   key: string;
   icon: React.ReactNode;
-  label: React.ReactNode;
+  label: string;
   active?: boolean;
   onClick?: () => void;
 }
@@ -25,7 +28,9 @@ export interface SettingsSidebarNavSubItem {
 export interface SettingsSidebarNavItem {
   key: string;
   icon: React.ReactNode;
-  label: React.ReactNode;
+  label: string;
+  /** Extra searchable terms (per-tab field labels); never rendered. */
+  keywords?: readonly string[];
   /** For items with `children`, drives the accordion expansion only — the row itself never
    * takes the selected pill; the highlighted sub-item is the "you are here" signal. */
   active?: boolean;
@@ -36,6 +41,12 @@ export interface SettingsSidebarNavItem {
   children?: SettingsSidebarNavSubItem[];
 }
 
+export interface SettingsSidebarNavGroup {
+  key: string;
+  label: React.ReactNode;
+  items: SettingsSidebarNavItem[];
+}
+
 export interface SettingsSidebarNavProps {
   backLabel: React.ReactNode;
   onBack?: () => void;
@@ -44,18 +55,32 @@ export interface SettingsSidebarNavProps {
   /** Focuses the back control when a non-routed settings overlay opens. */
   backAutoFocus?: boolean;
   searchPlaceholder: string;
-  items: SettingsSidebarNavItem[];
+  /** Controlled search query; the caller filters `groups` with it. */
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  /** Enter in the search field — the caller activates the first visible item. */
+  onSearchSubmit?: () => void;
+  /** Shown instead of the nav when a query matches nothing. */
+  searchEmptyLabel: string;
+  groups: SettingsSidebarNavGroup[];
 }
 
-/** The settings sidebar's inner nav: back row, search placeholder, and category items. */
+/** The settings sidebar's inner nav: back row, search field, and grouped category items. */
 export function SettingsSidebarNav({
   backLabel,
   onBack,
   backRender,
   backAutoFocus,
   searchPlaceholder,
-  items,
+  searchValue,
+  onSearchChange,
+  onSearchSubmit,
+  searchEmptyLabel,
+  groups,
 }: SettingsSidebarNavProps): React.ReactNode {
+  const searching = searchValue.trim() !== '';
+  const noMatches = searching && groups.every((group) => group.items.length === 0);
+
   return (
     <div className="px-2">
       <SidebarMenu>
@@ -67,72 +92,107 @@ export function SettingsSidebarNav({
         </SidebarMenuItem>
       </SidebarMenu>
 
-      <div className="relative py-2">
-        <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 text-muted-foreground" />
-        {/* Visual placeholder until settings search is backed by the shared registry. */}
-        <SidebarInput
-          aria-label={searchPlaceholder}
-          className="[&_[data-slot=input]]:pl-8"
-          nativeInput
-          placeholder={searchPlaceholder}
-          readOnly
-          type="search"
-        />
+      <div className="py-2">
+        <InputGroup className="h-8 bg-background shadow-none">
+          <InputGroupAddon>
+            <SearchIcon className="text-muted-foreground" />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label={searchPlaceholder}
+            nativeInput
+            placeholder={searchPlaceholder}
+            type="search"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              // An IME candidate-commit Enter (or composition cancel) is not a submit.
+              if (event.nativeEvent.isComposing || event.key === 'Process') return;
+              if (event.key === 'Enter') {
+                onSearchSubmit?.();
+                return;
+              }
+              // Escape clears an active query locally; when empty it bubbles on to the
+              // surface-level handler (the desktop overlay closes on Escape).
+              if (event.key === 'Escape' && searchValue !== '') {
+                event.stopPropagation();
+                onSearchChange('');
+              }
+            }}
+          />
+        </InputGroup>
       </div>
 
-      <nav>
-        <SidebarMenu>
-          {items.map((item) =>
-            item.children === undefined ? (
-              <SidebarMenuItem key={item.key}>
-                <SidebarMenuButton
-                  isActive={Boolean(item.active)}
-                  aria-current={item.active ? 'page' : undefined}
-                  onClick={item.onClick}
-                  render={item.render}
-                >
-                  {item.icon}
-                  {item.label}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : (
-              // Accordion category: a disclosure row (never the selected pill) whose expansion +
-              // single highlighted sub-item carry the selection signal.
-              <SidebarMenuItem key={item.key}>
-                <Collapsible open={Boolean(item.active)}>
-                  <SidebarMenuButton onClick={item.onClick} render={item.render}>
-                    {item.icon}
-                    <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
-                    <ChevronDownIcon
-                      className={cn(
-                        'size-3.5 shrink-0 text-muted-foreground transition-transform',
-                        !item.active && '-rotate-90',
-                      )}
-                    />
-                  </SidebarMenuButton>
-                  <CollapsiblePanel>
-                    <SidebarMenuSub className="my-1">
-                      {item.children.map((child) => (
-                        <SidebarMenuSubItem key={child.key}>
-                          <SidebarMenuButton
-                            className="h-7"
-                            isActive={Boolean(child.active)}
-                            aria-current={child.active ? 'page' : undefined}
-                            onClick={child.onClick}
-                          >
-                            {child.icon}
-                            {child.label}
-                          </SidebarMenuButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsiblePanel>
-                </Collapsible>
-              </SidebarMenuItem>
+      {noMatches ? (
+        <p className="px-2 py-4 text-muted-foreground text-sm">{searchEmptyLabel}</p>
+      ) : (
+        <nav>
+          {groups.map((group) =>
+            group.items.length === 0 ? null : (
+              <SidebarGroup key={group.key} className="p-0 pb-3">
+                <SidebarGroupLabel className="text-muted-foreground">
+                  {group.label}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>{group.items.map(renderNavItem)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
             ),
           )}
-        </SidebarMenu>
-      </nav>
+        </nav>
+      )}
     </div>
+  );
+}
+
+function renderNavItem(item: SettingsSidebarNavItem): React.ReactNode {
+  if (item.children === undefined) {
+    return (
+      <SidebarMenuItem key={item.key}>
+        <SidebarMenuButton
+          isActive={Boolean(item.active)}
+          aria-current={item.active ? 'page' : undefined}
+          onClick={item.onClick}
+          render={item.render}
+        >
+          {item.icon}
+          {item.label}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+  // Accordion category: a disclosure row (never the selected pill) whose expansion +
+  // single highlighted sub-item carry the selection signal.
+  return (
+    <SidebarMenuItem key={item.key}>
+      <Collapsible open={Boolean(item.active)}>
+        <SidebarMenuButton onClick={item.onClick} render={item.render}>
+          {item.icon}
+          <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+          <ChevronDownIcon
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground transition-transform',
+              !item.active && '-rotate-90',
+            )}
+          />
+        </SidebarMenuButton>
+        <CollapsiblePanel>
+          <SidebarMenuSub className="my-1">
+            {item.children.map((child) => (
+              <SidebarMenuSubItem key={child.key}>
+                <SidebarMenuButton
+                  className="h-7"
+                  isActive={Boolean(child.active)}
+                  aria-current={child.active ? 'page' : undefined}
+                  onClick={child.onClick}
+                >
+                  {child.icon}
+                  {child.label}
+                </SidebarMenuButton>
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsiblePanel>
+      </Collapsible>
+    </SidebarMenuItem>
   );
 }

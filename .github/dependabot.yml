@@ -40,6 +40,12 @@ updates:
       # expects; bump react/react-dom together with Expo upgrades, not via Dependabot.
       - dependency-name: react
       - dependency-name: react-dom
+      # Every @sentry/* SDK must resolve to one @sentry/core version, but @sentry/electron
+      # bundles its own core and lags the standalone train (electron 7.15 → core 10.62, while
+      # standalone is already 10.64). A unilateral bump of EITHER side trips Sentry's version-skew
+      # type guard and breaks typecheck — no @sentry/electron release matches the latest standalone
+      # SDK. Bump the whole family manually in lockstep, pinned to @sentry/electron's bundled core.
+      - dependency-name: "@sentry/*"
 
   - package-ecosystem: cargo # workspace: crates/linkcode-pty
     directory: /

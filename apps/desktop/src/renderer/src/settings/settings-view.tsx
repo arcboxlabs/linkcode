@@ -7,7 +7,11 @@ import {
   ShellSidebar,
   useKeyboardShortcut,
 } from '@linkcode/ui';
-import { useNavigationHistoryStore } from '@linkcode/workbench';
+import {
+  filterSettingsNavGroups,
+  useNavigationHistoryStore,
+  useSettingsSearchKeywords,
+} from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
 import {
   BellIcon,
@@ -17,9 +21,10 @@ import {
   KeyRoundIcon,
   SendIcon,
   SettingsIcon,
+  SunMoonIcon,
   WifiIcon,
 } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
 import { DesktopChrome } from '../shell/chrome/chrome';
@@ -28,6 +33,7 @@ import type { DesktopShellStyle } from '../shell/layout/shell-style';
 import { DEFAULT_LAYOUT } from '../shell/store/model';
 import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
+import { AppearanceTab } from './appearance-tab';
 import { ConnectionTab } from './connection-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
@@ -61,6 +67,8 @@ export function SettingsView(): React.ReactNode {
   const setCategory = useDesktopSettingsStore((state) => state.setSettingsCategory);
   const historyProvider = useDesktopSettingsStore((state) => state.historyImportProvider);
   const setHistoryProvider = useDesktopSettingsStore((state) => state.setHistoryImportProvider);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchKeywords = useSettingsSearchKeywords();
   const settingsRootRef = useRef<HTMLDivElement>(null);
   const desktopPlatform = systemBridge.app.platform;
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
@@ -76,6 +84,118 @@ export function SettingsView(): React.ReactNode {
       return true;
     },
   });
+
+  const navGroups = [
+    {
+      key: 'personal',
+      label: t('groups.personal'),
+      items: [
+        {
+          key: 'general',
+          icon: <SettingsIcon className="size-4" />,
+          label: t('tabs.general'),
+          keywords: searchKeywords.general,
+          active: category === 'general',
+          onClick: () => setCategory('general'),
+        },
+        {
+          key: 'appearance',
+          icon: <SunMoonIcon className="size-4" />,
+          label: t('tabs.appearance'),
+          keywords: searchKeywords.appearance,
+          active: category === 'appearance',
+          onClick: () => setCategory('appearance'),
+        },
+        {
+          key: 'notifications',
+          icon: <BellIcon className="size-4" />,
+          label: t('tabs.notifications'),
+          keywords: searchKeywords.notifications,
+          active: category === 'notifications',
+          onClick: () => setCategory('notifications'),
+        },
+      ],
+    },
+    {
+      key: 'integrations',
+      label: t('groups.integrations'),
+      items: [
+        {
+          key: 'agents',
+          icon: <BotIcon className="size-4" />,
+          label: t('tabs.agents'),
+          keywords: searchKeywords.agents,
+          active: category === 'agents',
+          onClick: () => setCategory('agents'),
+        },
+        {
+          key: 'providers',
+          icon: <KeyRoundIcon className="size-4" />,
+          label: t('tabs.providers'),
+          keywords: searchKeywords.providers,
+          active: category === 'providers',
+          onClick: () => setCategory('providers'),
+        },
+        {
+          key: 'imChannel',
+          icon: <SendIcon className="size-4" />,
+          label: t('tabs.imChannel'),
+          keywords: searchKeywords.imChannel,
+          active: category === 'imChannel',
+          onClick: () => setCategory('imChannel'),
+        },
+        {
+          key: 'history-import',
+          icon: <HistoryIcon className="size-4" />,
+          label: t('historyImport.portalLabel'),
+          keywords: [
+            ...searchKeywords.historyImport,
+            ...AGENT_KINDS.map((agentKind) => AGENT_LABELS[agentKind]),
+          ],
+          active: category === 'history-import',
+          // The disclosure row selects the section's first provider (the accordion
+          // opens via `active`); it is never highlighted itself.
+          onClick() {
+            setCategory('history-import');
+            setHistoryProvider(DEFAULT_HISTORY_PROVIDER);
+          },
+          children: AGENT_KINDS.map((agentKind) => ({
+            key: agentKind,
+            icon: <AgentIcon kind={agentKind} variant="ghost" />,
+            label: AGENT_LABELS[agentKind],
+            active: category === 'history-import' && historyProvider === agentKind,
+            onClick() {
+              setCategory('history-import');
+              setHistoryProvider(agentKind);
+            },
+          })),
+        },
+      ],
+    },
+    {
+      key: 'system',
+      label: t('groups.system'),
+      items: [
+        {
+          key: 'connection',
+          icon: <WifiIcon className="size-4" />,
+          label: t('tabs.connection'),
+          keywords: searchKeywords.connection,
+          active: category === 'connection',
+          onClick: () => setCategory('connection'),
+        },
+        {
+          key: 'about',
+          icon: <InfoIcon className="size-4" />,
+          label: t('tabs.about'),
+          keywords: searchKeywords.about,
+          active: category === 'about',
+          onClick: () => setCategory('about'),
+        },
+      ],
+    },
+  ];
+  const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
 
   return (
     <div
@@ -123,79 +243,21 @@ export function SettingsView(): React.ReactNode {
                 backAutoFocus
                 onBack={backFromOverlay}
                 searchPlaceholder={t('searchPlaceholder')}
-                items={[
-                  {
-                    key: 'general',
-                    icon: <SettingsIcon className="size-4" />,
-                    label: t('tabs.general'),
-                    active: category === 'general',
-                    onClick: () => setCategory('general'),
-                  },
-                  {
-                    key: 'connection',
-                    icon: <WifiIcon className="size-4" />,
-                    label: t('tabs.connection'),
-                    active: category === 'connection',
-                    onClick: () => setCategory('connection'),
-                  },
-                  {
-                    key: 'notifications',
-                    icon: <BellIcon className="size-4" />,
-                    label: t('tabs.notifications'),
-                    active: category === 'notifications',
-                    onClick: () => setCategory('notifications'),
-                  },
-                  {
-                    key: 'about',
-                    icon: <InfoIcon className="size-4" />,
-                    label: t('tabs.about'),
-                    active: category === 'about',
-                    onClick: () => setCategory('about'),
-                  },
-                  {
-                    key: 'providers',
-                    icon: <KeyRoundIcon className="size-4" />,
-                    label: t('tabs.providers'),
-                    active: category === 'providers',
-                    onClick: () => setCategory('providers'),
-                  },
-                  {
-                    key: 'agents',
-                    icon: <BotIcon className="size-4" />,
-                    label: t('tabs.agents'),
-                    active: category === 'agents',
-                    onClick: () => setCategory('agents'),
-                  },
-                  {
-                    key: 'imChannel',
-                    icon: <SendIcon className="size-4" />,
-                    label: t('tabs.imChannel'),
-                    active: category === 'imChannel',
-                    onClick: () => setCategory('imChannel'),
-                  },
-                  {
-                    key: 'history-import',
-                    icon: <HistoryIcon className="size-4" />,
-                    label: t('historyImport.portalLabel'),
-                    active: category === 'history-import',
-                    // The disclosure row selects the section's first provider (the accordion
-                    // opens via `active`); it is never highlighted itself.
-                    onClick() {
-                      setCategory('history-import');
-                      setHistoryProvider(DEFAULT_HISTORY_PROVIDER);
-                    },
-                    children: AGENT_KINDS.map((agentKind) => ({
-                      key: agentKind,
-                      icon: <AgentIcon kind={agentKind} variant="ghost" />,
-                      label: AGENT_LABELS[agentKind],
-                      active: category === 'history-import' && historyProvider === agentKind,
-                      onClick() {
-                        setCategory('history-import');
-                        setHistoryProvider(agentKind);
-                      },
-                    })),
-                  },
-                ]}
+                searchValue={searchQuery}
+                onSearchChange={setSearchQuery}
+                onSearchSubmit={() => {
+                  const first = visibleGroups.flatMap((group) => group.items)[0];
+                  if (first === undefined) return;
+                  // A query that matched an accordion child by name lands on that child, not
+                  // the parent's default selection ("codex" → History import → Codex).
+                  const query = searchQuery.trim().toLowerCase();
+                  const child = first.children?.find((item) =>
+                    item.label.toLowerCase().includes(query),
+                  );
+                  (child ?? first).onClick?.();
+                }}
+                searchEmptyLabel={t('searchNoResults')}
+                groups={visibleGroups}
               />
             </ShellSidebar>
           </div>
@@ -222,6 +284,8 @@ function renderSettingsPanel(
   switch (category) {
     case 'general':
       return <GeneralTab />;
+    case 'appearance':
+      return <AppearanceTab />;
     case 'connection':
       return <ConnectionTab />;
     case 'notifications':

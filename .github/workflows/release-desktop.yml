@@ -96,7 +96,7 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.1
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           draft: false

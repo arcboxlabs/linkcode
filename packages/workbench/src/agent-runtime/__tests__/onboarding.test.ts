@@ -1,6 +1,7 @@
 import type { AgentRuntimes, ManagedAssetStatus } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { deriveAgentRuntimeCues } from '../onboarding';
+import type { AssetActivityMap } from '../onboarding';
+import { deriveAgentRuntimeCues, dropConfirmedInstalls } from '../onboarding';
 
 const ASSETS: ManagedAssetStatus[] = [
   { id: 'agent:claude-code', wantedVersion: '0.3.179' },
@@ -185,5 +186,37 @@ describe('deriveAgentRuntimeCues', () => {
     expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {})).toEqual({
       'claude-code': { state: 'needs-login', phase: 'idle' },
     });
+  });
+});
+
+describe('dropConfirmedInstalls', () => {
+  const activity: AssetActivityMap = {
+    'agent:claude-code': { kind: 'installed' },
+    'agent:codex': { kind: 'downloading', receivedBytes: 1 },
+    'tool:tectonic': { kind: 'installed' },
+  };
+
+  it('drops an installed bridge only once its own agent probes available', () => {
+    // The push was caused by an unrelated kind — claude-code's probe hasn't caught up yet, so
+    // clearing its bridge would flash the Download card back over a settled install.
+    const stale: AgentRuntimes = { 'claude-code': { status: 'missing' } };
+    expect(dropConfirmedInstalls(activity, stale)).toEqual({
+      'agent:claude-code': { kind: 'installed' },
+      'agent:codex': { kind: 'downloading', receivedBytes: 1 },
+    });
+
+    const confirmed: AgentRuntimes = {
+      'claude-code': { status: 'available', source: 'managed', version: '2.1.202' },
+    };
+    expect(dropConfirmedInstalls(activity, confirmed)).toEqual({
+      'agent:codex': { kind: 'downloading', receivedBytes: 1 },
+    });
+  });
+
+  it('never touches non-installed activity', () => {
+    const downloading: AssetActivityMap = {
+      'agent:codex': { kind: 'failed', error: 'network down' },
+    };
+    expect(dropConfirmedInstalls(downloading, {})).toEqual(downloading);
   });
 });

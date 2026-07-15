@@ -8,5 +8,13 @@
     },
     "types": ["node"]
   },
-  "include": ["src", "scripts", "e2e", "electron.vite.config.ts"]
+  "include": [
+    "src",
+    "scripts",
+    "e2e",
+    "vite.shared.ts",
+    "vite.main.config.ts",
+    "vite.preload.config.ts",
+    "vite.renderer.config.ts"
+  ]
 }

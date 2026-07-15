@@ -64,6 +64,9 @@ export function DesktopShell({
   attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
+  onLoginAgent,
+  onSubmitLoginCode,
+  onCancelLogin,
   conversation,
   permissionDecisions,
   respondingPermissions,
@@ -328,6 +331,9 @@ export function DesktopShell({
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
           onDownloadAgent={onDownloadAgent}
+          onLoginAgent={onLoginAgent}
+          onSubmitLoginCode={onSubmitLoginCode}
+          onCancelLogin={onCancelLogin}
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
@@ -343,6 +349,10 @@ export function DesktopShell({
           agentLabel={agentLabel}
           attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
+          runtimeCues={runtimeCues}
+          onLoginAgent={onLoginAgent}
+          onSubmitLoginCode={onSubmitLoginCode}
+          onCancelLogin={onCancelLogin}
           permissionDecisions={permissionDecisions}
           respondingPermissions={respondingPermissions}
           answeredQuestionIds={answeredQuestionIds}
