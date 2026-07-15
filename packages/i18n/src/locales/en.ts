@@ -642,13 +642,12 @@ export const en = {
       open: 'Open',
       remove: 'Remove',
       viaTunnel: 'via LinkCode Cloud',
+      addManually: 'Add a host by URL',
       hq: {
         title: 'LinkCode Cloud',
         hint: 'Sign in to reach your machines from anywhere through LinkCode Cloud.',
         signIn: 'Sign in',
-        signedInAs: 'Signed in as {name}',
-        signOut: 'Sign out',
-        hosts: 'Online machines',
+        machines: 'My machines',
         empty:
           'No machines online. On the machine, run linkcode-daemon login once and keep the daemon running.',
         error: 'Could not load your machines.',

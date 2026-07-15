@@ -5,55 +5,43 @@ import { Button, Card, Input, Label, ListGroup, Spinner, TextField } from 'herou
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
-import { signInToHq, signOutOfHq, useHqAccount } from '../runtime/hq/account';
+import { useHqAccount } from '../runtime/hq/account';
 import { ensureDeviceRegistered } from '../runtime/hq/devices';
 import type { OnlineHost } from '../runtime/hq/hosts';
 import { fetchOnlineHosts } from '../runtime/hq/hosts';
 import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 
 /**
- * Host registry screen: lists saved hosts and adds new ones by URL. This is also the
- * future slot for tunnel login/discovery (M3) — pairing flows land here without
- * touching the startup redirect or host-scoped screens.
+ * Machine list & host registry. Signed in, the account's online machines are
+ * the main body and manual URL entry collapses into an advanced fallback;
+ * signed out, a sign-in card leads and the manual form stays open as the
+ * primary path.
  */
 export default function ConnectScreen() {
   const t = useTranslations('mobile.connect');
   const router = useRouter();
+  const account = useHqAccount();
   const hosts = useHostRegistryStore((state) => state.hosts);
-  const addHost = useHostRegistryStore((state) => state.addHost);
   const removeHost = useHostRegistryStore((state) => state.removeHost);
+  const [manualOpen, setManualOpen] = useState(false);
 
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
-  const [urlInvalid, setUrlInvalid] = useState(false);
-
-  const submit = () => {
-    const trimmedUrl = url.trim();
-    if (!HostUrlSchema.safeParse(trimmedUrl).success) {
-      setUrlInvalid(true);
-      return;
-    }
-    const profile = addHost({ name: name.trim() || t('namePlaceholder'), url: trimmedUrl });
-    setName('');
-    setUrl('');
-    setUrlInvalid(false);
-    router.push(`/host/${profile.id}`);
-  };
+  const signedIn = account.status === 'signed-in';
 
   return (
     <ScreenScroll title={t('title')} keyboardAware>
-      <HqAccountSection />
+      {account.status === 'signed-in' ? (
+        <MyMachinesSection userId={account.user.id} />
+      ) : account.status === 'signed-out' ? (
+        <SignInCard />
+      ) : null}
 
       {hosts.length === 0 ? (
-        <EmptyState title={t('emptyTitle')} hint={t('emptyHint')} />
+        signedIn ? null : (
+          <EmptyState title={t('emptyTitle')} hint={t('emptyHint')} />
+        )
       ) : (
         <View className="gap-2">
-          <Text
-            className="text-[11px] text-muted"
-            style={{ fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' }}
-          >
-            {t('savedHosts')}
-          </Text>
+          <SectionLabel>{t('savedHosts')}</SectionLabel>
           <ListGroup>
             {hosts.map((host) => (
               <ListGroup.Item key={host.id} onPress={() => router.push(`/host/${host.id}`)}>
@@ -74,55 +62,36 @@ export default function ConnectScreen() {
         </View>
       )}
 
-      <Card>
-        <Card.Body className="gap-4">
-          <TextField>
-            <Label>{t('nameLabel')}</Label>
-            <Input
-              value={name}
-              onChangeText={setName}
-              placeholder={t('namePlaceholder')}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </TextField>
-          <TextField>
-            <Label>{t('urlLabel')}</Label>
-            <Input
-              value={url}
-              onChangeText={(next) => {
-                setUrl(next);
-                setUrlInvalid(false);
-              }}
-              placeholder={t('urlPlaceholder')}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              isInvalid={urlInvalid}
-            />
-            {urlInvalid ? <Text className="text-[12px] text-danger">{t('invalidUrl')}</Text> : null}
-          </TextField>
-          <Button onPress={submit}>
-            <Button.Label>{t('add')}</Button.Label>
-          </Button>
-        </Card.Body>
-      </Card>
+      {signedIn && !manualOpen ? (
+        <Button variant="ghost" onPress={() => setManualOpen(true)}>
+          <Button.Label>{t('addManually')}</Button.Label>
+        </Button>
+      ) : (
+        <ManualHostForm />
+      )}
     </ScreenScroll>
   );
 }
 
+function SectionLabel({ children }: React.PropsWithChildren) {
+  return (
+    <Text
+      className="text-[11px] text-muted"
+      style={{ fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' }}
+    >
+      {children}
+    </Text>
+  );
+}
+
 /**
- * The HQ account block: sign in through the central IdP, then list the
- * account's online machines (daemons connected to the relay) — tapping one
- * saves it as a tunnel host and opens it.
+ * The account's online machines (daemons connected to the relay) — tapping
+ * one saves it as a tunnel host and opens it.
  */
-function HqAccountSection(): React.ReactNode {
+function MyMachinesSection({ userId }: { userId: string }) {
   const t = useTranslations('mobile.connect.hq');
   const router = useRouter();
   const addTunnelHost = useHostRegistryStore((state) => state.addTunnelHost);
-  const account = useHqAccount();
-  const user = account.status === 'signed-in' ? account.user : null;
-  const userId = user?.id ?? null;
 
   const [onlineHosts, setOnlineHosts] = useState<OnlineHost[] | null>(null);
   const [hostsError, setHostsError] = useState(false);
@@ -140,7 +109,6 @@ function HqAccountSection(): React.ReactNode {
   };
 
   useEffect(() => {
-    if (!userId) return;
     // Best-effort: registration only lists the phone under the account's
     // devices; discovering and connecting to hosts does not depend on it.
     ensureDeviceRegistered(userId).catch(noop);
@@ -155,38 +123,14 @@ function HqAccountSection(): React.ReactNode {
     router.push(`/host/${profile.id}`);
   };
 
-  if (account.status === 'loading') return null;
-
-  if (!user) {
-    return (
-      <Card>
-        <Card.Body className="gap-3">
-          <Text className="text-[15px] text-foreground" style={{ fontWeight: '500' }}>
-            {t('title')}
-          </Text>
-          <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
-            {t('hint')}
-          </Text>
-          <Button
-            onPress={() => {
-              void signInToHq();
-            }}
-          >
-            <Button.Label>{t('signIn')}</Button.Label>
-          </Button>
-        </Card.Body>
-      </Card>
-    );
-  }
-
   return (
     <View className="gap-2">
-      <Text
-        className="text-[11px] text-muted"
-        style={{ fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' }}
-      >
-        {t('hosts')}
-      </Text>
+      <View className="flex-row items-center justify-between">
+        <SectionLabel>{t('machines')}</SectionLabel>
+        <Button variant="ghost" size="sm" onPress={refresh}>
+          <Button.Label>{t('refresh')}</Button.Label>
+        </Button>
+      </View>
       {hostsError ? (
         <Text className="text-[13px] text-danger">{t('error')}</Text>
       ) : onlineHosts === null ? (
@@ -209,25 +153,87 @@ function HqAccountSection(): React.ReactNode {
           ))}
         </ListGroup>
       )}
-      <View className="flex-row items-center justify-between">
-        <Text className="text-[12px] text-muted">
-          {t('signedInAs', { name: user.name || user.email })}
-        </Text>
-        <View className="flex-row gap-2">
-          <Button variant="secondary" size="sm" onPress={refresh}>
-            <Button.Label>{t('refresh')}</Button.Label>
-          </Button>
-          <Button
-            variant="danger-soft"
-            size="sm"
-            onPress={() => {
-              void signOutOfHq();
-            }}
-          >
-            <Button.Label>{t('signOut')}</Button.Label>
-          </Button>
-        </View>
-      </View>
     </View>
+  );
+}
+
+/** Signed-out lead-in: the account is how machines appear here. */
+function SignInCard() {
+  const t = useTranslations('mobile.connect.hq');
+  const router = useRouter();
+  return (
+    <Card>
+      <Card.Body className="gap-3">
+        <Text className="text-[15px] text-foreground" style={{ fontWeight: '500' }}>
+          {t('title')}
+        </Text>
+        <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
+          {t('hint')}
+        </Text>
+        <Button onPress={() => router.push('/sign-in')}>
+          <Button.Label>{t('signIn')}</Button.Label>
+        </Button>
+      </Card.Body>
+    </Card>
+  );
+}
+
+/** Manual host entry: add a daemon by URL and open it. */
+function ManualHostForm() {
+  const t = useTranslations('mobile.connect');
+  const router = useRouter();
+  const addHost = useHostRegistryStore((state) => state.addHost);
+
+  const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
+  const [urlInvalid, setUrlInvalid] = useState(false);
+
+  const submit = () => {
+    const trimmedUrl = url.trim();
+    if (!HostUrlSchema.safeParse(trimmedUrl).success) {
+      setUrlInvalid(true);
+      return;
+    }
+    const profile = addHost({ name: name.trim() || t('namePlaceholder'), url: trimmedUrl });
+    setName('');
+    setUrl('');
+    setUrlInvalid(false);
+    router.push(`/host/${profile.id}`);
+  };
+
+  return (
+    <Card>
+      <Card.Body className="gap-4">
+        <TextField>
+          <Label>{t('nameLabel')}</Label>
+          <Input
+            value={name}
+            onChangeText={setName}
+            placeholder={t('namePlaceholder')}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </TextField>
+        <TextField>
+          <Label>{t('urlLabel')}</Label>
+          <Input
+            value={url}
+            onChangeText={(next) => {
+              setUrl(next);
+              setUrlInvalid(false);
+            }}
+            placeholder={t('urlPlaceholder')}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            isInvalid={urlInvalid}
+          />
+          {urlInvalid ? <Text className="text-[12px] text-danger">{t('invalidUrl')}</Text> : null}
+        </TextField>
+        <Button onPress={submit}>
+          <Button.Label>{t('add')}</Button.Label>
+        </Button>
+      </Card.Body>
+    </Card>
   );
 }
