@@ -21,9 +21,10 @@ import { Kbd, KbdGroup } from 'coss-ui/components/kbd';
 import { ArrowDownIcon, ArrowUpIcon, CornerDownLeftIcon } from 'lucide-react';
 import type { Transition } from 'motion/react';
 import { motion, useReducedMotion } from 'motion/react';
-import { Fragment, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../chat/agent-icon';
+import { useKeyboardShortcut } from '../keyboard';
 import { preventBaseUIHandler } from '../lib/base-ui';
 import { cn } from '../lib/cn';
 import { SESSION_STATUS_DOT_CLASS } from './sidebar/thread-row';
@@ -81,6 +82,38 @@ function paletteEntryToString(item: unknown): string {
   return entry.kind === 'thread' ? entry.thread.title : entry.command.label;
 }
 
+/** ⌘1–⌘9 slots, matching the palette's Recent-list cap. */
+const RECENT_JUMP_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+
+/**
+ * Registers one ⌘n binding scoped to the open palette, so pressing it selects the nth Recent row.
+ * Own component per slot because hooks cannot be registered in a loop. An empty slot yields the
+ * event (returns false) rather than swallowing it.
+ */
+function RecentThreadJumpBinding({
+  slot,
+  owner,
+  thread,
+  onSelect,
+}: {
+  slot: number;
+  owner: React.RefObject<Element | null>;
+  thread: PaletteThreadViewModel | undefined;
+  onSelect: (id: SessionId) => void;
+}): null {
+  useKeyboardShortcut({
+    actionId: `palette.jump-recent-thread-${slot}`,
+    shortcut: { code: `Digit${slot}`, modifiers: ['primary'] },
+    owner,
+    handler() {
+      if (thread === undefined) return false;
+      onSelect(thread.sessionId);
+      return true;
+    },
+  });
+  return null;
+}
+
 /**
  * Dialog chrome forked from coss-ui's `CommandDialogBackdrop`/`CommandDialogPopup`: motion owns
  * enter/exit here (the workbench container defers unmount via `AnimatePresence`), so the CSS
@@ -122,6 +155,10 @@ export function CommandPalette({
   const t = useTranslations('workbench.palette');
   const reducedMotion = useReducedMotion();
   const [listRef, listHeight] = useMeasuredHeight();
+  // Owner for the ⌘1–⌘9 row jumps: the popup is the active surface while the palette is open
+  // (the workbench root that carries the global bindings is `data-base-ui-inert` here), so these
+  // are what make the visible Recent-row hints actually select from the open dialog.
+  const popupRef = useRef<HTMLDivElement>(null);
 
   const groups: PaletteGroup[] = [];
   if (threads.length > 0) {
@@ -164,6 +201,7 @@ export function CommandPalette({
             data-slot="command-dialog-popup"
             render={
               <motion.div
+                ref={popupRef}
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
@@ -171,6 +209,18 @@ export function CommandPalette({
               />
             }
           >
+            {/* ⌘1–⌘9 select the nth Recent row while the palette is open. Only on the empty-query
+                Recent view — a filtered ranking no longer lines up with the digit hints. */}
+            {query === '' &&
+              RECENT_JUMP_SLOTS.map((slot) => (
+                <RecentThreadJumpBinding
+                  key={slot}
+                  slot={slot}
+                  owner={popupRef}
+                  thread={threads[slot - 1]}
+                  onSelect={onSelectThread}
+                />
+              ))}
             <Command
               mode="none"
               items={groups}
