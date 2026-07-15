@@ -5,6 +5,10 @@
  */
 export const CLOUD_LIST_HOSTS_CHANNEL = 'linkcode.cloud.list-hosts';
 
+// Re-asserts this app as the OS default handler for the channel's `linkcode(-dev)://` scheme; the
+// renderer invokes it right before a sign-in so the OAuth deep-link callback comes back here.
+export const CLOUD_CLAIM_DEEP_LINK_CHANNEL = 'linkcode.cloud.claim-deep-link';
+
 // IM Channel management (`/im/*` on the cloud API).
 export const CLOUD_IM_OVERVIEW_CHANNEL = 'linkcode.cloud.im.overview';
 export const CLOUD_IM_BINDINGS_CHANNEL = 'linkcode.cloud.im.bindings';

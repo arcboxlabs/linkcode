@@ -31,6 +31,11 @@ export interface CloudDataBridges {
   linkcodeCloud: {
     /** Lists the signed-in account's online hosts; main attaches the session and validates. */
     listHosts: () => Promise<CloudHost[]>;
+    /**
+     * Re-asserts this app as the OS default handler for the deep-link scheme, so the OAuth callback
+     * routes back here. Called right before a sign-in. Resolves to whether the OS accepted it.
+     */
+    claimDeepLink: () => Promise<boolean>;
     /** IM Channel management (`/im/*`); same session-in-main model as listHosts. */
     im: CloudImSource;
   };

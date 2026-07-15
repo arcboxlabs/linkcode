@@ -113,7 +113,9 @@ function stagedArches(): string[] {
 }
 
 function build(): void {
-  const config = devshell ? 'electron-builder.devshell.yml' : 'electron-builder.yml';
+  // Both extend the shared electron-builder.yml base; each adds its own deep-link scheme (release
+  // `linkcode://`, dev shell `linkcode-dev://`). The base is never passed directly — it has none.
+  const config = devshell ? 'electron-builder.devshell.yml' : 'electron-builder.release.yml';
   const builderArgs = [
     'exec',
     'electron-builder',

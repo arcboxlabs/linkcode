@@ -6,5 +6,13 @@
 extends: ./electron-builder.yml
 appId: com.arcboxlabs.linkcode.desktop.development
 productName: LinkCode Development
+# The dev shell claims its OWN `linkcode-dev://` scheme so its OAuth callbacks never fight the
+# installed release over the OS-global `linkcode://`. The shared base declares no `protocols`, so
+# this is the only entry (electron-builder concatenates inherited arrays — a `linkcode` in the base
+# would leak in and re-collide). Matches CLOUD_AUTH_SCHEME for the development channel (constants.ts).
+protocols:
+  - name: LinkCode Development
+    schemes:
+      - linkcode-dev
 mac:
   identity: null

@@ -1,0 +1,11 @@
+# Release packaging (`pnpm run package`): the shipped LinkCode. Extends the shared base and adds the
+# release-only `linkcode://` deep-link scheme. Kept separate from the base so the dev shell (which
+# also extends the base) does NOT inherit `linkcode` — electron-builder concatenates arrays across
+# `extends`, so both channels sharing one scheme is exactly the OS-global collision this avoids.
+extends: ./electron-builder.yml
+# `linkcode://` OAuth callback scheme — electron-builder registers it in the macOS Info.plist and the
+# Windows installer; the app also re-asserts it at runtime (see cloud-auth/client.ts).
+protocols:
+  - name: LinkCode
+    schemes:
+      - linkcode
