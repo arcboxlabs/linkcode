@@ -9,8 +9,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import type { TerminalRendererRef } from '../../../../components/terminal-renderer';
 import TerminalRenderer from '../../../../components/terminal-renderer';
+import type { TerminalRendererRef } from '../../../../components/terminal-renderer.types';
 
 type AttachStatus = 'attaching' | 'ready' | 'error';
 
