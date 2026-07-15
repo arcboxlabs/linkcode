@@ -708,6 +708,7 @@ export const zhCN = {
       exited: '终端已退出，代码为 {code}。',
       exitedSignal: '终端已被信号终止。',
       invalidId: '终端 ID 无效。',
+      unsupportedPlatform: '终端目前仅在 iOS 上可用。',
     },
     conversation: {
       emptyTitle: '还没有内容',

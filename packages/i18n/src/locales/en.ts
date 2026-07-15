@@ -721,6 +721,7 @@ export const en = {
       exited: 'Terminal exited with code {code}.',
       exitedSignal: 'Terminal was terminated by a signal.',
       invalidId: 'The terminal ID is invalid.',
+      unsupportedPlatform: 'The terminal is only available on iOS.',
     },
     conversation: {
       emptyTitle: 'Nothing here yet',
