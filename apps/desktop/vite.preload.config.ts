@@ -25,7 +25,7 @@ export default defineConfig({
       entry: resolve(__dirname, 'src/preload/index.ts'),
       formats: ['cjs'],
     },
-    rollupOptions: {
+    rolldownOptions: {
       // The preload runs sandboxed and cannot `require()` external node_modules at runtime, so the
       // better-auth electron bridge must be bundled in, not externalized (unlike in main).
       external: nodeExternals(['@better-auth/electron']),
