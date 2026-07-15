@@ -399,32 +399,9 @@ export class Engine {
         break;
       }
       case 'session.resume': {
-        await this.tryReply(p.clientReqId, async () => {
-          if (this.sessions.has(p.sessionId)) {
-            throw new Error(`Session is already running: ${p.sessionId}`);
-          }
-          const record = nullthrow(
-            this.records.get(p.sessionId),
-            `Unknown session: ${p.sessionId}`,
-          );
-          // A never-prompted session has no provider transcript to resume from (the adapter only
-          // mints one on the first prompt); waking it is a fresh start under the same Link Code id.
-          const historyId = latestHistoryId(record);
-          const startOpts = await this.resolveStartOptions({
-            kind: record.kind,
-            cwd: record.cwd,
-          });
-          record.runs.push({ historyId, startedAt: Date.now() });
-          await this.startLiveSession(p.clientReqId, record, (adapter) =>
-            historyId === undefined
-              ? adapter.start(startOpts)
-              : this.history.resume(adapter, historyId, startOpts),
-          );
-          // Same contract as session.start / history.resume: waking a session (re)registers its
-          // directory, so imported records and roots archived since still pass the file.suggest
-          // workspace check once their session is live again.
-          if (record.cwd) this.workspaces.touch(record.cwd);
-        });
+        await this.tryReply(p.clientReqId, () =>
+          this.resumeSessionById(p.clientReqId, p.sessionId),
+        );
         break;
       }
       case 'session.import': {
@@ -828,7 +805,7 @@ export class Engine {
    * `session-ref` event later backfills that run's provider-local id.
    */
   private async startLiveSession(
-    replyTo: string,
+    replyTo: string | undefined,
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Promise<void>,
   ): Promise<void> {
@@ -927,7 +904,39 @@ export class Engine {
       await adapter.stop().catch(noop);
       throw new Error(`Session was closed while starting: ${sessionId}`);
     }
-    this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+    // Automation-driven sessions have no client awaiting a reply (replyTo === undefined).
+    if (replyTo !== undefined) {
+      this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+    }
+  }
+
+  /**
+   * Wake a cold session in place under the same Link Code id. Shared by the `session.resume` wire
+   * handler (which passes its `clientReqId` so `startLiveSession` echoes `session.started`) and the
+   * automation SessionDriver (which passes `undefined` — no client is awaiting a reply).
+   */
+  private async resumeSessionById(
+    replyTo: string | undefined,
+    sessionId: SessionId,
+  ): Promise<void> {
+    if (this.sessions.has(sessionId)) {
+      throw new Error(`Session is already running: ${sessionId}`);
+    }
+    const record = nullthrow(this.records.get(sessionId), `Unknown session: ${sessionId}`);
+    // A never-prompted session has no provider transcript to resume from (the adapter only mints one
+    // on the first prompt); waking it is a fresh start under the same Link Code id.
+    const historyId = latestHistoryId(record);
+    const startOpts = await this.resolveStartOptions({ kind: record.kind, cwd: record.cwd });
+    record.runs.push({ historyId, startedAt: Date.now() });
+    await this.startLiveSession(replyTo, record, (adapter) =>
+      historyId === undefined
+        ? adapter.start(startOpts)
+        : this.history.resume(adapter, historyId, startOpts),
+    );
+    // Same contract as session.start / history.resume: waking a session (re)registers its directory,
+    // so imported records and roots archived since still pass the file.suggest workspace check once
+    // their session is live again.
+    if (record.cwd) this.workspaces.touch(record.cwd);
   }
 
   private broadcastInputRejected(sessionId: SessionId, message: string): void {
@@ -973,6 +982,7 @@ export class Engine {
       title: record.title,
       origin: record.origin,
       createdVia: record.createdVia,
+      automation: record.automation,
       historyId: latestHistoryId(record),
     };
   }
