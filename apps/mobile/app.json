@@ -76,7 +76,20 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-notifications",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "LinkCode needs microphone access to dictate prompts to coding agents by voice."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "LinkCode uses Face ID to unlock the app and protect your connected machines and account."
+        }
+      ]
     ]
   }
 }
