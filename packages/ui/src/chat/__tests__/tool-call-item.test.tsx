@@ -54,7 +54,7 @@ describe('ToolCallBody', () => {
     expect(LiveTerminal).not.toHaveBeenCalled();
   });
 
-  it('projects file metadata without exposing the raw read request', () => {
+  it('keeps raw read fields out of a file preview', () => {
     const toolCall: ToolCall = {
       toolCallId: 'read-1',
       title: 'Read file',
@@ -67,8 +67,8 @@ describe('ToolCallBody', () => {
 
     const { container } = render(<ToolCallBody toolCall={toolCall} />);
 
-    expect(screen.getByText('path')).toBeDefined();
-    expect(screen.getAllByText('README.md:12')).toHaveLength(2);
+    expect(screen.queryByText('path')).toBeNull();
+    expect(screen.getByText('README.md:12')).toBeDefined();
     expect(screen.queryByText('input')).toBeNull();
     expect(container.textContent).not.toContain('offset');
     expect(container.textContent).not.toContain('debug');
@@ -95,7 +95,7 @@ describe('ToolCallBody', () => {
 
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('pre')?.textContent).toBe(source);
-    expect(screen.getByText('src/answer.ts')).toBeDefined();
+    expect(screen.queryByText('src/answer.ts')).toBeNull();
     expect(screen.getByText('answer.ts')).toBeDefined();
   });
 
@@ -200,10 +200,8 @@ describe('ToolCallItem', () => {
     const headerText = screen.getByRole('button', { name: RE_APPLY_GUARDED_EDIT }).textContent;
     expect(screen.getByText('+1')).toBeDefined();
     expect(screen.getByText('-1')).toBeDefined();
-    expect(headerText.indexOf('+1')).toBeLessThan(
-      headerText.indexOf('packages/ui/src/chat/target.ts'),
-    );
-    expect(screen.queryByText('target.ts')).toBeNull();
+    expect(headerText).toContain('target.ts');
+    expect(headerText).not.toContain('packages/ui/src/chat');
   });
 
   it('opens an edited file from the shared diff header', async () => {
@@ -238,7 +236,7 @@ describe('ToolCallItem', () => {
     expect(openFile).toHaveBeenCalledWith(path);
   });
 
-  it('keeps the produced-file artifact for a completed move', () => {
+  it('summarizes a completed move without exposing its directory', () => {
     const toolCall: ToolCall = {
       toolCallId: 'move-1',
       title: 'Move file',
@@ -249,9 +247,10 @@ describe('ToolCallItem', () => {
       content: [],
     };
 
-    render(<ToolCallItem toolCall={toolCall} />);
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
 
-    expect(screen.getByText('moved.ts')).toBeDefined();
+    expect(container.textContent).toContain('target.ts → moved.ts');
+    expect(container.textContent).not.toContain('packages/ui/src/chat');
   });
 });
 

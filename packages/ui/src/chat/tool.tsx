@@ -11,6 +11,7 @@ import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
 import type { DiffStats } from './diff-utils';
 import { TOOL_KIND_ICONS } from './tool-utils';
+import { FILE_PATH_TOOLTIP_CLASS_NAME, withTooltip } from './with-tooltip';
 
 export const TOOL_DETAIL_SCROLL_CLASS_NAME = 'max-h-96 overflow-y-auto overscroll-contain';
 
@@ -24,6 +25,8 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   title: string;
   /** Curated context such as a path, query, URL, or command. */
   summary?: string;
+  /** Unshortened context for a compact summary. */
+  tooltip?: string;
   diffStats?: DiffStats;
   badge?: string;
   /** Localized marker for a call whose gating permission the user declined. */
@@ -41,6 +44,7 @@ export function ToolHeader({
   className,
   title,
   summary,
+  tooltip,
   diffStats,
   badge,
   declinedBadge,
@@ -51,15 +55,8 @@ export function ToolHeader({
   hasBody = false,
   ...props
 }: ToolHeaderProps): React.ReactNode {
-  return (
-    <CollapsibleTrigger
-      className={cn(
-        'group/header flex w-full items-center gap-2 py-1 text-left text-sm disabled:cursor-default',
-        className,
-      )}
-      disabled={!hasBody}
-      {...props}
-    >
+  const content = (
+    <>
       <ToolIcon awaitingApproval={awaitingApproval} icon={icon} kind={kind} status={status} />
       <span className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}>
         {title}
@@ -73,7 +70,32 @@ export function ToolHeader({
       {hasBody ? (
         <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />
       ) : null}
-    </CollapsibleTrigger>
+    </>
+  );
+  const headerClassName = cn(
+    'group/header flex w-full items-center gap-2 py-1 text-left text-sm',
+    className,
+  );
+
+  return withTooltip(
+    hasBody ? (
+      <CollapsibleTrigger className={headerClassName} {...props}>
+        {content}
+      </CollapsibleTrigger>
+    ) : (
+      <div
+        className={cn(
+          headerClassName,
+          tooltip &&
+            'rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+        )}
+        tabIndex={tooltip ? 0 : undefined}
+      >
+        {content}
+      </div>
+    ),
+    tooltip,
+    FILE_PATH_TOOLTIP_CLASS_NAME,
   );
 }
 

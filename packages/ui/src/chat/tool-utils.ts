@@ -15,16 +15,14 @@ import { toolCallFilePresentation } from './file-tool-presentation';
 import {
   recordValue,
   stringValue,
-  TOOL_PATH_KEYS,
   toolCallDisplayContent,
   toolCallExecuteText,
   toolCallFetchStatus,
   toolCallFetchUrl,
-  toolCallFilePath,
   toolCallSearchQuery,
 } from './tool-result-content';
 
-export type ToolMetadataKey = 'files' | 'matches' | 'path' | 'query' | 'status' | 'url';
+export type ToolMetadataKey = 'files' | 'matches' | 'query' | 'status' | 'url';
 
 export interface ToolMetadata {
   key: ToolMetadataKey;
@@ -32,26 +30,10 @@ export interface ToolMetadata {
   tone?: 'error';
 }
 
-const MOVE_SOURCE_KEYS = ['source', 'from', 'old_path', 'oldPath', ...TOOL_PATH_KEYS] as const;
-const MOVE_DESTINATION_KEYS = ['destination', 'to', 'new_path', 'newPath', 'move_path'] as const;
-
 function countValue(value: unknown): number | undefined {
   if (Array.isArray(value)) return value.length;
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
   return undefined;
-}
-
-function fileSummary(toolCall: ToolCall): string | undefined {
-  if (toolCall.kind === 'move') {
-    const input = recordValue(toolCall.rawInput);
-    const source = stringValue(input, MOVE_SOURCE_KEYS);
-    const destination = stringValue(input, MOVE_DESTINATION_KEYS);
-    if (source && destination) return `${source} → ${destination}`;
-  }
-
-  const path = toolCallFilePath(toolCall);
-  const location = toolCall.locations?.find((item) => item.path === path);
-  return path && location?.line !== undefined ? `${path}:${location.line}` : path;
 }
 
 export function toolCallCommand(toolCall: ToolCall): string | undefined {
@@ -75,16 +57,10 @@ export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
 
   switch (toolCall.kind) {
     case 'read':
-    case 'move': {
-      const path = fileSummary(toolCall);
-      return path ? [{ key: 'path', value: path }] : [];
-    }
     case 'edit':
-    case 'delete': {
-      if (toolCall.content.some((content) => content.type === 'diff')) return [];
-      const path = fileSummary(toolCall);
-      return path ? [{ key: 'path', value: path }] : [];
-    }
+    case 'delete':
+    case 'move':
+      return [];
     case 'search': {
       const metadata: ToolMetadata[] = [];
       const query = toolCallSearchQuery(toolCall);
@@ -119,20 +95,31 @@ export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
   }
 }
 
+export interface ToolCallHeaderSummary {
+  label: string;
+  tooltip?: string;
+}
+
 /** One compact, non-debug detail for singleton headers and collapsed group summaries. */
-export function toolCallSummary(toolCall: ToolCall): string | undefined {
+export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary | undefined {
+  let label: string | undefined;
   switch (toolCall.kind) {
     case 'execute':
-      return toolCallCommand(toolCall);
+      label = toolCallCommand(toolCall);
+      break;
     case 'read':
     case 'edit':
     case 'delete':
-    case 'move':
-      return fileSummary(toolCall);
+    case 'move': {
+      const file = toolCallFilePresentation(toolCall);
+      return file ? { label: file.label, tooltip: file.tooltip } : undefined;
+    }
     case 'search':
-      return toolCallSearchQuery(toolCall);
+      label = toolCallSearchQuery(toolCall);
+      break;
     case 'fetch':
-      return toolCallFetchUrl(toolCall);
+      label = toolCallFetchUrl(toolCall);
+      break;
     case 'think':
     case 'task':
     case 'other':
@@ -140,6 +127,7 @@ export function toolCallSummary(toolCall: ToolCall): string | undefined {
     default:
       return toolCall.kind satisfies never;
   }
+  return label ? { label } : undefined;
 }
 
 export function hasToolBody(toolCall: ToolCall): boolean {
