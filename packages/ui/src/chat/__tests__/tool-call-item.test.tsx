@@ -3,7 +3,7 @@
 import type { ToolCall } from '@linkcode/schema';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ToolCallBody } from '../tool-call-item';
+import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 
 function translateKey(key: string): string {
   return key;
@@ -84,5 +84,46 @@ describe('ToolCallBody', () => {
 
     expect(container.querySelector('pre')?.textContent).toBe('stale preview import');
     expect(container.textContent).not.toContain('exitCode');
+  });
+});
+
+describe('ToolCallItem', () => {
+  it('summarizes a standalone edit without a redundant file artifact card', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'edit-1',
+      title: 'Apply guarded edit',
+      kind: 'edit',
+      status: 'completed',
+      content: [
+        {
+          type: 'diff',
+          path: 'packages/ui/src/chat/target.ts',
+          oldText: "const coverage = 'thin';\n",
+          newText: "const coverage = 'rich';\n",
+        },
+      ],
+    };
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('+1')).toBeDefined();
+    expect(screen.getByText('-1')).toBeDefined();
+    expect(screen.queryByText('target.ts')).toBeNull();
+  });
+
+  it('keeps the produced-file artifact for a completed move', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'move-1',
+      title: 'Move file',
+      kind: 'move',
+      status: 'completed',
+      locations: [{ path: 'packages/ui/src/chat/moved.ts' }],
+      rawInput: { path: 'target.ts', move_path: 'packages/ui/src/chat/moved.ts' },
+      content: [],
+    };
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('moved.ts')).toBeDefined();
   });
 });

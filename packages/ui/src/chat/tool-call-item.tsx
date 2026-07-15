@@ -4,6 +4,7 @@ import { useTranslations } from 'use-intl';
 import { FileArtifactCard } from './artifacts/file-card';
 import { ContentBlockView } from './content-block-view';
 import { DiffBlock } from './diff-block';
+import { toolCallDiffStats } from './diff-utils';
 import { Terminal } from './terminal';
 import { TerminalBlock } from './terminal-block';
 import { Tool, ToolContent, ToolHeader } from './tool';
@@ -18,10 +19,10 @@ import {
 
 const MAX_PRODUCED_FILE_CARDS = 4;
 
-/** Files a completed write-class tool produced — these get artifact cards under the tool row. */
+/** Files a completed move produced — edits keep their file context in the summary and diff. */
 function producedFilePaths(toolCall: ToolCall): string[] {
   if (toolCall.status !== 'completed') return [];
-  if (toolCall.kind !== 'edit' && toolCall.kind !== 'move') return [];
+  if (toolCall.kind !== 'move') return [];
   const paths = new Set<string>();
   for (const location of toolCall.locations ?? []) paths.add(location.path);
   for (const content of toolCall.content) {
@@ -165,6 +166,7 @@ export function ToolCallItem({
   const hasBody = hasToolBody(toolCall);
   const producedFiles = producedFilePaths(toolCall);
   const summary = toolCallSummary(toolCall);
+  const diffTotals = toolCallDiffStats(toolCall);
 
   return (
     <Tool>
@@ -172,6 +174,7 @@ export function ToolCallItem({
         awaitingApproval={awaitingApproval}
         badge={t(kindKey)}
         declinedBadge={declined ? tp('declined') : undefined}
+        diffStats={diffTotals}
         hasBody={hasBody}
         icon={icon}
         kind={toolCall.kind}

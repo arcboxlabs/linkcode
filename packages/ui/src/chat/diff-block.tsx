@@ -1,6 +1,24 @@
 import { FileTextIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { DiffStats } from './diff-utils';
 import { diffLines } from './diff-utils';
+
+export function DiffCounter({
+  className,
+  stats,
+}: {
+  className?: string;
+  stats: DiffStats;
+}): React.ReactNode {
+  if (stats.additions + stats.deletions === 0) return null;
+
+  return (
+    <span className={cn('flex shrink-0 items-center gap-1 font-mono text-xs', className)}>
+      <span className="text-success-foreground">+{stats.additions}</span>
+      <span className="text-destructive-foreground">-{stats.deletions}</span>
+    </span>
+  );
+}
 
 export function DiffBlock({
   path,
@@ -12,18 +30,17 @@ export function DiffBlock({
   newText: string;
 }): React.ReactNode {
   const rows = diffLines(oldText ?? '', newText);
-  const additions = rows.filter((row) => row.type === 'add').length;
-  const deletions = rows.filter((row) => row.type === 'del').length;
+  const stats = {
+    additions: rows.filter((row) => row.type === 'add').length,
+    deletions: rows.filter((row) => row.type === 'del').length,
+  };
 
   return (
     <div className="my-1 overflow-hidden rounded-lg border border-border">
       <div className="flex items-center gap-2 border-b border-border bg-muted/32 px-3 py-1.5 text-xs">
         <FileTextIcon className="size-3.5 text-muted-foreground" />
         <span className="truncate font-mono text-muted-foreground">{path}</span>
-        <span className="ml-auto flex gap-1.5">
-          <span className="text-success-foreground">+{additions}</span>
-          <span className="text-destructive-foreground">-{deletions}</span>
-        </span>
+        <DiffCounter className="ml-auto gap-1.5" stats={stats} />
       </div>
       <div className="overflow-x-auto font-mono text-xs leading-relaxed">
         {rows.map((row) => (

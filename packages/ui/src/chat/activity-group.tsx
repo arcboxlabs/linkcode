@@ -19,7 +19,8 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { ActivityBucket, TimelineEntry } from './activity-groups';
-import { diffStats } from './diff-utils';
+import { DiffCounter } from './diff-block';
+import { toolCallDiffStats } from './diff-utils';
 import { ToolCallBody } from './tool-call-item';
 import { hasToolBody, toolCallSummary } from './tool-utils';
 
@@ -58,12 +59,7 @@ export function ActivityGroup({
             {t('failed', { count: failedCount })}
           </Badge>
         ) : null}
-        {diffTotals && diffTotals.additions + diffTotals.deletions > 0 ? (
-          <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
-            <span className="text-success-foreground">+{diffTotals.additions}</span>
-            <span className="text-destructive-foreground">-{diffTotals.deletions}</span>
-          </span>
-        ) : null}
+        {diffTotals ? <DiffCounter stats={diffTotals} /> : null}
         <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
           {open
             ? ''
@@ -90,12 +86,9 @@ function sumGroupDiffStats(group: ActivityToolGroup): { additions: number; delet
   let additions = 0;
   let deletions = 0;
   for (const item of group.items) {
-    for (const content of item.toolCall.content) {
-      if (content.type !== 'diff') continue;
-      const stats = diffStats(content.oldText, content.newText);
-      additions += stats.additions;
-      deletions += stats.deletions;
-    }
+    const stats = toolCallDiffStats(item.toolCall);
+    additions += stats.additions;
+    deletions += stats.deletions;
   }
   return { additions, deletions };
 }
