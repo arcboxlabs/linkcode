@@ -3,14 +3,14 @@ import { MobileHome, ScreenScroll } from '@linkcode/ui/native';
 import { useRouter } from 'expo-router';
 import { Button, Card, ListGroup } from 'heroui-native';
 import { useTranslations } from 'use-intl';
-import { useHqAccount } from '../runtime/hq/account';
+import { useCloudAccount } from '../runtime/cloud/account';
 
 /** App settings: account + host management entries plus the About/contract summary. */
 export default function SettingsScreen(): React.ReactNode {
   const t = useTranslations('mobile.settings');
   const tAbout = useTranslations('mobile.about');
   const router = useRouter();
-  const account = useHqAccount();
+  const account = useCloudAccount();
 
   return (
     <ScreenScroll title={t('title')}>

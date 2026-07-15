@@ -5,10 +5,10 @@ import { Button, Card, Input, Label, ListGroup, Spinner, TextField } from 'herou
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
-import { useHqAccount } from '../runtime/hq/account';
-import { ensureDeviceRegistered } from '../runtime/hq/devices';
-import type { OnlineHost } from '../runtime/hq/hosts';
-import { fetchOnlineHosts } from '../runtime/hq/hosts';
+import { useCloudAccount } from '../runtime/cloud/account';
+import { ensureDeviceRegistered } from '../runtime/cloud/devices';
+import type { OnlineHost } from '../runtime/cloud/hosts';
+import { fetchOnlineHosts } from '../runtime/cloud/hosts';
 import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 
 /**
@@ -20,7 +20,7 @@ import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 export default function ConnectScreen() {
   const t = useTranslations('mobile.connect');
   const router = useRouter();
-  const account = useHqAccount();
+  const account = useCloudAccount();
   const hosts = useHostRegistryStore((state) => state.hosts);
   const removeHost = useHostRegistryStore((state) => state.removeHost);
   const [manualOpen, setManualOpen] = useState(false);
@@ -89,7 +89,7 @@ function SectionLabel({ children }: React.PropsWithChildren) {
  * one saves it as a tunnel host and opens it.
  */
 function MyMachinesSection({ userId }: { userId: string }) {
-  const t = useTranslations('mobile.connect.hq');
+  const t = useTranslations('mobile.connect.cloud');
   const router = useRouter();
   const addTunnelHost = useHostRegistryStore((state) => state.addTunnelHost);
 
@@ -159,7 +159,7 @@ function MyMachinesSection({ userId }: { userId: string }) {
 
 /** Signed-out lead-in: the account is how machines appear here. */
 function SignInCard() {
-  const t = useTranslations('mobile.connect.hq');
+  const t = useTranslations('mobile.connect.cloud');
   const router = useRouter();
   return (
     <Card>

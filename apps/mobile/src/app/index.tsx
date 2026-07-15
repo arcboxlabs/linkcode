@@ -2,7 +2,7 @@ import { Redirect } from 'expo-router';
 import { Spinner } from 'heroui-native';
 import { View } from 'react-native';
 import { BrandMark } from '../components/brand-mark';
-import { useHqAccount } from '../runtime/hq/account';
+import { useCloudAccount } from '../runtime/cloud/account';
 import { resolveStartupTarget } from '../runtime/startup';
 import { useHostRegistryHydrated, useHostRegistryStore } from '../stores/host-store';
 
@@ -12,7 +12,7 @@ import { useHostRegistryHydrated, useHostRegistryStore } from '../stores/host-st
  */
 export default function StartupScreen() {
   const hydrated = useHostRegistryHydrated();
-  const account = useHqAccount();
+  const account = useCloudAccount();
   const hosts = useHostRegistryStore((state) => state.hosts);
   const lastActiveHostId = useHostRegistryStore((state) => state.lastActiveHostId);
 
