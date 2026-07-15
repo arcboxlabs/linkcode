@@ -173,6 +173,8 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-arm64@7.0.2'
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
+  - expo-clipboard@57.0.1
+  - expo-haptics@57.0.1
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
