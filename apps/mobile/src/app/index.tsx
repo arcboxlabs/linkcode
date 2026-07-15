@@ -1,24 +1,36 @@
 import { Redirect } from 'expo-router';
 import { Spinner } from 'heroui-native';
 import { View } from 'react-native';
+import { BrandMark } from '../components/brand-mark';
+import { useHqAccount } from '../runtime/hq/account';
+import { resolveStartupTarget } from '../runtime/startup';
 import { useHostRegistryHydrated, useHostRegistryStore } from '../stores/host-store';
 
-/** Startup router: waits for the persisted registry, then lands on connect or the last active host. */
+/**
+ * Startup router: waits for the persisted registry and the account state,
+ * then lands on the last active host, the machine list, or first-run sign-in.
+ */
 export default function StartupScreen() {
   const hydrated = useHostRegistryHydrated();
+  const account = useHqAccount();
   const hosts = useHostRegistryStore((state) => state.hosts);
   const lastActiveHostId = useHostRegistryStore((state) => state.lastActiveHostId);
 
-  if (!hydrated) {
+  if (!hydrated || account.status === 'loading') {
     return (
-      <View className="flex-1 items-center justify-center bg-background">
+      <View className="flex-1 items-center justify-center gap-6 bg-background">
+        <BrandMark />
         <Spinner />
       </View>
     );
   }
 
-  if (hosts.length === 0) return <Redirect href="/connect" />;
-
-  const target = hosts.find((host) => host.id === lastActiveHostId) ?? hosts[0];
-  return <Redirect href={`/host/${target.id}`} />;
+  const target = resolveStartupTarget({
+    hosts,
+    lastActiveHostId,
+    signedIn: account.status === 'signed-in',
+  });
+  if (target.kind === 'sign-in') return <Redirect href="/sign-in" />;
+  if (target.kind === 'connect') return <Redirect href="/connect" />;
+  return <Redirect href={`/host/${target.hostId}`} />;
 }

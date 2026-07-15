@@ -5,7 +5,7 @@ import { Button, Card, Input, Label, ListGroup, Spinner, TextField } from 'herou
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
-import { hqAuthClient, signInToHq, signOutOfHq } from '../runtime/hq/client';
+import { signInToHq, signOutOfHq, useHqAccount } from '../runtime/hq/account';
 import { ensureDeviceRegistered } from '../runtime/hq/devices';
 import type { OnlineHost } from '../runtime/hq/hosts';
 import { fetchOnlineHosts } from '../runtime/hq/hosts';
@@ -120,8 +120,9 @@ function HqAccountSection(): React.ReactNode {
   const t = useTranslations('mobile.connect.hq');
   const router = useRouter();
   const addTunnelHost = useHostRegistryStore((state) => state.addTunnelHost);
-  const { data: session, isPending } = hqAuthClient.useSession();
-  const signedIn = Boolean(session);
+  const account = useHqAccount();
+  const user = account.status === 'signed-in' ? account.user : null;
+  const userId = user?.id ?? null;
 
   const [onlineHosts, setOnlineHosts] = useState<OnlineHost[] | null>(null);
   const [hostsError, setHostsError] = useState(false);
@@ -139,12 +140,12 @@ function HqAccountSection(): React.ReactNode {
   };
 
   useEffect(() => {
-    if (!signedIn) return;
+    if (!userId) return;
     // Best-effort: registration only lists the phone under the account's
     // devices; discovering and connecting to hosts does not depend on it.
-    ensureDeviceRegistered().catch(noop);
+    ensureDeviceRegistered(userId).catch(noop);
     load();
-  }, [signedIn, load]);
+  }, [userId, load]);
 
   const openHost = (host: OnlineHost) => {
     const profile = addTunnelHost({
@@ -154,9 +155,9 @@ function HqAccountSection(): React.ReactNode {
     router.push(`/host/${profile.id}`);
   };
 
-  if (isPending) return null;
+  if (account.status === 'loading') return null;
 
-  if (!signedIn) {
+  if (!user) {
     return (
       <Card>
         <Card.Body className="gap-3">
@@ -210,7 +211,7 @@ function HqAccountSection(): React.ReactNode {
       )}
       <View className="flex-row items-center justify-between">
         <Text className="text-[12px] text-muted">
-          {t('signedInAs', { name: session?.user.name ?? session?.user.email ?? '' })}
+          {t('signedInAs', { name: user.name || user.email })}
         </Text>
         <View className="flex-row gap-2">
           <Button variant="secondary" size="sm" onPress={refresh}>

@@ -6,14 +6,11 @@ import { z } from 'zod';
 /**
  * The LinkCode HQ auth client: one better-auth client for the whole app, its
  * session cookie kept in SecureStore, OAuth running in the system browser and
- * landing back through the `linkcode://` scheme. Device enrollment and host
- * discovery each build on this from their own module.
+ * landing back through the `linkcode://` scheme. Account state, device
+ * enrollment, and host discovery each build on this from their own module.
  */
 
 export const HQ_URL = 'https://api.linkcode.ai';
-
-/** HQ's genericOAuth provider id — the central IdP is the only sign-in path. */
-const IDP_PROVIDER_ID = 'central-idp';
 
 export const hqAuthClient = createAuthClient({
   baseURL: `${HQ_URL}/auth`,
@@ -25,16 +22,6 @@ export const hqAuthClient = createAuthClient({
     }),
   ],
 });
-
-export function signInToHq(): Promise<unknown> {
-  // Generic OAuth shares the social sign-in flow as of better-auth 1.7. The
-  // system browser runs the IdP flow; the deep link lands back on /connect.
-  return hqAuthClient.signIn.social({ provider: IDP_PROVIDER_ID, callbackURL: '/connect' });
-}
-
-export function signOutOfHq(): Promise<unknown> {
-  return hqAuthClient.signOut();
-}
 
 /** Fresh short-lived tunnel JWT; the TunnelTransport calls this per (re)connect. */
 export async function fetchTunnelJwt(): Promise<string> {
