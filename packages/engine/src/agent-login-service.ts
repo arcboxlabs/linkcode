@@ -1,5 +1,5 @@
 import type { AgentLoginCallbacks, AgentLoginHandle } from '@linkcode/agent-adapter';
-import { startClaudeLogin } from '@linkcode/agent-adapter';
+import { AGENT_LOGIN_KINDS, startAgentCliLogin } from '@linkcode/agent-adapter';
 import type { AgentKind, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
@@ -7,15 +7,22 @@ import { createWireMessage } from '@linkcode/transport';
 /** Resolve the spawnable CLI for an agent's interactive login; `undefined` = cannot log in here. */
 export type LoginBinaryResolver = (agent: AgentKind) => string | undefined;
 
-/** Starts the CLI login and returns its handle — the {@link startClaudeLogin} seam, faked in tests. */
-export type StartLogin = (binaryPath: string, callbacks: AgentLoginCallbacks) => AgentLoginHandle;
+/** Starts the CLI login and returns its handle — the {@link startAgentCliLogin} seam, faked in
+ * tests; `undefined` = no flow implemented for this kind. */
+export type StartLogin = (
+  agent: AgentKind,
+  binaryPath: string,
+  callbacks: AgentLoginCallbacks,
+) => AgentLoginHandle | undefined;
 
 /**
- * AgentLoginService: drives an agent CLI's own OAuth login as a short-lived headless child and
- * bridges it to the `agent-login.*` wire. Only claude-code is implemented — its `auth login` uses a
- * remote OAuth callback page, so the browser URL streams down (`agent-login.url`) and the pasted
- * authorization code round-trips up (`agent-login.submit-code`). A clean login calls {@link onSuccess}
- * so the engine re-probes and pushes the refreshed runtime snapshot, clearing the "needs login" cue.
+ * AgentLoginService: drives an agent CLI's own OAuth login headlessly and bridges it to the
+ * `agent-login.*` wire. Two flows exist (`AGENT_LOGIN_KINDS`): claude-code's remote-callback page
+ * streams the browser URL down (`agent-login.url`) and round-trips the pasted authorization code
+ * up (`agent-login.submit-code`); codex's app-server flow streams the URL the same way but
+ * completes on its own localhost callback — nothing to submit. A clean login calls
+ * {@link onSuccess} so the engine re-probes and pushes the refreshed runtime snapshot, clearing
+ * the "needs login" cue.
  */
 export class AgentLoginService {
   private readonly logins = new Map<string, AgentLoginHandle>();
@@ -25,7 +32,7 @@ export class AgentLoginService {
     private readonly transport: Transport,
     private readonly resolveBinary: LoginBinaryResolver,
     private readonly onSuccess: () => void,
-    private readonly startLogin: StartLogin = startClaudeLogin,
+    private readonly startLogin: StartLogin = startAgentCliLogin,
   ) {}
 
   /** Begin a login for `agent`, reply `agent-login.started`, then stream `url` / `settled`. */
@@ -33,17 +40,17 @@ export class AgentLoginService {
     const loginId = this.nextLoginId();
     this.send({ kind: 'agent-login.started', replyTo: clientReqId, loginId });
 
-    if (agent !== 'claude-code') {
+    if (!AGENT_LOGIN_KINDS.has(agent)) {
       this.settle(loginId, false, `login is not supported for ${agent}`);
       return;
     }
     const binaryPath = this.resolveBinary(agent);
     if (!binaryPath) {
-      this.settle(loginId, false, 'the claude-code CLI is not available to log in');
+      this.settle(loginId, false, `the ${agent} CLI is not available to log in`);
       return;
     }
 
-    const handle = this.startLogin(binaryPath, {
+    const handle = this.startLogin(agent, binaryPath, {
       onUrl: (url) => this.send({ kind: 'agent-login.url', loginId, url }),
       onSettled: ({ ok, error }) => {
         this.logins.delete(loginId);
@@ -51,6 +58,10 @@ export class AgentLoginService {
         if (ok) this.onSuccess();
       },
     });
+    if (!handle) {
+      this.settle(loginId, false, `login is not supported for ${agent}`);
+      return;
+    }
     this.logins.set(loginId, handle);
   }
 

@@ -126,11 +126,13 @@ export const en = {
       badgeUnverified: 'Unverified',
       badgeNeedsLogin: 'Sign in',
       needsLoginTitle: '{agent} needs you to sign in',
-      needsLoginBody: 'Sign in to your Claude account to get started.',
-      login: 'Sign in to Claude',
+      needsLoginBody: 'Sign in to your {agent} account to get started.',
+      login: 'Sign in to {agent}',
       loginOpening: 'Opening the browser to sign in to {agent}…',
       loginAwaitingCode:
         'A sign-in page opened in your browser. After authorizing, paste the code from that page below.',
+      loginAwaitingBrowser:
+        'A sign-in page opened in your browser. Finish signing in there — this updates automatically.',
       loginCodePlaceholder: 'Paste the authorization code',
       loginSubmit: 'Finish sign-in',
       loginReopenUrl: "Didn't open? Open the sign-in page",
