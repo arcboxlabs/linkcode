@@ -35,6 +35,8 @@ export interface PaletteThreadViewModel {
   status: SessionStatus;
   /** Workspace badge on the row's right edge; `null` for chat/unregistered threads. */
   workspaceLabel: string | null;
+  /** Platform-formatted jump hint, e.g. `⌘1` — display only, set on the Recent view. */
+  shortcut?: string;
 }
 
 export interface PaletteCommandViewModel {
@@ -278,6 +280,7 @@ function PaletteThreadRow({
       {thread.workspaceLabel && (
         <span className="shrink-0 text-muted-foreground text-xs">{thread.workspaceLabel}</span>
       )}
+      {thread.shortcut && <CommandShortcut>{thread.shortcut}</CommandShortcut>}
     </CommandItem>
   );
 }
