@@ -655,6 +655,12 @@ export const en = {
         refresh: 'Refresh',
       },
     },
+    signIn: {
+      tagline:
+        'Your agents, wherever you are. Sign in to reach the machines running LinkCode from this phone.',
+      signIn: 'Sign in with LinkCode',
+      skip: 'Skip — connect manually',
+    },
     sessions: {
       title: 'Sessions',
       emptyTitle: 'No sessions',
