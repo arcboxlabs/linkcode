@@ -742,17 +742,7 @@ export const en = {
     },
     conversation: {
       emptyTitle: 'Nothing here yet',
-      emptyHint: 'This is a read-only view of the session running on the host.',
-      you: 'You',
-      agent: 'Agent',
-      reasoning: 'Reasoning',
-      tool: 'Tool',
-      plan: 'Plan',
-      approval: 'Permission request',
-      error: 'Error',
-      streaming: 'Streaming…',
-      compacted: 'Context compacted',
-      compactedTokens: '{pre} → {post} tokens',
+      emptyHint: 'Send a message below — the agent runs on the host.',
     },
     chat: {
       thought: 'Thought',
@@ -777,6 +767,9 @@ export const en = {
       stop: 'Stop',
       sendFailed: 'Send failed — try again.',
       resuming: 'Resuming…',
+      stopThread: 'Stop thread',
+      copyThreadId: 'Copy thread ID',
+      cancel: 'Cancel',
     },
     connection: {
       connecting: 'Connecting to the host…',

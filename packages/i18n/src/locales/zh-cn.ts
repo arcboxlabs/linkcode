@@ -725,17 +725,7 @@ export const zhCN = {
     },
     conversation: {
       emptyTitle: '还没有内容',
-      emptyHint: '这是 host 上会话的只读视图。',
-      you: '你',
-      agent: '智能体',
-      reasoning: '思考',
-      tool: '工具',
-      plan: '计划',
-      approval: '权限请求',
-      error: '错误',
-      streaming: '输出中…',
-      compacted: '上下文已压缩',
-      compactedTokens: '{pre} → {post} tokens',
+      emptyHint: '给下方输入框发一条消息，agent 就会在 host 上开工。',
     },
     chat: {
       thought: '思考',
@@ -760,6 +750,9 @@ export const zhCN = {
       stop: '停止',
       sendFailed: '发送失败，请重试。',
       resuming: '恢复中…',
+      stopThread: '停止 Thread',
+      copyThreadId: '复制 Thread ID',
+      cancel: '取消',
     },
     connection: {
       connecting: '正在连接 host…',
