@@ -1,7 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
 import { useTranslations } from 'use-intl';
-import { FileArtifactCard } from './artifacts/file-card';
 import { toolCallDiffStats } from './diff-utils';
 import { Tool, ToolContent, ToolHeader } from './tool';
 import { toolCallDisplayText } from './tool-result-content';
@@ -10,23 +9,9 @@ import type { ToolMetadata } from './tool-utils';
 import {
   hasToolBody,
   toolCallFailureMessage,
+  toolCallHeaderSummary,
   toolCallMetadata,
-  toolCallSummary,
 } from './tool-utils';
-
-const MAX_PRODUCED_FILE_CARDS = 4;
-
-/** Files a completed move produced — edits keep their file context in the summary and diff. */
-function producedFilePaths(toolCall: ToolCall): string[] {
-  if (toolCall.status !== 'completed') return [];
-  if (toolCall.kind !== 'move') return [];
-  const paths = new Set<string>();
-  for (const location of toolCall.locations ?? []) paths.add(location.path);
-  for (const content of toolCall.content) {
-    if (content.type === 'diff') paths.add(content.path);
-  }
-  return [...paths].slice(0, MAX_PRODUCED_FILE_CARDS);
-}
 
 function ToolMetadataList({ metadata }: { metadata: ToolMetadata[] }): React.ReactNode {
   const t = useTranslations('workbench.tool');
@@ -100,8 +85,7 @@ export function ToolCallItem({
 
   const kindKey = `kind${toolCall.kind[0].toUpperCase()}${toolCall.kind.slice(1)}`;
   const hasBody = hasToolBody(toolCall);
-  const producedFiles = producedFilePaths(toolCall);
-  const summary = toolCallSummary(toolCall);
+  const summary = toolCallHeaderSummary(toolCall);
   const diffTotals = toolCallDiffStats(toolCall);
 
   return (
@@ -115,22 +99,15 @@ export function ToolCallItem({
         icon={icon}
         kind={toolCall.kind}
         status={toolCall.status}
-        summary={summary === toolCall.title ? undefined : summary}
+        summary={summary?.label === toolCall.title ? undefined : summary?.label}
         title={toolCall.title}
+        tooltip={summary?.tooltip}
       />
 
       {hasBody && (
         <ToolContent constrainHeight={constrainHeight}>
           <ToolCallBody TerminalBlockComponent={TerminalBlockComponent} toolCall={toolCall} />
         </ToolContent>
-      )}
-
-      {producedFiles.length > 0 && (
-        <div className="mt-1">
-          {producedFiles.map((path) => (
-            <FileArtifactCard key={path} path={path} />
-          ))}
-        </div>
       )}
     </Tool>
   );

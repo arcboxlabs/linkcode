@@ -4,7 +4,7 @@ import type { ToolCall } from '@linkcode/schema';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ToolCallBody } from '../tool-call-item';
-import { hasToolBody, toolCallSummary } from '../tool-utils';
+import { hasToolBody, toolCallHeaderSummary, toolCallMetadata } from '../tool-utils';
 
 function translateKey(key: string): string {
   return key;
@@ -238,11 +238,13 @@ describe('tool metadata policy', () => {
       },
     ];
 
-    expect(calls.map(toolCallSummary)).toEqual([
-      'README.md:3',
-      'ToolCallBody',
-      'old.ts → new.ts',
-      'pnpm test',
+    expect(calls.map(toolCallHeaderSummary)).toEqual([
+      { label: 'README.md:3', tooltip: 'README.md:3' },
+      { label: 'ToolCallBody' },
+      { label: 'old.ts → new.ts', tooltip: 'old.ts → new.ts' },
+      { label: 'pnpm test' },
     ]);
+    expect(toolCallMetadata(calls[0])).toEqual([]);
+    expect(toolCallMetadata(calls[2])).toEqual([]);
   });
 });
