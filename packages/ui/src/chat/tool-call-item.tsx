@@ -3,6 +3,7 @@ import { useTranslations } from 'use-intl';
 import { FileArtifactCard } from './artifacts/file-card';
 import { ContentBlockView } from './content-block-view';
 import { DiffBlock } from './diff-block';
+import { Terminal } from './terminal';
 import { TerminalBlock } from './terminal-block';
 import { Tool, ToolContent, ToolHeader, ToolJson, ToolSection } from './tool';
 import { hasToolBody } from './tool-utils';
@@ -21,7 +22,57 @@ function producedFilePaths(toolCall: ToolCall): string[] {
   return [...paths].slice(0, MAX_PRODUCED_FILE_CARDS);
 }
 
-/** The expandable detail of one call — input, content blocks / diffs / terminals, raw output. */
+function executeCommand(toolCall: ToolCall): string {
+  const input = toolCall.rawInput;
+  if (typeof input !== 'object' || input === null) return toolCall.title;
+
+  const command = 'command' in input ? input.command : 'cmd' in input ? input.cmd : undefined;
+  if (typeof command === 'string' && command.length > 0) return command;
+  if (Array.isArray(command) && command.every((part) => typeof part === 'string')) {
+    return command.join(' ');
+  }
+  return toolCall.title;
+}
+
+function executeOutput(toolCall: ToolCall): string | undefined {
+  const text = toolCall.content
+    .flatMap((content) =>
+      content.type === 'content' && content.content.type === 'text' ? [content.content.text] : [],
+    )
+    .join('\n');
+  if (text.length > 0) return text;
+  if (toolCall.rawOutput === undefined) return undefined;
+  if (typeof toolCall.rawOutput === 'string') return toolCall.rawOutput;
+  if (
+    typeof toolCall.rawOutput === 'object' &&
+    toolCall.rawOutput !== null &&
+    'message' in toolCall.rawOutput &&
+    typeof toolCall.rawOutput.message === 'string'
+  ) {
+    return toolCall.rawOutput.message;
+  }
+  return JSON.stringify(toolCall.rawOutput, null, 2);
+}
+
+function ToolCallContentView({
+  content,
+  TerminalBlockComponent,
+}: {
+  content: ToolCall['content'][number];
+  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+}): React.ReactNode {
+  if (content.type === 'content') return <ContentBlockView block={content.content} />;
+  if (content.type === 'diff') {
+    return <DiffBlock path={content.path} oldText={content.oldText} newText={content.newText} />;
+  }
+  if (TerminalBlockComponent) {
+    return <TerminalBlockComponent terminalId={content.terminalId} />;
+  }
+  return <TerminalBlock terminalId={content.terminalId} />;
+}
+
+/** The expandable detail of one call. Static execute output uses the read-only terminal surface;
+ * live terminal references and other tool kinds keep their structured presentation. */
 export function ToolCallBody({
   toolCall,
   TerminalBlockComponent,
@@ -30,6 +81,28 @@ export function ToolCallBody({
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
   const t = useTranslations('workbench.tool');
+  const isStaticExecute =
+    toolCall.kind === 'execute' && toolCall.content.every((content) => content.type !== 'terminal');
+
+  if (isStaticExecute) {
+    return (
+      <>
+        <Terminal title={executeCommand(toolCall)} output={executeOutput(toolCall)} />
+        {toolCall.content.map((content, index) => {
+          if (content.type === 'content' && content.content.type === 'text') return null;
+          // Tool content is a full snapshot replaced by id each event, so index+type is stable.
+          const key = `${index}:${content.type}`;
+          return (
+            <ToolCallContentView
+              key={key}
+              TerminalBlockComponent={TerminalBlockComponent}
+              content={content}
+            />
+          );
+        })}
+      </>
+    );
+  }
 
   return (
     <>
@@ -39,19 +112,16 @@ export function ToolCallBody({
         </ToolSection>
       )}
 
-      {toolCall.content.map((c, index) => {
-        // Tool content is a full snapshot replaced by id each event, so index+type is a stable key.
-        const key = `${index}:${c.type}`;
-        if (c.type === 'content') {
-          return <ContentBlockView key={key} block={c.content} />;
-        }
-        if (c.type === 'diff') {
-          return <DiffBlock key={key} path={c.path} oldText={c.oldText} newText={c.newText} />;
-        }
-        if (TerminalBlockComponent) {
-          return <TerminalBlockComponent key={key} terminalId={c.terminalId} />;
-        }
-        return <TerminalBlock key={key} terminalId={c.terminalId} />;
+      {toolCall.content.map((content, index) => {
+        // Tool content is a full snapshot replaced by id each event, so index+type is stable.
+        const key = `${index}:${content.type}`;
+        return (
+          <ToolCallContentView
+            key={key}
+            TerminalBlockComponent={TerminalBlockComponent}
+            content={content}
+          />
+        );
       })}
 
       {toolCall.content.length === 0 && toolCall.rawOutput !== undefined && (

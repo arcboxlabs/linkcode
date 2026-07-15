@@ -163,6 +163,33 @@ export const SHOWCASE_TERMINAL_START_OUTPUT =
 
 export const SHOWCASE_TERMINAL_EXIT_OUTPUT = 'mock terminal stream finished\n';
 
+const SHOWCASE_STATIC_EXEC_COMMAND =
+  'fd -e ts -e tsx --exclude node_modules --exclude coss-ui --exclude target . apps packages | xargs wc -l';
+
+const SHOWCASE_STATIC_EXEC_OUTPUT = [
+  '74646 total',
+  '---per-dir---',
+  'apps/daemon: 2953',
+  'apps/desktop: 6804',
+  'apps/mobile: 1088',
+  'apps/server: 76',
+  'apps/webview: 2246',
+  'packages/agent-adapter: 11884',
+  'packages/assets: 1737',
+  'packages/client-core: 3698',
+  'packages/common: 94',
+  'packages/coss-ui: 7927',
+  'packages/engine: 6037',
+  'packages/i18n: 1421',
+  'packages/im-render: 496',
+  'packages/ipc: 418',
+  'packages/schema: 2003',
+  'packages/sdk: 600',
+  'packages/transport: 1839',
+  'packages/ui: 20155',
+  'packages/workbench: 11097',
+].join('\n');
+
 export const SHOWCASE_PERMISSION_GRANTED_CONTENT = textBlock(
   'Permission granted; mock action applied.',
 );
@@ -290,11 +317,15 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
       },
       {
         toolCallId: 'mock-tool-execute-lint',
-        title: 'Run lint',
+        title: 'Count TypeScript lines',
         kind: 'execute',
         status: 'completed',
-        content: [],
-        rawInput: { command: 'pnpm lint' },
+        content: [{ type: 'content', content: textBlock(SHOWCASE_STATIC_EXEC_OUTPUT) }],
+        rawInput: {
+          command: SHOWCASE_STATIC_EXEC_COMMAND,
+          description: 'Count TS lines per app/package',
+        },
+        rawOutput: SHOWCASE_STATIC_EXEC_OUTPUT,
       },
       {
         toolCallId: 'mock-tool-execute-typecheck',
