@@ -27,11 +27,19 @@ export interface PreparedTunnelSocket {
   readonly buffered: MessageEvent[];
   readonly status: 'active' | 'prepared';
   readonly active: Promise<void>;
-  release(): void;
+  release(): Error | null;
 }
 
 export class TunnelAuthError extends Error {
   override name = 'TunnelAuthError';
+}
+
+export class TunnelSocketCloseError extends Error {
+  override name = 'TunnelSocketCloseError';
+
+  constructor(readonly code: number) {
+    super('TunnelClient: socket closed during handshake');
+  }
 }
 
 export async function dialTunnelSocket(opts: TunnelSocketOptions): Promise<WebSocket> {
@@ -70,7 +78,7 @@ export function prepareTunnelSocket(
       buffered: [],
       status: 'active',
       active: Promise.resolve(),
-      release: noop,
+      release: () => null,
     });
   }
   const { promise: active, resolve: resolveActive, reject: rejectActive } = createSignal();
@@ -78,6 +86,7 @@ export function prepareTunnelSocket(
     const buffered: MessageEvent[] = [];
     let settled = false;
     let released = false;
+    let failure: Error | null = null;
     const timer = setTimeout(() => {
       const error = new Error('TunnelClient: host handshake timed out');
       if (!settled) reject(error);
@@ -94,6 +103,7 @@ export function prepareTunnelSocket(
         release() {
           released = true;
           clearTimeout(timer);
+          return failure;
         },
       });
     };
@@ -110,15 +120,17 @@ export function prepareTunnelSocket(
       }
       buffered.push(event);
     });
-    ws.addEventListener('close', () => {
+    ws.addEventListener('close', (event: CloseEvent) => {
       if (released) return;
-      const error = new Error('TunnelClient: socket closed during handshake');
+      const error = new TunnelSocketCloseError(event.code);
+      failure ??= error;
       if (!settled) reject(error);
       else rejectActive(error);
     });
     ws.addEventListener('error', () => {
       if (released) return;
       const error = new Error('TunnelClient: connection error during handshake');
+      failure ??= error;
       if (!settled) reject(error);
       else rejectActive(error);
     });

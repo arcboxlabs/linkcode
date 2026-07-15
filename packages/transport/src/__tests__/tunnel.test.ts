@@ -84,15 +84,22 @@ describe('TunnelTransportServer', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(socket.sent).toEqual([TUNNEL_HOST_READY_FRAME]);
-    socket.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });
-    await connecting;
-    expect(socket.protocols).toEqual([TUNNEL_SUBPROTOCOL]);
-
+    expect(server.connectionState).toBe('connecting');
     socket.emit('message', {
       data: encodeTunnelPeerFrame({ kind: 'peer.join', peerId: 'peer-1' }),
     });
-    const [connection] = connections;
+    expect(connections).toEqual([]);
+    socket.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });
+    socket.emit('message', {
+      data: encodeTunnelPeerFrame({ kind: 'peer.join', peerId: 'peer-2' }),
+    });
+    await connecting;
+    expect(server.connectionState).toBe('open');
+    expect(socket.protocols).toEqual([TUNNEL_SUBPROTOCOL]);
+
+    const [connection, secondConnection] = connections;
     expect(connection).toBeDefined();
+    expect(secondConnection).toBeDefined();
 
     const inbound: unknown[] = [];
     connection.onMessage((message) => inbound.push(message));
@@ -129,6 +136,119 @@ describe('TunnelTransportServer', () => {
     });
     expect(closed).toBe(1);
     await server.close();
+  });
+
+  it('keeps a reconnecting host unavailable until the relay acknowledges it', async () => {
+    vi.useFakeTimers();
+    try {
+      const server = new TunnelTransportServer({
+        baseUrl: 'https://api.linkcode.ai',
+        hostId: 'host-1',
+        getToken: () => Promise.resolve('token'),
+        WebSocketImpl: FakeImpl,
+      });
+
+      const connecting = server.connect();
+      await Promise.resolve();
+      const first = latestSocket();
+      first.readyState = first.OPEN;
+      first.emit('open', {});
+      await Promise.resolve();
+      await Promise.resolve();
+      first.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });
+      await connecting;
+
+      first.emit('close', { code: 1006 });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(server.connectionState).toBe('reconnecting');
+      const second = latestSocket();
+      second.readyState = second.OPEN;
+      second.emit('open', {});
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(second.sent).toEqual([TUNNEL_HOST_READY_FRAME]);
+      expect(server.connectionState).toBe('reconnecting');
+
+      second.readyState = 3;
+      second.emit('close', { code: 1006 });
+      await vi.advanceTimersByTimeAsync(1300);
+      const third = latestSocket();
+      expect(third).not.toBe(second);
+      third.readyState = third.OPEN;
+      third.emit('open', {});
+      await Promise.resolve();
+      await Promise.resolve();
+      third.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });
+      await vi.waitFor(() => expect(server.connectionState).toBe('open'));
+      await server.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects an error delivered immediately after host readiness', async () => {
+    const server = new TunnelTransportServer({
+      baseUrl: 'https://api.linkcode.ai',
+      hostId: 'host-1',
+      getToken: () => Promise.resolve('token'),
+      WebSocketImpl: FakeImpl,
+    });
+
+    const connecting = server.connect();
+    const rejected = expect(connecting).rejects.toThrow('connection error during handshake');
+    await Promise.resolve();
+    const socket = latestSocket();
+    socket.readyState = socket.OPEN;
+    socket.emit('open', {});
+    await Promise.resolve();
+    await Promise.resolve();
+    socket.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });
+    socket.emit('error', {});
+
+    await rejected;
+    expect(socket.readyState).toBe(3);
+    expect(server.connectionState).toBe('idle');
+  });
+
+  it('stops reconnecting when a replacement host is rejected while adopting readiness', async () => {
+    vi.useFakeTimers();
+    try {
+      const server = new TunnelTransportServer({
+        baseUrl: 'https://api.linkcode.ai',
+        hostId: 'host-1',
+        getToken: () => Promise.resolve('token'),
+        WebSocketImpl: FakeImpl,
+      });
+
+      const connecting = server.connect();
+      await Promise.resolve();
+      const first = latestSocket();
+      first.readyState = first.OPEN;
+      first.emit('open', {});
+      await Promise.resolve();
+      await Promise.resolve();
+      first.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });
+      await connecting;
+
+      first.emit('close', { code: 1006 });
+      await Promise.resolve();
+      await Promise.resolve();
+      const replacement = latestSocket();
+      replacement.readyState = replacement.OPEN;
+      replacement.emit('open', {});
+      await Promise.resolve();
+      await Promise.resolve();
+      replacement.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });
+      replacement.readyState = 3;
+      replacement.emit('close', { code: 4001 });
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      expect(server.connectionState).toBe('closed');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('ends a client transport lifetime on a transient socket drop', async () => {

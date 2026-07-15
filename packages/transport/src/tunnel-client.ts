@@ -18,7 +18,6 @@ import {
   TUNNEL_HOST_HANDOFF_PREFIX,
   TUNNEL_HOST_PREPARED_FRAME,
   TUNNEL_HOST_READY_ACK_FRAME,
-  TUNNEL_HOST_READY_FRAME,
 } from './tunnel-protocol';
 import type { PreparedTunnelSocket, TunnelSocketOptions } from './tunnel-socket';
 import {
@@ -26,6 +25,7 @@ import {
   prepareTunnelSocket,
   rotationToken,
   TunnelAuthError,
+  TunnelSocketCloseError,
   waitForHandoffDrain,
   withTunnelTimeout,
 } from './tunnel-socket';
@@ -84,8 +84,13 @@ export class TunnelClient {
     }
     this.setState('connecting');
     try {
-      const ws = await dialTunnelSocket(this.opts);
-      this.adoptFresh(ws);
+      const [ws, prepared] = await this.dialPrepared();
+      if (this.closedByUser) {
+        prepared.release();
+        this.discardCandidate(ws);
+        throw new Error('TunnelClient: closed during handshake');
+      }
+      this.adopt(ws, prepared);
       this.setState('open');
     } catch (err) {
       if (!this.closedByUser) this.setState('idle');
@@ -133,7 +138,11 @@ export class TunnelClient {
   }
 
   private adopt(ws: WebSocket, prepared: PreparedTunnelSocket): void {
-    if (ws.readyState !== ws.OPEN) throw new Error('TunnelClient: socket closed during handshake');
+    if (ws.readyState !== ws.OPEN) {
+      const failure = prepared.release();
+      if (this.candidateWs === ws) this.candidateWs = null;
+      throw failure ?? new Error('TunnelClient: socket closed during handshake');
+    }
     this.stopTimers();
     this.assembler.reset();
     this.ws = ws;
@@ -141,9 +150,17 @@ export class TunnelClient {
     ws.addEventListener('close', (event: CloseEvent) => this.handleClose(ws, event), {
       once: true,
     });
-    prepared.release();
+    const failure = prepared.release();
+    if (failure) {
+      if (this.ws === ws) this.ws = null;
+      this.discardCandidate(ws);
+      throw failure;
+    }
     if (this.candidateWs === ws) this.candidateWs = null;
     for (const event of prepared.buffered) this.handleMessage(ws, event);
+    if (this.closedByUser || ws !== this.ws) {
+      throw new Error('TunnelClient: socket closed during handshake');
+    }
     this.pingTimer = setInterval(() => {
       if (ws.readyState === ws.OPEN) ws.send(TUNNEL_PING_FRAME);
     }, TUNNEL_PING_INTERVAL_MS);
@@ -152,16 +169,6 @@ export class TunnelClient {
         this.rotate().catch(noop);
       }, ROTATE_AFTER_MS);
     }
-  }
-
-  private adoptFresh(ws: WebSocket): void {
-    this.adopt(ws, {
-      buffered: [],
-      status: 'active',
-      active: Promise.resolve(),
-      release: noop,
-    });
-    if (this.opts.role === 'host') ws.send(TUNNEL_HOST_READY_FRAME);
   }
 
   private handleMessage(ws: WebSocket, event: MessageEvent): void {
@@ -219,16 +226,20 @@ export class TunnelClient {
     this.setState('reconnecting');
     for (let attempt = 0; !this.closedByUser; attempt++) {
       try {
-        const ws = await dialTunnelSocket(this.opts);
+        const [ws, prepared] = await this.dialPrepared();
         if (this.closedByUser) {
-          ws.close(1000);
+          prepared.release();
+          this.discardCandidate(ws);
           return;
         }
-        this.adoptFresh(ws);
+        this.adopt(ws, prepared);
         this.setState('open');
         return;
       } catch (err) {
-        if (err instanceof TunnelAuthError) {
+        if (
+          err instanceof TunnelAuthError ||
+          (err instanceof TunnelSocketCloseError && TERMINAL_CLOSE_CODES.has(err.code))
+        ) {
           this.finalize();
           return;
         }
@@ -289,14 +300,21 @@ export class TunnelClient {
   }
 
   private async dialPrepared(
-    rotation: string,
+    rotation?: string,
   ): Promise<readonly [WebSocket, PreparedTunnelSocket]> {
     const ws = await dialTunnelSocket(this.opts);
+    if (this.closedByUser) {
+      ws.close(1000);
+      throw new Error('TunnelClient: closed during handshake');
+    }
     this.candidateWs = ws;
     try {
       const prepared = await prepareTunnelSocket(ws, this.opts.role, rotation);
+      if (rotation === undefined && prepared.status !== 'active') {
+        throw new Error('TunnelClient: unexpected host handshake');
+      }
       if (ws.readyState !== ws.OPEN) {
-        throw new Error('TunnelClient: socket closed during handshake');
+        throw prepared.release() ?? new Error('TunnelClient: socket closed during handshake');
       }
       return [ws, prepared];
     } catch (error) {
