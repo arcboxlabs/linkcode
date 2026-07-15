@@ -1,1 +1,19 @@
-/// <reference types="electron-vite/node" />
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  // Inlined into the main bundle at build time (signed builds only; see docs/RELEASE.md).
+  readonly MAIN_VITE_SENTRY_DSN?: string;
+}
+
+// Resolved by the assetPlugin in vite.shared.ts to an absolute path next to the bundle.
+declare module '*?asset' {
+  const src: string;
+  export default src;
+}
+
+declare namespace NodeJS {
+  interface ProcessEnv {
+    // Set by scripts/dev.mts before spawning Electron; read by src/main/window.ts.
+    ELECTRON_RENDERER_URL?: string;
+  }
+}
