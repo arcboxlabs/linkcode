@@ -288,6 +288,10 @@ export function DesktopShell({
     void locateFileArtifact(path, cwd, conversation.items).then(openRightFileTab);
   }
 
+  function reviewChanges(): void {
+    openRightPanelSection('diff');
+  }
+
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
       <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
@@ -329,6 +333,7 @@ export function DesktopShell({
           onRespondPermission={onRespondPermission}
           onRespondQuestion={onRespondQuestion}
           onOpenFileArtifact={openFileArtifact}
+          onReviewChanges={reviewChanges}
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}
           onApprovalPolicyChange={onApprovalPolicyChange}
