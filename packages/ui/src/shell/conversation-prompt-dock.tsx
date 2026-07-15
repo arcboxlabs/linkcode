@@ -434,6 +434,7 @@ function PermissionPrompt({
         label: t(detail.label),
         value: detail.value,
         monospace: true,
+        multiline: detail.label === 'arguments',
       }))}
       mode="single"
       submitting={respondingPermissions.has(item.requestId)}
@@ -464,7 +465,7 @@ function permissionChoices(options: readonly PermissionOption[]): ConversationPr
 }
 
 interface PermissionDetail {
-  label: 'file' | 'command' | 'url';
+  label: 'arguments' | 'file' | 'command' | 'url';
   value: string;
 }
 
@@ -484,11 +485,16 @@ function permissionDetails(toolCall: ToolCallUpdate): PermissionDetail[] {
   if (command) details.push({ label: 'command', value: command });
   const url = stringField(raw, 'url');
   if (url) details.push({ label: 'url', value: url });
+  if (toolCall.kind === 'other' && raw) {
+    // Custom/MCP approvals have no normalized argument schema. Preserve rawInput only on this
+    // approval surface; normal transcript rendering intentionally keeps arbitrary payloads hidden.
+    details.push({ label: 'arguments', value: JSON.stringify(raw, null, 2) });
+  }
   return details;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function stringField(raw: Record<string, unknown> | undefined, key: string): string | undefined {

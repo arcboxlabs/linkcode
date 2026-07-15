@@ -13,6 +13,7 @@ import {
   hasToolBody,
   toolCallCommand,
   toolCallFailureMessage,
+  toolCallFallbackContent,
   toolCallMetadata,
   toolCallSummary,
 } from './tool-utils';
@@ -31,12 +32,16 @@ function producedFilePaths(toolCall: ToolCall): string[] {
   return [...paths].slice(0, MAX_PRODUCED_FILE_CARDS);
 }
 
-function executeOutput(toolCall: ToolCall): string | undefined {
-  const text = toolCall.content
-    .flatMap((content) =>
+function executeOutput(
+  toolCall: ToolCall,
+  fallbackContent: ReturnType<typeof toolCallFallbackContent>,
+): string | undefined {
+  const text = [
+    ...toolCall.content.flatMap((content) =>
       content.type === 'content' && content.content.type === 'text' ? [content.content.text] : [],
-    )
-    .join('\n');
+    ),
+    ...fallbackContent.flatMap((content) => (content.type === 'text' ? [content.text] : [])),
+  ].join('\n');
   if (text.length > 0) return text;
   if (toolCall.rawOutput === undefined) return undefined;
   if (typeof toolCall.rawOutput === 'string') return toolCall.rawOutput;
@@ -98,13 +103,15 @@ export function ToolCallBody({
   toolCall: ToolCall;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
+  const fallbackContent = toolCallFallbackContent(toolCall);
   const isStaticExecute =
     toolCall.kind === 'execute' && toolCall.content.every((content) => content.type !== 'terminal');
-  const contentText = toolCall.content
-    .flatMap((content) =>
+  const contentText = [
+    ...toolCall.content.flatMap((content) =>
       content.type === 'content' && content.content.type === 'text' ? [content.content.text] : [],
-    )
-    .join('\n');
+    ),
+    ...fallbackContent.flatMap((content) => (content.type === 'text' ? [content.text] : [])),
+  ].join('\n');
   const rawFailureMessage =
     toolCall.kind === 'execute' ? undefined : toolCallFailureMessage(toolCall);
   const failureMessage =
@@ -117,7 +124,7 @@ export function ToolCallBody({
       {isStaticExecute ? (
         <Terminal
           title={toolCallCommand(toolCall) ?? toolCall.title}
-          output={executeOutput(toolCall)}
+          output={executeOutput(toolCall, fallbackContent)}
         />
       ) : null}
 
@@ -134,6 +141,12 @@ export function ToolCallBody({
             content={content}
           />
         );
+      })}
+
+      {fallbackContent.map((content, index) => {
+        if (isStaticExecute && content.type === 'text') return null;
+        // eslint-disable-next-line @eslint-react/no-array-index-key -- raw result content is a full snapshot with no block ids; index+type is its stable position key
+        return <ContentBlockView key={`${index}:${content.type}`} block={content} />;
       })}
 
       {failureMessage ? (

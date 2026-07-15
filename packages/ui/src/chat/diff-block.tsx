@@ -1,5 +1,8 @@
+import { Button } from 'coss-ui/components/button';
 import { FileTextIcon } from 'lucide-react';
+import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
+import { useArtifactHostActions } from './artifacts/context';
 import type { DiffStats } from './diff-utils';
 import { diffLines } from './diff-utils';
 
@@ -29,18 +32,37 @@ export function DiffBlock({
   oldText?: string;
   newText: string;
 }): React.ReactNode {
+  const t = useTranslations('workbench.artifact');
+  const openFile = useArtifactHostActions()?.openFile;
   const rows = diffLines(oldText ?? '', newText);
   const stats = {
     additions: rows.filter((row) => row.type === 'add').length,
     deletions: rows.filter((row) => row.type === 'del').length,
   };
+  const header = (
+    <>
+      <FileTextIcon className="size-3.5 text-muted-foreground" />
+      <span className="min-w-0 truncate font-mono text-muted-foreground">{path}</span>
+      <DiffCounter className="ml-auto gap-1.5" stats={stats} />
+    </>
+  );
 
   return (
     <div className="my-1 overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 border-b border-border bg-muted/32 px-3 py-1.5 text-xs">
-        <FileTextIcon className="size-3.5 text-muted-foreground" />
-        <span className="truncate font-mono text-muted-foreground">{path}</span>
-        <DiffCounter className="ml-auto gap-1.5" stats={stats} />
+      <div className="border-b border-border bg-muted/32">
+        {openFile ? (
+          <Button
+            className="w-full justify-start rounded-none border-0 px-3 font-normal text-xs sm:text-xs"
+            size="sm"
+            title={t('openFile')}
+            variant="ghost"
+            onClick={() => openFile(path)}
+          >
+            {header}
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-1.5 text-xs">{header}</div>
+        )}
       </div>
       <div className="overflow-x-auto font-mono text-xs leading-relaxed">
         {rows.map((row) => (
