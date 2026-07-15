@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from 'coss-ui/components/select';
 import { Switch } from 'coss-ui/components/switch';
+import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import type { CodeThemeDarkId, CodeThemeLightId } from '../code-themes';
 import { CODE_THEME_DARK_IDS, CODE_THEME_LABELS, CODE_THEME_LIGHT_IDS } from '../code-themes';
@@ -33,6 +34,29 @@ const TEXT_SIZE_LABEL_KEYS = {
   default: 'textSizeDefault',
   large: 'textSizeLarge',
 } as const;
+
+// Seed suggestions for the free-text font fields; any other family name is still accepted.
+const UI_FONT_SUGGESTIONS = [
+  'Inter',
+  'system-ui',
+  'SF Pro Text',
+  'Segoe UI',
+  'Roboto',
+  'Helvetica Neue',
+  'Arial',
+  'IBM Plex Sans',
+];
+const CODE_FONT_SUGGESTIONS = [
+  'SF Mono',
+  'Menlo',
+  'Monaco',
+  'JetBrains Mono',
+  'Fira Code',
+  'Cascadia Code',
+  'Hack',
+  'Source Code Pro',
+  'IBM Plex Mono',
+];
 
 export interface AppearanceSettingsPanelProps {
   theme: ThemePreference;
@@ -70,6 +94,8 @@ export function AppearanceSettingsPanel({
   onCodeFontChange,
 }: AppearanceSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.appearance');
+  const uiFontListId = useId();
+  const codeFontListId = useId();
   const textSizeItems = TEXT_SIZES.map((value) => ({
     value,
     label: t(TEXT_SIZE_LABEL_KEYS[value]),
@@ -129,8 +155,14 @@ export function AppearanceSettingsPanel({
             value={uiFont}
             onChange={(event) => onUiFontChange(event.target.value)}
             placeholder={t('uiFontPlaceholder')}
+            list={uiFontListId}
             className="w-56"
           />
+          <datalist id={uiFontListId}>
+            {UI_FONT_SUGGESTIONS.map((family) => (
+              <option key={family} value={family} />
+            ))}
+          </datalist>
         </SettingsRow>
       </SettingsCard>
 
@@ -182,8 +214,14 @@ export function AppearanceSettingsPanel({
             value={codeFont}
             onChange={(event) => onCodeFontChange(event.target.value)}
             placeholder={t('codeFontPlaceholder')}
+            list={codeFontListId}
             className="w-56"
           />
+          <datalist id={codeFontListId}>
+            {CODE_FONT_SUGGESTIONS.map((family) => (
+              <option key={family} value={family} />
+            ))}
+          </datalist>
         </SettingsRow>
       </SettingsCard>
     </div>
