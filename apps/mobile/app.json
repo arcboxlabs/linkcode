@@ -35,6 +35,7 @@
         "NSDownloadsFolderUsageDescription": "LinkCode needs downloads folder access to save coding-agent artifacts.",
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
+        "NSSupportsLiveActivities": true,
         "NSBonjourServices": ["_linkcode._tcp"]
       }
     },
@@ -110,7 +111,8 @@
             "multipleShareMimeTypes": ["image/*", "application/*"]
           }
         }
-      ]
+      ],
+      "@bacons/apple-targets"
     ]
   }
 }
