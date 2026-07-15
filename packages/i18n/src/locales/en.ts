@@ -669,6 +669,7 @@ export const en = {
         'Your agents, wherever you are. Sign in to reach the machines running LinkCode from this phone.',
       signIn: 'Sign in with LinkCode',
       skip: 'Skip — connect manually',
+      error: 'Sign-in failed. Check your connection and try again.',
     },
     account: {
       title: 'Account',

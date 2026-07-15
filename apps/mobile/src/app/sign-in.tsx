@@ -17,6 +17,7 @@ export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const account = useCloudAccount();
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   if (account.status === 'loading') {
     return (
@@ -30,8 +31,11 @@ export default function SignInScreen() {
 
   const signIn = async () => {
     setBusy(true);
+    setFailed(false);
     try {
       await signInToCloud();
+    } catch {
+      setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -55,6 +59,7 @@ export default function SignInScreen() {
         </Text>
       </View>
       <View className="gap-3">
+        {failed ? <Text className="text-center text-[13px] text-danger">{t('error')}</Text> : null}
         <Button
           size="lg"
           isDisabled={busy}
