@@ -201,7 +201,7 @@ for each correlation id (`clientReqId` → `replyTo`) and returns the reply only
 only to connections attached to that terminal. Removing a physical or relay-virtual
 connection detaches all of its terminal capabilities before the connection disappears.
 
-The HQ tunnel adds a relay-attested peer envelope outside `WireMessage`. The daemon's one
+The Cloud tunnel adds a relay-attested peer envelope outside `WireMessage`. The daemon's one
 host uplink exposes each remote peer as a separate virtual `Transport`, so Hub reply and
 terminal routing has the same connection boundary locally and remotely. Host frames are
 directed to one peer; the relay never broadcasts one client's opaque wire replies to the
