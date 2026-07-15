@@ -8,11 +8,6 @@ packages:
 nodeLinker: hoisted
 autoInstallPeers: true
 strictPeerDependencies: false
-peerDependencyRules:
-  allowedVersions:
-    # Expo SDK 56's expo-modules-core has not widened this peer yet, while
-    # react-native-reanimated 4.4 requires react-native-worklets 0.9.x.
-    react-native-worklets: 0.9.2
 # Turbo runs each package's script via `pnpm run`, which otherwise triggers a per-package deps check.
 # With hoisted layout, dependency-less packages (schema/ipc) have no local node_modules, so that check
 # falsely reports "node_modules missing". Turbo already orders/builds deps, so disable the per-run check.
