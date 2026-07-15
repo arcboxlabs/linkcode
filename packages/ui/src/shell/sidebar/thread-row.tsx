@@ -1,12 +1,12 @@
 import { useSortable } from '@dnd-kit/react/sortable';
-import type { SessionInfo, SessionStatus } from '@linkcode/schema';
+import type { SessionInfo } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from 'coss-ui/components/menu';
 import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
 import { EllipsisIcon, PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
-import { withTooltip } from '../../chat/with-tooltip';
+import { WithTooltip } from '../../chat/with-tooltip';
 import { cn } from '../../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
@@ -17,14 +17,7 @@ import {
   RowActionsCluster,
 } from './row-actions';
 import type { ThreadImMenuComponentType } from './thread-im-menu';
-
-export const SESSION_STATUS_DOT_CLASS: Record<SessionStatus, string> = {
-  starting: 'bg-info',
-  idle: 'bg-muted-foreground/40',
-  running: 'bg-success',
-  'awaiting-input': 'bg-warning',
-  stopped: 'bg-muted-foreground/25',
-};
+import { SESSION_STATUS_DOT_CLASS } from './thread-status';
 
 export interface ThreadRowProps {
   session: SessionInfo;
@@ -70,7 +63,7 @@ export function ThreadRow({
 
   return (
     <SidebarMenuItem ref={sortableRef}>
-      {withTooltip(
+      <WithTooltip tooltip={createdAtLabel}>
         <SidebarMenuButton
           isActive={active}
           onClick={onSelect}
@@ -92,9 +85,8 @@ export function ThreadRow({
             />
           </span>
           <span className="min-w-0 flex-1 truncate">{title}</span>
-        </SidebarMenuButton>,
-        createdAtLabel,
-      )}
+        </SidebarMenuButton>
+      </WithTooltip>
       <RowActionsCluster>
         {ImMenuComponent && (
           <DropdownMenu>

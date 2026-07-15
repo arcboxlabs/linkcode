@@ -3,6 +3,7 @@ import { FileTextIcon, GlobeIcon, SearchIcon, WrenchIcon } from 'lucide-react';
 import { artifactKindForPath, fileExtension } from './artifacts/file-kind';
 import { CodeBlock } from './code-block';
 import { ContentBlockView } from './content-block-view';
+import { contentDerivedEntries } from './content-derived-keys';
 import { DiffBlock } from './diff-block';
 import { FilePreviewCard } from './file-preview-card';
 import type { ToolCallFilePresentation } from './file-tool-presentation';
@@ -138,11 +139,8 @@ function FileCallPreview({
     >
       {content.length === 0
         ? undefined
-        : content.map((item, index) => (
-            <div
-              // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content is a full ordered snapshot without block ids
-              key={`${index}:${item.type}`}
-            >
+        : contentDerivedEntries(content).map(({ item, key }) => (
+            <div key={key}>
               {item.type === 'content' && item.content.type === 'text' ? (
                 <FileCallText file={file} text={item.content.text} toolCall={toolCall} />
               ) : (
@@ -168,15 +166,12 @@ function MixedFilePreview({
   file: ToolCallFilePresentation;
 }): React.ReactNode {
   const receiptContent = content.filter((item) => item.type !== 'diff');
-  const receiptIndex = content.findIndex((item) => item.type !== 'diff');
+  const firstReceipt = receiptContent[0];
 
-  return content.map((item, index) => {
+  return contentDerivedEntries(content).map(({ item, key }) => {
     if (item.type === 'diff') {
       return (
-        <div
-          // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content is a full ordered snapshot without block ids
-          key={`${index}:${item.type}`}
-        >
+        <div key={key}>
           <RenderedContent
             content={item}
             TerminalBlockComponent={TerminalBlockComponent}
@@ -185,7 +180,7 @@ function MixedFilePreview({
         </div>
       );
     }
-    if (index !== receiptIndex) return null;
+    if (item !== firstReceipt) return null;
     return (
       <FileCallPreview
         key={`${toolCall.toolCallId}:receipts`}
@@ -258,11 +253,8 @@ function ContentList({
   content,
   TerminalBlockComponent,
 }: ToolResultPreviewProps & { content: readonly ToolCallContent[] }): React.ReactNode {
-  return content.map((item, index) => (
-    <div
-      // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content is a full ordered snapshot without block ids
-      key={`${index}:${item.type}`}
-    >
+  return contentDerivedEntries(content).map(({ item, key }) => (
+    <div key={key}>
       {item.type === 'content' && item.content.type === 'text' ? (
         renderTextPreview(toolCall, item.content.text)
       ) : (
@@ -289,10 +281,9 @@ function ExecutePreview({
 
   return (
     <>
-      {terminalContent.map((item, index) => (
+      {contentDerivedEntries(terminalContent).map(({ item, key }) => (
         <RenderedContent
-          // eslint-disable-next-line @eslint-react/no-array-index-key -- terminal references are an ordered full snapshot without block ids
-          key={`${index}:${item.type}`}
+          key={key}
           content={item}
           TerminalBlockComponent={TerminalBlockComponent}
           toolCall={toolCall}

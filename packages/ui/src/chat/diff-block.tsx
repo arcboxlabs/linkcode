@@ -1,5 +1,5 @@
 import { cn } from '../lib/cn';
-import type { ArtifactNavigation } from './artifacts/context';
+import type { ArtifactNavigation } from './artifacts/host-actions';
 import type { DiffStats } from './diff-utils';
 import { diffLines } from './diff-utils';
 import { FilePreviewCard } from './file-preview-card';

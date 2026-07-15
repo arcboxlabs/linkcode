@@ -1,6 +1,6 @@
 import { Button } from 'coss-ui/components/button';
 import { cn } from '../lib/cn';
-import { withTooltip } from './with-tooltip';
+import { WithTooltip } from './with-tooltip';
 
 export type MessageProps = React.HTMLAttributes<HTMLDivElement> & {
   from: 'user' | 'assistant';
@@ -61,11 +61,12 @@ export function MessageAction({
   variant = 'ghost',
   ...props
 }: MessageActionProps): React.ReactNode {
-  return withTooltip(
-    <Button aria-label={label ?? tooltip} size={size} type="button" variant={variant} {...props}>
-      {children}
-    </Button>,
-    tooltip,
+  return (
+    <WithTooltip tooltip={tooltip}>
+      <Button aria-label={label ?? tooltip} size={size} type="button" variant={variant} {...props}>
+        {children}
+      </Button>
+    </WithTooltip>
   );
 }
 

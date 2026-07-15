@@ -12,28 +12,15 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
+import { contentDerivedEntries } from './content-derived-keys';
 import { Message, MessageContent } from './message';
+import { subagentTaskInput } from './subagent-task-input';
 import { ThoughtBlock } from './thought-block';
 import { TOOL_DETAIL_SCROLL_CLASS_NAME } from './tool';
 import { ToolCallBody, ToolCallItem } from './tool-call-item';
 import { toolCallDisplayText } from './tool-result-content';
 import { toolCallFailureMessage } from './tool-utils';
 import type { ConversationItem } from './types';
-
-export interface SubagentTaskInput {
-  description?: string;
-  subagentType?: string;
-}
-
-/** The Task tool's input fields the header displays (see the SDK's `AgentInput`). */
-export function subagentTaskInput(rawInput: unknown): SubagentTaskInput {
-  if (typeof rawInput !== 'object' || rawInput === null || Array.isArray(rawInput)) return {};
-  const raw = rawInput as Record<string, unknown>;
-  return {
-    description: typeof raw.description === 'string' ? raw.description : undefined,
-    subagentType: typeof raw.subagent_type === 'string' ? raw.subagent_type : undefined,
-  };
-}
 
 interface SubagentTranscriptProps {
   /** The spawning `task`-kind tool call. */
@@ -80,9 +67,8 @@ export function SubagentTranscript({
             return (
               <Message key={item.id} from="assistant">
                 <MessageContent className="space-y-1">
-                  {item.blocks.map((block, index) => (
-                    // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: index+type is a stable position key
-                    <ContentBlockView key={`${index}:${block.type}`} block={block} />
+                  {contentDerivedEntries(item.blocks).map(({ item: block, key }) => (
+                    <ContentBlockView key={key} block={block} />
                   ))}
                 </MessageContent>
               </Message>

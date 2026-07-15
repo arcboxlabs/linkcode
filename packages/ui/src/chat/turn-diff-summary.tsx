@@ -6,7 +6,7 @@ import {
 } from 'coss-ui/components/collapsible';
 import { ChevronDownIcon, FileDiffIcon, Undo2Icon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { useArtifactHostActions } from './artifacts/context';
+import { useArtifactHostActions } from './artifacts/host-actions';
 import type { TurnEdits, TurnFileEdit } from './turn-edits';
 
 const COLLAPSED_FILE_COUNT = 3;

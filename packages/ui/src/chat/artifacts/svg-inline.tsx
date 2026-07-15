@@ -2,9 +2,9 @@ import dompurify from 'dompurify';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { ArtifactFrame } from './artifact-frame';
-import { useArtifactHostActions } from './context';
 import { extractSvgLabel } from './element-label';
 import { FenceFallback } from './fence-fallback';
+import { useArtifactHostActions } from './host-actions';
 import type { InlineArtifactProps } from './types';
 
 const SVG_ROOT_RE = /<svg[\s>]/i;

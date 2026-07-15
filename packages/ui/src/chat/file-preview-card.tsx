@@ -3,9 +3,9 @@ import { Button } from 'coss-ui/components/button';
 import { Card, CardHeader, CardPanel, CardTitle } from 'coss-ui/components/card';
 import { useRef } from 'react';
 import { cn } from '../lib/cn';
-import type { ArtifactNavigation } from './artifacts/context';
-import { artifactNavigationAction, useArtifactHostActions } from './artifacts/context';
 import { fileBasename } from './artifacts/file-kind';
+import type { ArtifactNavigation } from './artifacts/host-actions';
+import { artifactNavigationAction, useArtifactHostActions } from './artifacts/host-actions';
 import { FileIdentityIcon } from './file-identity-icon';
 import { FilePathTooltip } from './with-tooltip';
 
@@ -63,10 +63,7 @@ export function FilePreviewCard({
       {content}
     </Button>
   ) : (
-    <div
-      className="flex items-center gap-2 px-3 py-1.5 text-muted-foreground text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      tabIndex={0}
-    >
+    <div className="flex items-center gap-2 px-3 py-1.5 text-muted-foreground text-xs">
       {content}
     </div>
   );
