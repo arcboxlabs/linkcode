@@ -11,6 +11,7 @@ import {
   Trash2Icon,
   WrenchIcon,
 } from 'lucide-react';
+import { toolCallFilePresentation } from './file-tool-presentation';
 import {
   recordValue,
   stringValue,
@@ -143,6 +144,7 @@ export function toolCallSummary(toolCall: ToolCall): string | undefined {
 
 export function hasToolBody(toolCall: ToolCall): boolean {
   if (toolCallDisplayContent(toolCall).length > 0) return true;
+  if (toolCallFilePresentation(toolCall)) return true;
   if (toolCall.kind === 'execute') {
     if (toolCallCommand(toolCall)) return true;
     if (toolCallExecuteText(toolCall)) return true;

@@ -4,6 +4,9 @@ import { artifactKindForPath, fileExtension } from './artifacts/file-kind';
 import { CodeBlock } from './code-block';
 import { ContentBlockView } from './content-block-view';
 import { DiffBlock } from './diff-block';
+import { FilePreviewCard } from './file-preview-card';
+import type { ToolCallFilePresentation } from './file-tool-presentation';
+import { toolCallDiffNavigation, toolCallFilePresentation } from './file-tool-presentation';
 import { Markdown } from './markdown';
 import { Terminal } from './terminal';
 import { TerminalBlock } from './terminal-block';
@@ -13,7 +16,6 @@ import {
   toolCallExecuteText,
   toolCallFetchStatus,
   toolCallFetchUrl,
-  toolCallFilePath,
   toolCallReadPreviewText,
   toolCallSearchQuery,
 } from './tool-result-content';
@@ -27,13 +29,22 @@ interface ToolResultPreviewProps {
 function RenderedContent({
   content,
   TerminalBlockComponent,
+  toolCall,
 }: {
   content: ToolCallContent;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  toolCall: ToolCall;
 }): React.ReactNode {
   if (content.type === 'content') return <ContentBlockView block={content.content} />;
   if (content.type === 'diff') {
-    return <DiffBlock path={content.path} oldText={content.oldText} newText={content.newText} />;
+    return (
+      <DiffBlock
+        navigation={toolCallDiffNavigation(toolCall, content.path, content.newText)}
+        path={content.path}
+        oldText={content.oldText}
+        newText={content.newText}
+      />
+    );
   }
   if (TerminalBlockComponent) {
     return <TerminalBlockComponent terminalId={content.terminalId} />;
@@ -81,18 +92,121 @@ function markupLanguage(text: string): 'html' | 'xml' | undefined {
   return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html') ? 'html' : 'xml';
 }
 
+function FileCallText({
+  file,
+  text,
+  toolCall,
+}: {
+  file: ToolCallFilePresentation;
+  text: string;
+  toolCall: ToolCall;
+}): React.ReactNode {
+  if (toolCall.kind !== 'read') return <Markdown>{text}</Markdown>;
+
+  const previewText = file.ambiguous ? text : toolCallReadPreviewText(toolCall, text);
+  if (!file.ambiguous && artifactKindForPath(file.path) === 'markdown') {
+    return <Markdown>{previewText}</Markdown>;
+  }
+  return (
+    <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
+      <code>{previewText}</code>
+    </pre>
+  );
+}
+
+/** File calls without structured diffs share one identity/navigation header across every block.
+ * This matters for Pi resource results and Codex multi-file receipts whose text has no path key. */
+function FileCallPreview({
+  content,
+  file,
+  TerminalBlockComponent,
+  toolCall,
+}: ToolResultPreviewProps & {
+  content: readonly ToolCallContent[];
+  file: ToolCallFilePresentation;
+}): React.ReactNode {
+  const badge =
+    toolCall.kind === 'read' && !file.ambiguous ? fileExtension(file.path) || undefined : undefined;
+
+  return (
+    <FilePreviewCard
+      badge={badge}
+      label={file.label}
+      navigation={file.navigation ?? null}
+      path={file.path}
+      tooltip={file.tooltip}
+    >
+      {content.length === 0
+        ? undefined
+        : content.map((item, index) => (
+            <div
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content is a full ordered snapshot without block ids
+              key={`${index}:${item.type}`}
+            >
+              {item.type === 'content' && item.content.type === 'text' ? (
+                <FileCallText file={file} text={item.content.text} toolCall={toolCall} />
+              ) : (
+                <RenderedContent
+                  content={item}
+                  TerminalBlockComponent={TerminalBlockComponent}
+                  toolCall={toolCall}
+                />
+              )}
+            </div>
+          ))}
+    </FilePreviewCard>
+  );
+}
+
+function MixedFilePreview({
+  content,
+  file,
+  TerminalBlockComponent,
+  toolCall,
+}: ToolResultPreviewProps & {
+  content: readonly ToolCallContent[];
+  file: ToolCallFilePresentation;
+}): React.ReactNode {
+  const receiptContent = content.filter((item) => item.type !== 'diff');
+  const receiptIndex = content.findIndex((item) => item.type !== 'diff');
+
+  return content.map((item, index) => {
+    if (item.type === 'diff') {
+      return (
+        <div
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content is a full ordered snapshot without block ids
+          key={`${index}:${item.type}`}
+        >
+          <RenderedContent
+            content={item}
+            TerminalBlockComponent={TerminalBlockComponent}
+            toolCall={toolCall}
+          />
+        </div>
+      );
+    }
+    if (index !== receiptIndex) return null;
+    return (
+      <FileCallPreview
+        key={`${toolCall.toolCallId}:receipts`}
+        content={receiptContent}
+        file={file}
+        toolCall={toolCall}
+        TerminalBlockComponent={TerminalBlockComponent}
+      />
+    );
+  });
+}
+
 function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
   switch (toolCall.kind) {
     case 'read': {
-      const path = toolCallFilePath(toolCall) ?? toolCall.title;
-      const language = fileExtension(path) || undefined;
-      const previewText = toolCallReadPreviewText(toolCall, text);
-      return artifactKindForPath(path) === 'markdown' ? (
-        <ToolPreviewCard badge={language} icon={FileTextIcon} title={path}>
-          <Markdown>{previewText}</Markdown>
+      return (
+        <ToolPreviewCard icon={FileTextIcon} title={toolCall.title}>
+          <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
+            <code>{text}</code>
+          </pre>
         </ToolPreviewCard>
-      ) : (
-        <CodeBlock code={previewText} language={language} title={path} />
       );
     }
     case 'edit':
@@ -100,7 +214,7 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
     case 'move': {
       const Icon = TOOL_KIND_ICONS[toolCall.kind];
       return (
-        <ToolPreviewCard icon={Icon} title={toolCallFilePath(toolCall) ?? toolCall.title}>
+        <ToolPreviewCard icon={Icon} title={toolCall.title}>
           <Markdown>{text}</Markdown>
         </ToolPreviewCard>
       );
@@ -152,7 +266,11 @@ function ContentList({
       {item.type === 'content' && item.content.type === 'text' ? (
         renderTextPreview(toolCall, item.content.text)
       ) : (
-        <RenderedContent content={item} TerminalBlockComponent={TerminalBlockComponent} />
+        <RenderedContent
+          content={item}
+          TerminalBlockComponent={TerminalBlockComponent}
+          toolCall={toolCall}
+        />
       )}
     </div>
   ));
@@ -177,6 +295,7 @@ function ExecutePreview({
           key={`${index}:${item.type}`}
           content={item}
           TerminalBlockComponent={TerminalBlockComponent}
+          toolCall={toolCall}
         />
       ))}
       {terminalContent.length === 0 || output ? (
@@ -197,6 +316,30 @@ export function ToolResultPreview({
   TerminalBlockComponent,
 }: ToolResultPreviewProps): React.ReactNode {
   const content = toolCallDisplayContent(toolCall);
+  const file = toolCallFilePresentation(toolCall);
+  if (file) {
+    const hasDiff = content.some((item) => item.type === 'diff');
+    if (!hasDiff) {
+      return (
+        <FileCallPreview
+          content={content}
+          file={file}
+          toolCall={toolCall}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+    if (content.some((item) => item.type !== 'diff')) {
+      return (
+        <MixedFilePreview
+          content={content}
+          file={file}
+          toolCall={toolCall}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+  }
   return toolCall.kind === 'execute' ? (
     <ExecutePreview
       content={content}

@@ -68,7 +68,7 @@ describe('ToolCallBody', () => {
     const { container } = render(<ToolCallBody toolCall={toolCall} />);
 
     expect(screen.getByText('path')).toBeDefined();
-    expect(screen.getByText('README.md:12')).toBeDefined();
+    expect(screen.getAllByText('README.md:12')).toHaveLength(2);
     expect(screen.queryByText('input')).toBeNull();
     expect(container.textContent).not.toContain('offset');
     expect(container.textContent).not.toContain('debug');
@@ -95,7 +95,8 @@ describe('ToolCallBody', () => {
 
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('pre')?.textContent).toBe(source);
-    expect(screen.getAllByText('src/answer.ts')).toHaveLength(2);
+    expect(screen.getByText('src/answer.ts')).toBeDefined();
+    expect(screen.getByText('answer.ts')).toBeDefined();
   });
 
   it('renders Markdown file reads as a document preview', () => {
