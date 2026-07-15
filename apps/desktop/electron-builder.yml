@@ -1,4 +1,7 @@
-# electron-builder configuration for @linkcode/desktop.
+# Shared electron-builder base for @linkcode/desktop. Both channels extend it:
+# electron-builder.release.yml (release) and electron-builder.devshell.yml (local dev shell); the
+# packaging entry is chosen in scripts/package-app.mts. Do NOT pass this file to electron-builder
+# directly — it declares no `protocols`, so a build off it would ship no deep-link scheme.
 #
 # Packaging only — the app itself is compiled by `electron-vite build` (run via
 # `pnpm turbo run build`) into `out/`; electron-builder just wraps that output.
@@ -11,13 +14,10 @@ appId: com.arcboxlabs.linkcode.desktop
 productName: LinkCode
 copyright: Copyright © 2026 ArcBox Labs
 
-# `linkcode://` deep-link scheme for LinkCode Cloud OAuth callbacks. electron-builder registers it
-# in the macOS Info.plist and the Windows installer; dev shells register it at runtime via
-# setAsDefaultProtocolClient (see cloud-auth/client.ts).
-protocols:
-  - name: LinkCode
-    schemes:
-      - linkcode
+# The `linkcode://` / `linkcode-dev://` deep-link scheme is declared per channel, NOT here. This
+# base is shared by both channels, and electron-builder CONCATENATES arrays inherited via `extends`
+# (builder-util-runtime deepAssign) — a shared `protocols` would leak `linkcode` into the dev shell
+# and re-collide with release on the OS-global scheme. See the two channel configs.
 
 # electron-builder needs an exact Electron version (it downloads per-platform binaries) and
 # cannot read pnpm's `catalog:` protocol. Keep in sync with the `electron` catalog entry.

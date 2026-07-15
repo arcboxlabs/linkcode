@@ -27,11 +27,16 @@ export const useCloudAuthStore = create<CloudAuthState>((set) => {
     authenticating: false,
     signIn() {
       set({ authenticating: true });
-      // requestAuth resolves once the system browser has been handed the sign-in URL; the
-      // rest of the flow happens out-of-app (deep link → onAuthenticated). Clear the flag on
-      // that handoff — otherwise abandoning the browser leaves no callback to fire and the
-      // button stays disabled until reload.
-      void window.requestAuth().finally(() => set({ authenticating: false }));
+      // Re-assert this app as the linkcode(-dev):// default handler before the browser handoff, so
+      // the OAuth callback deep-link routes back to THIS app even if a running `pnpm dev` or the
+      // other channel grabbed the OS-global scheme after startup. `allSettled` → a failed re-assert
+      // still proceeds to sign-in (falling back to the last handler to register).
+      // requestAuth resolves once the system browser has been handed the sign-in URL; the rest of
+      // the flow happens out-of-app (deep link → onAuthenticated). Clear the flag on that handoff —
+      // otherwise abandoning the browser leaves no callback to fire and the button stays disabled.
+      void Promise.allSettled([window.linkcodeCloud.claimDeepLink()])
+        .then(() => window.requestAuth())
+        .finally(() => set({ authenticating: false }));
     },
     signOut() {
       void window.signOut();
