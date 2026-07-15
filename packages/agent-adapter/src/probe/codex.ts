@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import process from 'node:process';
 import { promisify } from 'node:util';
 import type { AgentAuthStatus } from '@linkcode/schema';
+import { resolveCodexBinaryPath } from '../native/codex/app-server';
 import { AgentCliProbe } from './base';
 
 const execFileAsync = promisify(execFile);
@@ -20,6 +21,17 @@ export class CodexProbe extends AgentCliProbe {
 
   protected platformPackageBase(): string {
     return `codex-${process.platform}-${process.arch}`;
+  }
+
+  /** codex nests its CLI under `vendor/<triple>/bin/` inside the platform package, so the shared
+   * package-root lookup finds nothing — delegate to the app-server module's own resolver (this is
+   * what the boot probe's sdk-source auth check and `loginBinaryPath` fall back to in dev). */
+  override sdkPlatformBinaryPath(): string | undefined {
+    try {
+      return resolveCodexBinaryPath();
+    } catch {
+      return undefined;
+    }
   }
 
   /**
