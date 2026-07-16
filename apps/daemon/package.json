@@ -28,7 +28,6 @@
     "@sentry/node": "10.62.0",
     "@sentry/profiling-node": "10.62.0",
     "better-sqlite3": "^12.11.1",
-    "drizzle-orm": "^0.45.2",
     "foxts": "^5.8.0"
   },
   "devDependencies": {
@@ -37,6 +36,7 @@
     "@types/node": "catalog:",
     "cross-spawn": "^7.0.6",
     "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"
