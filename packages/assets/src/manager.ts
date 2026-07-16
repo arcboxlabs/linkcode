@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import type {
   AssetInstallEvent,
   InstalledAsset,
@@ -12,6 +13,7 @@ import type { GcReport } from './gc';
 import { collectGarbage } from './gc';
 import type { InstallOptions } from './install';
 import { installAsset, installedPath } from './install';
+import { assetDir } from './paths';
 import { wantedVersion } from './version-pin';
 
 export interface AssetManagerOptions extends InstallOptions {
@@ -55,6 +57,21 @@ export class AssetManager {
   /** Drop superseded versions and tmp orphans. Best-effort; never throws. */
   gcAtBoot(): GcReport {
     return collectGarbage(this.wanted);
+  }
+
+  /**
+   * Any non-`.tmp-*` version on disk, regardless of the wanted pin. Read BEFORE {@link gcAtBoot}
+   * sweeps superseded versions: a prior install = standing consent to auto-refresh (CODE-221).
+   */
+  hasInstallOnDisk(id: ManagedAssetId): boolean {
+    if (!this.descriptors.has(id)) return false;
+    let entries: string[];
+    try {
+      entries = readdirSync(assetDir(id));
+    } catch {
+      return false;
+    }
+    return entries.some((entry) => !entry.startsWith('.tmp-'));
   }
 
   /** Live snapshot for the `asset.list` wire resource. */

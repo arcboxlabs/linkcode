@@ -60,6 +60,27 @@ describe('AssetManager', () => {
     expect(manager.managedBinary('tool:tectonic')).toBe(installed?.path);
   });
 
+  it('hasInstallOnDisk reports any non-tmp version until GC sweeps it (consent survives a pin bump)', async () => {
+    freshStore();
+    const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });
+    expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(false);
+    expect(manager.hasInstallOnDisk('agent:claude-code')).toBe(false); // not in this catalog
+
+    // A .tmp-* orphan (aborted install) is not an install.
+    mkdirSync(join(assetDir('tool:tectonic'), '.tmp-orphan'), { recursive: true });
+    expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(false);
+
+    await manager.ensure('tool:tectonic');
+    expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(true);
+
+    // After a pin bump the superseded install still reads as consent — until gcAtBoot runs,
+    // which is why the daemon snapshots consent first.
+    const bumped = new AssetManager({ catalog: [await servedDescriptor('3.0.0')] });
+    expect(bumped.hasInstallOnDisk('tool:tectonic')).toBe(true);
+    bumped.gcAtBoot();
+    expect(bumped.hasInstallOnDisk('tool:tectonic')).toBe(false);
+  });
+
   it('gcAtBoot removes superseded versions and tmp orphans but keeps the wanted version', async () => {
     freshStore();
     const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });

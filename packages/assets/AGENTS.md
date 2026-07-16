@@ -44,11 +44,15 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
 
 ## Consumers
 
-The daemon constructs one `AssetManager` at boot: GC → `setManagedResolver` into
-`agentRuntimeProber` (managed wins over detected the moment an install lands) → background
-`ensure()` for agent pairs the probe found unusable. The engine serves `statuses()` on
-`asset.list`, triggers `ensure()` on `asset.ensure`, and forwards install lifecycle to the wire
-via the injected `AssetService`. Tectonic consumers (CODE-81) resolve by asset id.
+The daemon constructs one `AssetManager` at boot: consent snapshot (`hasInstallOnDisk` — a
+prior install of any version is the user's standing consent, read BEFORE GC deletes superseded
+versions) → GC → `setManagedResolver` into `agentRuntimeProber` (managed wins over detected the
+moment an install lands) → background `ensure()` only for consented agent pairs the probe found
+unusable. An agent never installed here is NOT auto-downloaded (CODE-221) — its first install
+comes from the client's `asset.ensure` (the onboarding Download card). The engine serves
+`statuses()` on `asset.list`, triggers `ensure()` on `asset.ensure`, and forwards install
+lifecycle to the wire via the injected `AssetService`. Tectonic consumers (CODE-81) resolve by
+asset id.
 
 Observers use `subscribe()` (progress / installed / failed events), never a per-call
 `onProgress`: install.ts's in-flight dedupe keeps only the first caller's callback, so per-call
