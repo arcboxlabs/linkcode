@@ -69,10 +69,9 @@ type AssistantMessage = AssistantSDKMessage['message'];
 type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
 type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
 
-/** Claude's subagent-spawning tool: named `Agent` in current CLIs (verified live against the
- * vendored 0.3.x), `Task` in older transcripts — history replay still meets the old name. Exact
- * match on purpose: the shared name-based classifier stays untouched so other adapters (e.g.
- * opencode's lowercase `task`) opt in deliberately rather than by regex accident. */
+/** Claude's subagent-spawning tool: `Agent` in current CLIs (verified live against the vendored
+ * 0.3.x), `Task` in older transcripts still met by history replay. Exact match on purpose so other
+ * adapters (e.g. opencode's lowercase `task`) opt in deliberately, not by regex accident. */
 function claudeToolKind(name: string): ToolCall['kind'] {
   return name === 'Task' || name === 'Agent' ? 'task' : toolKindFromName(name);
 }
@@ -101,12 +100,11 @@ const ASK_USER_QUESTION_INPUT = z.object({
 });
 
 /**
- * The approval-policy axis claude-code advertises; ids map 1:1 onto the SDK's `PermissionMode` and
- * names/order match Claude Desktop's own Mode menu. Claude models permission handling and plan as
- * ONE axis, so `plan` rides this channel for claude-code (the generic `set-mode` workflow axis
- * remains for agents like codex where plan is a workflow mode); the composer dedupes the stub
- * workflow entry by id. Only `dontAsk` stays off the menu: its deny-by-default adds nothing over
- * rejecting the asks `default` already raises.
+ * The approval-policy axis claude-code advertises: ids map 1:1 onto the SDK's `PermissionMode`,
+ * names/order match Claude Desktop's Mode menu. Claude models permissions and plan as ONE axis, so
+ * `plan` rides this channel rather than the generic `set-mode` workflow axis (the composer dedupes
+ * the stub workflow entry by id). `dontAsk` stays off the menu — its deny-by-default adds nothing
+ * over rejecting the asks `default` already raises.
  */
 const APPROVAL_POLICIES = [
   {
@@ -139,11 +137,10 @@ const APPROVAL_POLICIES = [
 type ClaudeApprovalPolicyId = (typeof APPROVAL_POLICIES)[number]['policyId'];
 
 /**
- * Resolve `permissions.defaultMode` from Claude settings, same precedence as the CLI
- * (local > project > user). The SDK-driven CLI pins its startup mode to 'default' unless
- * `--permission-mode` is passed — unlike the interactive CLI it does NOT apply the settings
- * default itself (verified empirically against 0.3.179's vendored CLI, including with explicit
- * `settingSources`) — so honoring the user's configured default is on the adapter.
+ * Resolve `permissions.defaultMode` from Claude settings, same precedence as the CLI (local >
+ * project > user). Unlike the interactive CLI, the SDK-driven CLI pins its startup mode to
+ * 'default' and does NOT apply the settings default itself (verified against 0.3.179's vendored
+ * CLI, even with explicit `settingSources`) — honoring it is on the adapter.
  */
 async function settingsDefaultMode(cwd: string): Promise<ClaudeApprovalPolicyId | undefined> {
   const files = [
@@ -170,9 +167,8 @@ async function settingsDefaultMode(cwd: string): Promise<ClaudeApprovalPolicyId 
 }
 
 /**
- * The `prompt` fed to a streaming-input `query()`: an `AsyncIterable<SDKUserMessage>` that stays open
- * for the whole session so `onPrompt` can push each new turn into an already-running `Query` instead of
- * spawning a fresh one. Only ever has one consumer (the SDK's own internal read loop).
+ * The `prompt` fed to a streaming-input `query()`: stays open for the whole session so `onPrompt`
+ * pushes each turn into the running `Query`. Single consumer (the SDK's own internal read loop).
  */
 class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
   private readonly buffered: SDKUserMessage[] = [];
@@ -216,11 +212,9 @@ class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
 }
 
 /**
- * Map a switchable effort onto Claude's flag-settings keys. `ultracode` is its own boolean key
- * (xhigh plus standing dynamic-workflow orchestration), not an `effortLevel` value; a plain level
- * clears it (`null` drops the key from the flag layer) so the session actually leaves ultracode
- * instead of staying pinned at xhigh by the still-set flag. `max` never comes through here — it
- * can't travel flag-settings at all (see `onSetEffort`).
+ * Map a switchable effort onto Claude's flag-settings keys. `ultracode` is its own boolean key, not
+ * an `effortLevel` value; a plain level must clear it (`null` drops the key) or the session stays
+ * pinned at xhigh. `max` never comes through here — it can't travel flag-settings (see `onSetEffort`).
  */
 function effortFlagSettings(
   effort: Exclude<EffortLevel, 'max'>,
@@ -242,10 +236,9 @@ export function mapClaudeStop(reason: string | null): StopReason {
   }
 }
 
-/** Normalize a `SlashCommand` onto the cross-agent `AgentCommand` shape: the provider's empty-string
- * `description`/`argumentHint` (no value, not omitted) become `undefined`, and an empty `aliases`
- * list is dropped. Aliases ride through so composer/engine matching accepts them (e.g. `/cost` →
- * `/usage`); invocation then pushes the alias itself, which the CLI resolves like any typed `/`. */
+/** Normalize a `SlashCommand` onto `AgentCommand`: empty-string `description`/`argumentHint` and an
+ * empty `aliases` list become `undefined`. Aliases ride through so composer/engine matching accepts
+ * them; invocation pushes the alias itself, which the CLI resolves like any typed `/`. */
 function mapClaudeCommand(command: SlashCommand): AgentCommand {
   return {
     name: command.name,
@@ -258,14 +251,11 @@ function mapClaudeCommand(command: SlashCommand): AgentCommand {
 const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
 
 /**
- * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` via `query()` in **streaming input
- * mode**: one persistent `Query` for the whole session, fed through `AsyncMessageQueue` so each new
- * prompt is pushed into the already-running session instead of spawning a fresh `query()` call.
- *
- * This replaced a single-message-per-turn + `resume` design. That was simpler, but the CLI silently
- * ignores a changed `model` option once a session is resumed — verified against the live SDK — so
- * live model switching was impossible. Streaming mode is the only way the SDK exposes mid-session
- * control (`Query#setModel`, `#setPermissionMode`, `#interrupt`); see `onSetModel` / `onCancel` below.
+ * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` `query()` in **streaming input
+ * mode**: one persistent `Query` per session, fed through `AsyncMessageQueue`. This replaced a
+ * single-message-per-turn + `resume` design: the CLI silently ignores a changed `model` option once
+ * a session is resumed (verified against the live SDK), and streaming mode is the only channel for
+ * mid-session control (`Query#setModel`, `#setPermissionMode`, `#interrupt`).
  */
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
@@ -286,15 +276,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** The effort the session should run at; applied at `Query` creation and on live switches. */
   private effort: EffortLevel | undefined;
   /** The approval policy the session runs under; applied at `Query` creation and on live switches.
-   * `undefined` = the user hasn't picked one — the CLI then resolves its own default (including
-   * `permissions.defaultMode` from the user's settings.json), reported back via the init message. */
+   * `undefined` = no user pick — the CLI resolves its own default, reported back via init. */
   private approvalPolicy: ClaudeApprovalPolicyId | undefined;
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
-  /** Diff content parsed off an Edit/Write announce, keyed by tool_use id. Re-attached at settle
-   * because `emitTool`'s merge replaces `content` wholesale — the result text must not wipe the
-   * diff. */
+  /** Diff content parsed off an Edit/Write announce, keyed by tool_use id; re-attached at settle
+   * because `emitTool`'s merge replaces `content` wholesale (result text must not wipe the diff). */
   private readonly pendingEditDiffs = new Map<string, ToolCallContent[]>();
   /** The last compaction boundary, awaiting its summary: the swapped-in summary text arrives on a
    * separate user frame identified by the boundary's anchor uuid (see `handleCompactBoundary`). */
@@ -310,9 +298,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
-    // Query initialization is also the only authoritative slash-command catalog source. Start the
-    // persistent streaming Query with an empty input queue so a fresh session can advertise `/`
-    // commands before the user sends its first message.
+    // Query init is the only authoritative slash-command catalog source: start the persistent
+    // streaming Query with an empty queue so `/` commands are advertised before the first prompt.
     await this.createQuery();
   }
 
@@ -332,18 +319,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
-  /** Reflect the served model the CLI reports — the init message and every assistant frame carry it,
-   * so the client shows the true model even when the session started without a requested one. Dedup
-   * lives in `emitModel`. */
+  /** Reflect the served model the CLI reports (init message + every assistant frame) so the client
+   * shows the true model even when the session started without a requested one. */
   private syncModel(model: string | undefined): void {
     if (model) this.emitModel(model);
   }
 
-  /** Read-only `Stop` hook that learns the CLI's *resolved* effort (after any per-model downgrade)
-   * so a session the user never set an effort on still reflects a real value instead of a
-   * placeholder. Skipped once the user picks explicitly: that pick — including `ultracode`/`max`,
-   * which this hook's base-level field can't express — is authoritative and emitted by `onSetEffort`.
-   * The `effort` field is absent on models without effort support, in which case nothing is emitted. */
+  /** Read-only `Stop` hook: learns the CLI's *resolved* effort (after any per-model downgrade) so a
+   * session with no explicit pick still reflects a real value. Skipped once the user picks — the
+   * pick (including `ultracode`/`max`, which this hook's base-level field can't express) is
+   * authoritative via `onSetEffort`. The field is absent on models without effort support. */
   private readonly reflectEffortHook: HookCallback = (input) => {
     if (this.effort === undefined && input.effort?.level) {
       const parsed = EffortLevelSchema.safeParse(input.effort.level);
@@ -392,20 +377,17 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         offset,
       }),
       readSubagentTranscripts(mod, opts.historyId),
-      // The supplement only affects the first page — the swapped-in summary is the SDK chain's
-      // head row and the dropped rows are prepended before it — so later pages skip the
-      // whole-transcript read.
+      // The supplement only affects the first page (the summary is the SDK chain's head row, the
+      // dropped rows are prepended before it), so later pages skip the whole-transcript read.
       offset === 0 ? this.readCompactionSupplement(opts.historyId) : EMPTY_SUPPLEMENT,
     ]);
     const historyId = opts.historyId;
     const mapper = createClaudeHistoryEventMapper(historyId, compactions.records);
     const events: AgentHistoryEvent[] = [];
-    // Splice each subagent's transcript in right after its spawn announce, so the seeded order
-    // matches the live stream and the children land inside the parent's turn (the UI's per-segment
-    // partition depends on that). Keyed off the announce (in_progress) only — the later settle
-    // re-emits the same tool-call id in a terminal state. Recursive: a subagent's own transcript
-    // can announce a further spawn, whose transcript must nest the same way (delete-before-recurse
-    // also guards against a malformed self-referential parent id looping forever).
+    // Splice each subagent's transcript right after its spawn announce so children land inside the
+    // parent's turn (the UI's per-segment partition depends on it). Keyed off the in_progress
+    // announce only — the settle re-emits the same id terminal. Recursive for nested spawns;
+    // delete-before-recurse guards a malformed self-referential parent id looping forever.
     const pushWithSubagents = (event: AgentHistoryEvent): void => {
       events.push(event);
       if (
@@ -422,10 +404,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     };
     const page = messages.slice(0, limit);
     // The SDK's chain walk starts at the newest compaction summary, dropping everything logically
-    // before it (the reported "history gone" symptom). Prepend those rows — recovered from the raw
-    // transcript — ahead of the first page; rows the SDK still returned (the preserved segment,
-    // relinked into the post-compaction chain) are deduped by uuid. The dedup window is this page
-    // only — safe because the preserved segment sits right after the summary head, well inside it.
+    // before it. Prepend the rows recovered from the raw transcript ahead of the first page; rows
+    // the SDK still returned (the preserved segment) are deduped by uuid. The dedup window is this
+    // page only — safe because the preserved segment sits right after the summary head.
     const returned = new Set(page.map((message) => message.uuid));
     const dropped = compactions.droppedRows.filter((row) => !returned.has(row.uuid));
     for (const message of [...dropped, ...page]) {
@@ -501,11 +482,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
     this.resumeFrom = undefined;
-    // The SDK has no apiKey/baseURL option; the resolved account reaches the subprocess via `env`.
-    // `claudeCodeEnv` spreads the base env (env *replaces* the subprocess environment, so PATH/HOME
-    // must survive) and maps the credential to ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN /
-    // ANTHROPIC_BASE_URL; it returns undefined when the account contributes nothing, so `env` is
-    // omitted and the CLI inherits the parent env (the login / OAuth path).
+    // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
+    // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
     const q = query({
       prompt: queue,
@@ -515,23 +493,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
         // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
         pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),
-        // `options.effort` becomes the CLI's `--effort` flag, which outranks the flag-settings
-        // layer for the process's whole lifetime — passing it would pin the level and turn every
-        // later applyFlagSettings switch into a silent no-op. Only `max` goes in here (the
-        // flag-settings key rejects it, so the startup flag is its only way in); the other levels
+        // `options.effort` becomes `--effort`, which outranks flag-settings for the process's whole
+        // lifetime — passing it pins the level and makes every later applyFlagSettings switch a
+        // silent no-op. Only `max` goes in here (the flag-settings key rejects it); other levels
         // apply through the switchable channel right after creation.
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
         // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
         // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
         forwardSubagentText: true,
-        // Read-only Stop hook: learns the resolved effort level so a session the user never set an
-        // effort on reflects a real value instead of a placeholder (see `reflectEffortHook`).
+        // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
         hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
         canUseTool: this.canUseTool,
-        // Resolved in onStart from settings.json `permissions.defaultMode` (see settingsDefaultMode)
-        // — the SDK-driven CLI does not apply that setting itself. `undefined` only when neither the
-        // user nor settings picked one, in which case the CLI starts in its 'default' mode.
+        // Resolved in onStart via `settingsDefaultMode` — the SDK-driven CLI does not apply
+        // settings.json itself. `undefined` = no pick anywhere; the CLI then starts in 'default'.
         permissionMode: this.approvalPolicy,
         // Gate flag only — the effective mode stays `permissionMode` above. It must be set at
         // startup for a later live switch to 'bypassPermissions' to be accepted at all.
@@ -550,9 +525,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       try {
         await q.applyFlagSettings(effortFlagSettings(this.effort));
       } catch (err) {
-        // A stored level the CLI rejects (ultracode without dynamic workflows enabled is the
-        // known case) must not fail the prompt or wedge every later one on the same rejection:
-        // drop it, report it on the session, and let the turn run at the CLI's default level.
+        // A stored level the CLI rejects (ultracode without dynamic workflows enabled) must not
+        // fail the prompt or wedge later ones: drop it, report it, run at the CLI's default level.
         this.effort = undefined;
         this.emitError(extractErrorMessage(err) ?? 'claude-code: effort switch rejected');
       }
@@ -561,8 +535,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
-   * emits across every prompt pushed into `inputQueue`. Only returns when the underlying process
-   * exits (crash, `close()`, or the CLI quitting on its own). */
+   * emits. Returns only when the underlying process exits (crash, `close()`, or the CLI quitting). */
   private async consume(q: Query): Promise<void> {
     try {
       for await (const msg of q) this.handleMessage(msg);
@@ -581,12 +554,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitStatus('idle');
   }
 
-  /** `supportedCommands()` is a snapshot captured at Query init — not updated afterwards on its
-   * own — so this fires once per Query to seed the catalog; later provider-side changes arrive
-   * via the `commands_changed` push (see `handleMessage`). Failure is non-fatal: a command
-   * catalog's absence IS the capability signal (see `AgentEvent.available-commands-update`), so a
-   * transient failure here must not surface as a session error — it just leaves the client with
-   * no command menu until (if ever) a `commands_changed` push arrives. */
+  /** `supportedCommands()` is a snapshot captured at Query init — this fires once per Query to seed
+   * the catalog; later changes arrive via the `commands_changed` push. Failure is non-fatal: a
+   * catalog's absence IS the capability signal (see `AgentEvent.available-commands-update`), so it
+   * must not surface as a session error. */
   private async publishCommands(q: Query): Promise<void> {
     try {
       const commands = await q.supportedCommands();
@@ -617,9 +588,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  /** Real live model switch via the persistent `Query`'s `setModel()` (streaming-input-mode-only
-   * control request) — the single-message + `resume` design this replaced could not do this: the CLI
-   * ignores a changed `model` option once a session is resumed. */
+  /** Live model switch via `Query#setModel` (streaming-input-mode-only control request) — the CLI
+   * ignores a changed `model` option once a session is resumed, so a resume-based design can't. */
   protected override async onSetModel(model: string): Promise<void> {
     if (this.q) {
       await this.q.setModel(model);
@@ -632,9 +602,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitModel(model);
   }
 
-  /** Live switch rides the streaming-input control request `Query#setPermissionMode`. The new state
-   * reflects only after the CLI accepted the switch, so a rejected one (e.g. auto mode unavailable
-   * for the account) leaves the previous policy shown. */
+  /** Live switch via `Query#setPermissionMode`. State reflects only after the CLI accepts, so a
+   * rejected switch (e.g. auto mode unavailable for the account) leaves the previous policy shown. */
   protected override async onSetApprovalPolicy(policyId: string): Promise<void> {
     const policy = APPROVAL_POLICIES.find((p) => p.policyId === policyId);
     if (!policy) throw new Error(`claude-code: unknown approval policy: ${policyId}`);
@@ -643,13 +612,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitApprovalPolicy(this.approvalPolicyState());
   }
 
-  /** Effort switching has two channels. low–xhigh and `ultracode` switch live via the flag-settings
-   * control request (`Query#applyFlagSettings`) — the same layer the CLI's `/effort` writes; see
-   * `effortFlagSettings` for how each maps onto the `effortLevel` / `ultracode` keys. `max` can't
-   * travel that channel (the key rejects it); its only way in is the `--effort` startup flag,
-   * which in turn outranks flag-settings for the process's whole lifetime. So any transition into
-   * or out of `max` closes the live process and lets the next prompt rebuild the `Query` — resuming
-   * the conversation in place via the session id sniffed off the last SDK message. */
+  /** Effort has two channels: low–xhigh and `ultracode` switch live via `Query#applyFlagSettings`
+   * (the layer the CLI's `/effort` writes; see `effortFlagSettings`). `max` can only enter via the
+   * `--effort` startup flag, which outranks flag-settings for the process's whole lifetime — so any
+   * transition into or out of `max` closes the process and lets the next prompt rebuild the
+   * `Query`, resuming in place via the session id sniffed off the last SDK message. */
   protected override async onSetEffort(effort: EffortLevel): Promise<void> {
     const previous = this.effort;
     // Re-picking the current level is a no-op — it must not restart a live `max` process.
@@ -682,18 +649,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     queue?.close();
   }
 
-  /** Invoking a command is pushing a plain user message through the existing prompt path: the
-   * vendored CLI parses a leading "/" on every user message even in streaming-input mode (verified
-   * against the vendored binary), so there is no separate "run this command" control request — a
-   * command's status/settle rides the normal turn lifecycle exactly like a typed prompt. */
+  /** A command is a plain user message through the prompt path: the vendored CLI parses a leading
+   * "/" on every user message even in streaming-input mode (verified against the binary), so the
+   * command's status/settle rides the normal turn lifecycle like a typed prompt. */
   protected override onCommand(name: string, args?: string): Promise<void> {
     const text = `/${name}${args ? ` ${args}` : ''}`;
     return this.onPrompt([textBlock(text)]);
   }
 
-  /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs.
-   * A compaction's summary frame also never outlives its turn — drop a stale boundary stash so
-   * the summary match can't fire against an unrelated later frame. */
+  /** A cancelled/failed turn never delivers its tool_results — drop the stashed diffs. Likewise
+   * drop a stale compaction boundary so the summary match can't fire on an unrelated later frame. */
   protected override teardown(): void {
     this.pendingEditDiffs.clear();
     this.pendingCompaction = null;
@@ -725,12 +690,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return { behavior: 'deny', message: 'Denied by the user' } satisfies PermissionResult;
   };
 
-  /** AskUserQuestion executes with whatever answers the host writes into its input: the CLI's
-   * `checkPermissions` always asks, and an allow that carries no `answers` "succeeds" with every
-   * question reported as unanswered. So the ask surfaces as a structured question card, and the
-   * user's picks are folded back into `updatedInput.answers` keyed by the question's own text
-   * (the CLI's answer-record key; multi-select and free-text answers both ride the same record,
-   * multi-select joined with ', ' per the tool's output contract). */
+  /** AskUserQuestion executes with whatever answers the host writes into its input — an allow with
+   * no `answers` "succeeds" with every question unanswered. The ask surfaces as a question card and
+   * the picks fold back into `updatedInput.answers`, keyed by the question's own text (the CLI's
+   * answer-record key; multi-select labels joined with ', ' per the tool's output contract). */
   private async askUserQuestion(
     questions: z.infer<typeof ASK_USER_QUESTION_INPUT>['questions'],
     input: Record<string, unknown>,
@@ -781,9 +744,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.lastSessionRef = msg.session_id;
       this.emitSessionRef(asHistoryId(msg.session_id));
     }
-    // The compaction summary rides the stream as an isReplay-flagged user frame right after the
-    // boundary (verified live against 0.3.179), so it must be caught before the replay guard
-    // below silently drops it.
+    // The compaction summary rides as an isReplay-flagged user frame right after the boundary
+    // (verified live against 0.3.179) — catch it before the replay guard below drops it.
     if (msg.type === 'user' && this.isCompactionSummary(msg)) {
       const compaction = nullthrow(this.pendingCompaction, 'checked by isCompactionSummary');
       const summary = plainTextContent(msg.message.content);
@@ -791,9 +753,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.pendingCompaction = null;
       return;
     }
-    // A history-resumed session (see resumeFrom) replays prior turns as `isReplay` frames (historical
-    // text + tool_results) right after the Query is created. Skip them: re-emitting as live events
-    // would flood the stream and pollute the tool-call snapshot map.
+    // A history-resumed session replays prior turns as `isReplay` frames right after Query
+    // creation; re-emitting them live would flood the stream and pollute the tool-call snapshot map.
     if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
@@ -810,8 +771,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         break;
       case 'system':
         // task_started/task_updated/task_progress intentionally fall through: a card's state derives
-        // entirely from the Task tool_use/tool_result pair; consuming them (task_id ↔ tool_use_id
-        // correlation) only pays off once run_in_background tasks are supported.
+        // from the Task tool_use/tool_result pair (task_id correlation only pays off once
+        // run_in_background tasks are supported).
         // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other subtypes are ignored); the switch autofix then trips the error-level default-case rule
         if (msg.subtype === 'permission_denied') this.handlePermissionDenied(msg);
         else if (msg.subtype === 'compact_boundary') this.handleCompactBoundary(msg);
@@ -823,12 +784,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           // never reflects mid-session changes) — swap the cached catalog wholesale.
           this.emitCommands(msg.commands.map(mapClaudeCommand));
         } else if (msg.subtype === 'local_command_output') {
-          // A local command (e.g. /usage) produces no assistant frame of its own; the SDK's own doc
-          // comment says to display it "as assistant-style text in the transcript". Bracket it in
-          // its own segment so it never merges with narration on either side of it — the command
-          // invocation itself (`onCommand`) rides the normal prompt path and its status/settle
-          // comes from the matching `result` frame like any other turn (verified live: a local
-          // command still ends in a normal zero-token `result`, not a distinct settle shape).
+          // A local command (e.g. /usage) produces no assistant frame; render its output bracketed
+          // in its own segment so it never merges with surrounding narration. Its status/settle
+          // still comes from the matching `result` frame (verified live: a normal zero-token
+          // `result`, not a distinct settle shape).
           this.freshSegment();
           this.emitAssistantText(msg.content, this.messageId);
           this.freshSegment();
@@ -840,11 +799,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * A compaction boundary: the CLI summarized earlier turns in place — the session (and its id)
-   * continue unchanged; only the model's context was swapped (verified live: `session_id` is
-   * identical across the boundary). Announce the marker immediately with the boundary's metadata;
-   * the swapped-in summary text follows on a separate user frame whose uuid is the boundary's
-   * anchor uuid, and re-emits the same `compactionId` with `summary` attached (consumers merge).
+   * A compaction boundary: the session (and its id) continue unchanged — only the model's context
+   * was swapped (verified live: `session_id` is identical across the boundary). Announce the marker
+   * immediately; the summary follows on a separate user frame matched by the boundary's anchor uuid
+   * and re-emits the same `compactionId` with `summary` attached (consumers merge).
    */
   private handleCompactBoundary(msg: SDKCompactBoundaryMessage): void {
     const meta = msg.compact_metadata;
@@ -862,10 +820,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emit(event);
   }
 
-  /** The summary user frame belonging to the pending compaction boundary: matched by the anchor
-   * uuid, or — when the compaction summarized everything and left no anchor — the next synthetic
-   * user frame. Deliberately not a type predicate: its `false` branch must not narrow `user`
-   * frames out of `handleMessage`'s union. */
+  /** The pending compaction's summary frame: matched by the anchor uuid, or — when the compaction
+   * left no anchor — the next synthetic user frame. Deliberately not a type predicate: its `false`
+   * branch must not narrow `user` frames out of `handleMessage`'s union. */
   private isCompactionSummary(msg: Extract<SDKMessage, { type: 'user' }>): boolean {
     if (!this.pendingCompaction) return false;
     const anchor = this.pendingCompaction.anchorUuid;
@@ -873,10 +830,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return msg.isSynthetic === true;
   }
 
-  /** A tool call auto-denied without an interactive ask (auto-mode classifier, deny rule, …) never
-   * reaches `canUseTool`; this SDK event is the only carrier of the decider's reason. Settle the
-   * announced tool as failed with that reason — the later `is_error` tool_result for the same id
-   * says only "denied" and is ignored by `emitTool`'s terminal-state guard anyway. */
+  /** An auto-denied tool (auto-mode classifier, deny rule, …) never reaches `canUseTool`; this SDK
+   * event is the only carrier of the decider's reason. Settle the tool as failed with it — the
+   * later `is_error` tool_result says only "denied" and hits `emitTool`'s terminal guard anyway. */
   private handlePermissionDenied(msg: SDKPermissionDeniedMessage): void {
     const diff = this.pendingEditDiffs.get(msg.tool_use_id) ?? [];
     this.pendingEditDiffs.delete(msg.tool_use_id);
@@ -936,11 +892,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * A subagent's assistant frame (`parent_tool_use_id` set): its tool calls carry the spawning Task's
-   * id, and its text/thinking — forwarded whole via `forwardSubagentText` — render message-level under
-   * the frame's own uuid. It never touches the main `messageId`/`thoughtId` cursors and never calls
-   * `freshSegment()`, so a subagent running mid-turn cannot break the main agent's streaming bubble.
-   * (The uuid doubles as the history mapper's id, so a live turn and a later cold-resume seed converge.)
+   * A subagent's assistant frame (`parent_tool_use_id` set): tool calls carry the spawning Task's
+   * id; text/thinking render message-level under the frame's own uuid (which doubles as the history
+   * mapper's id, so live and cold-resume converge). It never touches the main message/thought
+   * cursors or calls `freshSegment()`, so a mid-turn subagent can't break the main streaming bubble.
    */
   private handleSubagentAssistant(message: AssistantMessage, parent: string, uuid: string): void {
     for (const block of message.content) {
@@ -967,9 +922,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * Tool results come back on the *user* message (Claude's API pairs every `tool_use` with a
-   * `tool_result`). This is also where a denied permission lands: the SDK synthesizes an `is_error`
-   * result with "Denied by the user", so the same branch settles success, failure, and deny alike.
+   * Tool results come back on the *user* message. A denied permission lands here too — the SDK
+   * synthesizes an `is_error` result — so one branch settles success, failure, and deny alike.
    */
   private handleUser(msg: UserSDKMessage): void {
     const content = msg.message.content;
@@ -990,14 +944,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** A `result` message ends one turn — not the session, which now spans the whole `consume()` loop —
-   * so this is where per-turn cleanup happens (unlike the old per-turn `query()` design, where the
-   * loop ending *was* the turn ending). */
+  /** A `result` message ends one turn — not the session, which spans the whole `consume()` loop —
+   * so per-turn cleanup happens here. */
   private handleResult(msg: ResultMessage): void {
     if (msg.subtype === 'success') {
-      // A 401 comes back as a `success` result carrying `api_error_status` — without this it would be
-      // swallowed into an empty end_turn (CODE-75). Surface it as a non-recoverable auth error whose
-      // code drives the daemon's login re-probe, rather than emitting usage + a phantom stop.
+      // A 401 comes back as a `success` result carrying `api_error_status` (CODE-75) — surface it
+      // as a non-recoverable auth error driving the daemon's login re-probe, not usage + a phantom stop.
       if (msg.api_error_status === 401) {
         this.emitError(
           'Claude authentication failed — sign in to Claude',
@@ -1030,12 +982,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 }
 
 /**
- * Claude's file-mutation tools carry the exact patch in their input — Edit as `file_path` /
- * `old_string` / `new_string`, Write as `file_path` / `content` (a whole-file write, so no
- * oldText: the UI renders it as all-added lines). Surface it as structured diff content so the
- * UI renders a diff instead of the raw input JSON. Returns undefined for every other tool
- * (including NotebookEdit, whose input has no old cell source to diff against) and for a
- * malformed input.
+ * Surface Edit/Write inputs (which carry the exact patch) as structured diff content so the UI
+ * renders a diff instead of raw input JSON; Write has no oldText (whole-file, renders all-added).
+ * Undefined for every other tool (NotebookEdit has no old cell source to diff) and malformed input.
  */
 function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | undefined {
   if (!isRecord(input)) return undefined;
@@ -1103,21 +1052,19 @@ export interface ClaudeCompactionSupplement {
   /** Swapped-in-summary row uuid → its boundary's record, for the mapper to turn the summary row
    * into a compaction marker instead of a fake user prompt. */
   records: Map<string, ClaudeCompactionRecord>;
-  /** The pre-compaction rows `getSessionMessages` drops: its chain walk starts at the newest
-   * summary (whose `parentUuid` is null — `logicalParentUuid` is ignored), so everything logically
-   * before the last compaction vanishes from the read. In file (= chronological) order; rows the
-   * SDK does still return (the preserved segment) are deduped by uuid at read time. */
+  /** The pre-compaction rows `getSessionMessages` drops (its chain walk starts at the newest
+   * summary, whose `parentUuid` is null — `logicalParentUuid` is ignored). In file (= chronological)
+   * order; rows the SDK still returns (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
 }
 
 /**
- * Recover, from raw transcript lines, what the SDK read API strips about compactions (verified
- * against SDK 0.3.179). On disk a compaction is a `system/compact_boundary` row (camelCase
- * `compactMetadata`) followed by an `isCompactSummary:true` user row carrying the swapped-in
- * summary; a boundary claims the next summary row. `getSessionMessages` keeps only
- * type/uuid/session_id/message/parent_tool_use_id/timestamp per row — the boundary's metadata and
- * the summary flag never survive — and its chain reconstruction drops every row logically before
- * the newest summary, so both the marker and the pre-compaction timeline must come from here.
+ * Recover from raw transcript lines what the SDK read API strips about compactions (verified
+ * against SDK 0.3.179). On disk: a `system/compact_boundary` row (camelCase `compactMetadata`)
+ * followed by an `isCompactSummary:true` user row; a boundary claims the next summary row.
+ * `getSessionMessages` never keeps the boundary metadata or the summary flag, and its chain
+ * reconstruction drops every row logically before the newest summary — so both the compaction
+ * marker and the pre-compaction timeline must come from here.
  */
 export function buildClaudeCompactionSupplement(
   lines: Iterable<string>,
@@ -1149,10 +1096,9 @@ export function buildClaudeCompactionSupplement(
       continue;
     }
     if (row.type === 'user' && row.isCompactSummary === true) {
-      // A summary row with no preceding boundary (torn write) still marks a compaction; it just
-      // has no metadata and is keyed by its own uuid. The row also joins the conversation rows:
-      // an EARLIER compaction's summary is itself dropped by the SDK's chain walk, and replaying
-      // it through the mapper is what puts that compaction's marker back into the timeline.
+      // A summary row with no preceding boundary (torn write) still marks a compaction, keyed by
+      // its own uuid with no metadata. The row also joins the conversation rows: an EARLIER
+      // summary is itself chain-dropped, and replaying it restores that compaction's marker.
       records.set(uuid, pending ?? { compactionId: uuid });
       pending = null;
     } else if (row.type !== 'user' && row.type !== 'assistant') continue;
@@ -1183,9 +1129,8 @@ export function buildClaudeCompactionSupplement(
 
 /**
  * Locate the session's transcript and build its compaction supplement. `readHistory` carries no
- * cwd, so — mirroring `getSessionMessages` without `dir` — every project dir is probed for
- * `<sessionId>.jsonl` (the id is unique, so at most one probe succeeds). Any failure degrades to
- * an empty supplement: history still reads, just without compaction markers.
+ * cwd, so every project dir is probed for `<sessionId>.jsonl` (ids are unique — at most one hits).
+ * Any failure degrades to an empty supplement: history still reads, just without compaction markers.
  */
 async function readClaudeCompactionSupplement(
   sessionId: string,
@@ -1225,11 +1170,10 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
 }
 
 /**
- * Subagent transcripts live beside the main one (`subagents/agent-{id}.jsonl`) and are not part of
- * `getSessionMessages`. Every row `getSubagentMessages` returns carries `parent_tool_use_id` — the
- * spawning Task/Agent tool_use id (verified against the vendored SDK's on-disk format) — so a plain
- * run through the history mapper reproduces the same parent-linked events the live stream emits.
- * Keyed by that parent id for splicing in after the spawn announce.
+ * Subagent transcripts (`subagents/agent-{id}.jsonl`) are not part of `getSessionMessages`. Every
+ * `getSubagentMessages` row carries `parent_tool_use_id` — the spawning Task/Agent tool_use id
+ * (verified against the vendored SDK's on-disk format) — so the history mapper reproduces the live
+ * stream's parent-linked events. Keyed by that parent id for splicing after the spawn announce.
  */
 async function readSubagentTranscripts(
   mod: typeof import('@anthropic-ai/claude-agent-sdk'),
@@ -1249,10 +1193,9 @@ async function readSubagentTranscripts(
 }
 
 /**
- * Stateful per-read mapper: correlates each `tool_use` announce with the `tool_result` that later
- * settles it, replaying the same announce/settle full-snapshot pairs the live path emits — under
- * the provider's `toolu_` ids, so a seeded timeline and live re-emits of the same call converge
- * by id (`buildConversation` replaces tool calls by id) instead of duplicating.
+ * Stateful per-read mapper: correlates each `tool_use` announce with its settling `tool_result`,
+ * replaying the live path's announce/settle snapshot pairs under the provider's `toolu_` ids so a
+ * seeded timeline and live re-emits converge by id (`buildConversation` replaces by id).
  */
 export function createClaudeHistoryEventMapper(
   historyId: AgentHistoryId,
@@ -1268,8 +1211,7 @@ export function createClaudeHistoryEventMapper(
   return (message) => {
     if (message.type !== 'user' && message.type !== 'assistant') return [];
     // A compaction's swapped-in summary is stored as a user row; replaying it as a user prompt
-    // would fake a giant user turn (the reported CODE-141 symptom). It becomes the compaction
-    // marker instead, placed exactly where the summary sits in the timeline.
+    // would fake a giant user turn (CODE-141). It becomes the compaction marker in place instead.
     const compaction = message.type === 'user' ? compactions?.get(message.uuid) : undefined;
     if (compaction) {
       const summary = plainTextContent(
