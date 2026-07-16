@@ -23,6 +23,18 @@ copyright: Copyright © 2026 ArcBox Labs
 # cannot read pnpm's `catalog:` protocol. Keep in sync with the `electron` catalog entry.
 electronVersion: 42.4.1
 
+# Keep only the Chromium locales for languages the app ships (packages/i18n/src/index.ts —
+# extend this list when a locale is added there). Drops ~48 MB of framework .lproj/.pak data.
+# The matcher lowercases but does NOT normalize separators, and locale file names differ per
+# platform, so both spellings are load-bearing: mac frameworks use `en.lproj`/`zh_CN.lproj`
+# (underscore), win/linux use `locales/en-US.pak`/`zh-CN.pak` (dash) — and Chromium requires
+# its en-US default pak to exist.
+electronLanguages:
+  - en
+  - en-US
+  - zh-CN
+  - zh_CN
+
 directories:
   output: release # MUST match OUTPUT_DIR in .github/workflows/build-desktop.yml
   buildResources: build-resources # not `build/`: that path is gitignored and is a turbo build output
