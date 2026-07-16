@@ -148,22 +148,28 @@ interface PermissionDetail {
 
 function permissionDetails(toolCall: ToolCallUpdate): PermissionDetail[] {
   const raw = isRecord(toolCall.rawInput) ? toolCall.rawInput : undefined;
+  // Unrecognized tools show their whole input as one JSON row; extracting raw fields into
+  // dedicated rows as well would render the same data twice.
+  const showRawArguments = toolCall.kind === 'other' && raw !== undefined;
 
   const files = new Set<string>();
   for (const item of toolCall.content ?? []) {
     if (item.type === 'diff') files.add(item.path);
   }
   for (const location of toolCall.locations ?? []) files.add(location.path);
-  const rawPath = stringField(raw, 'path') ?? stringField(raw, 'file_path');
-  if (rawPath) files.add(rawPath);
+  if (!showRawArguments) {
+    const rawPath = stringField(raw, 'path') ?? stringField(raw, 'file_path');
+    if (rawPath) files.add(rawPath);
+  }
 
   const details: PermissionDetail[] = [...files].map((value) => ({ label: 'file', value }));
-  const command = stringField(raw, 'command');
-  if (command) details.push({ label: 'command', value: command });
-  const url = stringField(raw, 'url');
-  if (url) details.push({ label: 'url', value: url });
-  if (toolCall.kind === 'other' && raw) {
+  if (showRawArguments) {
     details.push({ label: 'arguments', value: JSON.stringify(raw, null, 2) });
+  } else {
+    const command = stringField(raw, 'command');
+    if (command) details.push({ label: 'command', value: command });
+    const url = stringField(raw, 'url');
+    if (url) details.push({ label: 'url', value: url });
   }
   return details;
 }

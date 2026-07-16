@@ -369,6 +369,46 @@ describe('QuestionPrompt', () => {
     expect(onRespond).toHaveBeenCalledWith('request-1', { outcome: 'cancelled' });
   });
 
+  it('dismisses without confirmation when the custom answer was cleared', async () => {
+    const user = userEvent.setup();
+    const onRespond = vi.fn();
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />);
+
+    await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
+    const input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
+    await user.type(input, 'draft');
+    await user.clear(input);
+    await user.click(screen.getByRole('button', { name: 'Dismiss request' }));
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(onRespond).toHaveBeenCalledWith('request-1', { outcome: 'cancelled' });
+  });
+
+  it('moves focus to the next question, not the outgoing control, on a single-select shortcut', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'next question' }));
+    const bun = screen.getByRole('radio', { name: /Bun/ });
+    const focusTargets: EventTarget[] = [];
+    const record = (event: FocusEvent): void => {
+      if (event.target) focusTargets.push(event.target);
+    };
+    document.addEventListener('focusin', record);
+    await user.keyboard('2');
+    document.removeEventListener('focusin', record);
+
+    expect(screen.getByText('3 of 3')).toBeDefined();
+    expect(focusTargets).not.toContain(bun);
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: STABLE_CHOICE_NAME }));
+
+    // The last question has no page to advance to, so the shortcut focuses the pressed choice.
+    await user.keyboard('2');
+    expect(screen.getByText('3 of 3')).toBeDefined();
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: /Canary/ }));
+  });
+
   it('keeps the draft visible after a failed submission and retries the same answers', async () => {
     const user = userEvent.setup();
     const onRespond = vi.fn();
@@ -569,5 +609,55 @@ describe('ConversationPromptDock', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRespondPermission).toHaveBeenCalledTimes(2);
     expect(onRespondPermission.mock.calls[1]).toEqual(onRespondPermission.mock.calls[0]);
+  });
+
+  it('shows only the raw arguments for unrecognized tools instead of duplicating fields', () => {
+    const rawInput = { command: 'pnpm dlx tool', url: 'https://example.com', path: '/tmp/x' };
+    const otherPermission: PermissionConversationItem = {
+      ...PERMISSION_ITEM,
+      toolCall: { toolCallId: 'mcp-2', title: 'mcp.run', kind: 'other', rawInput },
+    };
+    render(
+      <ConversationPromptDock
+        conversation={conversation([otherPermission], {
+          pendingPermissionIds: [otherPermission.requestId],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('arguments').nextElementSibling?.textContent).toBe(
+      JSON.stringify(rawInput, null, 2),
+    );
+    expect(screen.queryByText('command')).toBeNull();
+    expect(screen.queryByText('url')).toBeNull();
+    expect(screen.queryByText('file')).toBeNull();
+  });
+
+  it('keeps dedicated detail rows for recognized tool kinds', () => {
+    const execPermission: PermissionConversationItem = {
+      ...PERMISSION_ITEM,
+      toolCall: {
+        toolCallId: 'exec-1',
+        title: 'Run migration',
+        kind: 'execute',
+        rawInput: { command: 'pnpm migrate' },
+      },
+    };
+    render(
+      <ConversationPromptDock
+        conversation={conversation([execPermission], {
+          pendingPermissionIds: [execPermission.requestId],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('command').nextElementSibling?.textContent).toBe('pnpm migrate');
+    expect(screen.queryByText('arguments')).toBeNull();
   });
 });

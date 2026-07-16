@@ -43,9 +43,13 @@ export function QuestionPrompt({
   const response = responses.get(question.questionId) ?? EMPTY_RESPONSE;
   const customDraft = customDrafts.get(question.questionId) ?? '';
   const isLastQuestion = index === item.questions.length - 1;
+  // Blank custom text submits as a skip (see submitGroup), so only non-blank content counts as a
+  // draft worth a dismiss confirmation.
   const hasDrafts =
     [...responses].some(
-      ([, candidate]) => candidate.selectedIds.length > 0 || candidate.customText !== undefined,
+      ([, candidate]) =>
+        candidate.selectedIds.length > 0 ||
+        (candidate.customText !== undefined && candidate.customText.trim().length > 0),
     ) || [...customDrafts].some(([, draft]) => draft.trim().length > 0);
 
   function selectPage(nextIndex: number): void {
@@ -134,10 +138,14 @@ export function QuestionPrompt({
         : [...response.selectedIds, option.optionId]
       : [option.optionId];
     updateResponse({ selectedIds });
-    event.currentTarget
-      .querySelectorAll<HTMLElement>('[data-prompt-choice]')
-      .item(optionIndex)
-      .focus();
+    // Single-select auto-advance remounts the page and focuses its first choice; focusing the
+    // outgoing page's control here would announce an element about to be torn down.
+    if (question.multiSelect || isLastQuestion) {
+      event.currentTarget
+        .querySelectorAll<HTMLElement>('[data-prompt-choice]')
+        .item(optionIndex)
+        .focus();
+    }
   }
 
   return (
