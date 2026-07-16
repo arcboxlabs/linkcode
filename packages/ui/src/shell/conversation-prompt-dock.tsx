@@ -36,6 +36,7 @@ export function ConversationPromptDock({
   return (
     <div className="shrink-0 px-4 py-2">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
+        {plan ? <StepPromptRow plan={plan} /> : null}
         {currentPrompt?.kind === 'approval' ? (
           <PermissionPrompt
             key={currentPrompt.requestId}
@@ -60,7 +61,6 @@ export function ConversationPromptDock({
             onRespond={onRespondQuestion}
           />
         ) : null}
-        {plan ? <StepPromptRow plan={plan} /> : null}
       </div>
     </div>
   );

@@ -408,6 +408,44 @@ describe('QuestionPrompt', () => {
 });
 
 describe('ConversationPromptDock', () => {
+  it('places the current plan step before the actionable prompt', () => {
+    const userMessage: ConversationViewModel['items'][number] = {
+      kind: 'message',
+      id: 'turn-1',
+      turnId: 'turn-1',
+      role: 'user',
+      blocks: [],
+      isStreaming: false,
+    };
+    const currentPlan: ConversationViewModel['items'][number] = {
+      kind: 'plan',
+      id: 'plan-1',
+      turnId: 'turn-1',
+      plan: {
+        entries: [
+          { content: 'Done', priority: 'high', status: 'completed' },
+          { content: 'Review prompt', priority: 'high', status: 'in_progress' },
+        ],
+      },
+    };
+
+    render(
+      <ConversationPromptDock
+        conversation={conversation([userMessage, currentPlan, ITEM], {
+          pendingQuestionIds: [ITEM.requestId],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    const step = screen.getByText('Review prompt');
+    const prompt = screen.getByText('Pick features').closest('[data-slot="frame"]');
+    if (!prompt) throw new Error('prompt card not found');
+    expect(step.compareDocumentPosition(prompt)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('shows an authoritative busy state without a local response snapshot', () => {
     render(
       <ConversationPromptDock
