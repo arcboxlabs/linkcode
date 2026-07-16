@@ -34,6 +34,7 @@ import {
   CONTROL_LATENCY_MS,
   FAIL_PROMPT,
   MOCK_REPLY,
+  MOCK_USAGE_REPORT,
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
 import { mockScriptDeclarations } from './data/scripts';
@@ -630,6 +631,16 @@ export class DevMockHost {
         break;
       case 'permission-response':
         this.respondPermission(replyTo, sessionId, input.requestId, input.outcome);
+        break;
+      case 'command':
+        // Parity with the claude-code /usage intercept (CODE-213): the reply is one structured
+        // usage-report — no turn, no transcript text, status untouched.
+        if (input.name === 'usage' || input.name === 'cost') {
+          this.emit(sessionId, { type: 'usage-report', report: MOCK_USAGE_REPORT });
+          this.sendSuccess(replyTo);
+        } else {
+          this.sendFailure(replyTo, 'Dev mock host only mocks the /usage command.');
+        }
         break;
       default:
         this.sendFailure(replyTo, 'Dev mock host does not support that input yet.');

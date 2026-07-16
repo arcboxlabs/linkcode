@@ -14,6 +14,7 @@ import type {
   ToolCall,
   ToolCallContent,
   ToolCallUpdate,
+  UsageReport,
 } from '@linkcode/schema';
 
 /**
@@ -92,6 +93,10 @@ export interface ConversationViewModel {
   status: SessionStatus | null;
   /** Latest cumulative token usage. */
   usage: TokenUsage | null;
+  /** Latest structured usage snapshot, from `usage-report` (the whole reply of a provider usage
+   * command such as claude-code's `/usage` — the invocation produces no transcript text). Replaced
+   * wholesale per report; `null` until the session serves one. */
+  usageReport: UsageReport | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
@@ -170,6 +175,7 @@ export function createConversationBuilder(): ConversationBuilder {
   let gen = 0;
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
+  let usageReport: UsageReport | null = null;
   let currentModeId: string | null = null;
   let approvalPolicy: ApprovalPolicyState | null = null;
   let currentModel: string | null = null;
@@ -368,6 +374,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'token-usage':
         usage = event.usage;
         break;
+      case 'usage-report':
+        usageReport = event.report;
+        break;
       case 'stop':
         stopReason = event.stopReason;
         break;
@@ -450,6 +459,7 @@ export function createConversationBuilder(): ConversationBuilder {
       items: out,
       status,
       usage,
+      usageReport,
       currentModeId,
       approvalPolicy,
       currentModel,

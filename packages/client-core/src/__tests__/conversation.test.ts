@@ -365,6 +365,24 @@ describe('buildConversation', () => {
     expect(error?.turnId).toBeNull();
   });
 
+  it('exposes the latest usage-report wholesale without adding timeline items', () => {
+    expect(buildConversation([]).usageReport).toBeNull();
+    const first = {
+      subscriptionType: 'max',
+      rateLimits: { fiveHour: { utilization: 6, resetsAt: '2026-07-16T07:49:00Z' } },
+    };
+    const second = {
+      subscriptionType: 'max',
+      rateLimits: { fiveHour: { utilization: 42, resetsAt: '2026-07-16T12:49:00Z' } },
+    };
+    const c = buildConversation([
+      { type: 'usage-report', report: first },
+      { type: 'usage-report', report: second },
+    ]);
+    expect(c.usageReport).toEqual(second);
+    expect(c.items).toHaveLength(0);
+  });
+
   it('reflects the latest approval-policy state without adding timeline items', () => {
     const policies = [
       { policyId: 'default', name: 'Ask for approval' },
