@@ -243,6 +243,7 @@ function CustomChoiceRow({
       <Button
         aria-label={placeholder}
         className="h-auto w-full justify-start gap-2.5 border-0 px-2 py-1.5 font-normal text-muted-foreground shadow-none sm:h-auto"
+        data-prompt-custom=""
         disabled={disabled}
         variant="ghost"
         onClick={onSelect}
@@ -265,6 +266,7 @@ function CustomChoiceRow({
       <InputPrimitive
         aria-label={placeholder}
         className="h-6 min-w-0 flex-1 bg-transparent p-0 text-sm outline-none placeholder:text-muted-foreground"
+        data-prompt-custom=""
         disabled={disabled}
         placeholder={placeholder}
         ref={inputRef}

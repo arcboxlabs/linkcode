@@ -409,6 +409,54 @@ describe('QuestionPrompt', () => {
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: /Canary/ }));
   });
 
+  it('moves focus through choices and the custom row with arrow keys without selecting', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    const cache = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
+    const retry = screen.getByRole('checkbox', { name: /Retry/ });
+
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(retry);
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'customPlaceholder' }));
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(cache);
+    await user.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'customPlaceholder' }));
+    expect(cache.getAttribute('aria-checked')).toBe('false');
+    expect(retry.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('keeps arrow navigation focus-only on single-select pages', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'next question' }));
+
+    await user.keyboard('{ArrowDown}');
+    const bun = screen.getByRole('radio', { name: /Bun/ });
+    expect(document.activeElement).toBe(bun);
+    expect(bun.getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByText('2 of 3')).toBeDefined();
+  });
+
+  it('arrows from the custom input back into the option list', async () => {
+    const user = userEvent.setup();
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
+    expect(document.activeElement).toBe(
+      screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' }),
+    );
+
+    await user.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: /Retry/ }));
+    // Navigating away only moves focus; the custom answer stays selected.
+    expect(screen.getByRole('textbox', { name: 'customPlaceholder' })).toBeDefined();
+  });
+
   it('keeps the draft visible after a failed submission and retries the same answers', async () => {
     const user = userEvent.setup();
     const onRespond = vi.fn();

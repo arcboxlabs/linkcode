@@ -121,6 +121,7 @@ export function QuestionPrompt({
       event.altKey ||
       event.shiftKey ||
       responding ||
+      !isWithinPrompt(event) ||
       isEditableTarget(event.target)
     ) {
       return;
@@ -148,8 +149,49 @@ export function QuestionPrompt({
     }
   }
 
+  // Capture phase, so the claim beats base-ui's radio group: its composite selects a radio the
+  // moment arrow navigation focuses it, which would commit an answer and auto-advance the page.
+  // Owning the keys keeps arrows focus-only and extends them to checkboxes and the custom row.
+  function handleArrowKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    if (
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      responding ||
+      !isWithinPrompt(event)
+    ) {
+      return;
+    }
+    const choices = [
+      ...event.currentTarget.querySelectorAll<HTMLElement>(
+        '[data-prompt-choice], [data-prompt-custom]',
+      ),
+    ];
+    if (choices.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    const current = choices.indexOf(event.target as HTMLElement);
+    const next =
+      current === -1
+        ? step === 1
+          ? 0
+          : choices.length - 1
+        : (current + step + choices.length) % choices.length;
+    choices.at(next)?.focus();
+  }
+
   return (
-    <Form data-keyboard-shortcut-local="" onKeyDown={handleKeyDown} onSubmit={handleSubmit}>
+    <Form
+      data-keyboard-shortcut-local=""
+      onKeyDown={handleKeyDown}
+      onKeyDownCapture={handleArrowKeyDown}
+      onSubmit={handleSubmit}
+    >
       <PromptCard
         badge={header}
         busyLabel={lastAction ? undefined : tp('responding')}
@@ -219,4 +261,10 @@ function isEditableTarget(target: EventTarget): boolean {
     target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !==
       null
   );
+}
+
+/** The dismiss confirmation dialog portals outside the form but still bubbles through the React
+ * tree, so form-level shortcuts must ignore keys pressed inside it. */
+function isWithinPrompt(event: React.KeyboardEvent<HTMLFormElement>): boolean {
+  return event.target instanceof Node && event.currentTarget.contains(event.target);
 }
