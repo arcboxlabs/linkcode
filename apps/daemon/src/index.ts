@@ -22,6 +22,7 @@ import {
   removeRuntimeFile,
   writeRuntimeFile,
 } from './runtime';
+import { createLoopStore } from './loop-store';
 import { createScheduleStore } from './schedule-store';
 import { createSessionStore } from './session-store';
 import { createWorkspaceStore } from './workspace-store';
@@ -112,6 +113,7 @@ async function main(): Promise<void> {
     sessionStore: createSessionStore(databasePath()),
     // After sessionStore so its migration-ledger reconcile runs before this store migrates.
     scheduleStore: createScheduleStore(databasePath()),
+    loopStore: createLoopStore(databasePath()),
     workspaceStore: createWorkspaceStore(databasePath()),
     previewRoutes,
     agentRuntimes,

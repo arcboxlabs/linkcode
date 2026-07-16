@@ -43,6 +43,13 @@
       "when": 1784162676737,
       "tag": "0005_stormy_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784175697180,
+      "tag": "0006_free_secret_warriors",
+      "breakpoints": true
     }
   ]
 }
