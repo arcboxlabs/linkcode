@@ -20,7 +20,7 @@ import {
   StopReasonSchema,
 } from './session';
 import { ToolCallSchema } from './tool-call';
-import { TokenUsageSchema } from './usage';
+import { TokenUsageSchema, UsageReportSchema } from './usage';
 
 /**
  * Agent data-plane contract. The abstraction layer normalizes each vendor's native agent events into the
@@ -215,6 +215,10 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
    * never emit it. */
   z.object({ type: z.literal('session-ref'), historyId: AgentHistoryIdSchema }),
   z.object({ type: z.literal('token-usage'), usage: TokenUsageSchema }),
+  /** Structured usage snapshot produced by a provider usage command (claude-code `/usage`, alias
+   * `/cost`). The invocation is intercepted adapter-side — it produces no transcript text and no
+   * turn; this event is the whole reply, and the trigger a client uses to present usage. */
+  z.object({ type: z.literal('usage-report'), report: UsageReportSchema }),
   z.object({ type: z.literal('stop'), stopReason: StopReasonSchema }),
   z.object({
     type: z.literal('error'),
