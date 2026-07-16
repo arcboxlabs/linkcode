@@ -146,8 +146,13 @@ export function ConversationView({
           <Message key={item.id} from="assistant">
             <MessageContent className="space-y-1">
               {item.blocks.map((block, index) => (
-                // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: appendBlock only pushes or extends the last block, so index+type is a stable position key across token-by-token re-renders
-                <ContentBlockView key={`${index}:${block.type}`} block={block} />
+                <ContentBlockView
+                  // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: appendBlock only pushes or extends the last block, so index+type is a stable position key across token-by-token re-renders
+                  key={`${index}:${block.type}`}
+                  block={block}
+                  smoothText
+                  isStreaming={item.isStreaming}
+                />
               ))}
             </MessageContent>
           </Message>
