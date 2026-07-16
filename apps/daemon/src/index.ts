@@ -108,14 +108,17 @@ async function main(): Promise<void> {
   agentRuntimeProber.setManagedResolver((kind) => assets.managedBinary(`agent:${kind}`));
   // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
   // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
-  const agentRuntimes = await agentRuntimeProber.collect();
+  // Deliberately not awaited (CODE-225): collect() spawns agent CLIs (`--version`, `auth status`)
+  // that take seconds on a cold machine — listener bind must not wait on them, or every client
+  // sits on ECONNREFUSED for the whole probe. The engine seeds from the promise instead.
+  const agentRuntimesReady = agentRuntimeProber.collect();
   const engine = new Engine(hub, {
     providerStore: store,
     ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
     sessionStore: createSessionStore(databasePath()),
     workspaceStore: createWorkspaceStore(databasePath()),
     previewRoutes,
-    agentRuntimes,
+    agentRuntimesReady,
     assets,
     // Lets the engine refresh (and push) the runtime snapshot after a managed install lands.
     collectAgentRuntimes: () => agentRuntimeProber.collect(),
@@ -132,23 +135,30 @@ async function main(): Promise<void> {
   });
   // Refresh consented managed installs in the background — boot never waits on a download. A
   // never-installed agent waits for the client's explicit `asset.ensure` instead (CODE-221).
-  // Runs after the engine exists so its asset subscription sees the whole install lifecycle.
-  for (const kind of agentsToRefresh(consentedAgents, agentRuntimes)) {
-    void assets
-      .ensure(`agent:${kind}`)
-      .catch((err) => {
-        console.warn(
-          `[linkcode/daemon] managed install failed for ${kind}: ${extractErrorMessage(err)}`,
-        );
-      })
-      .then((installed) => {
-        if (installed) {
-          console.log(
-            `[linkcode/daemon] managed runtime ready: ${installed.id}@${installed.version}`,
-          );
-        }
-      });
-  }
+  // Rides the probe promise (CODE-225); the engine exists first so its asset subscription sees
+  // the whole install lifecycle.
+  void agentRuntimesReady
+    .then((agentRuntimes) => {
+      for (const kind of agentsToRefresh(consentedAgents, agentRuntimes)) {
+        void assets
+          .ensure(`agent:${kind}`)
+          .catch((err) => {
+            console.warn(
+              `[linkcode/daemon] managed install failed for ${kind}: ${extractErrorMessage(err)}`,
+            );
+          })
+          .then((installed) => {
+            if (installed) {
+              console.log(
+                `[linkcode/daemon] managed runtime ready: ${installed.id}@${installed.version}`,
+              );
+            }
+          });
+      }
+    })
+    .catch((err) => {
+      console.warn(`[linkcode/daemon] boot agent probe failed: ${extractErrorMessage(err)}`);
+    });
   await engine.start();
   // Runs before any listener binds, so `workspace.list` always includes the chat workspace by the
   // time a client can connect.

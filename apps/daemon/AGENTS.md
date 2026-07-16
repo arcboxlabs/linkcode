@@ -57,7 +57,9 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   auto-refreshes only agents with a prior install in the asset store (standing consent,
   snapshotted before GC sweeps superseded versions); an agent never installed there waits for
   the client's explicit `asset.ensure` (the onboarding Download card). Boot never waits on a
-  download either way. The engine must be constructed **before** that refresh loop kicks off —
+  download either way — nor on the probe itself (CODE-225): listeners bind while `collect()` is
+  still spawning CLIs, and the engine seeds from the pending promise, holding `agent-runtime.list`
+  replies and live session starts until it lands. The engine must be constructed **before** that refresh loop kicks off —
   it subscribes to the AssetManager and forwards install progress to clients
   (`asset.progress`/`asset.settled`), re-probing and pushing `agent-runtime.changed` when an
   agent install completes (CODE-112). opencode self-spawns the `opencode` command via PATH

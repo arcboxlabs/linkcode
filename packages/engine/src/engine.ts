@@ -91,6 +91,11 @@ export interface EngineDeps {
   previewRoutes?: PreviewRouteRegistry;
   /** Boot-time probe result (`collectAgentRuntimes()`), served to clients on `agent-runtime.list`. */
   agentRuntimes?: AgentRuntimes;
+  /** In-flight boot probe (CODE-225). The daemon binds listeners without waiting on the CLI
+   * spawns behind `collect()`, handing the pending promise in instead: the engine seeds the
+   * snapshot from it, holds `agent-runtime.list` replies and live-session starts until it
+   * settles, and pushes the seeded result as `agent-runtime.changed`. */
+  agentRuntimesReady?: Promise<AgentRuntimes>;
   /** Managed-asset store, served on `asset.list` and driven by `asset.ensure`. */
   assets?: AssetService;
   /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands,
@@ -143,6 +148,11 @@ export class Engine {
   /** Boot snapshot, replaced by every {@link enqueueRuntimesCollect} pass (install/login/auth
    * events and read-triggered revalidation alike). */
   private agentRuntimes: AgentRuntimes;
+  /** Settles when {@link agentRuntimes} is authoritative — immediately, unless the daemon handed
+   * in a pending boot probe (CODE-225). */
+  private readonly agentRuntimesReady: Promise<void> = Promise.resolve();
+  /** False only while that boot probe is in flight; gates the `agent-runtime.list` fast path. */
+  private agentRuntimesSeeded = true;
   private readonly assets?: AssetService;
   private readonly logins?: AgentLoginService;
   private readonly translator?: TranslatorService;
@@ -186,6 +196,9 @@ export class Engine {
       : undefined;
     this.artifactHost = new ArtifactHostService(routes);
     this.agentRuntimes = deps.agentRuntimes ?? {};
+    if (deps.agentRuntimesReady) {
+      this.agentRuntimesReady = this.seedAgentRuntimes(deps.agentRuntimesReady);
+    }
     this.assets = deps.assets;
     this.translator = deps.translator;
     this.collectAgentRuntimes = deps.collectAgentRuntimes;
@@ -492,17 +505,14 @@ export class Engine {
         break;
       }
       case 'agent-runtime.list': {
-        this.transport.send(
-          createWireMessage({
-            kind: 'agent-runtime.listed',
-            replyTo: p.clientReqId,
-            runtimes: this.agentRuntimes,
-          }),
-        );
-        // Serve-stale-then-revalidate (CODE-172): login state and user CLI installs change behind
-        // the daemon's back, so a read also kicks a background re-probe; a differing result is
-        // pushed as `agent-runtime.changed`.
-        this.revalidateAgentRuntimes();
+        if (this.agentRuntimesSeeded) {
+          this.replyAgentRuntimes(p.clientReqId);
+        } else {
+          // Held until the boot probe lands (CODE-225): a pre-probe snapshot reads as every
+          // agent missing, and under prompt-first installs (CODE-221) the Download card that
+          // presents is a consent surface — it must not appear on transient ignorance.
+          void this.agentRuntimesReady.then(() => this.replyAgentRuntimes(p.clientReqId));
+        }
         break;
       }
       case 'asset.list': {
@@ -875,6 +885,9 @@ export class Engine {
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Promise<void>,
   ): Promise<void> {
+    // A start can land between listener bind and the boot probe settling (CODE-225); wait, or
+    // `resolveBinary` misses a detected-only install and a packaged host fails the spawn.
+    await this.agentRuntimesReady;
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
     const session: Session = {
@@ -1116,6 +1129,46 @@ export class Engine {
       }
       // no default
     }
+  }
+
+  /** Reply to `agent-runtime.list`, then serve-stale-and-revalidate (CODE-172): login state and
+   * user CLI installs change behind the daemon's back, so a read also kicks a background
+   * re-probe; a differing result is pushed as `agent-runtime.changed`. */
+  private replyAgentRuntimes(replyTo: string): void {
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent-runtime.listed',
+        replyTo,
+        runtimes: this.agentRuntimes,
+      }),
+    );
+    this.revalidateAgentRuntimes();
+  }
+
+  /**
+   * First pass of the runtime-collect queue: adopt the boot probe the daemon started before
+   * binding listeners (CODE-225). Seeds the snapshot, arms the read-revalidation cooldown, and
+   * pushes the result; event/read passes queue behind it via {@link runtimesCollect}. A failed
+   * probe seeds nothing and leaves the cooldown unarmed, so the next read re-probes immediately.
+   */
+  private seedAgentRuntimes(ready: Promise<AgentRuntimes>): Promise<void> {
+    this.agentRuntimesSeeded = false;
+    this.runtimesCollectActive += 1;
+    const pass = ready
+      .then((runtimes) => {
+        this.agentRuntimes = runtimes;
+        this.runtimesCollectedAt = Date.now();
+        this.transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes }));
+      })
+      .catch((err: unknown) => {
+        console.error('Boot agent-runtime probe failed:', err);
+      })
+      .finally(() => {
+        this.agentRuntimesSeeded = true;
+        this.runtimesCollectActive -= 1;
+      });
+    this.runtimesCollect = pass;
+    return pass;
   }
 
   /**
