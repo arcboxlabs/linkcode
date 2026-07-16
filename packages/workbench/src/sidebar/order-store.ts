@@ -22,10 +22,9 @@ export interface SidebarOrderState {
 }
 
 /**
- * Persists the sidebar's manual drag order, keyed by `collapseKey` (a workspace's normalized
- * `cwd`) like the collapse store, so the order survives an archive/re-register cycle. Ids of
- * sessions or workspaces that no longer exist are harmless — the ordering helpers skip them —
- * so the store never prunes.
+ * Persists the sidebar's manual drag order, keyed by `collapseKey` (normalized workspace `cwd`)
+ * so the order survives an archive/re-register cycle. Ids that no longer exist are harmless —
+ * the ordering helpers skip them — so the store never prunes.
  */
 export const useSidebarOrderStore = create<SidebarOrderState>()(
   zodPersist<SidebarOrderState, [], [], PersistedSidebarOrder, PersistedSidebarOrder>(
