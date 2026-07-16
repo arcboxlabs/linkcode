@@ -54,10 +54,11 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   SDK-pinned exact pair, SRI-verified, GC'd at boot) → detected user install at known locations
   (brew, `~/.local/bin`; version-verified) → SDK self-resolution from node_modules
   (dev/standalone). **The first managed download is always user-prompted** (CODE-221): boot
-  auto-refreshes only agents with a prior install in the asset store (standing consent,
-  snapshotted before GC sweeps superseded versions); an agent never installed there waits for
-  the client's explicit `asset.ensure` (the onboarding Download card). Boot never waits on a
-  download either way. The engine must be constructed **before** that refresh loop kicks off —
+  auto-refreshes only agents with a prior install in the asset store (standing consent — GC
+  retains superseded versions until the replacement lands, so an offline refresh failure keeps
+  retrying on later boots); an agent never installed there waits for the client's explicit
+  `asset.ensure` (the onboarding Download card). Boot never waits on a download either way. The
+  engine must be constructed **before** that refresh loop kicks off —
   it subscribes to the AssetManager and forwards install progress to clients
   (`asset.progress`/`asset.settled`), re-probing and pushing `agent-runtime.changed` when an
   agent install completes (CODE-112). opencode self-spawns the `opencode` command via PATH

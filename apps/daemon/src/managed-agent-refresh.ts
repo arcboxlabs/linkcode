@@ -7,8 +7,8 @@ export const MANAGED_AGENT_KINDS = ['claude-code', 'codex'] as const;
 export type ManagedAgentKind = (typeof MANAGED_AGENT_KINDS)[number];
 
 /**
- * Consent snapshot: agents with a prior managed install of any version. Must run BEFORE
- * `gcAtBoot` sweeps superseded versions, or a pin bump erases the consent it proves (CODE-221).
+ * Consent snapshot: agents with a prior managed install of any version (CODE-221). GC retains
+ * superseded versions until their replacement lands, so this reads the same before or after it.
  */
 export function consentedManagedAgents(assets: AssetManager): ManagedAgentKind[] {
   return MANAGED_AGENT_KINDS.filter((kind) => assets.hasInstallOnDisk(`agent:${kind}`));

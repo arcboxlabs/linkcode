@@ -60,7 +60,7 @@ describe('AssetManager', () => {
     expect(manager.managedBinary('tool:tectonic')).toBe(installed?.path);
   });
 
-  it('hasInstallOnDisk reports any non-tmp version until GC sweeps it (consent survives a pin bump)', async () => {
+  it('hasInstallOnDisk: consent survives a pin bump and a failed refresh, until the replacement lands', async () => {
     freshStore();
     const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });
     expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(false);
@@ -73,12 +73,18 @@ describe('AssetManager', () => {
     await manager.ensure('tool:tectonic');
     expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(true);
 
-    // After a pin bump the superseded install still reads as consent — until gcAtBoot runs,
-    // which is why the daemon snapshots consent first.
+    // A pin bump keeps the superseded install through GC while 3.0.0 is not yet installed —
+    // an offline refresh failure on the first post-upgrade boot must not erase consent.
     const bumped = new AssetManager({ catalog: [await servedDescriptor('3.0.0')] });
-    expect(bumped.hasInstallOnDisk('tool:tectonic')).toBe(true);
     bumped.gcAtBoot();
-    expect(bumped.hasInstallOnDisk('tool:tectonic')).toBe(false);
+    expect(bumped.hasInstallOnDisk('tool:tectonic')).toBe(true);
+    expect(existsSync(join(assetDir('tool:tectonic'), '2.0.0'))).toBe(true);
+
+    // Once the replacement lands, the next GC sweeps the superseded version.
+    await bumped.ensure('tool:tectonic');
+    bumped.gcAtBoot();
+    expect(existsSync(join(assetDir('tool:tectonic'), '2.0.0'))).toBe(false);
+    expect(bumped.hasInstallOnDisk('tool:tectonic')).toBe(true);
   });
 
   it('gcAtBoot removes superseded versions and tmp orphans but keeps the wanted version', async () => {
@@ -107,10 +113,15 @@ describe('AssetManager', () => {
     const blocked = assetDir('agent:claude-code');
     mkdirSync(dirname(blocked), { recursive: true });
     writeFileSync(blocked, 'not a directory');
+    // The wanted 2.0.0 is not installed, so the stale version survives (consent, CODE-221)
+    // while the tmp orphan still goes.
     const stale = join(assetDir('agent:codex'), '1.0.0');
     mkdirSync(stale, { recursive: true });
+    const orphan = join(assetDir('agent:codex'), '.tmp-orphan');
+    mkdirSync(orphan, { recursive: true });
 
-    expect(manager.gcAtBoot()).toEqual({ removed: [stale], skipped: [blocked] });
+    expect(manager.gcAtBoot()).toEqual({ removed: [orphan], skipped: [blocked] });
+    expect(existsSync(stale)).toBe(true);
   });
 
   it('leaves unpinnable assets alone: ensure() is undefined and GC does not touch their dirs', async () => {

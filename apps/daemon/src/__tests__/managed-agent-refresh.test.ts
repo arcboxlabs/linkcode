@@ -47,13 +47,15 @@ describe('boot managed-agent refresh (CODE-221)', () => {
     expect(agentsToRefresh(consented, detected)).toEqual([]);
   });
 
-  it('consent must be snapshotted before gcAtBoot sweeps the superseded version', () => {
+  it('consent survives gcAtBoot while the replacement is not installed (offline refresh failure)', () => {
     const store = freshStore();
     seedInstall(store, 'codex', '0.0.1');
     const assets = new AssetManager();
     const consented = consentedManagedAgents(assets);
     assets.gcAtBoot();
     expect(consented).toEqual(['codex']);
-    expect(consentedManagedAgents(assets)).toEqual([]);
+    // GC keeps the superseded version until the pinned one lands, so a boot whose background
+    // refresh fails still reads consent on the NEXT boot and retries.
+    expect(consentedManagedAgents(assets)).toEqual(['codex']);
   });
 });

@@ -95,8 +95,7 @@ async function main(): Promise<void> {
   // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
   // store into spawn resolution — managed wins over detected as soon as an install lands on disk.
   const assets = new AssetManager();
-  // Prior managed install = standing consent to keep that agent current (CODE-221); snapshot
-  // BEFORE GC sweeps superseded versions.
+  // Prior managed install = standing consent to keep that agent current (CODE-221).
   const consentedAgents = consentedManagedAgents(assets);
   const gc = assets.gcAtBoot();
   if (gc.removed.length > 0) {
