@@ -6,6 +6,7 @@ import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '@linkcode/engine';
 import { Listeners } from '@linkcode/transport';
+import { noop } from 'foxts/noop';
 import type { Frame } from './codec';
 import {
   CLOSE,
@@ -30,6 +31,16 @@ interface LiveTerminal {
   readonly exit: Listeners<number | null>;
   /** One streaming decoder per terminal so multi-byte sequences survive frame boundaries. */
   readonly decoder: TextDecoder;
+  /** OUTPUT can follow OPENED in the same stdout chunk, before the open promise resumes. */
+  readonly bufferedData: string[];
+  dataSubscribed: boolean;
+  exited: boolean;
+  exitCode: number | null;
+}
+
+function emitTerminalData(terminal: LiveTerminal, data: string): void {
+  if (terminal.dataSubscribed) terminal.data.emit(data);
+  else terminal.bufferedData.push(data);
 }
 
 interface PendingOpen {
@@ -146,6 +157,10 @@ export class SidecarPtyBackend implements PtyBackend {
           data: new Listeners<string>(),
           exit: new Listeners<number | null>(),
           decoder: new TextDecoder('utf-8', { fatal: false }),
+          bufferedData: [],
+          dataSubscribed: false,
+          exited: false,
+          exitCode: null,
         };
         this.terminals.set(terminalId, terminal);
         waiter.resolve(this.makeProcess(terminalId, terminal));
@@ -156,7 +171,7 @@ export class SidecarPtyBackend implements PtyBackend {
         const terminal = this.terminals.get(terminalId);
         if (!terminal) break;
         const text = terminal.decoder.decode(data, { stream: true });
-        if (text.length > 0) terminal.data.emit(text);
+        if (text.length > 0) emitTerminalData(terminal, text);
         break;
       }
       case EXIT: {
@@ -186,8 +201,20 @@ export class SidecarPtyBackend implements PtyBackend {
 
   private makeProcess(terminalId: string, terminal: LiveTerminal): PtyProcess {
     return {
-      onData: (cb) => terminal.data.add(cb),
-      onExit: (cb) => terminal.exit.add(cb),
+      onData(cb) {
+        const unsub = terminal.exited ? noop : terminal.data.add(cb);
+        if (!terminal.dataSubscribed) {
+          terminal.dataSubscribed = true;
+          for (const data of terminal.bufferedData) cb(data);
+          terminal.bufferedData.length = 0;
+        }
+        return unsub;
+      },
+      onExit(cb) {
+        if (!terminal.exited) return terminal.exit.add(cb);
+        cb(terminal.exitCode);
+        return noop;
+      },
       write: (data) => this.send(INPUT, encodeDataFrame(terminalId, Buffer.from(data, 'utf8'))),
       resize: (cols, rows) =>
         this.send(RESIZE, Buffer.from(JSON.stringify({ terminalId, cols, rows }))),
@@ -206,9 +233,11 @@ export class SidecarPtyBackend implements PtyBackend {
     // half-received multibyte sequence would synthesize a bogus U+FFFD the shell never produced.
     if (flushTail) {
       const tail = terminal.decoder.decode();
-      if (tail.length > 0) terminal.data.emit(tail);
+      if (tail.length > 0) emitTerminalData(terminal, tail);
     }
     this.terminals.delete(terminalId);
+    terminal.exited = true;
+    terminal.exitCode = exitCode;
     terminal.exit.emit(exitCode);
     terminal.data.clear();
     terminal.exit.clear();

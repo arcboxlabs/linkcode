@@ -26,7 +26,7 @@ export const scriptWireVariants = [
     cwd: z.string().min(1),
     scriptName: z.string().min(1),
   }),
-  /** Broadcast on every lifecycle/health change, like `terminal.output` (no replyTo). */
+  /** Uncorrelated event emitted on every lifecycle/health change. */
   z.object({
     kind: z.literal('script.status'),
     cwd: z.string().min(1),

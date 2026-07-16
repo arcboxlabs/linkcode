@@ -98,8 +98,10 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   `.catch` to fix. **No fire-and-forget on data-plane paths**: await inside try/catch and log, and move
   user-visible side effects after the awaited op succeeds. Full bug catalog → `docs/DEVELOPMENT.md`.
 - **Lifecycle:** at boot the daemon `ensureChatWorkspace(~/LinkCode)` **before** any listener binds, so
-  `workspace.list` always includes the "Chats" workspace. Host (panel) terminals are reaped 60s after
-  the last client disconnects (`hub.size === 0`); a reconnect within the window cancels the reap.
+  `workspace.list` always includes the "Chats" workspace. A host terminal survives while any local
+  or relay-virtual connection retains an attachment; the Hub turns connection loss into detach, and
+  the terminal is reaped 60s after its last attachment leaves. Reattaching within the window cancels
+  the reap. Session/managed terminals keep their owner's lifecycle instead.
 
 ## Pointers
 

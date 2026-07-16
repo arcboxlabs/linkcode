@@ -15,6 +15,8 @@ import type {
   SessionId,
   SessionInfo,
   SessionStatus,
+  TerminalMetadata,
+  TerminalReplayEvent,
   ToolCall,
   WireMessage,
   WirePayload,
@@ -84,6 +86,44 @@ interface PendingPermission {
   toolCall: ToolCall;
 }
 
+interface MockTerminal {
+  metadata: TerminalMetadata;
+  seq: number;
+  replay: TerminalReplayEvent[];
+  attachments: Map<string, string>;
+}
+
+function createMockTerminal(
+  terminalId: string,
+  opts: {
+    managed: boolean;
+    cols?: number;
+    rows?: number;
+    cwd?: string;
+    shell?: string;
+    sessionId?: SessionId;
+  },
+): MockTerminal {
+  const cols = opts.cols ?? 80;
+  const rows = opts.rows ?? 24;
+  return {
+    metadata: {
+      terminalId,
+      cols,
+      rows,
+      cwd: opts.cwd,
+      shell: opts.shell,
+      sessionId: opts.sessionId,
+      managed: opts.managed,
+      createdAt: Date.now(),
+      controllerAttachmentId: null,
+    },
+    seq: 1,
+    replay: [{ type: 'resize', seq: 1, cols, rows }],
+    attachments: new Map(),
+  };
+}
+
 export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
@@ -91,7 +131,7 @@ export class DevMockHost {
   private accounts: Accounts = [];
   private readonly permissions = new Map<string, PendingPermission>();
   private history: AgentHistorySession[] = [];
-  private readonly terminals = new Set<string>();
+  private readonly terminals = new Map<string, MockTerminal>();
   private readonly scripts = new Map<string, Map<string, WorkspaceScript>>();
   private sessionSeq = 0;
   private messageSeq = 0;
@@ -100,7 +140,12 @@ export class DevMockHost {
   /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
   private readonly installedAssets = new Set<ManagedAssetId>();
 
-  constructor(private readonly transport: Transport) {}
+  constructor(private readonly transport: Transport) {
+    this.terminals.set(
+      SHOWCASE_TERMINAL_ID,
+      createMockTerminal(SHOWCASE_TERMINAL_ID, { managed: true }),
+    );
+  }
 
   /**
    * Onboarding fixtures (CODE-112), one kind per state: claude-code is missing (downloadable),
@@ -391,25 +436,49 @@ export class DevMockHost {
         // Fail loudly for unmocked surfaces so correlated SDK calls reject instead of hanging forever.
         this.sendFailure(p.clientReqId, 'Dev mock host does not support history yet.');
         break;
+      case 'terminal.list':
+        this.send({
+          kind: 'terminal.listed',
+          replyTo: p.clientReqId,
+          terminals: [...this.terminals.values()].map((terminal) => terminal.metadata),
+        });
+        break;
       case 'terminal.open':
         await wait(CONTROL_LATENCY_MS);
-        this.openTerminal(p.clientReqId, p.opts.cwd);
+        this.openTerminal(p);
         break;
-      case 'terminal.input':
+      case 'terminal.attach':
+        this.attachTerminal(p);
+        break;
+      case 'terminal.detach':
+        this.detachTerminal(p.terminalId, p.attachmentId, p.attachmentSecret);
+        break;
+      case 'terminal.input': {
         // Echo PTY: no shell behind it, keystrokes come straight back; Enter draws a fresh prompt.
-        if (this.terminals.has(p.terminalId)) {
-          this.send({
-            kind: 'terminal.output',
-            terminalId: p.terminalId,
-            data: p.data.replaceAll('\r', '\r\n$ '),
-          });
+        const terminal = this.authorizedTerminal(p.terminalId, p.attachmentId, p.attachmentSecret);
+        if (terminal?.metadata.controllerAttachmentId === p.attachmentId) {
+          this.writeTerminal(p.terminalId, p.data.replaceAll('\r', '\r\n$ '));
         }
         break;
-      case 'terminal.close':
-        if (this.terminals.delete(p.terminalId)) {
+      }
+      case 'terminal.resize': {
+        const terminal = this.authorizedTerminal(p.terminalId, p.attachmentId, p.attachmentSecret);
+        if (terminal?.metadata.controllerAttachmentId === p.attachmentId) {
+          terminal.metadata = { ...terminal.metadata, cols: p.cols, rows: p.rows };
+          this.resizeTerminal(p.terminalId, p.cols, p.rows);
+        }
+        break;
+      }
+      case 'terminal.close': {
+        const terminal = this.authorizedTerminal(p.terminalId, p.attachmentId, p.attachmentSecret);
+        if (
+          terminal?.metadata.controllerAttachmentId === p.attachmentId &&
+          this.terminals.delete(p.terminalId)
+        ) {
           this.send({ kind: 'terminal.exit', terminalId: p.terminalId, exitCode: 0 });
         }
         break;
+      }
       case 'ping':
         this.send({ kind: 'pong' });
         break;
@@ -546,16 +615,106 @@ export class DevMockHost {
     });
   }
 
-  private openTerminal(replyTo: string, cwd: string | undefined): void {
+  private openTerminal(p: Extract<WirePayload, { kind: 'terminal.open' }>): void {
     this.terminalSeq += 1;
     const terminalId = `mock-term-${Date.now().toString(36)}-${this.terminalSeq.toString(36)}`;
-    this.terminals.add(terminalId);
-    this.send({ kind: 'terminal.opened', replyTo, terminalId });
-    this.send({
-      kind: 'terminal.output',
-      terminalId,
-      data: `mock echo terminal — no shell attached (cwd: ${cwd ?? '/'})\r\n$ `,
+    const terminal = createMockTerminal(terminalId, { ...p.opts, managed: false });
+    terminal.attachments.set(p.attachmentId, p.attachmentSecret);
+    terminal.metadata = { ...terminal.metadata, controllerAttachmentId: p.attachmentId };
+    this.terminals.set(terminalId, terminal);
+    terminal.seq += 1;
+    terminal.replay.push({
+      type: 'write',
+      seq: terminal.seq,
+      data: `mock echo terminal — no shell attached (cwd: ${p.opts.cwd ?? '/'})\r\n$ `,
     });
+    this.send({
+      kind: 'terminal.opened',
+      replyTo: p.clientReqId,
+      terminal: terminal.metadata,
+      replay: [...terminal.replay],
+      cutoffSeq: terminal.seq,
+      truncated: false,
+    });
+  }
+
+  private attachTerminal(p: Extract<WirePayload, { kind: 'terminal.attach' }>): void {
+    const terminal = this.terminals.get(p.terminalId);
+    if (!terminal) {
+      this.sendFailure(p.clientReqId, `Unknown terminal: ${p.terminalId}`);
+      return;
+    }
+    const secret = terminal.attachments.get(p.attachmentId);
+    if (secret !== undefined && secret !== p.attachmentSecret) {
+      this.sendFailure(p.clientReqId, 'Invalid terminal attachment credentials');
+      return;
+    }
+    if (p.mode === 'control' && terminal.metadata.managed) {
+      this.sendFailure(p.clientReqId, 'Managed terminals are view-only');
+      return;
+    }
+    terminal.attachments.set(p.attachmentId, p.attachmentSecret);
+    if (p.mode === 'control') {
+      terminal.metadata = {
+        ...terminal.metadata,
+        controllerAttachmentId: p.attachmentId,
+      };
+    }
+    this.send({
+      kind: 'terminal.attached',
+      replyTo: p.clientReqId,
+      terminal: terminal.metadata,
+      replay: [...terminal.replay],
+      cutoffSeq: terminal.seq,
+      truncated: false,
+    });
+    if (p.mode === 'control') {
+      this.send({
+        kind: 'terminal.controller.changed',
+        terminalId: p.terminalId,
+        controllerAttachmentId: p.attachmentId,
+      });
+    }
+  }
+
+  private detachTerminal(terminalId: string, attachmentId: string, attachmentSecret: string): void {
+    const terminal = this.authorizedTerminal(terminalId, attachmentId, attachmentSecret);
+    if (!terminal) return;
+    terminal.attachments.delete(attachmentId);
+    if (terminal.metadata.controllerAttachmentId !== attachmentId) return;
+    terminal.metadata = { ...terminal.metadata, controllerAttachmentId: null };
+    this.send({
+      kind: 'terminal.controller.changed',
+      terminalId,
+      controllerAttachmentId: null,
+    });
+  }
+
+  private authorizedTerminal(
+    terminalId: string,
+    attachmentId: string,
+    attachmentSecret: string,
+  ): MockTerminal | undefined {
+    const terminal = this.terminals.get(terminalId);
+    return terminal?.attachments.get(attachmentId) === attachmentSecret ? terminal : undefined;
+  }
+
+  private writeTerminal(terminalId: string, data: string): void {
+    const terminal = this.terminals.get(terminalId);
+    if (!terminal) return;
+    terminal.seq += 1;
+    const event: TerminalReplayEvent = { type: 'write', seq: terminal.seq, data };
+    terminal.replay.push(event);
+    this.send({ kind: 'terminal.output', terminalId, seq: event.seq, data });
+  }
+
+  private resizeTerminal(terminalId: string, cols: number, rows: number): void {
+    const terminal = this.terminals.get(terminalId);
+    if (!terminal) return;
+    terminal.seq += 1;
+    const event: TerminalReplayEvent = { type: 'resize', seq: terminal.seq, cols, rows };
+    terminal.replay.push(event);
+    this.send({ kind: 'terminal.resized', terminalId, seq: event.seq, cols, rows });
   }
 
   private resumeSession(replyTo: string, sessionId: SessionId): void {
@@ -795,7 +954,7 @@ export class DevMockHost {
       this.emit(session.sessionId, event);
     }
     if (!(await waitForShowcaseStep(session, epoch))) return false;
-    this.send({ kind: 'terminal.output', terminalId, data: SHOWCASE_TERMINAL_START_OUTPUT });
+    this.writeTerminal(terminalId, SHOWCASE_TERMINAL_START_OUTPUT);
     for (const permission of SHOWCASE_PERMISSIONS) {
       this.permissions.set(permission.requestId, {
         sessionId: session.sessionId,
@@ -845,7 +1004,7 @@ export class DevMockHost {
         content: textBlock(chunk),
       });
     }
-    this.send({ kind: 'terminal.output', terminalId, data: SHOWCASE_TERMINAL_EXIT_OUTPUT });
+    this.writeTerminal(terminalId, SHOWCASE_TERMINAL_EXIT_OUTPUT);
     this.emit(session.sessionId, {
       type: 'token-usage',
       usage: { inputTokens: 148, outputTokens: 96, totalCostUsd: 0 },

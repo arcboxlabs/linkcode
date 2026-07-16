@@ -110,14 +110,199 @@ describe('Hub subscriptions', () => {
     if (reply.payload.kind === 'request.succeeded') expect(reply.payload.replyTo).toBe('r9');
   });
 
-  it('still broadcasts non-event payloads to scoped connections', () => {
+  it('directs correlated replies to the request origin', () => {
     const hub = new Hub();
-    const scoped = new FakeConn();
-    hub.addConnection(scoped);
-    scoped.emit(
-      createWireMessage({ kind: 'subscription.set', clientReqId: 'r1', mode: 'attached' }),
+    const requester = new FakeConn();
+    const observer = new FakeConn();
+    hub.addConnection(requester);
+    hub.addConnection(observer);
+
+    requester.emit(createWireMessage({ kind: 'session.list', clientReqId: 'r1' }));
+    hub.send(createWireMessage({ kind: 'session.listed', replyTo: 'r1', sessions: [] }));
+
+    expect(requester.sent.map((m) => m.payload.kind)).toEqual(['session.listed']);
+    expect(observer.sent).toEqual([]);
+  });
+
+  it('answers ping on its connection without forwarding it to the host', () => {
+    const hub = new Hub();
+    const conn = new FakeConn();
+    const forwarded: WireMessage[] = [];
+    hub.addConnection(conn);
+    hub.onMessage((msg) => forwarded.push(msg));
+
+    conn.emit(createWireMessage({ kind: 'ping' }));
+
+    expect(conn.sent.map((m) => m.payload.kind)).toEqual(['pong']);
+    expect(forwarded).toEqual([]);
+  });
+});
+
+const attachmentA = { attachmentId: 'attachment-a', attachmentSecret: 'a'.repeat(32) };
+const attachmentB = { attachmentId: 'attachment-b', attachmentSecret: 'b'.repeat(32) };
+
+function terminalMetadata(terminalId: string) {
+  return {
+    terminalId,
+    cols: 80,
+    rows: 24,
+    managed: false,
+    createdAt: 1,
+    controllerAttachmentId: attachmentA.attachmentId,
+  };
+}
+
+describe('Hub terminal routing', () => {
+  it('routes terminal frames only to attached connections', () => {
+    const hub = new Hub();
+    const desktop = new FakeConn();
+    const mobile = new FakeConn();
+    const observer = new FakeConn();
+    hub.addConnection(desktop);
+    hub.addConnection(mobile);
+    hub.addConnection(observer);
+
+    desktop.emit(
+      createWireMessage({
+        kind: 'terminal.open',
+        clientReqId: 'open-a',
+        opts: { cols: 80, rows: 24 },
+        ...attachmentA,
+      }),
     );
-    hub.send(createWireMessage({ kind: 'session.listed', replyTo: 'x', sessions: [] }));
-    expect(scoped.sent.map((m) => m.payload.kind)).toEqual(['request.succeeded', 'session.listed']);
+    hub.send(
+      createWireMessage({
+        kind: 'terminal.opened',
+        replyTo: 'open-a',
+        terminal: terminalMetadata('term-1'),
+        replay: [],
+        cutoffSeq: 0,
+        truncated: false,
+      }),
+    );
+    hub.send(
+      createWireMessage({ kind: 'terminal.output', terminalId: 'term-1', seq: 1, data: '$ ' }),
+    );
+
+    mobile.emit(
+      createWireMessage({
+        kind: 'terminal.attach',
+        clientReqId: 'attach-b',
+        terminalId: 'term-1',
+        mode: 'view',
+        ...attachmentB,
+      }),
+    );
+    hub.send(
+      createWireMessage({
+        kind: 'terminal.attached',
+        replyTo: 'attach-b',
+        terminal: terminalMetadata('term-1'),
+        replay: [{ type: 'write', seq: 1, data: '$ ' }],
+        cutoffSeq: 1,
+        truncated: false,
+      }),
+    );
+    hub.send(
+      createWireMessage({
+        kind: 'terminal.controller.changed',
+        terminalId: 'term-1',
+        controllerAttachmentId: attachmentB.attachmentId,
+      }),
+    );
+
+    expect(desktop.sent.map((m) => m.payload.kind)).toEqual([
+      'terminal.opened',
+      'terminal.output',
+      'terminal.controller.changed',
+    ]);
+    expect(mobile.sent.map((m) => m.payload.kind)).toEqual([
+      'terminal.attached',
+      'terminal.controller.changed',
+    ]);
+    expect(observer.sent).toEqual([]);
+  });
+
+  it('detaches every attachment when its connection closes', () => {
+    const hub = new Hub();
+    const conn = new FakeConn();
+    const forwarded: WireMessage[] = [];
+    hub.addConnection(conn);
+    hub.onMessage((msg) => forwarded.push(msg));
+    conn.emit(
+      createWireMessage({
+        kind: 'terminal.attach',
+        clientReqId: 'attach-a',
+        terminalId: 'term-1',
+        mode: 'control',
+        ...attachmentA,
+      }),
+    );
+    hub.send(
+      createWireMessage({
+        kind: 'terminal.attached',
+        replyTo: 'attach-a',
+        terminal: terminalMetadata('term-1'),
+        replay: [],
+        cutoffSeq: 0,
+        truncated: false,
+      }),
+    );
+    forwarded.length = 0;
+
+    hub.removeConnection(conn);
+
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]?.payload).toEqual({
+      kind: 'terminal.detach',
+      terminalId: 'term-1',
+      ...attachmentA,
+    });
+  });
+
+  it('tombstones a disconnected request id and detaches its late terminal', () => {
+    const hub = new Hub();
+    const conn = new FakeConn();
+    const replacement = new FakeConn();
+    const forwarded: WireMessage[] = [];
+    hub.addConnection(conn);
+    hub.onMessage((msg) => forwarded.push(msg));
+    conn.emit(
+      createWireMessage({
+        kind: 'terminal.open',
+        clientReqId: 'open-late',
+        opts: { cols: 80, rows: 24 },
+        ...attachmentA,
+      }),
+    );
+    hub.removeConnection(conn);
+    hub.addConnection(replacement);
+    forwarded.length = 0;
+    replacement.emit(
+      createWireMessage({
+        kind: 'terminal.open',
+        clientReqId: 'open-late',
+        opts: { cols: 80, rows: 24 },
+        ...attachmentB,
+      }),
+    );
+
+    hub.send(
+      createWireMessage({
+        kind: 'terminal.opened',
+        replyTo: 'open-late',
+        terminal: terminalMetadata('term-late'),
+        replay: [],
+        cutoffSeq: 0,
+        truncated: false,
+      }),
+    );
+
+    expect(replacement.sent.map((m) => m.payload)).toEqual([
+      { kind: 'request.failed', replyTo: 'open-late', message: 'duplicate clientReqId' },
+    ]);
+    expect(forwarded.map((m) => m.payload)).toEqual([
+      { kind: 'terminal.detach', terminalId: 'term-late', ...attachmentA },
+    ]);
   });
 });

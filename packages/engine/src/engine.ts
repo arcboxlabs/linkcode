@@ -715,12 +715,11 @@ export class Engine {
         break;
       }
       case 'session.attach': {
-        // Multi-device attach is implicit: events are broadcast to all clients. What gets
-        // re-broadcast here is the buffered state an attaching client can't recover from a
-        // history read: the live status (gates the pending-ask cards and the Stop affordance),
-        // the adapter capabilities and approval-policy advertisement (emitted at adapter start),
-        // the latest command catalog, and any open permission/question asks (ephemeral — their
-        // event is the only carrier). Clients fold state idempotently and dedupe asks by requestId.
+        // The Hub has already attached this connection to the session before forwarding the frame.
+        // Re-emit the buffered state that a history read cannot recover: live status (which gates
+        // pending-ask cards and the Stop affordance), adapter capabilities and approval policy,
+        // the latest command catalog, and open permission/question asks. Clients fold this state
+        // idempotently and dedupe asks by requestId.
         const attached = this.sessions.get(p.sessionId);
         if (!attached) break;
         const replay = (event: AgentEvent): void => {
@@ -746,7 +745,7 @@ export class Engine {
         break;
       }
       case 'session.detach': {
-        // No-op: events are broadcast to all clients, so there is nothing to unsubscribe per client.
+        // No-op in the Engine: the Hub already removed this connection's session subscription.
         break;
       }
       case 'terminal.open': {
@@ -755,19 +754,68 @@ export class Engine {
           this.sendFailure(p.clientReqId, new Error('Terminals are not supported on this host'));
           break;
         }
-        await this.tryReply(p.clientReqId, () => terminals.open(p.clientReqId, p.opts));
+        await this.tryReply(p.clientReqId, () =>
+          terminals.open(p.clientReqId, p.opts, {
+            attachmentId: p.attachmentId,
+            attachmentSecret: p.attachmentSecret,
+          }),
+        );
+        break;
+      }
+      case 'terminal.list': {
+        if (this.terminals) {
+          this.terminals.list(p.clientReqId);
+        } else {
+          this.sendFailure(p.clientReqId, new Error('Terminals are not supported on this host'));
+        }
+        break;
+      }
+      case 'terminal.attach': {
+        const terminals = this.terminals;
+        if (!terminals) {
+          this.sendFailure(p.clientReqId, new Error('Terminals are not supported on this host'));
+          break;
+        }
+        await this.tryReply(p.clientReqId, () => {
+          terminals.attach(
+            p.clientReqId,
+            p.terminalId,
+            { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
+            p.mode,
+          );
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'terminal.detach': {
+        this.terminals?.detach(p.terminalId, {
+          attachmentId: p.attachmentId,
+          attachmentSecret: p.attachmentSecret,
+        });
         break;
       }
       case 'terminal.input': {
-        this.terminals?.input(p.terminalId, p.data);
+        this.terminals?.input(
+          p.terminalId,
+          { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
+          p.data,
+        );
         break;
       }
       case 'terminal.resize': {
-        this.terminals?.resize(p.terminalId, p.cols, p.rows);
+        this.terminals?.resize(
+          p.terminalId,
+          { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
+          p.cols,
+          p.rows,
+        );
         break;
       }
       case 'terminal.close': {
-        this.terminals?.close(p.terminalId);
+        this.terminals?.close(p.terminalId, {
+          attachmentId: p.attachmentId,
+          attachmentSecret: p.attachmentSecret,
+        });
         break;
       }
       case 'agent-login.start': {
@@ -795,11 +843,6 @@ export class Engine {
       default:
         break;
     }
-  }
-
-  /** Reap host-owned terminals once no client remains to read them — see {@link TerminalService.killHostTerminals}. */
-  reapHostTerminals(): void {
-    this.terminals?.killHostTerminals();
   }
 
   async stop(): Promise<void> {

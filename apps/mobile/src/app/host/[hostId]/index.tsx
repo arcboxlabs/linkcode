@@ -5,7 +5,7 @@ import { EmptyState, ScreenScroll } from '@linkcode/ui/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, Card, Chip, Input, Label, ListGroup, Spinner, TextField } from 'heroui-native';
 import { useState } from 'react';
-import { RefreshControl, Text, View } from 'react-native';
+import { Platform, RefreshControl, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import { SessionStatusChip } from '../../../components/session-status-chip';
 
@@ -49,9 +49,21 @@ export default function SessionsScreen(): React.ReactNode {
       keyboardAware
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       headerRight={
-        <Button variant="ghost" size="sm" onPress={() => router.push('/settings')}>
-          <Button.Label>{t('settings')}</Button.Label>
-        </Button>
+        <View className="flex-row gap-1">
+          {/* Terminals use the Apple-only ghostty native view; hide the entry off iOS. */}
+          {Platform.OS === 'ios' ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={() => router.push(`/host/${hostId}/terminal`)}
+            >
+              <Button.Label>{t('terminals')}</Button.Label>
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="sm" onPress={() => router.push('/settings')}>
+            <Button.Label>{t('settings')}</Button.Label>
+          </Button>
+        </View>
       }
     >
       {loading ? (

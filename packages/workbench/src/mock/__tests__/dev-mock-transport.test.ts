@@ -1,5 +1,12 @@
 import { LinkCodeClient } from '@linkcode/client-core';
-import type { Accounts, AgentEvent, ProvidersConfig, SessionId, ToolCall } from '@linkcode/schema';
+import type {
+  Accounts,
+  AgentEvent,
+  ProvidersConfig,
+  SessionId,
+  TerminalReplayEvent,
+  ToolCall,
+} from '@linkcode/schema';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../dev-mock-transport';
@@ -189,6 +196,20 @@ describe('dev mock transport', () => {
     const client = await connectedClient();
 
     const terminalId = await client.openTerminal({ cols: 80, rows: 24, cwd: '/mock/linkcode' });
+    client.resizeTerminal(terminalId, 100, 40);
+    client.detachTerminal(terminalId);
+
+    const attached = await client.attachTerminal(terminalId);
+    const replay: TerminalReplayEvent[] = [];
+    client.subscribeTerminalEvents(terminalId, (event) => replay.push(event));
+    expect(attached.terminal).toMatchObject({ cols: 100, rows: 40 });
+    expect(replay).toMatchObject([
+      { type: 'resize', seq: 1, cols: 80, rows: 24 },
+      { type: 'write', seq: 2 },
+      { type: 'resize', seq: 3, cols: 100, rows: 40 },
+    ]);
+    await client.takeTerminalControl(terminalId);
+
     let output = '';
     client.subscribeTerminalOutput(terminalId, (data) => {
       output += data;
@@ -226,6 +247,7 @@ describe('dev mock transport', () => {
     });
 
     let terminalOutput = '';
+    await client.attachTerminal(terminalId);
     client.subscribeTerminalOutput(terminalId, (data) => {
       terminalOutput += data;
     });
@@ -291,6 +313,7 @@ describe('dev mock transport', () => {
     expect(streamChunks.length).toBeGreaterThan(1);
     expect(new Set(streamChunks.map((chunk) => chunk.messageId)).size).toBe(1);
 
+    client.detachTerminal(terminalId);
     client.dispose();
   }, 20000);
 

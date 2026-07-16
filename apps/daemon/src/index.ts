@@ -151,22 +151,9 @@ async function main(): Promise<void> {
   // time a client can connect.
   await engine.ensureChatWorkspace(chatWorkspaceRoot());
 
-  // Host terminals (panel shells) have no owner once every client is gone — a quit or crashed
-  // app can never close its own. Reap them after a grace window; a reconnect within it reattaches
-  // to the same terminals untouched.
-  const HOST_TERMINAL_REAP_DELAY_MS = 60000;
-  let reapTimer: ReturnType<typeof setTimeout> | null = null;
-  const cancelReap = (): void => {
-    if (reapTimer !== null) {
-      clearTimeout(reapTimer);
-      reapTimer = null;
-    }
-  };
-
   const servers: TransportServer[] = [];
   let stopUplink: () => void = noop;
   const stopAll = async (): Promise<void> => {
-    cancelReap();
     stopUplink();
     await Promise.all(servers.map((server) => server.close()));
     hub.close();
@@ -176,28 +163,14 @@ async function main(): Promise<void> {
   try {
     // Listeners hunt concurrently; a transient collision between two of our own hunts resolves
     // itself because listenWithPortHunt treats an occupant with our pid as "keep hunting".
-    // Host-terminal reaping tracks *local* clients only — the HQ uplink also
-    // sits in the Hub, but it is standing infrastructure, not a watching
-    // client, so it must not hold terminals alive (nor does the relay tell us
-    // when remote clients come and go).
-    let localClients = 0;
     const bound: DaemonListenerInfo[] = await Promise.all(
       config.listeners.map(async (listener) => {
         const { server, url, port } = await listenWithPortHunt(listener, identity, previewRoutes);
         // Preview URLs carry the first bound port; every listener proxies the same table.
         previewRoutes.proxyPort ??= port;
         server.onConnection((conn) => {
-          cancelReap();
-          localClients += 1;
           hub.addConnection(conn);
-          conn.onClose(() => {
-            hub.removeConnection(conn);
-            localClients -= 1;
-            if (localClients === 0) {
-              cancelReap();
-              reapTimer = setTimeout(() => engine.reapHostTerminals(), HOST_TERMINAL_REAP_DELAY_MS);
-            }
-          });
+          conn.onClose(() => hub.removeConnection(conn));
         });
         servers.push(server);
         console.log(`[linkcode/daemon] listening on ${url} (${listener.type})`);
