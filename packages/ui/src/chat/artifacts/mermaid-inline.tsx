@@ -3,9 +3,9 @@ import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { ArtifactFrame } from './artifact-frame';
-import { useArtifactHostActions } from './context';
 import { extractMermaidLabel } from './element-label';
 import { FenceFallback } from './fence-fallback';
+import { useArtifactHostActions } from './host-actions';
 import type { InlineArtifactProps } from './types';
 
 interface RenderedDiagram {

@@ -7,6 +7,12 @@ import { Restty } from 'restty';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { resolveTerminalFonts } from './fonts';
+import type { TerminalColorScheme } from './prefs';
+import {
+  DEFAULT_TERMINAL_COLOR_SCHEME,
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  DEFAULT_TERMINAL_FONT_SIZE,
+} from './prefs';
 import type { TerminalSession } from './session';
 import { applyTerminalTheme } from './terminal-theme';
 
@@ -119,10 +125,16 @@ export function LiveTerminal({
   session,
   suspended = false,
   className,
+  fontFamily = DEFAULT_TERMINAL_FONT_FAMILY,
+  fontSize = DEFAULT_TERMINAL_FONT_SIZE,
+  colorScheme = DEFAULT_TERMINAL_COLOR_SCHEME,
 }: {
   session: TerminalSession;
   suspended?: boolean;
   className?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  colorScheme?: TerminalColorScheme;
 }): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const frameRef = useRef<HTMLDivElement>(null);
@@ -136,6 +148,7 @@ export function LiveTerminal({
     () => session.replayWasTruncated(),
     falseFn,
   );
+  const resttyRef = useRef<Restty | null>(null);
 
   // Layout effect so the freeze lands before the panel's first shrink frame paints. Freeze only
   // when the terminal's content box has real extent: a collapsed mount (panel never opened yet)
@@ -165,14 +178,13 @@ export function LiveTerminal({
 
       let revealFrame = 0;
       let destroyTerminal = noop;
-      let applyCurrentTheme = noop;
       let unsubscribeController = noop;
       let disconnectContainerResize = noop;
       const hostResize = { apply: ignoreTerminalResize };
       void (async () => {
         // Font resolution is async (Local Font Access probe) but cached module-wide, so only the
         // first terminal of a renderer session pays for it.
-        const fonts = await resolveTerminalFonts();
+        const fonts = await resolveTerminalFonts(fontFamily);
         if (signal.aborted) return;
         const restty = new Restty({
           root: container,
@@ -182,7 +194,7 @@ export function LiveTerminal({
           // LinkCode owns terminal tabs/panels. Restty's unscoped Cmd/Ctrl+D pane splitter would
           // otherwise fire once per mounted terminal, including hidden tabs.
           surface: { autoInit: false, shortcuts: false },
-          terminal: { autoResize: false, fonts, forwardTerminalReplies: false },
+          terminal: { autoResize: false, fonts, fontSize, forwardTerminalReplies: false },
           services: {
             beforeInput: () => (session.canControl() ? undefined : null),
             ptyTransport: createSessionPtyTransport(session, (cols, rows) =>
@@ -200,8 +212,8 @@ export function LiveTerminal({
           pane.runtime.interaction.resize(initialSize.cols, initialSize.rows);
         }
         hostResize.apply = (cols, rows) => pane.runtime.interaction.resize(cols, rows);
-        applyCurrentTheme = () => applyTerminalTheme(restty, frame);
-        applyCurrentTheme();
+        resttyRef.current = restty;
+        applyTerminalTheme(restty, frame, colorScheme);
         restty.connectPty('session://terminal');
         const containerResize = new ResizeObserver(() => {
           if (session.canControl()) restty.updateSize();
@@ -219,20 +231,46 @@ export function LiveTerminal({
         });
       })();
 
-      // The terminal theme follows the app's `.dark` class, so re-apply whenever it flips
-      // (light/dark mode change) — no need to tear down the terminal.
-      const unsubscribeThemeChange = subscribeThemeChange(() => applyCurrentTheme());
-
       return () => {
         cancelAnimationFrame(revealFrame);
         disconnectContainerResize();
         unsubscribeController();
-        unsubscribeThemeChange();
+        resttyRef.current = null;
         destroyTerminal();
       };
     },
+    // fontFamily/fontSize/colorScheme seed the initial restty config, then are live-synced by the
+    // effects below; adding them here would tear the terminal down and rebuild it on every change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: initial seed only
     [session],
   );
+
+  // Live-apply appearance prefs without tearing the terminal down. Each runs after the async
+  // construct populates resttyRef; on first mount resttyRef is still null and they no-op — the
+  // constructor config above having already applied the initial values.
+  useAbortableEffect(() => {
+    resttyRef.current?.setFontSize(fontSize);
+  }, [fontSize]);
+
+  useAbortableEffect(
+    (signal) => {
+      const restty = resttyRef.current;
+      if (!restty) return;
+      void resolveTerminalFonts(fontFamily).then((fonts) => {
+        if (!signal.aborted && resttyRef.current === restty) void restty.setFonts(fonts);
+      });
+    },
+    [fontFamily],
+  );
+
+  useAbortableEffect(() => {
+    const apply = (): void => {
+      if (resttyRef.current) applyTerminalTheme(resttyRef.current, frameRef.current, colorScheme);
+    };
+    apply();
+    // Re-apply on `.dark` flips too, so the 'auto' scheme keeps following the app mode.
+    return subscribeThemeChange(apply);
+  }, [colorScheme]);
 
   // Padding lives on the frame, never on the restty root: restty sizes its canvas from the root's
   // clientWidth/clientHeight, which include padding, so a padded root would overflow into the inset.

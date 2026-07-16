@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { cn } from '../lib/cn';
+import { useRenderPrefs } from '../render-prefs';
 
 export function Shimmer({
   children,
@@ -10,6 +11,11 @@ export function Shimmer({
   className?: string;
   duration?: number;
 }): React.ReactNode {
+  // Reduce-motion drops the animated gradient sweep for a static muted label.
+  if (useRenderPrefs().reduceMotion) {
+    return <span className={cn('inline-block text-muted-foreground', className)}>{children}</span>;
+  }
+
   return (
     <motion.span
       animate={{ backgroundPosition: '0% center' }}

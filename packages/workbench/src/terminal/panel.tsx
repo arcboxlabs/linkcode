@@ -4,6 +4,7 @@ import { Button } from 'coss-ui/components/button';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
+import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
 import type { TerminalSessionLease } from './session-registry';
 import { acquireTerminalSession, peekTerminalSnapshot } from './session-registry';
 
@@ -31,6 +32,9 @@ export function TerminalPanel({
   const client = useLinkCodeClient();
   const leaseRef = useRef<TerminalSessionLease | null>(null);
   const inputLostTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fontFamily = useTerminalPrefsStore((state) => state.fontFamily);
+  const fontSize = useTerminalPrefsStore((state) => state.fontSize);
+  const colorScheme = useTerminalPrefsStore((state) => state.colorScheme);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
@@ -94,7 +98,14 @@ export function TerminalPanel({
   };
   return (
     <div className="relative h-full w-full">
-      <LiveTerminal session={snapshot.session} suspended={suspended} className="h-full w-full" />
+      <LiveTerminal
+        session={snapshot.session}
+        suspended={suspended}
+        fontFamily={fontFamily}
+        fontSize={fontSize}
+        colorScheme={colorScheme}
+        className="h-full w-full"
+      />
       {snapshot.exit !== null && (
         <div className="absolute inset-x-0 bottom-3 flex justify-center">
           <div className="flex items-center gap-3 rounded-md border border-border bg-background/95 px-3 py-2 shadow-sm">

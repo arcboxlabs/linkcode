@@ -107,6 +107,10 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-agent-core@0.80.6'
   - '@earendil-works/pi-ai@0.80.6'
   - '@earendil-works/pi-coding-agent@0.80.6'
+  # Expo SDK 57 point releases land in lockstep with the SDK's expectations;
+  # these pins were published hours before adoption (CODE-195).
+  - 'expo-apple-authentication@57.0.1'
+  - 'expo-crypto@57.0.1'
   - '@earendil-works/pi-tui@0.80.6'
   - electron@42.4.1
   - react-router@7.18.0
