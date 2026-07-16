@@ -9,9 +9,8 @@ import { isRecord, stringField } from '../../history-util';
 
 /**
  * The presentation shapes codex tool activity renders with — the single source for BOTH the live
- * adapter (`adapter.ts` item handling) and the history replay (`history-tools.ts`). A live turn
- * and its rollout replay must render identically; building both sides from these constructors
- * enforces that by construction instead of by convention.
+ * adapter (`adapter.ts`) and the history replay (`history-tools.ts`), so a live turn and its
+ * rollout replay render identically by construction.
  */
 
 export function textContent(text: string): ToolCallContent[] {
