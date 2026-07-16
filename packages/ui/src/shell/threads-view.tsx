@@ -334,7 +334,6 @@ function ThreadGroupSection({
         dragHandleRef={workspace ? handleRef : undefined}
         title={title}
         workspace={workspace}
-        sessionCount={group.sessions.length}
         collapsed={group.collapsed}
         onNewThread={workspace ? () => onStartDraft(workspace.workspaceId) : undefined}
         onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}

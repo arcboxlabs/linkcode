@@ -38,7 +38,6 @@ import { ROW_ACTION_CLASS, ROW_HOVER_PE_CLASS, RowActionsCluster } from './row-a
 export interface ThreadGroupHeaderProps {
   title: string;
   workspace: WorkspaceRecord | null;
-  sessionCount: number;
   /** Mirrors the surrounding accordion item's open state (the trigger owns toggling). */
   collapsed: boolean;
   /** Opens the new-session page preselecting this group's workspace. Undefined for the
@@ -85,7 +84,6 @@ function FolderToggleIcon({ open }: { open: boolean }): React.ReactNode {
 export function ThreadGroupHeader({
   title,
   workspace,
-  sessionCount,
   collapsed,
   onNewThread,
   onRename,
@@ -168,9 +166,12 @@ export function ThreadGroupHeader({
               )}
             >
               <FolderToggleIcon open={!collapsed} />
-              <span className="min-w-0 truncate">{title}</span>
-              {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
-              <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="max-w-full shrink-0 truncate">{title}</span>
+                {workspace && BranchStatusComponent && (
+                  <BranchStatusComponent cwd={workspace.cwd} />
+                )}
+              </span>
             </SidebarMenuButton>
           }
         />
