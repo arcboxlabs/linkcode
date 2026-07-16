@@ -10,10 +10,8 @@ import { PromptPager } from './prompt-pager';
 
 const EMPTY_RESPONSE: ConversationPromptResponse = { selectedIds: [] };
 
-/**
- * One agent question group, paged within one card. Drafts and skips stay local until one aggregate
- * reply submits the whole group, so its pager never crosses into standalone prompts.
- */
+/** One agent question group, paged within one card. Drafts and skips stay local until one
+ * aggregate reply submits the whole group — the pager never crosses into standalone prompts. */
 export function QuestionPrompt({
   autoFocusFirstChoice = false,
   item,

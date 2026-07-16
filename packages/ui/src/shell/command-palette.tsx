@@ -85,11 +85,8 @@ function paletteEntryToString(item: unknown): string {
 /** ⌘1–⌘9 slots, matching the palette's Recent-list cap. */
 const RECENT_JUMP_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
-/**
- * Registers one ⌘n binding scoped to the open palette, so pressing it selects the nth Recent row.
- * Own component per slot because hooks cannot be registered in a loop. An empty slot yields the
- * event (returns false) rather than swallowing it.
- */
+/** One ⌘n binding selecting the nth Recent row (own component per slot — hooks can't register
+ * in a loop). An empty slot yields the event (returns false) rather than swallowing it. */
 function RecentThreadJumpBinding({
   slot,
   owner,
@@ -114,13 +111,9 @@ function RecentThreadJumpBinding({
   return null;
 }
 
-/**
- * Dialog chrome forked from coss-ui's `CommandDialogBackdrop`/`CommandDialogPopup`: motion owns
- * enter/exit here (the workbench container defers unmount via `AnimatePresence`), so the CSS
- * `data-starting/ending-style` transition classes are dropped, and the backdrop loses
- * `backdrop-blur-sm` — backdrop-filter cannot blur the native vibrancy behind the desktop's
- * translucent sidebar, where it reads as a milky seam instead.
- */
+/** Dialog chrome forked from coss-ui's `CommandDialogBackdrop`/`CommandDialogPopup`: motion owns
+ * enter/exit, so the `data-starting/ending-style` classes are dropped; `backdrop-blur-sm` is
+ * dropped because backdrop-filter can't blur the native vibrancy behind the translucent sidebar. */
 const BACKDROP_CLASS = 'fixed inset-0 z-50 bg-black/32';
 const POPUP_CLASS =
   'relative flex max-h-105 min-h-0 w-full min-w-0 max-w-xl flex-col rounded-2xl border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:bg-muted/72 before:shadow-[0_1px_--theme(--color-black/4%)] **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-1 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]';
@@ -137,12 +130,8 @@ function useMeasuredHeight(): [React.RefCallback<HTMLElement>, number | null] {
   return [measureRef, height];
 }
 
-/**
- * The ⌘K palette dialog: the canonical coss-ui command sandwich — input on the popup's muted
- * surface, a raised panel holding the grouped results, a Kbd-hint footer. Items are pre-ranked
- * by the caller (`mode="none"`); Base UI owns keyboard navigation and Enter-activates-the-
- * highlighted-item, so rows only need `onClick`.
- */
+/** The ⌘K palette dialog. Items are pre-ranked by the caller (`mode="none"`); Base UI owns
+ * keyboard navigation and Enter-activation, so rows only need `onClick`. */
 export function CommandPalette({
   onOpenChange,
   query,
@@ -155,9 +144,8 @@ export function CommandPalette({
   const t = useTranslations('workbench.palette');
   const reducedMotion = useReducedMotion();
   const [listRef, listHeight] = useMeasuredHeight();
-  // Owner for the ⌘1–⌘9 row jumps: the popup is the active surface while the palette is open
-  // (the workbench root that carries the global bindings is `data-base-ui-inert` here), so these
-  // are what make the visible Recent-row hints actually select from the open dialog.
+  // Owner for the ⌘1–⌘9 jumps: while the palette is open the workbench root carrying the global
+  // bindings is `data-base-ui-inert`, so the popup must own these bindings itself.
   const popupRef = useRef<HTMLDivElement>(null);
 
   const groups: PaletteGroup[] = [];

@@ -106,11 +106,9 @@ export function ThreadsView({
   const projectGroupKeys = projectGroups.map((group) => group.collapseKey);
   const openGroupKeys = openThreadGroupValues(projectGroups);
 
-  // The optimistic preview must never cross the pin boundary: the drop would be clamped anyway
-  // (pin membership only changes via the pin button), and committing an order that disagrees
-  // with the plugin's DOM mutation leaves React reconciling against stale node positions.
-  // Preventing the dragover skips the preview for that target — the sortable checks
-  // `defaultPrevented` — so the DOM only ever moves where the drop can actually land.
+  // The optimistic preview must never cross the pin boundary: the drop would be clamped, and an
+  // order disagreeing with the plugin's DOM mutation leaves React reconciling stale node positions.
+  // Preventing the dragover (the sortable checks `defaultPrevented`) skips the preview there.
   function handleDragOver(event: DragOverEvent): void {
     const source = event.operation.source;
     const target = event.operation.target;

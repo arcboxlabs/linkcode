@@ -109,9 +109,8 @@ export interface ComposerProps {
   /** The reasoning-effort level the session is running at, reflected from `effort-update`; same
    * placeholder rule as `currentModel`. */
   currentEffort?: EffortLevel | null;
-  /** The session's slash-command catalog, reflected from `available-commands-update`. Empty or
-   * absent means the agent advertised none — the `/` menu then offers no command entries and a
-   * typed `/name` submits as plain text. */
+  /** Slash-command catalog reflected from `available-commands-update`. Empty or absent → the `/`
+   * menu offers no command entries and a typed `/name` submits as plain text. */
   agentCommands?: AgentCommand[] | null;
   /** Stable input features advertised by the live adapter session. */
   agentCapabilities?: AgentCapabilities | null;
@@ -210,9 +209,8 @@ export function Composer({
     ? (agentCommands ?? EMPTY_AGENT_COMMANDS)
     : EMPTY_AGENT_COMMANDS;
   const shellEnabled = Boolean(agentCapabilities?.shellCommand && onRunShellCommand && !disabled);
-  // The whole draft is one shell command while it starts with `$` — the composer shows the badge
-  // and routes the submit; slash/mention menus stay out of the way (a path like /tmp inside the
-  // command must not pop the command menu).
+  // A draft starting with `$` is one shell command; slash/mention menus must stay out of the way
+  // (a path like /tmp inside the command must not pop the command menu).
   const shellActive = shellEnabled && value.trimStart()[0] === '$';
 
   const textTrigger = useMemo(() => {
@@ -313,10 +311,8 @@ export function Composer({
     updateCaret(nextCaret, nextValue);
   }
 
-  // Layout effect (not a passive one) so the caret lands before paint — a mention insertion
-  // must never flash the old caret position for a frame. Deliberately no dependency array: it
-  // checks the pendingCaretRef command imperatively on every render rather than reacting to a
-  // dependency, so it fires exactly once per render that actually set the ref.
+  // Layout effect so the caret lands before paint (a mention insertion must never flash the old
+  // caret). Deliberately no dependency array: it checks pendingCaretRef imperatively every render.
   useLayoutEffect(() => {
     if (pendingCaretRef.current !== null && textareaRef.current) {
       const pos = pendingCaretRef.current;
@@ -450,9 +446,8 @@ export function Composer({
     ingestFiles(files);
   }
 
-  /** Merges already-resolved attachments (from the native picker) into the staged tray, applying
-   * the same aggregate cap drag-and-drop enforces — the picker's own per-file checks (type/size)
-   * already ran in `attachmentFromReadFile`, so only the running total needs rechecking here. */
+  /** Merges picker-resolved attachments into the tray under the same aggregate cap drag-and-drop
+   * enforces; per-file checks already ran in `attachmentFromReadFile`, so only the total recheck. */
   function mergeAttachments(picked: ComposerAttachment[]): void {
     if (picked.length === 0) return;
     let total = attachmentPayloadBytes(attachments);
@@ -609,9 +604,8 @@ export function Composer({
   const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
   const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
 
-  // Workflow modes and approval policy are two orthogonal axes (see session-modes.ts and
-  // approval-policy.ts). The active mode is server-reflected; failures land in the error banner,
-  // so a rejected switch simply leaves the previous mode active.
+  // Workflow mode and approval policy are orthogonal axes (see session-modes.ts, approval-policy.ts).
+  // The active mode is server-reflected; a rejected switch (error banner) leaves the previous active.
   let matchedMode: SessionMode | null = null;
   for (const mode of workflowModes) {
     if (mode.modeId === currentModeId) matchedMode = mode;
@@ -647,10 +641,8 @@ export function Composer({
   // No deps: the handle re-binds every render so insertText always sees the current draft.
   useImperativeHandle(handleRef, () => ({ insertText }));
 
-  // Server-reflected like the workflow mode and approval policy: the pick shows once the session's
-  // `model-update` / `effort-update` echoes it back (the adapter emits optimistically on accept, so
-  // the round-trip is fast), and a rejected switch simply leaves the previous value — the failure
-  // lands in the error banner.
+  // Server-reflected like mode/policy: the pick shows once `model-update` / `effort-update` echoes
+  // it back; a rejected switch leaves the previous value and the failure lands in the error banner.
   function selectModel(modelId: string): void {
     void onModelChange?.(modelId).catch(noop);
   }

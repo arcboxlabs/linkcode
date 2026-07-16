@@ -1,9 +1,6 @@
-/**
- * `timestamp` relative to `now`, e.g. "2 minutes ago". `now` is required so the compiler can't
- * memoize a stale value in render — pass a live clock from `useRelativeTimeLabel` there, or
- * `Date.now()` outside render. `locale` defaults to the runtime's locale; tests pin it for
- * deterministic output.
- */
+/** `timestamp` relative to `now` ("2 minutes ago"). `now` is required so the compiler can't
+ * memoize a stale value in render — pass `useRelativeTimeLabel`'s clock there, or `Date.now()`
+ * outside render. `locale` defaults to the runtime's; tests pin it. */
 export function relativeTimeLabel(timestamp: number, now: number, locale?: string): string {
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
   const diffSeconds = Math.round((timestamp - now) / 1000);

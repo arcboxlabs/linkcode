@@ -8,12 +8,9 @@ import VercelGlyph from '~icons/lobe-icons/vercel';
 import XaiGlyph from '~icons/lobe-icons/xai';
 import { cn } from '../lib/cn';
 
-/**
- * Brand glyphs keyed by `Account.service` (the workbench service-catalog id — a string join key,
- * like `AgentKind` for `AgentIcon`). Brand-color variants where lobe-icons ships one (claude,
- * cloudflare); the rest are officially monochrome marks and render in currentColor. A missing key
- * deliberately falls back to initials derived from the label, so custom services need no wiring.
- */
+/** Brand glyphs keyed by `Account.service` (a string join key, like `AgentKind` for `AgentIcon`);
+ * color variants only where lobe-icons ships one, the rest render in currentColor. A missing key
+ * deliberately falls back to label initials, so custom services need no wiring. */
 const SERVICE_GLYPHS: Record<string, typeof AnthropicGlyph> = {
   'claude-sub': ClaudeColorGlyph,
   'chatgpt-sub': OpenAiGlyph,

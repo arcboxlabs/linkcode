@@ -25,9 +25,8 @@ export interface ConversationSurfaceProps {
   respondingPermissions: ReadonlySet<string>;
   answeredQuestionIds: ReadonlySet<string>;
   respondingQuestions: ReadonlySet<string>;
-  /** Runtime availability cues (CODE-172): only a `needs-login` cue for this session's agent
-   * surfaces here — the sign-in recovery after an auth-failed turn. Install/version cues never
-   * block a session that is already running. */
+  /** Runtime availability cues (CODE-172): only a `needs-login` cue surfaces here —
+   * install/version cues never block a session that is already running. */
   runtimeCues?: AgentRuntimeCues;
   /** Starts (or retries) the interactive login for the signed-out agent. */
   onLoginAgent?: (kind: AgentKind) => void;
@@ -58,9 +57,8 @@ export interface ConversationSurfaceProps {
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
   onOpenPreviewUrl?: (url: string) => void;
-  /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only
-   * (built by combining the system dialog with a daemon file read) — absent on webview, where
-   * the composer's "Attach" action falls back to the Coss file input. */
+  /** Native file picker returning picked images ready to stage. Desktop-only — absent on
+   * webview, where the composer's "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
@@ -112,9 +110,8 @@ export function ConversationSurface({
   onRunShellCommand,
 }: ConversationSurfaceProps): React.ReactNode {
   const composerRef = useRef<ComposerHandle | null>(null);
-  // Only the signed-out cue matters mid-session: the next turn would fail on auth anyway, so
-  // block it and offer the login flow in place. A missing/unverified CLI stays a new-session
-  // concern — this session's process is already running.
+  // Only the signed-out cue matters mid-session (the next turn would fail on auth); a missing or
+  // unverified CLI stays a new-session concern — this session's process is already running.
   const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
   const loginCue = cue?.state === 'needs-login' ? cue : undefined;
   // Artifact interactions (click-to-reference) land in this surface's own composer;
