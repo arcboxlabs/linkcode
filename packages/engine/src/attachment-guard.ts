@@ -5,10 +5,8 @@ import {
   MAX_ATTACHMENT_TOTAL_BYTES,
 } from '@linkcode/schema';
 
-/** Raw byte count of a base64 payload. Counting the padding back out keeps the daemon's boundary
- * exactly where the clients' pre-encode `File.size` checks sit — no off-by-one window at the cap
- * where a client-approved file gets rejected here. Clamped at zero: malformed non-base64 input
- * (e.g. a bare "=") must not go negative and erode the caller's aggregate accounting. */
+/** Raw byte count of a base64 payload, kept exactly aligned with clients' pre-encode `File.size`
+ * checks; clamped at zero so malformed non-base64 input can't erode the aggregate accounting. */
 function base64RawByteLength(data: string): number {
   const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
   return Math.max(0, Math.floor((data.length / 4) * 3) - padding);
@@ -20,11 +18,9 @@ function attachmentData(block: ContentBlock): string | undefined {
   return undefined;
 }
 
-/** Defense-in-depth for less-trusted peers (mobile/Server tunnel) — local desktop/webview already
- * enforce all of this client-side before ever encoding a file. Runs under `tryReply`, so a throw
- * surfaces to the sender as a `request.failed` reply. The aggregate cap matters beyond memory: a
- * prompt's total base64 must stay under the transport's frame buffer, whose overflow kills the
- * whole connection rather than one request. */
+/** Defense-in-depth for less-trusted peers (mobile/Server tunnel); local clients already enforce
+ * this before encoding. A throw surfaces as `request.failed` via `tryReply`. The aggregate cap
+ * keeps a prompt's base64 under the transport's frame buffer, whose overflow kills the connection. */
 export function assertAttachmentContentAllowed(content: ContentBlock[]): void {
   let totalBytes = 0;
   for (const block of content) {

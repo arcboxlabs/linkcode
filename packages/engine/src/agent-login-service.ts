@@ -16,13 +16,10 @@ export type StartLogin = (
 ) => AgentLoginHandle | undefined;
 
 /**
- * AgentLoginService: drives an agent CLI's own OAuth login headlessly and bridges it to the
- * `agent-login.*` wire. Two flows exist (`AGENT_LOGIN_KINDS`): claude-code's remote-callback page
- * streams the browser URL down (`agent-login.url`) and round-trips the pasted authorization code
- * up (`agent-login.submit-code`); codex's app-server flow streams the URL the same way but
+ * Drives an agent CLI's own OAuth login headlessly and bridges it to the `agent-login.*` wire.
+ * Two flows (`AGENT_LOGIN_KINDS`): claude-code round-trips a pasted authorization code; codex
  * completes on its own localhost callback — nothing to submit. A clean login calls
- * {@link onSuccess} so the engine re-probes and pushes the refreshed runtime snapshot, clearing
- * the "needs login" cue.
+ * {@link onSuccess} so the engine re-probes and pushes the refreshed runtime snapshot.
  */
 export class AgentLoginService {
   private readonly logins = new Map<string, AgentLoginHandle>();
