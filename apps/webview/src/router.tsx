@@ -1,3 +1,4 @@
+import { AutomationsRoute } from '@webview/routes/automations';
 import { RootLayout } from '@webview/routes/root-layout';
 import { AgentsSettings } from '@webview/routes/settings/agents';
 import { AppearanceSettings } from '@webview/routes/settings/appearance';
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       { index: true, element: <WorkbenchRoute /> },
+      { path: 'automations', element: <AutomationsRoute /> },
       {
         path: 'settings',
         element: <SettingsLayout />,

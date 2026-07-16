@@ -61,6 +61,8 @@ export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupStat
   onPickDirectory?: () => Promise<string | null>;
   /** Opens the command palette — the Search entry stays disabled without it. */
   onOpenSearch?: () => void;
+  /** Opens the Automations surface — the Automations entry stays disabled without it. */
+  onOpenAutomations?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
   /** Registers a directory as a workspace — the Projects "+" menu's folder flow. */
@@ -102,6 +104,7 @@ export function SessionSidebar({
   onStartDraft,
   onPickDirectory,
   onOpenSearch,
+  onOpenAutomations,
   searchShortcut,
   onRegisterWorkspace,
   onImportHistory,
@@ -141,9 +144,13 @@ export function SessionSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton className="hover:bg-transparent" disabled>
+            <SidebarMenuButton
+              className="hover:bg-transparent"
+              disabled={!onOpenAutomations}
+              onClick={onOpenAutomations}
+            >
               <SparklesIcon />
-              <span className="min-w-0 flex-1 truncate">Automation</span>
+              <span className="min-w-0 flex-1 truncate">Automations</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

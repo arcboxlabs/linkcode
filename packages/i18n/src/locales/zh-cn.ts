@@ -7,6 +7,7 @@ export const zhCN = {
     automations: {
       title: '自动化',
       pageTitle: '自动化',
+      back: '返回',
       empty: '还没有自动化',
       emptyDescription: '创建一个定时任务，让 agent 按计划自动运行。',
       notFound: '未找到该自动化',

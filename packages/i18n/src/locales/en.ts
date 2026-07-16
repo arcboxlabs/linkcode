@@ -9,6 +9,7 @@ export const en = {
     automations: {
       title: 'Automations',
       pageTitle: 'Automations',
+      back: 'Back',
       empty: 'No automations yet',
       emptyDescription: 'Create a schedule to run an agent on a recurring cadence.',
       notFound: 'Automation not found',

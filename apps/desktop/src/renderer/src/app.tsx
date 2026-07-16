@@ -12,6 +12,7 @@ import {
 } from '@linkcode/workbench';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
+import { DesktopAutomationsView } from './automations/automations-view';
 import { desktopDaemonConnectionSource } from './daemon-connection-source';
 import { systemBridge } from './ipc';
 import { presentDesktopNotification } from './notifications';
@@ -29,6 +30,7 @@ const cloudImSource = window.linkcodeCloud.im;
 export function DesktopApp(): React.ReactNode {
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
   const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
+  const automationsOpen = useNavigationHistoryStore((state) => state.overlay === 'automations');
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
@@ -40,15 +42,17 @@ export function DesktopApp(): React.ReactNode {
             // URL), yet its history-import panel can still use the data plane once connected.
             ungated={settingsOpen ? <SettingsView /> : null}
             fallback={
-              <SettingsUnderlay>
+              <OverlayUnderlay>
                 <DesktopConnectionFallback />
-              </SettingsUnderlay>
+              </OverlayUnderlay>
             }
           >
             <SessionNotifier present={presentDesktopNotification} />
-            <SettingsUnderlay>
+            <OverlayUnderlay>
               <Workbench shellComponent={DesktopWorkbenchShell} />
-            </SettingsUnderlay>
+            </OverlayUnderlay>
+            {/* Gated: Automations lists schedules over the data plane, so it mounts inside the gate. */}
+            {automationsOpen ? <DesktopAutomationsView /> : null}
           </WorkbenchProviders>
           {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
               can always minimize/maximize/close — including while the daemon is connecting or down. */}
@@ -60,14 +64,14 @@ export function DesktopApp(): React.ReactNode {
 }
 
 /**
- * Hides (never unmounts) the workbench-side layer while Settings covers it: both shells are
- * translucent over the native backdrop, so painted pixels underneath ghost through the settings
- * sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction.
+ * Hides (never unmounts) the workbench-side layer while a full-page overlay (Settings, Automations)
+ * covers it: both shells are translucent over the native backdrop, so painted pixels underneath
+ * ghost through the overlay. `visibility` keeps layout/PTY state intact; `inert` blocks focus.
  */
-function SettingsUnderlay({ children }: React.PropsWithChildren): React.ReactNode {
-  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
+function OverlayUnderlay({ children }: React.PropsWithChildren): React.ReactNode {
+  const overlayOpen = useNavigationHistoryStore((state) => state.overlay !== null);
   return (
-    <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+    <div className={overlayOpen ? 'invisible h-full' : 'h-full'} inert={overlayOpen}>
       {children}
     </div>
   );
