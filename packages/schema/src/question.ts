@@ -72,7 +72,8 @@ export type QuestionRequest = z.infer<typeof QuestionRequestSchema>;
 /** One question's answer: selected options, or free text typed instead of selecting. */
 export const QuestionAnswerSchema = z.object({
   questionId: z.string().min(1),
-  /** Chosen options; a single-select answer carries exactly one entry. */
+  /** Chosen options; a single-select answer carries at most one entry. Empty with no
+   * `customText` marks the question as skipped — adapters report it as unanswered. */
   selectedOptionIds: z.array(z.string().min(1)),
   /** Freeform answer typed instead of picking a structured option. */
   customText: z.string().optional(),

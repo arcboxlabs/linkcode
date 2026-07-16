@@ -1027,16 +1027,6 @@ describe('engine attach replay', () => {
         },
         error: 'Duplicate option in answer: multi',
       },
-      {
-        outcome: {
-          outcome: 'answered',
-          answers: [
-            { questionId: 'single', selectedOptionIds: ['a'] },
-            { questionId: 'multi', selectedOptionIds: [] },
-          ],
-        },
-        error: 'Invalid selection count for question: multi',
-      },
     ];
 
     await Promise.all(
@@ -1079,6 +1069,27 @@ describe('engine attach replay', () => {
       requestId: 'ask-batch',
       outcome,
       source: 'user',
+    });
+
+    // Empty selections with no custom text are explicit skips and dispatch as unanswered.
+    adapter.emit({ ...QUESTION_BATCH, requestId: 'ask-batch-2' });
+    const skipOutcome = {
+      outcome: 'answered' as const,
+      answers: [
+        { questionId: 'single', selectedOptionIds: [] },
+        { questionId: 'multi', selectedOptionIds: [] },
+      ],
+    };
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'valid-skip',
+      sessionId,
+      input: { type: 'question-response', requestId: 'ask-batch-2', outcome: skipOutcome },
+    });
+    expect(adapter.sentInputs).toContainEqual({
+      type: 'question-response',
+      requestId: 'ask-batch-2',
+      outcome: skipOutcome,
     });
   });
 

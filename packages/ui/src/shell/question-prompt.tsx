@@ -41,12 +41,7 @@ export function QuestionPrompt({
   const header = question.header ?? t('badge');
   const response = responses.get(question.questionId) ?? EMPTY_RESPONSE;
   const customDraft = customDrafts.get(question.questionId) ?? '';
-  const currentAnswered = isQuestionAnswered(question, response);
   const isLastQuestion = index === item.questions.length - 1;
-  const allAnswered = item.questions.every((candidate) => {
-    const candidateResponse = responses.get(candidate.questionId);
-    return candidateResponse ? isQuestionAnswered(candidate, candidateResponse) : false;
-  });
   const hasDrafts =
     [...responses].some(
       ([, candidate]) => candidate.selectedIds.length > 0 || candidate.customText !== undefined,
@@ -54,13 +49,20 @@ export function QuestionPrompt({
 
   function selectPage(nextIndex: number): void {
     if (nextIndex < 0 || nextIndex >= item.questions.length) return;
-    if (nextIndex > index && !currentAnswered) return;
     setFocusAfterNavigation(true);
     setIndex(nextIndex);
   }
 
   function updateResponse(nextResponse: QuestionDraft): void {
     setResponses((current) => new Map(current).set(question.questionId, nextResponse));
+    // A structured single-select pick settles the page — advance automatically.
+    if (
+      !question.multiSelect &&
+      nextResponse.customText === undefined &&
+      nextResponse.selectedIds.length > 0
+    ) {
+      selectPage(index + 1);
+    }
   }
 
   function updateCustomText(value: string): void {
@@ -75,17 +77,19 @@ export function QuestionPrompt({
   }
 
   function submitGroup(): void {
-    if (!allAnswered || responding) return;
-    const answers: QuestionAnswer[] = [];
-    for (const candidate of item.questions) {
+    if (responding) return;
+    // Unanswered questions ride as explicit empty answers so the agent hears they were skipped.
+    const answers: QuestionAnswer[] = item.questions.map((candidate) => {
       const candidateResponse = responses.get(candidate.questionId);
-      if (!candidateResponse || !isQuestionAnswered(candidate, candidateResponse)) return;
-      answers.push({
+      if (!candidateResponse || !isQuestionAnswered(candidate, candidateResponse)) {
+        return { questionId: candidate.questionId, selectedOptionIds: [] };
+      }
+      return {
         questionId: candidate.questionId,
         selectedOptionIds: candidateResponse.selectedIds,
         customText: candidateResponse.customText?.trim() || undefined,
-      });
-    }
+      };
+    });
     setLastAction('submit');
     onRespond(item.requestId, { outcome: 'answered', answers });
   }
@@ -97,7 +101,8 @@ export function QuestionPrompt({
 
   function handleSubmit(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>): void {
     event.preventDefault();
-    submitGroup();
+    if (isLastQuestion) submitGroup();
+    else selectPage(index + 1);
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
@@ -155,22 +160,19 @@ export function QuestionPrompt({
             <span className="min-w-0 truncate text-muted-foreground text-xs leading-7 sm:leading-6">
               {t(question.multiSelect ? 'instructionMultiple' : 'instructionSingle')}
             </span>
-            {isLastQuestion ? (
-              <Button
-                disabled={!allAnswered || responding}
-                loading={responding && lastAction === 'submit'}
-                size="xs"
-                type="submit"
-              >
-                {t('submit')}
-                <CornerDownLeftIcon />
-              </Button>
-            ) : null}
+            <Button
+              disabled={responding}
+              loading={responding && lastAction === 'submit'}
+              size="xs"
+              type="submit"
+            >
+              {isLastQuestion ? t('submit') : t('nextAction')}
+              <CornerDownLeftIcon />
+            </Button>
           </>
         }
         meta={
           <QuestionPromptActions
-            canGoNext={currentAnswered}
             current={index + 1}
             disabled={responding}
             dismissLoading={responding && lastAction === 'dismiss'}
@@ -182,7 +184,6 @@ export function QuestionPrompt({
             onPrevious={() => selectPage(index - 1)}
           />
         }
-        panelClassName="p-1"
         title={question.prompt}
       >
         <QuestionChoices

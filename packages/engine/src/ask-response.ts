@@ -67,7 +67,9 @@ export function validateAskResponse(request: AskEvent, input: AskResponseInput):
     if (selected.size !== answer.selectedOptionIds.length) {
       throw new Error(`Duplicate option in answer: ${question.questionId}`);
     }
-    if (selected.size === 0 || (!question.multiSelect && selected.size !== 1)) {
+    // An empty selection with no custom text is an explicit skip: the user submitted the
+    // batch without answering this question, and adapters report it to the agent as unanswered.
+    if (!question.multiSelect && selected.size > 1) {
       throw new Error(`Invalid selection count for question: ${question.questionId}`);
     }
     const optionIds = new Set(question.options.map((option) => option.optionId));

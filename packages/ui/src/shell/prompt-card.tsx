@@ -5,7 +5,6 @@ import {
   Frame,
   FrameDescription,
   FrameFooter,
-  FrameHeader,
   FramePanel,
   FrameTitle,
 } from 'coss-ui/components/frame';
@@ -58,7 +57,6 @@ export function PromptCard({
   tone?: 'neutral' | 'warning';
 }): React.ReactNode {
   const titleId = useId();
-  const hasPanel = children !== undefined || details.length > 0 || error !== undefined;
 
   return (
     <Frame
@@ -67,51 +65,49 @@ export function PromptCard({
       className="my-0"
       role="group"
     >
-      <FrameHeader className="gap-1.5 px-3 py-2.5">
-        {eyebrow}
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <FrameTitle className="flex min-w-0 items-center gap-2">
-            <span id={titleId} className="min-w-0">
-              {title}
-            </span>
-            {badge ? (
-              <Badge variant={tone === 'warning' ? 'warning' : 'secondary'}>{badge}</Badge>
-            ) : null}
-          </FrameTitle>
-          {(disabled && busyLabel) || meta ? (
-            <div className="flex shrink-0 items-center gap-1.5">
-              {disabled && busyLabel ? (
-                <Spinner aria-label={busyLabel} className="size-3.5" />
+      <FramePanel className={cn('space-y-2 p-3', panelClassName)}>
+        <div className="flex flex-col gap-1.5">
+          {eyebrow}
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <FrameTitle className="flex min-w-0 items-center gap-2">
+              <span id={titleId} className="min-w-0">
+                {title}
+              </span>
+              {badge ? (
+                <Badge variant={tone === 'warning' ? 'warning' : 'secondary'}>{badge}</Badge>
               ) : null}
-              {meta}
-            </div>
+            </FrameTitle>
+            {(disabled && busyLabel) || meta ? (
+              <div className="flex shrink-0 items-center gap-1.5">
+                {disabled && busyLabel ? (
+                  <Spinner aria-label={busyLabel} className="size-3.5" />
+                ) : null}
+                {meta}
+              </div>
+            ) : null}
+          </div>
+          {description ? (
+            <FrameDescription className="max-w-2xl text-pretty">{description}</FrameDescription>
           ) : null}
         </div>
-        {description ? (
-          <FrameDescription className="max-w-2xl text-pretty">{description}</FrameDescription>
+        {details.length > 0 ? <PromptCardDetails details={details} /> : null}
+        {children}
+        {error ? (
+          <Alert variant="error">
+            <AlertDescription>{error.message}</AlertDescription>
+            <AlertAction>
+              <Button
+                disabled={disabled}
+                size="xs"
+                variant="destructive-outline"
+                onClick={error.onRetry}
+              >
+                {error.retryLabel}
+              </Button>
+            </AlertAction>
+          </Alert>
         ) : null}
-      </FrameHeader>
-      {hasPanel ? (
-        <FramePanel className={cn('space-y-3 p-2', panelClassName)}>
-          {details.length > 0 ? <PromptCardDetails details={details} /> : null}
-          {children}
-          {error ? (
-            <Alert variant="error">
-              <AlertDescription>{error.message}</AlertDescription>
-              <AlertAction>
-                <Button
-                  disabled={disabled}
-                  size="xs"
-                  variant="destructive-outline"
-                  onClick={error.onRetry}
-                >
-                  {error.retryLabel}
-                </Button>
-              </AlertAction>
-            </Alert>
-          ) : null}
-        </FramePanel>
-      ) : null}
+      </FramePanel>
       {footer !== undefined ? (
         <FrameFooter className="flex items-center justify-between gap-2 px-3 py-1.5">
           {footer}

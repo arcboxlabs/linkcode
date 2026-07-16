@@ -109,6 +109,7 @@ export const zhCN = {
       navigation: '问题导航',
       previous: '上一个问题',
       next: '下一个问题',
+      nextAction: '下一题',
       submit: '提交回答',
       skipped: '已跳过',
       customPlaceholder: '输入自定义回答',

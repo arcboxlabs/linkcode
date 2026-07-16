@@ -1,7 +1,6 @@
 import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
-import { Group } from 'coss-ui/components/group';
 import { ShieldAlertIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -61,7 +60,7 @@ export function PermissionPrompt({
       footer={
         <>
           {persistentOptions.length > 0 ? (
-            <Group className="flex-wrap">
+            <div className="flex flex-wrap items-center gap-1.5">
               {persistentOptions.map((option) => (
                 <PermissionOptionButton
                   key={option.optionId}
@@ -71,9 +70,9 @@ export function PermissionPrompt({
                   onSelect={() => respond({ outcome: 'selected', option })}
                 />
               ))}
-            </Group>
+            </div>
           ) : null}
-          <Group className="ms-auto flex-wrap">
+          <div className="ms-auto flex flex-wrap items-center gap-1.5">
             {immediateOptions.map((option) => (
               <PermissionOptionButton
                 key={option.optionId}
@@ -83,11 +82,11 @@ export function PermissionPrompt({
                 onSelect={() => respond({ outcome: 'selected', option })}
               />
             ))}
-          </Group>
+          </div>
         </>
       }
       eyebrow={
-        <Badge className="w-fit" size="sm" variant="warning">
+        <Badge className="w-fit" variant="warning">
           <ShieldAlertIcon />
           {t('reviewRequired')}
         </Badge>
@@ -132,9 +131,9 @@ function PermissionOptionButton({
 function permissionButtonVariant(
   option: PermissionOption,
 ): React.ComponentProps<typeof Button>['variant'] {
-  if (option.kind === 'reject_always') return 'destructive';
+  if (option.kind === 'reject_always') return 'destructive-outline';
   if (option.kind === 'reject_once') return 'outline';
-  if (option.kind === 'allow_always') return 'outline';
+  if (option.kind === 'allow_always') return 'ghost';
   return 'default';
 }
 

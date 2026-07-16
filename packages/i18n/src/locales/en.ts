@@ -112,6 +112,7 @@ export const en = {
       navigation: 'Question navigation',
       previous: 'Previous question',
       next: 'Next question',
+      nextAction: 'Next',
       submit: 'Submit answers',
       skipped: 'Skipped',
       customPlaceholder: 'Type a custom answer',

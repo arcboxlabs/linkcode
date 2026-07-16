@@ -63,7 +63,8 @@ export function QuestionChoices({
   ));
 
   return (
-    <div className="flex w-full flex-col gap-0.5">
+    // Bleeds the rows' own px-2 into the panel padding so keycaps align with the title.
+    <div className="-mx-2 flex flex-col gap-0.5">
       {question.multiSelect ? (
         <CheckboxGroup
           aria-label={question.prompt}
@@ -256,7 +257,7 @@ function CustomChoiceRow({
     return (
       <Button
         aria-label={placeholder}
-        className="h-auto w-full justify-start gap-2.5 border-0 px-2 py-1.5 font-normal text-muted-foreground shadow-none"
+        className="h-auto w-full justify-start gap-2.5 border-0 px-2 py-1.5 font-normal text-muted-foreground shadow-none sm:h-auto"
         disabled={disabled}
         variant="ghost"
         onClick={onSelect}

@@ -15,7 +15,6 @@ import { useTranslations } from 'use-intl';
 import { PromptPager } from './prompt-pager';
 
 export function QuestionPromptActions({
-  canGoNext,
   current,
   disabled,
   dismissLoading,
@@ -26,7 +25,6 @@ export function QuestionPromptActions({
   onNext,
   onPrevious,
 }: {
-  canGoNext: boolean;
   current: number;
   disabled: boolean;
   dismissLoading: boolean;
@@ -46,7 +44,6 @@ export function QuestionPromptActions({
         disabled={disabled}
         label={t('navigation')}
         nextLabel={t('next')}
-        nextDisabled={!canGoNext}
         previousLabel={t('previous')}
         queued={queuedCount}
         total={total}

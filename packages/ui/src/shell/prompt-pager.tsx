@@ -9,7 +9,6 @@ export function PromptPager({
   queued = 0,
   disabled = false,
   label,
-  nextDisabled = false,
   previousLabel,
   nextLabel,
   onPrevious,
@@ -20,7 +19,6 @@ export function PromptPager({
   queued?: number;
   disabled?: boolean;
   label?: string;
-  nextDisabled?: boolean;
   previousLabel?: string;
   nextLabel?: string;
   onPrevious: () => void;
@@ -32,7 +30,7 @@ export function PromptPager({
   if (!hasPages && !hasQueue) return null;
 
   const previousDisabled = disabled || current <= 1;
-  const isNextDisabled = disabled || nextDisabled || current >= total;
+  const isNextDisabled = disabled || current >= total;
 
   return (
     <Pagination aria-label={label} className="w-auto justify-end">

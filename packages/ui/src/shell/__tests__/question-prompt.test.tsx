@@ -16,6 +16,7 @@ function translateKey(namespace: string, key: string, values?: Record<string, un
   if (key === 'queued') return `${String(values?.count)} queued`;
   if (namespace === 'workbench.question' && key === 'previous') return 'previous question';
   if (namespace === 'workbench.question' && key === 'next') return 'next question';
+  if (namespace === 'workbench.question' && key === 'nextAction') return 'Next';
   if (namespace === 'workbench.question' && key === 'navigation') return 'Question navigation';
   if (namespace === 'workbench.question' && key === 'instructionSingle') return 'Choose one';
   if (namespace === 'workbench.question' && key === 'instructionMultiple') {
@@ -175,8 +176,6 @@ describe('QuestionPrompt', () => {
 
     expect(screen.getByText('1 of 3')).toBeDefined();
     const cache = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
-    const next = screen.getByRole('button', { name: 'next question' });
-    expect(next.hasAttribute('disabled')).toBe(true);
     expect(screen.getByText('Select all that apply')).toBeDefined();
     const cacheDescription = screen.getByText(CACHE_DESCRIPTION);
     expect(cacheDescription.classList.contains('truncate')).toBe(true);
@@ -184,26 +183,28 @@ describe('QuestionPrompt', () => {
 
     await user.click(cache);
 
+    // Multi-select stays put; the always-present footer action advances.
     expect(screen.getByText('1 of 3')).toBeDefined();
     expect(cache.getAttribute('aria-checked')).toBe('true');
-    expect(next.hasAttribute('disabled')).toBe(false);
     expect(onRespond).not.toHaveBeenCalled();
 
-    await user.click(next);
+    await user.click(screen.getByRole('button', { name: 'Next' }));
     expect(screen.getByText('2 of 3')).toBeDefined();
-    const node = screen.getByRole('radio', { name: NODE_CHOICE_NAME });
-    await user.click(node);
-    expect(screen.getByText('2 of 3')).toBeDefined();
+
+    // A structured single-select pick advances automatically.
+    await user.click(screen.getByRole('radio', { name: NODE_CHOICE_NAME }));
+    expect(screen.getByText('3 of 3')).toBeDefined();
     expect(onRespond).not.toHaveBeenCalled();
 
+    await user.click(screen.getByRole('button', { name: 'previous question' }));
+    expect(screen.getByRole('radio', { name: NODE_CHOICE_NAME }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
     await user.click(screen.getByRole('button', { name: 'previous question' }));
     expect(
       screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
     ).toBe('true');
     await user.click(screen.getByRole('button', { name: 'next question' }));
-    expect(screen.getByRole('radio', { name: NODE_CHOICE_NAME }).getAttribute('aria-checked')).toBe(
-      'true',
-    );
     await user.click(screen.getByRole('button', { name: 'next question' }));
     await user.click(screen.getByRole('radio', { name: STABLE_CHOICE_NAME }));
     expect(screen.getByText('3 of 3')).toBeDefined();
@@ -222,6 +223,30 @@ describe('QuestionPrompt', () => {
     });
   });
 
+  it('lets the pager skip questions and submits unanswered ones as explicit skips', async () => {
+    const user = userEvent.setup();
+    const onRespond = vi.fn();
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />);
+
+    const next = screen.getByRole('button', { name: 'next question' });
+    expect(next.hasAttribute('disabled')).toBe(false);
+    await user.click(next);
+    expect(screen.getByText('2 of 3')).toBeDefined();
+    await user.click(screen.getByRole('radio', { name: NODE_CHOICE_NAME }));
+    expect(screen.getByText('3 of 3')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'submit' }));
+
+    expect(onRespond).toHaveBeenCalledOnce();
+    expect(onRespond).toHaveBeenCalledWith('request-1', {
+      outcome: 'answered',
+      answers: [
+        { questionId: 'q1', selectedOptionIds: [] },
+        { questionId: 'q2', selectedOptionIds: ['node'], customText: undefined },
+        { questionId: 'q3', selectedOptionIds: [] },
+      ],
+    });
+  });
+
   it('treats Other as an exclusive choice and restores its draft', async () => {
     const user = userEvent.setup();
     const onRespond = vi.fn();
@@ -229,13 +254,7 @@ describe('QuestionPrompt', () => {
 
     await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
     let input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
-    expect(screen.getByRole('button', { name: 'next question' }).hasAttribute('disabled')).toBe(
-      true,
-    );
     await user.type(input, 'Run smoke tests');
-    expect(screen.getByRole('button', { name: 'next question' }).hasAttribute('disabled')).toBe(
-      false,
-    );
 
     await user.click(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }));
     expect(screen.queryByRole('textbox', { name: 'customPlaceholder' })).toBeNull();
@@ -310,9 +329,6 @@ describe('QuestionPrompt', () => {
     await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'customPlaceholder' }));
     expect(cache.getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('button', { name: 'next question' }).hasAttribute('disabled')).toBe(
-      false,
-    );
   });
 
   it('ignores modified numbered shortcuts and shortcuts while responding', async () => {
@@ -363,7 +379,6 @@ describe('QuestionPrompt', () => {
     await user.click(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }));
     await user.click(screen.getByRole('button', { name: 'next question' }));
     await user.click(screen.getByRole('radio', { name: NODE_CHOICE_NAME }));
-    await user.click(screen.getByRole('button', { name: 'next question' }));
     await user.click(screen.getByRole('radio', { name: STABLE_CHOICE_NAME }));
     await user.click(screen.getByRole('button', { name: 'submit' }));
     expect(onRespond).toHaveBeenCalledOnce();
