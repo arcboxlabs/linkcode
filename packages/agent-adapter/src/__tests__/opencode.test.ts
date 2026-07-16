@@ -1039,6 +1039,12 @@ describe('OpenCodeAdapter shell-command dispatch', () => {
       command: 'ls',
     });
     expect(events.some((e) => e.type === 'status' && e.status === 'running')).toBe(true);
+    // The late catalog success also re-arms the approval-policy axis missed at start.
+    expect(
+      events.some(
+        (e) => e.type === 'approval-policy-update' && e.state.currentPolicyId === 'build',
+      ),
+    ).toBe(true);
   });
 
   it('settles the turn via the HTTP-resolve backstop when no session.idle ever arrives', async () => {
@@ -1092,5 +1098,187 @@ describe('OpenCodeAdapter shell-command dispatch', () => {
     });
     expect(errors(events)[0].message).toContain('session.shell failed');
     expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+  });
+});
+
+describe('OpenCodeAdapter control plane (CODE-224)', () => {
+  afterEach(() => {
+    // Restore the default fresh-client factory (same discipline as the command-catalog block).
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+  });
+
+  /** Seed the agent catalog the way a real `app.agents` responds: primaries, an `all`-mode
+   * agent, plus the two kinds that must be filtered out (hidden, subagent). */
+  function seedAgents(): void {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      client.app.agents.mockReturnValue({
+        data: [
+          { name: 'build', mode: 'primary', description: 'Default implementation agent' },
+          { name: 'plan', mode: 'primary' },
+          { name: 'helper', mode: 'all' },
+          { name: 'stealth', mode: 'primary', hidden: true },
+          { name: 'reviewer', mode: 'subagent' },
+        ],
+      });
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+  }
+
+  function policyUpdates(
+    events: AgentEvent[],
+  ): Array<Extract<AgentEvent, { type: 'approval-policy-update' }>> {
+    return events.filter(
+      (e): e is Extract<AgentEvent, { type: 'approval-policy-update' }> =>
+        e.type === 'approval-policy-update',
+    );
+  }
+
+  it('advertises selectable agents as the approval-policy axis at start', async () => {
+    seedAgents();
+    const { adapter, events } = await makeAdapter();
+
+    const updates = policyUpdates(events);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].state).toEqual({
+      availablePolicies: [
+        { policyId: 'build', name: 'Build', description: 'Default implementation agent' },
+        { policyId: 'plan', name: 'Plan' },
+        { policyId: 'helper', name: 'Helper' },
+      ],
+      currentPolicyId: 'build',
+    });
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'build' }),
+    );
+  });
+
+  it('keeps the axis hidden when discovery returns nothing selectable', async () => {
+    const { adapter, events } = await makeAdapter();
+
+    expect(policyUpdates(events)).toHaveLength(0);
+    await expect(adapter.send({ type: 'set-approval-policy', policyId: 'plan' })).rejects.toThrow(
+      "opencode: unknown approval policy 'plan'",
+    );
+  });
+
+  it('set-approval-policy switches the agent riding subsequent prompts and commands', async () => {
+    seedAgents();
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+
+    await adapter.send({ type: 'set-approval-policy', policyId: 'plan' });
+
+    const updates = policyUpdates(events);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].state.currentPolicyId).toBe('plan');
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'plan' }),
+    );
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+    });
+
+    await adapter.send({ type: 'command', name: 'review' });
+    expect(client.session.command).toHaveBeenCalledWith(expect.objectContaining({ agent: 'plan' }));
+  });
+
+  it('rejects an unknown approval policy id without touching the current pick', async () => {
+    seedAgents();
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+
+    await expect(
+      adapter.send({ type: 'set-approval-policy', policyId: 'bypassPermissions' }),
+    ).rejects.toThrow("opencode: unknown approval policy 'bypassPermissions'");
+    expect(policyUpdates(events)).toHaveLength(0);
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'build' }),
+    );
+  });
+
+  it('shell passthrough runs under the selected agent without a lazy re-fetch', async () => {
+    seedAgents();
+    const { adapter } = await makeAdapter();
+    await adapter.send({ type: 'set-approval-policy', policyId: 'helper' });
+    client.app.agents.mockClear();
+
+    await adapter.send({ type: 'shell-command', command: 'ls' });
+
+    expect(client.session.shell).toHaveBeenCalledWith(expect.objectContaining({ agent: 'helper' }));
+    expect(client.app.agents).not.toHaveBeenCalled();
+  });
+
+  it('set-model reflects immediately and rides the next prompt', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+
+    await adapter.send({ type: 'set-model', model: 'openai/gpt-5-nano' });
+
+    expect(events).toEqual([{ type: 'model-update', model: 'openai/gpt-5-nano' }]);
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ model: { providerID: 'openai', modelID: 'gpt-5-nano' } }),
+    );
+  });
+
+  it('rejects a set-model ref that is not providerID/modelID', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+
+    await expect(adapter.send({ type: 'set-model', model: 'gpt-5-nano' })).rejects.toThrow(
+      "opencode: model must be 'providerID/modelID'",
+    );
+    expect(events.some((e) => e.type === 'model-update')).toBe(false);
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ model: undefined }),
+    );
+  });
+
+  it('rejects a cross-provider switch when a per-account credential was injected at spawn', async () => {
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      model: 'openai/gpt-5.5',
+      config: { apiKey: 'sk-test' },
+    });
+
+    await expect(
+      adapter.send({ type: 'set-model', model: 'anthropic/claude-opus-4' }),
+    ).rejects.toThrow("holds credentials for 'openai' only");
+
+    // Same-provider switches stay allowed.
+    await adapter.send({ type: 'set-model', model: 'openai/gpt-5-nano' });
+    expect(events.some((e) => e.type === 'model-update' && e.model === 'openai/gpt-5-nano')).toBe(
+      true,
+    );
+  });
+
+  it('reflects a configured start model before the first turn', async () => {
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo', model: 'openai/gpt-5.5' });
+
+    expect(events.some((e) => e.type === 'model-update' && e.model === 'openai/gpt-5.5')).toBe(
+      true,
+    );
   });
 });
