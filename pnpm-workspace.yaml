@@ -178,6 +178,11 @@ overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
   # ends at 0.24.2 on npm — the fix actually shipped in 0.25.0.
   esbuild@<=0.24.2: ^0.25.0
+  # Dedup: @streamdown/code pins shiki ^3 while @pierre/diffs resolves shiki 4, so the
+  # renderer bundles two complete language+theme chunk graphs (~9 MB / 300 files, CODE-215).
+  # The plugin only uses createHighlighter/bundledLanguages/createJavaScriptRegexEngine —
+  # all unchanged in shiki 4.
+  shiki@<4.0.0: ^4.3.0
   linkify-it@<=5.0.0: ^5.0.1
   undici@>=8.0.0 <8.5.0: ^8.5.0
   uuid@<11.1.1: ^11.1.1
