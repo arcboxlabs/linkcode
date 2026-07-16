@@ -793,9 +793,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    *
    * `/usage` (provider alias `/cost`) is the one exception: like Claude Code's own TUI — where it
    * opens a dialog and never writes to the transcript — it is intercepted into a structured
-   * `usage-report` event instead of a turn. Status stays idle, which the engine's input gate reads
-   * at send()-resolve as a synchronous control with no lifecycle events (base.ts turn contract),
-   * so nothing hangs waiting for a `result` frame that will never come. */
+   * `usage-report` event instead of a turn. No `result` frame will follow, so `reportUsage`
+   * brackets itself with status `running`→`idle` per the base.ts turn contract — the busy window
+   * (the control request is network-bound and can span a process respawn) stays visible to the
+   * composer, and the engine's input gate releases at send()-resolve because status is already
+   * back to idle. */
   protected override onCommand(name: string, args?: string): Promise<void> {
     if (this.isUsageCommand(name)) return this.reportUsage();
     const text = `/${name}${args ? ` ${args}` : ''}`;
@@ -817,6 +819,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * error, never a silent no-op. No text fallback by design: the invocation must never surface as
    * transcript text. Verified against SDK 0.3.206 × CLI 2.1.206. */
   private async reportUsage(): Promise<void> {
+    // Announce the busy window synchronously (base.ts turn contract): the engine's input gate and
+    // the composer both read status, and without this the session looks idle while a concurrent
+    // input gets rejected with "Session is busy". No result frame follows an intercepted command,
+    // so the matching 'idle' is also emitted here (finally) — success and failure alike.
+    this.emitStatus('running');
     try {
       // Same lazy recovery as onPrompt: a crashed or deliberately rebuilt process (an effort
       // transition into/out of max) is recreated on demand, so /usage works right after either.
@@ -829,6 +836,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.emitUsageReport(mapClaudeUsageReport(raw));
     } catch (err) {
       this.emitError(`claude-code: /usage failed (${extractErrorMessage(err) ?? 'unknown error'})`);
+    } finally {
+      this.emitStatus('idle');
     }
   }
 
@@ -964,12 +973,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           // never reflects mid-session changes) — swap the cached catalog wholesale.
           this.publishCatalog(msg.commands);
         } else if (msg.subtype === 'local_command_output') {
-          // A local command (e.g. /usage) produces no assistant frame of its own; the SDK's own doc
+          // A local command (e.g. /voice) produces no assistant frame of its own; the SDK's own doc
           // comment says to display it "as assistant-style text in the transcript". Bracket it in
           // its own segment so it never merges with narration on either side of it — the command
           // invocation itself (`onCommand`) rides the normal prompt path and its status/settle
           // comes from the matching `result` frame like any other turn (verified live: a local
           // command still ends in a normal zero-token `result`, not a distinct settle shape).
+          // `/usage` no longer reaches this path — it is intercepted in `onCommand` (`reportUsage`).
           this.freshSegment();
           this.emitAssistantText(msg.content, this.messageId);
           this.freshSegment();

@@ -393,20 +393,28 @@ function usageReports(events: AgentEvent[]): Array<Extract<AgentEvent, { type: '
   );
 }
 
-describe('ClaudeCodeAdapter /usage interception', () => {
-  it('serves /usage as a structured usage-report — no prompt, no turn, no transcript text', async () => {
-    const { adapter, events } = await makeAdapter();
-    await adapter.send({ type: 'command', name: 'usage' });
+function statuses(events: AgentEvent[]): string[] {
+  return events.flatMap((e) => (e.type === 'status' ? [e.status] : []));
+}
 
-    const reports = usageReports(events);
+describe('ClaudeCodeAdapter /usage interception', () => {
+  it('serves /usage as a structured usage-report — no prompt, no transcript text, a running→idle bracket', async () => {
+    const { adapter, events } = await makeAdapter();
+    const before = events.length;
+    await adapter.send({ type: 'command', name: 'usage' });
+    const after = events.slice(before);
+
+    const reports = usageReports(after);
     expect(reports).toHaveLength(1);
     expect(reports[0].report).toEqual(EXPECTED_USAGE_REPORT);
 
     await flushDrainLoop();
     expect(queries[0].received).toHaveLength(0);
-    expect(events.some((e) => e.type === 'status' && e.status === 'running')).toBe(false);
-    expect(agentChunks(events)).toHaveLength(0);
-    expect(events.some((e) => e.type === 'error')).toBe(false);
+    // The turn-contract bracket: the busy window is announced, and (no result frame will follow)
+    // the matching idle is emitted by reportUsage itself before send() resolves.
+    expect(statuses(after)).toEqual(['running', 'idle']);
+    expect(agentChunks(after)).toHaveLength(0);
+    expect(after.some((e) => e.type === 'error')).toBe(false);
   });
 
   it('intercepts the provider alias (/cost) via the advertised catalog', async () => {
@@ -424,24 +432,28 @@ describe('ClaudeCodeAdapter /usage interception', () => {
     expect(queries[0].received).toHaveLength(0);
   });
 
-  it('emits a recoverable error when the control request fails — still no turn, no text fallback', async () => {
+  it('emits a recoverable error when the control request fails — no text fallback, bracket still closes', async () => {
     const { adapter, events } = await makeAdapter((q) => {
       q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET.mockRejectedValue(
         new Error('control transport closed'),
       );
     });
+    const before = events.length;
     await adapter.send({ type: 'command', name: 'usage' });
+    const after = events.slice(before);
 
-    const errors = events.filter(
+    const errors = after.filter(
       (e): e is Extract<AgentEvent, { type: 'error' }> => e.type === 'error',
     );
     expect(errors).toHaveLength(1);
     expect(errors[0].recoverable).toBe(true);
     expect(errors[0].message).toContain('control transport closed');
-    expect(usageReports(events)).toHaveLength(0);
+    expect(usageReports(after)).toHaveLength(0);
+    // The failure path must still settle the busy window it opened.
+    expect(statuses(after)).toEqual(['running', 'idle']);
     await flushDrainLoop();
     expect(queries[0].received).toHaveLength(0);
-    expect(agentChunks(events)).toHaveLength(0);
+    expect(agentChunks(after)).toHaveLength(0);
   });
 
   it('emits an error when the SDK pair lacks the get-usage control request (feature-detect)', async () => {
