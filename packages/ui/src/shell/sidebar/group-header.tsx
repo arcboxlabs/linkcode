@@ -137,23 +137,29 @@ export function ThreadGroupHeader({
       render={<div ref={dragHandleRef} className="group/menu-item relative flex" />}
     >
       {renaming ? (
-        <Input
-          // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
-          autoFocus
-          aria-label={t('renameWorkspace')}
-          value={draftName}
-          onChange={(event) => setDraftName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              commitRename();
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              cancelRename();
-            }
-          }}
-          onBlur={commitRename}
-        />
+        <div className="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-sidebar-foreground text-sm transition-[background-color,box-shadow] focus-within:bg-sidebar-accent focus-within:ring-1 focus-within:ring-inset focus-within:ring-sidebar-ring">
+          <FolderToggleIcon open={!collapsed} />
+          <Input
+            unstyled
+            size="sm"
+            // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
+            autoFocus
+            aria-label={t('renameWorkspace')}
+            value={draftName}
+            className="min-w-0 flex-1 [&>[data-slot=input]]:px-0"
+            onChange={(event) => setDraftName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitRename();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelRename();
+              }
+            }}
+            onBlur={commitRename}
+          />
+        </div>
       ) : (
         <AccordionPrimitive.Trigger
           render={
