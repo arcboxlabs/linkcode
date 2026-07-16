@@ -2,9 +2,11 @@ import type { Locale } from '@linkcode/i18n';
 import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import { useKeyboardShortcutListener } from '@linkcode/ui';
 import { AnchoredToastProvider, ToastProvider } from 'coss-ui/components/toast';
+import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import type * as React from 'react';
 import { useMemo } from 'react';
 import { IntlProvider } from 'use-intl';
+import { AppearanceRenderPrefsProvider } from '../settings/appearance-render-prefs';
 
 function runtimeLocale(): Locale {
   if (typeof navigator === 'undefined') return defaultLocale;
@@ -45,12 +47,15 @@ export function WorkbenchAppProviders({
   useKeyboardShortcutListener();
 
   return (
-    <ToastProvider>
-      <AnchoredToastProvider>
-        <AppI18nProvider locale={locale ? resolveLocale(locale) : undefined}>
-          {children}
-        </AppI18nProvider>
-      </AnchoredToastProvider>
-    </ToastProvider>
+    <ComposeContextProvider
+      contexts={[
+        <ToastProvider key="toast" />,
+        <AnchoredToastProvider key="anchored-toast" />,
+        <AppI18nProvider key="i18n" locale={locale ? resolveLocale(locale) : undefined} />,
+        <AppearanceRenderPrefsProvider key="render-prefs" />,
+      ]}
+    >
+      {children}
+    </ComposeContextProvider>
   );
 }

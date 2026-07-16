@@ -58,6 +58,12 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('appearance.themeSystem'),
       t('appearance.themeLight'),
       t('appearance.themeDark'),
+      t('appearance.textSize'),
+      t('appearance.reduceMotion'),
+      t('appearance.codeThemeLight'),
+      t('appearance.codeThemeDark'),
+      t('appearance.uiFont'),
+      t('appearance.codeFont'),
     ],
     terminal: [t('terminal.fontFamily'), t('terminal.fontSize'), t('terminal.colorScheme')],
     notifications: [
