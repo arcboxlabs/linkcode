@@ -75,9 +75,7 @@ export function PromptCard({
               {title}
             </span>
             {badge ? (
-              <Badge size="sm" variant={tone === 'warning' ? 'warning' : 'secondary'}>
-                {badge}
-              </Badge>
+              <Badge variant={tone === 'warning' ? 'warning' : 'secondary'}>{badge}</Badge>
             ) : null}
           </FrameTitle>
           {(disabled && busyLabel) || meta ? (

@@ -164,11 +164,11 @@ function ChoiceRow({
         disabled ? 'cursor-not-allowed opacity-64' : 'cursor-pointer hover:bg-accent/50',
       )}
     >
-      <span className="relative size-6 shrink-0">
+      <span className="relative flex size-6 shrink-0">
         <Kbd
           className={cn(
-            'size-6 min-w-6 rounded-full bg-background px-0 tabular-nums',
-            checked && 'bg-primary text-primary-foreground',
+            'size-6 min-w-6 rounded-full border bg-background px-0 tabular-nums',
+            checked && 'border-primary bg-primary text-primary-foreground',
           )}
         >
           {index + 1}
@@ -243,11 +243,12 @@ function CustomChoiceRow({
   const keycap = (
     <Kbd
       className={cn(
-        'size-6 min-w-6 rounded-full bg-background px-0',
-        checked && 'bg-primary text-primary-foreground',
+        'size-6 min-w-6 rounded-full border bg-background px-0',
+        checked && 'border-primary bg-primary text-primary-foreground',
       )}
     >
-      <PencilIcon />
+      {/* explicit size so the ghost Button's [&_svg]:size-4 rule cannot inflate it past the digits */}
+      <PencilIcon className="size-3" />
     </Kbd>
   );
 
