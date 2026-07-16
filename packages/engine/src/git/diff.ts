@@ -4,10 +4,8 @@ import { join } from 'node:path';
 import type { GitDiff, GitDiffMode, GitDiffStat } from '@linkcode/schema';
 import { runCommand } from './exec';
 
-/**
- * Read-only git env: never prompt for credentials, never take optional locks — an agent may be
- * running git in the same repo, and a diff read must not contend for `index.lock`.
- */
+/** Read-only git env: never prompt for credentials, never take optional locks — a diff read must
+ * not contend with a concurrently running agent's git for `index.lock`. */
 const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' } as const;
 
 /** Cap the assembled patch so one huge diff can't blow up the wire message or the viewer. */
@@ -23,11 +21,8 @@ function git(cwd: string, ...args: string[]): Promise<{ stdout: string; exitCode
   return runCommand('git', args, { cwd, env: GIT_ENV });
 }
 
-/**
- * Read a unified-diff patch for a directory. `'uncommitted'` compares the working tree (tracked
- * changes plus untracked files) against HEAD; `'base'` compares HEAD against the merge-base with
- * the remote's default branch and never includes untracked files.
- */
+/** Read a unified-diff patch. `'uncommitted'` = working tree (tracked + untracked) vs HEAD;
+ * `'base'` = HEAD vs merge-base with the remote default branch, never including untracked files. */
 export async function readGitDiff(cwd: string, mode: GitDiffMode): Promise<GitDiff> {
   const tracked =
     mode === 'uncommitted' ? await readUncommittedTrackedDiff(cwd) : await readBaseDiff(cwd);

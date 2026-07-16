@@ -7,10 +7,9 @@ export interface PullRequestQuery {
 }
 
 /**
- * One hosting-provider integration. Implementations own their transport entirely — the `gh` CLI
- * today, token-backed REST/GraphQL clients later — and answer in schema types only; nothing
- * implementation-specific may leak out. Expected degradation (CLI missing, not authenticated) is a
- * returned `unavailable` state, not a thrown error; throwing is reserved for genuine failures.
+ * One hosting-provider integration. Implementations own their transport and answer in schema
+ * types only — nothing implementation-specific may leak out. Expected degradation (CLI missing,
+ * not authenticated) is a returned `unavailable` state, not a thrown error.
  */
 export interface GitProviderClient {
   readonly kind: GitProviderKind;

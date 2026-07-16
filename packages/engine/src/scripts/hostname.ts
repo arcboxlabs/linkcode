@@ -2,10 +2,9 @@ import { createHash } from 'node:crypto';
 import { normalizeCwdKey } from '@linkcode/schema';
 
 /**
- * Preview hostname for a service: `<script>--<workspace>-<hash6>.localhost`.
- * The single `--` separates the script label from the workspace label (the proxy's
- * namespace marker — see transport/preview-routes), and the cwd hash keeps two
- * same-named workspaces from colliding.
+ * Preview hostname for a service: `<script>--<workspace>-<hash6>.localhost`. The single `--` is
+ * the proxy's namespace marker (see transport/preview-routes); the cwd hash keeps two same-named
+ * workspaces from colliding.
  */
 export function scriptHostname(scriptName: string, workspaceName: string, cwd: string): string {
   const script = slugify(scriptName);
