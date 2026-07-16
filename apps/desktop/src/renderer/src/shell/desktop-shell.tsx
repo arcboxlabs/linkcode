@@ -167,11 +167,10 @@ export function DesktopShell({
   // Content boxes reported by the active panel-region instances (docked or maximized overlay).
   const [rightContentTarget, setRightContentTarget] = useState<HTMLDivElement | null>(null);
   const [bottomContentTarget, setBottomContentTarget] = useState<HTMLDivElement | null>(null);
-  // Persistent portal hosts. The portal CONTAINER must never change — React keys a portal by its
-  // container, so portaling into the reported target directly would remount the whole subtree on
-  // every docked↔maximized handoff. Instead each side portals into one stable host div, and a
-  // layout effect moves that div between targets — a same-document DOM move, which preserves the
-  // React tree and the terminal's canvas.
+  // Persistent portal hosts: React keys a portal by its container, so portaling into the reported
+  // target directly would remount the subtree on every docked↔maximized handoff. Each side portals
+  // into one stable host div that a layout effect moves between targets — a same-document DOM
+  // move, preserving the React tree and the terminal's canvas.
   const { current: rightContentHost } = useSingleton(() => createPanelContentHost());
   const { current: bottomContentHost } = useSingleton(() => createPanelContentHost());
   useLayoutEffect(() => {
@@ -303,9 +302,8 @@ export function DesktopShell({
     updateSidebarOpen,
   });
 
-  // File-artifact clicks land in the right panel's files section. The clicked text may
-  // be a bare filename from agent prose whose file lives outside the session cwd, so
-  // the locator probes candidate directories from the conversation's tool calls.
+  // File-artifact clicks land in the right panel's files section. A bare filename from agent prose
+  // may live outside the session cwd, so the locator probes candidate dirs from the tool calls.
   function openFileArtifact(path: string): void {
     const cwd = active?.cwd;
     if (!cwd) {
@@ -384,12 +382,10 @@ export function DesktopShell({
     </main>
   );
 
-  // One renderer, two mount points per side: the docked instance (inside its workspace grid
-  // cell, owns the chrome tabs/controls) and the maximized overlay instance (chrome suppressed — the docked
-  // instance keeps owning the chrome so the two never portal duplicate tabs during the
-  // transition). Tab content mounts in exactly one of them (the overlay while expanded, via
-  // contentHidden), so stateful tabs like the terminal never run twice; the terminal session
-  // registry hands the PTY across the remount.
+  // Two mount points per side: the docked instance keeps owning the chrome tabs (the maximized
+  // overlay suppresses chrome, so the two never portal duplicate tabs mid-transition), and tab
+  // content mounts in exactly one of them via `contentHidden`, so stateful tabs like the terminal
+  // never run twice; the terminal session registry hands the PTY across the remount.
   function renderRightPanel(options: {
     maximized: boolean;
     chromeVisible: boolean;
@@ -439,12 +435,10 @@ export function DesktopShell({
     );
   }
 
-  // The shell owns the right panel's Terminal-section PTY stack and portals it into whichever
-  // region instance (docked or maximized overlay) currently shows content — `contentHidden`
-  // guarantees exactly one target exists at a time — so a terminal keeps its live renderer across
-  // the handoff. Content mounts lazily on the panel's first open: no shell is spawned for a panel
-  // never shown. Diff/Browser section content is stateless (SWR-backed) and stays inline in
-  // `DesktopRightPanelRegion`, so only the Terminal stack needs this treatment.
+  // The shell owns the Terminal-section PTY stack and portals it into whichever region instance
+  // shows content (`contentHidden` guarantees exactly one target), so a terminal keeps its live
+  // renderer across the docked↔maximized handoff. Mounts lazily on the panel's first open — no
+  // shell spawns for a never-shown panel; Diff/Browser content is stateless and stays inline.
   function renderRightPanelContents(host: HTMLDivElement): React.ReactNode {
     const activeIsTerminal = rightPanel.activeSection === 'terminal';
     const items = rightPanel.terminal.tabs.map((tab) => ({

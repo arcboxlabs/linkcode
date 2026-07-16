@@ -19,10 +19,9 @@ interface UseDesktopPaletteCommandsOptions {
 }
 
 /**
- * Desktop-owned palette entries: native folder pick, the Settings overlay (plus a deep link to
- * its Import-chat-history pane), and the panel toggles. Registered into the shared palette store
- * so the workbench-rendered palette lists them without desktop threading props through the
- * surface.
+ * Desktop-owned palette entries (native folder pick, Settings overlay + its history-import deep
+ * link, panel toggles), registered into the shared palette store so the workbench-rendered
+ * palette lists them without desktop threading props through the surface.
  */
 export function useDesktopPaletteCommands({
   desktopPlatform,

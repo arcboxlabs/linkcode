@@ -8,10 +8,9 @@ import { useTranslations } from 'use-intl';
 import { DesktopChromePortal } from '../shell/chrome/chrome';
 
 /**
- * The Settings "Import chat history" panel for one provider (picked in the sidebar accordion).
- * Its header lives in the window chrome via portals — provider title + count on the left, the
- * refresh/sort controls on the right — so the pane itself is just the list. Settings renders
- * ungated, so while the daemon is unreachable the list degrades to its loading/error states.
+ * Settings "Import chat history" panel for one provider. Its header lives in the window chrome via
+ * portals, so the pane itself is just the list; Settings renders ungated, so while the daemon is
+ * unreachable the list degrades to its loading/error states.
  */
 export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode {
   const t = useTranslations('settings.historyImport');

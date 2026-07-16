@@ -225,9 +225,8 @@ export function SettingsView(): React.ReactNode {
         // Back lives in the settings sidebar, so suppress the workbench navigation controls.
         leftControls={null}
         rightControls={null}
-        // Immersive title: the chrome names the active panel. A tab that portals its own header
-        // into main:left (history import) suppresses this default via the chrome's portal-wins
-        // rule — no per-tab special case here.
+        // Immersive title: the chrome names the active panel; a tab that portals its own header
+        // (history import) suppresses this via the chrome's portal-wins rule — no per-tab special case.
         titleContent={
           <div className="pointer-events-none flex h-full min-w-0 items-center px-2">
             <span className="min-w-0 truncate font-semibold text-sm">

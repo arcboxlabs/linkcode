@@ -5,9 +5,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useCloudAuthStore } from './store';
 
 /**
- * IdP account center. Profile and avatar are owned by the IdP (HQ forbids `/update-user`), so they're
- * edited in the browser where the user holds an IdP session. Same host in dev and prod — desktop dev
- * talks to the production cloud.
+ * IdP account center. Profile and avatar are owned by the IdP (HQ forbids `/update-user`), so
+ * they're edited in the browser; same host in dev and prod (desktop dev talks to production cloud).
  */
 const ACCOUNT_CENTER_URL = 'https://auth.arcbox.dev/account';
 
@@ -26,11 +25,10 @@ export interface CloudAccountView {
 }
 
 /**
- * Footer view of the cloud account: the auth actions from the store plus a focus-driven avatar
- * refresh. The avatar URL is stable (`avatars.arcboxusercontent.com/u/{id}` never moves on change),
- * so a newly uploaded avatar stays invisible behind the browser's 5-min HTTP cache. SWR revalidates
- * `getUser()` on window focus — when the user returns from editing at the account center — folding any
- * name/email change back into the store and giving a throttled bust token to re-request the same URL.
+ * Footer view of the cloud account: the store's auth actions plus a focus-driven avatar refresh.
+ * The avatar URL never changes, so a new upload hides behind the browser's 5-min HTTP cache — SWR
+ * revalidates `getUser()` on window focus, folding name/email changes back into the store and
+ * issuing a throttled bust token to re-request the same URL.
  */
 export function useCloudAccount(): CloudAccountView {
   const { user, authenticating, signIn, signOut } = useCloudAuthStore(
