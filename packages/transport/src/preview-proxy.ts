@@ -6,14 +6,11 @@ import type { PreviewRouteTable } from './preview-routes';
 import { isPreviewHostname, normalizeHostname } from './preview-routes';
 
 /**
- * Host-routed reverse proxy for workspace service previews (CODE-58). Classification
- * by Host header only — preview traffic deliberately bypasses any daemon auth (decided
- * boundary: the daemon binds loopback; remote exposure is the tunnel layer's job):
- *
- * - registered preview hostname → forward to `127.0.0.1:<port>`
- * - looks like a preview hostname but unrouted → 404, never falling through to the
- *   daemon API
- * - anything else → the daemon's own handler
+ * Host-routed reverse proxy for workspace service previews (CODE-58), classified by Host header
+ * only — preview traffic deliberately bypasses daemon auth (decided boundary: the daemon binds
+ * loopback; remote exposure is the tunnel layer's job). Registered hostname → `127.0.0.1:<port>`;
+ * preview-looking but unrouted → 404, never falling through to the daemon API; anything else →
+ * the daemon's own handler.
  */
 
 /** Wraps the daemon's request handler with Host-classified proxying. */
@@ -51,10 +48,8 @@ function serveContent(res: ServerResponse, body: string, contentType: string): v
   res.end(body);
 }
 
-/**
- * Upgrade interceptor (Vite/Metro HMR WebSockets). Returns true when the socket was
- * taken over (proxied or rejected); false means the caller's own WS server owns it.
- */
+/** Upgrade interceptor (Vite/Metro HMR WebSockets). True = the socket was taken over (proxied or
+ * rejected); false = the caller's own WS server owns it. */
 export function handlePreviewUpgrade(
   routes: PreviewRouteTable,
   req: IncomingMessage,

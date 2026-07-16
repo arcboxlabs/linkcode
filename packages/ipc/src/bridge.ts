@@ -6,11 +6,9 @@ import type {
   UpdaterStatus,
 } from './context';
 
-/**
- * SystemBridge: the capability contract of TypeSafe IPC (docs/ARCHITECTURE.md#key-contracts) —
- * system / UI capabilities only. Business data always goes through the transport and is
- * **forbidden from this channel** (docs/ARCHITECTURE.md#core-principles).
- */
+/** The capability contract of TypeSafe IPC (docs/ARCHITECTURE.md#key-contracts) — system / UI
+ * capabilities only. Business data always goes through the transport and is **forbidden from
+ * this channel** (docs/ARCHITECTURE.md#core-principles). */
 export interface SystemBridge {
   window: {
     minimize(): Promise<void>;
@@ -43,23 +41,17 @@ export interface SystemBridge {
     snapshot(): DesktopSettings;
   };
   daemon: {
-    /**
-     * Effective daemon endpoint (explicit setting ?? runtime-file discovery ?? default).
-     * Synchronous — safe to read during first render.
-     */
+    /** Effective daemon endpoint (explicit setting ?? runtime-file discovery ?? default);
+     * synchronous — safe to read during first render. */
     resolveUrl(): string;
-    /**
-     * Whether this app supervises the daemon's lifecycle (packaged build, no endpoint override).
-     * Drives the connection-failure copy: a managed host restarts itself, an unmanaged one is the
-     * user's to run.
-     */
+    /** Whether this app supervises the daemon's lifecycle (packaged build, no endpoint override).
+     * Drives the connection-failure copy: a managed host restarts itself, an unmanaged one is
+     * the user's to run. */
     isManaged(): Promise<boolean>;
     /** Re-arm the managed daemon after an explicit connection retry; no-op when unmanaged. */
     retry(): Promise<void>;
-    /**
-     * Subscribe to daemon runtime-file changes pushed from main (fs.watch on ~/.linkcode).
-     * Fired when a daemon (re)starts or stops — re-run `resolveUrl` on it.
-     */
+    /** Subscribe to daemon runtime-file changes pushed from main (fs.watch on ~/.linkcode);
+     * fired when a daemon (re)starts or stops — re-run `resolveUrl` on it. */
     onRuntimeChanged(cb: () => void): () => void;
   };
   notifications: {

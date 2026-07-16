@@ -23,16 +23,13 @@ interface PendingTerminalRequest extends TerminalAttachmentCredentials {
 }
 
 /**
- * Hub: composes many client connections into the single `Transport` the daemon's `Host` consumes.
- *
- * Correlated replies return only to their request's connection. Session events keep their historical
- * broadcast/scoped behavior; terminal events go only to connections attached to that terminal. The
- * Hub also turns a connection close into `terminal.detach` frames, so attachment lifetime follows
- * the real local or tunnel peer rather than the daemon's aggregate uplink.
- *
- * Subscription state is connection-scoped, so the Hub owns it: `subscription.set` is answered here
- * (`request.succeeded`) and never reaches the Host; `session.attach`/`session.detach` update the
- * subscription and are still forwarded (the Engine may replay buffered state in the future).
+ * Composes many client connections into the single `Transport` the daemon's `Host` consumes.
+ * Correlated replies return only to their request's connection; session events keep their
+ * broadcast/scoped behavior; terminal events go only to connections attached to that terminal.
+ * A connection close becomes `terminal.detach` frames, so attachment lifetime follows the real
+ * peer. Subscription state is connection-scoped, so the Hub owns it: `subscription.set` is
+ * answered here and never reaches the Host; `session.attach`/`session.detach` update the
+ * subscription and are still forwarded.
  */
 export class Hub implements Transport {
   private readonly conns = new Set<Transport>();
