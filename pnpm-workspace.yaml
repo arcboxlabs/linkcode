@@ -172,7 +172,9 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-arm64@7.0.2'
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
-  - expo-crypto@57.0.1
+  # Upstream fixes for our terminal font reports (restty#24/#25, text-shaper#3), adopted same-day (CODE-223).
+  - restty@0.2.3
+  - text-shaper@0.1.26
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
