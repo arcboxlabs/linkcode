@@ -16,11 +16,8 @@ import type {
 
 export type ConversationTurnId = string | null;
 
-/**
- * Fields every timeline item carries. `receivedAt` is the client receive time of the item's
- * latest event — TODO(wire): approximate and absent for history-seeded items; replace with an
- * authoritative event timestamp once the wire carries one.
- */
+/** `receivedAt` = client receive time of the item's latest event — TODO(wire): approximate and
+ * absent for history-seeded items; replace once the wire carries an authoritative timestamp. */
 interface ConversationItemBase {
   id: string;
   turnId: ConversationTurnId;

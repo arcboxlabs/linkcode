@@ -44,11 +44,8 @@ export function toolCallFetchStatus(toolCall: ToolCall): string | undefined {
   return typeof status === 'string' || typeof status === 'number' ? String(status) : undefined;
 }
 
-/**
- * Claude and OpenCode normally duplicate display text in canonical `content` and `rawOutput`,
- * while Pi and live Codex MCP may leave user-facing blocks in `rawOutput.content`. Canonical data
- * therefore wins; fallbacks project only known result fields and never stringify the envelope.
- */
+/** Canonical `content` wins; Pi and live Codex MCP may leave user-facing blocks only in
+ * `rawOutput.content`, so fallbacks project known result fields and never stringify the envelope. */
 export function toolCallDisplayContent(toolCall: ToolCall): ToolCallContent[] {
   if (toolCall.content.length > 0) return toolCall.content;
   return fallbackContent(toolCall).map((content) => ({ type: 'content', content }));
@@ -69,12 +66,9 @@ export function toolCallExecuteText(toolCall: ToolCall): string | undefined {
   return stringValue(recordValue(toolCall.rawOutput), ['message']);
 }
 
-/**
- * Claude's Read `tool_result.content` numbers every line even though its parallel
- * `toolUseResult.file.content` is clean, and may prepend an unnumbered system reminder. ToolCall has
- * no adapter id and currently receives only that rendered block, so unwrap only the exact Claude
- * title/input shape and a complete consecutive run.
- */
+/** Claude's Read result numbers every line and may prepend an unnumbered system reminder.
+ * ToolCall carries no adapter id, so unwrap only the exact Claude title/input shape and a
+ * complete consecutive run. */
 export function toolCallReadPreviewText(toolCall: ToolCall, text: string): string {
   const input = recordValue(toolCall.rawInput);
   if (

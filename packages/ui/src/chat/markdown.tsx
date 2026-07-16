@@ -135,10 +135,8 @@ const components: Components = {
   ),
 };
 
-// Fences whose language a registered artifact kind claims render as inline
-// artifacts; everything else stays on the default shiki code block. The language
-// list is snapshotted here, hence the module-scope registration constraint
-// documented in artifacts/registry.ts.
+// Artifact-claimed fence languages render as inline artifacts. The language list is snapshotted
+// here, hence the module-scope registration constraint documented in artifacts/registry.ts.
 const artifactRenderers = [
   { language: artifactFenceLanguages(), component: ArtifactFenceRenderer },
 ];

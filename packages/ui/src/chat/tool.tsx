@@ -107,11 +107,8 @@ export function ToolHeader({
   );
 }
 
-/**
- * A call's glyph names what it does, not how it went: the kind icon (or a custom `icon` for
- * plugin / MCP / custom tools), with the spinner while running and the shield while its
- * permission ask is open. Failure reads via color, never a cross.
- */
+/** A call's glyph names what it does, not how it went: kind icon (or custom `icon`), spinner
+ * while running, shield while its permission ask is open. Failure reads via color, never a cross. */
 export function ToolIcon({
   status,
   kind,

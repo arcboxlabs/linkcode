@@ -7,10 +7,7 @@ import { useCopyButton } from './use-copy-button';
 
 const COPY_FEEDBACK_MS = 2000;
 
-/**
- * End-of-turn actions for an agent reply. The buttons are always visible; the provenance meta
- * (provider, model, time) reveals on hovering the row.
- */
+/** End-of-turn actions for an agent reply; buttons always visible, provenance meta on row hover. */
 export function AgentTurnActions({
   copyText,
   receivedAt,
