@@ -1,23 +1,13 @@
 #!/usr/bin/env node
 /**
- * Package the daemon as a self-contained, standalone distribution — run it anywhere with plain
- * Node, independent of the desktop app.
+ * Package the daemon as a self-contained standalone dir (default apps/daemon/standalone; argv[2]
+ * overrides for CI) via `pnpm --prod deploy`: the tsup bundle plus its runtime externals flat in
+ * the dir's own node_modules, runnable as `node --import ./dist/instrument.js dist/index.js`.
  *
- *   pnpm -F @linkcode/daemon package         # -> apps/daemon/standalone
- *   node scripts/package-daemon.mts <outDir> # explicit destination (CI)
- *
- * `pnpm --prod deploy` materializes the daemon's production closure — the tsup bundle's runtime
- * externals (better-sqlite3 + its native binding, drizzle-orm, ws, socket.io, @sentry, the agent
- * SDKs, the @linkcode/assets fetch stack) flat in the dir's own node_modules — so the result runs
- * as `node --import ./dist/instrument.js dist/index.js` with nothing else on disk.
- *
- * Unlike the desktop bundle (Electron `utilityProcess`, native modules rebuilt to Electron's ABI),
- * this targets plain Node: better-sqlite3 keeps the prebuild-install binary for the build host's
- * Node/OS/arch. It is therefore a same-platform artifact — build it on (or for) each target.
- *
- * Agent CLI platform binaries are pruned: they are host-arch, ~230 MB each, and the daemon
- * provisions them at runtime through its managed-asset store (@linkcode/assets, CODE-111) exactly
- * as the desktop app does since CODE-114 — shipping them would only bloat the artifact.
+ * Targets plain Node, not Electron: better-sqlite3 keeps the build host's prebuild, so this is a
+ * same-platform artifact — build it on (or for) each target. Agent CLI platform binaries
+ * (host-arch, ~230 MB each) are pruned; the daemon provisions them at runtime via the
+ * managed-asset store (@linkcode/assets, CODE-111 / CODE-114).
  */
 import { cpSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';

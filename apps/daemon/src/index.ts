@@ -25,35 +25,28 @@ import {
 import { createSessionStore } from './session-store';
 import { createWorkspaceStore } from './workspace-store';
 
-// An uncaught exception means the stack unwound through code that never expected to fail there —
-// the process's state (which sessions are live, what's mid-write) is no longer trustworthy, so it
-// must die loudly rather than keep serving clients from an unknown state.
+// After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
+// die loudly rather than keep serving clients from an unknown state.
 process.on('uncaughtException', (err) => {
   console.error('[linkcode/daemon] uncaught exception:', err);
   process.exit(1);
 });
 
-// Unlike an uncaught exception, a rejected promise with no handler is usually scoped to whatever
-// async operation produced it (e.g. one session's adapter call) — the rest of the daemon's state
-// stays coherent, so this logs rather than exits. Every fire-and-forget path this ticket touched
-// (session persistence, the adapter event pipe, message handling) already attaches its own
-// `.catch`/try-catch; a rejection surfacing here means one of those was missed and needs fixing,
-// not that the daemon must go down immediately.
+// An unhandled rejection is scoped to one async operation — the rest of the daemon stays
+// coherent, so log instead of exiting. Reaching here means a fire-and-forget path missed its
+// `.catch`; fix that path.
 process.on('unhandledRejection', (reason) => {
   console.error('[linkcode/daemon] unhandled rejection:', reason);
 });
 
 /**
- * Link Code daemon — the standalone local host process.
- *
- * Runs one shared `Engine` (which owns all agent sessions + adapters) behind a fan-out `Hub`, and exposes
- * configured listeners for clients (web / desktop / mobile-via-relay / cli). This is where real agents live:
- * they spawn CLI subprocesses and hold credentials, so they cannot run inside a browser tab.
+ * Link Code daemon — the standalone local host process: one shared `Engine` behind a fan-out
+ * `Hub`, exposing configured listeners to clients. Real agents live here — they spawn CLI
+ * subprocesses and hold credentials, so they cannot run inside a browser tab.
  */
 async function main(): Promise<void> {
-  // Resolved before anything touches state paths — including the subcommands below, which read
-  // hq.json/device-key from the profile's state dir: an invalid LINKCODE_PROFILE must abort here,
-  // not surface mid-command or as a half-initialized default-profile daemon.
+  // Resolved before anything (subcommands included) touches state paths: an invalid
+  // LINKCODE_PROFILE must abort here, not mid-command or as a default-profile daemon.
   const profile = daemonProfile();
 
   // Subcommands run and exit instead of booting the host (a running daemon
@@ -87,9 +80,9 @@ async function main(): Promise<void> {
   };
   const hub = new Hub();
   const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
-  // Shared between the engine's script service (writer) and every listener's reverse
-  // proxy (reader). Preview traffic bypasses daemon auth by decision — the boundary is
-  // the loopback bind (see config.ts DEFAULT_HOST); remote exposure is the tunnel's job.
+  // Written by the engine's script service, read by every listener's reverse proxy. Preview
+  // traffic bypasses daemon auth by decision — the loopback bind is the boundary; remote exposure
+  // is the tunnel's job.
   const previewRoutes = new PreviewRouteRegistry();
   // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
   // store into spawn resolution — managed wins over detected as soon as an install lands on disk.
@@ -126,9 +119,8 @@ async function main(): Promise<void> {
       ensureBinary: async () => (await assets.ensure('tool:aigateway'))?.path,
     }),
   });
-  // Warm missing agent pairs in the background — boot never waits on a download. Anything the
-  // probe already found usable (detected CLI, SDK platform package) is left alone. Runs after
-  // the engine exists so its asset subscription sees the whole install lifecycle.
+  // Warm missing agent pairs in the background (boot never waits; usable probe results are left
+  // alone). Must run after the engine exists so its asset subscription sees the whole lifecycle.
   for (const kind of ['claude-code', 'codex'] as const) {
     if (agentRuntimes[kind]?.status === 'available') continue;
     void assets

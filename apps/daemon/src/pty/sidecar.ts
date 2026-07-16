@@ -50,10 +50,8 @@ interface PendingOpen {
 }
 
 /**
- * How long the daemon waits for the sidecar's `OPENED`/`ERROR` reply before giving up on an open.
- * A pending open is otherwise only cleared by those replies or sidecar exit, so a frame the sidecar
- * can't answer (e.g. an `OPEN` whose `terminalId` it couldn't parse to reply `ERROR` against) would
- * hang forever. Local shells reply in milliseconds; this ceiling only trips on a lost reply.
+ * Ceiling on waiting for the sidecar's `OPENED`/`ERROR` reply: a pending open is otherwise only
+ * cleared by those replies or sidecar exit, so a reply the sidecar can't send would hang forever.
  */
 const OPEN_TIMEOUT_MS = 10000;
 
@@ -71,9 +69,8 @@ export class SidecarPtyBackend implements PtyBackend {
   constructor(private readonly binaryPath: string) {}
 
   open(terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
-    // No binary to spawn (unconfigured in production — see `resolveSidecarPath`): fail this open
-    // with a clear, stable message instead of calling `spawn('')`, which would fail the same way
-    // on every terminal open with a confusing "sidecar exited" error instead of a config problem.
+    // Unconfigured binary (see `resolveSidecarPath`): fail with a clear, stable message instead of
+    // `spawn('')`, which would surface as a confusing "sidecar exited" error on every open.
     if (!this.binaryPath) {
       return Promise.reject(
         new Error('pty sidecar not configured: terminals are unavailable on this host'),
@@ -261,11 +258,9 @@ export class SidecarPtyBackend implements PtyBackend {
 }
 
 /**
- * Resolve the sidecar binary: an explicit override (set by the desktop supervisor) always wins;
- * in dev, fall back to the workspace's release build by walking up from this file's known depth
- * under `src/`. That depth assumption breaks once tsup bundles this module into a flat `dist/`
- * output, so production trusts only the override instead of guessing a wrong path and leaving the
- * sidecar silently missing.
+ * Explicit override (set by the desktop supervisor) always wins; dev falls back to the workspace
+ * release build via this file's known depth under `src/`. That depth breaks in the flat tsup
+ * `dist/` bundle, so production trusts only the override rather than guessing a wrong path.
  */
 export function resolveSidecarPath(): string {
   const override = process.env.LINKCODE_PTY_SIDECAR_PATH;
@@ -293,11 +288,10 @@ function defaultShell(): string {
 }
 
 /**
- * macOS terminal apps (Terminal.app, iTerm, VS Code) start the default shell as a *login* shell:
- * a Finder-launched app inherits launchd's bare PATH, and only the login files (`/etc/zprofile`
- * path_helper, then `~/.zprofile` where Homebrew's shellenv lives) restore the user's real one.
- * A non-login interactive shell reads `.zshrc` alone, leaving brew-installed tools unresolvable
- * in packaged builds. Other platforms keep their convention of a plain interactive shell.
+ * macOS starts a *login* shell: a Finder-launched app inherits launchd's bare PATH, and only the
+ * login files (`/etc/zprofile` path_helper, `~/.zprofile` with Homebrew's shellenv) restore the
+ * user's real one — without `-l`, brew-installed tools are unresolvable in packaged builds.
+ * Other platforms keep a plain interactive shell.
  */
 function defaultShellArgs(): string[] {
   return process.platform === 'darwin' ? ['-l'] : [];
