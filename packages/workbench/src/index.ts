@@ -2,6 +2,7 @@ export * from './agent-runtime/hooks';
 export * from './agent-runtime/onboarding';
 export * from './agent-runtime/unverified-store';
 export * from './app/app-providers';
+export * from './automations/automations-view';
 export * from './automations/hooks';
 export * from './automations/items';
 export * from './automations/store';

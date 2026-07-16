@@ -2,12 +2,12 @@ import type { ScheduleId } from '@linkcode/schema';
 import { create } from 'zustand';
 
 /** What the Automations surface shows in its detail pane. */
-export type AutomationsView = { kind: 'browse' } | { kind: 'create-schedule' };
+export type AutomationsPane = { kind: 'browse' } | { kind: 'create-schedule' };
 
-interface AutomationsViewState {
+interface AutomationsPaneState {
   /** The schedule shown in the detail pane; null falls back to the first item. */
   selectedScheduleId: ScheduleId | null;
-  view: AutomationsView;
+  view: AutomationsPane;
   select: (scheduleId: ScheduleId) => void;
   startCreate: () => void;
   closeCreate: () => void;
@@ -18,7 +18,7 @@ interface AutomationsViewState {
  * edges — the sidebar button, a palette command — can open it and select a schedule without
  * threading props through the workbench surface. Not persisted.
  */
-export const useAutomationsViewStore = create<AutomationsViewState>()((set) => ({
+export const useAutomationsViewStore = create<AutomationsPaneState>()((set) => ({
   selectedScheduleId: null,
   view: { kind: 'browse' },
   select: (scheduleId) => set({ selectedScheduleId: scheduleId, view: { kind: 'browse' } }),
