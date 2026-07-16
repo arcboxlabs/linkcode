@@ -21,10 +21,8 @@ export interface ConversationSurfaceProps {
   cwd?: string;
   /** TODO(backend): thread the session's active model here once the daemon reflects it. */
   modelName?: string;
-  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
-  respondingPermissions: ReadonlySet<string>;
-  answeredQuestionIds: ReadonlySet<string>;
-  respondingQuestions: ReadonlySet<string>;
+  respondingRequestIds: ReadonlySet<string>;
+  responseErrors?: ReadonlyMap<string, string>;
   /** Runtime availability cues (CODE-172): only a `needs-login` cue for this session's agent
    * surfaces here — the sign-in recovery after an auth-failed turn. Install/version cues never
    * block a session that is already running. */
@@ -79,10 +77,8 @@ export function ConversationSurface({
   attachmentsSupported = false,
   cwd,
   modelName,
-  permissionDecisions,
-  respondingPermissions,
-  answeredQuestionIds,
-  respondingQuestions,
+  respondingRequestIds,
+  responseErrors,
   runtimeCues,
   onLoginAgent,
   onSubmitLoginCode,
@@ -137,7 +133,6 @@ export function ConversationSurface({
             agentKind={agentKind}
             cwd={cwd}
             modelName={modelName}
-            permissionDecisions={permissionDecisions}
             TerminalBlockComponent={TerminalBlockComponent}
             onReviewChanges={onReviewChanges}
           />
@@ -145,10 +140,8 @@ export function ConversationSurface({
       </div>
       <ConversationPromptDock
         conversation={conversation}
-        permissionDecisions={permissionDecisions}
-        respondingPermissions={respondingPermissions}
-        answeredQuestionIds={answeredQuestionIds}
-        respondingQuestions={respondingQuestions}
+        respondingRequestIds={respondingRequestIds}
+        responseErrors={responseErrors}
         onRespondPermission={onRespondPermission}
         onRespondQuestion={onRespondQuestion}
       />

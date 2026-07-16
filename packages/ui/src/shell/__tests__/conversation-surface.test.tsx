@@ -35,10 +35,7 @@ function surface(runtimeCues?: AgentRuntimeCues): React.ReactNode {
     <ConversationSurface
       conversation={EMPTY_CONVERSATION}
       agentKind="claude-code"
-      permissionDecisions={new Map()}
-      respondingPermissions={new Set()}
-      answeredQuestionIds={new Set()}
-      respondingQuestions={new Set()}
+      respondingRequestIds={new Set()}
       isRunning={false}
       runtimeCues={runtimeCues}
       onLoginAgent={vi.fn()}

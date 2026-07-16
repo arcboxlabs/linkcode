@@ -1,153 +1,208 @@
 import type { QuestionAnswer, QuestionOutcome } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
+import { Form } from 'coss-ui/components/form';
+import { CornerDownLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import type { ConversationPromptResponse } from '../chat/conversation-prompt';
-import { isConversationPromptResponseSubmittable } from '../chat/conversation-prompt';
-import { ConversationPromptAlert } from '../chat/conversation-prompt-alert';
+import { choiceIndexForNumberShortcut } from '../chat/conversation-prompt-keyboard';
 import type { QuestionConversationItem } from '../chat/conversation-prompts';
-import { PromptPager } from './prompt-pager';
+import { PromptCard } from './prompt-card';
+import { QuestionPromptActions } from './question-prompt-actions';
+import type { QuestionDraft } from './question-prompt-choices';
+import { isQuestionAnswered, QuestionChoices } from './question-prompt-choices';
 
-const EMPTY_RESPONSE: ConversationPromptResponse = { selectedIds: [] };
+const EMPTY_RESPONSE: QuestionDraft = { selectedIds: [] };
+type LastAction = 'dismiss' | 'submit' | null;
 
-/**
- * One agent question group, paged within one card. Drafts and skips stay local until one aggregate
- * reply submits the whole group, so its pager never crosses into standalone prompts.
- */
+/** One atomic agent question request with local drafts and explicit, in-request navigation. */
 export function QuestionPrompt({
   autoFocusFirstChoice = false,
+  error,
   item,
   queuedCount = 0,
   responding,
   onRespond,
 }: {
   autoFocusFirstChoice?: boolean;
+  error?: string;
   item: QuestionConversationItem;
   queuedCount?: number;
   responding: boolean;
   onRespond: (requestId: string, outcome: QuestionOutcome) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.question');
-  const [responses, setResponses] = useState<Map<string, ConversationPromptResponse>>(
-    () => new Map(),
-  );
-  const [skippedQuestionIds, setSkippedQuestionIds] = useState<string[]>([]);
+  const tp = useTranslations('workbench.prompt');
+  const [responses, setResponses] = useState<Map<string, QuestionDraft>>(() => new Map());
+  const [customDrafts, setCustomDrafts] = useState<Map<string, string>>(() => new Map());
   const [index, setIndex] = useState(0);
   const [focusAfterNavigation, setFocusAfterNavigation] = useState(false);
+  const [lastAction, setLastAction] = useState<LastAction>(null);
   const question = item.questions[index];
   const header = question.header ?? t('badge');
   const response = responses.get(question.questionId) ?? EMPTY_RESPONSE;
-  const skipped = skippedQuestionIds.includes(question.questionId);
-  const allResolved = item.questions.every((candidate) => {
-    if (skippedQuestionIds.includes(candidate.questionId)) return true;
+  const customDraft = customDrafts.get(question.questionId) ?? '';
+  const currentAnswered = isQuestionAnswered(question, response);
+  const isLastQuestion = index === item.questions.length - 1;
+  const allAnswered = item.questions.every((candidate) => {
     const candidateResponse = responses.get(candidate.questionId);
     return candidateResponse ? isQuestionAnswered(candidate, candidateResponse) : false;
   });
+  const hasDrafts =
+    [...responses].some(
+      ([, candidate]) => candidate.selectedIds.length > 0 || candidate.customText !== undefined,
+    ) || [...customDrafts].some(([, draft]) => draft.trim().length > 0);
 
   function selectPage(nextIndex: number): void {
     if (nextIndex < 0 || nextIndex >= item.questions.length) return;
+    if (nextIndex > index && !currentAnswered) return;
     setFocusAfterNavigation(true);
     setIndex(nextIndex);
   }
 
-  function updateResponse(nextResponse: ConversationPromptResponse): void {
+  function updateResponse(nextResponse: QuestionDraft): void {
     setResponses((current) => new Map(current).set(question.questionId, nextResponse));
-    setSkippedQuestionIds((current) =>
-      current.filter((questionId) => questionId !== question.questionId),
-    );
-    if (!question.multiSelect && nextResponse.selectedIds.length === 1) {
-      selectPage(index + 1);
-    }
   }
 
-  function skipQuestion(): void {
-    setResponses((current) => {
-      const next = new Map(current);
-      next.delete(question.questionId);
-      return next;
-    });
-    setSkippedQuestionIds((current) =>
-      current.includes(question.questionId) ? current : [...current, question.questionId],
-    );
-    selectPage(index + 1);
+  function updateCustomText(value: string): void {
+    setCustomDrafts((current) => new Map(current).set(question.questionId, value));
+    updateResponse({ selectedIds: [], customText: value });
+  }
+
+  function dismissRequest(): void {
+    if (responding) return;
+    setLastAction('dismiss');
+    onRespond(item.requestId, { outcome: 'cancelled' });
   }
 
   function submitGroup(): void {
-    if (!allResolved || responding) return;
+    if (!allAnswered || responding) return;
     const answers: QuestionAnswer[] = [];
     for (const candidate of item.questions) {
       const candidateResponse = responses.get(candidate.questionId);
-      if (!candidateResponse || !isQuestionAnswered(candidate, candidateResponse)) continue;
+      if (!candidateResponse || !isQuestionAnswered(candidate, candidateResponse)) return;
       answers.push({
         questionId: candidate.questionId,
         selectedOptionIds: candidateResponse.selectedIds,
         customText: candidateResponse.customText?.trim() || undefined,
       });
     }
-    onRespond(
-      item.requestId,
-      answers.length > 0 ? { outcome: 'answered', answers } : { outcome: 'cancelled' },
-    );
+    setLastAction('submit');
+    onRespond(item.requestId, { outcome: 'answered', answers });
+  }
+
+  function retry(): void {
+    if (lastAction === 'dismiss') dismissRequest();
+    else submitGroup();
+  }
+
+  function handleSubmit(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>): void {
+    event.preventDefault();
+    submitGroup();
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
+    if (
+      event.defaultPrevented ||
+      event.repeat ||
+      event.nativeEvent.isComposing ||
+      event.key === 'Process' ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      responding ||
+      isEditableTarget(event.target)
+    ) {
+      return;
+    }
+
+    const optionIndex = choiceIndexForNumberShortcut(event.code, event.key);
+    if (optionIndex === null) return;
+    const option = question.options.at(optionIndex);
+    if (!option) return;
+
+    event.preventDefault();
+    const selectedIds = question.multiSelect
+      ? response.selectedIds.includes(option.optionId)
+        ? response.selectedIds.filter((optionId) => optionId !== option.optionId)
+        : [...response.selectedIds, option.optionId]
+      : [option.optionId];
+    updateResponse({ selectedIds });
+    event.currentTarget
+      .querySelectorAll<HTMLElement>('[data-prompt-choice]')
+      .item(optionIndex)
+      .focus();
   }
 
   return (
-    <ConversationPromptAlert
-      // Remount the visible page; controlled drafts restore its prior answer when revisited.
-      key={question.questionId}
-      className="my-0"
-      action={
-        item.questions.length > 1 || queuedCount > 0 ? (
-          <PromptPager
+    <Form data-keyboard-shortcut-local="" onKeyDown={handleKeyDown} onSubmit={handleSubmit}>
+      <PromptCard
+        badge={header}
+        busyLabel={lastAction ? undefined : tp('responding')}
+        disabled={responding}
+        error={
+          error && lastAction
+            ? {
+                message: error,
+                retryLabel: tp('retry'),
+                onRetry: retry,
+              }
+            : undefined
+        }
+        footer={
+          <>
+            <span className="min-w-0 truncate text-muted-foreground text-xs">
+              {t(question.multiSelect ? 'instructionMultiple' : 'instructionSingle')}
+            </span>
+            {isLastQuestion ? (
+              <Button
+                disabled={!allAnswered || responding}
+                loading={responding && lastAction === 'submit'}
+                size="xs"
+                type="submit"
+              >
+                {t('submit')}
+                <CornerDownLeftIcon />
+              </Button>
+            ) : null}
+          </>
+        }
+        meta={
+          <QuestionPromptActions
+            canGoNext={currentAnswered}
             current={index + 1}
             disabled={responding}
-            nextLabel={t('next')}
-            previousLabel={t('previous')}
-            queued={queuedCount}
+            dismissLoading={responding && lastAction === 'dismiss'}
+            hasDrafts={hasDrafts}
+            queuedCount={queuedCount}
             total={item.questions.length}
+            onDismiss={dismissRequest}
             onNext={() => selectPage(index + 1)}
             onPrevious={() => selectPage(index - 1)}
           />
-        ) : undefined
-      }
-      autoFocusFirstChoice={autoFocusFirstChoice || focusAfterNavigation}
-      badge={header}
-      choices={question.options.map((option) => ({
-        id: option.optionId,
-        label: option.label,
-        description: option.description,
-      }))}
-      customInputPlaceholder={t('customPlaceholder')}
-      footerAction={
-        <Button
-          disabled={!allResolved || responding}
-          loading={responding}
-          size="xs"
-          type="button"
-          onClick={submitGroup}
-        >
-          {t('submit')}
-        </Button>
-      }
-      mode={question.multiSelect ? 'multiple' : 'single'}
-      response={response}
-      skipLabel={skipped ? t('skipped') : undefined}
-      submitting={responding}
-      title={question.prompt}
-      onResponseChange={updateResponse}
-      onSkip={skipQuestion}
-    />
+        }
+        panelClassName="p-1"
+        title={question.prompt}
+      >
+        <QuestionChoices
+          key={question.questionId}
+          autoFocus={autoFocusFirstChoice || focusAfterNavigation}
+          customDraft={customDraft}
+          disabled={responding}
+          question={question}
+          response={response}
+          onCustomTextChange={updateCustomText}
+          onResponseChange={updateResponse}
+        />
+      </PromptCard>
+    </Form>
   );
 }
 
-function isQuestionAnswered(
-  question: QuestionConversationItem['questions'][number],
-  response: ConversationPromptResponse,
-): boolean {
-  return isConversationPromptResponseSubmittable(
-    {
-      mode: question.multiSelect ? 'multiple' : 'single',
-      choices: question.options.map((option) => ({ id: option.optionId, label: option.label })),
-    },
-    response,
+function isEditableTarget(target: EventTarget): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !==
+      null
   );
 }
