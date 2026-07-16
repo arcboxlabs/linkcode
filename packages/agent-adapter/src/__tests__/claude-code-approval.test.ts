@@ -17,9 +17,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   },
 }));
 
-// Isolate `settingsDefaultMode` from the developer's real ~/.claude/settings.json: by default every
-// settings read misses, so unit tests see a clean environment (policy stays 'default'). A test can
-// seed `fsMock.files` (absolute path → JSON) to exercise the settings-default path.
+// Isolate `settingsDefaultMode` from the developer's real ~/.claude/settings.json: every settings
+// read misses by default; a test seeds `fsMock.files` (absolute path → JSON) to exercise the path.
 const fsMock = vi.hoisted(() => ({ files: new Map<string, string>() }));
 
 vi.mock('node:fs/promises', () => ({

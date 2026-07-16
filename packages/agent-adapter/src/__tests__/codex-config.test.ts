@@ -5,11 +5,8 @@ import { env } from 'node:process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { codexConfiguredSandbox } from '../native/codex';
 
-/**
- * Exercises the real config.toml read + smol-toml parse + profile/top-level resolution through a
- * throwaway `CODEX_HOME`, since the whole point is honoring the user's file (mocking the parser
- * would test nothing).
- */
+/** Exercises the real config.toml read + parse + profile/top-level resolution through a throwaway
+ * `CODEX_HOME` — mocking the parser would test nothing. */
 describe('codexConfiguredSandbox', () => {
   let dir: string;
   const previous = env.CODEX_HOME;

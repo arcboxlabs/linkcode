@@ -19,11 +19,10 @@ export interface DetectedAgentRuntime {
 export type ProbeableKind = 'claude-code' | 'codex';
 
 /**
- * Absolute install locations probed in order. PATH is deliberately not searched: a probe both
- * locates and *executes* the candidate, so only well-known installer targets qualify (npm-global
- * prefixes vary per machine and are skipped for the same reason). Windows locations are
- * unverified — detection degrades to "nothing detected" there (bundled/SDK resolution still
- * applies) until CODE-113's win runner pins them down.
+ * Absolute install locations probed in order. PATH is deliberately not searched — a probe both
+ * locates and *executes* the candidate, so only well-known installer targets qualify. Windows
+ * locations are unverified: detection degrades to "nothing detected" there until CODE-113's win
+ * runner pins them down.
  */
 function defaultInstallLocations(binary: string): string[] {
   const home = homedir();
@@ -47,9 +46,8 @@ function defaultInstallLocations(binary: string): string[] {
 }
 
 /**
- * One agent's CLI probe: where its user-installed binary may live and how to verify a candidate
- * is the real vendor CLI. Subclasses declare only what differs per agent — the binary's base name
- * and the `--version` signature.
+ * One agent's CLI probe: where its user-installed binary may live and how to verify a candidate is
+ * the real vendor CLI. Subclasses declare only the binary's base name and `--version` signature.
  */
 export abstract class AgentCliProbe {
   abstract readonly kind: ProbeableKind;
@@ -67,10 +65,9 @@ export abstract class AgentCliProbe {
   protected abstract platformPackageBase(): string;
 
   /**
-   * Whether the SDK's own resolution would find a CLI in node_modules — true in dev and
-   * standalone daemons, false in packaged apps where the platform packages are excluded
-   * (CODE-114). Checks directory presence along the module's node_modules chain instead of
-   * `require.resolve` — the SDKs' `exports` maps reject bare CJS resolution outright.
+   * Whether the SDK's own resolution would find a CLI in node_modules — false in packaged apps
+   * (platform packages excluded, CODE-114). Checks directory presence instead of `require.resolve`
+   * because the SDKs' `exports` maps reject bare CJS resolution outright.
    */
   sdkPlatformPackagePresent(): boolean {
     const scope = this.sdkPackage.split('/', 1)[0];
@@ -79,10 +76,9 @@ export abstract class AgentCliProbe {
   }
 
   /**
-   * Absolute path to the CLI binary at the SDK's platform-package root — claude's layout
-   * (`…/claude-agent-sdk-<plat>-<arch>/claude`). Present in dev / standalone daemons; `undefined`
-   * in packaged apps (platform packages excluded, CODE-114) and for CLIs whose binary is nested
-   * elsewhere (codex vendors its binary under `vendor/` and resolves its own path).
+   * Absolute path to the CLI binary at the SDK's platform-package root (claude's layout).
+   * `undefined` in packaged apps (platform packages excluded, CODE-114) and for CLIs whose binary
+   * is nested elsewhere (codex vendors under `vendor/` and resolves its own path).
    */
   sdkPlatformBinaryPath(): string | undefined {
     const scope = this.sdkPackage.split('/', 1)[0];
@@ -94,11 +90,8 @@ export abstract class AgentCliProbe {
     return undefined;
   }
 
-  /**
-   * Provider login status for this CLI, if it exposes one (claude-code overrides via
-   * `auth status`). Default: the CLI has no login concept — `undefined` reads as "unknown" and
-   * never blocks the UI.
-   */
+  /** Provider login status, if the CLI exposes one (claude-code overrides via `auth status`).
+   * Default: no login concept — `undefined` reads as "unknown" and never blocks the UI. */
   probeAuth(_file: string): Promise<AgentAuthStatus | undefined> {
     return Promise.resolve(undefined);
   }
@@ -111,11 +104,8 @@ export abstract class AgentCliProbe {
     return this.locations ?? defaultInstallLocations(this.binaryName());
   }
 
-  /**
-   * Version-probe one candidate binary. `undefined` means "not this one" — absent, not
-   * executable, hung past the timeout, or `--version` output missing the vendor marker; a failed
-   * candidate is a normal probe outcome, not an error to surface.
-   */
+  /** Version-probe one candidate binary. `undefined` means "not this one" (absent, not executable,
+   * hung, or missing the vendor marker) — a failed candidate is a normal outcome, not an error. */
   async probeAt(file: string): Promise<DetectedAgentRuntime | undefined> {
     if (!existsSync(file)) return undefined;
     try {

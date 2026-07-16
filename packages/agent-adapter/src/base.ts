@@ -37,18 +37,12 @@ type PermissionResolver = (outcome: PermissionOutcome) => void;
 type QuestionResolver = (outcome: QuestionOutcome) => void;
 
 /**
- * Adapter base class: consolidates event plumbing, lifecycle, tool-call normalization, and the permission
- * round-trip so subclasses only implement the SDK-specific bits (`onStart` / `onPrompt` / `onCancel` /
- * `onStop`).
- *
- * Two invariants are enforced here, not by convention:
- * - Tool calls: adapters feed partial `ToolCallUpdate` patches into `emitTool`, which merges them into a
- *   per-id running snapshot and emits a complete `ToolCall` on every change. Normalization lives in one
- *   place; the front-end can do a dumb replace-by-id.
- * - Liveness: a `tool-call` is announced before it runs and a permission ask awaits a reply, so a
- *   cancel/stop that arrives mid-flight could otherwise leave a tool stuck `in_progress` or an agent
- *   `await`-ing a permission forever. `teardown` sweeps both: unfinished tools are forced to `failed` and
- *   pending permission asks are resolved with `cancelled`.
+ * Adapter base class: event plumbing, lifecycle, tool-call normalization, and the permission
+ * round-trip; subclasses implement only the SDK-specific hooks (`onStart` / `onPrompt` / `onCancel`
+ * / `onStop`). Two enforced invariants: `emitTool` merges partial patches into per-id snapshots and
+ * emits a complete `ToolCall` on every change (front-end replaces by id); `teardown` forces
+ * unfinished tools to `failed` and resolves pending permission asks with `cancelled`, so a
+ * mid-flight cancel/stop never leaves a tool stuck `in_progress` or an agent awaiting forever.
  */
 export abstract class BaseAgentAdapter implements AgentAdapter {
   abstract readonly kind: AgentKind;
@@ -162,13 +156,11 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
 
   // ── Lifecycle hooks for subclasses ──
   //
-  // Turn contract for the turn-starting hooks (onPrompt / onCommand / onShellCommand): a hook that
-  // begins a turn must emit status 'running' BEFORE it resolves, even when the provider's own
-  // lifecycle events arrive later (codex's shellCommand ack precedes turn/started). The engine's
-  // input gate reads status the moment send() settles and treats a still-idle session as a
-  // synchronous control with no lifecycle events (codex /compact), releasing the gate. The flip
-  // side: a hook that already emitted 'running' and then fails must emit 'idle' before rejecting,
-  // or the gate never releases.
+  // Turn contract: a turn-starting hook (onPrompt / onCommand / onShellCommand) must emit status
+  // 'running' BEFORE it resolves, even when the provider's own lifecycle events arrive later — the
+  // engine's input gate reads status the moment send() settles and releases on a still-idle session.
+  // A hook that emitted 'running' and then fails must emit 'idle' before rejecting, or the gate
+  // never releases.
   protected abstract onStart(opts: StartOptions): Promise<void>;
   protected abstract onPrompt(content: ContentBlock[]): Promise<void>;
   /** Default: reject. Only adapters that advertise a catalog via `available-commands-update`
@@ -209,9 +201,8 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected emitStatus(status: SessionStatus): void {
     this.emit({ type: 'status', status });
   }
-  /** Opens a fresh message/thought segment: call at a turn boundary (prompt start) and after every
-   * tool call so narration emitted after renders as a new bubble instead of merging with what came
-   * before it. */
+  /** Open a fresh message/thought segment: call at turn start and after every tool call, or
+   * narration around a tool merges into one bubble. */
   protected freshSegment(): void {
     this.messageId = nextMessageId();
     this.thoughtId = nextMessageId();
@@ -236,9 +227,8 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   /**
-   * Convert a provider's cumulative per-item text into an incremental chunk, keyed by `id` (e.g. an
-   * item/part id), and emit it as assistant text or thought depending on `kind`. For providers (Codex,
-   * OpenCode) that report the whole text seen so far on every update rather than the new slice alone.
+   * Convert a provider's cumulative per-item text into an incremental chunk keyed by `id`, emitted
+   * as assistant text or thought. For providers (Codex, OpenCode) that report the whole text so far.
    */
   protected streamDelta(id: string, fullText: string, kind: 'message' | 'thought'): void {
     const prev = this.textDeltaLen.get(id) ?? 0;
@@ -250,15 +240,13 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   /**
-   * Merge a partial tool-call patch into its running snapshot (creating it with sane defaults on first
-   * sight) and emit the complete `ToolCall`. This is the single normalization point: adapters only ever
-   * supply the fields they have, and every `tool-call` event downstream is a full snapshot.
+   * Merge a partial tool-call patch into its running snapshot and emit the complete `ToolCall`:
+   * adapters supply only the fields they have; every downstream `tool-call` is a full snapshot.
    */
   protected emitTool(patch: ToolCallUpdate): void {
     const existing = this.toolCalls.get(patch.toolCallId);
-    // A tool that already reached a terminal state never changes again. Ignoring late updates keeps
-    // the "one snapshot per state change" model and stops a stray post-teardown event (e.g. a denied
-    // tool_result, or a streamed completion arriving after a cancel sweep) from reviving a failed tool.
+    // completed/failed is terminal: ignore late updates so a stray post-teardown event (denied
+    // tool_result, completion after a cancel sweep) cannot revive a failed tool.
     if (existing && (existing.status === 'completed' || existing.status === 'failed')) return;
     const toolCall: ToolCall = existing
       ? {
@@ -361,10 +349,9 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   /**
-   * Liveness sweep on cancel / stop / abnormal turn end: resolve every still-pending permission or
-   * question ask with `cancelled` (a clean deny that unblocks the agent's awaiting callback) and force
-   * every non-terminal tool call to `failed`. Together these guarantee no tool stays `in_progress` and
-   * no agent hangs awaiting a reply. Idempotent — a no-op on a clean turn where everything is settled.
+   * Liveness sweep on cancel / stop / abnormal turn end: resolve pending permission/question asks
+   * with `cancelled` and force non-terminal tool calls to `failed`, so no tool stays `in_progress`
+   * and no agent hangs awaiting a reply. Idempotent.
    */
   protected teardown(): void {
     for (const resolve of this.pending.values()) resolve({ outcome: 'cancelled' });

@@ -6,12 +6,11 @@ import type { ClaudeCompactionSupplement } from '../native/claude-code';
 import { buildClaudeCompactionSupplement, ClaudeCodeAdapter } from '../native/claude-code';
 
 /**
- * Context compaction (CODE-141). Verified live against SDK 0.3.179: the CLI compacts **in place**
- * — `session_id` never changes — emitting a `system/compact_boundary` frame followed by the
- * swapped-in summary as an `isReplay`-flagged user frame whose uuid is the boundary's anchor uuid.
- * The adapter must announce a `compaction` event at the boundary, attach the summary when its
- * frame arrives (before the replay guard would drop it), and reproduce the same marker — instead
- * of a fake giant user prompt — when history is re-read.
+ * Context compaction (CODE-141), verified live against SDK 0.3.179: the CLI compacts **in place**
+ * (`session_id` never changes), emitting a `system/compact_boundary` frame then the swapped-in
+ * summary as an `isReplay` user frame keyed by the boundary's anchor uuid. The adapter must
+ * announce the `compaction` event at the boundary, attach the summary before the replay guard
+ * drops it, and reproduce the marker (not a fake giant user prompt) on history re-read.
  */
 
 type CompactionEvent = Extract<AgentEvent, { type: 'compaction' }>;
