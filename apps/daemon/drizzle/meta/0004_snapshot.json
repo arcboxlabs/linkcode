@@ -74,10 +74,7 @@
       "indexes": {
         "schedule_runs_schedule_started_idx": {
           "name": "schedule_runs_schedule_started_idx",
-          "columns": [
-            "schedule_id",
-            "started_at"
-          ],
+          "columns": ["schedule_id", "started_at"],
           "isUnique": false
         }
       },
@@ -86,12 +83,8 @@
           "name": "schedule_runs_schedule_id_schedules_schedule_id_fk",
           "tableFrom": "schedule_runs",
           "tableTo": "schedules",
-          "columnsFrom": [
-            "schedule_id"
-          ],
-          "columnsTo": [
-            "schedule_id"
-          ],
+          "columnsFrom": ["schedule_id"],
+          "columnsTo": ["schedule_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -241,9 +234,7 @@
       "indexes": {
         "schedules_next_run_at_idx": {
           "name": "schedules_next_run_at_idx",
-          "columns": [
-            "next_run_at"
-          ],
+          "columns": ["next_run_at"],
           "isUnique": false
         }
       },
@@ -301,9 +292,7 @@
       "indexes": {
         "session_runs_session_id_idx": {
           "name": "session_runs_session_id_idx",
-          "columns": [
-            "session_id"
-          ],
+          "columns": ["session_id"],
           "isUnique": false
         }
       },
@@ -312,12 +301,8 @@
           "name": "session_runs_session_id_sessions_session_id_fk",
           "tableFrom": "session_runs",
           "tableTo": "sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "session_id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["session_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -417,9 +402,7 @@
       "indexes": {
         "sessions_updated_at_idx": {
           "name": "sessions_updated_at_idx",
-          "columns": [
-            "updated_at"
-          ],
+          "columns": ["updated_at"],
           "isUnique": false
         }
       },
@@ -478,16 +461,12 @@
       "indexes": {
         "workspaces_cwd_unique": {
           "name": "workspaces_cwd_unique",
-          "columns": [
-            "cwd"
-          ],
+          "columns": ["cwd"],
           "isUnique": true
         },
         "workspaces_last_used_at_idx": {
           "name": "workspaces_last_used_at_idx",
-          "columns": [
-            "last_used_at"
-          ],
+          "columns": ["last_used_at"],
           "isUnique": false
         }
       },
