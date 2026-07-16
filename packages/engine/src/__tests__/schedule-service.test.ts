@@ -268,6 +268,38 @@ describe('ScheduleService', () => {
     expect(run?.trigger).toBe('catch-up');
   });
 
+  it("a schedule's skip misfire policy fast-forwards a missed window without running", async () => {
+    const driver = new FakeSessionDriver();
+    const { service, sent } = makeService(driver);
+    // A mid-slot miss within grace: the default policy would catch up; `skip` suppresses the run.
+    await service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' });
+    clock += 150_000; // 2.5 intervals late → 30s past the latest slot
+    await service.tickOnce();
+    await service.settleAll();
+
+    expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
+    expect(runsIn(sent)).toHaveLength(0);
+    // nextRunAt still advanced past now.
+    expect(schedulesIn(sent).at(-1)?.nextRunAt).toBeGreaterThan(clock);
+  });
+
+  it('honors a global default misfire policy when the schedule has none', async () => {
+    const driver = new FakeSessionDriver();
+    const { transport, sent } = recordingTransport();
+    const service = new ScheduleService(transport, new InMemoryScheduleStore(), driver, {
+      now,
+      tickMs: 1000,
+      defaultMisfirePolicy: 'skip',
+    });
+    await service.create(INTERVAL_SPEC);
+    clock += 150_000;
+    await service.tickOnce();
+    await service.settleAll();
+
+    expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
+    expect(runsIn(sent)).toHaveLength(0);
+  });
+
   it('recovers interrupted runs and orphaned targets on restart', async () => {
     const store = new InMemoryScheduleStore();
     // First service: a session-target schedule whose target exists.

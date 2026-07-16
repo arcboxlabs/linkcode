@@ -50,6 +50,14 @@ export const ScheduleTargetSchema = z.discriminatedUnion('type', [
 ]);
 export type ScheduleTarget = z.infer<typeof ScheduleTargetSchema>;
 
+/**
+ * What to do with a fire the daemon missed (it was down, or asleep) when it comes back. `skip`
+ * fast-forwards without running; `catch-up` replays the most recent missed occurrence if it is
+ * within the grace window (else records a skipped run). On-time fires are unaffected by this.
+ */
+export const ScheduleMisfirePolicySchema = z.enum(['skip', 'catch-up']);
+export type ScheduleMisfirePolicy = z.infer<typeof ScheduleMisfirePolicySchema>;
+
 /** Client-authored creation payload. */
 export const ScheduleSpecSchema = z.object({
   name: z.string().min(1).optional(),
@@ -60,6 +68,8 @@ export const ScheduleSpecSchema = z.object({
   maxRuns: z.number().int().min(1).optional(),
   /** Auto-complete the schedule at this timestamp. */
   expiresAt: TimestampSchema.optional(),
+  /** Per-schedule override of the daemon's default missed-window policy; absent = follow the default. */
+  misfirePolicy: ScheduleMisfirePolicySchema.optional(),
 });
 export type ScheduleSpec = z.infer<typeof ScheduleSpecSchema>;
 

@@ -63,6 +63,8 @@ export const schedules = sqliteTable(
     targetConfigJson: text('target_config_json'),
     status: text('status', { enum: ['active', 'paused', 'completed'] }).notNull(),
     completedReason: text('completed_reason', { enum: ['maxRuns', 'expired', 'targetGone'] }),
+    /** Per-schedule missed-window override (`ScheduleSpec.misfirePolicy`); null follows the daemon default. */
+    misfirePolicy: text('misfire_policy', { enum: ['skip', 'catch-up'] }),
     nextRunAt: integer('next_run_at'),
     lastRunAt: integer('last_run_at'),
     runCount: integer('run_count').notNull().default(0),

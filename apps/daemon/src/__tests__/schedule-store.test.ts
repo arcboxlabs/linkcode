@@ -45,6 +45,7 @@ describe('daemon sqlite schedule store', () => {
         target: { type: 'session', sessionId: 'sess-1' },
         maxRuns: 5,
         expiresAt: 999999,
+        misfirePolicy: 'skip',
       },
       completedReason: undefined,
     });

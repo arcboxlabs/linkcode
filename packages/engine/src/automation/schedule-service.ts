@@ -2,6 +2,7 @@ import type {
   Schedule,
   ScheduleCadence,
   ScheduleId,
+  ScheduleMisfirePolicy,
   ScheduleRun,
   ScheduleRunId,
   ScheduleRunTrigger,
@@ -34,6 +35,8 @@ export interface ScheduleServiceOptions {
   now?: () => number;
   /** Tick cadence; also the on-time-vs-catch-up threshold reference. */
   tickMs?: number;
+  /** Missed-window policy for schedules that don't set their own; the daemon wires this from config. */
+  defaultMisfirePolicy?: ScheduleMisfirePolicy;
 }
 
 /**
@@ -50,6 +53,7 @@ export class ScheduleService {
   private readonly inFlight = new Map<ScheduleId, Promise<void>>();
   private readonly now: () => number;
   private readonly tickMs: number;
+  private readonly defaultMisfirePolicy: ScheduleMisfirePolicy;
   private timer: ReturnType<typeof setInterval> | undefined;
   private seq = 0;
 
@@ -61,6 +65,7 @@ export class ScheduleService {
   ) {
     this.now = options.now ?? Date.now;
     this.tickMs = options.tickMs ?? 1000;
+    this.defaultMisfirePolicy = options.defaultMisfirePolicy ?? 'catch-up';
   }
 
   async start(): Promise<void> {
@@ -203,13 +208,19 @@ export class ScheduleService {
     await this.store.save(schedule);
     this.broadcastSchedule(schedule);
 
-    if (missedBy > this.graceMs(cadence)) {
-      await this.recordSkipped(schedule, latestMissed, now);
-      return;
+    // On-time fires (within the catch-up threshold) always run, whatever the policy.
+    const isMiss = missedBy > this.catchUpThresholdMs();
+    if (isMiss) {
+      const policy = schedule.spec.misfirePolicy ?? this.defaultMisfirePolicy;
+      // `skip` fast-forwards silently (nextRunAt already advanced); `catch-up` beyond grace records
+      // a skipped run for visibility; within grace it replays the most recent missed occurrence.
+      if (policy === 'skip') return;
+      if (missedBy > this.graceMs(cadence)) {
+        await this.recordSkipped(schedule, latestMissed, now);
+        return;
+      }
     }
-    const trigger: ScheduleRunTrigger =
-      missedBy > this.catchUpThresholdMs() ? 'catch-up' : 'cadence';
-    this.track(schedule.scheduleId, this.launchRun(schedule, trigger));
+    this.track(schedule.scheduleId, this.launchRun(schedule, isMiss ? 'catch-up' : 'cadence'));
   }
 
   /** Track an in-flight run so {@link settleAll} can await it; log and drop failures. */
