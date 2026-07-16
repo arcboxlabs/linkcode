@@ -60,8 +60,9 @@ export class AssetManager {
   }
 
   /**
-   * Any non-`.tmp-*` version on disk, regardless of the wanted pin. Read BEFORE {@link gcAtBoot}
-   * sweeps superseded versions: a prior install = standing consent to auto-refresh (CODE-221).
+   * Any non-`.tmp-*` version on disk, regardless of the wanted pin: a prior install = standing
+   * consent to auto-refresh (CODE-221). GC keeps superseded versions until their replacement
+   * lands, so a failed refresh never erases this.
    */
   hasInstallOnDisk(id: ManagedAssetId): boolean {
     if (!this.descriptors.has(id)) return false;
