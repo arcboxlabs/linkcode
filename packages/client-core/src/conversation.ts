@@ -2,6 +2,7 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -119,6 +120,9 @@ export interface ConversationViewModel {
   /** Slash-command catalog from `available-commands-update` (full-replace). `null` means the agent
    * advertised none — the composer then offers no command menu. */
   availableCommands: AgentCommand[] | null;
+  /** Model catalog from `available-models-update` (full-replace). `null` means the agent
+   * advertised none — the composer then falls back to its static per-kind table. */
+  availableModels: AgentModelOption[] | null;
   /** Adapter input features from `capabilities-update`; null until the live session advertises. */
   capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */
@@ -191,6 +195,7 @@ export function createConversationBuilder(): ConversationBuilder {
   let currentModel: string | null = null;
   let currentEffort: EffortLevel | null = null;
   let availableCommands: AgentCommand[] | null = null;
+  let availableModels: AgentModelOption[] | null = null;
   let capabilities: AgentCapabilities | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
@@ -375,6 +380,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'available-commands-update':
         availableCommands = event.commands;
         break;
+      case 'available-models-update':
+        availableModels = event.models;
+        break;
       case 'capabilities-update':
         capabilities = event.capabilities;
         break;
@@ -522,6 +530,7 @@ export function createConversationBuilder(): ConversationBuilder {
       currentModel,
       currentEffort,
       availableCommands,
+      availableModels,
       capabilities,
       stopReason,
       pendingPermissionIds: approvals.filter((requestId) => !permissionResolutions.has(requestId)),
