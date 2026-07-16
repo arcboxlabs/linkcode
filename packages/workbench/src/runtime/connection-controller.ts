@@ -41,11 +41,8 @@ export interface WorkbenchConnectionSnapshot {
   readonly endpoint?: string;
   readonly error?: unknown;
   readonly attempt: number;
-  /**
-   * Stable React context generation. A failed/closed generation can remain here after its client
-   * has been disposed; it is no longer active or installed as the SDK default. Later attempts stay
-   * private and replace this value only after reaching ready.
-   */
+  /** Stable React context generation. A failed/closed generation can linger here after disposal;
+   * later attempts stay private and replace this value only after reaching ready. */
   readonly contextGeneration: WorkbenchConnectionGeneration | null;
 }
 

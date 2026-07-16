@@ -7,9 +7,8 @@ import { useTranslations } from 'use-intl';
 import { useGitDiff, useGitPullRequestStatus, useGitStatus } from './hooks';
 
 /**
- * The right panel's Diff section: a Git overview header (branch/PR, tightened to its content
- * height) followed by the diff viewer for the active session's working directory. `cwd` is
- * undefined when there is no active session.
+ * The right panel's Diff section: Git overview header plus the diff viewer for the active
+ * session's working directory. `cwd` is undefined when there is no active session.
  */
 export function GitPanel({
   cwd,

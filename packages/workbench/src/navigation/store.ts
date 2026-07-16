@@ -28,9 +28,8 @@ interface NavigationHistoryState extends NavHistoryStacks {
 }
 
 /**
- * Per-window navigation history over the workbench's main surface, VS Code-style: an in-memory
- * stack of locations, no URLs. Module scope (like the palette store) so any surface can traverse
- * it; not persisted — a fresh window starts with empty history.
+ * Per-window navigation history over the workbench's main surface (in-memory locations, no URLs).
+ * Module scope so any surface can traverse it; not persisted — a fresh window starts empty.
  */
 export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, get) => ({
   back: [],
@@ -46,8 +45,7 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
   openOverlay(surface) {
     if (get().overlay === surface) return;
     // Module-scope callers can't see the hook's fallback-resolved thread, so the origin is the
-    // open draft, the explicit selection, or nothing — Esc still visually returns either way,
-    // the covered surface keeps its state.
+    // open draft, the explicit selection, or nothing — Esc still visually returns either way.
     const { selectedId, draft } = useSessionSelectionStore.getState();
     const from: NavLocation | null = draft
       ? { surface: 'new-thread', workspaceId: draft.workspaceId }
@@ -60,9 +58,8 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
   backFromOverlay() {
     const { overlay } = get();
     if (overlay === null) return;
-    // Pops exactly one entry; `travel` keeps the bookkeeping (the overlay location moves onto
-    // forward on a hit; an empty stack leaves forward alone). Overlay-surface targets re-raise
-    // that overlay. Thread and draft targets apply through the selection store — no cold-session
+    // Pops exactly one entry via `travel` (which keeps the bookkeeping). Overlay targets re-raise
+    // that overlay; thread/draft targets apply through the selection store — no cold-session
     // resume, and a dead id resolves through the workbench's preferred/most-recent fallback.
     const target = get().travel('back', { surface: overlay }, trueFn);
     if (target !== null && target.surface !== 'thread' && target.surface !== 'new-thread') {

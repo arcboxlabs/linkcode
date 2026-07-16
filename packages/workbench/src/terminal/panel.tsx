@@ -12,10 +12,9 @@ const TERMINAL_INITIAL_SIZE = { cols: 80, rows: 24 };
 const INPUT_LOST_BANNER_MS = 4000;
 
 /**
- * Daemon-backed interactive shell: attaches to the host terminal keyed by `sessionKey`
- * (opening it on first mount) and renders it with restty. The PTY lives in the session
- * registry — an external store — so remounts such as the docked↔maximized panel handoff
- * reattach to the same terminal instead of spawning a new one.
+ * Daemon-backed interactive shell keyed by `sessionKey`, rendered with restty. The PTY lives in
+ * the session registry (an external store), so remounts such as the docked↔maximized panel
+ * handoff reattach to the same terminal instead of spawning a new one.
  */
 export function TerminalPanel({
   sessionKey,

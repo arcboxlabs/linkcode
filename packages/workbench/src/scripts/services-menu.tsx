@@ -17,10 +17,9 @@ export interface WorkspaceServicesMenuProps {
 }
 
 /**
- * The workspace services chip: declared scripts with run/stop/view/preview-link
- * actions. Preview links follow the persisted open-URL preference; hosts without an
- * in-app browser always open externally (window.open — the desktop main process
- * routes that to the system browser).
+ * The workspace services chip: declared scripts with run/stop/view/preview-link actions. Preview
+ * links follow the persisted open-URL preference; hosts without an in-app browser always open
+ * externally (`window.open`, routed to the system browser by the desktop main process).
  */
 export function WorkspaceServicesMenu({
   cwd,

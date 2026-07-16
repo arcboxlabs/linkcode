@@ -148,9 +148,8 @@ export class DevMockHost {
   }
 
   /**
-   * Onboarding fixtures (CODE-112), one kind per state: claude-code is missing (downloadable),
-   * codex is detected out-of-range (both "continue unverified" and "download paired" apply),
-   * pi is builtin, opencode is unevaluated (absent) until CODE-76.
+   * Onboarding fixtures (CODE-112), one kind per state: claude-code missing (downloadable), codex
+   * out-of-range (unverified-continue + paired-download), pi builtin, opencode absent until CODE-76.
    */
   private agentRuntimes(): AgentRuntimes {
     return {

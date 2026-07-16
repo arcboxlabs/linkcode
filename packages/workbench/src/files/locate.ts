@@ -5,17 +5,14 @@ import { dirname, isAbsolute, join, normalize } from 'pathe';
 /** Probing is bounded: candidates beyond this are dropped (dirs are deduped first). */
 const MAX_CANDIDATES = 8;
 
-/** Path predicates/joins go through `pathe`: the daemon may sit on either platform
- * (POSIX `/`, Windows drive or UNC), and pathe recognizes all of them while
- * normalizing output to forward slashes — which win32 Node accepts as-is. */
+/** Path predicates/joins go through `pathe`: the daemon may sit on either platform (POSIX,
+ * Windows drive/UNC), and pathe normalizes output to forward slashes, which win32 Node accepts. */
 export { isAbsolute as isAbsoluteFilePath } from 'pathe';
 
 /**
- * Absolute paths a clicked file reference may resolve to, most likely first.
- * A bare `qingjia.pdf` in agent prose carries no directory, and the agent may have
- * worked outside the session cwd — so candidates come from the conversation's
- * tool-call locations (exact basename hits first, then their directories), with the
- * cwd anchor between them. Pure; exported for tests.
+ * Absolute paths a clicked file reference may resolve to, most likely first: a bare filename may
+ * live outside the session cwd, so candidates come from the conversation's tool-call locations
+ * (exact basename hits, then their directories) with the cwd anchor between. Pure; exported for tests.
  */
 export function fileArtifactCandidates(
   requestPath: string,
@@ -55,9 +52,8 @@ export function fileArtifactCandidates(
 }
 
 /**
- * Resolve a clicked file reference to the absolute path to open: the first candidate
- * the daemon can actually read wins; when none reads (or there is nothing to probe),
- * fall back to the most likely candidate so the viewer surfaces the read error.
+ * Resolve a clicked file reference: the first candidate the daemon can actually read wins; when
+ * none reads, fall back to the most likely candidate so the viewer surfaces the read error.
  */
 export async function locateFileArtifact(
   requestPath: string,

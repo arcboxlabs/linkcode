@@ -22,10 +22,9 @@ export interface WorkbenchCommandPaletteProps {
 }
 
 /**
- * The palette container: mounted permanently by `Workbench`, but everything below — data
- * assembly, matching, the dialog — exists only while open, so the closed palette costs nothing
- * and the query resets on close for free. `AnimatePresence` defers the unmount until the
- * dialog's motion exit transition finishes.
+ * The palette container: mounted permanently, but everything below exists only while open — the
+ * closed palette costs nothing and the query resets on close for free. `AnimatePresence` defers
+ * the unmount until the dialog's exit transition finishes.
  */
 export function WorkbenchCommandPalette({
   sessions,
