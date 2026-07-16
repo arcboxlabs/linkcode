@@ -5,6 +5,7 @@ import {
   Frame,
   FrameDescription,
   FrameFooter,
+  FrameHeader,
   FramePanel,
   FrameTitle,
 } from 'coss-ui/components/frame';
@@ -65,9 +66,9 @@ export function PromptCard({
       className="my-0"
       role="group"
     >
+      {eyebrow ? <FrameHeader className="px-3 py-2">{eyebrow}</FrameHeader> : null}
       <FramePanel className={cn('space-y-2 p-3', panelClassName)}>
         <div className="flex flex-col gap-1.5">
-          {eyebrow}
           <div className="flex min-w-0 items-start justify-between gap-3">
             <FrameTitle className="flex min-w-0 items-center gap-2">
               <span id={titleId} className="min-w-0">

@@ -1,7 +1,7 @@
 import type { QuestionAnswer, QuestionOutcome } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { Form } from 'coss-ui/components/form';
-import { CornerDownLeftIcon } from 'lucide-react';
+import { CornerDownLeftIcon, InfoIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { choiceIndexForNumberShortcut } from '../chat/conversation-prompt-keyboard';
@@ -156,9 +156,12 @@ export function QuestionPrompt({
         }
         footer={
           <>
-            {/* line height mirrors the xs submit button so the footer height is stable across pages */}
-            <span className="min-w-0 truncate text-muted-foreground text-xs leading-7 sm:leading-6">
-              {t(question.multiSelect ? 'instructionMultiple' : 'instructionSingle')}
+            <span className="flex min-w-0 items-center gap-1 text-muted-foreground text-xs">
+              <InfoIcon aria-hidden className="size-3 shrink-0" />
+              {/* line height mirrors the xs submit button so the footer height is stable across pages */}
+              <span className="min-w-0 truncate leading-7 sm:leading-6">
+                {t(question.multiSelect ? 'instructionMultiple' : 'instructionSingle')}
+              </span>
             </span>
             <Button
               disabled={responding}
