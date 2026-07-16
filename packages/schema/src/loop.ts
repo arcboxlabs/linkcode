@@ -130,3 +130,10 @@ export const LoopLogEntrySchema = z.object({
   iteration: z.number().int().nonnegative().optional(),
 });
 export type LoopLogEntry = z.infer<typeof LoopLogEntrySchema>;
+
+/** A loop's full detail: the record, its iterations, and the ring-buffered log tail (`loop.inspect`). */
+export interface LoopInspection {
+  loop: LoopRecord;
+  iterations: LoopIteration[];
+  logs: LoopLogEntry[];
+}
