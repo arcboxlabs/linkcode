@@ -2,10 +2,9 @@ import { z } from 'zod';
 import { TimestampSchema } from './common';
 
 /**
- * Daemon runtime discovery contract: how local clients (desktop main, a second daemon instance,
- * a future CLI) find the running daemon and tell it apart from a foreign process squatting on
- * the port. The daemon serves its identity at `GET /linkcode` on every listener and advertises
- * its bound endpoints in a runtime file under the user's home directory.
+ * Daemon runtime discovery contract: how local clients find the running daemon and tell it apart
+ * from a foreign process squatting on the port. The daemon serves its identity at `GET /linkcode`
+ * on every listener and advertises its bound endpoints in a runtime file under the user's home.
  */
 
 export {

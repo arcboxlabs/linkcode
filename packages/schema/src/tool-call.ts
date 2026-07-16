@@ -1,11 +1,9 @@
 import { z } from 'zod';
 import { ContentBlockSchema } from './content';
 
-/**
- * Tool calls. `ToolCallSchema` is the full materialized tool state carried on the wire (every `tool-call`
- * event is a complete snapshot); `ToolCallUpdateSchema` is the partial patch an adapter feeds into the base
- * class's `emitTool`, which merges it into the running snapshot before emitting.
- */
+/** Tool calls. `ToolCallSchema` is the full materialized state on the wire (every `tool-call`
+ * event is a complete snapshot); `ToolCallUpdateSchema` is the partial patch an adapter feeds
+ * `emitTool`, which merges it into the running snapshot before emitting. */
 
 export const ToolKindSchema = z.enum([
   'read',
