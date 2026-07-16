@@ -11,10 +11,8 @@ export const ROW_HOVER_PE_CLASS =
 export const ROW_HOVER_PE_WIDE_CLASS =
   'group-hover/menu-item:pe-21 group-has-[:focus-visible]/menu-item:pe-21 group-has-data-popup-open/menu-item:pe-21 sm:group-hover/menu-item:pe-19 sm:group-has-[:focus-visible]/menu-item:pe-19 sm:group-has-data-popup-open/menu-item:pe-19';
 
-/**
- * Visibility behavior shared by the coss-ui action buttons. `data-popup-open` is base-ui's
- * open-trigger attribute; it keeps the cluster stable while its popup is open.
- */
+/** Visibility behavior shared by the coss-ui action buttons; base-ui's `data-popup-open`
+ * open-trigger attribute keeps the cluster stable while its popup is open. */
 export const ROW_ACTION_CLASS =
   'opacity-0 transition-opacity hover:bg-transparent data-pressed:bg-transparent group-hover/menu-item:opacity-100 group-has-[:focus-visible]/menu-item:opacity-100 group-has-data-popup-open/menu-item:opacity-100';
 

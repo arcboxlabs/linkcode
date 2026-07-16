@@ -10,9 +10,8 @@ export function sortHistoryBrowserEntries(
 ): HistoryBrowserEntry[] {
   const sorted = [...entries];
   if (order === 'project') {
-    // Alphabetical project clusters, most recent first within each; entries without a cwd last.
-    // The full-cwd tiebreak keeps same-named directories adjacent per directory, so
-    // `groupHistoryBrowserEntries` can partition consecutively.
+    // Alphabetical project clusters, most recent first, no-cwd entries last; the full-cwd tiebreak
+    // keeps same-named directories adjacent so `groupHistoryBrowserEntries` can partition consecutively.
     return sorted.sort((a, b) => {
       if (a.cwd === undefined || b.cwd === undefined) {
         if (a.cwd !== b.cwd) return a.cwd === undefined ? 1 : -1;

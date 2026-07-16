@@ -16,12 +16,9 @@ interface LocalFontData {
   postscriptName: string;
 }
 
-/**
- * Fallback families resolved from the user's installed fonts, in priority order (first present
- * wins). Resolution happens here, not in restty: listing several restty `family` inputs would
- * load every matching font whole (CJK families are 20-55 MB each), and restty's own local
- * matching gives no cross-family priority.
- */
+/** Fallback families from the user's installed fonts, priority order (first present wins).
+ * Resolved here, not in restty: several restty `family` inputs would load every matching font
+ * whole (CJK families are 20-55 MB each), and restty's local matching has no cross-family priority. */
 const SYMBOLS_FAMILIES = [
   'symbols nerd font',
   'symbols nerd font mono',
@@ -40,12 +37,10 @@ const SYMBOLS_FAMILIES = [
   'powerline',
 ];
 
-// CJK priority. Arial Unicode MS leads deliberately: it ships with every macOS, covers common
-// CJK, and its tall metrics dodge restty's wide-glyph upscale, keeping mixed CJK/latin lines on
-// one baseline (CODE-138). PingFang is deliberately absent: it parses (variable TTC) but
-// rasterizes every glyph blank in restty's text shaper. A bare 'hiragino sans' matcher is equally
-// hazardous: the Japanese Hiragino Sans lacks simplified-Chinese glyphs — only the GB variant is
-// safe.
+// CJK priority. Arial Unicode MS leads deliberately: ships with every macOS and its tall metrics
+// dodge restty's wide-glyph upscale, keeping mixed CJK/latin on one baseline (CODE-138). PingFang
+// is deliberately absent (rasterizes every glyph blank in restty's shaper); a bare 'hiragino sans'
+// matcher is unsafe — the Japanese variant lacks simplified-Chinese glyphs, only GB is safe.
 const CJK_FAMILIES = [
   'arial unicode',
   'hiragino sans gb',
@@ -55,10 +50,9 @@ const CJK_FAMILIES = [
   'source han sans',
 ];
 
-// Color emoji: only Apple Color Emoji (sbix) is verified to render in restty 0.2.0. Segoe UI
-// Emoji (COLR) is unverified on a real Windows machine and restty prefers a color-classified
-// font for emoji presentation unconditionally, so an unrenderable color font in the chain blanks
-// every emoji — do not add one without a rendering screenshot.
+// Only Apple Color Emoji (sbix) is verified in restty 0.2.0. restty prefers a color-classified
+// font unconditionally, so an unrenderable color font in the chain blanks every emoji — do not
+// add one (e.g. Segoe UI Emoji, COLR — unverified) without a rendering screenshot.
 const COLOR_EMOJI_FAMILIES = ['apple color emoji'];
 
 const MONO_FAMILIES = ['sf mono', 'menlo', 'monaco', 'consolas', 'dejavu sans mono'];
@@ -88,9 +82,8 @@ const terminalFontsCache = new Map<string, Promise<ResttyFontInput[]>>();
 
 async function buildTerminalFonts(preferredFamily: string): Promise<ResttyFontInput[]> {
   const local = await queryLocalFontsSafe();
-  // An empty probe usually means a transient failure (Electron grants Local Font Access without
-  // a gesture, but a denial or a flaky first call shouldn't pin the degraded bundled-only list
-  // for the whole session) — serve the fallback now, retry on the next terminal open.
+  // An empty probe is usually transient and must not pin the degraded bundled-only list for the
+  // whole session — serve the fallback now, retry on the next terminal open.
   if (local.length === 0) terminalFontsCache.delete(preferredFamily);
   const symbols = pickLocalFamily(local, SYMBOLS_FAMILIES);
   const cjk = pickLocalFamily(local, CJK_FAMILIES);
@@ -103,17 +96,15 @@ async function buildTerminalFonts(preferredFamily: string): Promise<ResttyFontIn
     trimmed === '' || trimmed === 'default' ? [] : [{ family: trimmed, local: 'prefer' }];
   return [
     ...preferred,
-    // restty renders on a GPU canvas with its own text shaper and needs raw font bytes; its
-    // default font chain fetches from cdn.jsdelivr.net, which the renderer CSP blocks — always
-    // pass fonts explicitly. Both Plex weights ship inline so bold is a real face, not the
+    // restty's default font chain fetches from cdn.jsdelivr.net, which the renderer CSP blocks —
+    // always pass fonts explicitly. Both Plex weights ship inline so bold is a real face, not the
     // synthetic double-draw.
     { data: decodeDataUri(ibmPlexMono400), name: 'IBM Plex Mono', weight: 400 },
     { data: decodeDataUri(ibmPlexMono700), name: 'IBM Plex Mono Bold', weight: 700 },
     ...(symbols ? [{ family: symbols }] : []),
     ...(cjk ? [{ family: cjk }] : []),
-    // Bundled monochrome emoji (vendored Noto Emoji, Unicode 11 / Apache 2.0 — the last static
-    // release; newer Google Fonts builds fail to parse in restty's shaper) backstops machines
-    // without a renderable color emoji font.
+    // Monochrome backstop (vendored Noto Emoji, Unicode 11 / Apache 2.0 — the last static release;
+    // newer builds fail to parse in restty's shaper) for machines without renderable color emoji.
     colorEmoji ? { family: colorEmoji } : { data: decodeDataUri(notoEmojiTtf), name: 'Noto Emoji' },
     ...(mono ? [{ family: mono }] : []),
   ];
