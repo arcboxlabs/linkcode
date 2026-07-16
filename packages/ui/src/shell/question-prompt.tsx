@@ -8,8 +8,9 @@ import { choiceIndexForNumberShortcut } from '../chat/conversation-prompt-keyboa
 import type { QuestionConversationItem } from '../chat/conversation-prompts';
 import { PromptCard } from './prompt-card';
 import { QuestionPromptActions } from './question-prompt-actions';
-import type { QuestionDraft } from './question-prompt-choices';
-import { isQuestionAnswered, QuestionChoices } from './question-prompt-choices';
+import { QuestionChoices } from './question-prompt-choices';
+import type { QuestionDraft } from './question-prompt-draft';
+import { isQuestionAnswered } from './question-prompt-draft';
 
 const EMPTY_RESPONSE: QuestionDraft = { selectedIds: [] };
 type LastAction = 'dismiss' | 'submit' | null;

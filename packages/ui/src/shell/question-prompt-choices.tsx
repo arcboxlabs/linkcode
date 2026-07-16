@@ -12,11 +12,7 @@ import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { QuestionConversationItem } from '../chat/conversation-prompts';
 import { cn } from '../lib/cn';
-
-export interface QuestionDraft {
-  selectedIds: string[];
-  customText?: string;
-}
+import type { QuestionDraft } from './question-prompt-draft';
 
 export function QuestionChoices({
   autoFocus,
@@ -38,6 +34,7 @@ export function QuestionChoices({
   const t = useTranslations('workbench.question');
   const customSelected = response.customText !== undefined;
   const values = customSelected ? [] : response.selectedIds;
+  const selectedIds = new Set(response.selectedIds);
 
   function selectCustom(): void {
     onResponseChange({ selectedIds: [], customText: customDraft });
@@ -51,7 +48,7 @@ export function QuestionChoices({
     <ChoiceRow
       key={option.optionId}
       autoFocus={autoFocus && optionIndex === 0}
-      checked={response.selectedIds.includes(option.optionId)}
+      checked={selectedIds.has(option.optionId)}
       description={option.description}
       disabled={disabled}
       index={optionIndex}
@@ -99,18 +96,6 @@ export function QuestionChoices({
       />
     </div>
   );
-}
-
-export function isQuestionAnswered(
-  question: QuestionConversationItem['questions'][number],
-  response: QuestionDraft,
-): boolean {
-  if (response.customText !== undefined) {
-    return response.selectedIds.length === 0 && response.customText.trim().length > 0;
-  }
-  const optionIds = new Set(question.options.map((option) => option.optionId));
-  if (!response.selectedIds.every((optionId) => optionIds.has(optionId))) return false;
-  return question.multiSelect ? response.selectedIds.length > 0 : response.selectedIds.length === 1;
 }
 
 function ChoiceRow({
