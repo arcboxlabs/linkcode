@@ -885,9 +885,6 @@ export class Engine {
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Promise<void>,
   ): Promise<void> {
-    // A start can land between listener bind and the boot probe settling (CODE-225); wait, or
-    // `resolveBinary` misses a detected-only install and a packaged host fails the spawn.
-    await this.agentRuntimesReady;
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
     const session: Session = {
@@ -968,6 +965,15 @@ export class Engine {
     // persistRecord() never throws (see its doc) — a disk failure here logs and moves on rather
     // than failing this request or leaving the session registered without a caller-visible error.
     this.persistRecord(record);
+    // A start can land between listener bind and the boot probe settling (CODE-225); wait, or
+    // `resolveBinary` misses a detected-only install and a packaged host fails the spawn. The
+    // wait sits AFTER registration so a session.delete arriving mid-wait finds the session and
+    // tears it down — the guard then aborts this start instead of resurrecting the deleted record.
+    await this.agentRuntimesReady;
+    if (this.sessions.get(sessionId) !== session) {
+      await adapter.stop().catch(noop);
+      throw new Error(`Session was closed while starting: ${sessionId}`);
+    }
     try {
       await startAdapter(adapter);
     } catch (err) {
