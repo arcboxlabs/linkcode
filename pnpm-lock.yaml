@@ -892,8 +892,8 @@ importers:
         specifier: ^5.8.0
         version: 5.8.0
       restty:
-        specifier: ^0.2.0
-        version: 0.2.0(@typescript/typescript6@6.0.2)
+        specifier: ^0.2.3
+        version: 0.2.3
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -1029,6 +1029,9 @@ importers:
       '@fontsource/ibm-plex-mono':
         specifier: ^5.2.7
         version: 5.2.7
+      '@fontsource/noto-emoji':
+        specifier: ^5.2.11
+        version: 5.2.11
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
@@ -1081,8 +1084,8 @@ importers:
         specifier: '>=5.0.0'
         version: 5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       restty:
-        specifier: ^0.2.0
-        version: 0.2.0(@typescript/typescript6@6.0.2)
+        specifier: ^0.2.3
+        version: 0.2.3
       streamdown:
         specifier: ^2.5.0
         version: 2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -2977,6 +2980,9 @@ packages:
 
   '@fontsource/ibm-plex-mono@5.2.7':
     resolution: {integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==}
+
+  '@fontsource/noto-emoji@5.2.11':
+    resolution: {integrity: sha512-3xG6tmjv1YgtwExUjqXQ3IgUhXT39V/k3UTbKuKUaRsqNaKzBtKweaZuWtOFUoUccjZEjepWAlLkLEQ4aonB7w==}
 
   '@formatjs/fast-memoize@3.1.5':
     resolution: {integrity: sha512-KLi3fan6WnCHmigd9pmEEN8Hid0v4wiFBW576M/d07KMWYecf1CvyMI3n34vCmHT4AoVqG2n702kiHbXjzZX2A==}
@@ -9402,8 +9408,8 @@ packages:
     resolution: {integrity: sha512-6IzJLuGi4+R14vwagDHX+JrXmPVtPpn4mffDJ1UdR7/Edm87fl6yi8mMBIVvFtJaNTUvjughmW4hwLhRG7gC1Q==}
     engines: {node: '>=4'}
 
-  restty@0.2.0:
-    resolution: {integrity: sha512-PVD4+PxX0tFGd6qMDRywL+ME0PXSBX+QEjzJpfSy2i6dycOzyDYB0Z5RRuHZhzpqXeYN+wr20ffu8fixuWE+SQ==}
+  restty@0.2.3:
+    resolution: {integrity: sha512-7jaRmthX3Og5xgdgq5f3Di7egy/+BEj8FeKFBdbBQPdagT/UKqghbCX3v1uiC5Y/T/e83a4lwIUr+5qTrv1k7Q==}
     engines: {bun: '>=1.2.0'}
 
   retry@0.12.0:
@@ -9901,10 +9907,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  text-shaper@0.1.23:
-    resolution: {integrity: sha512-kBItvxckAzS4JkcferjxbXN7tFir/RDUBcxk1aKe2Z9QqtmoddGezmwFOc7xBjKKF/Nf9JVDCWXnK6XNVzTjIA==}
-    peerDependencies:
-      typescript: ^5
+  text-shaper@0.1.26:
+    resolution: {integrity: sha512-tTLEZskIQYadTw7pNQpGstZGLZX/TPbMreexrxtJzTQCQe9upWYfEcJxDW3yN+m3NhO1kI2v/BUor+qyCpOm+Q==}
 
   thenify-all@1.6.0:
     resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
@@ -12654,6 +12658,8 @@ snapshots:
   '@fontsource-variable/ibm-plex-sans@5.2.8': {}
 
   '@fontsource/ibm-plex-mono@5.2.7': {}
+
+  '@fontsource/noto-emoji@5.2.11': {}
 
   '@formatjs/fast-memoize@3.1.5': {}
 
@@ -19761,11 +19767,9 @@ snapshots:
       onetime: 2.0.1
       signal-exit: 3.0.7
 
-  restty@0.2.0(@typescript/typescript6@6.0.2):
+  restty@0.2.3:
     dependencies:
-      text-shaper: 0.1.23(@typescript/typescript6@6.0.2)
-    transitivePeerDependencies:
-      - typescript
+      text-shaper: 0.1.26
 
   retry@0.12.0: {}
 
@@ -20385,9 +20389,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  text-shaper@0.1.23(@typescript/typescript6@6.0.2):
-    dependencies:
-      typescript: '@typescript/typescript6@6.0.2'
+  text-shaper@0.1.26: {}
 
   thenify-all@1.6.0:
     dependencies:
