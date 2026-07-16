@@ -95,17 +95,10 @@ type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 const HANDSHAKE_TIMEOUT_MS = 5000;
 
 /**
- * LinkCodeClient: the data-plane client shared across all platforms
- * (docs/ARCHITECTURE.md#packages--repo-layout).
- * Layers session semantics (start / prompt / subscribe / stop) on top of any Transport, agnostic to
- * whether it's a LocalTransport or a WsTransport to the daemon (docs/ARCHITECTURE.md#core-principles).
- * A client owns one transport generation and becomes ready only after a LinkCode ping/pong handshake.
- *
- * The daemon broadcasts events to every client, so control replies are paired by correlation id rather
- * than by order: each request carries a `clientReqId` and the reply echoes it as `replyTo`. Composed
- * from four collaborators: a {@link PendingRegistry} for correlated request/reply bookkeeping, a
- * {@link ControlChannel} for session/history/config/git/workspace requests, an {@link EventBuffer}
- * for per-session agent events, and a {@link TerminalChannel} for PTY sessions.
+ * Cross-platform data-plane client: session semantics over any Transport
+ * (docs/ARCHITECTURE.md#packages--repo-layout, #core-principles). Owns one transport generation;
+ * ready only after the LinkCode ping/pong handshake. The daemon broadcasts to every client, so
+ * control replies pair by correlation id (`clientReqId` echoed as `replyTo`), never by order.
  */
 export class LinkCodeClient {
   private readonly pending: PendingRegistry;

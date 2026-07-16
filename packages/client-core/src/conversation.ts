@@ -17,17 +17,14 @@ import type {
 } from '@linkcode/schema';
 
 /**
- * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
- * structured timeline (turn-grouped messages bucketed by messageId, tool calls as full snapshots, plan,
- * permissions) plus the session's live lifecycle state. `buildConversation` is a pure reducer over the
- * event list so it can be unit-tested without a transport (mirrors the adapter normalizer convention).
+ * Conversation view-model: folds the daemon's flat, append-only `AgentEvent[]` into the structured
+ * timeline the UI needs. `buildConversation` is a pure reducer, unit-testable without a transport.
  */
 
 export type ConversationTurnId = string | null;
 
-/** A single semantic item in the conversation timeline. `receivedAt` is the client receive time of
- * the item's latest event (see {@link SequencedAgentEvent}); it drives relative timestamps in the
- * UI and is absent for items reconstructed from a history read. */
+/** A semantic timeline item. `receivedAt` is the client receive time of its latest event (drives
+ * relative timestamps in the UI; absent for items reconstructed from a history read). */
 export type ConversationItem = (
   | {
       kind: 'message';
@@ -97,9 +94,8 @@ export interface ConversationViewModel {
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
    * null (or an empty list) means the agent has no switchable policies and the UI hides the menu. */
   approvalPolicy: ApprovalPolicyState | null;
-  /** The model the session is actually running on, from `model-update`. `null` until the adapter
-   * reports it (before the first turn, or for adapters that can't observe their model) — the composer
-   * then shows a placeholder rather than a guess. */
+  /** The model the session actually runs on, from `model-update`. `null` until the adapter
+   * reports it — the composer then shows a placeholder rather than a guess. */
   currentModel: string | null;
   /** The reasoning-effort level the session is running at, from `effort-update`. `null` until the
    * adapter reports it — same placeholder rule as `currentModel`. */
@@ -111,10 +107,8 @@ export interface ConversationViewModel {
   capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
-  /**
-   * requestIds of permission asks that are still open — i.e. their referenced tool call hasn't reached a
-   * terminal status. The UI additionally hides ones the user already answered in this client.
-   */
+  /** requestIds of permission asks whose tool call hasn't reached a terminal status; the UI
+   * additionally hides ones the user already answered in this client. */
   pendingPermissionIds: string[];
   /** requestIds of question asks that are still open, tracked the same way as permission asks. */
   pendingQuestionIds: string[];
@@ -149,9 +143,8 @@ export interface ConversationBuilder {
 }
 
 /**
- * Incremental form of {@link buildConversation}: the same fold, but advanced one event at a time
- * so a streaming delta costs O(delta) instead of re-reducing the whole history. Item updates are
- * copy-on-write — previously returned snapshots are never mutated retroactively.
+ * Incremental form of {@link buildConversation}: advanced one event at a time (O(delta), not a full
+ * re-reduce). Item updates are copy-on-write — previously returned snapshots are never mutated.
  */
 export function createConversationBuilder(): ConversationBuilder {
   const items: ConversationItem[] = [];
@@ -288,9 +281,8 @@ export function createConversationBuilder(): ConversationBuilder {
       }
 
       case 'compaction': {
-        // The adapter emits the boundary first (metadata only) and again once the summary text is
-        // known; history replay repeats the same compactionId. Merge instead of replacing so a
-        // later partial emit never wipes fields an earlier one carried.
+        // The boundary arrives more than once (metadata first, summary later; history replay
+        // repeats the compactionId) — merge, so a partial emit never wipes earlier fields.
         const existing = compactionIndex.get(event.compactionId);
         if (existing === undefined) {
           items.push({
@@ -473,9 +465,8 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   return builder.snapshot();
 }
 
-/** A point-in-time transcript snapshot: past events read from provider history, plus the live
- * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). The
- * conversation store folds the seed first, then only the live events past the `uptoSeq` cut. */
+/** A point-in-time transcript snapshot: history-read events plus the live stream's receive
+ * counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). */
 export interface ConversationSeed {
   events: AgentEvent[];
   /** The snapshot covers every live event with seq ≤ this; 0 = supersedes nothing. */
