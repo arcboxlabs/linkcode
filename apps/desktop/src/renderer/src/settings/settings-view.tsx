@@ -22,6 +22,7 @@ import {
   SendIcon,
   SettingsIcon,
   SunMoonIcon,
+  TerminalIcon,
   WifiIcon,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -42,6 +43,7 @@ import { NotificationsTab } from './notifications-tab';
 import { ProvidersTab } from './providers-tab';
 import type { SettingsCategory } from './store';
 import { useDesktopSettingsStore } from './store';
+import { TerminalTab } from './terminal-tab';
 
 const AGENT_KINDS: readonly AgentKind[] = AgentKindSchema.options;
 const DEFAULT_HISTORY_PROVIDER: AgentKind = 'claude-code';
@@ -105,6 +107,14 @@ export function SettingsView(): React.ReactNode {
           keywords: searchKeywords.appearance,
           active: category === 'appearance',
           onClick: () => setCategory('appearance'),
+        },
+        {
+          key: 'terminal',
+          icon: <TerminalIcon className="size-4" />,
+          label: t('tabs.terminal'),
+          keywords: searchKeywords.terminal,
+          active: category === 'terminal',
+          onClick: () => setCategory('terminal'),
         },
         {
           key: 'notifications',
@@ -286,6 +296,8 @@ function renderSettingsPanel(
       return <GeneralTab />;
     case 'appearance':
       return <AppearanceTab />;
+    case 'terminal':
+      return <TerminalTab />;
     case 'connection':
       return <ConnectionTab />;
     case 'notifications':

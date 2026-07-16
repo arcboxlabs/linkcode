@@ -1,6 +1,7 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import { LiveTerminal } from '@linkcode/ui/shell/terminal';
 import { useMemo } from 'react';
+import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
 import { createTransportTerminalSession } from './transport-session';
 
 /**
@@ -20,5 +21,17 @@ export function AttachedTerminalPanel({
     () => createTransportTerminalSession(client, terminalId),
     [client, terminalId],
   );
-  return <LiveTerminal session={session} suspended={suspended} className="h-full w-full" />;
+  const fontFamily = useTerminalPrefsStore((state) => state.fontFamily);
+  const fontSize = useTerminalPrefsStore((state) => state.fontSize);
+  const colorScheme = useTerminalPrefsStore((state) => state.colorScheme);
+  return (
+    <LiveTerminal
+      session={session}
+      suspended={suspended}
+      fontFamily={fontFamily}
+      fontSize={fontSize}
+      colorScheme={colorScheme}
+      className="h-full w-full"
+    />
+  );
 }

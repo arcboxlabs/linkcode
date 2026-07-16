@@ -401,6 +401,7 @@ export const en = {
     tabs: {
       general: 'General',
       appearance: 'Appearance',
+      terminal: 'Terminal',
       connection: 'Connection',
       notifications: 'Notifications',
       about: 'About',
@@ -456,6 +457,16 @@ export const en = {
       codeFont: 'Code font',
       codeFontHint: 'Font family for code blocks and monospace text (blank = default).',
       codeFontPlaceholder: 'e.g. JetBrains Mono',
+    },
+    terminal: {
+      fontFamily: 'Font',
+      fontFamilyHint:
+        'Monospace font for the terminal — pick a suggestion or type any family; falls back to the bundled font if unavailable.',
+      fontFamilyPlaceholder: 'e.g. JetBrains Mono',
+      fontSize: 'Font size',
+      colorScheme: 'Color scheme',
+      colorSchemeHint: 'Terminal colors. "Follow theme" tracks the app light/dark mode.',
+      colorSchemeAuto: 'Follow theme',
     },
     connection: {
       title: 'Daemon',
