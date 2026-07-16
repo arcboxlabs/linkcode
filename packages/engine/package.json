@@ -16,6 +16,7 @@
     "@linkcode/common": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
+    "croner": "^10.0.1",
     "foxts": "^5.8.0",
     "zod": "catalog:"
   },

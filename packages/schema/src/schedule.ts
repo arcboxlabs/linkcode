@@ -56,7 +56,7 @@ export const ScheduleSpecSchema = z.object({
   prompt: z.string().min(1),
   cadence: ScheduleCadenceSchema,
   target: ScheduleTargetSchema,
-  /** Auto-complete the schedule after this many cadence runs (manual/catch-up excluded). */
+  /** Auto-complete the schedule after this many scheduled runs (cadence + catch-up; manual excluded). */
   maxRuns: z.number().int().min(1).optional(),
   /** Auto-complete the schedule at this timestamp. */
   expiresAt: TimestampSchema.optional(),
@@ -83,7 +83,7 @@ export const ScheduleSchema = z.object({
   /** Next cadence fire time; absent while paused or completed. */
   nextRunAt: TimestampSchema.optional(),
   lastRunAt: TimestampSchema.optional(),
-  /** Count of cadence runs only — manual and catch-up runs are excluded from maxRuns. */
+  /** Count of scheduled runs (cadence + catch-up) toward maxRuns; manual run-once is excluded. */
   runCount: z.number().int().nonnegative(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
