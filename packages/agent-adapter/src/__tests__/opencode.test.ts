@@ -40,6 +40,11 @@ class FakeClient {
   readonly app = {
     agents: vi.fn(() => ({ data: [] as unknown[] })),
   };
+  readonly provider = {
+    list: vi.fn(() => ({
+      data: { all: [] as unknown[], default: {}, connected: [] as string[] },
+    })),
+  };
   readonly event = {
     subscribe: vi.fn(() => {
       if (this.subscribeError) throw this.subscribeError;
@@ -1269,6 +1274,102 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     expect(events.some((e) => e.type === 'model-update' && e.model === 'openai/gpt-5-nano')).toBe(
       true,
     );
+  });
+
+  it('advertises connected provider models as the model catalog at start', async () => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      client.provider.list.mockReturnValue({
+        data: {
+          all: [
+            {
+              id: 'openai',
+              name: 'OpenAI',
+              source: 'env',
+              models: { 'gpt-5.4': { name: 'GPT-5.4' }, 'gpt-5-nano': { name: '' } },
+            },
+            { id: 'opencode', name: 'opencode', source: 'api', models: { grok: { name: 'Grok' } } },
+            {
+              id: 'anthropic',
+              name: 'Anthropic',
+              source: 'config',
+              models: { claude: { name: 'Claude' } },
+            },
+          ],
+          default: {},
+          connected: ['openai'],
+        },
+      });
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const { events } = await makeAdapter();
+
+    const catalogs = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'available-models-update' }> =>
+        e.type === 'available-models-update',
+    );
+    expect(catalogs).toHaveLength(1);
+    // Connected (openai) and key-less api-source (opencode) providers are in; the configured but
+    // unconnected provider (anthropic) is out. A model with no display name falls back to its id.
+    expect(catalogs[0].models).toEqual([
+      { id: 'openai/gpt-5.4', label: 'GPT-5.4', description: 'OpenAI' },
+      { id: 'openai/gpt-5-nano', label: 'gpt-5-nano', description: 'OpenAI' },
+      { id: 'opencode/grok', label: 'Grok', description: 'opencode' },
+    ]);
+  });
+
+  it('narrows the model catalog to the credential-injected provider', async () => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      client.provider.list.mockReturnValue({
+        data: {
+          all: [
+            {
+              id: 'openai',
+              name: 'OpenAI',
+              source: 'env',
+              models: { 'gpt-5.4': { name: 'GPT-5.4' } },
+            },
+            { id: 'opencode', name: 'opencode', source: 'api', models: { grok: { name: 'Grok' } } },
+          ],
+          default: {},
+          connected: ['openai', 'opencode'],
+        },
+      });
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      model: 'openai/gpt-5.4',
+      config: { apiKey: 'sk-test' },
+    });
+
+    const catalogs = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'available-models-update' }> =>
+        e.type === 'available-models-update',
+    );
+    expect(catalogs).toHaveLength(1);
+    // Only the injected provider's models: everything else would be rejected by the
+    // cross-provider set-model guard anyway.
+    expect(catalogs[0].models).toEqual([
+      { id: 'openai/gpt-5.4', label: 'GPT-5.4', description: 'OpenAI' },
+    ]);
+  });
+
+  it('advertises no model catalog when provider.list fails', async () => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      client.provider.list.mockReturnValue({ error: { message: 'boom' } } as never);
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const { events } = await makeAdapter();
+
+    expect(events.some((e) => e.type === 'available-models-update')).toBe(false);
+    expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
   });
 
   it('reflects a configured start model before the first turn', async () => {

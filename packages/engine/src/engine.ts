@@ -5,6 +5,7 @@ import type {
   AgentCommand,
   AgentEvent,
   AgentHistoryId,
+  AgentModelOption,
   AgentRuntimes,
   ApprovalPolicyState,
   AssetInstallEvent,
@@ -76,6 +77,9 @@ interface Session {
   /** Latest slash-command catalog the adapter advertised, replayed on attach for the same reason —
    * without it a reconnecting client's composer loses the command menu. */
   availableCommands?: AgentCommand[];
+  /** Latest model catalog the adapter advertised (install-dependent agents only), replayed on
+   * attach for the same reason — without it a reconnecting client loses the model picker. */
+  availableModels?: AgentModelOption[];
   /** Stable adapter input surface, replayed on attach so clients never infer it from agent kind. */
   capabilities: AgentCapabilities;
 }
@@ -773,6 +777,9 @@ export class Engine {
         if (attached.availableCommands) {
           replay({ type: 'available-commands-update', commands: attached.availableCommands });
         }
+        if (attached.availableModels) {
+          replay({ type: 'available-models-update', models: attached.availableModels });
+        }
         for (const ask of attached.asks.values()) {
           if (ask.state === 'resolved') {
             replay(ask.resolution);
@@ -982,6 +989,9 @@ export class Engine {
             break;
           case 'available-commands-update':
             session.availableCommands = event.commands;
+            break;
+          case 'available-models-update':
+            session.availableModels = event.models;
             break;
           case 'capabilities-update':
             session.capabilities = event.capabilities;

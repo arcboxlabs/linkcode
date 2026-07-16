@@ -8,6 +8,7 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  AgentModelOption,
   ApprovalPolicy,
   ContentBlock,
   PermissionOption,
@@ -222,11 +223,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.sessionId = id;
       this.directory = opts.cwd;
     }
-    // Both catalog fetches are best-effort: neither has an SSE change event (poll-only), and a
-    // failed list must not fail session start — absence is itself the capability signal (no
-    // `available-commands-update` / approval-policy state ever fires for this session). They are
-    // independent reads of the same local server, so they run concurrently.
-    await Promise.all([this.fetchCommandCatalog(), this.fetchAgentCatalog(resumedAgent)]);
+    // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
+    // list must not fail session start — absence is itself the capability signal (no command /
+    // model / approval-policy state ever fires for this session). They are independent reads of
+    // the same local server, so they run concurrently.
+    await Promise.all([
+      this.fetchCommandCatalog(),
+      this.fetchAgentCatalog(resumedAgent),
+      this.fetchModelCatalog(),
+    ]);
     // Reflect the model the session will prompt with (configured, or adopted from the resumed
     // session above) so the client chip is right before the first turn.
     if (opts.model) this.emitModel(opts.model);
@@ -249,6 +254,37 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           ),
         );
       }
+    } catch {
+      // Non-fatal — see onStart.
+    }
+  }
+
+  /** Best-effort model catalog fetch — swallows every failure (see `onStart`). Advertises what a
+   * `set-model` can actually reach: every connected (or key-less `api`-source) provider's models,
+   * narrowed to the credential-injected provider when one is in play — the cross-provider guard
+   * in `onSetModel` would reject everything else anyway. */
+  private async fetchModelCatalog(): Promise<void> {
+    if (!this.client) return;
+    try {
+      const listed = await this.client.provider.list({ directory: this.directory });
+      if (listed.error !== undefined) return;
+      const connected = new Set(listed.data.connected);
+      const models: AgentModelOption[] = [];
+      for (const provider of listed.data.all) {
+        if (this.credentialProviderId) {
+          if (provider.id !== this.credentialProviderId) continue;
+        } else if (!connected.has(provider.id) && provider.source !== 'api') {
+          continue;
+        }
+        for (const [modelId, model] of Object.entries(provider.models)) {
+          models.push({
+            id: `${provider.id}/${modelId}`,
+            label: model.name || modelId,
+            description: provider.name,
+          });
+        }
+      }
+      if (models.length > 0) this.emitModels(models);
     } catch {
       // Non-fatal — see onStart.
     }
