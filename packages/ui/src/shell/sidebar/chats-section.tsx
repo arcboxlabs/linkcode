@@ -5,6 +5,7 @@ import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import type { BranchStatusComponentType } from './branch-status';
 import { SectionAccordionTrigger } from './section-header';
 import { ShowMoreToggle } from './show-more-toggle';
 import type { ThreadImMenuComponentType } from './thread-im-menu';
@@ -32,6 +33,7 @@ export interface ChatsSectionProps {
   onStartDraft: (workspaceId: WorkspaceId) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
   ImMenuComponent?: ThreadImMenuComponentType;
+  BranchStatusComponent?: BranchStatusComponentType;
 }
 
 /**
@@ -56,6 +58,7 @@ export function ChatsSection({
   onStartDraft,
   onTogglePreviewExpanded,
   ImMenuComponent,
+  BranchStatusComponent,
 }: ChatsSectionProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
 
@@ -87,6 +90,7 @@ export function ChatsSection({
                 onClose={() => onClose(session.sessionId)}
                 onTogglePin={() => onToggleSessionPinned(session.sessionId)}
                 ImMenuComponent={ImMenuComponent}
+                BranchStatusComponent={BranchStatusComponent}
               />
             ))}
             {hasOverflow && (

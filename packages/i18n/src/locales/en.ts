@@ -300,6 +300,7 @@ export const en = {
       pinThread: 'Pin thread',
       unpinThread: 'Unpin thread',
       closeThread: 'Close thread',
+      threadCount: '{count, plural, one {# thread} other {# threads}}',
       chooseDirectory: 'Choose directory…',
       registerWorkspaceError: 'Failed to add workspace: {message}',
       organization: 'Organization',
