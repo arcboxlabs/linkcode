@@ -369,11 +369,19 @@ describe('buildConversation', () => {
     expect(buildConversation([]).usageReport).toBeNull();
     const first = {
       subscriptionType: 'max',
-      rateLimits: { fiveHour: { utilization: 6, resetsAt: '2026-07-16T07:49:00Z' } },
+      rateLimits: {
+        windows: [
+          { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
+        ],
+      },
     };
     const second = {
       subscriptionType: 'max',
-      rateLimits: { fiveHour: { utilization: 42, resetsAt: '2026-07-16T12:49:00Z' } },
+      rateLimits: {
+        windows: [
+          { id: 'five_hour', utilization: 42, resetsAt: '2026-07-16T12:49:00Z', durationMins: 300 },
+        ],
+      },
     };
     const c = buildConversation([
       { type: 'usage-report', report: first },

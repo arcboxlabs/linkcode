@@ -102,10 +102,13 @@ const EXPECTED_USAGE_REPORT: UsageReport = {
   },
   subscriptionType: 'max',
   rateLimits: {
-    fiveHour: { utilization: 6, resetsAt: '2026-07-16T07:49:00Z' },
-    sevenDay: { utilization: 74, resetsAt: '2026-07-18T17:00:00Z' },
-    sevenDayOpus: null,
-    modelScoped: [{ displayName: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z' }],
+    // Self-describing windows in the SDK's own order; the null seven_day_opus is dropped, and the
+    // per-model 'Fable' bucket flattens into the same table (weekly, labelled, no id).
+    windows: [
+      { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
+      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10_080 },
+      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10_080 },
+    ],
     extraUsage: { isEnabled: false, monthlyLimit: null, usedCredits: null, utilization: null },
   },
   behaviors: {

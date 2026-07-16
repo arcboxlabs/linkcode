@@ -24,9 +24,11 @@ export const MOCK_USAGE_REPORT: UsageReport = {
   },
   subscriptionType: 'max',
   rateLimits: {
-    fiveHour: { utilization: 6, resetsAt: '2026-07-16T07:49:00Z' },
-    sevenDay: { utilization: 74, resetsAt: '2026-07-18T17:00:00Z' },
-    modelScoped: [{ displayName: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z' }],
+    windows: [
+      { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
+      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10_080 },
+      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10_080 },
+    ],
     extraUsage: { isEnabled: false, monthlyLimit: null, usedCredits: null, utilization: null },
   },
   behaviors: {

@@ -264,14 +264,37 @@ function mapClaudeCommand(command: SlashCommand): AgentCommand {
   };
 }
 
-/** One SDK rate-limit window (`utilization` + snake_case `resets_at`) onto the schema shape.
- * Null and undefined pass through unchanged: null is the server saying "window not available",
- * absent means the SDK didn't report that window at all. */
-function usageWindow(
-  window: { utilization: number | null; resets_at: string | null } | null | undefined,
-): UsageRateLimitWindow | null | undefined {
-  if (window === null || window === undefined) return window;
-  return { utilization: window.utilization, resetsAt: window.resets_at };
+/** Flatten the SDK's named rate-limit windows into the schema's self-describing `windows` table.
+ * Claude carries each window's length in its field NAME, not its payload, so the mapper supplies
+ * the explicit `durationMins` (5-hour = 300; the seven_day* fields and the per-model buckets are
+ * weekly = 10080 per the SDK's own doc comments). A window the server reported as null
+ * ("not available") or omitted is simply absent from the table. */
+function usageWindows(
+  limits: NonNullable<SDKControlGetUsageResponse['rate_limits']>,
+): UsageRateLimitWindow[] {
+  const windows: UsageRateLimitWindow[] = [];
+  const push = (
+    id: string,
+    durationMins: number,
+    window: { utilization: number | null; resets_at: string | null } | null | undefined,
+  ): void => {
+    if (!window) return;
+    windows.push({ id, utilization: window.utilization, resetsAt: window.resets_at, durationMins });
+  };
+  push('five_hour', 300, limits.five_hour);
+  push('seven_day', 10_080, limits.seven_day);
+  push('seven_day_oauth_apps', 10_080, limits.seven_day_oauth_apps);
+  push('seven_day_opus', 10_080, limits.seven_day_opus);
+  push('seven_day_sonnet', 10_080, limits.seven_day_sonnet);
+  for (const bucket of limits.model_scoped ?? []) {
+    windows.push({
+      label: bucket.display_name,
+      utilization: bucket.utilization,
+      resetsAt: bucket.resets_at,
+      durationMins: 10_080,
+    });
+  }
+  return windows;
 }
 
 type SdkBehaviorWindow = NonNullable<SDKControlGetUsageResponse['behaviors']>['day'];
@@ -321,16 +344,7 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
     subscriptionType: raw.subscription_type,
     rateLimits: limits
       ? {
-          fiveHour: usageWindow(limits.five_hour),
-          sevenDay: usageWindow(limits.seven_day),
-          sevenDayOauthApps: usageWindow(limits.seven_day_oauth_apps),
-          sevenDayOpus: usageWindow(limits.seven_day_opus),
-          sevenDaySonnet: usageWindow(limits.seven_day_sonnet),
-          modelScoped: limits.model_scoped?.map((bucket) => ({
-            displayName: bucket.display_name,
-            utilization: bucket.utilization,
-            resetsAt: bucket.resets_at,
-          })),
+          windows: usageWindows(limits),
           extraUsage: limits.extra_usage
             ? {
                 isEnabled: limits.extra_usage.is_enabled,

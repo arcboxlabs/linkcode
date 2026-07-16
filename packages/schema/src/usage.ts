@@ -13,12 +13,23 @@ export const TokenUsageSchema = z.object({
 });
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 
-/** One plan rate-limit utilization window (the 5-hour session window, a 7-day weekly window, …). */
+/** One plan rate-limit utilization window, self-describing: identity and length ride IN the
+ * entry (`id`/`label`/`durationMins`), never in a field name or position, so any provider's
+ * window set fits — claude-code's named windows and per-model buckets, codex's primary/secondary
+ * limit families — and the UI labels a window by its own duration. */
 export const UsageRateLimitWindowSchema = z.object({
+  /** Stable identifier when the provider has one (claude `five_hour`/`seven_day`/…; codex
+   * `limitId` such as `codex`). */
+  id: z.string().optional(),
+  /** Human label when the provider supplies one (claude per-model bucket display name such as
+   * 'Fable'; codex `limitName`). */
+  label: z.string().optional(),
   /** Percentage of the window used, 0–100. */
   utilization: z.number().nullable().optional(),
   /** ISO 8601 timestamp when the window resets. */
   resetsAt: z.string().nullable().optional(),
+  /** Window length in minutes (5-hour = 300, weekly = 10080), when known. */
+  durationMins: z.number().nullable().optional(),
 });
 export type UsageRateLimitWindow = z.infer<typeof UsageRateLimitWindowSchema>;
 
@@ -78,18 +89,12 @@ export const UsageReportSchema = z.object({
   /** Subscription type (e.g. 'pro' / 'max' / 'team' / 'enterprise'), or null for API-key /
    * third-party provider sessions. */
   subscriptionType: z.string().nullable().optional(),
-  /** Plan rate-limit utilization windows, or null when plan limits do not apply. */
+  /** Plan rate-limit utilization windows, or null when plan limits do not apply. The adapter
+   * emits only the windows its provider actually reported, in the provider's own order — a
+   * window the server declared unavailable is simply absent. */
   rateLimits: z
     .object({
-      fiveHour: UsageRateLimitWindowSchema.nullable().optional(),
-      sevenDay: UsageRateLimitWindowSchema.nullable().optional(),
-      sevenDayOauthApps: UsageRateLimitWindowSchema.nullable().optional(),
-      sevenDayOpus: UsageRateLimitWindowSchema.nullable().optional(),
-      sevenDaySonnet: UsageRateLimitWindowSchema.nullable().optional(),
-      /** Per-model weekly windows the server emits dynamically, as labelled buckets (e.g. 'Fable'). */
-      modelScoped: z
-        .array(UsageRateLimitWindowSchema.extend({ displayName: z.string() }))
-        .optional(),
+      windows: z.array(UsageRateLimitWindowSchema).optional(),
       /** Pay-per-use overage on top of the plan windows, when the account has it enabled. */
       extraUsage: z
         .object({
