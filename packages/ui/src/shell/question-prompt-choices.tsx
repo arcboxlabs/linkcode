@@ -265,7 +265,9 @@ function CustomChoiceRow({
       {keycap}
       <InputPrimitive
         aria-label={placeholder}
-        className="h-6 min-w-0 flex-1 bg-transparent p-0 text-sm outline-none placeholder:text-muted-foreground"
+        // leading == height: engines disagree on centering a smaller line box inside an input,
+        // so a full-height line box is the only placement that matches the sibling rows' text.
+        className="h-6 min-w-0 flex-1 bg-transparent p-0 text-sm leading-6 outline-none placeholder:text-muted-foreground"
         data-prompt-custom=""
         disabled={disabled}
         placeholder={placeholder}
