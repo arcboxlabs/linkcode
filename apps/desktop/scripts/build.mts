@@ -1,7 +1,6 @@
-// Production build of all three Vite targets (replaces `electron-vite build`).
-// Usage: node scripts/build.mts [--mode devshell]
-// The mode flows into import.meta.env.MODE, which src/main/constants.ts uses for channel
-// detection: production (default) / devshell / development / mock.
+// Production build of all three Vite targets (replaces `electron-vite build`). `--mode` flows into
+// import.meta.env.MODE, which src/main/constants.ts uses for channel detection
+// (production default / devshell / development / mock).
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { build } from 'vite';

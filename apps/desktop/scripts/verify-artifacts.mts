@@ -13,18 +13,13 @@ import {
 import { join, sep } from 'node:path';
 import process, { argv } from 'node:process';
 /**
- * Post-pack assertions for the desktop release artifacts. Runs in CI right after
- * electron-builder (and locally: `node scripts/verify-artifacts.mts <mac|win|linux>` from
- * apps/desktop). Catches packaging regressions before they reach the update feed:
- *
- * - the per-arch artifact set is complete for the platform;
- * - every artifact name carries its arch. This is load-bearing for mac/win: electron-updater
- *   picks the feed entry whose filename contains process.arch and silently falls back to the
- *   FIRST entry otherwise, so an unsuffixed x64 name would hand x64 clients an arbitrary arch.
- *   Linux selects by per-arch channel file instead, so each channel must reference its own arch;
- * - every feed entry points at an existing file whose sha512 matches;
- * - the unpacked apps carry the bundled daemon (asar: out/daemon + migrations) and the PTY
- *   sidecar (Resources), so a build can never again ship a client with no host runtime (CODE-86/87).
+ * Post-pack assertions for the desktop release artifacts, run in CI right after electron-builder
+ * (locally: `node scripts/verify-artifacts.mts <mac|win|linux>` from apps/desktop). Asserts: the
+ * per-arch artifact set is complete; every artifact name carries its arch — electron-updater
+ * (mac/win) picks the feed entry whose filename contains process.arch and silently falls back to
+ * the FIRST entry otherwise, while Linux selects by per-arch channel file; every feed entry points
+ * at an existing file with a matching sha512; and the unpacked apps carry the bundled daemon and
+ * PTY sidecar, so a build never ships a client with no host runtime (CODE-86/87).
  */
 import { listPackage, statFile } from '@electron/asar';
 import { keysLength } from 'foxts/property-count';
@@ -81,10 +76,9 @@ const EXPECTED: Partial<Record<string, PlatformExpectation>> = {
 
 const SIDECAR_BINARY = argv[2] === 'win' ? 'linkcode-pty.exe' : 'linkcode-pty';
 /**
- * better-sqlite3's compiled binding, smartUnpacked beside the asar. The daemon requires it at boot;
- * a build where @electron/rebuild silently rebuilt nothing (the Windows workspace-root miss that
- * broke every release through 0.2.1) ships a binding for the wrong CPU/ABI, and the daemon dies on
- * `require` — every client then shows "Unable to connect to the daemon". See package-app.mts.
+ * better-sqlite3's compiled binding, smartUnpacked beside the asar; the daemon requires it at boot.
+ * A build where @electron/rebuild silently rebuilt nothing ships the wrong CPU/ABI and every client
+ * shows "Unable to connect to the daemon" (broke every release through 0.2.1; see package-app.mts).
  */
 const NATIVE_BINDING = 'node_modules/better-sqlite3/build/Release/better_sqlite3.node'.replaceAll(
   '/',
@@ -93,9 +87,8 @@ const NATIVE_BINDING = 'node_modules/better-sqlite3/build/Release/better_sqlite3
 /** Paths inside app.asar that the daemon supervisor and its migrator depend on at runtime. */
 const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.json'];
 /**
- * Agent CLI platform packages must NOT ship (CODE-114): the daemon spawns a detected user
- * install or a managed download instead. These prefixes match only the platform-suffixed
- * binary packages — the JS entry packages (`claude-agent-sdk`, `@openai/codex`) stay in the asar.
+ * Agent CLI platform packages must NOT ship (CODE-114); the daemon provisions them at runtime.
+ * Prefixes match only the platform-suffixed binary packages — the JS entry packages stay in the asar.
  */
 const EXCLUDED_MODULE_PREFIXES = [
   'node_modules/@anthropic-ai/claude-agent-sdk-',
@@ -104,16 +97,14 @@ const EXCLUDED_MODULE_PREFIXES = [
   'node_modules/@openai/codex-win32-',
 ];
 /**
- * Ceiling per shipped artifact. Normal artifacts sit at ~120–165 MB since agent binaries stopped
- * shipping (CODE-114); one reintroduced CLI adds ~66 MB compressed and trips this long before
- * users download it.
+ * Ceiling per shipped artifact: normal artifacts sit at ~120–165 MB (CODE-114); one reintroduced
+ * agent CLI adds ~66 MB compressed and trips this long before users download it.
  */
 const MAX_ARTIFACT_BYTES = 200 * 1024 * 1024;
 
 /**
- * Read the CPU architecture a native binary targets from its header (Mach-O / PE / ELF), so a
- * binding built for the wrong arch (e.g. an x64 .node shipped in an arm64 app) is caught before
- * release. Returns 'x64' | 'arm64' | null (null = unrecognized header, reported as a problem).
+ * CPU architecture a native binary targets, read from its Mach-O / PE / ELF header — catches a
+ * wrong-arch binding before release. `null` = unrecognized header, reported as a problem.
  */
 function readBinaryArch(file: string): 'x64' | 'arm64' | null {
   const fd = openSync(file, 'r');
@@ -151,10 +142,9 @@ function readBinaryArch(file: string): 'x64' | 'arm64' | null {
 }
 
 /**
- * The daemon's SQLite binding must be present and built for this app's arch. Existence guards the
- * collector dropping it from the package; the arch match guards @electron/rebuild rebuilding it for
- * the wrong target. (A right-arch/wrong-ABI binding — Node vs Electron on the same arch — is not
- * distinguishable from the header; the boot E2E covers that.)
+ * Existence guards the collector dropping the SQLite binding; the arch match guards a wrong-target
+ * @electron/rebuild. (Right-arch/wrong-ABI — Node vs Electron — is header-invisible; the boot E2E
+ * covers that.)
  */
 function verifyNativeBinding(resourceDir: string, problems: string[]): void {
   const expectedArch = resourceDir.includes('arm64') ? 'arm64' : 'x64';

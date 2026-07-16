@@ -1,16 +1,15 @@
-// Dev orchestration (replaces `electron-vite dev`): build main + preload once, start the
-// renderer dev server, then launch Electron with ELECTRON_RENDERER_URL injected (read by
-// src/main/window.ts). Renderer changes hot-reload; main/preload changes need a re-run.
-// Usage: node scripts/dev.mts [--mode mock] [<electron args, e.g. --remote-debugging-port=9222>]
+// Dev orchestration (replaces `electron-vite dev`): build main + preload once, start the renderer
+// dev server, launch Electron with ELECTRON_RENDERER_URL injected (read by src/main/window.ts).
+// Renderer changes hot-reload; main/preload changes need a re-run. Extra args go to Electron.
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { build, createServer } from 'vite';
 
 async function main(): Promise<void> {
-  // `pnpm run` forwards extra args with or without a `--` separator depending on the invocation
-  // form, so everything except --mode is forwarded to Electron instead of being position-gated
-  // on the separator (which would silently drop flags like --profile / --remote-debugging-port).
+  // `pnpm run` forwards extra args with or without the `--` separator, so forward everything
+  // except --mode to Electron instead of position-gating on the separator (which would silently
+  // drop flags like --profile / --remote-debugging-port).
   const args = process.argv.slice(2);
   const electronArgs: string[] = [];
   let mode = 'development';
