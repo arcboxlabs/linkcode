@@ -5,6 +5,7 @@ import type {
   AgentCommand,
   AgentEvent,
   AgentHistoryId,
+  AgentKind,
   AgentRuntimes,
   ApprovalPolicyState,
   AssetInstallEvent,
@@ -13,6 +14,7 @@ import type {
   InstalledAsset,
   ManagedAssetId,
   ManagedAssetStatus,
+  SessionAutomation,
   SessionId,
   SessionInfo,
   SessionNotificationReason,
@@ -31,6 +33,8 @@ import type { LoginBinaryResolver } from './agent-login-service';
 import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
 import { assertAttachmentContentAllowed } from './attachment-guard';
+import type { ScheduleStore, SessionDriver } from './automation';
+import { InMemoryScheduleStore, ScheduleService, watchTurn } from './automation';
 import { readWorkspaceFile } from './file-service';
 import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
@@ -100,6 +104,8 @@ export interface EngineDeps {
   resolveLoginBinary?: LoginBinaryResolver;
   /** Local Anthropic⇄OpenAI translation sidecar; absent Engines reject cross-protocol accounts. */
   translator?: TranslatorService;
+  /** Durable store for schedules; the in-memory default keeps bare engines and tests dependency-free. */
+  scheduleStore?: ScheduleStore;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
@@ -139,6 +145,7 @@ export class Engine {
   private readonly git: GitService;
   private readonly fileSuggest: FileSuggestService;
   private readonly scripts?: ScriptService;
+  private readonly scheduler: ScheduleService;
   private readonly artifactHost: ArtifactHostService;
   /** Boot snapshot, replaced by every {@link enqueueRuntimesCollect} pass (install/login/auth
    * events and read-triggered revalidation alike). */
@@ -185,6 +192,11 @@ export class Engine {
         )
       : undefined;
     this.artifactHost = new ArtifactHostService(routes);
+    this.scheduler = new ScheduleService(
+      transport,
+      deps.scheduleStore ?? new InMemoryScheduleStore(),
+      this.buildSessionDriver(),
+    );
     this.agentRuntimes = deps.agentRuntimes ?? {};
     this.assets = deps.assets;
     this.translator = deps.translator;
@@ -203,6 +215,9 @@ export class Engine {
       this.records.set(record.sessionId, record);
     }
     await this.workspaces.start();
+    // After the session records are loaded (the schedule orphan-sweep reads them) and before the
+    // transport connects, so the first tick can't race an unconnected transport.
+    await this.scheduler.start();
     await this.transport.connect();
     this.transport.onMessage((msg) => {
       // Per-request failures already reply over the wire via tryReply; this is the last-resort
@@ -691,6 +706,72 @@ export class Engine {
         this.sendSuccess(p.clientReqId);
         break;
       }
+      case 'schedule.create': {
+        await this.tryReply(p.clientReqId, async () => {
+          const schedule = await this.scheduler.create(p.spec);
+          this.transport.send(
+            createWireMessage({ kind: 'schedule.created', replyTo: p.clientReqId, schedule }),
+          );
+        });
+        break;
+      }
+      case 'schedule.update': {
+        await this.tryReply(p.clientReqId, async () => {
+          const schedule = await this.scheduler.update(p.scheduleId, p.patch);
+          this.transport.send(
+            createWireMessage({ kind: 'schedule.updated', replyTo: p.clientReqId, schedule }),
+          );
+        });
+        break;
+      }
+      case 'schedule.delete': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.scheduler.delete(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'schedule.pause': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.scheduler.pause(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'schedule.resume': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.scheduler.resume(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'schedule.run-once': {
+        await this.tryReply(p.clientReqId, () => {
+          this.scheduler.runOnce(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'schedule.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'schedule.listed',
+            replyTo: p.clientReqId,
+            schedules: this.scheduler.list(),
+          }),
+        );
+        break;
+      }
+      case 'schedule.runs.list': {
+        await this.tryReply(p.clientReqId, async () => {
+          const runs = await this.scheduler.listRuns(p.scheduleId, p.limit);
+          this.transport.send(
+            createWireMessage({ kind: 'schedule.runs.listed', replyTo: p.clientReqId, runs }),
+          );
+        });
+        break;
+      }
       case 'session.attach': {
         // Multi-device attach is implicit: events are broadcast to all clients. What gets
         // re-broadcast here is the buffered state an attaching client can't recover from a
@@ -780,6 +861,8 @@ export class Engine {
   }
 
   async stop(): Promise<void> {
+    // Stop launching new automation sessions before the session-teardown sweep runs.
+    this.scheduler.shutdown();
     await Promise.all(
       Array.from(this.sessions.values(), async (session) => {
         session.unsub();
@@ -908,6 +991,111 @@ export class Engine {
     if (replyTo !== undefined) {
       this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
     }
+  }
+
+  /**
+   * The session-orchestration surface the automation services drive agents through, as bound
+   * closures over the Engine's internals — so the services never import the Engine (avoiding a
+   * cycle), mirroring how ScriptService receives a `workspaceName` lookup.
+   */
+  private buildSessionDriver(): SessionDriver {
+    return {
+      createSession: async (opts: {
+        kind: AgentKind;
+        cwd: string;
+        model?: string;
+        title?: string;
+        automation: SessionAutomation;
+      }): Promise<SessionId> => {
+        const startOpts = await this.resolveStartOptions({
+          kind: opts.kind,
+          cwd: opts.cwd,
+          model: opts.model,
+        });
+        const now = Date.now();
+        const record: SessionRecord = {
+          sessionId: this.nextSessionId(),
+          kind: startOpts.kind,
+          cwd: startOpts.cwd,
+          title: opts.title,
+          origin: { type: 'created' },
+          automation: opts.automation,
+          createdAt: now,
+          updatedAt: now,
+          runs: [{ startedAt: now }],
+        };
+        await this.startLiveSession(undefined, record, (adapter) => adapter.start(startOpts));
+        if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
+        return record.sessionId;
+      },
+      hasRecord: (sessionId) => this.records.has(sessionId),
+      isBusy: (sessionId) => {
+        const session = this.sessions.get(sessionId);
+        return session !== undefined && (session.turnInputActive || session.status === 'running');
+      },
+      ensureLive: async (sessionId) => {
+        if (this.sessions.has(sessionId)) return;
+        await this.resumeSessionById(undefined, sessionId);
+      },
+      makeUnattended: async (sessionId) => {
+        const session = this.sessions.get(sessionId);
+        if (!session) return;
+        try {
+          // Both policy-bearing adapters (claude-code, codex) name their most permissive policy
+          // `bypassPermissions`; opencode/pi have no policy axis and reject this — swallowed, so a
+          // later ask fails the run instead. Applied only to automation-created sessions.
+          await session.adapter.send({
+            type: 'set-approval-policy',
+            policyId: 'bypassPermissions',
+          });
+        } catch {
+          // Adapter has no approval-policy axis; unattended is best-effort.
+        }
+      },
+      prompt: (sessionId, text, opts) => this.promptAutomationTurn(sessionId, text, opts),
+      stopSession: (sessionId) => this.stopSessionById(sessionId),
+    };
+  }
+
+  /** Echo a prompt into the broadcast stream, dispatch it, and wait for the turn (see watchTurn). */
+  private promptAutomationTurn(
+    sessionId: SessionId,
+    text: string,
+    opts?: { timeoutMs?: number },
+  ): Promise<Awaited<ReturnType<typeof watchTurn>>> {
+    const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
+    if (session.turnInputActive) throw new Error(`Session is busy: ${sessionId}`);
+    session.turnInputActive = true;
+    const content: ContentBlock[] = [{ type: 'text', text }];
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent.event',
+        sessionId,
+        event: { type: 'user-message', content },
+      }),
+    );
+    this.maybeSetTitle(sessionId, content);
+    return watchTurn(
+      session.adapter,
+      () => session.adapter.send({ type: 'prompt', content }),
+      opts,
+    ).catch((err: unknown) => {
+      // The turn never latched running (fatal dispatch/ask); release the gate the status handler
+      // would otherwise have cleared on idle/stopped.
+      if (session.status !== 'running') session.turnInputActive = false;
+      throw err;
+    });
+  }
+
+  /** Stop a live session idempotently, keeping its record. Shared by session.stop and the driver. */
+  private async stopSessionById(sessionId: SessionId): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.unsub();
+    await session.adapter.stop().catch(noop);
+    this.sessions.delete(sessionId);
+    this.terminals?.killBySession(sessionId);
+    this.sealCurrentRun(sessionId);
   }
 
   /**
