@@ -12,12 +12,10 @@ export interface GcReport {
 }
 
 /**
- * Boot-time GC: inside each asset dir, delete everything that is not the wanted version —
- * superseded versions and orphaned `.tmp-*` install dirs. Runs before any agent spawns, so
- * nothing here is in use by this daemon, and the one-per-machine contract means no other
- * daemon's children hold these files. An asset whose pin is `undefined` is skipped entirely:
- * "cannot pin" must never translate into deleting a working install. Strictly best-effort —
- * GC never takes the boot down.
+ * Boot-time GC: delete everything in each asset dir that is not the wanted version (superseded
+ * versions, `.tmp-*` orphans); safe because it runs before any spawn on a one-per-machine daemon.
+ * An `undefined` pin skips the asset — "cannot pin" must never delete a working install.
+ * Strictly best-effort: GC never takes the boot down.
  */
 export function collectGarbage(wanted: ReadonlyMap<ManagedAssetId, string | undefined>): GcReport {
   const report: GcReport = { removed: [], skipped: [] };

@@ -12,11 +12,9 @@ import { ExtractError, UnsupportedPlatformError } from './errors';
 const execFileAsync = promisify(execFile);
 
 /**
- * Single-member extraction: tgz goes through node-tar (pure JS — no system-tar assumption on
- * any platform). zip exists only for the tectonic win32 artifact and shells out to the system
- * bsdtar, which the OS guarantees where that artifact can run (System32 since Win10 1809;
- * macOS `tar` is bsdtar too, which keeps the branch testable on darwin). Extracting exactly
- * one declared member sidesteps zip-slip entirely.
+ * Single-member extraction: tgz via node-tar (pure JS, no system-tar assumption); zip (tectonic
+ * win32 only) shells out to system bsdtar (System32 since Win10 1809; macOS tar is bsdtar, so
+ * the branch is testable on darwin). Extracting exactly one declared member sidesteps zip-slip.
  */
 function zipTarBinary(): string {
   if (process.platform !== 'win32') return 'tar';

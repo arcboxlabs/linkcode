@@ -6,13 +6,10 @@ import process from 'node:process';
 import type { ManagedAssetId } from '@linkcode/schema';
 
 /**
- * Store layout: `<root>/<namespace>/<name>/<version>/…` — the asset id's `:` maps to a
- * directory level (`agent:codex` → `agent/codex`), keeping ids out of the reserved-character
- * minefield on Windows. Transient `.tmp-*` install dirs live as version-dir siblings so the
- * final publish is a same-volume atomic `rename`.
- *
- * Every path resolves at call time — never at module load — so tests and E2E can redirect
- * the whole store via `LINKCODE_ASSETS_DIR` or a fake `$HOME`.
+ * Store layout `<root>/<namespace>/<name>/<version>/…`: the id's `:` becomes a directory level
+ * (Windows reserves it); `.tmp-*` install dirs are version-dir siblings so publish is one
+ * same-volume atomic `rename`. Every path resolves at call time — never at module load — so
+ * `LINKCODE_ASSETS_DIR` or a fake `$HOME` redirects the whole store.
  */
 
 interface RootContext {

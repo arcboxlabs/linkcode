@@ -4,10 +4,8 @@ import { useTranslations } from 'use-intl';
 import type { TerminalRendererProps } from './terminal-renderer.types';
 
 /**
- * Non-iOS fallback. `expo-libghostty` registers an Apple-only native view, so
- * this variant must never import it — Metro resolves `terminal-renderer.ios.tsx`
- * on iOS and this file everywhere else. Android terminal support is a separate,
- * gated effort (libghostty-vt + own renderer).
+ * Non-iOS fallback — must never import `expo-libghostty` (Apple-only native view);
+ * Metro picks `terminal-renderer.ios.tsx` on iOS. Android is a separate gated effort.
  */
 export default function TerminalRenderer({ ref }: TerminalRendererProps): React.ReactNode {
   const t = useTranslations('mobile.terminal');
