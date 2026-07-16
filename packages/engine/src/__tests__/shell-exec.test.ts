@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { runShellCheck } from '../automation/shell-exec';
 import { RingBuffer } from '../automation/ring-buffer';
+import { runShellCheck } from '../automation/shell-exec';
 
 describe('runShellCheck', () => {
   it('reports exit 0 and captured output for a passing command', async () => {

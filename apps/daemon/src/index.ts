@@ -13,6 +13,7 @@ import { installAsarSpawnFix } from './asar-spawn';
 import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
+import { createLoopStore } from './loop-store';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
 import {
@@ -22,7 +23,6 @@ import {
   removeRuntimeFile,
   writeRuntimeFile,
 } from './runtime';
-import { createLoopStore } from './loop-store';
 import { createScheduleStore } from './schedule-store';
 import { createSessionStore } from './session-store';
 import { createWorkspaceStore } from './workspace-store';
