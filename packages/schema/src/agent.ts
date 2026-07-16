@@ -23,9 +23,8 @@ import { ToolCallSchema } from './tool-call';
 import { TokenUsageSchema } from './usage';
 
 /**
- * Agent data-plane contract. The abstraction layer normalizes each vendor's native agent events into the
- * `AgentEvent` union, tailored to the four supported agents (claude-code / codex / opencode / pi) and the
- * front-end. The flow is always "change the schema first, then the implementation"
+ * Agent data-plane contract: the abstraction layer normalizes each vendor's native events into
+ * the `AgentEvent` union. The flow is always "change the schema first, then the implementation"
  * (docs/ARCHITECTURE.md#core-principles).
  */
 
@@ -51,11 +50,9 @@ export const StartOptionsSchema = z.object({
 });
 export type StartOptions = z.infer<typeof StartOptionsSchema>;
 
-/** Reasoning-effort levels. low–xhigh switch live via the adapters' settings channel; `max` cannot
- * (Claude only accepts it at process startup), so adapters honor it by restarting the underlying
- * process with the new effort and resuming the conversation in place under the same session.
- * `ultracode` is claude-code's xhigh-plus-standing-orchestration mode — modeled as a level because
- * that's how Claude's own effort menu presents it; it switches live like the plain levels. */
+/** Reasoning-effort levels. low–xhigh switch live; `max` only applies at process startup, so
+ * adapters honor it by restarting the underlying process and resuming in place. `ultracode` is
+ * claude-code's xhigh-plus-standing-orchestration mode, modeled as a level; it switches live. */
 export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
 export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
@@ -130,11 +127,9 @@ export type AgentInput = z.infer<typeof AgentInputSchema>;
 
 // ── Downstream: agent → abstraction layer (normalized) → client ──────────────
 
-/**
- * Normalized agent event: the single downstream vocabulary every adapter emits and the front-end folds
- * into a conversation. The `permission-request` variant expects a matching reply via `AgentInput`,
- * correlated by `requestId`.
- */
+/** Normalized agent event: the single downstream vocabulary every adapter emits and the front-end
+ * folds into a conversation. `permission-request` expects a matching `AgentInput` reply,
+ * correlated by `requestId`. */
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // ── User message: a complete, atomic message (not streamed) ──
   z.object({
@@ -166,10 +161,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tool-call'), toolCall: ToolCallSchema }),
 
   // ── Context compaction: the agent summarized earlier turns in place to free context window ──
-  /** Emitted at the compaction boundary with whatever is known at that moment, and again once the
-   * swapped-in summary text is learned (it arrives on a later frame). Consumers merge events by
-   * `compactionId` — the provider's own boundary id — so partial emits, live re-emits, and history
-   * replay of the same compaction all converge into one timeline marker. */
+  /** Emitted at the compaction boundary and again once the swapped-in summary text is learned.
+   * Consumers merge events by `compactionId` (the provider's own boundary id), so partial emits,
+   * live re-emits, and history replay converge into one timeline marker. */
   z.object({
     type: z.literal('compaction'),
     compactionId: z.string().min(1),
@@ -186,15 +180,12 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('current-mode-update'), currentModeId: SessionModeIdSchema }),
   /** Full approval-policy state (advertised list + current), at session start and after switches. */
   z.object({ type: z.literal('approval-policy-update'), state: ApprovalPolicyStateSchema }),
-  /** The model the session is actually running on, so clients reflect the true value instead of a
-   * placeholder. The available list is the static UI catalog (not adapter-advertised, unlike
-   * approval policies), so only the current id travels. Emitted once the adapter learns the served
-   * model (claude-code's init/assistant frames report it even when no model was requested) and on
-   * every switch. Adapters that can't observe their model never emit it. */
+  /** The model the session is actually running on. The available list is the static UI catalog
+   * (not adapter-advertised), so only the current id travels. Emitted once the adapter learns the
+   * served model and on every switch; adapters that can't observe their model never emit it. */
   z.object({ type: z.literal('model-update'), model: z.string().min(1) }),
-  /** The reasoning-effort level the session is actually running at. Same rationale as `model-update`.
-   * Emitted on every switch and, for adapters that can observe the resolved default (claude-code via
-   * a Stop hook's `effort.level`), once the default is learned. `undefined`/never-emitted keeps the
+  /** The reasoning-effort level the session is actually running at. Emitted on every switch and
+   * once the resolved default is learned (claude-code via a Stop hook); never-emitted keeps the
    * client showing a placeholder rather than a guessed value. */
   z.object({ type: z.literal('effort-update'), effort: EffortLevelSchema }),
   /** Stable input capabilities for this live adapter session. Emitted at adapter start and replayed
@@ -203,16 +194,14 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('capabilities-update'),
     capabilities: AgentCapabilitiesSchema,
   }),
-  /** The slash-command catalog the session accepts via `AgentInput.command` — emitted once the
-   * adapter learns it and again on every provider-side change, full-replace semantics (consumers
-   * swap their cached list wholesale). */
+  /** The slash-command catalog the session accepts via `AgentInput.command` — emitted once
+   * learned and on every provider-side change, full-replace semantics. */
   z.object({ type: z.literal('available-commands-update'), commands: z.array(AgentCommandSchema) }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),
-  /** The provider-local native id of the live run, once the adapter learns it. Lets the host bind
-   * the Link Code session to provider history for later resume; adapters without history support
-   * never emit it. */
+  /** The provider-local native id of the live run, once learned — binds the session to provider
+   * history for later resume. Adapters without history support never emit it. */
   z.object({ type: z.literal('session-ref'), historyId: AgentHistoryIdSchema }),
   z.object({ type: z.literal('token-usage'), usage: TokenUsageSchema }),
   z.object({ type: z.literal('stop'), stopReason: StopReasonSchema }),

@@ -34,12 +34,9 @@ export const sessionWireVariants = [
   }),
   z.object({ kind: z.literal('session.attach'), sessionId: SessionIdSchema }),
   z.object({ kind: z.literal('session.detach'), sessionId: SessionIdSchema }),
-  /**
-   * Connection-scoped `agent.event` delivery (answered by the Hub, not the Engine). `all` — the
-   * default for every new connection — is the historical broadcast behavior desktop/webview rely
-   * on. `attached` narrows delivery to sessions the connection subscribed via `session.attach`,
-   * so a scoped client (the cloud IM bridge) only ever receives events for its bound sessions.
-   */
+  /** Connection-scoped `agent.event` delivery (answered by the Hub, not the Engine). `all` — the
+   * default for every new connection — is the historical broadcast behavior; `attached` narrows
+   * delivery to sessions the connection subscribed via `session.attach`. */
   z.object({
     kind: z.literal('subscription.set'),
     clientReqId: z.string().min(1),
@@ -63,10 +60,9 @@ export const sessionWireVariants = [
     replyTo: z.string().min(1),
     record: SessionRecordSchema,
   }),
-  /** Broadcast on a notification-worthy session moment (turn end / approval wait / error), like
-   * `script.status`: no replyTo, fanned out to every client. Must stay a broadcast even once
-   * per-connection subscription modes exist (CODE-72) — background sessions on other devices
-   * drive OS notifications through this frame. */
+  /** Broadcast on a notification-worthy session moment: no replyTo, fanned out to every client.
+   * Must stay a broadcast even once per-connection subscription modes exist (CODE-72) —
+   * background sessions on other devices drive OS notifications through this frame. */
   z.object({
     kind: z.literal('session.notification'),
     notification: SessionNotificationSchema,
