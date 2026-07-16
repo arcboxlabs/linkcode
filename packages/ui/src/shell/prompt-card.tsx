@@ -113,7 +113,7 @@ export function PromptCard({
         </FramePanel>
       ) : null}
       {footer !== undefined ? (
-        <FrameFooter className="flex items-center justify-between gap-2 px-2 py-1.5">
+        <FrameFooter className="flex items-center justify-between gap-2 px-3 py-1.5">
           {footer}
         </FrameFooter>
       ) : null}

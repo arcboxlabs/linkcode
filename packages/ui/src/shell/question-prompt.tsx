@@ -151,7 +151,8 @@ export function QuestionPrompt({
         }
         footer={
           <>
-            <span className="min-w-0 truncate text-muted-foreground text-xs">
+            {/* line height mirrors the xs submit button so the footer height is stable across pages */}
+            <span className="min-w-0 truncate text-muted-foreground text-xs leading-7 sm:leading-6">
               {t(question.multiSelect ? 'instructionMultiple' : 'instructionSingle')}
             </span>
             {isLastQuestion ? (
