@@ -19,7 +19,9 @@ export function WebWorkbenchShell({
   return (
     <ShellFrame
       {...props}
-      onOpenAutomations={() => void navigate('/automations')}
+      onOpenAutomations={() => {
+        void navigate('/automations');
+      }}
       header={
         <TitleStrip className="border-border border-b">
           <ShellIconButton

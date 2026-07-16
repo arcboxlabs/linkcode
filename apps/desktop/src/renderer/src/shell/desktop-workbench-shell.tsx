@@ -1,4 +1,5 @@
-import { useNavigationHistoryStore, type WorkbenchShellProps } from '@linkcode/workbench';
+import type { WorkbenchShellProps } from '@linkcode/workbench';
+import { useNavigationHistoryStore } from '@linkcode/workbench';
 import { systemBridge } from '@renderer/ipc';
 import { openDesktopSettings, useDesktopSettingsStore } from '../settings/store';
 import { DesktopShell } from './desktop-shell';
