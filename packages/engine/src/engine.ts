@@ -1090,7 +1090,9 @@ export class Engine {
     input: AskResponseInput,
     request: AskEvent,
   ): void {
-    if (session.closed) throw new Error(`Session is closed: ${sessionId}`);
+    // A session.stop/delete that raced the in-flight send has already cancelled every ask and
+    // broadcast the resolutions; the adapter accepted the answer, so the send stays successful.
+    if (session.closed) return;
     const ask = session.asks.get(input.requestId);
     if (ask?.state !== 'responding' || ask.request !== request) {
       throw new Error(`Interactive request changed while responding: ${input.requestId}`);

@@ -822,6 +822,44 @@ describe('engine attach replay', () => {
     ).toBe(false);
   });
 
+  it('session.stop during an in-flight response keeps a successful send successful', async () => {
+    const h = harness(new InMemorySessionStore(), () => new GatedSendAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const adapter = nullthrow(h.adapters[0]) as GatedSendAdapter;
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'response',
+      sessionId,
+      input: { type: 'question-response', requestId: 'ask-1', outcome: { outcome: 'cancelled' } },
+    });
+
+    const mark = h.sent.length;
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId });
+    adapter.releaseSend();
+    await tick();
+
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'response' });
+    // The stop's session-cancellation stays the only resolution; no user-sourced duplicate follows.
+    expect(eventsAfter(h.sent, mark).filter((event) => event.type === 'question-resolved')).toEqual(
+      [
+        {
+          type: 'question-resolved',
+          requestId: 'ask-1',
+          outcome: { outcome: 'cancelled' },
+          source: 'session',
+        },
+      ],
+    );
+  });
+
   it('session.delete resolves an open ask and broadcasts stopped before removal', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({ type: 'status', status: 'running' });
