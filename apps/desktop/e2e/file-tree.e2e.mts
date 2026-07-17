@@ -86,10 +86,38 @@ async function run(win: Page): Promise<void> {
     fail('tree did not render fixture-readme.md');
   }
   if (!labels.includes('docs')) fail('tree did not render the docs/ directory row');
+  // Depth-1 initial expansion: docs/ starts open, so its child is visible immediately.
+  if (!labels.includes('notes.md')) fail('top-level directories did not start expanded');
   // Hidden + heavy entries must be filtered out by the engine enumeration.
   if (labels.some((l) => l.includes('secret') || l.includes('.hidden'))) {
     fail('tree leaked a hidden directory entry');
   }
+
+  // The tree docks to the right edge by default (appearance preference default).
+  const dock = await win.evaluate(() => {
+    const rect = document.querySelector('file-tree-container')?.getBoundingClientRect();
+    return rect ? { right: rect.right, innerWidth: window.innerWidth } : null;
+  });
+  if (!dock || Math.abs(dock.right - dock.innerWidth) > 24) {
+    fail(`tree is not docked to the right edge: ${JSON.stringify(dock)}`);
+  }
+  console.log('tree docked right by default');
+
+  // The app-owned search input filters the tree (hide-non-matches).
+  const search = win.getByPlaceholder('Search files…');
+  await search.fill('readme');
+  await win.waitForTimeout(1000);
+  const filtered = await treeRowLabels(win);
+  console.log('filtered rows:', JSON.stringify(filtered));
+  if (!filtered.includes('fixture-readme.md') || filtered.includes('long-line.txt')) {
+    fail('search did not filter the tree to matching rows');
+  }
+  await search.fill('');
+  await win.waitForTimeout(1000);
+  if (!(await treeRowLabels(win)).includes('docs')) {
+    fail('clearing the search did not restore the tree');
+  }
+  console.log('tree search filters and restores');
 
   // Click the file row inside the shadow DOM and expect a viewer tab for it.
   await win.evaluate(() => {
@@ -178,6 +206,11 @@ async function run(win: Page): Promise<void> {
   if (!highlight) fail('app-config.json did not open in the code viewer');
   if (!highlight.tokens) fail('JSON file rendered without shiki color tokens');
   console.log('code viewer renders highlighted tokens');
+
+  // Final visual artifact for manual styling review (theme overrides fail silently).
+  const finalShot = join(tmpdir(), `linkcode-e2e-file-tree-final-${process.pid}.png`);
+  await win.screenshot({ path: finalShot });
+  console.log(`final screenshot: ${finalShot}`);
 }
 
 async function main(): Promise<void> {

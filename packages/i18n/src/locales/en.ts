@@ -492,6 +492,7 @@ export const en = {
       unsupported: 'No preview available for this file type',
       loadFailed: 'Failed to read the file',
       treeUnavailable: 'Select a session to browse its workspace files',
+      searchPlaceholder: 'Search files…',
     },
     preview: {
       services: 'Services',
@@ -585,6 +586,10 @@ export const en = {
       textSizeLarge: 'Large',
       reduceMotion: 'Reduce motion',
       reduceMotionHint: 'Minimize animations and transitions.',
+      filesTreeSide: 'File tree position',
+      filesTreeSideHint: 'Which side of the Files panel the workspace tree docks to.',
+      filesTreeSideLeft: 'Left',
+      filesTreeSideRight: 'Right',
       codeThemeLight: 'Light code theme',
       codeThemeDark: 'Dark code theme',
       codeThemeHint: 'Syntax highlighting theme for code blocks in chat.',
