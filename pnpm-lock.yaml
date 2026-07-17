@@ -777,6 +777,9 @@ importers:
       foxts:
         specifier: ^5.8.0
         version: 5.8.0
+      mac-system-proxy:
+        specifier: ^1.0.4
+        version: 1.0.4
       make-fetch-happen:
         specifier: ^16.0.1
         version: 16.0.1
@@ -8235,6 +8238,9 @@ packages:
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
     hasBin: true
+
+  mac-system-proxy@1.0.4:
+    resolution: {integrity: sha512-IAkNLxXZrYuM99A2OhPrvUoAxohsxQciJh2D2xnD+R6vypn/AVyOYLsbZsMVCS/fEbLIe67nQ8krEAfqP12BVg==}
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -18264,6 +18270,8 @@ snapshots:
       react: 19.2.7
 
   lz-string@1.5.0: {}
+
+  mac-system-proxy@1.0.4: {}
 
   magic-string@0.30.21:
     dependencies:
