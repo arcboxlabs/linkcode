@@ -11,7 +11,10 @@ const TYPICAL_OUTPUT = [
   '    ProxyServer    REG_SZ    127.0.0.1:7890',
   '    ProxyOverride    REG_SZ    <local>;*.internal.test',
   '    User Agent    REG_SZ    Mozilla/4.0 (compatible; MSIE 8.0; Win32)',
+  '    LockDatabase    REG_QWORD    0x1dca9548a439845',
   '',
+  String.raw`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings\5.0`,
+  String.raw`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Cache`,
   '',
 ].join('\r\n');
 
