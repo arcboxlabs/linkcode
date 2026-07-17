@@ -73,7 +73,13 @@
     },
     "plugins": [
       "expo-router",
-      "@sentry/react-native/expo",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "arcbox",
+          "project": "linkcode-mobile"
+        }
+      ],
       "expo-apple-authentication",
       "expo-sqlite",
       "expo-secure-store",
