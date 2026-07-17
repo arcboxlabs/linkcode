@@ -7,6 +7,7 @@ export interface LoopListItem {
   name: string;
   status: LoopStatus;
   iterationCount: number;
+  maxIterations: number;
   updatedAt: number;
 }
 
@@ -36,6 +37,7 @@ export function buildLoopItems(loops: LoopRecord[] | undefined): LoopListItem[] 
         name: displayName(loop),
         status: loop.status,
         iterationCount: loop.iterationCount,
+        maxIterations: loop.spec.maxIterations,
         updatedAt: loop.updatedAt,
       }),
     )

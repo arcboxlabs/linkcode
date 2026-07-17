@@ -36,6 +36,7 @@ export function LoopDetail({
   onOpenSession: (sessionId: SessionId) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.automations');
+  const tAgent = useTranslations('workbench.agentKind');
   const { data: inspection } = useLoopInspection(loopId);
   const logs = useLoopLog(loopId);
   const stop = useMutation(stopLoop);
@@ -63,7 +64,7 @@ export function LoopDetail({
       </header>
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-        <Fact label={t('agentLabel')} value={loop.spec.kind} />
+        <Fact label={t('agentLabel')} value={tAgent(loop.spec.kind)} />
         <Fact label={t('cwdLabel')} value={loop.spec.cwd} />
         <Fact
           label={t('loop.iterations')}
@@ -201,7 +202,9 @@ function Fact({ label, value }: { label: string; value: string }): React.ReactNo
   return (
     <div className="flex flex-col">
       <dt className="text-muted-foreground text-xs">{label}</dt>
-      <dd className="truncate">{value}</dd>
+      <dd className="truncate" title={value}>
+        {value}
+      </dd>
     </div>
   );
 }

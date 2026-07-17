@@ -1,12 +1,12 @@
 import type {
   Schedule,
-  ScheduleCadence,
   ScheduleId,
   ScheduleRun,
   ScheduleStatus,
   SessionId,
 } from '@linkcode/schema';
 import { deleteSchedule, pauseSchedule, resumeSchedule, runScheduleOnce } from '@linkcode/sdk';
+import { useRelativeTimeLabel } from '@linkcode/ui';
 import {
   AlertDialog,
   AlertDialogClose,
@@ -21,6 +21,7 @@ import { Empty, EmptyDescription, EmptyTitle } from 'coss-ui/components/empty';
 import { useTranslations } from 'use-intl';
 import { useMutation } from '../runtime/tayori';
 import { useScheduleRuns, useSchedules } from './hooks';
+import { cadenceLabel } from './labels';
 
 const STATUS_BADGE: Record<ScheduleStatus, 'success' | 'warning' | 'secondary'> = {
   active: 'success',
@@ -34,8 +35,8 @@ const RUN_BADGE: Record<ScheduleRun['status'], 'success' | 'warning' | 'error' |
   skipped: 'secondary',
 };
 
-function formatTime(ts: number | undefined): string {
-  return ts === undefined ? '—' : new Date(ts).toLocaleString();
+function absoluteTime(ts: number | undefined): string | undefined {
+  return ts === undefined ? undefined : new Date(ts).toLocaleString();
 }
 
 export function ScheduleDetail({
@@ -46,6 +47,7 @@ export function ScheduleDetail({
   onOpenSession: (sessionId: SessionId) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.automations');
+  const tAgent = useTranslations('workbench.agentKind');
   const { data: schedules } = useSchedules();
   const { data: runs } = useScheduleRuns(scheduleId);
   const pause = useMutation(pauseSchedule);
@@ -75,11 +77,17 @@ export function ScheduleDetail({
         <p className="whitespace-pre-wrap text-muted-foreground text-sm">{schedule.spec.prompt}</p>
       </header>
 
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
         <Fact label={t('schedule.cadenceLabel')} value={cadence} />
         <Fact label={t('schedule.target')} value={targetLabel(schedule, t)} />
-        <Fact label={t('schedule.nextRun')} value={formatTime(schedule.nextRunAt)} />
-        <Fact label={t('schedule.lastRun')} value={formatTime(schedule.lastRunAt)} />
+        {schedule.spec.target.type === 'new-session' ? (
+          <>
+            <Fact label={t('agentLabel')} value={tAgent(schedule.spec.target.config.kind)} />
+            <Fact label={t('cwdLabel')} value={schedule.spec.target.config.cwd} />
+          </>
+        ) : null}
+        <TimeFact label={t('schedule.nextRun')} ts={schedule.nextRunAt} />
+        <TimeFact label={t('schedule.lastRun')} ts={schedule.lastRunAt} />
       </dl>
 
       {schedule.status !== 'completed' ? (
@@ -153,28 +161,9 @@ export function ScheduleDetail({
           </Empty>
         ) : (
           <ul className="flex flex-col gap-1">
-            {runs.map((run) => {
-              const { sessionId } = run;
-              return (
-                <li
-                  key={run.runId}
-                  className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
-                >
-                  <Badge variant={RUN_BADGE[run.status]}>
-                    {t(`schedule.runStatus.${run.status}`)}
-                  </Badge>
-                  <span className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</span>
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                    {run.error ?? run.summary ?? ''}
-                  </span>
-                  {sessionId ? (
-                    <Button size="sm" variant="ghost" onClick={() => onOpenSession(sessionId)}>
-                      {t('openThread')}
-                    </Button>
-                  ) : null}
-                </li>
-              );
-            })}
+            {runs.map((run) => (
+              <RunRow key={run.runId} run={run} onOpenSession={onOpenSession} />
+            ))}
           </ul>
         )}
       </section>
@@ -182,23 +171,56 @@ export function ScheduleDetail({
   );
 }
 
+function RunRow({
+  run,
+  onOpenSession,
+}: {
+  run: ScheduleRun;
+  onOpenSession: (sessionId: SessionId) => void;
+}): React.ReactNode {
+  const t = useTranslations('workbench.automations');
+  const startedLabel = useRelativeTimeLabel(run.startedAt ?? 0);
+  const { sessionId } = run;
+  return (
+    <li className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+      <Badge variant={RUN_BADGE[run.status]}>{t(`schedule.runStatus.${run.status}`)}</Badge>
+      <span className="text-muted-foreground text-xs" title={absoluteTime(run.startedAt)}>
+        {run.startedAt === undefined ? '—' : startedLabel}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+        {run.error ?? run.summary ?? ''}
+      </span>
+      {sessionId ? (
+        <Button size="sm" variant="ghost" onClick={() => onOpenSession(sessionId)}>
+          {t('openThread')}
+        </Button>
+      ) : null}
+    </li>
+  );
+}
+
 function Fact({ label, value }: { label: string; value: string }): React.ReactNode {
   return (
     <div className="flex flex-col">
       <dt className="text-muted-foreground text-xs">{label}</dt>
-      <dd className="truncate">{value}</dd>
+      <dd className="truncate" title={value}>
+        {value}
+      </dd>
     </div>
   );
 }
 
-function cadenceLabel(
-  cadence: ScheduleCadence,
-  t: (key: string, values?: Record<string, number>) => string,
-): string {
-  if (cadence.type === 'interval') {
-    return t('schedule.everyMinutes', { minutes: Math.round(cadence.everyMs / 60_000) });
-  }
-  return cadence.timezone ? `${cadence.expression} (${cadence.timezone})` : cadence.expression;
+/** A timestamp fact: live relative label, absolute time in the tooltip. */
+function TimeFact({ label, ts }: { label: string; ts: number | undefined }): React.ReactNode {
+  const relative = useRelativeTimeLabel(ts ?? 0);
+  return (
+    <div className="flex flex-col">
+      <dt className="text-muted-foreground text-xs">{label}</dt>
+      <dd className="truncate" title={absoluteTime(ts)}>
+        {ts === undefined ? '—' : relative}
+      </dd>
+    </div>
+  );
 }
 
 function targetLabel(schedule: Schedule, t: (key: string) => string): string {
