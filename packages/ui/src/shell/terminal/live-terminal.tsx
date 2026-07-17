@@ -182,7 +182,15 @@ export function LiveTerminal({
           // replayed initial prompt is dropped before the WASM terminal can render it. shortcuts
           // off: restty's unscoped Cmd/Ctrl+D pane splitter would fire per mounted terminal.
           surface: { autoInit: false, shortcuts: false },
-          terminal: { autoResize: false, fonts, fontSize, forwardTerminalReplies: false },
+          // fontSizeMode 'em' makes fontSize the glyph em size (like every other terminal);
+          // restty's default 'height' mode reads it as full line height — ~30% smaller glyphs.
+          terminal: {
+            autoResize: false,
+            fonts,
+            fontSize,
+            fontSizeMode: 'em',
+            forwardTerminalReplies: false,
+          },
           services: {
             beforeInput: () => (session.canControl() ? undefined : null),
             ptyTransport: createSessionPtyTransport(session, (cols, rows) =>
