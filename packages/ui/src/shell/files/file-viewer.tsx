@@ -1,5 +1,8 @@
 import type { WorkspaceFile } from '@linkcode/schema';
+import type { FileContents, FileOptions, ThemeTypes } from '@pierre/diffs';
+import { File as PierreFile } from '@pierre/diffs/react';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { artifactKindForPath } from '../../chat/artifacts';
 import { Markdown } from '../../chat/markdown';
@@ -11,6 +14,8 @@ export interface FileViewerProps {
   file: WorkspaceFile | undefined;
   isLoading: boolean;
   error?: unknown;
+  /** Shiki theme pairing for the code view — same axis as the Diff section. */
+  themeType?: ThemeTypes;
   className?: string;
 }
 
@@ -21,12 +26,14 @@ function dataUrl(file: WorkspaceFile): string {
 }
 
 /** Renders one workspace file by artifact kind: markdown through the chat pipeline,
- * images/PDF natively, utf8 text as-is; anything else degrades to a notice. */
+ * images/PDF natively, utf8 text through the `@pierre/diffs` highlighted code view;
+ * anything else degrades to a notice. */
 export function FileViewer({
   path,
   file,
   isLoading,
   error,
+  themeType = 'system',
   className,
 }: FileViewerProps): React.ReactNode {
   const t = useTranslations('workbench.files');
@@ -72,16 +79,7 @@ export function FileViewer({
     case 'pdf':
       return <PdfView file={file} className={className} />;
     case 'text':
-      return (
-        <pre
-          className={cn(
-            'h-full overflow-auto p-4 font-mono text-[12.5px] leading-relaxed',
-            className,
-          )}
-        >
-          {file.content}
-        </pre>
-      );
+      return <CodeFileView file={file} themeType={themeType} className={className} />;
     default:
       return (
         <FileViewerNotice className={className} title={t('unsupported')}>
@@ -89,6 +87,38 @@ export function FileViewer({
         </FileViewerNotice>
       );
   }
+}
+
+/** Shiki-highlighted read-only code view (`@pierre/diffs` `File`, same library and theme
+ * axis as the Diff section). Language is inferred from the filename; unknown types fall
+ * back to plain rendering inside the same component. */
+function CodeFileView({
+  file,
+  themeType,
+  className,
+}: {
+  file: WorkspaceFile;
+  themeType: ThemeTypes;
+  className?: string;
+}): React.ReactNode {
+  const contents = useMemo<FileContents>(
+    () => ({
+      name: file.path,
+      contents: file.content,
+      // Highlight-cache key: same path re-read after an edit must re-render.
+      cacheKey: `${file.path}:${file.mtimeMs}`,
+    }),
+    [file],
+  );
+  const options = useMemo<FileOptions<undefined>>(
+    () => ({ themeType, disableFileHeader: true }),
+    [themeType],
+  );
+  return (
+    <div className={cn('h-full overflow-y-auto', className)}>
+      <PierreFile file={contents} options={options} />
+    </div>
+  );
 }
 
 /** Blob URLs keyed by the SWR-cached file object: idempotent per file (safe to call in
