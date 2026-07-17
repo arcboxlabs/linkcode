@@ -40,7 +40,19 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   module load, breaking call-time path resolution.
 - Extraction takes exactly the declared member — no archive content is trusted beyond it. The
   one zip artifact (tectonic win32) shells out to the system bsdtar (System32 since Win10 1809;
-  macOS tar is bsdtar too, keeping the branch testable on darwin).
+  macOS tar is bsdtar too, keeping the branch testable on darwin). Closure packages are the
+  exception: whole npm tarballs, extracted with `strip: 1` (node-tar rejects absolute/`..`
+  paths, so a hostile archive cannot escape the staging dir).
+- **npm-closure assets (CODE-219)**: an asset can be a whole npm tree the daemon imports
+  in-process (pi) instead of a binary it spawns. The manifest (`src/pi-closure.gen.ts`) is
+  generated from pnpm-lock.yaml — `pnpm -F @linkcode/assets run generate:pi-closure` after a
+  pi bump; `closure.test.ts` fails the suite on drift, and a manifest whose version disagrees
+  with the SDK pin reads as unpinnable. Layout follows node resolution (highest version
+  hoisted, conflicting versions nested under their dependents). The runtime downloads exact
+  tgz bytes per package (lockfile SRI baked at build time; npmmirror as URL fallback), stages
+  the whole tree, publishes with the same atomic rename — it never resolves versions, never
+  runs install scripts, never mutates an installed tree. `managedBinary()` stays binary-only;
+  closures answer through `managedEntry()`.
 
 ## Consumers
 
