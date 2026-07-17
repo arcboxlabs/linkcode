@@ -1,10 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useWorkbenchRuntimeEndpoint } from '@linkcode/workbench';
 import { rhfErrorsToFormErrors } from '@linkcode/workbench/form';
+import { Alert, AlertDescription } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Form } from 'coss-ui/components/form';
 import { Input } from 'coss-ui/components/input';
+import { TriangleAlertIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
@@ -19,7 +21,21 @@ const connectionSchema = z.object({
 });
 type ConnectionForm = z.infer<typeof connectionSchema>;
 
-export function ConnectionTab(): React.ReactNode {
+export function DeveloperTab(): React.ReactNode {
+  const t = useTranslations('settings.developer');
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Alert variant="warning">
+        <TriangleAlertIcon />
+        <AlertDescription>{t('warning')}</AlertDescription>
+      </Alert>
+      <ConnectionSection />
+    </div>
+  );
+}
+
+function ConnectionSection(): React.ReactNode {
   const t = useTranslations('settings.connection');
   const daemonUrl = useWorkbenchRuntimeEndpoint();
   const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);

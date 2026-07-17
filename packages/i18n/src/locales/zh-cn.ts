@@ -529,7 +529,7 @@ export const zhCN = {
       general: '通用',
       appearance: '外观',
       terminal: '终端',
-      connection: '连接',
+      developer: '开发者设置',
       notifications: '通知',
       about: '关于',
       providers: 'Providers',
@@ -592,6 +592,9 @@ export const zhCN = {
       colorScheme: '配色方案',
       colorSchemeHint: '终端配色。「跟随主题」随应用浅色 / 深色切换。',
       colorSchemeAuto: '跟随主题',
+    },
+    developer: {
+      warning: '非必要情况下，请不要修改这里的设置。',
     },
     connection: {
       title: 'Daemon',

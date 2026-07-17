@@ -3,12 +3,12 @@ import { filterSettingsNavGroups, useSettingsSearchKeywords } from '@linkcode/wo
 import {
   BellIcon,
   BotIcon,
+  CodeXmlIcon,
   KeyRoundIcon,
   SendIcon,
   SettingsIcon,
   SunMoonIcon,
   TerminalIcon,
-  WifiIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
@@ -22,7 +22,7 @@ const SETTINGS_ROUTES: Record<string, string> = {
   agents: '/settings/agents',
   providers: '/settings/providers',
   messaging: '/settings/messaging',
-  connection: '/settings/connection',
+  developer: '/settings/developer',
 };
 
 export function SettingsLayout(): React.ReactNode {
@@ -106,12 +106,12 @@ export function SettingsLayout(): React.ReactNode {
       label: t('groups.system'),
       items: [
         {
-          key: 'connection',
-          icon: <WifiIcon className="size-4" />,
-          label: t('tabs.connection'),
-          keywords: searchKeywords.connection,
-          active: isActive(pathname, 'connection'),
-          render: <Link to="/settings/connection" />,
+          key: 'developer',
+          icon: <CodeXmlIcon className="size-4" />,
+          label: t('tabs.developer'),
+          keywords: searchKeywords.developer,
+          active: isActive(pathname, 'developer'),
+          render: <Link to="/settings/developer" />,
         },
       ],
     },
@@ -161,7 +161,7 @@ function isActive(
     | ''
     | 'appearance'
     | 'terminal'
-    | 'connection'
+    | 'developer'
     | 'notifications'
     | 'providers'
     | 'agents'
