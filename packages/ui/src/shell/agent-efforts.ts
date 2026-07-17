@@ -39,4 +39,10 @@ export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = 
     { id: 'high', label: 'High' },
     { id: 'xhigh', label: 'xHigh' },
   ],
+  // Grok Build headless: `--reasoning-effort` high|medium|low (verified 0.2.102).
+  'grok-build': [
+    { id: 'low', label: 'Low' },
+    { id: 'medium', label: 'Medium' },
+    { id: 'high', label: 'High' },
+  ],
 };

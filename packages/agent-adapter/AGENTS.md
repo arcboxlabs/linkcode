@@ -4,8 +4,8 @@
 
 ## Layout
 
-- One native adapter per agent under `src/native/`: `claude-code.ts`, `pi.ts`, and two directory modules — `codex/` (`adapter.ts`, `app-server.ts` (JSON-RPC client + node_modules binary resolution), `config.ts` (config.toml read), `history.ts` (rollout reads), `unified-diff.ts`) and `opencode/` (`adapter.ts`, `history.ts` (server-API replay mapping), `history-server.ts` (the shared history server)). Shared spine: `src/adapter.ts` (the `AgentAdapter` interface + id generators), `src/base.ts` (`BaseAgentAdapter`), `src/registry.ts`, `src/util.ts`, `src/history-util.ts`.
-- CLI runtime probing under `src/probe/`: one `AgentCliProbe` subclass per external-CLI agent (`ClaudeCodeProbe`, `CodexProbe` — known install locations + `--version` vendor-marker verification), orchestrated by `AgentRuntimeProber` (`prober.ts`). The daemon probes the shared `agentRuntimeProber` instance once per boot and serves the result as the `agent-runtime.list` wire resource; adapters resolve their spawn path through `resolveBinary(kind)`.
+- One native adapter per agent under `src/native/`: `claude-code.ts`, `pi.ts`, and directory modules — `codex/` (JSON-RPC app-server), `opencode/` (SDK + history server), `grok-build/` (**headless CLI** `grok -p --output-format streaming-json`, **not** ACP). Shared spine: `src/adapter.ts`, `src/base.ts`, `src/registry.ts`, `src/util.ts`, `src/history-util.ts`.
+- CLI runtime probing under `src/probe/`: one `AgentCliProbe` subclass per external-CLI agent (`ClaudeCodeProbe`, `CodexProbe`, `GrokBuildProbe` — known install locations + `--version` vendor-marker verification), orchestrated by `AgentRuntimeProber` (`prober.ts`). The daemon probes the shared `agentRuntimeProber` instance once per boot and serves the result as the `agent-runtime.list` wire resource; adapters resolve their spawn path through `resolveBinary(kind)`.
 - `createAdapter(kind)` in `registry.ts` is the ONLY factory — a `switch` over `AgentKind` ending in foxts `never(kind, 'agent kind')`, so an unhandled kind fails typecheck. **Adding an agent** = new native adapter class + registry case + extend the `AgentKind` enum.
 - Id generators (`adapter.ts`): `nextMessageId()`→`msg-`, `nextToolCallId()`→`tool-`, `nextRequestId()`→`req-` (module counter + `Date.now().toString(36)`). These are the FALLBACK — adapters prefer provider-native ids (claude `toolu_`/message uuid; codex/opencode item/part ids) so live turns and cold-resume history converge by id.
 - Each SDK is lazy-loaded via `loadSdk(name, () => import(...))`; on import failure the adapter emits `AgentEvent {type:'error', code:'sdk-unavailable', recoverable:false}` and rethrows — a missing SDK degrades to a clear error, it does not crash the daemon. codex spawns `codex app-server` instead of importing an SDK; a failed resolution/spawn/handshake emits the same `sdk-unavailable` shape (and reaps the half-started child).
@@ -24,6 +24,7 @@ Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin)
 | codex | `@openai/codex` (CLI carrier — no JS SDK) | 0.144.1 |
 | opencode | `@opencode-ai/sdk` | 1.17.18 |
 | pi | `@earendil-works/pi-coding-agent` | 0.80.6 |
+| grok-build | none (user-installed `grok` CLI; headless `-p`, not ACP) | detect `grok --version` (verified 0.2.102) |
 
 - **Bumping a JS package** moves the exact pair self-resolved in dev; detected user installs are unaffected (their drift is the compat manifest's problem, CODE-77/113). Nothing is staged at package time anymore (CODE-114).
 - Quirk: `@openai/codex-<arch>` is an npm alias for `@openai/codex@<ver>-<arch>`, so querying the registry by the alias name 404s — resolve via the `@openai/codex` version.

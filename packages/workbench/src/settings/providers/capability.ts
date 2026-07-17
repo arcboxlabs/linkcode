@@ -21,6 +21,8 @@ const AGENT_NATIVE_PROTOCOLS: Record<AgentKind, AccountProtocol[]> = {
   codex: ['openai-chat', 'openai-responses'],
   opencode: ['openai-chat'],
   pi: ['openai-chat'],
+  // Grok Build headless CLI: OAuth uses ~/.grok/auth.json; openai-chat/xAI keys inject as XAI_API_KEY.
+  'grok-build': ['openai-chat'],
 };
 
 /** Cross-protocol pairs the local translation sidecar serves (engine `translationUpstream`). */

@@ -68,7 +68,7 @@ describe('bindingAvailability', () => {
 
   it('keeps protocol-unknown legacy accounts bindable everywhere', () => {
     const legacy = account({});
-    for (const kind of ['claude-code', 'codex', 'opencode', 'pi'] as const) {
+    for (const kind of ['claude-code', 'codex', 'opencode', 'pi', 'grok-build'] as const) {
       expect(bindingAvailability(legacy, kind)).toEqual({ tier: 'native' });
     }
   });

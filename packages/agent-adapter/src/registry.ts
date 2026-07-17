@@ -3,6 +3,7 @@ import { never } from 'foxts/guard';
 import type { AgentAdapter } from './adapter';
 import { ClaudeCodeAdapter } from './native/claude-code';
 import { CodexAdapter } from './native/codex';
+import { GrokBuildAdapter } from './native/grok-build';
 import { OpenCodeAdapter } from './native/opencode';
 import { PiAdapter } from './native/pi';
 
@@ -22,6 +23,8 @@ export function createAdapter(kind: AgentKind): AgentAdapter {
       return new OpenCodeAdapter();
     case 'pi':
       return new PiAdapter();
+    case 'grok-build':
+      return new GrokBuildAdapter();
     default:
       return never(kind, 'agent kind');
   }

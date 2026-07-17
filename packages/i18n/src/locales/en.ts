@@ -405,6 +405,7 @@ export const en = {
       codex: 'Codex',
       opencode: 'OpenCode',
       pi: 'Pi',
+      'grok-build': 'Grok Build',
     },
     notifications: {
       turnCompleted: 'Finished responding',

@@ -80,4 +80,6 @@ export const AGENT_MODEL_OPTIONS: Partial<Record<AgentKind, ModelOption[]>> = {
     { id: 'gpt-5.4', label: 'GPT-5.4' },
     { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini' },
   ],
+  // Grok Build headless: model is a spawn-time `-m` flag (verified 0.2.102: grok-4.5).
+  'grok-build': [{ id: 'grok-4.5', label: 'Grok 4.5' }],
 };

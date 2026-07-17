@@ -16,7 +16,7 @@ export interface DetectedAgentRuntime {
 }
 
 /** The agent kinds that spawn an external CLI (pi is in-process; opencode is PATH-based until CODE-76). */
-export type ProbeableKind = 'claude-code' | 'codex';
+export type ProbeableKind = 'claude-code' | 'codex' | 'grok-build';
 
 /**
  * Absolute install locations probed in order. PATH is deliberately not searched: a probe both

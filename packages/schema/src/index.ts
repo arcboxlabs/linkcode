@@ -5,7 +5,7 @@
  * Other packages must not redefine message types; they may only import from here or derive them via z.infer.
  *
  * The agent data vocabulary (content / tool-call / plan / permission / session) is tailored to the four
- * supported agents (claude-code / codex / opencode / pi) and the front-end, not to any wire protocol.
+ * supported agents (claude-code / codex / opencode / pi / grok-build) and the front-end, not to any wire protocol.
  */
 
 export * from './account';

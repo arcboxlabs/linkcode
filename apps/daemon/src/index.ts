@@ -2,7 +2,7 @@ import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { AssetManager } from '@linkcode/assets';
 import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo } from '@linkcode/schema';
-import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
+import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import type { TransportServer } from '@linkcode/transport/server';
 import { Hub } from '@linkcode/transport/server';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -104,7 +104,11 @@ async function main(): Promise<void> {
   if (gc.skipped.length > 0) {
     console.warn(`[linkcode/daemon] assets gc: skipped ${gc.skipped.join(', ')}`);
   }
-  agentRuntimeProber.setManagedResolver((kind) => assets.managedBinary(`agent:${kind}`));
+  // Probeable kinds include user-install-only agents (e.g. grok-build) that have no managed asset.
+  agentRuntimeProber.setManagedResolver((kind) => {
+    const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
+    return id.success ? assets.managedBinary(id.data) : undefined;
+  });
   // Probed once per boot (user-installed CLIs self-update, so results must not outlive a boot);
   // fills the adapters' spawn-path resolution and is served to clients on `agent-runtime.list`.
   // Deliberately not awaited (CODE-225): collect() spawns agent CLIs (`--version`, `auth status`)

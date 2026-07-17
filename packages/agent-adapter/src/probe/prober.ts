@@ -2,6 +2,7 @@ import type { AgentKind, AgentRuntimes } from '@linkcode/schema';
 import type { AgentCliProbe, DetectedAgentRuntime, ProbeableKind } from './base';
 import { ClaudeCodeProbe } from './claude-code';
 import { CodexProbe } from './codex';
+import { GrokBuildProbe } from './grok-build';
 
 export type DetectedAgentRuntimes = Partial<Record<AgentKind, DetectedAgentRuntime>>;
 
@@ -16,7 +17,11 @@ export class AgentRuntimeProber {
   private managedResolver: ((kind: ProbeableKind) => string | undefined) | undefined;
 
   constructor(
-    private readonly probes: AgentCliProbe[] = [new ClaudeCodeProbe(), new CodexProbe()],
+    private readonly probes: AgentCliProbe[] = [
+      new ClaudeCodeProbe(),
+      new CodexProbe(),
+      new GrokBuildProbe(),
+    ],
   ) {}
 
   /**

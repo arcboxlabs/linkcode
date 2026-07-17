@@ -70,3 +70,6 @@ devenv.local.yaml
 
 # Claude Code local state (plans, worktrees) — never tracked or linted
 .claude/worktrees/
+
+# Local skill research clones (e.g. Effect source for the effect-ts skill) — never tracked
+.repos/

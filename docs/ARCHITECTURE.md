@@ -23,7 +23,7 @@ layout, the key runtime contracts, and the questions still open.
 ## Overview
 
 LinkCode runs a local **host** on the user's machine that takes over any number of
-coding agents — Claude Code, Codex, OpenCode, and Pi — and normalizes their
+coding agents — Claude Code, Codex, OpenCode, Pi, and Grok Build — and normalizes their
 divergent native events into one shared data contract. A user connects to that
 single host from **desktop (PC)**, **webview (browser)**, or **mobile**, and gets
 the same conversation and the same controls everywhere. Desktop and webview connect
@@ -73,6 +73,7 @@ flowchart TB
         A2["codex"]
         A3["opencode"]
         A4["pi"]
+        A5["grok-build"]
       end
       HUB["Hub + transport server<br/>127.0.0.1 · Socket.IO / ws"]
       ENGINE --> ADAPTERS
@@ -140,7 +141,7 @@ A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable en
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `schema`        | zod schemas — the single data contract. Every cross-process / cross-end / post-abstraction message type derives from here (`z.infer`).         |
 | `transport`     | Communication layer ("how messages travel"): local / ws / Socket.IO implementations, the `Hub` fan-out, and the versioned wire protocol.       |
-| `agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi`) plus the abstraction layer that normalizes native events into `schema`.    |
+| `agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi` / `grok-build`) plus the abstraction layer that normalizes native events into `schema`.    |
 | `engine`        | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`.                                                           |
 | `client-core`   | Shared client data layer: `LinkCodeClient`, the conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`).           |
 | `common`        | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers).       |
@@ -170,7 +171,7 @@ cold (stopped) sessions, `session.resume` wakes one under the same id, and
 Transcripts are not copied — they stay in provider-local history and are read back
 through the history contract.
 
-**Agent adapters.** One adapter per agent — `claude-code`, `codex`, `opencode`, `pi` —
+**Agent adapters.** One adapter per agent — `claude-code`, `codex`, `opencode`, `pi`, `grok-build` —
 each hiding its SDK's differences behind the unified `AgentAdapter` interface. A shared
 `BaseAgentAdapter` factors out the common machinery (event fan-out, pending permission
 asks). Adapters advertise their `historyCapabilities` (list / read / resume), and any
@@ -233,7 +234,7 @@ shape in `packages/*`, elided for readability.
 ```ts
 // @linkcode/agent-adapter — one adapter per agent; native events → normalized AgentEvent
 interface AgentAdapter {
-  readonly kind: AgentKind;                                  // 'claude-code' | 'codex' | 'opencode' | 'pi'
+  readonly kind: AgentKind;                                  // 'claude-code' | 'codex' | 'opencode' | 'pi' | 'grok-build'
   readonly capabilities: AgentCapabilities;                  // { slashCommands, shellCommand }
   readonly historyCapabilities: AgentHistoryCapabilities;    // { list, read, resume }
   start(opts: StartOptions): Promise<void>;
