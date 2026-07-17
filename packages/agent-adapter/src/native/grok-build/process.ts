@@ -61,6 +61,7 @@ export function runGrokHeadless(opts: GrokHeadlessRunOptions): GrokHeadlessRun {
       GROK_DISABLE_AUTOUPDATER: '1',
       ...opts.env,
     },
+    windowsHide: true,
   });
 
   return attachGrokHeadlessChild(child, opts.onEvent);

@@ -273,6 +273,7 @@ function defaultSpawnServer(args: { port: number; cwd: string }): HistoryServerP
   return crossSpawn('opencode', ['serve', '--hostname=127.0.0.1', `--port=${args.port}`], {
     cwd: args.cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
 }
 

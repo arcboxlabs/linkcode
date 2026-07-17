@@ -31,7 +31,12 @@ export interface ShellCheckOptions {
  */
 export function runShellCheck(command: string, opts: ShellCheckOptions): Promise<ShellCheckResult> {
   return new Promise<ShellCheckResult>((resolve) => {
-    const child = spawn(command, { cwd: opts.cwd, env: process.env, shell: true });
+    const child = spawn(command, {
+      cwd: opts.cwd,
+      env: process.env,
+      shell: true,
+      windowsHide: true,
+    });
 
     let output = '';
     let timedOut = false;

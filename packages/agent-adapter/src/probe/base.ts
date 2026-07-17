@@ -134,7 +134,10 @@ export abstract class AgentCliProbe {
     if (!existsSync(file)) return undefined;
     try {
       // 10s: Windows Defender's first-touch scan can stall a binary's first exec past 5s.
-      const { stdout } = await execFileAsync(file, ['--version'], { timeout: 10_000 });
+      const { stdout } = await execFileAsync(file, ['--version'], {
+        timeout: 10_000,
+        windowsHide: true,
+      });
       const version = this.parseVersion(stdout);
       return version ? { path: file, version } : undefined;
     } catch {

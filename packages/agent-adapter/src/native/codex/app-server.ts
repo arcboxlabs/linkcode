@@ -136,6 +136,7 @@ export class CodexAppServer {
     const child = spawn(opts.binaryPath, ['app-server'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...processEnv, ...opts.env },
+      windowsHide: true,
     });
     const server = new CodexAppServer(child, opts);
     try {

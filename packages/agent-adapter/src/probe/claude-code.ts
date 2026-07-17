@@ -31,7 +31,10 @@ export class ClaudeCodeProbe extends AgentCliProbe {
   override async probeAuth(file: string): Promise<AgentAuthStatus | undefined> {
     let stdout = '';
     try {
-      ({ stdout } = await execFileAsync(file, ['auth', 'status', '--json'], { timeout: 5000 }));
+      ({ stdout } = await execFileAsync(file, ['auth', 'status', '--json'], {
+        timeout: 5000,
+        windowsHide: true,
+      }));
     } catch (err) {
       const captured = (err as { stdout?: unknown }).stdout;
       if (typeof captured === 'string') stdout = captured;
