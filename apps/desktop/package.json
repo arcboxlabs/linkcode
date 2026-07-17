@@ -16,6 +16,7 @@
     "package:devshell": "pnpm run stage:host-runtime && node scripts/build.mts --mode devshell && node scripts/package-app.mts --devshell",
     "e2e:notifications": "node e2e/notifications.e2e.mts",
     "e2e:file-tree": "node e2e/file-tree.e2e.mts",
+    "e2e:browser-tabs": "node e2e/browser-tabs.e2e.mts",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
   "author": "ArcBox Labs <team@arcbox.dev>",

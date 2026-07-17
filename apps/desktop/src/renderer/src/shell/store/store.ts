@@ -56,8 +56,8 @@ interface DesktopShellActions {
   openBrowserUrl: (url: string) => void;
   /** Open `url` in a NEW active browser tab and bring the section forward (guest popups). */
   openBrowserTab: (url: string) => void;
-  /** Open a new browser tab (empty unless a URL is given) and make it active. */
-  addRightBrowserTab: (url?: string) => void;
+  /** Open a new empty browser tab and make it active. */
+  addRightBrowserTab: () => void;
   closeRightBrowserTab: (id: string) => void;
   setActiveRightBrowserTab: (id: string) => void;
   /** Track a navigation that happened inside a tab's webview (keeps the address bar honest). */
@@ -321,8 +321,8 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
           }));
         },
 
-        addRightBrowserTab(url) {
-          const tab = createRightBrowserTab(url ?? null);
+        addRightBrowserTab() {
+          const tab = createRightBrowserTab();
           updateShellState((current) => ({
             ...current,
             rightPanel: {
