@@ -421,6 +421,62 @@ describe('mapCodexHistoryEvents', () => {
       'agent-message-chunk',
     ]);
   });
+
+  it('replays a compacted row as a compaction marker carrying the summary (CODE-142)', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'long conversation' }],
+      }),
+      {
+        type: 'compacted',
+        payload: { message: 'summary of earlier turns', window_id: 'w-2' },
+        timestamp: '2026-07-02T00:00:00Z',
+      },
+      responseItem({
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'continuing' }],
+      }),
+    ]);
+    expect(events.map((event) => event.event.type)).toEqual([
+      'user-message',
+      'compaction',
+      'agent-message-chunk',
+    ]);
+    expect(events[1]).toMatchObject({
+      itemId: 'w-2',
+      ts: Date.parse('2026-07-02T00:00:00Z'),
+      event: { type: 'compaction', compactionId: 'w-2', summary: 'summary of earlier turns' },
+    });
+  });
+
+  it('falls back to a positional compaction id when the compacted row has no window_id', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'compacted', payload: { message: 'old summary' } },
+    ]);
+    expect(events[0].event).toMatchObject({ type: 'compaction', summary: 'old summary' });
+    expect(events[0].itemId).toBe('compacted-0');
+  });
+
+  it('replays a remote-compaction row (empty message, encrypted summary) as a summary-less marker', () => {
+    // Real 0.144 ChatGPT-account shape: `message` is empty and the summary rides
+    // replacement_history as `{type:'compaction', encrypted_content}` — unrecoverable.
+    const events = mapCodexHistoryEvents(HID, [
+      {
+        type: 'compacted',
+        payload: {
+          message: '',
+          replacement_history: [{ type: 'compaction', encrypted_content: 'gAAAAA…' }],
+          window_id: 'w-9',
+          window_number: 1,
+        },
+      },
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toEqual({ type: 'compaction', compactionId: 'w-9' });
+  });
 });
 
 describe('applyPatchToolView', () => {
