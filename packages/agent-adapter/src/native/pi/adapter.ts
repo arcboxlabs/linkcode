@@ -3,7 +3,16 @@ import type {
   AgentSessionEvent,
   PromptOptions,
 } from '@earendil-works/pi-coding-agent';
-import type { ContentBlock, StartOptions, StopReason } from '@linkcode/schema';
+import type {
+  AgentHistoryCapabilities,
+  AgentHistoryListOptions,
+  AgentHistoryListResult,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
+  ContentBlock,
+  StartOptions,
+  StopReason,
+} from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -13,6 +22,7 @@ import {
   locationsFromToolInput,
   toolKindFromName,
 } from '../../util';
+import { importPiSdk, listPiHistory, readPiHistory } from './history';
 import { createPiUiContext } from './ui-bridge';
 
 /**
@@ -26,8 +36,22 @@ import { createPiUiContext } from './ui-bridge';
 export class PiAdapter extends BaseAgentAdapter {
   readonly kind = 'pi' as const;
 
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: true,
+    read: true,
+    resume: false,
+  };
+
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
+
+  override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
+    return listPiHistory(await importPiSdk(), opts);
+  }
+
+  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    return readPiHistory(await importPiSdk(), opts);
+  }
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const pi = await this.loadSdk(
