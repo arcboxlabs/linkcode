@@ -13,8 +13,10 @@ import {
   parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
   RIGHT_PANEL_MIN_SIZE,
+  revealSectionState,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
+  seedTerminalSection,
   serializeDesktopShellState,
 } from '@renderer/shell/store/model';
 import { describe, expect, it } from 'vitest';
@@ -118,6 +120,57 @@ describe('desktop shell state persistence', () => {
     expect(state.rightPanel.activeSection).toBe('terminal');
     expect(state.rightPanel.terminal.tabs).toHaveLength(3);
     expect(state.rightPanel.terminal.activeTabId).toBe(state.rightPanel.terminal.tabs[2].id);
+  });
+
+  it('seeds a first terminal tab when restoring an open panel showing an empty terminal section', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 2,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'terminal',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+
+    expect(state.rightPanel.terminal.tabs).toHaveLength(1);
+    expect(state.rightPanel.terminal.activeTabId).toBe(state.rightPanel.terminal.tabs[0].id);
+  });
+
+  it('does not seed a terminal tab when the restored panel is closed or on another section', () => {
+    const closed = parsePersistedDesktopShellState({
+      version: 2,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: false,
+        activeSection: 'terminal',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+    expect(closed.rightPanel.terminal.tabs).toEqual([]);
+
+    const otherSection = parsePersistedDesktopShellState({
+      version: 2,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'diff',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+    expect(otherSection.rightPanel.terminal.tabs).toEqual([]);
   });
 
   it('rejects an invalid right panel section and falls back to diff', () => {
@@ -267,6 +320,43 @@ describe('closeSectionTabState', () => {
     const terminal = { tabs: [a], activeTabId: a.id };
 
     expect(closeSectionTabState(terminal, 'missing')).toBe(terminal);
+  });
+});
+
+describe('seedTerminalSection', () => {
+  it('seeds and focuses a first tab when the section is empty', () => {
+    const seeded = seedTerminalSection({ tabs: [], activeTabId: null });
+
+    expect(seeded.tabs).toHaveLength(1);
+    expect(seeded.activeTabId).toBe(seeded.tabs[0].id);
+  });
+
+  it('is a no-op when tabs already exist', () => {
+    const a = createRightTerminalTab();
+    const terminal = { tabs: [a], activeTabId: a.id };
+
+    expect(seedTerminalSection(terminal)).toBe(terminal);
+  });
+});
+
+describe('revealSectionState', () => {
+  it('seeds the terminal section when it comes forward on an open panel', () => {
+    const panel = { ...createDefaultRightPanelState(), open: true };
+
+    const revealed = revealSectionState(panel, 'terminal', true);
+
+    expect(revealed.activeSection).toBe('terminal');
+    expect(revealed.terminal.tabs).toHaveLength(1);
+    expect(revealed.terminal.activeTabId).toBe(revealed.terminal.tabs[0].id);
+  });
+
+  it('leaves the terminal section untouched when revealing another section', () => {
+    const panel = { ...createDefaultRightPanelState(), open: true };
+
+    const revealed = revealSectionState(panel, 'files', true);
+
+    expect(revealed.activeSection).toBe('files');
+    expect(revealed.terminal.tabs).toEqual([]);
   });
 });
 
