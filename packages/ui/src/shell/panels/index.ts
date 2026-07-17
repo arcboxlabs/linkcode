@@ -13,6 +13,7 @@ export { PanelRegion } from './panel-region';
 export type { SectionPanelRegionProps, SectionPanelState } from './section-panel';
 export { SectionPanelRegion } from './section-panel';
 export type {
+  BrowserPanelSectionTab,
   PanelControl,
   PanelSection,
   PanelSectionTab,

@@ -12,17 +12,21 @@ import type {
 import {
   closeSectionTabState,
   createDefaultDesktopShellState,
+  createRightBrowserTab,
   createRightTerminalTab,
   createTab,
   DEFAULT_LAYOUT,
   DESKTOP_SHELL_STORAGE_KEY,
   getExpandedPanel,
   normalizeLayout,
+  openBrowserUrlState,
   openFileTabState,
   PersistedDesktopShellStateSchema,
   pushExpandedPanel,
   removeExpandedPanel,
+  seedBrowserSection,
   serializeDesktopShellState,
+  updateBrowserTabState,
 } from './model';
 
 /** The bottom panel's window type when it needs to seed a first tab. */
@@ -48,10 +52,15 @@ interface DesktopShellActions {
   openRightFileTab: (path: string) => void;
   closeRightFileTab: (id: string) => void;
   setActiveRightFileTab: (id: string) => void;
-  /** Navigate the in-app browser and bring the browser section forward. */
+  /** Navigate the active browser tab (or open a first one) and bring the browser section forward. */
   openBrowserUrl: (url: string) => void;
-  /** Track a navigation that happened inside the webview (keeps the address bar honest). */
-  setBrowserUrl: (url: string | null) => void;
+  /** Open a new browser tab (empty unless a URL is given) and make it active. */
+  addRightBrowserTab: (url?: string) => void;
+  closeRightBrowserTab: (id: string) => void;
+  setActiveRightBrowserTab: (id: string) => void;
+  /** Track a navigation that happened inside a tab's webview (keeps the address bar honest). */
+  setBrowserTabUrl: (tabId: string, url: string | null) => void;
+  setBrowserTabTitle: (tabId: string, title: string | null) => void;
   /** Attach a viewer tab for a terminal that already exists on the daemon (script logs). */
   openRightTerminalAttachTab: (terminalId: string) => void;
   resetSidebarSize: () => void;
@@ -201,14 +210,18 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
         setActiveSection(section) {
           updateShellState((current) => ({
             ...current,
-            rightPanel: { ...current.rightPanel, activeSection: section },
+            rightPanel: seedBrowserSection({ ...current.rightPanel, activeSection: section }),
           }));
         },
 
         openRightPanelSection(section) {
           updateShellState((current) => ({
             ...current,
-            rightPanel: { ...current.rightPanel, open: true, activeSection: section },
+            rightPanel: seedBrowserSection({
+              ...current.rightPanel,
+              open: true,
+              activeSection: section,
+            }),
           }));
         },
 
@@ -285,15 +298,62 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
               ...current.rightPanel,
               open: true,
               activeSection: 'browser',
-              browser: { url },
+              browser: openBrowserUrlState(current.rightPanel.browser, url),
             },
           }));
         },
 
-        setBrowserUrl(url) {
+        addRightBrowserTab(url) {
+          const tab = createRightBrowserTab(url ?? null);
           updateShellState((current) => ({
             ...current,
-            rightPanel: { ...current.rightPanel, browser: { url } },
+            rightPanel: {
+              ...current.rightPanel,
+              browser: {
+                tabs: [...current.rightPanel.browser.tabs, tab],
+                activeTabId: tab.id,
+              },
+            },
+          }));
+        },
+
+        closeRightBrowserTab(id) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              browser: closeSectionTabState(current.rightPanel.browser, id),
+            },
+          }));
+        },
+
+        setActiveRightBrowserTab(id) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              browser: { ...current.rightPanel.browser, activeTabId: id },
+            },
+          }));
+        },
+
+        setBrowserTabUrl(tabId, url) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              browser: updateBrowserTabState(current.rightPanel.browser, tabId, { url }),
+            },
+          }));
+        },
+
+        setBrowserTabTitle(tabId, title) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              browser: updateBrowserTabState(current.rightPanel.browser, tabId, { title }),
+            },
           }));
         },
 
@@ -331,7 +391,7 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
     },
     {
       name: DESKTOP_SHELL_STORAGE_KEY,
-      version: 2,
+      version: 3,
       schema: PersistedDesktopShellStateSchema,
       partialize: serializeDesktopShellState,
     },

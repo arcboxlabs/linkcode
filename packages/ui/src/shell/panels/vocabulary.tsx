@@ -21,6 +21,11 @@ export interface PanelSectionTab {
   id: string;
 }
 
+/** One browser sub-tab; a null title falls back to an index-derived label. */
+export interface BrowserPanelSectionTab extends PanelSectionTab {
+  title: string | null;
+}
+
 export interface PanelControl {
   id: string;
   label: string;

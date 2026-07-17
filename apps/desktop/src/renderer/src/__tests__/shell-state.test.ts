@@ -6,9 +6,11 @@ import {
   createDefaultDesktopShellState,
   createDefaultRightPanelState,
   createPanelState,
+  createRightBrowserTab,
   createRightFileTab,
   createRightTerminalTab,
   DEFAULT_LAYOUT,
+  openBrowserUrlState,
   openFileTabState,
   parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
@@ -16,7 +18,9 @@ import {
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
   serializeDesktopShellState,
+  updateBrowserTabState,
 } from '@renderer/shell/store/model';
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { describe, expect, it } from 'vitest';
 
 describe('desktop shell state persistence', () => {
@@ -54,9 +58,31 @@ describe('desktop shell state persistence', () => {
     expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
   });
 
-  it('clamps latest layout values', () => {
+  it('falls back to defaults for a stale v2 payload instead of migrating it', () => {
     const state = parsePersistedDesktopShellState({
       version: 2,
+      sidebarOpen: false,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'browser',
+        terminalTabCount: 1,
+        activeTerminalTabIndex: 0,
+        fileTabPaths: [],
+        activeFileTabIndex: 0,
+        browserUrl: 'https://example.com',
+      },
+      bottomPanel: { open: true, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+
+    expect(state.sidebarOpen).toBe(true);
+    expect(state.rightPanel).toEqual(createDefaultRightPanelState());
+  });
+
+  it('clamps latest layout values', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 3,
       sidebarOpen: true,
       layout: { sidebarW: 10, rightW: 10000, bottomH: 1 },
       expansionStack: [],
@@ -78,7 +104,7 @@ describe('desktop shell state persistence', () => {
 
   it('rejects invalid bottom tabs and falls back when none remain', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: {
         sidebarW: SIDEBAR_MAX_SIZE,
@@ -101,7 +127,7 @@ describe('desktop shell state persistence', () => {
 
   it('restores the right panel section and terminal tab count, clamping the active index', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -122,7 +148,7 @@ describe('desktop shell state persistence', () => {
 
   it('rejects an invalid right panel section and falls back to diff', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -140,7 +166,7 @@ describe('desktop shell state persistence', () => {
 
   it('caps a corrupted terminal tab count', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -158,7 +184,7 @@ describe('desktop shell state persistence', () => {
 
   it('filters expansion stack to open panels', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: ['right', 'bottom', 'bottom', 'invalid'],
@@ -176,12 +202,16 @@ describe('desktop shell state persistence', () => {
 
   it('round trips the latest serialized shape', () => {
     const fileTab = createRightFileTab('/w/PLAN.md');
+    const browserTab = createRightBrowserTab('http://web--app-1a2b3c.localhost:19523');
     const rightPanel: RightPanelState = {
       open: true,
       activeSection: 'browser',
       terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
       files: { tabs: [fileTab, createRightFileTab('/w/report.pdf')], activeTabId: fileTab.id },
-      browser: { url: 'http://web--app-1a2b3c.localhost:19523' },
+      browser: {
+        tabs: [createRightBrowserTab('https://example.com'), browserTab],
+        activeTabId: browserTab.id,
+      },
     };
     const source: DesktopShellState = {
       sidebarOpen: false,
@@ -206,25 +236,95 @@ describe('desktop shell state persistence', () => {
       '/w/report.pdf',
     ]);
     expect(parsed.rightPanel.files.activeTabId).toBe(parsed.rightPanel.files.tabs[0].id);
-    expect(parsed.rightPanel.browser.url).toBe('http://web--app-1a2b3c.localhost:19523');
+    expect(parsed.rightPanel.browser.tabs.map((tab) => tab.url)).toEqual([
+      'https://example.com',
+      'http://web--app-1a2b3c.localhost:19523',
+    ]);
+    expect(parsed.rightPanel.browser.activeTabId).toBe(parsed.rightPanel.browser.tabs[1].id);
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
   });
 
-  it('drops renderer-scoped blob URLs from persisted browser state', () => {
+  it('keeps blob-URL tabs but drops their renderer-scoped URLs', () => {
     const source = createDefaultDesktopShellState();
-    source.rightPanel.browser.url = 'blob:http://localhost:5173/expired-preview';
+    source.rightPanel.browser = {
+      tabs: [
+        createRightBrowserTab('blob:http://localhost:5173/expired-preview'),
+        createRightBrowserTab('https://example.com'),
+      ],
+      activeTabId: null,
+    };
 
     const serialized = serializeDesktopShellState(source);
-    expect(serialized.rightPanel.browserUrl).toBeNull();
+    expect(serialized.rightPanel.browserTabUrls).toEqual([null, 'https://example.com']);
 
-    const parsed = parsePersistedDesktopShellState({
-      ...serialized,
+    const parsed = parsePersistedDesktopShellState(serialized);
+    expect(parsed.rightPanel.browser.tabs.map((tab) => tab.url)).toEqual([
+      null,
+      'https://example.com',
+    ]);
+  });
+
+  it('caps restored browser tabs and clamps the active index', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 3,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
       rightPanel: {
-        ...serialized.rightPanel,
-        browserUrl: 'blob:http://localhost:5173/expired-preview',
+        open: true,
+        activeSection: 'browser',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+        fileTabPaths: [],
+        activeFileTabIndex: 0,
+        browserTabUrls: createFixedArray(30).map((i) => `https://example.com/${i}`),
+        activeBrowserTabIndex: 99,
       },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
     });
-    expect(parsed.rightPanel.browser.url).toBeNull();
+
+    expect(state.rightPanel.browser.tabs).toHaveLength(20);
+    expect(state.rightPanel.browser.activeTabId).toBe(state.rightPanel.browser.tabs[19].id);
+  });
+});
+
+describe('openBrowserUrlState', () => {
+  it('navigates the active tab and resets its stale title', () => {
+    const tab = { ...createRightBrowserTab('https://old.example'), title: 'Old page' };
+    const browser = { tabs: [tab], activeTabId: tab.id };
+
+    const next = openBrowserUrlState(browser, 'https://new.example');
+
+    expect(next.tabs).toHaveLength(1);
+    expect(next.tabs[0]).toMatchObject({ id: tab.id, url: 'https://new.example', title: null });
+  });
+
+  it('seeds a first tab when none is active', () => {
+    const next = openBrowserUrlState({ tabs: [], activeTabId: null }, 'https://example.com');
+
+    expect(next.tabs).toHaveLength(1);
+    expect(next.tabs[0].url).toBe('https://example.com');
+    expect(next.activeTabId).toBe(next.tabs[0].id);
+  });
+});
+
+describe('updateBrowserTabState', () => {
+  it('patches only the targeted tab', () => {
+    const a = createRightBrowserTab('https://a.example');
+    const b = createRightBrowserTab('https://b.example');
+    const browser = { tabs: [a, b], activeTabId: a.id };
+
+    const next = updateBrowserTabState(browser, b.id, { title: 'B' });
+
+    expect(next.tabs[0].title).toBeNull();
+    expect(next.tabs[1].title).toBe('B');
+  });
+
+  it('is a no-op for an unknown tab id', () => {
+    const a = createRightBrowserTab(null);
+    const browser = { tabs: [a], activeTabId: a.id };
+
+    expect(updateBrowserTabState(browser, 'missing', { title: 'X' })).toBe(browser);
   });
 });
 
