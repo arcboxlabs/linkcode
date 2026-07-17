@@ -1,4 +1,4 @@
-import type { AgentRuntimes, WireMessage, WirePayload } from '@linkcode/schema';
+import type { AgentRuntimes, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
@@ -13,10 +13,10 @@ function harness(
   agentRuntimesReady?: Promise<AgentRuntimes>,
 ) {
   const sent: WirePayload[] = [];
-  let handler: ((msg: WireMessage) => void) | null = null;
+  let handler: ((msg: ValidatedWireMessage) => void) | null = null;
   const transport: Transport = {
     connect: () => Promise.resolve(),
-    send(msg: WireMessage) {
+    send(msg: ValidatedWireMessage) {
       sent.push(msg.payload);
     },
     onMessage(cb) {
