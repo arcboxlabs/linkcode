@@ -174,6 +174,23 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // (the `providerID` half of `providerID/modelID`) so the spawned server authenticates and, for a
     // gateway account, targets that provider.
     const cred = readAgentCredential(opts.config);
+    // A credential-carrying resume without an explicit model would otherwise spawn WITHOUT the
+    // injection the resumed turns need: the injection below is spawn-time-only and keyed by the
+    // model's provider, while the resumed session's recorded model is normally adopted only
+    // after the spawn. Pre-read it off the shared history server so the injection covers the
+    // provider the next turns will actually target.
+    if (this.resumeFrom && !opts.model && (cred.apiKey ?? cred.authToken ?? cred.baseUrl)) {
+      const sessionID = this.resumeFrom;
+      try {
+        const got = await this.withHistoryClient((client) => client.session.get({ sessionID }));
+        if (got.error === undefined && got.data?.model) {
+          opts.model = `${got.data.model.providerID}/${got.data.model.id}`;
+        }
+      } catch {
+        // Best-effort: an unreadable record falls back to spawning without injection — the
+        // pre-adoption behavior for this path.
+      }
+    }
     const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
     const options: { apiKey?: string; baseURL?: string } = {};
     const key = cred.apiKey ?? cred.authToken;
