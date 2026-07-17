@@ -913,8 +913,16 @@ export const zhCN = {
       title: '设置',
       signIn: '登录 LinkCode Cloud',
       manageHosts: '管理 host',
+      terminalAppearance: '终端外观',
       about: '关于',
       back: '返回',
+    },
+    terminalAppearance: {
+      title: '终端外观',
+      fontSize: '字号',
+      colorScheme: '配色方案',
+      colorSchemeAuto: '自动',
+      colorSchemeAutoHint: 'Ghostty 默认配色',
     },
   },
   dataTable: {

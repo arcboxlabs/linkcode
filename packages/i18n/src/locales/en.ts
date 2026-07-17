@@ -934,8 +934,16 @@ export const en = {
       title: 'Settings',
       signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
+      terminalAppearance: 'Terminal appearance',
       about: 'About',
       back: 'Back',
+    },
+    terminalAppearance: {
+      title: 'Terminal appearance',
+      fontSize: 'Font size',
+      colorScheme: 'Color scheme',
+      colorSchemeAuto: 'Auto',
+      colorSchemeAutoHint: "Ghostty's default colors",
     },
   },
   dataTable: {

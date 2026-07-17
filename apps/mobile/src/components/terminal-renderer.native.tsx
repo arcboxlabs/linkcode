@@ -13,6 +13,8 @@ import type { TerminalRendererProps } from './terminal-renderer.types';
 export default function TerminalRenderer({
   ref,
   canControl,
+  fontSize,
+  theme,
   onInput,
   onResize,
   onReady,
@@ -68,6 +70,8 @@ export default function TerminalRenderer({
     <TerminalView
       ref={terminalRef}
       style={{ flex: 1 }}
+      fontSize={fontSize}
+      theme={theme}
       onInput={({ nativeEvent }) => {
         if (canControlRef.current) onInputRef.current(nativeEvent.text);
       }}
