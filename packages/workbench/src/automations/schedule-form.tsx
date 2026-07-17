@@ -127,7 +127,7 @@ export function ScheduleForm(): React.ReactNode {
           name="kind"
           render={({ field }) => (
             <RadioGroup
-              className="flex flex-wrap gap-2"
+              className="flex flex-row flex-wrap gap-2"
               value={field.value}
               onValueChange={field.onChange}
             >
@@ -214,7 +214,7 @@ export function ScheduleForm(): React.ReactNode {
           name="misfire"
           render={({ field }) => (
             <RadioGroup
-              className="flex flex-wrap gap-2"
+              className="flex flex-row flex-wrap gap-2"
               value={field.value}
               onValueChange={field.onChange}
             >

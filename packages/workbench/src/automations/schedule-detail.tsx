@@ -203,7 +203,9 @@ function Fact({ label, value }: { label: string; value: string }): React.ReactNo
   return (
     <div className="flex flex-col">
       <dt className="text-muted-foreground text-xs">{label}</dt>
-      <dd className="truncate">{value}</dd>
+      <dd className="truncate" title={value}>
+        {value}
+      </dd>
     </div>
   );
 }

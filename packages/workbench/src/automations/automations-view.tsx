@@ -125,7 +125,7 @@ function SchedulePane({
     );
   }
 
-  const activeId = selectedScheduleId ?? items[0]?.scheduleId ?? null;
+  const activeId = selectedScheduleId ?? items[0].scheduleId;
   return (
     <div className="flex min-h-0 flex-1 gap-6 py-4">
       <ul className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto">
@@ -140,7 +140,7 @@ function SchedulePane({
         ))}
       </ul>
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto pb-2">
-        {activeId ? <ScheduleDetail scheduleId={activeId} onOpenSession={onOpenSession} /> : null}
+        <ScheduleDetail scheduleId={activeId} onOpenSession={onOpenSession} />
       </div>
     </div>
   );
@@ -187,7 +187,7 @@ function LoopPane({
     );
   }
 
-  const activeId = selectedLoopId ?? items[0]?.loopId ?? null;
+  const activeId = selectedLoopId ?? items[0].loopId;
   return (
     <div className="flex min-h-0 flex-1 gap-6 py-4">
       <ul className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto">
@@ -202,7 +202,7 @@ function LoopPane({
         ))}
       </ul>
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto pb-2">
-        {activeId ? <LoopDetail loopId={activeId} onOpenSession={onOpenSession} /> : null}
+        <LoopDetail loopId={activeId} onOpenSession={onOpenSession} />
       </div>
     </div>
   );
