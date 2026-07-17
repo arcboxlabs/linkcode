@@ -1,4 +1,15 @@
-import { $createTextNode, $getRoot, $isElementNode, $isTextNode, $nodesOfType } from 'lexical';
+import { mergeRegister } from '@lexical/utils';
+import type { LexicalEditor } from 'lexical';
+import {
+  $createTextNode,
+  $getRoot,
+  $hasUpdateTag,
+  $isElementNode,
+  $isTextNode,
+  $nodesOfType,
+  HISTORIC_TAG,
+  TextNode,
+} from 'lexical';
 import { $createCommandNode, $createShellNode, CommandNode, ShellNode } from './nodes';
 
 /** `/name` followed by a boundary the user already typed. */
@@ -53,4 +64,21 @@ export function $normalizeLeadingDirectives(
   const tokenLength = name.length + 1;
   const token = tokenLength < text.length ? first.splitText(tokenLength)[0] : first;
   token.replace($createCommandNode(name));
+}
+
+/** Register the directive tokenizer as node transforms (text edits promote, displaced chips
+ * demote). Skips IME composition and history replays so undo is never immediately re-tokenized. */
+export function registerDirectiveTokenizer(
+  editor: LexicalEditor,
+  getSuppressed: () => string | null,
+): () => void {
+  const run = (): void => {
+    if (editor.isComposing() || $hasUpdateTag(HISTORIC_TAG)) return;
+    $normalizeLeadingDirectives(getSuppressed());
+  };
+  return mergeRegister(
+    editor.registerNodeTransform(TextNode, run),
+    editor.registerNodeTransform(CommandNode, run),
+    editor.registerNodeTransform(ShellNode, run),
+  );
 }
