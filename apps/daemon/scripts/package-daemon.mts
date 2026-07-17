@@ -42,6 +42,25 @@ const PRUNE = [
   ['@openai', 'codex-win32-'],
 ] as const;
 
+/**
+ * The pi npm closure is a managed download too (CODE-219): the daemon installs the whole tree
+ * from the lockfile-generated manifest on first use. Exact scope/package dirs, pi-only in the
+ * production closure (verified via `pnpm why --prod`, 2026-07-17); pi's nested @anthropic-ai/sdk
+ * copy lives under @earendil-works/ and goes with it.
+ */
+const PRUNE_PI_CLOSURE = [
+  '@earendil-works',
+  '@mariozechner',
+  '@mistralai',
+  '@google/genai',
+  '@aws-sdk',
+  '@aws-crypto',
+  '@smithy',
+  'openai',
+  'typebox',
+  'web-streams-polyfill',
+] as const;
+
 /** Run a command, inheriting stdio, throwing on failure — cross-spawn for a Windows-safe pnpm. */
 function run(command: string, commandArgs: string[], cwd: string): void {
   const result = crossSpawn.sync(command, commandArgs, { cwd, stdio: 'inherit' });
@@ -66,6 +85,10 @@ for (const [scope, prefix] of PRUNE) {
   for (const entry of readdirSync(scopeDir)) {
     if (entry.startsWith(prefix)) rmSync(join(scopeDir, entry), { recursive: true, force: true });
   }
+}
+
+for (const pkg of PRUNE_PI_CLOSURE) {
+  rmSync(join(outDir, 'node_modules', pkg), { recursive: true, force: true });
 }
 
 const bytes = dirSize(outDir);
