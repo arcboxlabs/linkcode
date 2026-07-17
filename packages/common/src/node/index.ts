@@ -11,6 +11,7 @@ import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime-const
  */
 
 export { executableSearchLocations } from './executable-locations';
+export * from './windows-path';
 
 /** Parse a JSON file, or `null` when it is missing, unreadable, or malformed. */
 export function readJsonFileSync(path: string): unknown {
