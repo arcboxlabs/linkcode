@@ -178,6 +178,7 @@ export function ConversationSurface({
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
           agentCommands={conversation.availableCommands}
+          agentModels={conversation.availableModels}
           agentCapabilities={conversation.capabilities}
           onSend={onSendPrompt}
           onInvokeCommand={onInvokeCommand}

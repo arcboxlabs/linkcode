@@ -1,5 +1,6 @@
 import { realpath } from 'node:fs/promises';
 import { parse, sep } from 'node:path';
+import { allocatePort } from '@linkcode/common/node';
 import type {
   AgentCommand,
   AgentHistoryCapabilities,
@@ -8,6 +9,7 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  AgentModelOption,
   ApprovalPolicy,
   ContentBlock,
   PermissionOption,
@@ -172,6 +174,23 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // (the `providerID` half of `providerID/modelID`) so the spawned server authenticates and, for a
     // gateway account, targets that provider.
     const cred = readAgentCredential(opts.config);
+    // A credential-carrying resume without an explicit model would otherwise spawn WITHOUT the
+    // injection the resumed turns need: the injection below is spawn-time-only and keyed by the
+    // model's provider, while the resumed session's recorded model is normally adopted only
+    // after the spawn. Pre-read it off the shared history server so the injection covers the
+    // provider the next turns will actually target.
+    if (this.resumeFrom && !opts.model && (cred.apiKey ?? cred.authToken ?? cred.baseUrl)) {
+      const sessionID = this.resumeFrom;
+      try {
+        const got = await this.withHistoryClient((client) => client.session.get({ sessionID }));
+        if (got.error === undefined && got.data?.model) {
+          opts.model = `${got.data.model.providerID}/${got.data.model.id}`;
+        }
+      } catch {
+        // Best-effort: an unreadable record falls back to spawning without injection — the
+        // pre-adoption behavior for this path.
+      }
+    }
     const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
     const options: { apiKey?: string; baseURL?: string } = {};
     const key = cred.apiKey ?? cred.authToken;
@@ -185,7 +204,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // set-model can refuse a cross-provider switch the running server holds no credentials for.
     this.credentialProviderId = serverOptions ? (providerID ?? null) : null;
     try {
-      started = await mod.createOpencode(serverOptions);
+      // The SDK's server port is a FIXED default of 4096 (opencode's own `--port=0` does not
+      // auto-allocate either), and this adapter spawns one server per session — without an
+      // explicitly allocated free port, the second concurrent session's server dies at bind
+      // (exit 1, ServeError) and the session never starts. allocatePort is check-then-use (the
+      // port can be stolen between the probe and the child's bind), so one failed spawn retries
+      // with a fresh port — the same discipline as the shared history server.
+      try {
+        started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
+      } catch {
+        started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
+      }
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);
@@ -222,11 +251,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.sessionId = id;
       this.directory = opts.cwd;
     }
-    // Both catalog fetches are best-effort: neither has an SSE change event (poll-only), and a
-    // failed list must not fail session start — absence is itself the capability signal (no
-    // `available-commands-update` / approval-policy state ever fires for this session). They are
-    // independent reads of the same local server, so they run concurrently.
-    await Promise.all([this.fetchCommandCatalog(), this.fetchAgentCatalog(resumedAgent)]);
+    // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
+    // list must not fail session start — absence is itself the capability signal (no command /
+    // model / approval-policy state ever fires for this session). They are independent reads of
+    // the same local server, so they run concurrently.
+    await Promise.all([
+      this.fetchCommandCatalog(),
+      this.fetchAgentCatalog(resumedAgent),
+      this.fetchModelCatalog(),
+    ]);
     // Reflect the model the session will prompt with (configured, or adopted from the resumed
     // session above) so the client chip is right before the first turn.
     if (opts.model) this.emitModel(opts.model);
@@ -249,6 +282,37 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           ),
         );
       }
+    } catch {
+      // Non-fatal — see onStart.
+    }
+  }
+
+  /** Best-effort model catalog fetch — swallows every failure (see `onStart`). Advertises what a
+   * `set-model` can actually reach: every connected (or key-less `api`-source) provider's models,
+   * narrowed to the credential-injected provider when one is in play — the cross-provider guard
+   * in `onSetModel` would reject everything else anyway. */
+  private async fetchModelCatalog(): Promise<void> {
+    if (!this.client) return;
+    try {
+      const listed = await this.client.provider.list({ directory: this.directory });
+      if (listed.error !== undefined) return;
+      const connected = new Set(listed.data.connected);
+      const models: AgentModelOption[] = [];
+      for (const provider of listed.data.all) {
+        if (this.credentialProviderId) {
+          if (provider.id !== this.credentialProviderId) continue;
+        } else if (!connected.has(provider.id) && provider.source !== 'api') {
+          continue;
+        }
+        for (const [modelId, model] of Object.entries(provider.models)) {
+          models.push({
+            id: `${provider.id}/${modelId}`,
+            label: model.name || modelId,
+            description: provider.name,
+          });
+        }
+      }
+      if (models.length > 0) this.emitModels(models);
     } catch {
       // Non-fatal — see onStart.
     }
