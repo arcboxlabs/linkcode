@@ -88,13 +88,26 @@ const NATIVE_BINDING = 'node_modules/better-sqlite3/build/Release/better_sqlite3
 const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.json'];
 /**
  * Agent CLI platform packages must NOT ship (CODE-114); the daemon provisions them at runtime.
- * Prefixes match only the platform-suffixed binary packages — the JS entry packages stay in the asar.
+ * Prefixes match only the platform-suffixed binary packages — the JS entry packages stay in the
+ * asar. The pi npm closure (CODE-219) is a managed download too: these prefixes are pi-only in
+ * the production closure (electron-builder.yml carries the same list; the root @anthropic-ai/sdk
+ * and other shared deps deliberately stay).
  */
 const EXCLUDED_MODULE_PREFIXES = [
   'node_modules/@anthropic-ai/claude-agent-sdk-',
   'node_modules/@openai/codex-darwin-',
   'node_modules/@openai/codex-linux-',
   'node_modules/@openai/codex-win32-',
+  'node_modules/@earendil-works/',
+  'node_modules/@mariozechner/',
+  'node_modules/@mistralai/',
+  'node_modules/@google/genai/',
+  'node_modules/@aws-sdk/',
+  'node_modules/@aws-crypto/',
+  'node_modules/@smithy/',
+  'node_modules/openai/',
+  'node_modules/typebox/',
+  'node_modules/web-streams-polyfill/',
 ];
 /**
  * Ceiling per shipped artifact: normal artifacts sit at ~120–165 MB (CODE-114); one reintroduced

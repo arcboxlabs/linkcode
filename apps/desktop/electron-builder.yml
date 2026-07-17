@@ -53,6 +53,21 @@ files:
   - '!node_modules/@openai/codex-darwin-*/**'
   - '!node_modules/@openai/codex-linux-*/**'
   - '!node_modules/@openai/codex-win32-*/**'
+  # The pi npm closure is a managed download too (CODE-219): the daemon installs the whole tree
+  # from the lockfile-generated manifest (@linkcode/assets) on first use. These scopes/packages
+  # are pi-only in the production closure (verified via `pnpm why --prod`, 2026-07-17); shared
+  # deps (zod, chalk, undici, @modelcontextprotocol/sdk, the root @anthropic-ai/sdk) stay — pi's
+  # own nested @anthropic-ai/sdk copy lives under @earendil-works/ and goes with it.
+  - '!node_modules/@earendil-works/**'
+  - '!node_modules/@mariozechner/**'
+  - '!node_modules/@mistralai/**'
+  - '!node_modules/@google/genai/**'
+  - '!node_modules/@aws-sdk/**'
+  - '!node_modules/@aws-crypto/**'
+  - '!node_modules/@smithy/**'
+  - '!node_modules/openai/**'
+  - '!node_modules/typebox/**'
+  - '!node_modules/web-streams-polyfill/**'
   # Dead weight in the deploy closure (CODE-215). @linkcode/* are raw-TS workspace sources —
   # main/preload/daemon all bundle them, and migrations run from out/drizzle, so nothing resolves
   # them from node_modules at runtime. better-sqlite3/deps is the sqlite3 C amalgamation:
