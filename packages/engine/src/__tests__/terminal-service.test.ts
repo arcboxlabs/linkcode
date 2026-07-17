@@ -53,10 +53,12 @@ class FakePtyProcess implements PtyProcess {
 class FakePtyBackend implements PtyBackend {
   shutdownCalled = false;
   readonly opened: FakePtyProcess[] = [];
+  readonly openOpts: PtyOpenOptions[] = [];
 
-  open(_terminalId: string, _opts: PtyOpenOptions): Promise<PtyProcess> {
+  open(_terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
     const process = new FakePtyProcess();
     this.opened.push(process);
+    this.openOpts.push(opts);
     return Promise.resolve(process);
   }
   shutdown(): void {
@@ -390,6 +392,89 @@ describe('TerminalService', () => {
     service.input(id, desktop, 'x');
     await tick();
     expect(sent.filter((p) => p.kind === 'terminal.output')).toHaveLength(0);
+  });
+
+  it('spawns with an initial PTY read credit and returns acked bytes as grants', async () => {
+    const { transport, sent } = recordingTransport();
+    const backend = new FakePtyBackend();
+    const service = new TerminalService(backend, transport);
+
+    await service.open('req-open', opts, desktop);
+    const id = openedId(sent, 'req-open');
+    expect(backend.openOpts[0].credit).toBe(1024 * 1024);
+
+    // A flood past the client window (512K chars) is held at the first oversized event.
+    backend.opened[0].emitData('x'.repeat(600 * 1024));
+    await tick();
+    backend.opened[0].emitData('held-tail');
+    await tick();
+    const outputs = () => sent.filter((p) => p.kind === 'terminal.output');
+    expect(outputs()).toHaveLength(1);
+    expect(backend.opened[0].grants).toEqual([]);
+
+    // The ack frees the window: the tail flows and the consumed bytes come back as credit.
+    service.ack(id, desktop, 600 * 1024);
+    expect(outputs()).toHaveLength(2);
+    expect(outputs()[1]).toMatchObject({ data: 'held-tail' });
+    expect(backend.opened[0].grants).toEqual([600 * 1024]);
+  });
+
+  it('holds terminal.exit until the ack-clamped drain delivers the final output', async () => {
+    const { transport, sent } = recordingTransport();
+    const backend = new FakePtyBackend();
+    const service = new TerminalService(backend, transport);
+
+    await service.open('req-open', opts, desktop);
+    const id = openedId(sent, 'req-open');
+    backend.opened[0].emitData('x'.repeat(600 * 1024));
+    await tick();
+    backend.opened[0].emitData('final-tail');
+    backend.opened[0].emitExit(0);
+
+    // The tail is still journal-held by the window, so the exit must not have been announced.
+    expect(sent.some((p) => p.kind === 'terminal.exit')).toBe(false);
+
+    service.ack(id, desktop, 600 * 1024);
+    const kinds = sent.map((p) => p.kind);
+    const tailIndex = sent.findIndex(
+      (p) => p.kind === 'terminal.output' && p.data === 'final-tail',
+    );
+    expect(tailIndex).toBeGreaterThan(-1);
+    expect(kinds.indexOf('terminal.exit')).toBeGreaterThan(tailIndex);
+  });
+
+  it('lets a detach finish a windowed post-exit drain', async () => {
+    const { transport, sent } = recordingTransport();
+    const backend = new FakePtyBackend();
+    const service = new TerminalService(backend, transport);
+
+    await service.open('req-open', opts, desktop);
+    const id = openedId(sent, 'req-open');
+    backend.opened[0].emitData('x'.repeat(600 * 1024));
+    await tick();
+    backend.opened[0].emitData('final-tail');
+    backend.opened[0].emitExit(0);
+    expect(sent.some((p) => p.kind === 'terminal.exit')).toBe(false);
+
+    // Connection loss becomes a detach; with no attachments left the drain free-runs to exit.
+    service.detach(id, desktop);
+    expect(sent.some((p) => p.kind === 'terminal.output' && p.data === 'final-tail')).toBe(true);
+    expect(sent.some((p) => p.kind === 'terminal.exit')).toBe(true);
+  });
+
+  it('managed terminals free-run: output flows and credits return without any client ack', async () => {
+    const { transport, sent } = recordingTransport();
+    const backend = new FakePtyBackend();
+    const service = new TerminalService(backend, transport);
+
+    await service.openManaged(opts);
+    backend.opened[0].emitData('x'.repeat(600 * 1024));
+    await tick();
+    backend.opened[0].emitData('more');
+    await tick();
+
+    expect(sent.filter((p) => p.kind === 'terminal.output')).toHaveLength(2);
+    expect(backend.opened[0].grants).toEqual([600 * 1024, 4]);
   });
 
   it('killBySession reaps only terminals owned by that session', async () => {

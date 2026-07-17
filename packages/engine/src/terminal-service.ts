@@ -13,6 +13,7 @@ import { createHeadlessTerminal } from 'restty/headless';
 import type { ResttyWasm } from 'restty/internal';
 import { loadResttyWasm } from 'restty/internal';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from './pty-backend';
+import { TERMINAL_SIDECAR_WINDOW_BYTES, TerminalFlow } from './terminal-flow';
 import { TerminalReplayJournal } from './terminal-replay';
 
 interface TerminalRecord {
@@ -24,6 +25,7 @@ interface TerminalEntry extends TerminalRecord {
   process: PtyProcess;
   headless: ResttyHeadlessTerminal;
   attachments: Map<string, string>;
+  flow: TerminalFlow;
   /** Flush PTY bytes queued for microtask coalescing before any ordered non-write event. */
   flushOutput: () => void;
   reapTimer?: ReturnType<typeof setTimeout>;
@@ -38,6 +40,11 @@ interface TerminalEntry extends TerminalRecord {
 
 interface ExitedTerminalEntry extends TerminalRecord {
   exitCode: number | null;
+  /** Live flow + attachments carry over so a windowed drain can finish after the PTY exits. */
+  flow: TerminalFlow;
+  attachments: Map<string, string>;
+  /** Announce `terminal.exit` once the drain (or the retention backstop, force=true) allows it. */
+  finishExit: (force: boolean) => void;
   expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -54,7 +61,9 @@ const EXITED_TERMINAL_RETENTION_MS = 60000;
 /**
  * Owns the host's live terminals and short-lived exited replay tombstones, bridging a
  * {@link PtyBackend} to the `terminal.*` wire. Output is coalesced per microtask so a full-speed
- * PTY doesn't emit one Zod-validated wire message per tiny write.
+ * PTY doesn't emit one Zod-validated wire message per tiny write, journaled, and delivered through
+ * a per-terminal {@link TerminalFlow} window clamped by client `terminal.ack`s — consumed bytes
+ * flow back to the PTY as read credit, so a flooding process blocks in the kernel (CODE-231).
  */
 export class TerminalService {
   private readonly terminals = new Map<string, TerminalEntry>();
@@ -81,12 +90,15 @@ export class TerminalService {
     const record = entry ?? this.exitedTerminals.get(spawned.terminalId);
     if (!record) throw new Error(`terminal ${spawned.terminalId} disappeared while opening`);
     try {
+      // A live terminal replies with the flow snapshot (baseline for this attachment's acks); a
+      // terminal that already exited mid-open has no live stream, so it gets the full journal.
+      const attach = entry ? entry.flow.attach(attachment.attachmentId) : undefined;
       this.send({
         kind: 'terminal.opened',
         replyTo: clientReqId,
         terminal: this.metadata(record),
-        replay: record.replay.snapshot(),
-        cutoffSeq: record.replay.cutoffSeq,
+        replay: attach?.replay ?? record.replay.snapshot(),
+        cutoffSeq: attach?.cutoffSeq ?? record.replay.cutoffSeq,
         truncated: record.replay.truncated,
       });
       if (entry) this.sendController(entry);
@@ -135,19 +147,51 @@ export class TerminalService {
       mode === 'control' && entry.metadata.controllerAttachmentId !== attachment.attachmentId;
     if (mode === 'control') entry.metadata.controllerAttachmentId = attachment.attachmentId;
 
-    this.sendAttached(clientReqId, entry);
+    const flowAttach = entry.flow.attach(attachment.attachmentId);
+    this.send({
+      kind: 'terminal.attached',
+      replyTo: clientReqId,
+      terminal: this.metadata(entry),
+      replay: flowAttach.replay,
+      cutoffSeq: flowAttach.cutoffSeq,
+      truncated: entry.replay.truncated,
+    });
     if (controllerChanged) this.sendController(entry);
   }
 
   detach(terminalId: string, attachment: TerminalAttachmentCredentials): void {
     const entry = this.terminals.get(terminalId);
-    if (!entry || !this.hasAttachment(entry, attachment)) return;
-    entry.attachments.delete(attachment.attachmentId);
-    if (entry.metadata.controllerAttachmentId === attachment.attachmentId) {
-      entry.metadata.controllerAttachmentId = null;
-      this.sendController(entry);
+    if (entry) {
+      if (!this.hasAttachment(entry, attachment)) return;
+      entry.attachments.delete(attachment.attachmentId);
+      entry.flow.detach(attachment.attachmentId);
+      if (entry.metadata.controllerAttachmentId === attachment.attachmentId) {
+        entry.metadata.controllerAttachmentId = null;
+        this.sendController(entry);
+      }
+      this.scheduleReap(entry);
+      return;
     }
-    this.scheduleReap(entry);
+    // A detach during a windowed post-exit drain unblocks it (connection loss becomes detach).
+    const exited = this.exitedTerminals.get(terminalId);
+    if (!exited || !this.hasAttachment(exited, attachment)) return;
+    exited.attachments.delete(attachment.attachmentId);
+    exited.flow.detach(attachment.attachmentId);
+    exited.finishExit(false);
+  }
+
+  /** Apply a client's cumulative output ack: frees its delivery window, pumps held output, and
+   * returns consumed journal bytes to the PTY as read credit. */
+  ack(terminalId: string, attachment: TerminalAttachmentCredentials, acked: number): void {
+    const entry = this.terminals.get(terminalId);
+    if (entry) {
+      if (this.hasAttachment(entry, attachment)) entry.flow.ack(attachment.attachmentId, acked);
+      return;
+    }
+    const exited = this.exitedTerminals.get(terminalId);
+    if (!exited || !this.hasAttachment(exited, attachment)) return;
+    exited.flow.ack(attachment.attachmentId, acked);
+    exited.finishExit(false);
   }
 
   /** Spawn an engine-owned terminal (e.g. a workspace script): no `terminal.opened` reply, exempt
@@ -181,7 +225,10 @@ export class TerminalService {
     });
     let process: PtyProcess;
     try {
-      process = await this.backend.open(terminalId, opts);
+      process = await this.backend.open(terminalId, {
+        ...opts,
+        credit: TERMINAL_SIDECAR_WINDOW_BYTES,
+      });
     } catch (error) {
       headless.dispose();
       throw error;
@@ -201,9 +248,27 @@ export class TerminalService {
     }
     const replay = new TerminalReplayJournal();
     replay.appendResize(opts.cols, opts.rows);
+    const flow = new TerminalFlow(replay, {
+      deliver: (event) => {
+        if (event.type === 'write') {
+          this.send({ kind: 'terminal.output', terminalId, seq: event.seq, data: event.data });
+        } else {
+          this.send({
+            kind: 'terminal.resized',
+            terminalId,
+            seq: event.seq,
+            cols: event.cols,
+            rows: event.rows,
+          });
+        }
+      },
+      // Post-exit grants are harmless: the sidecar ignores credits for an unknown terminal.
+      grantRead: (bytes) => process.grantRead(bytes),
+    });
     const entry: TerminalEntry = {
       process,
       headless,
+      flow,
       metadata: {
         terminalId,
         cols: opts.cols,
@@ -233,8 +298,8 @@ export class TerminalService {
       if (pending.length === 0 || entry.disposed) return;
       const data = pending;
       pending = '';
-      const event = entry.replay.appendWrite(data);
-      this.send({ kind: 'terminal.output', terminalId, seq: event.seq, data });
+      entry.replay.appendWrite(data);
+      flow.pump();
     };
     entry.flushOutput = flush;
 
@@ -251,20 +316,24 @@ export class TerminalService {
       }
     });
     let released = false;
-    let pendingExit: { exitCode: number | null } | undefined;
     let exitAnnounced = false;
-    const announceExit = (exitCode: number | null): void => {
-      if (exitAnnounced) return;
+    let exitResult: { exitCode: number | null } | undefined;
+    // Exit is announced only after the open replied (`released`) AND the cursor drained the
+    // journal, preserving the output-before-exit wire ordering under a clamped window. Acks and
+    // detaches on the exited record re-invoke this; the retention expiry forces it.
+    const finishExit = (force: boolean): void => {
+      if (exitAnnounced || !exitResult || !released) return;
+      if (!force && !flow.drained) return;
       exitAnnounced = true;
-      this.send({ kind: 'terminal.exit', terminalId, exitCode });
-      owner.onExit?.(exitCode);
+      this.send({ kind: 'terminal.exit', terminalId, exitCode: exitResult.exitCode });
+      owner.onExit?.(exitResult.exitCode);
     };
     const unsubExit = process.onExit((exitCode) => {
       if (entry.disposed) return;
       flush();
-      this.retainExited(entry, exitCode);
-      if (released) announceExit(exitCode);
-      else pendingExit = { exitCode };
+      exitResult = { exitCode };
+      this.retainExited(entry, exitCode, finishExit);
+      finishExit(false);
     });
     if (entry.disposed) unsubExit();
     else entry.unsubExit = unsubExit;
@@ -272,9 +341,7 @@ export class TerminalService {
       terminalId,
       releaseExit() {
         released = true;
-        if (!pendingExit) return;
-        announceExit(pendingExit.exitCode);
-        pendingExit = undefined;
+        finishExit(false);
       },
     };
   }
@@ -296,8 +363,9 @@ export class TerminalService {
     entry.metadata.cols = cols;
     entry.metadata.rows = rows;
     entry.headless.resize(cols, rows);
-    const event = entry.replay.appendResize(cols, rows);
-    this.send({ kind: 'terminal.resized', terminalId, seq: event.seq, cols, rows });
+    entry.replay.appendResize(cols, rows);
+    // The resized broadcast rides the delivery cursor so viewers see it ordered with output.
+    entry.flow.pump();
     entry.process.resize(cols, rows);
   }
 
@@ -337,7 +405,11 @@ export class TerminalService {
     this.backend.shutdown();
   }
 
-  private retainExited(entry: TerminalEntry, exitCode: number | null): void {
+  private retainExited(
+    entry: TerminalEntry,
+    exitCode: number | null,
+    finishExit: (force: boolean) => void,
+  ): void {
     const terminalId = entry.metadata.terminalId;
     entry.disposed = true;
     this.cancelReap(entry);
@@ -348,11 +420,16 @@ export class TerminalService {
     const exited: ExitedTerminalEntry = {
       metadata: { ...entry.metadata, controllerAttachmentId: null },
       replay: entry.replay,
+      flow: entry.flow,
+      attachments: entry.attachments,
+      finishExit,
       exitCode,
     };
     exited.expiryTimer = setTimeout(() => {
       exited.expiryTimer = undefined;
       if (this.exitedTerminals.get(terminalId) === exited) {
+        // Retention over: tell any straggling viewer it exited even if its drain never finished.
+        exited.finishExit(true);
         this.exitedTerminals.delete(terminalId);
       }
     }, EXITED_TERMINAL_RETENTION_MS);
@@ -370,7 +447,10 @@ export class TerminalService {
       : undefined;
   }
 
-  private hasAttachment(entry: TerminalEntry, attachment: TerminalAttachmentCredentials): boolean {
+  private hasAttachment(
+    entry: { attachments: Map<string, string> },
+    attachment: TerminalAttachmentCredentials,
+  ): boolean {
     return entry.attachments.get(attachment.attachmentId) === attachment.attachmentSecret;
   }
 
@@ -378,6 +458,7 @@ export class TerminalService {
     return { ...entry.metadata };
   }
 
+  /** Attach reply for an exited terminal: no live stream follows, so it gets the full journal. */
   private sendAttached(clientReqId: string, entry: TerminalRecord): void {
     this.send({
       kind: 'terminal.attached',
