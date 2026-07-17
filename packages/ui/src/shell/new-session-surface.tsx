@@ -91,11 +91,8 @@ export interface NewSessionSurfaceProps {
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
 
-/**
- * The unified new-session page rendered in the main column while drafting: heading + the shared
- * `Composer` (its provider submenu picks the agent) + a context bar carrying the workspace picker.
- * Model / workflow-mode picks ride into the submission; the session reflects them from then on.
- */
+/** Unified new-session page: heading + shared `Composer` + workspace context bar. Model and
+ * workflow-mode picks ride into the submission; the session reflects them from then on. */
 export function NewSessionSurface({
   draft,
   workspaces,

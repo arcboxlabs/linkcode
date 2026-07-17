@@ -4,10 +4,9 @@ import { AgentEventSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { z } from 'zod';
 
 /**
- * Best-effort persistence for conversation seeds, so reopening the app paints a session's history
- * instantly from the last snapshot while the fresh transcript read revalidates in the background.
- * The provider transcript stays the source of truth — everything here is a disposable derivative:
- * any read/write failure degrades to a cache miss, never to an error surface.
+ * Best-effort persistence for conversation seeds: reopening the app paints history instantly
+ * while the fresh transcript read revalidates. The provider transcript stays the source of
+ * truth — any read/write failure degrades to a cache miss, never to an error surface.
  */
 
 export type SeedCacheStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -69,8 +68,7 @@ function evictOldest(storage: SeedCacheStorage, index: string[]): string[] {
 
 /**
  * The last persisted snapshot for a session's transcript, or undefined on any miss (absent, stale
- * wire version, unparseable). Loaded seeds carry `uptoSeq: 0`: they predate this connection, so
- * they supersede none of its live events.
+ * wire version, unparseable). Loaded seeds carry `uptoSeq: 0` — they predate this connection.
  */
 export function loadPersistedSeed(
   kind: AgentKind,
@@ -88,9 +86,8 @@ export function loadPersistedSeed(
     const raw = storage.getItem(key);
     if (raw !== null) {
       const parsed = PersistedSeedSchema.safeParse(JSON.parse(raw));
-      // A stale/corrupt entry is only *recorded* as a miss — this runs during render (it feeds
-      // `fallbackData`), which must stay pure, so no removeItem here. The next persist overwrites
-      // the entry, and LRU eviction bounds whatever never gets overwritten.
+      // A stale/corrupt entry is only *recorded* as a miss: this runs during render, which must
+      // stay pure — no removeItem. The next persist overwrites; LRU eviction bounds the rest.
       if (parsed.success) seed = { events: parsed.data.events, uptoSeq: 0 };
     }
   } catch {

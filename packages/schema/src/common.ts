@@ -1,9 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Common base types. The zod schema is the only data contract: the workflow is always
- * "change the schema first, then the implementation" (docs/ARCHITECTURE.md#core-principles).
- */
+/** Common base types. The zod schema is the only data contract: always "change the schema first,
+ * then the implementation" (docs/ARCHITECTURE.md#core-principles). */
 
 /** Session ID: the lifecycle identifier of a single agent session. */
 export const SessionIdSchema = z.string().min(1).brand<'SessionId'>();

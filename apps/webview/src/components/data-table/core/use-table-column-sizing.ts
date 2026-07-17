@@ -60,11 +60,9 @@ export function useTableColumnSizing<TData>({
   table,
   columnResizeMode = 'onEnd',
 }: UseTableColumnSizingOptions<TData>): TableColumnSizing {
-  // Width overrides keyed by column id at the TOP level of the tracked snapshot,
-  // so each column id is its own tracked field: resizing one column only
-  // re-renders readers of that column's width. `undefined` = no override (falls
-  // back to the declared width); useStateWithDeps attaches tracking to keys it
-  // has never seen before, so starting empty is fine.
+  // Width overrides keyed by column id at the TOP level of the tracked snapshot, so
+  // resizing one column only re-renders readers of that column's width. `undefined` =
+  // no override; useStateWithDeps tracks keys it has never seen, so starting empty is fine.
   const [widths, setWidths] = useStateWithDeps<Record<string, number | undefined>>({});
   const [resizing, setResizing] = useStateWithDeps<{ resizingId: string | null }>({
     resizingId: null,
@@ -146,9 +144,8 @@ export function useTableColumnSizing<TData>({
     [table, widths, setResizing],
   );
 
-  // Headers are stable per [table, ...]; width/isResizing are getters delegating
-  // to the tracked snapshots, so reads stay live AND register render dependencies
-  // — per column id for widths, so one column's resize never invalidates another.
+  // width/isResizing are getters into the tracked snapshots — reads stay live and
+  // register per-column render dependencies, so one resize never invalidates another.
   return useMemo(
     () => ({
       headers: table.columns.map((column) => ({

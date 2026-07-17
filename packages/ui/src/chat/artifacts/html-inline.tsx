@@ -9,13 +9,9 @@ import type { InlineArtifactProps } from './types';
 
 const HTML_MIME = 'text/html; charset=utf-8';
 
-/**
- * Sandboxed html artifact (CODE-62): the fence shows as code until the user expands
- * it; expanding uploads the document to the daemon's ephemeral hosting and renders it
- * in an iframe on its own `artifact--<hash>.localhost` origin. The sandbox stays tight
- * (scripts only — no same-origin, no forms/popups); the dedicated origin isolates it
- * from other artifacts and the daemon even without the attribute.
- */
+/** Sandboxed html artifact (CODE-62): expanding uploads the document to the daemon's ephemeral
+ * hosting, rendered in an iframe on its own `artifact--<hash>.localhost` origin. Sandbox stays
+ * tight (scripts only — no same-origin/forms/popups); the origin isolates it even without it. */
 export function HtmlInline({ artifact, isIncomplete }: InlineArtifactProps): React.ReactNode {
   const t = useTranslations('workbench.artifact');
   const actions = useArtifactHostActions();

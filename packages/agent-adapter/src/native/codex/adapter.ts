@@ -66,9 +66,9 @@ const COMPACT_COMMAND: AgentCommand = {
   description: 'Summarize conversation to prevent hitting the context limit',
 };
 
-/** Map the app-server's `skills/list` response onto the normalized command catalog. Codex returns
- * one entry per requested cwd; only enabled skills are invokable, and duplicate names resolve to
- * the first provider result just like the TUI's name-based mention lookup. */
+/** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
+ * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
+ * name-based mention lookup. */
 export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   if (!isRecord(response) || !Array.isArray(response.data)) return [];
   const commands = new Map<string, CodexSkillCommand>();
@@ -100,10 +100,9 @@ export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHand
 const CODEX_AUTH_FAILED_MESSAGE = 'Codex authentication failed — sign in to your ChatGPT account';
 
 /** Whether an app-server `error` notification reports the 401 of a signed-out/expired login. The
- * structured status rides only the mid-retry notifications
- * (`codexErrorInfo.responseStreamDisconnected.httpStatusCode`); the final no-retry error degrades
- * to `codexErrorInfo: "other"` with the 401 left in prose — match both (verified live on
- * codex-cli 0.144.1). */
+ * structured status (`codexErrorInfo.responseStreamDisconnected.httpStatusCode`) rides only the
+ * mid-retry notifications; the final no-retry error leaves the 401 in prose — match both
+ * (verified live on codex-cli 0.144.1). */
 function isCodexAuthError(error: Record<string, unknown>): boolean {
   const info = recordField(error, 'codexErrorInfo');
   const disconnected = info && recordField(info, 'responseStreamDisconnected');
@@ -119,10 +118,9 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
 ];
 
 /**
- * The approval-policy axis codex advertises — the shared ids (claude-code's permission-mode
- * names, see `ApprovalPolicyIdSchema`) translated onto codex's `approval_policy` + sandbox pair.
- * Unlike claude-code, codex's plan mode is a workflow mode (the `set-mode` axis), so only the
- * three permission tiers ride this channel.
+ * The approval-policy axis codex advertises — the shared ids (see `ApprovalPolicyIdSchema`)
+ * translated onto codex's `approval_policy` + sandbox pair. Unlike claude-code, codex's plan mode
+ * is a workflow mode (the `set-mode` axis), so only the three permission tiers ride this channel.
  */
 const APPROVAL_POLICIES = [
   {
@@ -144,10 +142,9 @@ const APPROVAL_POLICIES = [
 
 type CodexPolicyId = (typeof APPROVAL_POLICIES)[number]['policyId'];
 
-/** codex's launch parameters per policy. `acceptEdits` is the initial tier — sandboxed autonomy
- * with escalation approvals, codex's conventional interactive setup and this adapter's behavior
- * before the axis existed. `never` under full access keeps commands from failing silently only
- * because the sandbox is off too — nothing is blocked, so nothing needs asking. */
+/** codex's launch parameters per policy. `acceptEdits` is the initial tier — codex's conventional
+ * interactive setup and this adapter's pre-axis behavior. `never` under full access: with the
+ * sandbox off nothing is blocked, so nothing needs asking. */
 const POLICY_PRESETS: Record<CodexPolicyId, { approvalPolicy: string; sandboxMode: string }> = {
   default: { approvalPolicy: 'untrusted', sandboxMode: 'workspace-write' },
   acceptEdits: { approvalPolicy: 'on-request', sandboxMode: 'workspace-write' },
@@ -160,8 +157,7 @@ function isCodexPolicyId(id: string): id is CodexPolicyId {
 }
 
 /** `turn/start` takes the full SandboxPolicy object (unlike `thread/start`'s SandboxMode string),
- * and a turn-level override replaces the thread policy wholesale — so the writable roots must be
- * carried here too or an override would silently drop them. */
+ * and a turn override replaces the thread policy wholesale — the writable roots must ride too. */
 function sandboxPolicyFor(policyId: CodexPolicyId, writableRoots: string[]): unknown {
   if (POLICY_PRESETS[policyId].sandboxMode === 'danger-full-access') {
     return { type: 'dangerFullAccess' };
@@ -210,13 +206,11 @@ export function decisionFromOutcome(
 
 /**
  * Codex adapter — drives `codex app-server` (line-delimited JSON-RPC over stdio, the protocol
- * behind the official VS Code extension) instead of `@openai/codex-sdk`. One persistent
- * app-server process carries the whole session: prompts become `turn/start` calls on a single
- * thread, approvals arrive as server→client requests answered through the shared permission
- * round-trip, and model/effort switches ride the next `turn/start` (they cannot alter a turn
- * already in flight — the closest the protocol offers to claude-code's live switching).
- *
- * History (list/read) stays on direct rollout-JSONL reads and is independent of the live process.
+ * behind the official VS Code extension) instead of `@openai/codex-sdk`. One persistent process
+ * carries the whole session: prompts are `turn/start` calls on a single thread, approvals are
+ * server→client requests answered through the shared permission round-trip, and model/effort
+ * switches ride the next `turn/start` (nothing can alter an in-flight turn). History (list/read)
+ * stays on direct rollout-JSONL reads, independent of the live process.
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
@@ -228,20 +222,17 @@ export class CodexAdapter extends BaseAgentAdapter {
   };
 
   private server: CodexServerHandle | null = null;
-  /** Bumped whenever a server is retired/crashed and whenever a new one spawns: a dead child's
-   * already-buffered stdout lines (and its late exit alarm) carry the old generation and are
-   * dropped at the callback gate instead of corrupting the successor's session state. */
+  /** Bumped when a server retires/crashes and when a new one spawns: a dead child's buffered
+   * stdout (and late exit alarm) carries the old generation and is dropped at the callback gate. */
   private serverGeneration = 0;
   /** In-flight spawn+thread-open, shared by concurrent callers so two prompts racing into a dead
    * session cannot double-spawn app-server processes. */
   private starting: Promise<void> | null = null;
   private threadId: string | null = null;
   private activeTurnId: string | null = null;
-  /** Frames between sending `turn/start` and its reply — while > 0, prompts queue instead of
-   * racing another `turn/start` into the same thread. A COUNT, not a boolean: `turn/completed`
-   * can precede the `turn/start` reply, so a drained queue prompt starts while the settled
-   * turn's frame is still in flight, and that frame's cleanup must not drop the newer frame's
-   * guard. */
+  /** Frames between sending `turn/start` and its reply — while > 0, prompts queue. A COUNT, not a
+   * boolean: `turn/completed` can precede the `turn/start` reply, so a drained-queue prompt
+   * overlaps the settled frame, whose cleanup must not drop the newer frame's guard. */
   private turnStartsInFlight = 0;
   /** A cancel that arrived inside the turn-start window, before the turn id was known; honored
    * by `activateTurn` the moment the id lands instead of being silently dropped. */
@@ -268,18 +259,16 @@ export class CodexAdapter extends BaseAgentAdapter {
    * a sandbox the user configured in config.toml. */
   private policyExplicit = false;
   /** Sandbox from `~/.codex/config.toml`, re-read at each thread open. Until the tier is an
-   * explicit pick, a configured sandbox is never overridden — thread/turn requests omit their
-   * sandbox override so codex's own config resolution wins (never silently loosen a stricter
-   * choice like read-only). The preset's approval posture still rides: unlike the old SDK path,
-   * approvals are answerable over app-server, so `on-request` cannot strand a turn. */
+   * explicit pick, thread/turn requests omit their sandbox override so codex's own config
+   * resolution wins (never silently loosen a stricter choice like read-only); the preset's
+   * approval posture still rides — approvals are answerable, so `on-request` cannot strand a turn. */
   private configuredSandbox: CodexSandboxMode | undefined;
   /** Streamed text length per item id: converts `item/completed` full texts into the missing
    * remainder (delta backstop), and suppresses re-emitting reasoning that already streamed. */
   private readonly streamedTextLen = new Map<string, number>();
-  /** Latched on the first 401 the app-server reports; cleared when a fresh server spawns. The
-   * process caches its credentials for its whole lifetime (verified live — an `auth.json` written
-   * after spawn is never re-read), so the flag both dedupes the retry storm's banners and marks
-   * this server as unable to recover in place. */
+  /** Latched on the first 401; cleared when a fresh server spawns. The process caches credentials
+   * for its whole lifetime (verified live — an `auth.json` written after spawn is never re-read),
+   * so the flag both dedupes the retry storm's banners and marks this server unrecoverable in place. */
   private authFailed = false;
 
   protected async onStart(opts: StartOptions): Promise<void> {
@@ -338,10 +327,9 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     await this.ensureThread();
-    // `turn/start`'s image item shape ({type:'image', url: 'data:<mime>;base64,<data>'}) was
-    // live-verified against a real codex app-server (0.144.1): a solid-red probe image sent
-    // this way was correctly identified by the model. Not documented anywhere in the JS
-    // package (codex has no .d.ts) — verify again if the app-server pin moves.
+    // `turn/start`'s image item shape ({type:'image', url:'data:<mime>;base64,<data>'}) was
+    // live-verified against codex app-server 0.144.1; nothing documents it (codex has no .d.ts) —
+    // verify again if the app-server pin moves.
     const imageInputItems = imageBlocksFrom(content).map((image) => ({
       type: 'image' as const,
       url: `data:${image.mimeType};base64,${image.data}`,
@@ -352,9 +340,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     ]);
   }
 
-  /** Codex slash commands are either the app-server's manual compaction control or an enabled
-   * skill advertised by `skills/list`. The TUI sends a skill as a structured `skill` input plus
-   * the visible `$name args` text; mirror that provider-native shape here. */
+  /** Codex slash commands are the app-server's manual compaction control or an enabled skill from
+   * `skills/list`. Mirror the TUI: a structured `skill` input plus the visible `$name args` text. */
   protected override async onCommand(name: string, args?: string): Promise<void> {
     await this.ensureThread();
     const { server, threadId } = this.liveThread();
@@ -381,31 +368,21 @@ export class CodexAdapter extends BaseAgentAdapter {
     await this.startTurn(input);
   }
 
-  /** `$`-prefixed shell passthrough — the user's own command, not agent-driven, so it bypasses
-   * both the sandbox and the approval policy by design (verified live, codex-cli 0.144.1).
-   * `thread/shellCommand` acks with an empty object before the turn machinery starts; the command
-   * then runs as a genuine turn on the thread (thread/status/changed(active) → turn/started →
-   * item/started → item/commandExecution/outputDelta (not consumed here, same as agent-driven
-   * execs) → item/completed → thread/status/changed(idle) → turn/completed), so the existing
-   * notification dispatch does everything else: running status, the execute tool card
-   * (handleItem's commandExecution case, unaware of and unaffected by source:'userShell'),
-   * output at item/completed's aggregatedOutput, stop + idle at turn/completed. turn/completed's
-   * status is ALWAYS 'completed' even when the command exits non-zero — only the ITEM carries
-   * status:'failed'/exitCode, which mapCodexItemStatus folds into a failed tool call; the turn
-   * itself still resolves via handleTurnCompleted to stop:end_turn. No approval request ever
-   * fires for this path. Works with no turn active (creates its own turn on the thread); if the
-   * fresh thread's first action is a shell command, the turn/started notification's existing
-   * `activateTurn` call still releases `holdSessionRef` — that path isn't keyed to `turn/start`,
-   * so no extra handling is needed here. Overlapping shell commands (or a shell command sent
-   * while a turn is already running) coalesce into that turn server-side, so this deliberately
-   * does not gate on `activeTurnId`/`turnStartsInFlight` the way `onPrompt` queues prompts. */
+  /** `$`-prefixed shell passthrough — the user's own command, so it bypasses both the sandbox and
+   * the approval policy by design, and no approval request ever fires (verified live, codex-cli
+   * 0.144.1). `thread/shellCommand` acks with an empty object, then the command runs as a genuine
+   * turn on the thread, so the existing notification dispatch does all rendering and settle.
+   * turn/completed's status is ALWAYS 'completed' even on a non-zero exit — only the ITEM carries
+   * status:'failed'/exitCode, which mapCodexItemStatus folds into a failed tool call. Works with
+   * no turn active (a fresh thread's first shell command still releases `holdSessionRef` via
+   * turn/started's `activateTurn`); overlapping commands coalesce into the running turn
+   * server-side, so this deliberately does not gate on `activeTurnId`/`turnStartsInFlight`. */
   protected override async onShellCommand(command: string): Promise<void> {
     await this.ensureThread();
     const { server, threadId } = this.liveThread();
     // The ack lands before turn/started, but the engine's input gate reads status the moment
-    // send() resolves and treats a still-idle session as a synchronous control — announce the
-    // turn synchronously (base.ts hook contract) or a rapid next submit races the starting
-    // shell turn. turn/started re-emits running, the same double-emit the startTurn path has.
+    // send() resolves — announce the turn synchronously (base.ts hook contract) or a rapid next
+    // submit races the starting shell turn. turn/started's re-emit of running is harmless.
     this.emitStatus('running');
     try {
       await server.request('thread/shellCommand', { threadId, command });
@@ -518,9 +495,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  /** Spawn the app-server and start (or resume) the session's thread. Re-entrant: a live server
-   * makes this a no-op, concurrent callers share one in-flight attempt, and after a crash the
-   * next prompt lands here to respawn and resume. */
+  /** Spawn the app-server and start (or resume) the thread. Re-entrant: a live server is a no-op,
+   * concurrent callers share one in-flight attempt, after a crash the next prompt respawns here. */
   private ensureThread(): Promise<void> {
     if (this.server) return Promise.resolve();
     this.starting ??= this.openThread().finally(() => {
@@ -587,13 +563,10 @@ export class CodexAdapter extends BaseAgentAdapter {
         config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
       }),
     };
-    // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger
-    // clients' transcript seed read before codex persists the first turn, and the seed's
-    // uptoSeq cut can then swallow the first prompt (it trusts the snapshot to contain
-    // everything up to the cut). Hold the announcement until the first turn is running —
-    // matching claude-code, whose session id also only surfaces with the first turn's
-    // messages. A resumed thread's rollout is already complete, so announce immediately.
-    // Set before the request: the thread/started notification can outrun the response.
+    // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger the
+    // clients' transcript seed read, whose uptoSeq cut can swallow the first prompt. Hold the
+    // announcement until the first turn is running; a resumed thread's rollout is complete, so
+    // announce immediately. Set before the request: thread/started can outrun the response.
     this.holdSessionRef = !resume;
     try {
       const response = resume
@@ -618,9 +591,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** Best-effort full catalog refresh. `skills/changed` invalidates every cached provider path
-   * before re-running `skills/list`; refresh failures therefore fail closed while the local
-   * `/compact` control remains available. */
+  /** Best-effort full catalog refresh. `skills/changed` invalidates every cached provider path, so
+   * refresh failures fail closed to just the local `/compact` control. */
   private async publishCommands(server: CodexServerHandle): Promise<void> {
     const generation = ++this.skillsRefreshGeneration;
     try {
@@ -708,17 +680,15 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.finalizeServer();
   }
 
-  /** Shared unwind for a server that is gone (crashed) or being retired (auth failure): finalize
-   * the turn and arm the next prompt to respawn + `thread/resume` in place — the respawn re-reads
-   * the on-disk credentials, which is what makes retry-after-login work at all. */
+  /** Shared unwind for a crashed or retired server: finalize the turn and arm the next prompt to
+   * respawn + `thread/resume` — the respawn re-reads on-disk credentials (retry-after-login). */
   private finalizeServer(): void {
     // Anything the dead child still flushes to stdout is stale — drop it at the callback gate.
     this.serverGeneration += 1;
     this.server = null;
     this.activeTurnId = null;
-    // turnStartsInFlight is deliberately untouched: the exit/close already rejected any in-flight
-    // turn/start (failAllPending runs first), so each frame's finally releases its own slot —
-    // resetting here would double-release against a late finally.
+    // turnStartsInFlight deliberately untouched: the exit/close already rejected in-flight
+    // turn/starts, so each frame's finally releases its own slot — resetting would double-release.
     this.cancelRequested = false;
     this.holdSessionRef = false;
     if (this.pendingTurnInputs.length > 0) {
@@ -780,9 +750,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'item/reasoning/summaryPartAdded': {
-        // A reasoning item can carry several independent summary segments; mirror the '\n\n'
-        // separator the completed item's summary array is joined with, so streamed segments don't
-        // merge into one run-on thought (and the length backstop below stays aligned).
+        // Mirror the '\n\n' separator the completed item's summary array is joined with, so
+        // streamed segments don't merge into one thought and the length backstop stays aligned.
         const itemId = stringField(params, 'itemId');
         if (itemId && (this.streamedTextLen.get(itemId) ?? 0) > 0) {
           this.emitThought('\n\n', asMessageId(itemId));
@@ -803,9 +772,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'thread/tokenUsage/updated': {
-        // `total` (thread-cumulative), not `last`: this fires once per model call and a turn with
-        // tool round-trips has several; consumers replace usage wholesale, so emitting the `last`
-        // slice would show only the final sub-call's tokens.
+        // `total` (thread-cumulative), not `last`: this fires once per model call and consumers
+        // replace usage wholesale — the `last` slice would show only the final sub-call's tokens.
         const tokenUsage = recordField(params, 'tokenUsage');
         const total = tokenUsage ? recordField(tokenUsage, 'total') : undefined;
         if (total) this.emitUsage(mapCodexTokenUsage(total));
@@ -878,9 +846,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'reasoning': {
-        // Reasoning streams via summary deltas; on completion emit whatever the deltas missed,
-        // same length reconciliation as agentMessage (delta lengths + the '\n\n' separators from
-        // summaryPartAdded add up to the joined summary). When raw-content deltas streamed
+        // On completion emit whatever the summary deltas missed (delta lengths + the '\n\n'
+        // separators add up to the joined summary). When raw-content deltas streamed
         // (item/reasoning/textDelta), the streamed length exceeds the summary and this is a no-op.
         if (!completed) break;
         const summary = item.summary;

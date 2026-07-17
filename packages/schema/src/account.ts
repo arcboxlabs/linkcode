@@ -2,11 +2,10 @@ import { z } from 'zod';
 import { AgentKindSchema, TimestampSchema } from './common';
 
 /**
- * A model-provider credential in the global account pool (data plane, docs/ARCHITECTURE.md#packages--repo-layout).
- * The daemon persists these in ~/.linkcode/config.json (0600) and, at session start, resolves the
- * account bound to the agent (`providers[kind].activeAccountId`) and injects it into the adapter. One
- * credential can back several agents — natively when its endpoint speaks the agent's protocol, or via
- * conversion (a translating gateway or the daemon's local translator) otherwise.
+ * A model-provider credential in the global account pool (data plane). The daemon persists these
+ * in ~/.linkcode/config.json (0600) and injects the agent's bound account (`activeAccountId`) into
+ * the adapter at session start. One credential can back several agents — natively when its
+ * endpoint speaks the agent's protocol, via conversion otherwise.
  */
 
 /** What an endpoint speaks on the wire; decides native-routing vs. conversion. */
@@ -19,10 +18,8 @@ export const AccountCredentialSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('api-key'), key: z.string().min(1) }),
   /** Bearer token (e.g. `ANTHROPIC_AUTH_TOKEN`, or a gateway token). */
   z.object({ type: z.literal('auth-token'), token: z.string().min(1) }),
-  /**
-   * Delegates to the agent CLI's own login store — LinkCode stores no secret. An OAuth login is
-   * specific to one CLI (claude's login is not codex's ChatGPT login), so the account names its agent.
-   */
+  /** Delegates to the agent CLI's own login store — LinkCode stores no secret. An OAuth login is
+   * specific to one CLI, so the account names its agent. */
   z.object({ type: z.literal('oauth'), agent: AgentKindSchema }),
 ]);
 export type AccountCredential = z.infer<typeof AccountCredentialSchema>;
@@ -39,11 +36,9 @@ export const AccountSchema = z.object({
   id: z.string().min(1),
   /** User-facing name. */
   label: z.string().min(1),
-  /**
-   * Service-catalog key the account was created from (e.g. `openrouter`, `anthropic-api`). Drives
-   * brand presentation and, when `endpoint` is absent, implies the protocol a bare key speaks —
-   * an Anthropic key is not an OpenAI key. Absent for custom and pre-catalog accounts.
-   */
+  /** Service-catalog key the account was created from (e.g. `openrouter`). Drives brand
+   * presentation and, when `endpoint` is absent, implies the protocol a bare key speaks.
+   * Absent for custom and pre-catalog accounts. */
   service: z.string().optional(),
   credential: AccountCredentialSchema,
   endpoint: AccountEndpointSchema.optional(),

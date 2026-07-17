@@ -2,17 +2,13 @@ import type { Restty } from 'restty';
 import { getBuiltinTheme } from 'restty';
 import type { TerminalColorScheme } from './prefs';
 
-// The app has no JS theme state — light/dark is just the `.dark` class on <html>. The `'auto'`
-// scheme matches it with a builtin ghostty theme so the terminal follows the app's mode instead of
-// restty's default pure black; a named scheme applies that theme regardless of the app mode.
+// Light/dark is just the `.dark` class on <html>; `'auto'` tracks it with a builtin ghostty theme
+// (instead of restty's default pure black), while a named scheme applies regardless of app mode.
 const DARK_THEME = 'Dark+';
 const LIGHT_THEME = 'GitHub Light Default';
 
-/**
- * Apply a terminal color scheme. With `'auto'` the theme tracks the app's current light/dark mode.
- * `frame` is the padded wrapper around the restty root: it gets the theme's background color so the
- * breathing room around the canvas reads as part of the terminal, not a gap exposing the app background.
- */
+/** Apply a terminal color scheme (`'auto'` tracks the app's light/dark mode). `frame`, the padded
+ * wrapper, gets the theme background so the padding reads as terminal, not a gap. */
 export function applyTerminalTheme(
   terminal: Restty,
   frame?: HTMLElement | null,

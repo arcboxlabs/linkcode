@@ -16,8 +16,8 @@ const cloudImSource = createBrowserCloudImSource(CLOUD_API_URL);
 
 /**
  * Root layout: global providers + the daemon connection, rendered once around every route's
- * `<Outlet>`. The daemon URL and locale come from the settings store, so editing them replaces the
- * connection generation / re-resolves the locale without a manual reload.
+ * `<Outlet>`. Daemon URL and locale come from the settings store, so edits apply live —
+ * a URL change replaces the connection generation, no manual reload.
  */
 export function RootLayout(): React.ReactNode {
   const locale = useSettingsStore((state) => state.locale);

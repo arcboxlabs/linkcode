@@ -24,8 +24,7 @@ export class CodexProbe extends AgentCliProbe {
   }
 
   /** codex nests its CLI under `vendor/<triple>/bin/` inside the platform package, so the shared
-   * package-root lookup finds nothing — delegate to the app-server module's own resolver (this is
-   * what the boot probe's sdk-source auth check and `loginBinaryPath` fall back to in dev). */
+   * package-root lookup finds nothing — delegate to the app-server module's own resolver. */
   override sdkPlatformBinaryPath(): string | undefined {
     try {
       return resolveCodexBinaryPath();
@@ -36,10 +35,9 @@ export class CodexProbe extends AgentCliProbe {
 
   /**
    * Login status via `codex login status` — text only, no machine-readable flag exists (verified
-   * on codex-cli 0.144.1): signed in prints `Logged in using ChatGPT` / `Logged in using an API
-   * key - ***` on stdout (exit 0), signed out prints `Not logged in` on STDERR (exit 1), so both
-   * streams are parsed regardless of exit code. Reads the same `$CODEX_HOME/auth.json` a spawned
-   * app-server loads; unrecognized output fails open to `undefined` ("unknown", never blocks).
+   * on codex-cli 0.144.1): signed in prints on stdout (exit 0), signed out prints `Not logged in`
+   * on STDERR (exit 1), so both streams are parsed regardless of exit code. Reads the same
+   * `$CODEX_HOME/auth.json` a spawned app-server loads; unrecognized output fails open to `undefined`.
    */
   override async probeAuth(file: string): Promise<AgentAuthStatus | undefined> {
     let output = '';
@@ -54,11 +52,9 @@ export class CodexProbe extends AgentCliProbe {
   }
 }
 
-/**
- * Narrow `codex login status` output (either stream) to {@link AgentAuthStatus}. `undefined`
- * (fail-open) for unrecognized wording — a future CLI that rephrases the lines degrades to
- * "unknown" instead of wrongly blocking a signed-in user.
- */
+/** Narrow `codex login status` output (either stream) to {@link AgentAuthStatus}. `undefined`
+ * (fail-open) for unrecognized wording — a rephrasing CLI degrades to "unknown" instead of
+ * wrongly blocking a signed-in user. */
 export function parseCodexLoginStatus(output: string): AgentAuthStatus | undefined {
   if (/^Not logged in\b/m.test(output)) return { loggedIn: false };
   if (/^Logged in using ChatGPT\b/m.test(output)) return { loggedIn: true, method: 'chatgpt' };

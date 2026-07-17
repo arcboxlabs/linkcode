@@ -25,19 +25,12 @@ export {
 } from './history';
 
 /**
- * Wire protocol: the envelope actually transmitted by the transport layer. Local direct
- * connection (LocalTransport) and remote tunnel (WsTransport) share the same format. Validate
- * with zod at the trust boundary both before sending and after receiving. See
- * docs/ARCHITECTURE.md's Transport & wire protocol section.
- *
- * The payload union is assembled here from one variant array per resource (session / history /
- * config / workspace / git / file / terminal / keep-alive, each in its own file in this directory);
- * `agent.input` / `agent.event` stay inline since they're a thin pass-through of agent.ts's own
- * contract, with no wire-specific shape of their own.
- *
- * v2: the daemon serves multiple clients, so `agent.event` is broadcast to all attached clients of a
- * session. Request/response control messages carry a correlation id (`clientReqId` → `replyTo`) so the
- * originating client can pair the reply despite the broadcast.
+ * Wire protocol: the envelope the transport layer transmits; local (LocalTransport) and tunnel
+ * (WsTransport) share the same format. Validate with zod at the trust boundary both before
+ * sending and after receiving (docs/ARCHITECTURE.md, Transport & wire protocol). The payload
+ * union assembles one variant array per resource; `agent.input` / `agent.event` stay inline as a
+ * thin pass-through of agent.ts. `agent.event` is broadcast to all attached clients of a session,
+ * so request/response control messages correlate via `clientReqId` → `replyTo`.
  */
 
 export const WIRE_PROTOCOL_VERSION = 35 as const;

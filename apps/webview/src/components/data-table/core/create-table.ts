@@ -1,31 +1,24 @@
 import type { SortDirection } from './types';
 
 /**
- * A column's sort toggle cycle — `null` = unsorted. Toggling advances from the
- * current state's position in the array, wrapping around; an unsorted column
- * whose cycle lacks `null` enters at the first entry (and can never be cleared
- * by toggling). Cycles are rotation-invariant, so leading with the resting
- * state is just a readability convention.
+ * A column's sort toggle cycle — `null` = unsorted. Toggling advances from the current
+ * state's position, wrapping; an unsorted column whose cycle lacks `null` enters at
+ * the first entry and can never be cleared by toggling.
  */
 export type SortingCycle = ReadonlyArray<SortDirection | null>;
 
 /** asc → desc → cleared — the cycle used when a sortable column declares none. */
 export const DEFAULT_SORTING_CYCLE: SortingCycle = ['asc', 'desc', null];
 
-// Plain immutable column description — no methods, no internal mutation, safe for
-// React Compiler memoization. `skeleton` is required at the type level so every
-// column ships a loading placeholder colocated with its cell renderer.
+// Plain immutable column description (React Compiler-safe). `skeleton` is required
+// at the type level so every column ships a colocated loading placeholder.
 interface DataTableColumnBase<TData> {
   header: React.ReactNode;
-  /**
-   * Declared column width in px, surfaced via `useTableRender`. Omit for a
-   * content-sized column.
-   */
+  /** Declared column width in px, surfaced via `useTableRender`; omit for content-sized. */
   width?: number;
   /**
-   * Clamp bounds for column resizing (useTableColumnSizing) — deliberately NOT
-   * generic layout constraints, hence the `resize` prefix. Omitted bounds fall
-   * back to the hook's floor / unbounded growth.
+   * Clamp bounds for column resizing (useTableColumnSizing), deliberately NOT generic
+   * layout constraints; omitted bounds fall back to the hook's floor / unbounded growth.
    */
   resizeMinWidth?: number;
   resizeMaxWidth?: number;
@@ -33,19 +26,14 @@ interface DataTableColumnBase<TData> {
   cell: (row: TData) => React.ReactNode;
 }
 
-// A sortable column must declare an explicit `id` — it doubles as the sort field
-// identifier handed to the backend. Otherwise `id` is optional; createTable
-// falls back to the column index.
+// A sortable column must declare an explicit `id` — it doubles as the backend sort
+// field. Otherwise `id` is optional; createTable falls back to the column index.
 export type DataTableColumn<TData> = DataTableColumnBase<TData> &
   (
     | {
         sortable: true;
         id: string;
-        /**
-         * This column's toggle cycle, e.g. `['desc', 'asc', null]` for a
-         * metric that should sort descending first. Defaults to
-         * DEFAULT_SORTING_CYCLE (asc → desc → cleared).
-         */
+        /** This column's toggle cycle. Defaults to DEFAULT_SORTING_CYCLE (asc → desc → cleared). */
         sortingCycle?: SortingCycle;
       }
     | { sortable?: false; id?: string; sortingCycle?: undefined }
@@ -71,23 +59,16 @@ export interface TableDefinition<TData> {
 
 interface CreateTableOptions<TData> {
   columns: Array<DataTableColumn<TData>>;
-  /**
-   * Table-level default sorting cycle — sortable columns that omit their own
-   * `sortingCycle` inherit this instead of DEFAULT_SORTING_CYCLE.
-   */
+  /** Table-level default sorting cycle, inherited by sortable columns that omit their own. */
   sortingCycle?: SortingCycle;
   /**
-   * Row identity for React keys, consumed via `useTableRender` — never called
-   * directly by UI code. Defaults to the array index (same as TanStack Table's
-   * default row id). Provide the entity id (e.g. `row.id`) whenever rows can
-   * reorder (sorting/pagination) so React moves the existing DOM instead of
-   * rewriting it row by row.
+   * Row identity for React keys (consumed via `useTableRender`). Defaults to the array
+   * index; provide the entity id whenever rows can reorder (sorting/pagination).
    */
   getRowId?: (row: TData, index: number) => React.Key;
   /**
-   * Cell identity for React keys, consumed via `useTableRender` — never called
-   * directly by UI code. Defaults to joining the row id (via `getRowId`) with
-   * the resolved column `id`, so a custom `getRowId` upgrades cell ids too.
+   * Cell identity for React keys (consumed via `useTableRender`). Defaults to
+   * `getRowId` + resolved column `id`, so a custom `getRowId` upgrades cell ids too.
    */
   getCellId?: (
     row: TData,
@@ -100,10 +81,8 @@ interface CreateTableOptions<TData> {
 const defaultGetRowId = (_row: unknown, index: number): React.Key => index;
 
 /**
- * Define a table at module scope, in a shared module free of hooks and
- * client-only APIs. Module-scope JSX in the definition (header / skeleton nodes)
- * is created exactly once, giving it stable identity that React can skip on
- * re-render. The `cell` renderers are consumed by `<DataTable>`.
+ * Define a table at module scope in a module free of hooks and client-only APIs;
+ * module-scope JSX (header/skeleton) is created once, so React can skip it on re-render.
  */
 export function createTable<TData>({
   columns,

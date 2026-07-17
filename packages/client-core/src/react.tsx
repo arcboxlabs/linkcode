@@ -48,9 +48,8 @@ const NO_EVENTS: AgentEvent[] = [];
 const NO_TERMINAL_OUTPUT = '';
 
 /**
- * Subscribe to a session's normalized event stream (push model). The client's per-session buffer
- * is the store: `useSyncExternalStore` reads its cached immutable snapshot, so switching back to
- * a session costs one array reference instead of replaying the whole buffer through state.
+ * Subscribe to a session's normalized event stream. The client's per-session buffer is the store,
+ * so switching back to a session costs one cached array reference, not a replay through state.
  */
 export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   const client = useLinkCodeClient();
@@ -70,11 +69,8 @@ export function useAgentEvents(sessionId: SessionId | null): AgentEvent[] {
   );
 }
 
-/**
- * Subscribe to a terminal's accumulated output (read-only display). The client's per-terminal
- * buffer is the store: `useSyncExternalStore` reads its capped string snapshot, mirroring
- * `useAgentEvents`'s use of the client's per-session event buffer.
- */
+/** Subscribe to a terminal's accumulated output (read-only display) — the client's capped
+ * per-terminal string buffer is the `useSyncExternalStore` store. */
 export function useTerminalOutput(terminalId: string | null): string {
   const client = useLinkCodeClient();
   const subscribe = useCallback(
@@ -102,10 +98,9 @@ export function useSendInput(sessionId: SessionId | null): (input: AgentInput) =
 }
 
 /**
- * Subscribe to a session and project its event stream into the structured conversation view-model,
- * optionally seeded with a transcript snapshot (see `ConversationSeed`). Incremental: each new
- * event folds in O(delta) via the conversation store, and unchanged items keep their identity so
- * memoized message components skip re-rendering during streaming.
+ * Subscribe to a session's structured conversation view-model, optionally seeded (see
+ * `ConversationSeed`). Folds are O(delta) and unchanged items keep their identity, so memoized
+ * message components skip re-rendering during streaming.
  */
 export function useConversation(
   sessionId: SessionId | null,
@@ -137,9 +132,8 @@ export interface SessionsApi {
 }
 
 /**
- * Session-inbox state shared by every client surface. The daemon has no "session list changed"
- * broadcast yet, so the list is seeded from `listSessions()` on connect and kept in sync optimistically
- * as this client creates/stops sessions.
+ * Session-inbox state shared by every client surface. No "session list changed" broadcast exists
+ * yet, so the list seeds from `listSessions()` on connect and syncs optimistically on create/stop.
  */
 export function useSessions(): SessionsApi {
   const client = useLinkCodeClient();

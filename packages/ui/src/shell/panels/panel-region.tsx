@@ -42,21 +42,15 @@ export function PanelRegion({
   maximized: boolean;
   chromeVisible: boolean;
   chromeSurface: ChromeSurface;
-  /**
-   * Skips mounting the tab content entirely. For shells that render a panel twice
-   * (docked + maximized overlay), exactly one instance shows content, so stateful
-   * tabs like the terminal never run in duplicate.
-   */
+  /** Skips mounting the tab content entirely: shells that render a panel twice (docked +
+   * maximized overlay) show content in exactly one instance, so stateful tabs never duplicate. */
   contentHidden?: boolean;
   ChromePortal?: React.ComponentType<PanelChromePortalProps>;
   chromeSpacerClassName?: string;
   contentStyle?: React.CSSProperties;
-  /**
-   * External-content mode: the region renders only an empty content box and reports it here; the
-   * host portals a {@link PanelTabContentStack} into it. Content then survives moving between
-   * panel instances (docked ↔ maximized) instead of remounting with each one. Wins over
-   * `panelContentByType`.
-   */
+  /** External-content mode: the region renders only an empty content box and reports it here; the
+   * host portals a {@link PanelTabContentStack} into it, so content survives docked ↔ maximized
+   * moves instead of remounting. Wins over `panelContentByType`. */
   contentTargetRef?: (element: HTMLDivElement | null) => void;
   panelContentByType?: Partial<Record<PanelWindowType, (tab: PanelTab) => React.ReactNode>>;
   onSelectTab: (id: string) => void;

@@ -5,12 +5,10 @@ import log from 'electron-log';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /**
- * Storage backing the better-auth electron client's session + cookie data. The plugin's
- * `Storage` contract is a synchronous key/value store; we persist it as a single JSON map in
- * `userData`, encrypting each value with the OS keychain (`safeStorage`).
- *
- * On platforms where `safeStorage` is unavailable (e.g. a Linux box with no keyring), values
- * fall back to a base64 `plain:` encoding so login still works — logged once so it is visible.
+ * Storage backing the better-auth electron client's session + cookie data: the plugin's `Storage`
+ * contract is a synchronous key/value store, persisted as one JSON map in `userData` with each
+ * value encrypted via the OS keychain (`safeStorage`). Where `safeStorage` is unavailable, values
+ * fall back to a base64 `plain:` encoding so login still works (logged once).
  */
 export interface Storage {
   getItem: (name: string) => unknown | null;
@@ -48,17 +46,14 @@ function decode(stored: string): unknown {
   return JSON.parse(json);
 }
 
-// Resolved per call, never at module scope: this module is imported (via the auth client)
-// before main sets the app name and userData path, so an eager join would pin the store to
-// the productName-derived directory and leak dev-shell data into the release profile.
+// Resolved per call: this module loads before main sets the userData path, so an eager join would
+// pin the store to the productName-derived dir and leak dev-shell data into the release profile.
 function storageFile(): string {
   return join(app.getPath('userData'), 'cloud-auth.json');
 }
 
-// A decode failure is indistinguishable from a transient keychain failure (locked keychain,
-// declined ACL prompt after a binary change), so the entry must survive for the next attempt;
-// a truly foreign entry is overwritten by the next successful sign-in anyway. Deduping the
-// warning is what keeps a permanent failure from logging on every session refresh.
+// A decode failure is indistinguishable from a transient keychain failure, so the entry must
+// survive for the next attempt; deduping keeps a permanent failure from logging on every refresh.
 const warnedKeys = new Set<string>();
 
 export function createSafeStorage(): Storage {

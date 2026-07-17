@@ -2,16 +2,11 @@ import { useStateWithDeps } from 'foxact/use-state-with-deps';
 import { useCallback } from 'react';
 
 /**
- * Raw pagination state, mounted ABOVE the data-fetching hook so the fetch key
- * can read `pageIndex` / `pageSize`. Knows nothing about page count — pass this
- * instance to `usePaginationRender` below the fetch to get the derived
- * helpers (canNextPage, range, ...).
- *
- * State fields are getters delegating to a dependency-tracked snapshot (foxact
- * `useStateWithDeps`): reading a field during render subscribes the component to
- * exactly the state it depends on. Read fields directly off the instance — never
- * spread it or copy fields into a new object, that snapshots current values and
- * breaks the getter-based tracking.
+ * Raw pagination state, mounted ABOVE the data-fetching hook so the fetch key can
+ * read `pageIndex` / `pageSize`; page-count-derived helpers come from
+ * `usePaginationRender` below the fetch.
+ * Fields are getters into a dependency-tracked snapshot — read them directly off
+ * the instance; spreading or copying snapshots current values and breaks tracking.
  */
 export interface TablePaginationState {
   readonly pageIndex: number;
@@ -40,10 +35,8 @@ export function useTablePaginationState({
 
   const firstPage = useCallback(() => setState({ pageIndex: 0 }), [setState]);
 
-  // The getters delegate to the tracked snapshot, so they always return the latest
-  // value AND register the reading component as a dependent of that field.
-  //
-  // Due to that reason, this return object should never be wrapped with `useMemo`.
+  // Getters delegate to the tracked snapshot (live reads + per-field dependency
+  // registration) — never wrap this return object in `useMemo`.
   return {
     get pageIndex() {
       return state.pageIndex;

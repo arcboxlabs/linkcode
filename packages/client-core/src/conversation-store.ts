@@ -43,15 +43,11 @@ const SEEDABLE_EVENT_TYPES = new Set<AgentEvent['type']>([
 ]);
 
 /**
- * Project a session's conversation from a transcript seed plus the live event buffer. The seed is
- * folded once, then each `getSnapshot` lazily advances the builder by the not-yet-consumed events:
- * seedable events inside the `uptoSeq` cut are skipped (the snapshot already contains them),
- * ephemeral events always fold — O(delta) per event instead of re-reducing the whole history. The
- * lazy sync is idempotent and monotone, so repeated render-time calls (StrictMode, interrupted
- * renders) are safe, and the snapshot keeps a stable identity between events — the
- * `useSyncExternalStore` getSnapshot contract.
- *
- * A store instance is bound to one (session, seed) pair; create a fresh one when either changes.
+ * Project a session's conversation from a transcript seed plus the live event buffer: the seed
+ * folds once, then `getSnapshot` lazily advances by unconsumed events, skipping seedable events
+ * inside the `uptoSeq` cut. The sync is idempotent and monotone with a stable snapshot identity
+ * between events — the `useSyncExternalStore` getSnapshot contract. A store is bound to one
+ * (session, seed) pair; create a fresh one when either changes.
  */
 export function createConversationStore(
   client: LinkCodeClient,

@@ -7,11 +7,9 @@ import { once } from 'foxts/once';
 export type Unsubscribe = () => void;
 
 /**
- * transport: the communication protocol layer
- * (docs/ARCHITECTURE.md#packages--repo-layout, #key-contracts).
- * Responsible only for "how messages are transmitted"; what it carries is always the schema-defined WireMessage.
- * Upper layers are unaware whether the underlying connection is a local direct connection or a tunnel
- * (docs/ARCHITECTURE.md#core-principles).
+ * The communication protocol layer (docs/ARCHITECTURE.md#key-contracts, #core-principles):
+ * responsible only for "how messages are transmitted" — the payload is always the schema-defined
+ * WireMessage, and upper layers never know whether the connection is local or a tunnel.
  */
 export interface Transport {
   connect(): Promise<void>;
@@ -66,17 +64,11 @@ export class Listeners<T> {
 
 /**
  * Base for the four wire-carried `Transport` implementations (ws / ws-server / socket-io /
- * socket-io-server). Factors out the inbound/close listener bookkeeping, the deferred
- * `emitClosed` arming, and the parse-or-throw `send()` gate that all four repeat; each
- * subclass models only how its underlying socket is bound and how validated bytes actually
- * go out. See docs/ARCHITECTURE.md's Transport & wire protocol section.
- *
- * Binding timing is the load-bearing difference between the two sides, modeled as the
- * overridable `connect()`: client transports (ws.ts / socket-io.ts) don't have a socket yet,
- * so they override `connect()` to create one — and arm `emitClosed` — there; server-side
- * connections (ws-server.ts / socket-io-server.ts) already hold a live socket at construction
- * time, so they arm `emitClosed` in their constructor and keep the inherited default `connect()`
- * below. Subclasses call `armClosedListener()` at whichever point applies.
+ * socket-io-server): factors out the listener bookkeeping, the deferred `emitClosed` arming, and
+ * the parse-or-throw `send()` gate they all repeat. Binding timing is the load-bearing difference:
+ * client transports create their socket in an overridden `connect()` and arm `emitClosed` there;
+ * server-side connections already hold a live socket at construction, so they arm it in their
+ * constructor and keep the inherited default `connect()`.
  */
 export abstract class WireConnection implements Transport {
   protected readonly inbound = new Listeners<WireMessage>();

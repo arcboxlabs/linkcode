@@ -32,10 +32,8 @@ export interface TurnEdits {
   deletions: number;
 }
 
-/**
- * Roll up the files a turn's tool calls edited, in first-touched order. Only completed calls
- * count — a failed or declined edit never landed. Null when the turn edited nothing.
- */
+/** Files a turn's tool calls edited, first-touched order; only completed calls count (a failed
+ * or declined edit never landed). Null when the turn edited nothing. */
 export function turnFileEdits(items: readonly ConversationItem[]): TurnEdits | null {
   const byPath = new Map<string, TurnFileEdit>();
   for (const item of items) {

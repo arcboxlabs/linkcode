@@ -19,10 +19,8 @@ import type {
 } from '@linkcode/schema';
 
 /**
- * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
- * structured timeline (turn-grouped messages bucketed by messageId, tool calls as full snapshots, plan,
- * permissions) plus the session's live lifecycle state. `buildConversation` is a pure reducer over the
- * event list so it can be unit-tested without a transport (mirrors the adapter normalizer convention).
+ * Conversation view-model: folds the daemon's flat, append-only `AgentEvent[]` into the structured
+ * timeline the UI needs. `buildConversation` is a pure reducer, unit-testable without a transport.
  */
 
 export type ConversationTurnId = string | null;
@@ -118,9 +116,8 @@ export interface ConversationViewModel {
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
    * null (or an empty list) means the agent has no switchable policies and the UI hides the menu. */
   approvalPolicy: ApprovalPolicyState | null;
-  /** The model the session is actually running on, from `model-update`. `null` until the adapter
-   * reports it (before the first turn, or for adapters that can't observe their model) — the composer
-   * then shows a placeholder rather than a guess. */
+  /** The model the session actually runs on, from `model-update`. `null` until the adapter
+   * reports it — the composer then shows a placeholder rather than a guess. */
   currentModel: string | null;
   /** The reasoning-effort level the session is running at, from `effort-update`. `null` until the
    * adapter reports it — same placeholder rule as `currentModel`. */
@@ -173,9 +170,8 @@ export interface ConversationBuilder {
 }
 
 /**
- * Incremental form of {@link buildConversation}: the same fold, but advanced one event at a time
- * so a streaming delta costs O(delta) instead of re-reducing the whole history. Item updates are
- * copy-on-write — previously returned snapshots are never mutated retroactively.
+ * Incremental form of {@link buildConversation}: advanced one event at a time (O(delta), not a full
+ * re-reduce). Item updates are copy-on-write — previously returned snapshots are never mutated.
  */
 export function createConversationBuilder(): ConversationBuilder {
   const items: ConversationItem[] = [];
@@ -322,9 +318,8 @@ export function createConversationBuilder(): ConversationBuilder {
       }
 
       case 'compaction': {
-        // The adapter emits the boundary first (metadata only) and again once the summary text is
-        // known; history replay repeats the same compactionId. Merge instead of replacing so a
-        // later partial emit never wipes fields an earlier one carried.
+        // The boundary arrives more than once (metadata first, summary later; history replay
+        // repeats the compactionId) — merge, so a partial emit never wipes earlier fields.
         const existing = compactionIndex.get(event.compactionId);
         if (existing === undefined) {
           items.push({

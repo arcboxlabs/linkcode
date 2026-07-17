@@ -85,10 +85,8 @@ export function declinedToolCallIds(items: readonly ConversationItem[]): Set<str
   return ids;
 }
 
-/**
- * Materialize a declined permission's tool-call snapshot for rendering when the agent never
- * emitted a `tool-call` event for it (defaults mirror the adapter's `emitTool` synthesis).
- */
+/** Tool-call snapshot for a declined permission the agent never emitted a `tool-call` event for
+ * (defaults mirror the adapter's `emitTool` synthesis). */
 export function declinedToolCall(update: ToolCallUpdate): ToolCall {
   return {
     toolCallId: update.toolCallId,

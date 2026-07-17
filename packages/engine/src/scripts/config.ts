@@ -21,11 +21,8 @@ const ScriptEntrySchema = z.object({
   port: z.number().int().positive().max(65535).optional(),
 });
 
-/**
- * Read the workspace's declared scripts, leniently: a missing/broken file or section
- * yields no scripts, and each malformed entry is dropped alone (the config file is
- * user-edited; one typo must not take down the whole list).
- */
+/** Read the workspace's declared scripts, leniently: a missing/broken file or section yields no
+ * scripts, and each malformed entry is dropped alone — one typo must not take down the list. */
 export function readWorkspaceScripts(cwd: string): ScriptDeclaration[] {
   let parsed: unknown;
   try {

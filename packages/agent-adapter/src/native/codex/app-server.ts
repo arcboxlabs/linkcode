@@ -10,15 +10,11 @@ import { noop } from 'foxts/noop';
 import { isRecord } from '../../history-util';
 
 /**
- * Minimal JSON-RPC client for `codex app-server` (line-delimited JSON over stdio) — the protocol
- * behind the official VS Code extension. Unlike `@openai/codex-sdk` (a one-shot `codex exec`
- * wrapper), this surface supports per-tool approval round-trips, per-turn model/effort overrides,
- * structured file-change diffs, and turn interruption — everything the adapter needs for parity
- * with claude-code.
- *
- * Framing follows the server's own dialect: requests/responses carry `{id, method?, params?}`
- * with no `jsonrpc` envelope field (verified against codex-cli 0.144.1, which accepts both but
- * replies without it).
+ * Minimal JSON-RPC client for `codex app-server` (line-delimited JSON over stdio, the protocol
+ * behind the official VS Code extension). Unlike `@openai/codex-sdk`'s one-shot `codex exec`
+ * wrapper, it supports approval round-trips, per-turn model/effort overrides, structured
+ * file-change diffs, and turn interruption. Framing carries no `jsonrpc` envelope field (verified
+ * against codex-cli 0.144.1, which accepts both but replies without it).
  */
 
 const PLATFORM_PACKAGE_BY_TARGET: Record<string, string> = {
@@ -53,9 +49,8 @@ function targetTriple(): string | null {
 /**
  * Locate the native `codex` binary shipped by `@openai/codex`'s platform-specific optional
  * dependency (vendor/<triple>/bin/codex) — the node_modules self-resolution tier for dev shells
- * and standalone daemons, mirroring what `@openai/codex-sdk` used to do. Packaged apps exclude
- * the platform packages (CODE-114), so callers must prefer `agentRuntimeProber.resolveBinary`
- * (managed dir / detected user install) and fall back here only when it yields nothing.
+ * and standalone daemons. Packaged apps exclude the platform packages (CODE-114), so callers must
+ * prefer `agentRuntimeProber.resolveBinary` and fall back here only when it yields nothing.
  */
 export function resolveCodexBinaryPath(): string {
   const triple = targetTriple();

@@ -19,8 +19,7 @@ export type CloudAccount =
 
 /**
  * The one account read for every screen: better-auth's reactive session
- * folded into an explicit three-state view. Better-auth owns the session —
- * this only reshapes it, so all screens re-render together on auth changes.
+ * reshaped into an explicit three-state view (better-auth owns the session).
  */
 export function useCloudAccount(): CloudAccount {
   const { data, isPending } = cloudAuthClient.useSession();
@@ -30,10 +29,8 @@ export function useCloudAccount(): CloudAccount {
 }
 
 export async function signInToCloud(): Promise<void> {
-  // Generic OAuth shares the social sign-in flow as of better-auth 1.7. The
-  // system browser runs the IdP flow; the deep link lands back on /connect.
-  // better-auth reports failures as a value, not a rejection — rethrow so the
-  // caller can show them (a dismissed browser session resolves without error).
+  // Generic OAuth rides signIn.social as of better-auth 1.7. Failures come back as
+  // a value, not a rejection — rethrow (a dismissed browser resolves without error).
   const { error } = await cloudAuthClient.signIn.social({
     provider: IDP_PROVIDER_ID,
     callbackURL: '/connect',

@@ -14,11 +14,9 @@ const PR_STATUS_TTL_MS = 30000;
 const DIFF_TTL_MS = 10000;
 
 /**
- * GitService: read-only git and hosting-provider state for the directories agents work in. Sits
- * beside {@link import('../history-service').HistoryService} in the Engine and answers the `git.*`
- * wire RPCs. All state is keyed by `cwd` (directory-backed — every session on the same directory
- * shares one view); TTL caches with in-flight dedup converge any number of polling clients onto one
- * underlying call.
+ * Read-only git and hosting-provider state answering the `git.*` wire RPCs. Keyed by `cwd`
+ * (every session on the same directory shares one view); TTL caches with in-flight dedup
+ * converge any number of polling clients onto one underlying call.
  */
 export class GitService {
   private readonly statusCache = new TtlCache<GitStatus>(STATUS_TTL_MS);

@@ -74,19 +74,17 @@ function OverlayUnderlay({ children }: React.PropsWithChildren): React.ReactNode
 }
 
 /**
- * A supervised daemon needs a beat to boot (fork + engine + listener bind, ~250ms measured);
- * early dial failures within this window are startup, not an outage — keep the skeleton up.
- * Measured from renderer boot, not from mount: a later successful connection generation replaces
- * the runtime contexts, so a subsequent outage mounts this fallback again. Restarting the grace
- * then would hide the error screen — and its Retry button — for another full window.
+ * Early dial failures on a supervised daemon are startup (~250ms boot measured), not an outage —
+ * keep the skeleton up. Measured from renderer boot, not mount: a later outage remounts this
+ * fallback, and restarting the grace then would hide the error screen (and its Retry button)
+ * for another full window.
  */
 const MANAGED_STARTUP_GRACE_MS = 10000;
 const RENDERER_BOOT_AT = Date.now();
 
 /**
- * Desktop connection gate: a shell-shaped skeleton while connecting (plus a startup grace window
- * on managed hosts), then the shared `ConnectionState` once genuinely errored. Endpoint
- * rediscovery is owned by the always-on desktop connection source, not this fallback.
+ * Desktop connection gate: a shell-shaped skeleton while connecting (plus the managed startup grace),
+ * then the shared `ConnectionState`. Endpoint rediscovery is owned by the connection source, not here.
  */
 function DesktopConnectionFallback(): React.ReactNode {
   const status = useWorkbenchRuntimeStatus();

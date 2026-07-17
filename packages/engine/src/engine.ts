@@ -146,15 +146,10 @@ const ASSET_PROGRESS_INTERVAL_MS = 150;
 const RUNTIME_REVALIDATE_COOLDOWN_MS = 5000;
 
 /**
- * Engine: the local core engine — the "host" that runs the agents
- * (docs/ARCHITECTURE.md#the-host-engine-adapters-abstraction).
- * Manages multiple agent sessions, pushing each adapter's normalized events down to clients over the
- * transport and routing input back up to the matching adapter.
- *
- * The transport is decoupled from the carrier: a direct local connection, a fan-out Hub serving many
- * clients, or a tunnel through the Server all use the same Engine (docs/ARCHITECTURE.md#core-principles). Because the daemon broadcasts
- * events to every attached client, request/response control messages are correlated by id: `session.start`
- * carries a `clientReqId` that the matching `session.started` echoes back as `replyTo`.
+ * The local core engine — the "host" that runs the agents, carrier-agnostic
+ * (docs/ARCHITECTURE.md#the-host-engine-adapters-abstraction, #core-principles).
+ * Events broadcast to every attached client, so request/response control messages are correlated
+ * by id: a request's `clientReqId` echoes back as `replyTo` on the matching reply.
  */
 export class Engine {
   private readonly sessions = new Map<SessionId, Session>();
@@ -189,9 +184,8 @@ export class Engine {
   private runtimesCollect: Promise<void> = Promise.resolve();
   /** Queued + running collect passes; read-triggered revalidation coalesces onto them. */
   private runtimesCollectActive = 0;
-  /** When the last collect pass SUCCEEDED — the read-revalidation cooldown reference. A failed
-   * pass leaves it alone so the next read retries immediately instead of serving stale data
-   * behind a cooldown nothing actually refreshed. */
+  /** When the last collect pass SUCCEEDED (the read-revalidation cooldown reference); a failed
+   * pass leaves it alone so the next read retries immediately. */
   private runtimesCollectedAt = 0;
   /** An event-triggered pass that has not started probing yet; simultaneous events join it. */
   private pendingEventPass: Promise<void> | undefined;
@@ -268,20 +262,14 @@ export class Engine {
     });
   }
 
-  /**
-   * Ensure the daemon-owned chat workspace exists at `cwd` — see
-   * {@link WorkspaceRegistry.ensureChatWorkspace}. Called once by the daemon at startup, before any
-   * client can connect.
-   */
+  /** Ensure the daemon-owned chat workspace exists at `cwd` ({@link WorkspaceRegistry.ensureChatWorkspace}).
+   * Called once by the daemon at startup, before any client can connect. */
   ensureChatWorkspace(cwd: string): Promise<WorkspaceRecord> {
     return this.workspaces.ensureChatWorkspace(cwd);
   }
 
-  /**
-   * Resolve a session's StartOptions: apply the bound account/provider defaults, then, for a
-   * cross-protocol account, route the agent through the local translation sidecar (rewriting the
-   * endpoint to its loopback URL). A session that needs translation with no sidecar available fails.
-   */
+  /** Apply the bound account/provider defaults, then route a cross-protocol account through the
+   * local translation sidecar; a session that needs translation with no sidecar available fails. */
   private async resolveStartOptions(opts: StartOptions): Promise<StartOptions> {
     const resolved = applyProviderDefaults(
       opts,
@@ -354,10 +342,9 @@ export class Engine {
             throw error;
           }
           if (startsTurn) session.turnInputActive = true;
-          // Echo the user's prompt into the broadcast stream (and set the title) before awaiting
-          // send: provider events can outrun the dispatch acknowledgement, so waiting would let
-          // assistant output arrive before its user turn. A failed send is broadcast as an explicit
-          // input_rejected error below as well as replying request.failed to the originating client.
+          // Echo the prompt (and set the title) before awaiting send: provider events can outrun
+          // the dispatch ack, so waiting would let assistant output arrive before its user turn.
+          // A failed send still broadcasts input_rejected below and replies request.failed.
           if (p.input.type === 'prompt') {
             assertAttachmentContentAllowed(p.input.content);
             this.transport.send(
@@ -369,9 +356,8 @@ export class Engine {
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
           }
-          // Command/shell inputs echo as the text the user typed (`/name args` / `$ cmd`) so the
-          // transcript shows the invocation; they never drive the title (a session named "/compact"
-          // helps nobody).
+          // Echo command/shell inputs as the text the user typed so the transcript shows the
+          // invocation; they never drive the title.
           if (p.input.type === 'command' || p.input.type === 'shell-command') {
             const text =
               p.input.type === 'command'
@@ -440,9 +426,8 @@ export class Engine {
       }
       case 'session.delete': {
         await this.tryReply(p.clientReqId, async () => {
-          // Idempotent, unlike session.stop: the target is usually cold (the sidebar lists stopped
-          // sessions too) and another client may have deleted it already. Provider-local history is
-          // left untouched, so the conversation stays re-importable via session.import.
+          // Idempotent, unlike session.stop: the target is usually cold or already deleted by
+          // another client. Provider-local history stays untouched, so session.import still works.
           const session = this.sessions.get(p.sessionId);
           if (session) {
             this.closeSessionInteractions(p.sessionId, session);
@@ -697,11 +682,8 @@ export class Engine {
       }
       case 'file.suggest': {
         await this.tryReply(p.clientReqId, async () => {
-          // Scope suggestions to roots the user has opened: session start/resume `touch`-registers
-          // its cwd, so every legitimate composer root is in the registry, while a stray cwd no
-          // session ever ran in is refused instead of enumerated. (Not a hard boundary — clients
-          // can register workspaces — just the same opened-roots scoping the rest of the product
-          // uses.) The search runs under the registered record's cwd, not the caller's spelling.
+          // Refuse a cwd no session ever ran in (opened-roots scoping, not a hard boundary);
+          // the search runs under the registered record's cwd, not the caller's spelling.
           const workspace = nullthrow(
             this.workspaces.findByCwd(p.cwd),
             `Unknown workspace: ${p.cwd}`,
@@ -1053,11 +1035,8 @@ export class Engine {
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
   }
 
-  /**
-   * Bind a (new or resumed) record to a live adapter run. The record — already carrying its
-   * current run as the last entry of `runs` — becomes the persisted identity; the adapter's
-   * `session-ref` event later backfills that run's provider-local id.
-   */
+  /** Bind a (new or resumed) record — its current run already last in `runs` — to a live adapter
+   * run; the adapter's `session-ref` event later backfills that run's provider-local id. */
   private async startLiveSession(
     replyTo: string | undefined,
     record: SessionRecord,
@@ -1075,9 +1054,8 @@ export class Engine {
       capabilities: adapter.capabilities,
     };
     session.unsub = adapter.onEvent((event) => {
-      // The adapter invokes this synchronously; an uncaught throw here would bubble out of
-      // whatever triggered the event (the adapter's own internals, in most cases) instead of
-      // staying contained to this session.
+      // The adapter invokes this synchronously; an uncaught throw would bubble into whatever
+      // triggered the event instead of staying contained to this session.
       try {
         switch (event.type) {
           case 'status':
@@ -1133,9 +1111,8 @@ export class Engine {
             session.capabilities = event.capabilities;
             break;
           case 'error':
-            // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
-            // `loggedIn: false` and the client surfaces the login cue, self-healing an out-of-band
-            // auth change the boot-time probe couldn't see.
+            // Signed-out/expired-token turn: re-probe so the runtime snapshot flips to
+            // `loggedIn: false` and the client surfaces the login cue.
             if (event.code === AUTH_FAILED_ERROR_CODE) void this.refreshAgentRuntimes();
             break;
           default:
@@ -1439,10 +1416,9 @@ export class Engine {
     );
   }
 
-  /** Broadcast `session.notification` for notification-worthy adapter events. Classification is
-   * daemon-side so clients never fold background sessions' event streams; whether to surface it
-   * (focus suppression, user prefs) is client-side presentation policy. Always a broadcast — even
-   * once per-connection subscription modes exist (CODE-72), this frame must reach every client. */
+  /** Classification is daemon-side so clients never fold background sessions' event streams;
+   * surfacing is client-side policy. Must stay a broadcast even once per-connection subscription
+   * modes exist (CODE-72). */
   private maybeNotify(sessionId: SessionId, event: AgentEvent): void {
     const reason = notificationReason(event);
     const record = this.records.get(sessionId);
@@ -1503,22 +1479,14 @@ export class Engine {
     this.persistRecord(record);
   }
 
-  /**
-   * Persist best-effort: `this.records` (in-memory) is the source of truth for a running daemon,
-   * so a persistence failure is logged, not surfaced to the caller — it must never fail the
-   * request that triggered it (e.g. `session.start`) or unwind a session that is already live.
-   * `sessionStore.save` may throw synchronously (the daemon's drizzle/better-sqlite3 store) or
-   * reject asynchronously; both are caught and logged here.
-   */
+  /** Persist best-effort: `this.records` is the source of truth for a running daemon, so a save
+   * failure (sync throw or async rejection) is logged and must never fail the triggering request. */
   private persistRecord(record: SessionRecord): void {
     record.updatedAt = Date.now();
     void this.persistRecordSafely(record);
   }
 
-  /**
-   * `await` inside `try` catches both a synchronous throw (the daemon's drizzle/better-sqlite3
-   * store) and an async rejection with the same catch block, so this never rejects.
-   */
+  /** `await` inside `try` catches both a sync throw and an async rejection, so this never rejects. */
   private async persistRecordSafely(record: SessionRecord): Promise<void> {
     try {
       await this.sessionStore.save(record);
@@ -1635,13 +1603,9 @@ export class Engine {
     return pass;
   }
 
-  /**
-   * Read-triggered revalidation for `agent-runtime.list` (CODE-172): out-of-band changes the boot
-   * probe can't see (`claude auth logout`, a hand-installed CLI) surface on the next read instead
-   * of on the next failed turn. Coalesced onto any queued collect and rate-limited, because every
-   * client re-reads on the very `agent-runtime.changed` push this can produce; that push is also
-   * diff-gated, or the read→push→read cycle would never converge.
-   */
+  /** Read-triggered revalidation for `agent-runtime.list` (CODE-172): out-of-band changes surface
+   * on the next read. Coalesced, rate-limited, and diff-gated — every client re-reads on the
+   * `agent-runtime.changed` push this produces, so the read→push→read cycle must converge. */
   private revalidateAgentRuntimes(): void {
     if (!this.collectAgentRuntimes) return;
     if (this.runtimesCollectActive > 0) return;
@@ -1694,10 +1658,9 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
   return record.origin.type === 'imported' ? record.origin.historyId : undefined;
 }
 
-/** The notification-worthy subset of adapter events. `stop` is the turn boundary (`status: 'idle'`
- * also fires at session start, so it can't be the trigger); a `permission-request` or
- * `question-request` ask is the only real "awaiting input" signal — no adapter emits an
- * `awaiting-input` status. */
+/** The notification-worthy subset of adapter events. `stop` marks the turn boundary (`idle` also
+ * fires at session start, so it can't be the trigger); an ask is the only "awaiting input" signal
+ * any adapter emits. */
 function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
   switch (event.type) {
     case 'stop':

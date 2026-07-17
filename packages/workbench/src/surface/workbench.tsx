@@ -75,12 +75,8 @@ export interface WorkbenchProps {
 }
 
 /**
- * The workbench feature surface: session inbox + conversation stream + composer.
- *
- * It assumes the data plane is already mounted above it (transport client,
- * `TayoriProvider`, `SWRConfig`, and `LinkCodeProvider`) — see `WorkbenchProviders`.
- * Wrap it in `WorkbenchProviders` (at a layout, or inline) and mount it as a
- * routed feature page.
+ * The workbench feature surface: session inbox + conversation stream + composer. Assumes the data
+ * plane is already mounted above it — wrap in `WorkbenchProviders` and mount as a feature page.
  */
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
@@ -141,9 +137,8 @@ function WorkbenchSessionSurface({
   const questionMutation = useMutation(respondQuestion);
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  // Prompts (with any composer attachments) and workflow-mode/approval-policy switches all ride
-  // this generic input op; each reflects back via its own session event (user-message /
-  // current-mode-update / approval-policy-update).
+  // Prompts (with attachments) and workflow-mode/approval-policy switches all ride this generic
+  // input op; each reflects back via its own session event.
   const inputMutation = useMutation(sendInput, { onError });
   const [respondingRequestIds, addRespondingRequest, removeRespondingRequest] = useSet<string>();
   const [responseErrors, setResponseErrors] = useState(() => new Map<string, string>());
@@ -161,8 +156,7 @@ function WorkbenchSessionSurface({
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
-  // (the approval-policy advertisement) this client missed — e.g. a reload attaching to an
-  // already-live session. Fire-and-forget; live events cover everything after this point.
+  // this client missed (e.g. the approval-policy advertisement after a reload). Fire-and-forget.
   useEffect(() => {
     if (activeSessionId) sdkClient.raw.attachSession(activeSessionId);
   }, [sdkClient, activeSessionId]);
@@ -282,9 +276,8 @@ function WorkbenchSessionSurface({
     return { url: data.url };
   }
 
-  /** Reads a natively-picked attachment path via the daemon's file-read op — the counterpart to
-   * the drag-and-drop/paste path, which reads bytes client-side and never touches the daemon.
-   * `cwd` only matters for a relative `path`; the picker always yields an absolute one. */
+  /** Reads a natively-picked attachment via the daemon's file-read op (drag-and-drop/paste reads
+   * bytes client-side instead). `cwd` only matters for a relative `path`; the picker's is absolute. */
   async function handleReadAttachmentFile(path: string): Promise<ComposerAttachment> {
     try {
       const { data } = await readWorkspaceFile({ cwd: '/', path });

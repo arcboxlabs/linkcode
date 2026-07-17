@@ -7,20 +7,12 @@ export interface TableManualPagination<TData> {
 }
 
 /**
- * Front-end pagination: the client owns the FULL row set (already sorted/filtered)
- * and this slices the current page out of it locally — the counterpart of server
- * pagination, where the backend slices and `pageCount`/`rowCount` arrive in the
- * response. The outputs are shaped to drop into the same places.
- *
- * A page index pointing past the end (e.g. the row set shrank) is clamped to the
- * last page for slicing; the pagination state itself is not mutated.
- *
- * Pure derivation, deliberately NOT a hook. It also deliberately takes plain
- * values instead of the pagination state instance: reading the instance's
- * tracked getters in here would make the result change under unchanged argument
- * identities, which breaks React Compiler's call-site memoization. Read
- * `pagination.pageIndex` / `pagination.pageSize` at the call site (subscribing
- * the component) and pass the values in.
+ * Front-end pagination: slices the current page from a client-owned full row set,
+ * shaped like a server pagination response. An out-of-range page index is clamped
+ * for slicing only — the pagination state is not mutated.
+ * Deliberately NOT a hook and takes plain values, not the pagination instance:
+ * reading its tracked getters here would break React Compiler call-site memoization.
+ * Read `pagination.pageIndex` / `pagination.pageSize` at the call site and pass them in.
  */
 export function paginateTableData<TData>(
   data: TData[] | undefined,

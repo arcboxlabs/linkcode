@@ -10,11 +10,8 @@ const CORNER_RADIUS = 9.9403;
 const BEAT_SECONDS = 1.6;
 const STAGGER_SECONDS = 0.15;
 
-/**
- * The LinkCode mark as a self-animating inline SVG: the glyph bars breathe in a stagger and the
- * accent dot answers last. SMIL keeps it dependency-free and self-contained; the glyph renders in
- * `currentColor` so it follows the theme, while the accent keeps the brand red.
- */
+/** Self-animating LinkCode mark. SMIL keeps it dependency-free; the glyph renders in
+ * `currentColor` so it follows the theme, while the accent keeps the brand red. */
 export function AnimatedMark({
   size = 96,
   className,

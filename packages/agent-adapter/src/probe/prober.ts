@@ -6,10 +6,9 @@ import { CodexProbe } from './codex';
 export type DetectedAgentRuntimes = Partial<Record<AgentKind, DetectedAgentRuntime>>;
 
 /**
- * Which agent CLIs this host can spawn, orchestrating one {@link AgentCliProbe} per agent kind.
- * Holds the boot-time detection state: the daemon calls `probe()` (directly or via `collect()`)
- * once per boot — user CLIs self-update, so results must not outlive a boot — and adapters
- * resolve spawn paths synchronously through the same instance when building spawn options.
+ * Which agent CLIs this host can spawn — one {@link AgentCliProbe} per agent kind. The daemon
+ * probes once per boot (user CLIs self-update, so results must not outlive a boot); adapters
+ * resolve spawn paths synchronously through the same instance.
  */
 export class AgentRuntimeProber {
   private detected: DetectedAgentRuntimes = {};
@@ -19,11 +18,8 @@ export class AgentRuntimeProber {
     private readonly probes: AgentCliProbe[] = [new ClaudeCodeProbe(), new CodexProbe()],
   ) {}
 
-  /**
-   * Wire the daemon's managed-asset store into spawn resolution. A live function, not a
-   * snapshot: managed installs complete in the background after boot and must win as soon
-   * as they land on disk.
-   */
+  /** Wire the daemon's managed-asset store into spawn resolution. A live function, not a
+   * snapshot: a background managed install must win as soon as it lands on disk. */
   setManagedResolver(resolver: (kind: ProbeableKind) => string | undefined): void {
     this.managedResolver = resolver;
   }
@@ -46,25 +42,20 @@ export class AgentRuntimeProber {
   }
 
   /**
-   * Resolution order for the CLI an adapter spawns: managed (the exact SDK-paired binary the
-   * daemon's asset store installed) → detected (user-installed, version-verified at boot) →
-   * `undefined` (the SDK resolves its own platform package out of node_modules — dev and
-   * standalone daemons). Managed outranks detected because it is the SDK-pinned pair; detected
-   * outranks SDK self-resolution because in packaged hosts the latter lands inside the asar
-   * (spawn-hostile and host-arch only). Once the compat manifest (CODE-77) lands, detected
-   * runtimes are additionally gated by version range here.
+   * Spawn-path resolution order: managed (the SDK-pinned pair the daemon's asset store installed)
+   * → detected (user install, version-verified at boot) → `undefined` (SDK self-resolution out of
+   * node_modules — dev / standalone daemons; in packaged hosts that lands inside the
+   * spawn-hostile asar, which is why detected outranks it). The compat manifest (CODE-77) will
+   * additionally version-gate detected runtimes here.
    */
   resolveBinary(kind: ProbeableKind): string | undefined {
     if (!this.probes.some((candidate) => candidate.kind === kind)) return undefined;
     return this.managedResolver?.(kind) ?? this.detected[kind]?.path;
   }
 
-  /**
-   * Binary path for an interactive `auth login`: the same managed/detected spawn path, falling back
-   * to the SDK's platform binary in dev/standalone daemons — where {@link resolveBinary} is
-   * `undefined` (the SDK self-resolves at session start) but the CLI still ships in node_modules and
-   * a login needs a concrete executable to spawn.
-   */
+  /** Binary path for an interactive `auth login`: the managed/detected spawn path, falling back to
+   * the SDK's platform binary in dev/standalone daemons — {@link resolveBinary} is `undefined`
+   * there, but a login still needs a concrete executable to spawn. */
   loginBinaryPath(kind: ProbeableKind): string | undefined {
     const probe = this.probes.find((candidate) => candidate.kind === kind);
     if (!probe) return undefined;
@@ -72,10 +63,9 @@ export class AgentRuntimeProber {
   }
 
   /**
-   * Availability of every agent runtime this host has evaluated, for the `agent-runtime.list` wire
-   * resource. Re-runs the detection probe. opencode is absent until it moves off PATH-spawning
-   * (CODE-76); `source: 'sdk'` entries carry no binary facts — the SDK's own resolution is
-   * attempted only at session start.
+   * Availability of every evaluated agent runtime, for the `agent-runtime.list` wire resource;
+   * re-runs the detection probe. opencode is absent until it moves off PATH-spawning (CODE-76);
+   * `source: 'sdk'` entries carry no binary facts (SDK resolution happens only at session start).
    */
   async collect(): Promise<AgentRuntimes> {
     const detected = await this.probe();

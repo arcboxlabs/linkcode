@@ -55,9 +55,8 @@ export type HistoryReadClientOptions = AgentHistoryReadOptions & {
 };
 
 /**
- * The correlated control-plane requests: session lifecycle, history, provider config, git facts,
- * and workspaces. Each method builds the matching `WirePayload` and hands it to the shared
- * {@link PendingRegistry} for request/reply correlation (see {@link sendCorrelated}).
+ * Correlated control-plane requests (sessions, history, config, git, workspaces); replies are
+ * correlated via the shared {@link PendingRegistry} (see {@link sendCorrelated}).
  */
 export class ControlChannel {
   constructor(

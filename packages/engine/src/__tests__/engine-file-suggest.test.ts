@@ -134,9 +134,8 @@ describe('engine file.suggest', () => {
     if (started?.kind !== 'session.started') throw new Error('no session.started for r1');
     const sessionId: SessionId = started.sessionId;
 
-    // A fresh engine over the same session store has an empty workspace registry (the daemon
-    // persists workspaces, but an archived root looks the same): resuming the session must
-    // re-register its cwd for the @-mention path.
+    // A fresh engine over the same session store has an empty workspace registry: resuming the
+    // session must re-register its cwd for the @-mention path.
     const second = harness(store);
     await second.engine.start();
     await second.inject({ kind: 'session.resume', clientReqId: 'r2', sessionId });

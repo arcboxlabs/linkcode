@@ -61,9 +61,8 @@ export async function createSocketIoServer(opts: SocketIoServerOptions): Promise
     previewRoutes ? createPreviewRequestHandler(previewRoutes, identityHandler) : identityHandler,
   );
   // The proxy's upgrade listener registers BEFORE socket.io attaches its own, and
-  // `destroyUpgrade: false` keeps engine.io from reaping proxied (non-socket.io) upgrades
-  // it doesn't recognize. Known limitation: a preview app requesting the daemon's own
-  // `/socket.io/` path is answered by the daemon, not proxied.
+  // `destroyUpgrade: false` keeps engine.io from reaping proxied upgrades. Known limitation: a
+  // preview app requesting the daemon's own `/socket.io/` path is answered here, not proxied.
   if (previewRoutes) {
     httpServer.on('upgrade', (req, socket, head) => {
       handlePreviewUpgrade(previewRoutes, req, socket, head);
@@ -78,10 +77,9 @@ export async function createSocketIoServer(opts: SocketIoServerOptions): Promise
       },
     },
     destroyUpgrade: previewRoutes === undefined,
-    // Default is 1 MB — too small for image attachments. A frame carrying a maximal prompt's
-    // attachments occupies MAX_ATTACHMENT_TOTAL_BASE64_LENGTH; exceeding this buffer doesn't fail
-    // one request, it kills the whole connection (ws close 1009), so the headroom must absorb the
-    // JSON envelope, text blocks, and per-attachment base64 padding.
+    // Default is 1 MB — too small for image attachments. Exceeding this buffer kills the whole
+    // connection (ws close 1009), not one request, so the headroom over
+    // MAX_ATTACHMENT_TOTAL_BASE64_LENGTH must absorb the JSON envelope and text blocks.
     maxHttpBufferSize: MAX_ATTACHMENT_TOTAL_BASE64_LENGTH + 4 * 1024 * 1024,
   });
   const connections = new Listeners<Transport>();

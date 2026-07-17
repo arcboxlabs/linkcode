@@ -15,15 +15,10 @@ import { ensureDeviceKey } from './device-key';
 const log = (message: string): void => console.log(`[linkcode/daemon] ${message}`);
 
 /**
- * `linkcode-daemon login` — RFC 8628 device sign-in for the headless daemon:
- * print a short code, let the user approve it in any signed-in browser, and
- * poll until authorized.
- *
- * Device identity is the machine's key: registration proves possession of it
- * (`keyProof`) and the server keeps one device per key, so every login —
- * first, repeat, or under a different account — resolves to the same device
- * id, and remote clients keep finding this host where they left it. Only a
- * lost key mints a new identity.
+ * `linkcode-daemon login` — RFC 8628 device sign-in: print a short code, let the user approve it
+ * in a signed-in browser, poll until authorized. Registration proves key possession (`keyProof`)
+ * and the server keeps one device per key, so every login — including under a different account —
+ * resolves to the same device id; only a lost key mints a new identity.
  */
 export async function runLoginCommand(): Promise<void> {
   const baseUrl = process.env.LINKCODE_HQ_URL || DEFAULT_HQ_URL;

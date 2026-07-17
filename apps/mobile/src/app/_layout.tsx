@@ -18,9 +18,8 @@ Sentry.init({
 });
 
 /**
- * Root layout: gesture root, safe-area + HeroUI providers, app-wide IntlProvider, and
- * the expo-router navigator. Uniwind's compiled global.css is imported here so it
- * applies to every route. GestureHandlerRootView must wrap the whole tree.
+ * Root layout. global.css is imported here so Uniwind styles apply to every route;
+ * GestureHandlerRootView must wrap the whole tree.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- Sentry.wrap is the documented expo-router root HOC; Metro Fast Refresh still handles the wrapped component.
 function RootLayout() {

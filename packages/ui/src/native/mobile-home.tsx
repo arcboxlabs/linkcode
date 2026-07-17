@@ -8,10 +8,7 @@ export interface MobileHomeProps {
   note: string;
 }
 
-/**
- * About/contract summary block. Owns no screen chrome (scrolling, insets) so it can
- * be embedded in any surrounding layout, e.g. a settings screen section.
- */
+/** About/contract summary block; owns no screen chrome so it embeds in any surrounding layout. */
 export function MobileHome({
   title,
   contract,

@@ -19,35 +19,27 @@ export const PINNED_THREAD_GROUP_KEY = 'pinned';
 
 export interface ThreadGroup {
   key: string;
-  /**
-   * The identity the sidebar persists per-group UI state (collapse) against —
-   * {@link normalizeCwdKey}'d `workspace.cwd`, or {@link UNREGISTERED_THREAD_GROUP_KEY}. Stable
-   * across an archive/re-register cycle, unlike `key` (`workspace.workspaceId`), which isn't.
-   */
+  /** The identity per-group UI state (collapse) persists against: {@link normalizeCwdKey}'d
+   * `workspace.cwd` or {@link UNREGISTERED_THREAD_GROUP_KEY} — stable across an
+   * archive/re-register cycle, unlike `key` (`workspace.workspaceId`). */
   collapseKey: string;
   /** The workspace this group belongs to; `null` for the unregistered fallback group. */
   workspace: WorkspaceRecord | null;
   sessions: SessionInfo[];
-  /**
-   * True for the daemon-owned chat workspace's group — the sidebar renders it as the flat
-   * "Chats" section instead of a collapsible Projects group.
-   */
+  /** True for the daemon-owned chat workspace's group — rendered as the flat "Chats" section
+   * instead of a collapsible Projects group. */
   isChat: boolean;
-  /**
-   * True for the synthetic pinned group (see {@link extractPinnedGroup}) — the sidebar renders it
-   * as the top-level "Pinned" section instead of a Projects group.
-   */
+  /** True for the synthetic pinned group (see {@link extractPinnedGroup}) — rendered as the
+   * top-level "Pinned" section instead of a Projects group. */
   isPinned: boolean;
 }
 
 /**
- * Groups sessions by the workspace whose `cwd` matches (via `normalizeCwdKey`). Groups are
- * ordered by `workspace.lastUsedAt` descending; sessions within a group are ordered by
- * `createdAt` descending. Sessions matching no workspace land in one fallback group, always last.
- * Every registered workspace produces a group, even with zero sessions — the flattened sidebar
- * renders one group per workspace, and an empty one still needs a header to rename/archive/start a
- * thread in. The chat workspace's group (see `workspaceKind`) is marked `isChat`; callers split it
- * out into the sidebar's "Chats" section instead of rendering it among the Projects groups.
+ * Groups sessions by the workspace whose `cwd` matches (via `normalizeCwdKey`): groups order by
+ * `lastUsedAt` desc, sessions by `createdAt` desc, unmatched sessions in one fallback group, last.
+ * Every registered workspace produces a group even with zero sessions — an empty one still needs
+ * a header to rename/archive/start a thread in. The chat workspace's group is marked `isChat`;
+ * callers split it out into the "Chats" section.
  */
 export function groupThreadsByWorkspace(
   sessions: readonly SessionInfo[],
@@ -96,10 +88,9 @@ export function groupThreadsByWorkspace(
 }
 
 /**
- * Splits the pinned sessions out into the synthetic "Pinned" group, ordered by `pinnedIds` (pin
- * recency — the pin store prepends). Pinned ids matching no session are ignored; `pinnedGroup` is
- * `null` when none match. `rest` (everything unpinned, incoming order) is what callers group by
- * workspace, so pinned sessions never appear in their original group.
+ * Splits pinned sessions into the synthetic "Pinned" group, ordered by `pinnedIds` (pin recency —
+ * the pin store prepends). Ids matching no session are ignored; `pinnedGroup` is `null` when none
+ * match. Callers group `rest` by workspace, so pinned sessions never appear in their original group.
  */
 export function extractPinnedGroup(
   sessions: readonly SessionInfo[],

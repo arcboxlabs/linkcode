@@ -3,11 +3,9 @@ import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node
 import type { DaemonIdentity } from '@linkcode/schema';
 import { DAEMON_IDENTITY_PATH } from '@linkcode/schema';
 
-/**
- * Shared HTTP plumbing for the Node server transports: the `GET /linkcode` identity endpoint
- * (so peers can tell a linkcode daemon from a foreign process holding the port) and a `listen`
- * that surfaces bind errors (e.g. `EADDRINUSE`) as rejections instead of unhandled `'error'` events.
- */
+/** Shared HTTP plumbing for the Node server transports: the `GET /linkcode` identity endpoint
+ * (tells a linkcode daemon apart from a foreign process holding the port) and a `listen` that
+ * surfaces bind errors (e.g. `EADDRINUSE`) as rejections instead of unhandled `'error'` events. */
 
 export function createIdentityRequestHandler(
   identity: DaemonIdentity | undefined,
@@ -40,12 +38,8 @@ export interface ClosablePrimaryServer {
   close(cb: (err?: Error | null) => void): void;
 }
 
-/**
- * Close a primary server (the `ws` `WebSocketServer` or the socket.io `Server`) and, once it has
- * finished, the underlying HTTP server it rides on. Both wrap Node's callback-style `close` with
- * the same shape, so ws-server.ts and socket-io-server.ts share this instead of each re-deriving
- * the same two-stage close-then-close-http Promise.
- */
+/** Close a primary server (the `ws` `WebSocketServer` or the socket.io `Server`) and, once it has
+ * finished, the underlying HTTP server it rides on — shared by ws-server.ts and socket-io-server.ts. */
 export function closeServerPair(
   primary: ClosablePrimaryServer,
   httpServer: HttpServer,

@@ -7,14 +7,13 @@ import type { TranslatorService, TranslatorUpstream } from '@linkcode/engine';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /**
- * Daemon-side translation sidecar: spawns `arcboxlabs/aigateway` on loopback so a cross-protocol
- * account (e.g. a raw OpenAI key backing Claude Code) works offline. The engine calls `ensure()` at
- * session start; this resolves — or reuses — an aigateway process for the upstream and returns its
- * loopback base URL, which the engine injects as the agent's `ANTHROPIC_BASE_URL`.
+ * Translation sidecar: spawns `arcboxlabs/aigateway` on loopback so a cross-protocol account works
+ * offline; `ensure()` resolves or reuses a process per upstream and the engine injects its base
+ * URL as the agent's `ANTHROPIC_BASE_URL`.
  *
- * Contract (aigateway `docs/gateway-sidecar.md`): `aigateway serve --host 127.0.0.1 --port 0 --config
- * <toml>` prints exactly one line to stdout once bound — `listening on http://127.0.0.1:<port>` — the
- * only way to learn the OS-assigned port; failure exits non-zero with stderr; SIGTERM stops it.
+ * Contract (aigateway `docs/gateway-sidecar.md`): once bound it prints exactly one stdout line —
+ * `listening on http://127.0.0.1:<port>` — the only way to learn the OS-assigned port; failure
+ * exits non-zero; SIGTERM stops it.
  */
 
 /** The child-process surface {@link createAiGatewaySidecar} needs; node's `spawn` satisfies it. */

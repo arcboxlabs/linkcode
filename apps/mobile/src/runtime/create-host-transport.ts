@@ -4,10 +4,9 @@ import type { HostProfile } from '../stores/host-store';
 import { CLOUD_URL, fetchTunnelJwt } from './cloud/client';
 
 /**
- * Pick the transport by host kind. Tunnel entries dial the cloud relay as a
- * client of the daemon's device id; direct entries pick by URL scheme —
- * http(s) dials the daemon's default Socket.IO listener (same as
- * webview/desktop), ws(s) dials a raw WebSocket listener.
+ * Transport by host kind: tunnel entries dial the cloud relay; direct entries pick by
+ * URL scheme — http(s) is the daemon's default Socket.IO listener (same as
+ * webview/desktop), ws(s) a raw WebSocket listener.
  */
 export function createHostTransport(host: HostProfile): Transport {
   if ('tunnelHostId' in host) {

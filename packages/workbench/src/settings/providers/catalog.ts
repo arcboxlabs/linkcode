@@ -8,11 +8,10 @@ import type {
 } from '@linkcode/schema';
 
 /**
- * The service directory behind the add-account flow: every known way to obtain a model-provider
- * credential, as pure data (no hooks). Selecting an entry seeds the form — endpoint URL, protocol,
- * credential type — so the user only pastes a secret. Endpoint facts verified against each vendor's
- * docs (2026-07); a `{placeholder}` in a URL is account-specific and becomes a dedicated form field.
- * The entry's `id` is persisted as `Account.service` (brand presentation + implied protocol).
+ * The service directory behind the add-account flow, as pure data (no hooks); selecting an entry
+ * seeds the form so the user only pastes a secret. Endpoint facts verified against vendor docs
+ * (2026-07); a `{placeholder}` in a URL becomes a dedicated form field. The entry's `id` is
+ * persisted as `Account.service`.
  */
 
 /** Grouping in the add-account catalog grid. */
@@ -179,10 +178,9 @@ export interface DetectedLoginSuggestion {
 }
 
 /**
- * CLI logins the runtime probe sees that the pool does not represent yet — offered in the master
- * list as one-click "detected" cards. One per subscription service whose agent reports
- * `loggedIn: true` while no oauth account for that agent exists (the pool stays explicit user
- * state; this is a suggestion, not an implicit member).
+ * CLI logins the runtime probe sees that the pool does not represent yet, offered as one-click
+ * "detected" cards: `loggedIn: true` with no oauth account for that agent. The pool stays
+ * explicit user state — this is a suggestion, not an implicit member.
  */
 export function detectedLoginSuggestions(
   accounts: Accounts,
@@ -203,10 +201,9 @@ export function detectedLoginSuggestions(
 }
 
 /**
- * The protocol an account's requests speak: the explicit endpoint protocol, or the one its service
- * implies (an Anthropic key is not an OpenAI key even without a custom endpoint). Undefined for
- * pre-catalog custom accounts with no endpoint — compatibility is unknown and the UI keeps them
- * bindable everywhere, matching pre-account behavior.
+ * The protocol an account's requests speak: the explicit endpoint protocol, or the one its
+ * service implies. Undefined for pre-catalog custom accounts with no endpoint — compatibility is
+ * unknown, so the UI keeps them bindable everywhere.
  */
 export function accountProtocol(account: Account): AccountProtocol | undefined {
   if (account.endpoint) return account.endpoint.protocol;

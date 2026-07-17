@@ -99,9 +99,8 @@ async function getImBindings(): Promise<CloudImBinding[]> {
 }
 
 /**
- * Confirms a `/link` code. Expected rejections map to data — 404 is a wrong/expired code, 409 a
- * Telegram identity already linked to another user — because they cross the IPC boundary, where
- * thrown errors lose their shape.
+ * Confirms a `/link` code. Expected rejections (404 wrong/expired code, 409 identity already
+ * linked to another user) map to data — thrown errors lose their shape across the IPC boundary.
  */
 async function linkTelegram(code: string): Promise<CloudImLinkResult> {
   const res = await cloudFetch('/im/link/telegram', {

@@ -32,11 +32,8 @@ export function artifactKindForPath(path: string): string | null {
 const MAX_INLINE_PATH_LENGTH = 256;
 const INLINE_PATH_RE = /^(?:\.{1,2}\/|\/)?[\w.@+-]+(?:\/[\w.@+-]+)*$/;
 
-/**
- * Decide whether an inline-code span is a workspace file path worth linking. Deliberately
- * conservative: single token, path-safe characters only, and an extension one of the
- * viewers understands — a stray `foo.bar` identifier stays plain code.
- */
+/** Whether an inline-code span is a linkable workspace path. Deliberately conservative: single
+ * token, path-safe characters, viewer-known extension — a stray `foo.bar` stays plain code. */
 export function detectInlineFilePath(text: string): string | null {
   const candidate = text.trim();
   if (candidate.length === 0 || candidate.length > MAX_INLINE_PATH_LENGTH) return null;

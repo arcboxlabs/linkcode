@@ -6,10 +6,9 @@ import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from 
 
 /**
  * Maps rollout tool rows to the same `ToolCall` shapes the live adapter emits (`adapter.ts`
- * `handleItem`), so a replayed transcript renders like the live turn did: `exec_command` titles the
- * command line and carries the parsed output body, `apply_patch` reconstructs per-hunk diffs from
- * codex's `*** Begin Patch` envelope (the app-server's unified diff is never persisted), and
- * `update_plan` replays as the `plan` event the live turn surfaces instead of a tool row.
+ * `handleItem`) so a replayed transcript renders like the live turn did: `apply_patch`
+ * reconstructs per-hunk diffs from codex's `*** Begin Patch` envelope (the app-server's unified
+ * diff is never persisted); `update_plan` replays as the live `plan` event instead of a tool row.
  */
 
 /** An announce row mapped to what the live turn emitted for it. */
@@ -134,9 +133,8 @@ export function codexToolSettle(
         rawOutput: raw,
       };
     }
-    // A nonzero exit code deliberately stays 'completed' — live parity: the app-server marks a
-    // command that ran to completion 'completed' regardless of exit code ('failed' is reserved
-    // for declined/aborted runs), and the code travels as rawOutput for consumers that care.
+    // A nonzero exit code deliberately stays 'completed' — live parity: the app-server reserves
+    // 'failed' for declined/aborted runs, and the exit code travels as rawOutput.
     return {
       ...existing,
       status: parsed.failed ? 'failed' : 'completed',
@@ -174,10 +172,10 @@ const OUTPUT_MARKER = '\nOutput:\n';
 const DECLINED_OUTPUT_RE = /^\w+ failed for `/;
 
 /**
- * Unwrap the freeform-exec output envelope (`Chunk ID: … / Wall time: … / Process exited with
- * code N / Output:\n<body>`; apply_patch uses `Exit code: N` for the same role). Cancelled runs
- * persist `aborted by user after Ns` and declined ones `<tool> failed for \`…\`: …` — both settle
- * as failed with the raw text as the record.
+ * Unwrap the freeform-exec output envelope (`Chunk ID: … / Process exited with code N /
+ * Output:\n<body>`; apply_patch uses `Exit code: N`). Cancelled runs persist `aborted by user
+ * after Ns` and declined ones `<tool> failed for \`…\`: …` — both settle as failed with the raw
+ * text as the record.
  */
 function parseCodexToolOutput(output: string): {
   body: string;
@@ -210,10 +208,9 @@ interface ApplyPatchView {
 
 /**
  * Reconstruct per-file diff blocks from codex's `*** Begin Patch` envelope — the only edit record
- * the rollout persists. Update-file hunks split into old side (context + removed) and new side
- * (context + added), the same shape `diffContentFromUnified` produces for the live `fileChange`
- * item; adds render as all-new content and deletes/renames as receipt text, mirroring the live
- * mapping. Returns null when no file section parses (the caller falls back to a generic tool row).
+ * the rollout persists. Update hunks split into old/new sides (the same shape
+ * `diffContentFromUnified` produces live); adds render all-new, deletes/renames as receipt text.
+ * Returns null when no file section parses (the caller falls back to a generic tool row).
  */
 export function applyPatchToolView(input: string): ApplyPatchView | null {
   if (!input.startsWith('*** Begin Patch')) return null;

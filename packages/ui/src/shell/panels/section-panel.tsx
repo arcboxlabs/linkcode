@@ -26,21 +26,16 @@ export interface SectionPanelRegionProps {
   maximized: boolean;
   chromeVisible: boolean;
   chromeSurface: ChromeSurface;
-  /**
-   * Skips mounting the tab content entirely. For shells that render this panel twice (docked +
-   * maximized overlay), exactly one instance shows content, so terminal instances never run twice.
-   */
+  /** Skips mounting the tab content entirely: shells rendering this panel twice (docked +
+   * maximized overlay) show content in exactly one instance, so terminals never run twice. */
   contentHidden?: boolean;
   ChromePortal?: React.ComponentType<PanelChromePortalProps>;
   chromeSpacerClassName?: string;
   contentStyle?: React.CSSProperties;
   /** Static content for the non-terminal sections. */
   sectionContent: Partial<Record<Exclude<PanelSection, 'terminal'>, React.ReactNode>>;
-  /**
-   * External-content mode for the Terminal section: the region renders only an empty content box
-   * and reports it here; the host portals the terminal tab stack into it, so PTY instances survive
-   * moving between panel instances (docked ↔ maximized) instead of remounting with each one.
-   */
+  /** External-content mode for the Terminal section: the region renders only an empty box the
+   * host portals the terminal tab stack into, so PTY instances survive docked ↔ maximized moves. */
   terminalContentTargetRef: (element: HTMLDivElement | null) => void;
   onSelectSection: (section: PanelSection) => void;
   onSelectTerminalTab: (id: string) => void;
@@ -49,13 +44,9 @@ export interface SectionPanelRegionProps {
   onToggleMax: () => void;
 }
 
-/**
- * The right panel: a fixed Diff/Terminal/Browser/Files section strip, chrome-integrated exactly like
- * the old right panel's tabs. The Terminal section additionally owns its own sub-tab strip for PTY
- * instances; the strip itself is stateless chrome rendered locally, but the PTY stack behind it is
- * owned by the host (see `terminalContentTargetRef`) so a running shell survives navigating to Diff
- * and back, and surviving the docked ↔ maximized handoff.
- */
+/** The right panel: fixed Diff/Terminal/Browser/Files section strip. The Terminal sub-tab strip
+ * is stateless local chrome; the PTY stack behind it is host-owned (`terminalContentTargetRef`)
+ * so a running shell survives section switches and the docked ↔ maximized handoff. */
 export function SectionPanelRegion({
   panel,
   maximized,
