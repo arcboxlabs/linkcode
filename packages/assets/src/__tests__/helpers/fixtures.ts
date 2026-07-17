@@ -11,14 +11,21 @@ export interface TgzFixture {
   integrity: string;
 }
 
-/** Build a real single-member tgz with the system tar (dev machines are posix). */
-export function makeTgz(member: string, content: string): TgzFixture {
+/** Build a real tgz with the system tar (dev machines are posix). */
+export function makeTgz(
+  member: string,
+  content: string,
+  extraMembers: Record<string, string> = {},
+): TgzFixture {
   const root = mkdtempSync(join(tmpdir(), 'tgz-fixture-'));
-  const file = join(root, member);
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, content, { mode: 0o644 });
+  const members = { [member]: content, ...extraMembers };
+  for (const [path, data] of Object.entries(members)) {
+    const file = join(root, path);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, data, { mode: 0o644 });
+  }
   const archive = join(root, 'fixture.tgz');
-  execFileSync('tar', ['-czf', archive, '-C', root, member]);
+  execFileSync('tar', ['-czf', archive, '-C', root, ...Object.keys(members)]);
   const bytes = readFileSync(archive);
   return {
     archive,

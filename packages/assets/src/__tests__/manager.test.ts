@@ -148,6 +148,29 @@ describe('AssetManager', () => {
     expect(existsSync(join(dir, '9.9.9'))).toBe(true);
   });
 
+  it('needsRepair flags an installed version missing newly declared extra members', async () => {
+    freshStore();
+    const bare = await servedDescriptor('2.0.0');
+    const manager = new AssetManager({ catalog: [bare] });
+    // Not installed at all: repair must never turn into an unprompted first download.
+    expect(manager.needsRepair('tool:tectonic')).toBe(false);
+
+    await manager.ensure('tool:tectonic');
+    expect(manager.needsRepair('tool:tectonic')).toBe(false);
+
+    // The same install read under a catalog that now expects an extra member.
+    const withExtra: BinaryAssetDescriptor = {
+      ...bare,
+      artifacts: {
+        [platform]: {
+          ...bare.artifacts[platform]!,
+          extraMembers: ['package/resources/helper'],
+        },
+      },
+    };
+    expect(new AssetManager({ catalog: [withExtra] }).needsRepair('tool:tectonic')).toBe(true);
+  });
+
   it('fans install lifecycle out to subscribers: progress, then installed', async () => {
     freshStore();
     const manager = new AssetManager({ catalog: [await servedDescriptor('2.0.0')] });

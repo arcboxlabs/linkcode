@@ -15,13 +15,17 @@ export function consentedManagedAgents(assets: AssetManager): ManagedAgentKind[]
 }
 
 /**
- * The boot background-refresh set: consented agents the probe found unusable. Agents never
- * installed here are excluded — their first download comes from the client's `asset.ensure`
- * (the onboarding Download card), never unprompted (CODE-221).
+ * The boot background-refresh set: consented agents the probe found unusable, plus those whose
+ * managed install spawns but is missing files the current catalog expects (`needsRepair` — the
+ * refresh backfills them). Agents never installed here are excluded — their first download
+ * comes from the client's `asset.ensure` (the onboarding Download card), never unprompted.
  */
 export function agentsToRefresh(
   consented: readonly ManagedAgentKind[],
   runtimes: AgentRuntimes,
+  assets: AssetManager,
 ): ManagedAgentKind[] {
-  return consented.filter((kind) => runtimes[kind]?.status !== 'available');
+  return consented.filter(
+    (kind) => runtimes[kind]?.status !== 'available' || assets.needsRepair(`agent:${kind}`),
+  );
 }

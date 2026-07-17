@@ -24,6 +24,8 @@ export type ArtifactSource =
       /** Maps the asset version to the registry version key (codex platform builds live as `<ver>-<platform>` versions of `@openai/codex`). */
       versionKey?: (version: string) => string;
       member: string;
+      /** Extra members installed as executable siblings under their basenames (see `ManagedAssetArtifact`). */
+      extraMembers?: string[];
       format: 'tgz';
     }
   | {
@@ -33,6 +35,8 @@ export type ArtifactSource =
       integrity: string;
       size: number;
       member: string;
+      /** Extra members installed as executable siblings under their basenames (see `ManagedAssetArtifact`). */
+      extraMembers?: string[];
       format: ManagedAssetFormat;
     };
 
@@ -157,12 +161,22 @@ export const CATALOG: Record<ManagedAssetId, BinaryAssetDescriptor> = {
     version: { kind: 'sdk-version', package: '@openai/codex' },
     // `@openai/codex-<platform>` package names are npm aliases that 404 on the registry; the
     // real versions live under `@openai/codex` with a platform-suffixed version key. The bare
-    // binary spawns fine without its vendored rg/zsh siblings (drift smoke, 2026-07-08).
+    // binary spawns fine without its vendored rg/zsh siblings (drift smoke, 2026-07-08) — but
+    // on Windows the CLI resolves its sandbox helpers strictly next to its own binary (direct
+    // sibling or `codex-resources/`, no PATH search) and an unresolved helper surfaces as a
+    // shell error dialog, so those two ship alongside (members verified against the real
+    // 0.144.1 win32 tarballs, 2026-07-17).
     artifacts: forAllPlatforms((key) => ({
       kind: 'npm',
       packageName: '@openai/codex',
       versionKey: (version: string) => `${version}-${key}`,
       member: `package/vendor/${CODEX_TRIPLES[key]}/bin/codex${exe(key)}`,
+      ...(key.startsWith('win32') && {
+        extraMembers: [
+          `package/vendor/${CODEX_TRIPLES[key]}/codex-resources/codex-windows-sandbox-setup.exe`,
+          `package/vendor/${CODEX_TRIPLES[key]}/codex-resources/codex-command-runner.exe`,
+        ],
+      }),
       format: 'tgz',
     })),
   },

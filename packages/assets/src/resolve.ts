@@ -27,8 +27,8 @@ export async function resolveArtifact(
     );
   }
   if (source.kind === 'baked') {
-    const { url, integrity, size, format, member } = source;
-    return { urls: [url], integrity, size, format, member };
+    const { url, integrity, size, format, member, extraMembers } = source;
+    return { urls: [url], integrity, size, format, member, extraMembers };
   }
   const dist = await fetchNpmDist(source.packageName, source.versionKey?.(version) ?? version, {
     registries: options.registries,
@@ -39,5 +39,6 @@ export async function resolveArtifact(
     integrity: dist.integrity,
     format: source.format,
     member: source.member,
+    extraMembers: source.extraMembers,
   };
 }

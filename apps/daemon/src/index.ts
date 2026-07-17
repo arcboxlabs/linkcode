@@ -207,10 +207,11 @@ async function main(): Promise<void> {
       // Refresh consented managed installs in the background — boot never waits on a download. A
       // never-installed agent waits for the client's explicit `asset.ensure` instead (CODE-221).
       // Rides the probe promise (CODE-225); the engine exists first so its asset subscription
-      // sees the whole install lifecycle.
+      // sees the whole install lifecycle. `agentsToRefresh` also includes installs that spawn but
+      // lack catalog-expected extra members (`needsRepair`) so they heal via backfill (CODE-234).
       void agentRuntimesReady
         .then((agentRuntimes) => {
-          for (const kind of agentsToRefresh(consentedAgents, agentRuntimes)) {
+          for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
             void assets
               .ensure(`agent:${kind}`)
               .catch((err) => {

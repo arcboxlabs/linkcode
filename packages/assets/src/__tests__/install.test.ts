@@ -1,10 +1,10 @@
 import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AssetDescriptor } from '../catalog';
 import { IntegrityError } from '../errors';
-import { installAsset, installedPath } from '../install';
+import { installAsset, installedComplete, installedPath } from '../install';
 import { assetDir } from '../paths';
 import { currentPlatformKey } from '../platform';
 import type { TgzFixture } from './helpers/fixtures';
@@ -29,13 +29,26 @@ async function serve(fixture: TgzFixture): Promise<LocalServer> {
   return server;
 }
 
-function descriptor(url: string, integrity: string, size: number): AssetDescriptor {
+function descriptor(
+  url: string,
+  integrity: string,
+  size: number,
+  extraMembers?: string[],
+): AssetDescriptor {
   return {
     id: 'tool:tectonic',
     binaryBase: 'tool',
     version: { kind: 'pinned', version: '1.0.0' },
     artifacts: {
-      [platform!]: { kind: 'baked', url, integrity, size, member: 'package/tool', format: 'tgz' },
+      [platform!]: {
+        kind: 'baked',
+        url,
+        integrity,
+        size,
+        member: 'package/tool',
+        extraMembers,
+        format: 'tgz',
+      },
     },
   };
 }
@@ -80,6 +93,54 @@ describe('installAsset', () => {
     const [a, b] = await Promise.all([installAsset(spec, '1.0.0'), installAsset(spec, '1.0.0')]);
     expect(a.path).toBe(b.path);
     expect(server.requests).toHaveLength(1);
+  });
+
+  it('extracts extra members as executable siblings under their basenames', async () => {
+    freshStore();
+    const fixture = makeTgz('package/tool', 'main', {
+      'package/resources/helper-a': 'ha',
+      'package/resources/helper-b': 'hb',
+    });
+    const server = await serve(fixture);
+    const spec = descriptor(`${server.url}/a.tgz`, fixture.integrity, fixture.bytes.length, [
+      'package/resources/helper-a',
+      'package/resources/helper-b',
+    ]);
+
+    const installed = await installAsset(spec, '1.0.0');
+    const dir = dirname(installed.path);
+    expect(readdirSync(dir).sort()).toEqual(['helper-a', 'helper-b', 'tool']);
+    expect(readFileSync(join(dir, 'helper-a'), 'utf8')).toBe('ha');
+    expect(statSync(join(dir, 'helper-a')).mode & 0o111).not.toBe(0);
+    expect(installedComplete(spec, '1.0.0')).toBe(true);
+  });
+
+  it('backfills only the missing extra members into an install made under an older catalog', async () => {
+    freshStore();
+    const bare = makeTgz('package/tool', 'v1');
+    const bareServer = await serve(bare);
+    await installAsset(
+      descriptor(`${bareServer.url}/a.tgz`, bare.integrity, bare.bytes.length),
+      '1.0.0',
+    );
+
+    const full = makeTgz('package/tool', 'v1-refetched', { 'package/resources/helper': 'helper' });
+    const fullServer = await serve(full);
+    const spec = descriptor(`${fullServer.url}/a.tgz`, full.integrity, full.bytes.length, [
+      'package/resources/helper',
+    ]);
+    expect(installedComplete(spec, '1.0.0')).toBe(false);
+
+    const installed = await installAsset(spec, '1.0.0');
+    expect(readFileSync(join(dirname(installed.path), 'helper'), 'utf8')).toBe('helper');
+    // The already-present executable is never replaced — it may be running.
+    expect(readFileSync(installed.path, 'utf8')).toBe('v1');
+    expect(installedComplete(spec, '1.0.0')).toBe(true);
+
+    // Once complete, the short-circuit is back: zero network.
+    const requestsAfterBackfill = fullServer.requests.length;
+    await installAsset(spec, '1.0.0');
+    expect(fullServer.requests.length).toBe(requestsAfterBackfill);
   });
 
   it('rejects tampered artifacts and leaves neither a version dir nor tmp litter', async () => {

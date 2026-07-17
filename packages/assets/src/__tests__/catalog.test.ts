@@ -34,6 +34,21 @@ describe('CATALOG', () => {
     expect(darwin.member).toBe('package/vendor/aarch64-apple-darwin/bin/codex');
   });
 
+  it('ships the codex Windows sandbox helpers next to the win32 binaries only', () => {
+    for (const [key, source] of Object.entries(CATALOG['agent:codex'].artifacts)) {
+      if (source.kind !== 'npm') throw new Error('expected npm source');
+      if (!key.startsWith('win32')) {
+        expect(source.extraMembers).toBeUndefined();
+        continue;
+      }
+      const vendorDir = source.member.replace(/\/bin\/codex\.exe$/, '');
+      expect(source.extraMembers).toEqual([
+        `${vendorDir}/codex-resources/codex-windows-sandbox-setup.exe`,
+        `${vendorDir}/codex-resources/codex-command-runner.exe`,
+      ]);
+    }
+  });
+
   it('names opencode platform packages with windows, not win32', () => {
     const source = CATALOG['agent:opencode'].artifacts['win32-x64'];
     if (source?.kind !== 'npm') throw new Error('expected npm source');
