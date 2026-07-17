@@ -202,6 +202,20 @@ export const SHOWCASE_STREAM_THOUGHT_CONTENT = textBlock(
   'Now streaming the final answer so the composer and bubble shimmer have live data.',
 );
 
+export const SHOWCASE_COMPACTION_ID = 'mock-compaction-1';
+export const SHOWCASE_COMPACTION_PRE_TOKENS = 193_437;
+export const SHOWCASE_COMPACTION_POST_TOKENS = 12_180;
+/** How long the live "compacting…" row stays visible before the completed re-emit merges over it. */
+export const SHOWCASE_COMPACTION_HOLD_MS = 2400;
+
+export const SHOWCASE_COMPACTION_SUMMARY = [
+  'The conversation so far, condensed for the continued turn:',
+  '',
+  '- Seeded every wired conversation surface: plan, tool bursts, permissions, question, terminal.',
+  '- The typecheck run flagged a stale preview import; a follow-up pass re-checks preview coverage.',
+  '- Streaming the final reply next so live shimmer states have data.',
+].join('\n');
+
 export const SHOWCASE_STREAM_REPLY =
   'Streaming showcase complete: messages, reasoning, plans, tool bodies, diffs, terminal output, permissions, errors, and usage all came from the mock transport.';
 
