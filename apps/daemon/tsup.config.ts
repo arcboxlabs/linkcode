@@ -24,7 +24,9 @@ export default defineConfig({
   // too (it's pure JS and daemon-only, and lives in devDependencies): keeping it external would
   // put its whole 15 MB dual-format dist into both deploy closures (desktop asar + standalone)
   // when the bundle only uses the better-sqlite3 dialect.
-  noExternal: [/^@linkcode\//, 'drizzle-orm'],
+  // effect + @effect/platform-node follow the same pattern: pure JS, daemon-only, devDependencies,
+  // bundled in so neither deploy closure has to carry them (CODE-244).
+  noExternal: [/^@linkcode\//, 'drizzle-orm', /^effect(\/|$)/, /^@effect\/platform-node(\/|$)/],
   // The agent SDKs are pulled in (lazily) via @linkcode/agent-adapter, but must stay external: several
   // ship platform-specific native binaries / spawn subprocesses and break if bundled. They load from
   // node_modules at runtime. `ws` (via @linkcode/transport/server) is externalized for the same reason.
