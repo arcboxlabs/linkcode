@@ -8,8 +8,8 @@ import { SidebarGroup, SidebarMenu } from 'coss-ui/components/sidebar';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { useTranslations } from 'use-intl';
+import { repositoryLabel } from '../repository-label';
 import { changedAccordionValues, openThreadGroupValues } from './accordion-values';
-import { repositoryLabel } from './repository-label';
 import type { SidebarSectionKey, ThreadGroupActions, ThreadGroupState } from './sidebar';
 import {
   AddProjectMenu,

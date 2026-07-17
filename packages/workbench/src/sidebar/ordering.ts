@@ -1,5 +1,5 @@
 import type { SessionId, SessionInfo } from '@linkcode/schema';
-import type { ThreadGroup } from './group-threads';
+import type { ThreadGroup } from '@linkcode/ui';
 
 /**
  * Applies the manual sidebar order to project groups: groups listed in `orderedKeys` first, in

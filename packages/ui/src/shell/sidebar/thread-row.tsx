@@ -8,7 +8,7 @@ import { ClockIcon, EllipsisIcon, FolderIcon, GitBranchIcon, PinIcon, XIcon } fr
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 import { cn } from '../../lib/cn';
-import { repositoryLabel } from '../repository-label';
+import { repositoryLabel } from '../../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
 import type { BranchStatusComponentType } from './branch-status';
 import { SidebarPreviewCardPopup } from './preview-card';

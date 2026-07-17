@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { repositoryLabel } from '../repository-label';
 import { relativeTimeLabel } from '../shell/relative-time';
-import { repositoryLabel } from '../shell/repository-label';
 
 describe('repositoryLabel', () => {
   it('uses the final path segment for POSIX and Windows repository labels', () => {

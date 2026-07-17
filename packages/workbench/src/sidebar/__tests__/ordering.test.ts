@@ -1,6 +1,6 @@
 import type { SessionId, SessionInfo, WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
+import type { ThreadGroup } from '@linkcode/ui';
 import { describe, expect, it } from 'vitest';
-import type { ThreadGroup } from '../group-threads';
 import { applyThreadDrag, orderGroups, orderThreads } from '../ordering';
 
 describe('orderGroups', () => {

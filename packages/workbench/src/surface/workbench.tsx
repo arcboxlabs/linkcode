@@ -31,7 +31,9 @@ import type {
 } from '@linkcode/ui';
 import {
   attachmentFromReadFile,
+  extractPinnedGroup,
   failedComposerAttachmentFromPath,
+  groupThreadsByWorkspace,
   useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
@@ -47,7 +49,6 @@ import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
-import { extractPinnedGroup, groupThreadsByWorkspace } from '../sidebar/group-threads';
 import { useSidebarOrderStore } from '../sidebar/order-store';
 import { applyThreadDrag, orderGroups, orderThreads } from '../sidebar/ordering';
 import { useSidebarPinStore } from '../sidebar/pin-store';
