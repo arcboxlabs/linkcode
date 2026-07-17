@@ -49,11 +49,7 @@ export class TunnelTransport implements Transport {
   }
 
   send(msg: WireMessage): void {
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`TunnelTransport: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.client.send(JSON.stringify(parsed.data));
+    this.client.send(JSON.stringify(msg));
   }
 
   onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
@@ -93,11 +89,7 @@ class TunnelPeerTransport implements Transport {
   }
 
   send(msg: WireMessage): void {
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`TunnelPeerTransport: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.peer.send(JSON.stringify(parsed.data));
+    this.peer.send(JSON.stringify(msg));
   }
 
   onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
