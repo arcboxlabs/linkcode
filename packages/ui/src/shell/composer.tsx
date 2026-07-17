@@ -10,15 +10,14 @@ import type {
 } from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
-import { Badge } from 'coss-ui/components/badge';
 import { Command } from 'coss-ui/components/command';
 import { Frame, FrameFooter } from 'coss-ui/components/frame';
 import { Input } from 'coss-ui/components/input';
 import { toastManager } from 'coss-ui/components/toast';
 import { noop } from 'foxact/noop';
-import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { TerminalIcon } from 'lucide-react';
+import type { LexicalEditor } from 'lexical';
+import { $getSelection, $setSelection, CLEAR_HISTORY_COMMAND } from 'lexical';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -28,10 +27,8 @@ import {
   PromptInput,
   PromptInputFooter,
   PromptInputSubmit,
-  PromptInputTextarea,
   PromptInputTools,
 } from '../chat/prompt-input';
-import { preventBaseUIHandler } from '../lib/base-ui';
 import { cn } from '../lib/cn';
 import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
@@ -54,8 +51,6 @@ import {
   buildComposerCommandGroups,
   ComposerCommandMenu,
   commandEntryToString,
-  computeTextTrigger,
-  textControlFromEvent,
 } from './composer-command';
 import {
   ApprovalPolicyMenu,
@@ -63,7 +58,17 @@ import {
   ModelSelectorMenu,
   SessionModeChip,
 } from './composer-controls';
-import { parseComposerDirective } from './composer-directives';
+import { commandStatus, directiveStateFor, shellStatus } from './composer-editor/directive-state';
+import type { ComposerDraftSnapshot } from './composer-editor/editor';
+import { ComposerEditor, EMPTY_DRAFT_SNAPSHOT } from './composer-editor/editor';
+import { $createCommandNode, $createMentionNode } from './composer-editor/nodes';
+import {
+  $clearDraft,
+  $draftDirective,
+  $insertSeparatedDraftText,
+  $replaceTriggerWith,
+} from './composer-editor/serialize';
+import { $normalizeLeadingDirectives } from './composer-editor/tokenize';
 import { movePlusCommandStart } from './composer-plus-search';
 import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
@@ -111,7 +116,8 @@ export interface ComposerProps {
    * placeholder rule as `currentModel`. */
   currentEffort?: EffortLevel | null;
   /** Slash-command catalog reflected from `available-commands-update`. Empty or absent → the `/`
-   * menu offers no command entries and a typed `/name` submits as plain text. */
+   * menu offers no command entries and a typed leading `/name` chips as unknown/unsupported,
+   * blocking send until corrected or explicitly converted to text. */
   agentCommands?: AgentCommand[] | null;
   /** The session's adapter-advertised model catalog, reflected from `available-models-update`
    * (install-dependent agents like opencode). Takes precedence over the static per-kind table;
@@ -120,7 +126,8 @@ export interface ComposerProps {
   /** Stable input features advertised by the live adapter session. */
   agentCapabilities?: AgentCapabilities | null;
   onSend: (content: ContentBlock[]) => void;
-  /** Sends a catalog command invocation; absent routes a matched `/name` through `onSend`. */
+  /** Sends a catalog command invocation; absent, a command draft cannot submit (directives never
+   * silently degrade to `onSend` text). */
   onInvokeCommand?: (name: string, args?: string) => void;
   /** Sends a `$`-prefixed shell passthrough when the session advertises it. */
   onRunShellCommand?: (command: string) => void;
@@ -151,8 +158,6 @@ export interface ComposerProps {
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
 const EMPTY_AGENT_COMMANDS: AgentCommand[] = [];
-const WHITESPACE_RE = /\s/;
-const LEADING_WHITESPACE_RE = /^\s/;
 
 function attachmentPayloadBytes(attachments: readonly ComposerAttachment[]): number {
   return attachments.reduce(
@@ -195,13 +200,15 @@ export function Composer({
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const reducedMotion = useReducedMotion() ?? false;
-  const [value, setValue] = useState('');
-  const [caret, setCaret] = useState(0);
+  const [snapshot, setSnapshot] = useState(EMPTY_DRAFT_SNAPSHOT);
+  // Mirror the *next* draft-change diff against this — state alone can lag when two editor
+  // updates commit in the same tick (e.g. a programmatic insert followed by its transform).
+  const lastSnapshotRef = useRef(EMPTY_DRAFT_SNAPSHOT);
   // The start offset of a trigger the user dismissed with Escape, so the menu stays closed for that token only.
   const [dismissedStart, setDismissedStart] = useState<number | null>(null);
   const [plusCommandStart, setPlusCommandStart] = useState<number | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const pendingCaretRef = useRef<number | null>(null);
+  const editorRef = useRef<LexicalEditor | null>(null);
+  const relayRef = useRef<HTMLInputElement | null>(null);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
@@ -214,15 +221,27 @@ export function Composer({
   const catalog = agentCapabilities?.slashCommands
     ? (agentCommands ?? EMPTY_AGENT_COMMANDS)
     : EMPTY_AGENT_COMMANDS;
+  const commandsSupported = Boolean(
+    agentCapabilities?.slashCommands && onInvokeCommand && !disabled,
+  );
   const shellEnabled = Boolean(agentCapabilities?.shellCommand && onRunShellCommand && !disabled);
-  // A draft starting with `$` is one shell command; slash/mention menus must stay out of the way
-  // (a path like /tmp inside the command must not pop the command menu).
-  const shellActive = shellEnabled && value.trimStart()[0] === '$';
+  // A draft led by the shell chip is one shell command; slash/mention menus must stay out of
+  // the way (a path like /tmp inside the command must not pop the command menu).
+  const shellActive = snapshot.directive?.kind === 'shell';
+  // Live validity of the leading directive chip — recomputed as the catalog/capabilities arrive,
+  // so a chip typed before the session advertised them gates (or ungates) sending correctly.
+  const directiveStatus =
+    snapshot.directive === null
+      ? null
+      : snapshot.directive.kind === 'command'
+        ? commandStatus(snapshot.directive.name, { commands: catalog, commandsSupported })
+        : shellStatus({ shellEnabled });
+  const directiveBlocked = directiveStatus !== null && directiveStatus !== 'supported';
 
   const textTrigger = useMemo(() => {
-    const trigger = computeTextTrigger(value, caret);
-    return trigger && trigger.start !== dismissedStart && !shellActive ? trigger : null;
-  }, [caret, dismissedStart, shellActive, value]);
+    const trigger = snapshot.trigger;
+    return trigger && trigger.flatStart !== dismissedStart && !shellActive ? trigger : null;
+  }, [dismissedStart, shellActive, snapshot.trigger]);
   const commandSource: ComposerCommandSource | null =
     plusCommandStart === null
       ? textTrigger?.kind === 'mention'
@@ -232,8 +251,10 @@ export function Composer({
           : null
       : 'plus';
   const plusQuery =
-    plusCommandStart !== null && caret >= plusCommandStart
-      ? value.slice(plusCommandStart, caret).toLowerCase()
+    plusCommandStart !== null &&
+    snapshot.caretOffset !== null &&
+    snapshot.caretOffset >= plusCommandStart
+      ? snapshot.text.slice(plusCommandStart, snapshot.caretOffset).toLowerCase()
       : '';
 
   // An id the agent advertises on the approval-policy axis is owned there (claude-code's plan is a
@@ -297,59 +318,52 @@ export function Composer({
   const renderedCommandGroups = commandOpen ? commandGroups : exitCommandGroups;
   const renderedEmptyCommandLabel = commandOpen ? emptyCommandLabel : exitCommandEmptyLabel;
 
-  function updateCaret(nextCaret: number, nextValue = value): void {
-    setCaret(nextCaret);
-    const trigger = computeTextTrigger(nextValue, nextCaret);
-    if (!trigger) setDismissedStart(null);
-    // Event-driven query reporting (never an effect watching state): every caret/value
-    // change flows through here, so the app's mention source stays in sync with typing.
-    onMentionQueryChange?.(trigger?.kind === 'mention' ? trigger.query : null);
-  }
-
-  function updateValue(nextValue: string, event: Event): void {
-    const control = textControlFromEvent(event);
-    const nextCaret = control?.selectionStart ?? nextValue.length;
-    const nextTrigger = computeTextTrigger(nextValue, nextCaret);
+  // Event-driven mirroring (never an effect watching state): every committed editor update flows
+  // through here, so trigger/plus/mention state stays in sync with typing.
+  function handleDraftChange(next: ComposerDraftSnapshot): void {
+    const prev = lastSnapshotRef.current;
+    lastSnapshotRef.current = next;
+    setSnapshot(next);
     setPlusCommandStart((start) =>
-      start === null || nextTrigger ? null : movePlusCommandStart(value, nextValue, start),
+      start === null || next.trigger ? null : movePlusCommandStart(prev.text, next.text, start),
     );
-    setValue(nextValue);
-    updateCaret(nextCaret, nextValue);
+    if (!next.trigger) setDismissedStart(null);
+    onMentionQueryChange?.(next.trigger?.kind === 'mention' ? next.trigger.query : null);
   }
 
-  // Layout effect so the caret lands before paint (a mention insertion must never flash the old
-  // caret). Deliberately no dependency array: it checks pendingCaretRef imperatively every render.
-  useLayoutEffect(() => {
-    if (pendingCaretRef.current !== null && textareaRef.current) {
-      const pos = pendingCaretRef.current;
-      textareaRef.current.focus();
-      textareaRef.current.setSelectionRange(pos, pos);
-      pendingCaretRef.current = null;
-    }
-  });
+  function resetDraftBookkeeping(): void {
+    setDismissedStart(null);
+    setPlusCommandStart(null);
+    onMentionQueryChange?.(null);
+  }
 
   function submit(): void {
-    const text = value.trim();
+    const editor = editorRef.current;
+    if (!editor || disabled || sendBlocked || hasPendingAttachment) return;
     const readyAttachments = attachments.filter(
       (attachment): attachment is ComposerAttachment & { block: ContentBlock } =>
         attachment.status === 'ready' && attachment.block !== undefined,
     );
-    if (
-      (!text && readyAttachments.length === 0) ||
-      disabled ||
-      sendBlocked ||
-      hasPendingAttachment
-    ) {
-      return;
-    }
-    const directive = parseComposerDirective(text, { commands: catalog, shellEnabled });
-    if (directive.kind === 'command' && onInvokeCommand) {
-      onInvokeCommand(directive.name, directive.arguments);
-    } else if (directive.kind === 'shell' && onRunShellCommand) {
+    const store = directiveStateFor(editor);
+    // Materialize a boundary-less leading `/name` so Enter right after typing the name still
+    // routes through the directive path (and its validity gate) instead of slipping out as text.
+    editor.update(() => $normalizeLeadingDirectives(store.getState().suppressed, { force: true }), {
+      discrete: true,
+    });
+    const directive = editor.read(() =>
+      $draftDirective({ commands: catalog, commandsSupported, shellEnabled }),
+    );
+    if (directive.kind === 'command') {
+      // Unknown/unsupported chips visibly error and block here — never silently model chat.
+      if (directive.status !== 'supported' || !onInvokeCommand) return;
+      onInvokeCommand(directive.name, directive.args || undefined);
+    } else if (directive.kind === 'shell') {
+      if (directive.status !== 'supported' || !directive.command || !onRunShellCommand) return;
       onRunShellCommand(directive.command);
     } else {
+      if (!directive.text && readyAttachments.length === 0) return;
       const content: ContentBlock[] = [
-        ...(text ? [textBlock(text)] : []),
+        ...(directive.text ? [textBlock(directive.text)] : []),
         ...readyAttachments.map((attachment) => attachment.block),
       ];
       onSend(content);
@@ -357,11 +371,10 @@ export function Composer({
       // so they stay staged in the tray instead of being silently dropped unsent.
       setAttachments([]);
     }
-    setValue('');
-    setCaret(0);
-    setDismissedStart(null);
-    setPlusCommandStart(null);
-    onMentionQueryChange?.(null);
+    editor.update(() => $clearDraft(), { discrete: true });
+    editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
+    store.setState({ suppressed: null });
+    resetDraftBookkeeping();
   }
 
   function ingestFiles(files: File[]): void {
@@ -442,16 +455,6 @@ export function Composer({
     ingestFiles(Array.from(e.dataTransfer.files));
   }
 
-  function onTextareaPaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
-    if (disabled) return;
-    const files = Array.from(e.clipboardData.files).filter((file) =>
-      file.type.startsWith('image/'),
-    );
-    if (files.length === 0) return;
-    e.preventDefault();
-    ingestFiles(files);
-  }
-
   /** Merges picker-resolved attachments into the tray under the same aggregate cap drag-and-drop
    * enforces; per-file checks already ran in `attachmentFromReadFile`, so only the total recheck. */
   function mergeAttachments(picked: ComposerAttachment[]): void {
@@ -500,65 +503,66 @@ export function Composer({
     ingestFiles(files);
   }
 
-  function setValueAndCaret(nextValue: string, nextCaret: number): void {
-    setValue(nextValue);
-    setCaret(nextCaret);
-    pendingCaretRef.current = nextCaret;
-  }
-
-  function focusTextareaAtCaret(): void {
-    pendingCaretRef.current = textareaRef.current?.selectionStart ?? caret;
+  /** Run an editor mutation and put the caret back in the editor — the equivalent of the old
+   * textarea's pending-caret restore, owned by Lexical's selection now. */
+  function withEditor(mutate: (editor: LexicalEditor) => void): void {
+    const editor = editorRef.current;
+    if (!editor) return;
+    // A contenteditable can lose its DOM selection between an external click and this update.
+    // Preserve Lexical's committed selection so artifact/plus-menu insertion still replaces the
+    // range the user selected; a newer live selection always wins.
+    const retainedSelection = editor.getEditorState().read(() => $getSelection()?.clone() ?? null);
+    editor.update(
+      () => {
+        if ($getSelection() === null && retainedSelection !== null) {
+          $setSelection(retainedSelection);
+        }
+        mutate(editor);
+      },
+      { discrete: true },
+    );
+    editor.focus();
   }
 
   function openPlusCommand(): void {
     if (disabled) return;
     setDismissedStart(null);
-    setPlusCommandStart(textareaRef.current?.selectionStart ?? caret);
-    focusTextareaAtCaret();
+    setPlusCommandStart(lastSnapshotRef.current.caretOffset ?? lastSnapshotRef.current.text.length);
+    editorRef.current?.focus();
   }
 
-  function insertTextTrigger(trigger: '@' | '/', nextValue = value, nextCaret = caret): void {
-    const before = nextValue.slice(0, nextCaret);
-    const insert = `${before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : ''}${trigger}`;
-    const updated = `${before}${insert}${nextValue.slice(nextCaret)}`;
+  function insertTextTrigger(trigger: '@' | '/'): void {
     setPlusCommandStart(null);
     setDismissedStart(null);
-    setValueAndCaret(updated, nextCaret + insert.length);
+    withEditor(() => $insertSeparatedDraftText(trigger, false));
   }
 
   function selectMention(entry: MentionCommandEntry): void {
     if (textTrigger?.kind !== 'mention') return;
-    // Avoid a double space when the trigger token is already followed by whitespace.
-    const rest = value.slice(caret);
-    const sep = LEADING_WHITESPACE_RE.test(rest) ? '' : ' ';
-    // A quoted path, replacing the whole @token: every agent understands a quoted relative
-    // path in prose (its own fs tools read it), whereas @path is Claude-specific syntax.
-    const insert = `"${entry.mention.value.replaceAll('"', String.raw`\"`)}"`;
-    const next = `${value.slice(0, textTrigger.start)}${insert}${sep}${rest}`;
+    const trigger = textTrigger;
     setPlusCommandStart(null);
-    setValueAndCaret(next, textTrigger.start + insert.length + sep.length);
+    // A mention chip replacing the whole @token; it serializes as a quoted relative path —
+    // every agent understands that in prose, whereas @path is Claude-specific syntax.
+    withEditor(() => $replaceTriggerWith(trigger, $createMentionNode(entry.mention.value)));
     onMentionQueryChange?.(null);
   }
 
   function selectMentionCommand(): void {
-    insertTextTrigger('@', value, textareaRef.current?.selectionStart ?? caret);
+    insertTextTrigger('@');
     onMentionQueryChange?.('');
   }
 
   function selectSlashCommand(): void {
-    insertTextTrigger('/', value, textareaRef.current?.selectionStart ?? caret);
+    insertTextTrigger('/');
   }
 
-  /** Replace the `/query` trigger token with `/name ` so the user can type arguments; Enter then
-   * submits it as a command directive (see `submit`). */
+  /** Replace the `/query` trigger token with the command chip so the user can type arguments;
+   * Enter then submits it as a command directive (see `submit`). */
   function selectAgentCommand(entry: AgentCommandEntry): void {
     if (textTrigger?.kind !== 'slash') return;
-    const rest = value.slice(caret);
-    const sep = LEADING_WHITESPACE_RE.test(rest) ? '' : ' ';
-    const insert = `/${entry.command.name}`;
-    const next = `${value.slice(0, textTrigger.start)}${insert}${sep}${rest}`;
+    const trigger = textTrigger;
     setPlusCommandStart(null);
-    setValueAndCaret(next, textTrigger.start + insert.length + sep.length);
+    withEditor(() => $replaceTriggerWith(trigger, $createCommandNode(entry.command.name)));
   }
 
   function selectCommand(entry: ComposerCommandEntry): void {
@@ -583,27 +587,27 @@ export function Composer({
 
     toggleMode(entry.mode);
     setPlusCommandStart(null);
-    focusTextareaAtCaret();
+    editorRef.current?.focus();
   }
 
   function closeCommand(): void {
     setPlusCommandStart(null);
-    if (textTrigger) setDismissedStart(textTrigger.start);
+    if (textTrigger) setDismissedStart(textTrigger.flatStart);
     if (textTrigger?.kind === 'mention') onMentionQueryChange?.(null);
   }
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
-    // Don't treat IME-composition Enter (CJK candidate confirm) as submit/select.
-    if (e.nativeEvent.isComposing || e.key === 'Process') return;
-    if (commandOpen) {
-      if (!hasCommandItems && e.key === 'Enter') e.preventDefault();
+  function focusEditorFromFooter(e: React.MouseEvent<HTMLDivElement>): void {
+    const target = e.target;
+    if (
+      target instanceof Element &&
+      target.closest(
+        "button, a, input, select, textarea, [role='button'], [role='combobox'], [role='listbox'], [data-slot='select-trigger']",
+      )
+    ) {
       return;
     }
-    preventBaseUIHandler(e);
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submit();
-    }
+    e.preventDefault();
+    editorRef.current?.focus();
   }
 
   const placeholderAgent = agentLabel ?? 'agent';
@@ -639,15 +643,7 @@ export function Composer({
   function insertText(text: string): void {
     const insert = text.trim();
     if (!insert || disabled) return;
-    const pos = textareaRef.current?.selectionStart ?? value.length;
-    const before = value.slice(0, pos);
-    const after = value.slice(pos);
-    const lead = before.length > 0 && !WHITESPACE_RE.test(before.at(-1)!) ? ' ' : '';
-    const trail = LEADING_WHITESPACE_RE.test(after) ? '' : ' ';
-    setValueAndCaret(
-      `${before}${lead}${insert}${trail}${after}`,
-      pos + lead.length + insert.length + trail.length,
-    );
+    withEditor(() => $insertSeparatedDraftText(insert, true));
     setDismissedStart(null);
   }
 
@@ -695,12 +691,18 @@ export function Composer({
             itemToStringValue={commandEntryToString}
             keepHighlight
             open={commandOpen}
-            value={value}
             onOpenChange={(open) => {
               if (!open) closeCommand();
             }}
-            onValueChange={(nextValue, details) => updateValue(nextValue, details.event)}
           >
+            {/* Hidden relay: base-ui's list navigation lives on its Input part, which needs real
+             * input DOM APIs a contenteditable lacks (e.g. setSelectionRange). The editor forwards
+             * ArrowUp/Down/Enter here while the menu is open; the root's `virtual` focus model
+             * navigates and Enter-clicks the highlighted item without this input ever focusing. */}
+            <AutocompletePrimitive.Input
+              aria-hidden
+              render={<input ref={relayRef} className="sr-only" tabIndex={-1} />}
+            />
             <Frame
               className={cn(
                 'transition-[background-color,padding] motion-reduce:transition-none',
@@ -766,37 +768,28 @@ export function Composer({
                     onRemove={handleRemoveAttachment}
                   />
                 ) : null}
-                <AutocompletePrimitive.Input
-                  render={
-                    <PromptInputTextarea
-                      ref={textareaRef}
-                      disabled={disabled}
-                      rows={1}
-                      placeholder={
-                        disabled
-                          ? t('placeholderDisconnected')
-                          : `Describe what you want ${placeholderAgent} to do, or @-reference a file / terminal output...`
-                      }
-                      onClick={(e) =>
-                        updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                      }
-                      onKeyUp={(e) =>
-                        updateCaret(e.currentTarget.selectionStart, e.currentTarget.value)
-                      }
-                      onKeyDown={onKeyDown}
-                      onPaste={onTextareaPaste}
-                    />
+                <ComposerEditor
+                  className="max-h-48 min-h-20.5 overflow-y-auto whitespace-pre-wrap break-words px-3.5 pt-3 pb-1.5 max-sm:min-h-23.5"
+                  commands={catalog}
+                  commandsSupported={commandsSupported}
+                  disabled={disabled}
+                  editorRef={editorRef}
+                  menuHasItems={hasCommandItems}
+                  menuOpen={commandOpen}
+                  placeholder={
+                    disabled
+                      ? t('placeholderDisconnected')
+                      : t('placeholder', { agent: placeholderAgent })
                   }
+                  relayRef={relayRef}
+                  shellEnabled={shellEnabled}
+                  onDraftChange={handleDraftChange}
+                  onPasteFiles={ingestFiles}
+                  onSubmit={submit}
                 />
-                <PromptInputFooter>
+                <PromptInputFooter onMouseDown={focusEditorFromFooter}>
                   <PromptInputTools>
                     <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
-                    {shellActive ? (
-                      <Badge className="gap-1" variant="secondary">
-                        <TerminalIcon aria-hidden className="size-3" />
-                        {t('shellCommand')}
-                      </Badge>
-                    ) : null}
                     {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
                       <ApprovalPolicyMenu
                         agentLabel={placeholderAgent}
@@ -839,7 +832,8 @@ export function Composer({
                       !isRunning &&
                       (disabled ||
                         sendBlocked ||
-                        (value.trim().length === 0 && !hasReadyAttachment) ||
+                        directiveBlocked ||
+                        (snapshot.text.trim().length === 0 && !hasReadyAttachment) ||
                         hasPendingAttachment)
                     }
                     onStop={onStop}

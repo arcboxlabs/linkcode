@@ -132,12 +132,15 @@ function KeyboardPlugin({
           if (event.isComposing || event.key === 'Process') return true;
           if (event.shiftKey) return false;
           event.preventDefault();
+          // Both outcomes run editor updates of their own (menu select mutates the draft,
+          // submit force-tokenizes then clears); defer them out of this command dispatch —
+          // a nested discrete update inside it is illegal.
           if (menuOpen) {
             // Empty menu swallows Enter (parity with the textarea composer).
-            if (menuHasItems) forwardToRelay(event);
+            if (menuHasItems) queueMicrotask(() => forwardToRelay(event));
             return true;
           }
-          onSubmit();
+          queueMicrotask(onSubmit);
           return true;
         },
         COMMAND_PRIORITY_CRITICAL,
@@ -165,8 +168,11 @@ function KeyboardPlugin({
       editor.registerCommand(
         PASTE_COMMAND,
         (event) => {
-          if (!(event instanceof ClipboardEvent) || event.clipboardData === null) return false;
-          const files = Array.from(event.clipboardData.files).filter((file) =>
+          // Duck-typed rather than `instanceof ClipboardEvent`: jsdom (vitest) has no
+          // ClipboardEvent global, and cross-realm events would defeat instanceof anyway.
+          const clipboardData = 'clipboardData' in event ? event.clipboardData : null;
+          if (!clipboardData) return false;
+          const files = Array.from(clipboardData.files).filter((file) =>
             file.type.startsWith('image/'),
           );
           if (files.length === 0) return false;
@@ -225,10 +231,11 @@ export function ComposerEditor({
         },
       }}
     >
-      <div className="relative">
+      <div className="relative w-full">
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
+              aria-multiline
               aria-placeholder={placeholder}
               className={cn('outline-none', className)}
               data-slot="composer-editor"

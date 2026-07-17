@@ -1,6 +1,7 @@
 import { createHeadlessEditor } from '@lexical/headless';
 import type { LexicalEditor } from 'lexical';
 import {
+  $createLineBreakNode,
   $createParagraphNode,
   $createTextNode,
   $getRoot,
@@ -121,6 +122,23 @@ describe('directive tokenizer', () => {
     expect(draftShape(editor)).toEqual(['composer-shell']);
   });
 
+  it('chips a command when a line break supplies its boundary', () => {
+    const editor = createEditor();
+    setDraft(editor, '/usage');
+
+    editor.update(
+      () => {
+        const paragraph = $getRoot().getFirstChild();
+        if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
+        paragraph.append($createLineBreakNode(), $createTextNode('args'));
+      },
+      { discrete: true },
+    );
+
+    expect(draftShape(editor)).toEqual(['composer-command', 'linebreak', 'text']);
+    expect(draftText(editor)).toBe('/usage\nargs');
+  });
+
   it('keeps mid-text and whitespace-prefixed directives as prose', () => {
     const editor = createEditor();
     for (const draft of ['run /usage now', 'pay $5', ' /usage ', ' $ls']) {
@@ -172,6 +190,22 @@ describe('directive tokenizer', () => {
     );
     expect(draftShape(editor)).toEqual(['text']);
     expect(draftText(editor)).toBe('hi /usage rest');
+  });
+
+  it('demotes a chip displaced by structural nodes', () => {
+    const editor = createEditor();
+    setDraft(editor, '/usage rest');
+
+    editor.update(
+      () => {
+        const first = $getRoot().getFirstChild();
+        if (!$isElementNode(first)) throw new Error('expected paragraph');
+        first.getFirstChildOrThrow().insertBefore($createLineBreakNode());
+      },
+      { discrete: true },
+    );
+    expect(draftShape(editor)).not.toContain('composer-command');
+    expect(draftText(editor)).toBe('\n/usage rest');
   });
 });
 
@@ -302,6 +336,30 @@ describe('caret and trigger geometry', () => {
     expect(editor.read($caretFlatOffset)).toBe(6);
   });
 
+  it('includes Lexical block separators in flat offsets', () => {
+    const editor = createEditor();
+    editor.update(
+      () => {
+        const first = $createParagraphNode().append($createTextNode('one'));
+        const secondText = $createTextNode('@two');
+        const second = $createParagraphNode().append(secondText);
+        $getRoot().clear().append(first, second);
+        secondText.select(4, 4);
+      },
+      { discrete: true },
+    );
+
+    expect(draftText(editor)).toBe('one\n\n@two');
+    expect(editor.read($caretFlatOffset)).toBe('one\n\n@two'.length);
+    expect(editor.read($computeEditorTrigger)).toMatchObject({ flatStart: 'one\n\n'.length });
+
+    editor.update(() => $getRoot().select(1, 1), { discrete: true });
+    expect(editor.read($caretFlatOffset)).toBe('one\n\n'.length);
+
+    editor.update(() => $getRoot().select(2, 2), { discrete: true });
+    expect(editor.read($caretFlatOffset)).toBe('one\n\n@two'.length);
+  });
+
   it('detects mention and slash triggers node-locally', () => {
     const editor = createEditor();
     setDraft(editor, 'hi @que');
@@ -392,6 +450,25 @@ describe('$replaceTriggerWith', () => {
       { discrete: true },
     );
     expect(draftText(editor)).toBe('hi "src/app.ts" rest');
+  });
+
+  it('skips the separator before a line break sibling', () => {
+    const editor = createEditor();
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        const triggerText = $createTextNode('see @q');
+        paragraph.append(triggerText, $createLineBreakNode(), $createTextNode('next'));
+        $getRoot().append(paragraph);
+        triggerText.select(6, 6);
+        const trigger = $computeEditorTrigger();
+        if (!trigger) throw new Error('expected trigger');
+        $replaceTriggerWith(trigger, $createMentionNode('src/app.ts'));
+      },
+      { discrete: true },
+    );
+
+    expect(draftText(editor)).toBe('see "src/app.ts"\nnext');
   });
 
   it('inserts a command chip that the tokenizer keeps only at position 0', () => {

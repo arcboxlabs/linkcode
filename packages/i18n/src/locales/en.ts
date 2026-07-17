@@ -275,6 +275,7 @@ export const en = {
       loginFailedTitle: '{agent} sign-in failed',
     },
     composer: {
+      placeholder: 'Describe what you want {agent} to do, or @-reference a file / terminal output…',
       placeholderDisconnected: 'Create or pick a thread first',
       send: 'Send',
       stop: 'Stop',

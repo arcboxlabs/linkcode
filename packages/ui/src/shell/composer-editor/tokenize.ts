@@ -8,6 +8,7 @@ import {
   $isTextNode,
   $nodesOfType,
   HISTORIC_TAG,
+  LineBreakNode,
   TextNode,
 } from 'lexical';
 import { $createCommandNode, $createShellNode, CommandNode, ShellNode } from './nodes';
@@ -47,7 +48,7 @@ export function $normalizeLeadingDirectives(
 
   const first = firstBlock.getFirstChild();
   if (!$isTextNode(first)) return;
-  const text = first.getTextContent();
+  const text = root.getTextContent();
 
   if (text[0] === '$') {
     if (suppressed === '$') return;
@@ -78,6 +79,7 @@ export function registerDirectiveTokenizer(
   };
   return mergeRegister(
     editor.registerNodeTransform(TextNode, run),
+    editor.registerNodeTransform(LineBreakNode, run),
     editor.registerNodeTransform(CommandNode, run),
     editor.registerNodeTransform(ShellNode, run),
   );

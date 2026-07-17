@@ -266,6 +266,7 @@ export const zhCN = {
       loginFailedTitle: '{agent} 登录失败',
     },
     composer: {
+      placeholder: '描述想让 {agent} 做什么，或用 @ 引用文件 / 终端输出…',
       placeholderDisconnected: '请先创建或选择线程',
       send: '发送',
       stop: '停止',

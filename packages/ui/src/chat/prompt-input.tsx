@@ -1,5 +1,5 @@
 import { Button } from 'coss-ui/components/button';
-import { InputGroup, InputGroupAddon, InputGroupTextarea } from 'coss-ui/components/input-group';
+import { InputGroup, InputGroupAddon } from 'coss-ui/components/input-group';
 import { ArrowUpIcon, SquareIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
@@ -28,33 +28,12 @@ export function PromptInput({
 
   return (
     <form className={cn('w-full', className)} onSubmit={handleSubmit} {...props}>
-      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none">
+      {/* The group's own focus/disabled styling keys on literal input/textarea selectors; the
+       * composer's contenteditable editor needs these equivalents keyed on its data-slot. */}
+      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none has-[[data-slot=composer-editor][contenteditable=false]]:opacity-64 has-[[data-slot=composer-editor][contenteditable=false]]:before:shadow-none has-[[data-slot=composer-editor]:focus-visible]:border-ring has-[[data-slot=composer-editor]:focus-visible]:ring-[3px] has-[[data-slot=composer-editor]:focus-visible]:before:shadow-none">
         {children}
       </InputGroup>
     </form>
-  );
-}
-
-export type PromptInputTextareaProps = React.ComponentProps<typeof InputGroupTextarea> & {
-  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
-};
-
-export function PromptInputTextarea({
-  className,
-  name = 'message',
-  rows = 1,
-  ...props
-}: PromptInputTextareaProps): React.ReactNode {
-  return (
-    <InputGroupTextarea
-      className={cn(
-        'px-3.5 pt-3 pb-1.5 **:[textarea]:max-h-48 **:[textarea]:overflow-y-auto',
-        className,
-      )}
-      name={name}
-      rows={rows}
-      {...props}
-    />
   );
 }
 

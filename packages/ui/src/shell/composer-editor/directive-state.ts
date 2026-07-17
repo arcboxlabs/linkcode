@@ -10,8 +10,8 @@ export type DirectiveStatus = 'supported' | 'unknown' | 'unsupported';
 export interface ComposerDirectiveState {
   /** Capability-gated slash-command catalog (empty when the agent advertises none). */
   commands: readonly AgentCommand[];
-  /** Whether the live session advertises the slash-command capability at all — distinguishes an
-   * unknown command (catalog miss) from an agent with no command concept. */
+  /** Whether slash-command invocation is currently available (capability + handler) — distinguishes
+   * an unknown command (catalog miss) from a composer that cannot execute commands. */
   commandsSupported: boolean;
   /** Whether shell passthrough is currently available (capability + handler present). */
   shellEnabled: boolean;

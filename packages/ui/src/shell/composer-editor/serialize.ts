@@ -1,5 +1,6 @@
-import type { LexicalNode, NodeKey } from 'lexical';
+import type { LexicalNode, NodeKey, PointType } from 'lexical';
 import {
+  $createParagraphNode,
   $createTextNode,
   $getNodeByKey,
   $getRoot,
@@ -14,6 +15,13 @@ import { commandStatus, shellStatus } from './directive-state';
 import { $isCommandNode, $isShellNode } from './nodes';
 
 const WHITESPACE_RE = /\s/;
+const BLOCK_SEPARATOR_SIZE = 2;
+
+function flatTextContribution(node: LexicalNode, hasFollowingSibling: boolean): number {
+  const separator =
+    hasFollowingSibling && $isElementNode(node) && !node.isInline() ? BLOCK_SEPARATOR_SIZE : 0;
+  return node.getTextContentSize() + separator;
+}
 
 /** The draft as flat text. Chips contribute their canonical literals (`/name`, `$`, `"path"`),
  * so this equals what the plain-textarea composer would have held. */
@@ -27,10 +35,24 @@ function $flatOffsetOfNode(node: LexicalNode): number {
   while (current !== null && !$isRootNode(current)) {
     let sibling = current.getPreviousSibling();
     while (sibling !== null) {
-      offset += sibling.getTextContentSize();
+      // ElementNode.getTextContent() separates non-inline siblings with two newlines; that
+      // separator belongs before every following sibling but is not part of the block's size.
+      offset += flatTextContribution(sibling, true);
       sibling = sibling.getPreviousSibling();
     }
     current = current.getParent();
+  }
+  return offset;
+}
+
+function $pointFlatOffset(point: PointType): number {
+  const node = point.getNode();
+  if (point.type === 'text') return $flatOffsetOfNode(node) + point.offset;
+  if (!$isElementNode(node)) throw new Error('Element selection point must reference an element');
+  let offset = $flatOffsetOfNode(node);
+  const children = node.getChildren();
+  for (let i = 0; i < point.offset && i < children.length; i++) {
+    offset += flatTextContribution(children[i], i < children.length - 1);
   }
   return offset;
 }
@@ -40,16 +62,7 @@ function $flatOffsetOfNode(node: LexicalNode): number {
 export function $caretFlatOffset(): number | null {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null;
-  const { anchor } = selection;
-  const node = anchor.getNode();
-  if (anchor.type === 'text') return $flatOffsetOfNode(node) + anchor.offset;
-  if (!$isElementNode(node)) return null;
-  let offset = $flatOffsetOfNode(node);
-  const children = node.getChildren();
-  for (let i = 0; i < anchor.offset && i < children.length; i++) {
-    offset += children[i].getTextContentSize();
-  }
-  return offset;
+  return $pointFlatOffset(selection.anchor);
 }
 
 export interface EditorTrigger {
@@ -73,11 +86,21 @@ export function $computeEditorTrigger(): EditorTrigger | null {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null;
   const { anchor } = selection;
-  if (anchor.type !== 'text') return null;
-  const node = anchor.getNode();
+  let node: LexicalNode | null;
+  let caret: number;
+  if (anchor.type === 'text') {
+    node = anchor.getNode();
+    caret = anchor.offset;
+  } else {
+    // An element anchor sits between children (some selection restores land here); the token,
+    // if any, ends at the tail of the child before the caret.
+    const element = anchor.getNode();
+    if (!$isElementNode(element)) return null;
+    node = element.getChildAtIndex(anchor.offset - 1);
+    caret = $isTextNode(node) ? node.getTextContentSize() : 0;
+  }
   if (!$isTextNode(node)) return null;
   const content = node.getTextContent();
-  const caret = anchor.offset;
   let start = caret;
   while (start > 0 && !WHITESPACE_RE.test(content[start - 1])) start--;
   const token = content.slice(start, caret);
@@ -102,8 +125,47 @@ export function $replaceTriggerWith(trigger: EditorTrigger, node: LexicalNode): 
   const end = Math.min(trigger.end, content.length);
   const start = Math.min(trigger.start, end);
   const selection = target.select(start, end);
-  const needsSpace = !WHITESPACE_RE.test(content.charAt(end));
+  const nextCharacter = $draftText().charAt($flatOffsetOfNode(target) + end);
+  const needsSpace = !WHITESPACE_RE.test(nextCharacter);
   selection.insertNodes(needsSpace ? [node, $createTextNode(' ')] : [node]);
+}
+
+/** Reset the draft to a single empty paragraph with the caret in it. */
+export function $clearDraft(): void {
+  const root = $getRoot();
+  root.clear();
+  const paragraph = $createParagraphNode();
+  root.append(paragraph);
+  paragraph.select();
+}
+
+/** Insert plain text at the caret, falling back to the end of the draft when there is no
+ * usable range selection (e.g. the editor is blurred or a chip is node-selected). */
+export function $insertDraftText(text: string): void {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection)) {
+    selection.insertText(text);
+    return;
+  }
+  $getRoot().selectEnd().insertText(text);
+}
+
+/** Insert text with word-boundary spacing based on the range being replaced, not merely the
+ * caret snapshot. This keeps imperative/plus-menu insertion correct for selected text. */
+export function $insertSeparatedDraftText(text: string, trailing: boolean): void {
+  const selection = $getSelection();
+  const draft = $draftText();
+  let start = draft.length;
+  let end = draft.length;
+  if ($isRangeSelection(selection)) {
+    const anchor = $pointFlatOffset(selection.anchor);
+    const focus = $pointFlatOffset(selection.focus);
+    start = Math.min(anchor, focus);
+    end = Math.max(anchor, focus);
+  }
+  const lead = start > 0 && !WHITESPACE_RE.test(draft.charAt(start - 1)) ? ' ' : '';
+  const trail = trailing && !WHITESPACE_RE.test(draft.charAt(end)) ? ' ' : '';
+  $insertDraftText(`${lead}${text}${trail}`);
 }
 
 /** The structural leading directive chip, if any — status-free so render code can derive

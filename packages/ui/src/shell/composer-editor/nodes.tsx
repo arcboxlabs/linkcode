@@ -1,4 +1,4 @@
-import type { LexicalNode, NodeKey, SerializedLexicalNode, Spread } from 'lexical';
+import type { DOMExportOutput, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from 'lexical';
 import { $applyNodeReplacement, DecoratorNode } from 'lexical';
 import { CommandChip, MentionChip, ShellChip } from './chips';
 
@@ -14,6 +14,10 @@ function chipDOM(): HTMLElement {
   // Atomic token: the reconciler owns the children (React portal); never user-editable inside.
   span.contentEditable = 'false';
   return span;
+}
+
+function exportCanonicalText(text: string): DOMExportOutput {
+  return { element: document.createTextNode(text) };
 }
 
 export type SerializedCommandNode = Spread<{ name: string }, SerializedLexicalNode>;
@@ -49,6 +53,10 @@ export class CommandNode extends DecoratorNode<React.ReactNode> {
 
   override updateDOM(): false {
     return false;
+  }
+
+  override exportDOM(): DOMExportOutput {
+    return exportCanonicalText(this.getTextContent());
   }
 
   override getTextContent(): string {
@@ -100,6 +108,10 @@ export class ShellNode extends DecoratorNode<React.ReactNode> {
 
   override updateDOM(): false {
     return false;
+  }
+
+  override exportDOM(): DOMExportOutput {
+    return exportCanonicalText(this.getTextContent());
   }
 
   override getTextContent(): string {
@@ -161,6 +173,10 @@ export class MentionNode extends DecoratorNode<React.ReactNode> {
 
   override updateDOM(): false {
     return false;
+  }
+
+  override exportDOM(): DOMExportOutput {
+    return exportCanonicalText(this.getTextContent());
   }
 
   override getTextContent(): string {
