@@ -32,6 +32,7 @@ import { wait } from 'foxts/wait';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
+import { SEED_MODEL_CATALOGS } from './data/models';
 import {
   CHUNK_LATENCY_MS,
   CONTROL_LATENCY_MS,
@@ -577,10 +578,14 @@ export class DevMockHost {
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
+    const catalog = SEED_MODEL_CATALOGS[kind];
+    if (catalog) {
+      this.emit(sessionId, { type: 'available-models-update', models: catalog });
+    }
     // Reflect a concrete model/effort like a real adapter, so the composer shows them not placeholders.
     this.emit(sessionId, {
       type: 'model-update',
-      model: model ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
+      model: model ?? catalog?.[0]?.id ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
     });
     this.emit(sessionId, { type: 'effort-update', effort: 'high' });
     this.emit(sessionId, { type: 'status', status: 'idle' });
@@ -746,6 +751,11 @@ export class DevMockHost {
       return;
     }
     session.status = 'idle';
+    // Parity with the engine's replay-on-attach: a resumed session re-advertises its catalog.
+    const catalog = SEED_MODEL_CATALOGS[session.kind];
+    if (catalog) {
+      this.emit(sessionId, { type: 'available-models-update', models: catalog });
+    }
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
