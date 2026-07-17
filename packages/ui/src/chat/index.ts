@@ -11,8 +11,6 @@ export * from './commit';
 export * from './content-block-view';
 export * from './context';
 export * from './conversation';
-export * from './conversation-prompt';
-export * from './conversation-prompt-alert';
 export * from './conversation-prompts';
 export * from './conversation-view';
 export * from './diff-block';

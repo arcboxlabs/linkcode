@@ -7,6 +7,7 @@ import {
   SendIcon,
   SettingsIcon,
   SunMoonIcon,
+  TerminalIcon,
   WifiIcon,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -16,6 +17,7 @@ import { useTranslations } from 'use-intl';
 const SETTINGS_ROUTES: Record<string, string> = {
   general: '/settings',
   appearance: '/settings/appearance',
+  terminal: '/settings/terminal',
   notifications: '/settings/notifications',
   agents: '/settings/agents',
   providers: '/settings/providers',
@@ -50,6 +52,14 @@ export function SettingsLayout(): React.ReactNode {
           keywords: searchKeywords.appearance,
           active: isActive(pathname, 'appearance'),
           render: <Link to="/settings/appearance" />,
+        },
+        {
+          key: 'terminal',
+          icon: <TerminalIcon className="size-4" />,
+          label: t('tabs.terminal'),
+          keywords: searchKeywords.terminal,
+          active: isActive(pathname, 'terminal'),
+          render: <Link to="/settings/terminal" />,
         },
         {
           key: 'notifications',
@@ -150,6 +160,7 @@ function isActive(
   section:
     | ''
     | 'appearance'
+    | 'terminal'
     | 'connection'
     | 'notifications'
     | 'providers'
