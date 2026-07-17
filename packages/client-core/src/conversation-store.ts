@@ -16,6 +16,7 @@ const EMPTY_CONVERSATION: Conversation = {
   items: [],
   status: null,
   usage: null,
+  usageReport: null,
   currentModeId: null,
   approvalPolicy: null,
   currentModel: null,
