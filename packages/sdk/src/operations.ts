@@ -14,6 +14,10 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  LoopId,
+  LoopInspection,
+  LoopRecord,
+  LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
@@ -316,4 +320,25 @@ export function listScheduleRuns(
   options: Options<{ scheduleId: ScheduleId; limit?: number }>,
 ): RequestResult<ScheduleRun[]> {
   return resolveClient(options).listScheduleRuns(options.scheduleId, options.limit);
+}
+
+/** Every loop the daemon holds (running and settled). */
+export function listLoops(options?: Options): RequestResult<LoopRecord[]> {
+  return resolveClient(options).listLoops();
+}
+
+export function startLoop(options: Options<{ spec: LoopSpec }>): RequestResult<LoopRecord> {
+  return resolveClient(options).startLoop(options.spec);
+}
+
+export function stopLoop(options: Options<{ loopId: LoopId }>): RequestResult<{ ok: true }> {
+  return resolveClient(options).stopLoop(options.loopId);
+}
+
+export function deleteLoop(options: Options<{ loopId: LoopId }>): RequestResult<{ ok: true }> {
+  return resolveClient(options).deleteLoop(options.loopId);
+}
+
+export function inspectLoop(options: Options<{ loopId: LoopId }>): RequestResult<LoopInspection> {
+  return resolveClient(options).inspectLoop(options.loopId);
 }

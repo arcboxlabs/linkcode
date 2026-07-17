@@ -36,8 +36,14 @@ import { ArtifactHostService } from './artifacts/host-service';
 import type { AskEvent, AskResolutionEvent, AskResponseInput } from './ask-response';
 import { sessionCancellation, userResolution, validateAskResponse } from './ask-response';
 import { assertAttachmentContentAllowed } from './attachment-guard';
-import type { ScheduleStore, SessionDriver } from './automation';
-import { InMemoryScheduleStore, ScheduleService, watchTurn } from './automation';
+import type { LoopStore, ScheduleStore, SessionDriver } from './automation';
+import {
+  InMemoryLoopStore,
+  InMemoryScheduleStore,
+  LoopService,
+  ScheduleService,
+  watchTurn,
+} from './automation';
 import { readWorkspaceFile } from './file-service';
 import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
@@ -122,6 +128,8 @@ export interface EngineDeps {
   translator?: TranslatorService;
   /** Durable store for schedules; the in-memory default keeps bare engines and tests dependency-free. */
   scheduleStore?: ScheduleStore;
+  /** Durable store for loops; the in-memory default keeps bare engines and tests dependency-free. */
+  loopStore?: LoopStore;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
@@ -162,6 +170,7 @@ export class Engine {
   private readonly fileSuggest: FileSuggestService;
   private readonly scripts?: ScriptService;
   private readonly scheduler: ScheduleService;
+  private readonly loops: LoopService;
   private readonly artifactHost: ArtifactHostService;
   /** Boot snapshot, replaced by every {@link enqueueRuntimesCollect} pass (install/login/auth
    * events and read-triggered revalidation alike). */
@@ -218,6 +227,11 @@ export class Engine {
       deps.scheduleStore ?? new InMemoryScheduleStore(),
       this.buildSessionDriver(),
     );
+    this.loops = new LoopService(
+      transport,
+      deps.loopStore ?? new InMemoryLoopStore(),
+      this.buildSessionDriver(),
+    );
     this.agentRuntimes = deps.agentRuntimes ?? {};
     if (deps.agentRuntimesReady) {
       this.agentRuntimesReady = this.seedAgentRuntimes(deps.agentRuntimesReady);
@@ -242,6 +256,8 @@ export class Engine {
     // After the session records are loaded (the schedule orphan-sweep reads them) and before the
     // transport connects, so the first tick can't race an unconnected transport.
     await this.scheduler.start();
+    // Loops don't resume across a restart; start() only sweeps interrupted loops to `stopped`.
+    await this.loops.start();
     await this.transport.connect();
     this.transport.onMessage((msg) => {
       // Per-request failures already reply over the wire via tryReply; this is the last-resort
@@ -817,6 +833,55 @@ export class Engine {
         });
         break;
       }
+      case 'loop.start': {
+        await this.tryReply(p.clientReqId, async () => {
+          const loop = await this.loops.startLoop(p.spec);
+          this.transport.send(
+            createWireMessage({ kind: 'loop.started', replyTo: p.clientReqId, loop }),
+          );
+        });
+        break;
+      }
+      case 'loop.stop': {
+        await this.tryReply(p.clientReqId, () => {
+          this.loops.stopLoop(p.loopId);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'loop.delete': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.loops.deleteLoop(p.loopId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'loop.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'loop.listed',
+            replyTo: p.clientReqId,
+            loops: this.loops.list(),
+          }),
+        );
+        break;
+      }
+      case 'loop.inspect': {
+        await this.tryReply(p.clientReqId, async () => {
+          const { loop, iterations, logs } = await this.loops.inspect(p.loopId);
+          this.transport.send(
+            createWireMessage({
+              kind: 'loop.inspected',
+              replyTo: p.clientReqId,
+              loop,
+              iterations,
+              logs,
+            }),
+          );
+        });
+        break;
+      }
       case 'session.attach': {
         // The Hub has already attached this connection to the session before forwarding the frame.
         // Re-emit the buffered state that a history read cannot recover: live status (which gates
@@ -968,6 +1033,7 @@ export class Engine {
   async stop(): Promise<void> {
     // Stop launching new automation sessions before the session-teardown sweep runs.
     this.scheduler.shutdown();
+    this.loops.shutdown();
     await Promise.all(
       Array.from(this.sessions.values(), async (session) => {
         session.unsub();

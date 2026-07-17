@@ -16,6 +16,10 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  LoopId,
+  LoopInspection,
+  LoopRecord,
+  LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
@@ -482,6 +486,49 @@ export class ControlChannel {
       clientReqId,
       scheduleId,
       limit,
+    }));
+  }
+
+  /** Start an iterate-until-verified loop; progress then streams via `subscribeLoopEvents`. */
+  startLoop(spec: LoopSpec): Promise<LoopRecord> {
+    return this.sendCorrelated('loopStart', (clientReqId) => ({
+      kind: 'loop.start',
+      clientReqId,
+      spec,
+    }));
+  }
+
+  /** Signal a running loop to stop; it settles to `stopped`. */
+  stopLoop(loopId: LoopId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'loop.stop',
+      clientReqId,
+      loopId,
+    }));
+  }
+
+  /** Delete a settled loop and its iteration history; rejects while it is still running. */
+  deleteLoop(loopId: LoopId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'loop.delete',
+      clientReqId,
+      loopId,
+    }));
+  }
+
+  listLoops(): Promise<LoopRecord[]> {
+    return this.sendCorrelated('loopList', (clientReqId) => ({
+      kind: 'loop.list',
+      clientReqId,
+    }));
+  }
+
+  /** A loop's full detail: record + iterations + the live log tail (ring-buffered snapshot). */
+  inspectLoop(loopId: LoopId): Promise<LoopInspection> {
+    return this.sendCorrelated('loopInspect', (clientReqId) => ({
+      kind: 'loop.inspect',
+      clientReqId,
+      loopId,
     }));
   }
 

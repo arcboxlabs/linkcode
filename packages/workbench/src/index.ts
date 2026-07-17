@@ -9,6 +9,7 @@ export * from './assets/hooks';
 export * from './automations/automations-view';
 export * from './automations/hooks';
 export * from './automations/items';
+export * from './automations/loop-items';
 export * from './automations/store';
 export * from './cloud';
 export * from './files/hooks';

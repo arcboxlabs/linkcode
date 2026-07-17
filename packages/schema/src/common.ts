@@ -29,6 +29,10 @@ export type ScheduleId = z.infer<typeof ScheduleIdSchema>;
 export const ScheduleRunIdSchema = z.string().min(1).brand<'ScheduleRunId'>();
 export type ScheduleRunId = z.infer<typeof ScheduleRunIdSchema>;
 
+/** Loop ID: the identifier of an iterative worker+verifier loop (see loop.ts). */
+export const LoopIdSchema = z.string().min(1).brand<'LoopId'>();
+export type LoopId = z.infer<typeof LoopIdSchema>;
+
 /** Epoch timestamp in milliseconds. */
 export const TimestampSchema = z.number().int().nonnegative();
 export type Timestamp = z.infer<typeof TimestampSchema>;

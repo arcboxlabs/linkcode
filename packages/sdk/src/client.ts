@@ -20,6 +20,10 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  LoopId,
+  LoopInspection,
+  LoopRecord,
+  LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
@@ -345,6 +349,26 @@ export class LinkCodeSdkClient {
 
   listScheduleRuns(scheduleId: ScheduleId, limit?: number): RequestResult<ScheduleRun[]> {
     return toResult(this.raw.listScheduleRuns(scheduleId, limit));
+  }
+
+  startLoop(spec: LoopSpec): RequestResult<LoopRecord> {
+    return toResult(this.raw.startLoop(spec));
+  }
+
+  stopLoop(loopId: LoopId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.stopLoop(loopId));
+  }
+
+  deleteLoop(loopId: LoopId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.deleteLoop(loopId));
+  }
+
+  listLoops(): RequestResult<LoopRecord[]> {
+    return toResult(this.raw.listLoops());
+  }
+
+  inspectLoop(loopId: LoopId): RequestResult<LoopInspection> {
+    return toResult(this.raw.inspectLoop(loopId));
   }
 }
 

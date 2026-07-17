@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 /**
  * Session registry tables. These mirror `SessionRecord` from `@linkcode/schema` — the zod schema
@@ -93,6 +93,47 @@ export const scheduleRuns = sqliteTable(
     endedAt: integer('ended_at'),
   },
   (table) => [index('schedule_runs_schedule_started_idx').on(table.scheduleId, table.startedAt)],
+);
+
+/**
+ * Iterate-until-verified loops; mirrors `LoopRecord` from `@linkcode/schema`. The spec carries arrays
+ * (`verifyChecks`) and a nested `verifier`, so it is stored as one JSON column and validated back
+ * through `LoopSpecSchema` on load rather than being flattened into columns.
+ */
+export const loops = sqliteTable('loops', {
+  loopId: text('loop_id').primaryKey(),
+  /** JSON `LoopSpec`. */
+  specJson: text('spec_json').notNull(),
+  status: text('status', { enum: ['running', 'succeeded', 'failed', 'stopped'] }).notNull(),
+  iterationCount: integer('iteration_count').notNull().default(0),
+  error: text('error'),
+  summary: text('summary'),
+  startedAt: integer('started_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  endedAt: integer('ended_at'),
+});
+
+/** One iteration of a loop; mirrors `LoopIteration`. Iterations cascade when their loop is deleted. */
+export const loopIterations = sqliteTable(
+  'loop_iterations',
+  {
+    loopId: text('loop_id')
+      .notNull()
+      .references(() => loops.loopId, { onDelete: 'cascade' }),
+    /** Zero-based iteration index; unique within the loop. */
+    index: integer('index').notNull(),
+    status: text('status', { enum: ['running', 'passed', 'failed'] }).notNull(),
+    workerSessionId: text('worker_session_id'),
+    verifierSessionId: text('verifier_session_id'),
+    /** JSON array of `LoopCheckResult`. */
+    checksJson: text('checks_json').notNull(),
+    /** JSON `LoopVerdict`, when a verifier ran. */
+    verdictJson: text('verdict_json'),
+    error: text('error'),
+    startedAt: integer('started_at').notNull(),
+    endedAt: integer('ended_at'),
+  },
+  (table) => [primaryKey({ columns: [table.loopId, table.index] })],
 );
 
 /** Registered directories ("workspaces"); mirrors `WorkspaceRecord` from `@linkcode/schema`. */
