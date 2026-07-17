@@ -218,6 +218,17 @@ pnpm -F @linkcode/daemon run dev:clean
 
 This deletes `~/.linkcode/daemon.db` and `~/.linkcode/runtime.json`, then starts dev. It **wipes real user state** (the session registry) — the only scripted command that touches `~/.linkcode`, not a temp copy. The plain `dev` script is `tsx watch --import ./src/instrument.ts src/index.ts` (Sentry instrument preloaded; no-ops unless `LINKCODE_SENTRY_DSN` is set).
 
+### Sentry (local)
+
+DSNs are publishable ids; without them the SDKs no-op (the default for local dev).
+
+| Surface | Env | Repo secret (CI / release) |
+| --- | --- | --- |
+| Desktop main + renderer + packaged daemon | `MAIN_VITE_SENTRY_DSN` (build-time; supervisor copies it to `LINKCODE_SENTRY_DSN`) | `SENTRY_DSN_DESKTOP` (signed desktop builds only) |
+| Daemon (standalone / `pnpm -F @linkcode/daemon dev`) | `LINKCODE_SENTRY_DSN` | — (set at process env) |
+| Webview | `VITE_SENTRY_DSN` | `SENTRY_DSN_WEBVIEW` |
+| Mobile | `EXPO_PUBLIC_SENTRY_DSN` | `SENTRY_DSN_MOBILE` (also set on EAS project env for `eas build`) |
+
 ### Recover changes lost by a failed commit hook
 
 prek stashes unstaged tracked changes to `.devenv/state/prek/patches/<timestamp>-<pid>.patch` on every `git commit` and restores them after the hooks run; if that restore fails (or the hook run is interrupted) the working tree silently reverts to HEAD. The stash is a plain patch file — it does **not** appear in `git stash list`. Recover the newest patch:

@@ -83,13 +83,22 @@ function spawnDaemon(): void {
   const sidecar = sidecarPath();
   if (existsSync(sidecar)) env.LINKCODE_PTY_SIDECAR_PATH = sidecar;
   else log.warn(`[linkcode/desktop] pty sidecar missing at ${sidecar}; terminals unavailable`);
+  // Same DSN the Electron main process inlined at build time (signed builds only). Publishable id.
+  const sentryDsn = import.meta.env.MAIN_VITE_SENTRY_DSN;
+  if (sentryDsn) env.LINKCODE_SENTRY_DSN = sentryDsn;
   // Agent CLI binaries need no env here: the daemon owns its managed-asset store
   // (@linkcode/assets, CODE-111) and resolves spawn paths managed → detected on its own.
 
-  const proc = utilityProcess.fork(join(__dirname, '../daemon/index.mjs'), [], {
+  const daemonDir = join(__dirname, '../daemon');
+  const instrument = join(daemonDir, 'instrument.mjs');
+  // Preload Sentry before any daemon module loads (same contract as `node --import` standalone).
+  const execArgv = existsSync(instrument) ? ['--import', instrument] : [];
+
+  const proc = utilityProcess.fork(join(daemonDir, 'index.mjs'), [], {
     serviceName: 'linkcode-daemon',
     stdio: 'pipe',
     env,
+    execArgv,
   });
   child = proc;
   proc.stdout?.on('data', (chunk: Buffer) => log.info(chunk.toString().trimEnd()));

@@ -6,7 +6,7 @@ import { createAuthClient } from 'better-auth/react';
  * receives it and stays signed out.
  */
 export const CLOUD_API_URL =
-  (import.meta.env.VITE_LINKCODE_CLOUD_API_URL as string | undefined) ?? 'https://api.linkcode.ai';
+  import.meta.env.VITE_LINKCODE_CLOUD_API_URL ?? 'https://api.linkcode.ai';
 
 export const authClient = createAuthClient({
   baseURL: CLOUD_API_URL,
