@@ -48,7 +48,8 @@
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
     "use-intl": "catalog:",
-    "use-stick-to-bottom": "^1.1.6"
+    "use-stick-to-bottom": "^1.1.6",
+    "virtua": "^0.49.3"
   },
   "devDependencies": {
     "@types/react": "catalog:",

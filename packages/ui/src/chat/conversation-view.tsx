@@ -74,11 +74,22 @@ export function ConversationView({
           'linear-gradient(to bottom, transparent 0, black 24px, black calc(100% - 16px), transparent 100%)',
       }}
     >
-      <ConversationContent>
-        {segments.map((segment, index) => (
+      <ConversationContent
+        data={segments}
+        trailing={
+          isThinking && (
+            <div className="flex items-center gap-2 pt-5 pb-1 text-muted-foreground text-sm">
+              <Spinner className="size-3.5" />
+              <span>{t('thinking')}</span>
+            </div>
+          )
+        }
+      >
+        {(segment, index) => (
           <TurnSegmentView
             key={segment.turnId ?? 'lead-in'}
             segment={segment}
+            first={index === 0}
             // Trailers appear once the turn has settled — the in-flight turn shows none.
             ended={index < segments.length - 1 || !isThinking}
             agentKind={agentKind}
@@ -90,12 +101,6 @@ export function ConversationView({
             onExpandTask={setExpandedTaskId}
             onReviewChanges={onReviewChanges}
           />
-        ))}
-        {isThinking && (
-          <div className="flex items-center gap-2 py-1 text-muted-foreground text-sm">
-            <Spinner className="size-3.5" />
-            <span>{t('thinking')}</span>
-          </div>
         )}
       </ConversationContent>
       <ConversationScrollButton />

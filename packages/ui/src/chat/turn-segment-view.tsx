@@ -1,4 +1,5 @@
 import type { AgentKind } from '@linkcode/schema';
+import { cn } from '../lib/cn';
 import { ActivityGroup } from './activity-group';
 import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
@@ -21,6 +22,8 @@ import { UserMessage } from './user-message';
 
 export interface TurnSegmentViewProps {
   segment: TurnSegment;
+  /** First row of the timeline — carries the column's top padding (rows own vertical spacing). */
+  first: boolean;
   /** Whether the turn has settled — trailers (edit rollup, reply actions) appear only then. */
   ended: boolean;
   agentKind?: AgentKind;
@@ -43,6 +46,7 @@ export interface TurnSegmentViewProps {
  */
 export function TurnSegmentView({
   segment,
+  first,
   ended,
   agentKind,
   modelName,
@@ -164,7 +168,9 @@ export function TurnSegmentView({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    // Rows own their top spacing (virtua positions them absolutely, so column gap can't).
+    // Layout containment keeps one row's reflow from invalidating its mounted siblings.
+    <div className={cn('flex flex-col gap-4 [contain:layout_style]', first ? 'pt-6' : 'pt-4')}>
       {leadingUserEntry ? renderEntry(leadingUserEntry) : null}
       {hasAgentTurnContent ? (
         <div className="group/turn flex flex-col gap-3">
