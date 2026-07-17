@@ -43,6 +43,106 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].ts).toBe(Date.parse('2026-07-01T00:00:00Z'));
   });
 
+  it('drops the 0.144 injection row: AGENTS.md prose part glued to <environment_context> (CODE-235)', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      // codex 0.144 dropped the <user_instructions> wrapper: one user row, two content parts.
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '# AGENTS.md instructions for C:\\Users\\flynn\\Desktop\\yose-chat\n\n<INSTRUCTIONS>\nimmer + combine 是标准组合\n</INSTRUCTIONS>',
+          },
+          {
+            type: 'input_text',
+            text: '<environment_context>\n  <cwd>C:\\Users\\flynn\\Desktop\\yose-chat</cwd>\n  <shell>powershell</shell>\n</environment_context>',
+          },
+        ],
+      }),
+      // A mid-session AGENTS.md change re-injects with a replacement preamble, no env part.
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: 'These AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\n# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>',
+          },
+        ],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: '介绍一下这个项目' }],
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toMatchObject({ type: 'user-message' });
+  });
+
+  it('keeps a real prompt that begins with a marker when its event_msg echo pairs it', () => {
+    const pasted = '# AGENTS.md instructions for /repo — why does codex inject this?';
+    const events = mapCodexHistoryEvents(HID, [
+      // Real prompts are echoed as event_msg/user_message; injected rows never are.
+      { type: 'event_msg', payload: { type: 'user_message', message: pasted } },
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: pasted }],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>',
+          },
+          {
+            type: 'input_text',
+            text: '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>',
+          },
+        ],
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toMatchObject({ type: 'user-message' });
+    if (events[0].event.type === 'user-message') {
+      expect(events[0].event.content).toEqual([{ type: 'text', text: pasted }]);
+    }
+  });
+
+  it('still drops a glued row when an unmarked twin of one part was echoed as a real prompt', () => {
+    // The echoed prompt text coincides with the glued row's env part; the AGENTS.md part was
+    // never echoed, so the injected row must stay filtered while the real prompt replays.
+    const envText = '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>';
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'event_msg', payload: { type: 'user_message', message: envText } },
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: envText }],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>',
+          },
+          { type: 'input_text', text: envText },
+        ],
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toMatchObject({ type: 'user-message' });
+    if (events[0].event.type === 'user-message') {
+      expect(events[0].event.content).toEqual([{ type: 'text', text: envText }]);
+    }
+  });
+
   it('replays exec_command like the live commandExecution item: command title, unwrapped output', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
