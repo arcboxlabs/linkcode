@@ -46,6 +46,9 @@ export const AGENT_MODEL_OPTIONS: Partial<Record<AgentKind, ModelOption[]>> = {
     { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
   ],
   codex: [
+    { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' },
+    { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' },
+    { id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna' },
     { id: 'gpt-5.5', label: 'GPT-5.5' },
     { id: 'gpt-5.4', label: 'GPT-5.4' },
     { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini' },
