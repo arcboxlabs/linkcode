@@ -199,6 +199,28 @@ export function createRightTerminalTab(): PanelSectionTab {
   return { id: `right-terminal-${tabSequence}` };
 }
 
+/** The terminal section never comes forward empty: seed a first PTY tab (same as pressing +). */
+export function seedTerminalSection(terminal: RightPanelTerminalState): RightPanelTerminalState {
+  if (terminal.tabs.length > 0) return terminal;
+  const tab = createRightTerminalTab();
+  return { tabs: [tab], activeTabId: tab.id };
+}
+
+/** Brings `section` forward, seeding terminal/browser first tabs when those sections become visible. */
+export function revealSectionState(
+  panel: RightPanelState,
+  section: PanelSection,
+  open: boolean,
+): RightPanelState {
+  return {
+    ...panel,
+    open,
+    activeSection: section,
+    terminal: open && section === 'terminal' ? seedTerminalSection(panel.terminal) : panel.terminal,
+    browser: open && section === 'browser' ? seedBrowserTabs(panel.browser) : panel.browser,
+  };
+}
+
 export function createRightFileTab(path: string): FileSectionTab {
   tabSequence += 1;
   return { id: `right-file-${tabSequence}`, path };
@@ -246,11 +268,11 @@ export function openBrowserUrlState(
   return { tabs: [...browser.tabs, tab], activeTabId: tab.id };
 }
 
-/** The browser section always activates with at least one (possibly empty) tab. */
-export function seedBrowserSection(panel: RightPanelState): RightPanelState {
-  if (panel.activeSection !== 'browser' || panel.browser.tabs.length > 0) return panel;
+/** The browser section never comes forward empty: seed a first (possibly blank) tab. */
+export function seedBrowserTabs(browser: RightPanelBrowserState): RightPanelBrowserState {
+  if (browser.tabs.length > 0) return browser;
   const tab = createRightBrowserTab();
-  return { ...panel, browser: { tabs: [tab], activeTabId: tab.id } };
+  return { tabs: [tab], activeTabId: tab.id };
 }
 
 export function updateBrowserTabState(
@@ -455,22 +477,24 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
           .map((url) => createRightBrowserTab(durableBrowserUrl(url)));
         const activeBrowserIndex =
           browserTabs.length > 0 ? clamp(activeBrowserTabIndex, 0, browserTabs.length - 1) : 0;
+        const terminal = {
+          tabs,
+          activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
+        };
+        const browser = {
+          tabs: browserTabs,
+          activeTabId: browserTabs.length > 0 ? browserTabs[activeBrowserIndex].id : null,
+        };
 
         return {
           open,
           activeSection,
-          terminal: {
-            tabs,
-            activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
-          },
+          terminal: open && activeSection === 'terminal' ? seedTerminalSection(terminal) : terminal,
           files: {
             tabs: fileTabs,
             activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
           },
-          browser: {
-            tabs: browserTabs,
-            activeTabId: browserTabs.length > 0 ? browserTabs[activeBrowserIndex].id : null,
-          },
+          browser: open && activeSection === 'browser' ? seedBrowserTabs(browser) : browser,
         };
       },
     );

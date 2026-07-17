@@ -1,5 +1,6 @@
 import { open } from 'node:fs/promises';
 import path from 'node:path';
+import { toHostPath } from '@linkcode/common/node';
 import type { WorkspaceFile } from '@linkcode/schema';
 
 /** Hard cap on a single read; the wire is JSON, so oversized payloads hurt every client. */
@@ -30,7 +31,10 @@ const MIME_BY_EXTENSION: Record<string, string> = {
  * remote access must gate reads in its own authz layer, not here. Throws (→ `sendFailure`) on a
  * missing or non-file target or an oversized read. */
 export async function readWorkspaceFile(cwd: string, requestPath: string): Promise<WorkspaceFile> {
-  const resolved = path.resolve(cwd, requestPath);
+  // Backstop for MSYS drive-form paths (`/c/…`): sessions persisted before adapter-side
+  // normalization still replay them, and win32 `resolve` would misread the rooted POSIX form
+  // as drive-relative (`C:\c\…`).
+  const resolved = path.resolve(cwd, toHostPath(requestPath));
 
   const handle = await open(resolved, 'r');
   try {

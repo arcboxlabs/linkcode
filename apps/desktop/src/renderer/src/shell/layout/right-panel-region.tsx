@@ -71,6 +71,7 @@ export function DesktopRightPanelRegion({
             cwd={cwd}
             tabs={panel.files.tabs}
             activeTabId={panel.files.activeTabId}
+            themeType={themeType}
             onSelectTab={onSelectFileTab}
             onCloseTab={onCloseFileTab}
             onOpenFile={onOpenFileTab}

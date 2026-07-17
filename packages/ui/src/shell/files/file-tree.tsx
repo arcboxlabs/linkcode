@@ -1,7 +1,10 @@
 import type { FileTree as PierreFileTreeModel } from '@pierre/trees';
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react';
+import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import { useStableHandler } from 'foxact/use-stable-handler-only-when-you-know-what-you-are-doing-or-you-will-be-fired';
-import { useEffect, useRef } from 'react';
+import { SearchIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 
 export interface WorkspaceFileTreeProps {
@@ -11,16 +14,33 @@ export interface WorkspaceFileTreeProps {
   className?: string;
 }
 
+/** Blend the shadow-DOM tree into the app theme: the `--trees-*-override` hooks are the
+ * supported styling surface, and CSS custom properties inherit across the shadow boundary. */
+const TREE_THEME_OVERRIDES = {
+  '--trees-bg-override': 'transparent',
+  '--trees-fg-override': 'var(--foreground)',
+  '--trees-fg-muted-override': 'var(--muted-foreground)',
+  '--trees-selected-bg-override': 'var(--muted)',
+  '--trees-selected-fg-override': 'var(--foreground)',
+  '--trees-accent-override': 'var(--accent)',
+  '--trees-border-color-override': 'var(--border)',
+  '--trees-font-family-override': 'var(--font-sans)',
+  '--trees-font-size-override': '12px',
+} as React.CSSProperties;
+
 /**
- * Workspace tree for the Files section, rendered by `@pierre/trees` (shadow DOM, virtualized,
- * built-in search). Selection state lives inside the model; only file selections are reported —
- * clicking a directory toggles it.
+ * Workspace tree for the Files section, rendered by `@pierre/trees` (shadow DOM, virtualized).
+ * The built-in search UI stays off — it is unlocalizable inside the shadow root — and a
+ * toolbar-height app search input drives `model.setSearch` instead. Selection state lives
+ * inside the model; only file selections are reported — clicking a directory toggles it.
  */
 export function WorkspaceFileTree({
   paths,
   onFileOpen,
   className,
 }: WorkspaceFileTreeProps): React.ReactNode {
+  const t = useTranslations('workbench.files');
+  const [searchValue, setSearchValue] = useState('');
   const modelRef = useRef<PierreFileTreeModel | null>(null);
   const handleSelectionChange = useStableHandler((selected: readonly string[]) => {
     const path = selected[0];
@@ -33,8 +53,11 @@ export function WorkspaceFileTree({
   const { model } = useFileTree({
     paths,
     flattenEmptyDirectories: true,
-    initialExpansion: 'closed',
-    search: true,
+    // Depth-1 expansion: top-level directories start open so a workspace whose files all
+    // nest under one root does not collapse into a single unexpanded row.
+    initialExpansion: 1,
+    density: 'compact',
+    fileTreeSearchMode: 'hide-non-matches',
     onSelectionChange: handleSelectionChange,
   });
 
@@ -51,5 +74,36 @@ export function WorkspaceFileTree({
     model.resetPaths(paths);
   }, [model, paths]);
 
-  return <PierreFileTree className={cn('h-full min-h-0', className)} model={model} />;
+  function applySearch(next: string): void {
+    setSearchValue(next);
+    model.setSearch(next === '' ? null : next);
+  }
+
+  return (
+    <div className={cn('flex h-full min-h-0 flex-col', className)}>
+      <div className="flex h-8 shrink-0 items-center border-border border-b bg-background/60 px-1">
+        <InputGroup className="h-7 rounded-md border-0 bg-transparent shadow-none">
+          <InputGroupAddon>
+            <SearchIcon className="text-muted-foreground" />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label={t('searchPlaceholder')}
+            nativeInput
+            placeholder={t('searchPlaceholder')}
+            type="search"
+            value={searchValue}
+            onChange={(event) => applySearch(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.key === 'Process') return;
+              if (event.key === 'Escape' && searchValue !== '') {
+                event.stopPropagation();
+                applySearch('');
+              }
+            }}
+          />
+        </InputGroup>
+      </div>
+      <PierreFileTree className="min-h-0 flex-1" model={model} style={TREE_THEME_OVERRIDES} />
+    </div>
+  );
 }
