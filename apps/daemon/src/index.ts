@@ -13,6 +13,7 @@ import { installAsarSpawnFix } from './asar-spawn';
 import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
+import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
 import {
@@ -94,6 +95,8 @@ async function main(): Promise<void> {
   // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
   // store into spawn resolution — managed wins over detected as soon as an install lands on disk.
   const assets = new AssetManager();
+  // Prior managed install = standing consent to keep that agent current (CODE-221).
+  const consentedAgents = consentedManagedAgents(assets);
   const gc = assets.gcAtBoot();
   if (gc.removed.length > 0) {
     console.log(`[linkcode/daemon] assets gc: removed ${gc.removed.join(', ')}`);
@@ -126,11 +129,10 @@ async function main(): Promise<void> {
       ensureBinary: async () => (await assets.ensure('tool:aigateway'))?.path,
     }),
   });
-  // Warm missing agent pairs in the background — boot never waits on a download. Anything the
-  // probe already found usable (detected CLI, SDK platform package) is left alone. Runs after
-  // the engine exists so its asset subscription sees the whole install lifecycle.
-  for (const kind of ['claude-code', 'codex'] as const) {
-    if (agentRuntimes[kind]?.status === 'available') continue;
+  // Refresh consented managed installs in the background — boot never waits on a download. A
+  // never-installed agent waits for the client's explicit `asset.ensure` instead (CODE-221).
+  // Runs after the engine exists so its asset subscription sees the whole install lifecycle.
+  for (const kind of agentsToRefresh(consentedAgents, agentRuntimes)) {
     void assets
       .ensure(`agent:${kind}`)
       .catch((err) => {

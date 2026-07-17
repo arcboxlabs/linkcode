@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import type {
   AssetInstallEvent,
   InstalledAsset,
@@ -12,6 +13,7 @@ import type { GcReport } from './gc';
 import { collectGarbage } from './gc';
 import type { InstallOptions } from './install';
 import { installAsset, installedPath } from './install';
+import { assetDir } from './paths';
 import { wantedVersion } from './version-pin';
 
 export interface AssetManagerOptions extends InstallOptions {
@@ -55,6 +57,23 @@ export class AssetManager {
   /** Drop superseded versions and tmp orphans. Best-effort; never throws. */
   gcAtBoot(): GcReport {
     return collectGarbage(this.wanted);
+  }
+
+  /**
+   * Any completed (non-`.tmp-*`) version directory on disk, regardless of the wanted pin: a prior
+   * install = standing consent to auto-refresh (CODE-221). GC keeps superseded versions until
+   * their replacement lands, so a failed refresh never erases this. Directories only — a stray
+   * file (Finder's `.DS_Store`) must not read as consent.
+   */
+  hasInstallOnDisk(id: ManagedAssetId): boolean {
+    if (!this.descriptors.has(id)) return false;
+    try {
+      return readdirSync(assetDir(id), { withFileTypes: true }).some(
+        (entry) => entry.isDirectory() && !entry.name.startsWith('.tmp-'),
+      );
+    } catch {
+      return false;
+    }
   }
 
   /** Live snapshot for the `asset.list` wire resource. */

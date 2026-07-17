@@ -26,7 +26,9 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   tests and E2E must set it). All paths resolve at call time so a fake `$HOME` redirects them.
   Installs stage in a `.tmp-*` sibling and publish with one same-volume `rename`; losing the
   rename race to a concurrent install is success (hash-verified identical bytes). Boot GC
-  removes superseded versions and `.tmp-*` orphans, best-effort, before anything can spawn.
+  removes `.tmp-*` orphans and superseded versions, best-effort, before anything can spawn —
+  but a superseded version only once the wanted one is installed: until then it is the consent
+  marker that keeps a failed post-upgrade refresh retrying on later boots (CODE-221).
 - **codex registry quirk:** `@openai/codex-<platform>` names are npm aliases that 404 — the
   real artifacts are `@openai/codex` versions keyed `<ver>-<platform>-<arch>`, with the binary
   at `package/vendor/<rust-triple>/bin/codex`. All members in `catalog.ts` were read off real
@@ -44,11 +46,16 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
 
 ## Consumers
 
-The daemon constructs one `AssetManager` at boot: GC → `setManagedResolver` into
-`agentRuntimeProber` (managed wins over detected the moment an install lands) → background
-`ensure()` for agent pairs the probe found unusable. The engine serves `statuses()` on
-`asset.list`, triggers `ensure()` on `asset.ensure`, and forwards install lifecycle to the wire
-via the injected `AssetService`. Tectonic consumers (CODE-81) resolve by asset id.
+The daemon constructs one `AssetManager` at boot: consent snapshot (`hasInstallOnDisk` — a
+prior install of any version is the user's standing consent; GC retains superseded versions
+until their replacement lands, so a failed refresh never erases it) → GC → `setManagedResolver`
+into `agentRuntimeProber` (managed wins over detected the moment an install lands) → background
+`ensure()` only for consented agent pairs the probe found unusable. An agent never installed
+here is NOT auto-downloaded (CODE-221) — its first install comes from the client's
+`asset.ensure` (the onboarding Download card). The engine serves
+`statuses()` on `asset.list`, triggers `ensure()` on `asset.ensure`, and forwards install
+lifecycle to the wire via the injected `AssetService`. Tectonic consumers (CODE-81) resolve by
+asset id.
 
 Observers use `subscribe()` (progress / installed / failed events), never a per-call
 `onProgress`: install.ts's in-flight dedupe keeps only the first caller's callback, so per-call
