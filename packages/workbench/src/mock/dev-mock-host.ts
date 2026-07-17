@@ -48,6 +48,11 @@ import {
   SHOWCASE_ARCHITECTURE_LINK,
   SHOWCASE_ARTIFACTS_CONTENT,
   SHOWCASE_COMMANDS_NARRATION,
+  SHOWCASE_COMPACTION_HOLD_MS,
+  SHOWCASE_COMPACTION_ID,
+  SHOWCASE_COMPACTION_POST_TOKENS,
+  SHOWCASE_COMPACTION_PRE_TOKENS,
+  SHOWCASE_COMPACTION_SUMMARY,
   SHOWCASE_EMBEDDED_RESOURCE,
   SHOWCASE_ERROR_EVENT,
   SHOWCASE_EXPLORE_NARRATION,
@@ -1041,6 +1046,27 @@ export class DevMockHost {
     const messageId = this.nextMessageId('mock-showcase-stream');
     await wait(SHOWCASE_STREAM_START_DELAY_MS);
     if (!isRunningTurn(session, epoch)) return;
+
+    // One compaction across its whole lifecycle: the live "compacting…" row holds briefly, then
+    // the completed re-emit merges over it (same compactionId) as the tokens+summary divider.
+    this.emit(session.sessionId, {
+      type: 'compaction',
+      compactionId: SHOWCASE_COMPACTION_ID,
+      status: 'in_progress',
+      trigger: 'auto',
+    });
+    await wait(SHOWCASE_COMPACTION_HOLD_MS);
+    if (!isRunningTurn(session, epoch)) return;
+    this.emit(session.sessionId, {
+      type: 'compaction',
+      compactionId: SHOWCASE_COMPACTION_ID,
+      status: 'completed',
+      trigger: 'auto',
+      preTokens: SHOWCASE_COMPACTION_PRE_TOKENS,
+      postTokens: SHOWCASE_COMPACTION_POST_TOKENS,
+      summary: SHOWCASE_COMPACTION_SUMMARY,
+    });
+
     this.emit(session.sessionId, {
       type: 'agent-thought-chunk',
       messageId: thoughtId,
