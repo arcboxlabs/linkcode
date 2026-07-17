@@ -3,24 +3,10 @@ import type { AgentKind } from '@linkcode/schema';
 import ClaudeCodeGlyph from '~icons/lobe-icons/claudecode';
 import CodexGlyph from '~icons/lobe-icons/codex';
 import OpenCodeGlyph from '~icons/lobe-icons/opencode';
+import { AGENT_INITIALS } from '../agent-meta';
 import { cn } from '../lib/cn';
 
-export const AGENT_LABELS: Record<AgentKind, string> = {
-  'claude-code': 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'Pi',
-  'grok-build': 'Grok Build',
-};
-
-// Fallback for kinds without a brand glyph (e.g. `pi`, `grok-build`).
-const AGENT_INITIALS: Record<AgentKind, string> = {
-  'claude-code': 'CC',
-  codex: 'CX',
-  opencode: 'OC',
-  pi: 'PI',
-  'grok-build': 'GB',
-};
+export { AGENT_LABELS } from '../agent-meta';
 
 const AGENT_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeGlyph>> = {
   'claude-code': ClaudeCodeGlyph,
