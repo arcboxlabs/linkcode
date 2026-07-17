@@ -570,7 +570,9 @@ export interface ConversationSeedEvent {
 
 /** A point-in-time transcript snapshot: past events read from provider history, plus the live
  * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). The
- * conversation store folds the seed first, then only the live events past the `uptoSeq` cut. */
+ * conversation store folds the seed first, then the live events past the `uptoSeq` cut — and,
+ * because a mid-turn transcript lags the stream, pre-cut events whose identity the snapshot
+ * doesn't cover (an in-flight message's chunks, an unflushed tool call; CODE-272). */
 export interface ConversationSeed {
   events: ConversationSeedEvent[];
   /** The snapshot covers every live event with seq ≤ this; 0 = supersedes nothing. */

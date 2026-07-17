@@ -1,10 +1,10 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { homedir } from 'node:os';
-import { delimiter, isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
 import process from 'node:process';
 import { promisify } from 'node:util';
+import { executableSearchLocations } from '@linkcode/common/node';
 import type { AgentAuthStatus } from '@linkcode/schema';
 
 const execFileAsync = promisify(execFile);
@@ -17,55 +17,6 @@ export interface DetectedAgentRuntime {
 
 /** The agent kinds that spawn an external CLI (pi is in-process; opencode is PATH-based until CODE-76). */
 export type ProbeableKind = 'claude-code' | 'codex' | 'grok-build';
-
-/**
- * Candidate paths from the daemon's own PATH, searched ahead of the fallback locations
- * (CODE-220): PATH is the user's declared resolution order, and its order decides which of
- * several installs wins. Deriving candidates executes nothing — verification stays in
- * `probeAt`'s `--version` vendor marker — so only entries that don't denote a fixed location
- * are dropped: relative and empty segments (both resolve against the daemon's incidental cwd).
- * npm's Windows `.cmd` shims are skipped implicitly (only `<dir>/<binary>` with the platform
- * suffix is probed; `execFile` can't run a shim anyway) — those installs ride the managed tier.
- */
-function pathInstallLocations(binary: string): string[] {
-  const locations: string[] = [];
-  for (const entry of (process.env.PATH ?? '').split(delimiter)) {
-    // Windows PATH entries with spaces are conventionally double-quoted.
-    const dir = entry.replaceAll('"', '');
-    if (dir.length > 0 && isAbsolute(dir)) locations.push(join(dir, binary));
-  }
-  return locations;
-}
-
-/**
- * Fallback absolute install locations, probed after the PATH scan for daemons whose PATH was
- * stripped by a GUI launch (macOS launchd passes only `/usr/bin:/bin:/usr/sbin:/sbin`).
- * win32 has no entries: Windows GUI processes inherit the registry-composed user PATH, which
- * installers (winget Links, claude's `%USERPROFILE%\.local\bin`, scoop shims) join by design,
- * so the PATH scan already covers them.
- */
-function fallbackInstallLocations(binary: string): string[] {
-  const home = homedir();
-  switch (process.platform) {
-    case 'darwin':
-      // Official installers target ~/.local/bin; Homebrew is /opt/homebrew (arm) or /usr/local (intel).
-      return [
-        join(home, '.local', 'bin', binary),
-        join('/opt/homebrew/bin', binary),
-        join('/usr/local/bin', binary),
-      ];
-    case 'linux':
-      // /usr/bin is where distro packages land (e.g. Arch's codex).
-      return [
-        join(home, '.local', 'bin', binary),
-        join('/home/linuxbrew/.linuxbrew/bin', binary),
-        join('/usr/local/bin', binary),
-        join('/usr/bin', binary),
-      ];
-    default:
-      return [];
-  }
-}
 
 /**
  * One agent's CLI probe: where its user-installed binary may live and how to verify a candidate is
@@ -122,10 +73,12 @@ export abstract class AgentCliProbe {
     return process.platform === 'win32' ? `${this.binaryBase}.exe` : this.binaryBase;
   }
 
+  /** Deriving candidates executes nothing — verification stays in `probeAt`'s `--version`
+   * vendor marker. npm's Windows `.cmd` shims are skipped implicitly (only `<dir>/<binary>`
+   * with the platform suffix is probed; `execFile` can't run a shim anyway) — those installs
+   * ride the managed tier. */
   knownLocations(): string[] {
-    if (this.locations) return this.locations;
-    const binary = this.binaryName();
-    return [...new Set([...pathInstallLocations(binary), ...fallbackInstallLocations(binary)])];
+    return this.locations ?? executableSearchLocations(this.binaryName());
   }
 
   /** Version-probe one candidate binary. `undefined` means "not this one" (absent, not executable,

@@ -28,7 +28,7 @@ export function SectionTerminalTabStrip({
   return (
     <div
       className={cn(
-        'flex h-8 shrink-0 items-center gap-1 border-border border-b bg-background/60 px-2',
+        'flex h-9 shrink-0 items-center gap-1 border-border border-b bg-background/60 px-1',
         className,
       )}
     >

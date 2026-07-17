@@ -18,6 +18,7 @@ import type {
   SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { MessageParam } from '@anthropic-ai/sdk/resources';
+import { toHostPath } from '@linkcode/common/node';
 import type {
   AgentCommand,
   AgentEvent,
@@ -40,6 +41,7 @@ import type {
   SupportedAttachmentImageMimeType,
   ToolCall,
   ToolCallContent,
+  ToolCallLocation,
   UsageRateLimitWindow,
   UsageReport,
 } from '@linkcode/schema';
@@ -1069,7 +1071,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           status: 'in_progress',
           content: diff,
           rawInput: block.input,
-          locations: locationsFromToolInput(block.input),
+          locations: hostLocationsFromToolInput(block.input),
         });
         calledTool = true;
       }
@@ -1099,7 +1101,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           status: 'in_progress',
           content: diff,
           rawInput: block.input,
-          locations: locationsFromToolInput(block.input),
+          locations: hostLocationsFromToolInput(block.input),
         });
       } else if (block.type === 'text') {
         this.emitAssistantText(block.text, asMessageId(uuid), parent);
@@ -1172,6 +1174,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 }
 
+/** `locationsFromToolInput` with the CLI's MSYS drive-form spellings (`/c/…`, reported when it
+ * routes through Git Bash on Windows) rewritten to native form. Claude-scoped on purpose: no
+ * other adapter is confirmed to emit the form. */
+function hostLocationsFromToolInput(input: unknown): ToolCallLocation[] | undefined {
+  return locationsFromToolInput(input)?.map((location) => ({
+    ...location,
+    path: toHostPath(location.path),
+  }));
+}
+
 /**
  * Surface Edit/Write inputs (which carry the exact patch) as structured diff content so the UI
  * renders a diff instead of raw input JSON; Write has no oldText (whole-file, renders all-added).
@@ -1184,12 +1196,13 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
     if (typeof path !== 'string' || typeof oldText !== 'string' || typeof newText !== 'string') {
       return undefined;
     }
-    return [{ type: 'diff', path, oldText, newText }];
+    // The CLI on Windows reports MSYS drive-form paths (`/c/…`) — rewrite to native form.
+    return [{ type: 'diff', path: toHostPath(path), oldText, newText }];
   }
   if (toolName === 'Write') {
     const { file_path: path, content: newText } = input;
     if (typeof path !== 'string' || typeof newText !== 'string') return undefined;
-    return [{ type: 'diff', path, newText }];
+    return [{ type: 'diff', path: toHostPath(path), newText }];
   }
   return undefined;
 }
