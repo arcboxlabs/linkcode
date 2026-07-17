@@ -99,6 +99,88 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('advertises and handles composer directives', async () => {
+    const client = await connectedClient();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    const events = collectEvents(client, sessionId);
+
+    expect(events).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    expect(events.find((event) => event.type === 'available-commands-update')).toEqual({
+      type: 'available-commands-update',
+      commands: [
+        {
+          name: 'compact',
+          description: 'Summarize conversation to prevent hitting the context limit',
+        },
+        {
+          name: 'review',
+          description: 'Review the current changes',
+          argumentHint: '<path>',
+        },
+        {
+          name: 'usage',
+          description: 'Show session usage and rate limits',
+          aliases: ['cost'],
+        },
+      ],
+    });
+
+    let mark = events.length;
+    await expect(client.invokeCommand(sessionId, 'review', 'src/app.ts')).resolves.toEqual({
+      ok: true,
+    });
+    expect(events.slice(mark)).toEqual([
+      {
+        type: 'user-message',
+        content: [{ type: 'text', text: '/review src/app.ts' }],
+      },
+      { type: 'status', status: 'running' },
+      {
+        type: 'agent-message-chunk',
+        messageId: expect.any(String),
+        content: { type: 'text', text: 'Mock review complete: no blocking issues found.' },
+      },
+      { type: 'stop', stopReason: 'end_turn' },
+      { type: 'status', status: 'idle' },
+    ]);
+
+    mark = events.length;
+    await expect(client.invokeCommand(sessionId, 'cost')).resolves.toEqual({ ok: true });
+    const usageEvents = events.slice(mark);
+    expect(usageEvents.map((event) => event.type)).toEqual([
+      'user-message',
+      'status',
+      'usage-report',
+      'status',
+    ]);
+    expect(usageEvents[0]).toEqual({
+      type: 'user-message',
+      content: [{ type: 'text', text: '/cost' }],
+    });
+    expect(usageEvents[1]).toEqual({ type: 'status', status: 'running' });
+    expect(usageEvents[3]).toEqual({ type: 'status', status: 'idle' });
+
+    mark = events.length;
+    await expect(client.invokeCommand(sessionId, 'missing')).rejects.toThrow(
+      'Unknown mock slash command: /missing',
+    );
+    expect(events).toHaveLength(mark);
+
+    mark = events.length;
+    await expect(client.runShellCommand(sessionId, 'git status')).resolves.toEqual({ ok: true });
+    expect(events.slice(mark)).toEqual([
+      {
+        type: 'user-message',
+        content: [{ type: 'text', text: '$ git status' }],
+      },
+    ]);
+
+    client.dispose();
+  });
+
   it('answers workspace and git calls mounted by the workbench shell', async () => {
     const client = await connectedClient();
 

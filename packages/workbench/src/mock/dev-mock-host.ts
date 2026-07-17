@@ -29,6 +29,7 @@ import { normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
+import { MOCK_COMMAND_CATALOG, mockCommandFixture } from './data/commands';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
@@ -578,6 +579,11 @@ export class DevMockHost {
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
+    this.emit(sessionId, {
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    this.emit(sessionId, { type: 'available-commands-update', commands: MOCK_COMMAND_CATALOG });
     const catalog = SEED_MODEL_CATALOGS[kind];
     if (catalog) {
       this.emit(sessionId, { type: 'available-models-update', models: catalog });
@@ -818,22 +824,14 @@ export class DevMockHost {
         this.respondPermission(replyTo, sessionId, input.requestId, input.outcome);
         break;
       case 'command':
-        // Parity with the real engine + claude-code /usage intercept (CODE-213): the engine
-        // echoes the invocation text as a user-message before dispatch, the adapter brackets the
-        // control request with status running→idle, and the reply is one structured usage-report
-        // — no transcript text. Unknown commands mirror the engine's prevalidation reject (no echo).
-        if (input.name === 'usage' || input.name === 'cost') {
-          this.emit(sessionId, {
-            type: 'user-message',
-            content: [textBlock(`/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`)],
-          });
-          this.emit(sessionId, { type: 'status', status: 'running' });
-          this.emit(sessionId, { type: 'usage-report', report: MOCK_USAGE_REPORT });
-          this.emit(sessionId, { type: 'status', status: 'idle' });
-          this.sendSuccess(replyTo);
-        } else {
-          this.sendFailure(replyTo, 'Dev mock host only mocks the /usage command.');
-        }
+        this.invokeCommand(replyTo, session, input.name, input.arguments);
+        break;
+      case 'shell-command':
+        this.emit(sessionId, {
+          type: 'user-message',
+          content: [textBlock(`$ ${input.command}`)],
+        });
+        this.sendSuccess(replyTo);
         break;
       case 'question-response':
         this.respondQuestion(replyTo, sessionId, input.requestId, input.outcome);
@@ -842,6 +840,39 @@ export class DevMockHost {
         this.sendFailure(replyTo, 'Dev mock host does not support that input yet.');
         break;
     }
+  }
+
+  private invokeCommand(
+    replyTo: string,
+    session: MockSession,
+    name: string,
+    args: string | undefined,
+  ): void {
+    const fixture = mockCommandFixture(name);
+    if (!fixture) {
+      this.sendFailure(replyTo, `Unknown mock slash command: /${name}`);
+      return;
+    }
+
+    this.emit(session.sessionId, {
+      type: 'user-message',
+      content: [textBlock(`/${name}${args ? ` ${args}` : ''}`)],
+    });
+    session.status = 'running';
+    this.emit(session.sessionId, { type: 'status', status: 'running' });
+    if (fixture.reply === undefined) {
+      this.emit(session.sessionId, { type: 'usage-report', report: MOCK_USAGE_REPORT });
+    } else {
+      this.emit(session.sessionId, {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId(`mock-${fixture.command.name}`),
+        content: textBlock(fixture.reply),
+      });
+      this.emit(session.sessionId, { type: 'stop', stopReason: 'end_turn' });
+    }
+    session.status = 'idle';
+    this.emit(session.sessionId, { type: 'status', status: 'idle' });
+    this.sendSuccess(replyTo);
   }
 
   private async prompt(
