@@ -115,6 +115,10 @@ export const zhCN = {
         '无法连接到 daemon（{url}）。它会随应用自动启动——请重试，若持续失败请重启应用。',
       retry: '重试',
     },
+    errors: {
+      actionFailed: '操作失败',
+      dismiss: '清除错误',
+    },
     conversation: {
       emptyTitle: '开始对话',
       emptyHint: '在下方输入消息，{agent} 会在 {cwd} 中开始工作。',

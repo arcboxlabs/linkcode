@@ -1,6 +1,6 @@
 import type { TokenUsage } from '@linkcode/schema';
 import type { ComposerAttachment, ShellFrameProps } from '@linkcode/ui';
-import { ShellFrame, TitleStrip } from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, TitleStrip } from '@linkcode/ui';
 
 export interface WorkbenchShellHeader {
   title: string;
@@ -35,10 +35,30 @@ export function DefaultWorkbenchShell({
   onReadAttachmentFile,
   ...props
 }: WorkbenchShellProps): React.ReactNode {
-  return <ShellFrame {...props} header={<DefaultTitleStrip header={header} />} />;
+  return (
+    <ShellFrame
+      {...props}
+      header={
+        <DefaultTitleStrip
+          header={header}
+          // The draft page reports errors through its own banner (it has no meaningful title).
+          errorMessage={props.draft ? null : props.errorMessage}
+          onDismissError={props.onDismissError}
+        />
+      }
+    />
+  );
 }
 
-function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): React.ReactNode {
+function DefaultTitleStrip({
+  header,
+  errorMessage,
+  onDismissError,
+}: {
+  header: WorkbenchShellHeader;
+  errorMessage?: string | null;
+  onDismissError?: () => void;
+}): React.ReactNode {
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
@@ -50,6 +70,7 @@ function DefaultTitleStrip({ header }: { header: WorkbenchShellHeader }): React.
           <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
         )}
       </div>
+      <ErrorBadge errorMessage={errorMessage} onDismissError={onDismissError} />
       {hasUsage && (
         <span className="ml-auto font-mono text-muted-foreground text-xs">
           {header.usage?.inputTokens ?? 0} in / {header.usage?.outputTokens ?? 0} out

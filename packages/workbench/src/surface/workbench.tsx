@@ -88,7 +88,32 @@ export function Workbench({
     setErrorMessage(extractErrorMessage(err));
   }
 
-  const sessions = useWorkbenchSessions(handleError);
+  const rawSessions = useWorkbenchSessions(handleError);
+  // Leaving the current surface drops its error state: a stale failure must not follow the user
+  // to another thread or the new-thread page (CODE-239). `create` clears at submit time instead.
+  const sessions: WorkbenchSessions = {
+    ...rawSessions,
+    select(id) {
+      setErrorMessage(null);
+      rawSessions.select(id);
+    },
+    startDraft(workspaceId) {
+      setErrorMessage(null);
+      rawSessions.startDraft(workspaceId);
+    },
+    goBack() {
+      setErrorMessage(null);
+      rawSessions.goBack();
+    },
+    goForward() {
+      setErrorMessage(null);
+      rawSessions.goForward();
+    },
+    close(id) {
+      setErrorMessage(null);
+      rawSessions.close(id);
+    },
+  };
   useWorkbenchKeyboardShortcuts(rootRef, sessions);
   const conversation = useSeededConversation(sessions.active, handleError);
 

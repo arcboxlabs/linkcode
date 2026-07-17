@@ -191,12 +191,12 @@ export function ShellFrame({
       </div>
       <main className="flex min-w-0 flex-1 flex-col">
         {header}
-        <ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />
         {draft ? (
           // Keyed per entry point so opening from another group resets the page's picks.
           <NewSessionSurface
             key={draft.initialWorkspaceId ?? 'default'}
             className="min-h-0 flex-1"
+            topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
             draft={draft}
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}

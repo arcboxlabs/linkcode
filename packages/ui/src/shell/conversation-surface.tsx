@@ -36,7 +36,6 @@ export interface ConversationSurfaceProps {
   onCancelLogin?: (kind: AgentKind) => void;
   disabled?: boolean;
   isRunning: boolean;
-  topContent?: React.ReactNode;
   className?: string;
   conversationClassName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
@@ -85,7 +84,6 @@ export function ConversationSurface({
   onCancelLogin,
   disabled = false,
   isRunning,
-  topContent,
   className,
   conversationClassName,
   TerminalBlockComponent,
@@ -125,7 +123,6 @@ export function ConversationSurface({
 
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
-      {topContent}
       <div className={cn('min-h-0 flex-1', conversationClassName)}>
         <ArtifactHostActionsProvider actions={artifactActions}>
           <ConversationView
