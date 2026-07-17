@@ -79,7 +79,6 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
       );
       this.teardown();
       this.emitStatus('idle');
-      throw err;
     }
   }
 
@@ -144,19 +143,17 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
         this.emitStatus('idle');
         return;
       }
-      if (!sawEnd && exitCode !== 0 && exitCode !== null) {
-        const detail = stderrTail.length > 0 ? stderrTail : `exit ${String(exitCode)}`;
+      if (!sawEnd && exitCode !== 0) {
+        const detail =
+          stderrTail.length > 0
+            ? stderrTail
+            : exitCode === null
+              ? 'terminated by signal'
+              : `exit ${String(exitCode)}`;
         const message = `grok-build: headless process failed (${detail})`;
         if (input.resumeSessionId && RE_RESUME_FAIL.test(detail)) {
           this.resumeSessionId = null;
         }
-        this.emitError(
-          message,
-          isAuthFailureMessage(message) ? AUTH_FAILED_ERROR_CODE : undefined,
-          !isAuthFailureMessage(message),
-        );
-        this.teardown();
-        this.emitStatus('idle');
         throw new Error(message);
       }
       if (!sawEnd) this.emitStop('end_turn');

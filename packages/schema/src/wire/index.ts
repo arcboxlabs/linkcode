@@ -33,7 +33,7 @@ export {
  * so request/response control messages correlate via `clientReqId` → `replyTo`.
  */
 
-export const WIRE_PROTOCOL_VERSION = 35 as const;
+export const WIRE_PROTOCOL_VERSION = 36 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [

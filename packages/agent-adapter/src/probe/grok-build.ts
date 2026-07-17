@@ -44,8 +44,13 @@ export class GrokBuildProbe extends AgentCliProbe {
   protected readonly sdkPackage = '@xai-official/grok';
 
   /** @param locations test seam — overrides the per-platform known install locations. */
-  constructor(locations?: string[]) {
-    super(locations ?? grokInstallLocations());
+  constructor(private readonly locationOverrides?: string[]) {
+    super(locationOverrides);
+  }
+
+  override knownLocations(): string[] {
+    if (this.locationOverrides) return this.locationOverrides;
+    return [...new Set([...super.knownLocations(), ...grokInstallLocations()])];
   }
 
   parseVersion(stdout: string): string | undefined {

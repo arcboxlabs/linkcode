@@ -61,7 +61,8 @@ export function mapGrokUsage(usage: unknown): TokenUsage | undefined {
   };
 }
 
-const RE_AUTH_FAILURE = /not authenticated|unauthori[sz]ed|401|sign in|login required|auth/i;
+const RE_AUTH_FAILURE =
+  /\b(?:not authenticated|unauthori[sz]ed|401|sign[ -]in|login required|auth(?:entication)? failed|invalid api key)\b/i;
 
 export function isAuthFailureMessage(message: string): boolean {
   return RE_AUTH_FAILURE.test(message);

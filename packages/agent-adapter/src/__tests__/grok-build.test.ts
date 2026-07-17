@@ -30,6 +30,7 @@ function fakeChild(): {
   };
   pushStdout: (line: string) => void;
   exit: (code: number | null) => void;
+  close: (code: number | null) => void;
 } {
   const stdout = new PassThrough();
   const stderr = new PassThrough();
@@ -44,6 +45,9 @@ function fakeChild(): {
   child.stdin = null;
   child.kill = () => {
     child.emit('exit', null);
+    stdout.end();
+    stderr.end();
+    child.emit('close', null);
   };
   return {
     child,
@@ -52,6 +56,11 @@ function fakeChild(): {
     },
     exit(code) {
       child.emit('exit', code);
+    },
+    close(code) {
+      stdout.end();
+      stderr.end();
+      child.emit('close', code);
     },
   };
 }
@@ -84,18 +93,27 @@ describe('grok-build stream map', () => {
 
   it('detects auth-shaped failures', () => {
     expect(isAuthFailureMessage('Not authenticated')).toBe(true);
+    expect(isAuthFailureMessage('Invalid API key')).toBe(true);
+    expect(isAuthFailureMessage('authoring output failed')).toBe(false);
     expect(isAuthFailureMessage('ok')).toBe(false);
   });
 });
 
 describe('attachGrokHeadlessChild', () => {
-  it('forwards NDJSON events and resolves on exit', async () => {
-    const { child, pushStdout, exit } = fakeChild();
+  it('waits for stdio close and preserves a final event written after exit', async () => {
+    const { child, pushStdout, exit, close } = fakeChild();
     const events: unknown[] = [];
     const run = grokProcess.attachGrokHeadlessChild(child as never, (e) => events.push(e));
     pushStdout('{"type":"text","data":"a"}');
-    pushStdout('{"type":"end","stopReason":"EndTurn","sessionId":"s1"}');
     exit(0);
+    let settled = false;
+    void run.done.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    pushStdout('{"type":"end","stopReason":"EndTurn","sessionId":"s1"}');
+    close(0);
     await expect(run.done).resolves.toEqual({ exitCode: 0, stderrTail: '' });
     expect(events).toEqual([
       { type: 'text', data: 'a' },
@@ -126,7 +144,7 @@ describe('GrokBuildAdapter', () => {
 
   it('streams thought/text and settles with session-ref + usage', async () => {
     vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
-    const { child, pushStdout, exit } = fakeChild();
+    const { child, pushStdout, exit, close } = fakeChild();
     vi.mocked(grokProcess.runGrokHeadless).mockImplementation((opts: GrokHeadlessRunOptions) => {
       const run = grokProcess.attachGrokHeadlessChild(child as never, opts.onEvent);
       queueMicrotask(() => {
@@ -141,6 +159,7 @@ describe('GrokBuildAdapter', () => {
           }),
         );
         exit(0);
+        close(0);
       });
       return run;
     });
@@ -163,5 +182,55 @@ describe('GrokBuildAdapter', () => {
     expect(events.some((e) => e.type === 'session-ref' && e.historyId === 'sess-1')).toBe(true);
     expect(events.some((e) => e.type === 'stop' && e.stopReason === 'end_turn')).toBe(true);
     expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
+  });
+
+  it('reports a nonzero process exit once without rejecting accepted input', async () => {
+    vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
+    const { child, exit, close } = fakeChild();
+    vi.mocked(grokProcess.runGrokHeadless).mockImplementation((opts: GrokHeadlessRunOptions) => {
+      const run = grokProcess.attachGrokHeadlessChild(child as never, opts.onEvent);
+      queueMicrotask(() => {
+        exit(1);
+        close(1);
+      });
+      return run;
+    });
+
+    const adapter = new GrokBuildAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ kind: 'grok-build', cwd: '/tmp' });
+    await expect(
+      adapter.send({ type: 'prompt', content: textPrompt('hi') }),
+    ).resolves.toBeUndefined();
+
+    expect(events.filter((event) => event.type === 'error')).toHaveLength(1);
+    expect(events.some((event) => event.type === 'status' && event.status === 'idle')).toBe(true);
+  });
+
+  it('reports an externally signalled process as a failed turn', async () => {
+    vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
+    const { child, exit, close } = fakeChild();
+    vi.mocked(grokProcess.runGrokHeadless).mockImplementation((opts: GrokHeadlessRunOptions) => {
+      const run = grokProcess.attachGrokHeadlessChild(child as never, opts.onEvent);
+      queueMicrotask(() => {
+        exit(null);
+        close(null);
+      });
+      return run;
+    });
+
+    const adapter = new GrokBuildAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ kind: 'grok-build', cwd: '/tmp' });
+    await adapter.send({ type: 'prompt', content: textPrompt('hi') });
+
+    expect(
+      events.some(
+        (event) => event.type === 'error' && event.message.includes('terminated by signal'),
+      ),
+    ).toBe(true);
+    expect(events.some((event) => event.type === 'stop')).toBe(false);
   });
 });

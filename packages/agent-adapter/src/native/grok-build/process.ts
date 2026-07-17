@@ -23,7 +23,7 @@ export interface GrokHeadlessRunOptions {
 }
 
 export interface GrokHeadlessRun {
-  /** Resolves when the process exits (after stdout is drained). */
+  /** Resolves when the process and its stdio streams close. */
   done: Promise<{ exitCode: number | null; stderrTail: string }>;
   kill: () => void;
 }
@@ -97,8 +97,7 @@ export function attachGrokHeadlessChild(
       rl.close();
       reject(spawnErr);
     });
-    child.once('exit', (code) => {
-      rl.close();
+    child.once('close', (code) => {
       resolve({ exitCode: code, stderrTail: stderrTail.trim() });
     });
   });

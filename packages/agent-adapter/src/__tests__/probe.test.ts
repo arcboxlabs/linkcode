@@ -203,6 +203,16 @@ describe('AgentCliProbe.knownLocations', () => {
       version: '9.9.9',
     });
   });
+
+  it('detects Grok Build through PATH before its vendor-specific fallbacks', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const real = fakeCli(dir, 'grok', 'grok 0.2.102 (test)');
+    vi.stubEnv('PATH', dir);
+    await expect(new GrokBuildProbe().detect()).resolves.toEqual({
+      path: real,
+      version: '0.2.102',
+    });
+  });
 });
 
 describe('AgentCliProbe.detect', () => {

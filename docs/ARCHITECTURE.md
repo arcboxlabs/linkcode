@@ -180,7 +180,7 @@ unsupported operation rejects clearly rather than silently degrading.
 **Abstraction layer.** Adapters normalize each agent's native events into the zod
 `AgentEvent` contract, and accept the
 normalized `AgentInput`. The agent data vocabulary — content, tool calls, plans,
-permissions, sessions, usage, history — is tailored to the four supported agents and
+permissions, sessions, usage, history — is tailored to the five supported agents and
 the front-end, not to any particular wire format.
 
 ## Transport & wire protocol
@@ -351,4 +351,4 @@ These are genuinely undecided. Do not invent answers — raise them first.
 | coss-ui           | The desktop/webview UI primitive library (vendored from cal.com's COSS UI).              |
 | HeroUI            | The mobile UI library.                                                                    |
 | Thread (UI)       | The user-facing term for a Session. Product copy only — code and the wire protocol keep `Session`. |
-| ACP               | Agent Client Protocol — an early influence on `AgentEvent`, since dropped for a shape tailored to the four supported agents. |
+| ACP               | Agent Client Protocol — an early influence on `AgentEvent`, since dropped for a shape tailored to the five supported agents. |

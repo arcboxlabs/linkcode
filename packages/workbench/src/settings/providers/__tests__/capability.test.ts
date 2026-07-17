@@ -53,6 +53,20 @@ describe('bindingAvailability', () => {
     expect(bindingAvailability(gateway, 'codex')).toEqual({ tier: 'native' });
     expect(bindingAvailability(gateway, 'opencode')).toEqual({ tier: 'native' });
     expect(bindingAvailability(gateway, 'pi')).toEqual({ tier: 'native' });
+    expect(bindingAvailability(gateway, 'grok-build')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
+  });
+
+  it('binds Grok Build to xAI catalog accounts', () => {
+    expect(bindingAvailability(account({ service: 'xai' }), 'grok-build')).toEqual({
+      tier: 'native',
+    });
+    expect(bindingAvailability(account({ service: 'openai-api' }), 'grok-build')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
   });
 
   it('needs an endpoint URL before offering translation', () => {

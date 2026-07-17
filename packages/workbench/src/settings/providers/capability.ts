@@ -10,14 +10,14 @@ import { accountProtocol } from './catalog';
  * - codex reaches any OpenAI-shaped endpoint via `OPENAI_BASE_URL` + `CODEX_API_KEY`.
  * - opencode and pi: openai-chat is the verified path; an Anthropic endpoint plausibly works but
  *   is unverified against the SDK — flip it here once verified live.
+ * - grok-build only consumes an xAI key as `XAI_API_KEY`; it ignores custom endpoint base URLs.
  */
 const AGENT_NATIVE_PROTOCOLS: Record<AgentKind, AccountProtocol[]> = {
   'claude-code': ['anthropic'],
   codex: ['openai-chat', 'openai-responses'],
   opencode: ['openai-chat'],
   pi: ['openai-chat'],
-  // Grok Build headless CLI: OAuth uses ~/.grok/auth.json; openai-chat/xAI keys inject as XAI_API_KEY.
-  'grok-build': ['openai-chat'],
+  'grok-build': [],
 };
 
 /** Cross-protocol pairs the local translation sidecar serves (engine `translationUpstream`). */
@@ -45,6 +45,13 @@ export function bindingAvailability(account: Account, kind: AgentKind): BindingA
       : { tier: 'unavailable', reason: 'oauth-other-agent' };
   }
   const protocol = accountProtocol(account);
+  if (kind === 'grok-build') {
+    // The headless CLI has no base-URL flag: only the xAI catalog entry is known to target its
+    // endpoint. Preserve pre-catalog bare keys, whose vendor was never recorded.
+    return account.service === 'xai' || (account.service === undefined && protocol === undefined)
+      ? { tier: 'native' }
+      : { tier: 'unavailable', reason: 'protocol-unsupported' };
+  }
   // Unknown protocol (pre-catalog custom account without endpoint): keep it bindable everywhere,
   // matching the pre-catalog behavior — the user knows which vendor the bare key belongs to.
   if (protocol === undefined) return { tier: 'native' };
