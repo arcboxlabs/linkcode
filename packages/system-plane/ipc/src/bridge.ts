@@ -60,4 +60,9 @@ export interface SystemBridge {
     /** Subscribe to notification clicks; main focuses the window, then pushes the `clickToken`. */
     onClick(cb: (clickToken: string) => void): () => void;
   };
+  browser: {
+    /** Subscribe to Browser-pane guest popups (window.open / target=_blank) redirected by main;
+     * the renderer opens the URL in a new in-app browser tab. */
+    onOpenTab(cb: (url: string) => void): () => void;
+  };
 }

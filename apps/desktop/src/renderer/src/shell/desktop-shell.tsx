@@ -238,6 +238,12 @@ export function DesktopShell({
     [systemBridge],
   );
 
+  const openBrowserTab = useDesktopShellStore((state) => state.openBrowserTab);
+  useAbortableEffect(
+    () => systemBridge.browser.onOpenTab(openBrowserTab),
+    [systemBridge, openBrowserTab],
+  );
+
   const active = activeSession;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);

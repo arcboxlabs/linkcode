@@ -54,6 +54,8 @@ interface DesktopShellActions {
   setActiveRightFileTab: (id: string) => void;
   /** Navigate the active browser tab (or open a first one) and bring the browser section forward. */
   openBrowserUrl: (url: string) => void;
+  /** Open `url` in a NEW active browser tab and bring the section forward (guest popups). */
+  openBrowserTab: (url: string) => void;
   /** Open a new browser tab (empty unless a URL is given) and make it active. */
   addRightBrowserTab: (url?: string) => void;
   closeRightBrowserTab: (id: string) => void;
@@ -299,6 +301,22 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
               open: true,
               activeSection: 'browser',
               browser: openBrowserUrlState(current.rightPanel.browser, url),
+            },
+          }));
+        },
+
+        openBrowserTab(url) {
+          const tab = createRightBrowserTab(url);
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: {
+              ...current.rightPanel,
+              open: true,
+              activeSection: 'browser',
+              browser: {
+                tabs: [...current.rightPanel.browser.tabs, tab],
+                activeTabId: tab.id,
+              },
             },
           }));
         },

@@ -1,7 +1,11 @@
 import { release } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { DAEMON_RUNTIME_CHANGED_CHANNEL, UPDATER_STATUS_CHANNEL } from '@linkcode/ipc';
+import {
+  BROWSER_OPEN_TAB_CHANNEL,
+  DAEMON_RUNTIME_CHANGED_CHANNEL,
+  UPDATER_STATUS_CHANNEL,
+} from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
 import { BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -74,15 +78,7 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  // window.open / target=_blank means "the system browser" everywhere in the app
-  // (chat links, preview open-external); nothing may spawn a child Electron window.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) void shell.openExternal(url);
-    return { action: 'deny' };
-  });
-
   persistWindowStateOnClose(win);
-
   const updateBackgroundColor = (): void => {
     win.setBackgroundColor(desktopBackgroundColor());
   };
@@ -116,6 +112,16 @@ function createWindow(): BrowserWindow {
     if (isSelfNavigation(url)) return;
     event.preventDefault();
     if (isHttpUrl(url)) void shell.openExternal(url);
+  });
+
+  // Browser-pane guests run with `allowpopups`, and popups would otherwise spawn unmanaged
+  // BrowserWindows: keep untrusted content window-less by rerouting http(s) popups into a new
+  // in-app browser tab (renderer push) and denying everything else.
+  win.webContents.on('did-attach-webview', (_event, guest) => {
+    guest.setWindowOpenHandler(({ url }) => {
+      if (isHttpUrl(url) && !win.isDestroyed()) win.webContents.send(BROWSER_OPEN_TAB_CHANNEL, url);
+      return { action: 'deny' };
+    });
   });
 
   void loadRenderer(win);
