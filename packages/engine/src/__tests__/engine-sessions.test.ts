@@ -744,6 +744,61 @@ describe('engine attach replay', () => {
     ]);
   });
 
+  it('accepts and replays a session resolution emitted by the adapter', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    adapter.emit({
+      type: 'question-resolved',
+      requestId: QUESTION_ASK.requestId,
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(sent, mark)).toContainEqual({
+      type: 'question-resolved',
+      requestId: QUESTION_ASK.requestId,
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    });
+    expect(eventsAfter(sent, mark)).not.toContainEqual(QUESTION_ASK);
+  });
+
+  it('acknowledges a response that raced a session-side resolution instead of rejecting it', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(QUESTION_ASK);
+    // The dialog's own timeout/abort resolved the ask server-side …
+    adapter.emit({
+      type: 'question-resolved',
+      requestId: QUESTION_ASK.requestId,
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    });
+
+    // … while the user's answer was already in flight. It was timely when sent: acknowledge and
+    // drop it rather than broadcasting an error.
+    const inputsBefore = adapter.sentInputs.length;
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: {
+        type: 'question-response',
+        requestId: QUESTION_ASK.requestId,
+        outcome: {
+          outcome: 'answered',
+          answers: [{ questionId: 'q0', selectedOptionIds: ['o0'] }],
+        },
+      },
+    });
+    expect(sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'r2' });
+    expect(sent.filter((m) => m.kind === 'request.failed')).toHaveLength(0);
+    expect(adapter.sentInputs).toHaveLength(inputsBefore);
+  });
+
   it('keeps an in-flight response unresolved and rejects a concurrent response', async () => {
     const h = harness(new InMemorySessionStore(), () => new GatedSendAdapter());
     await h.engine.start();

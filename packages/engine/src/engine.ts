@@ -378,6 +378,12 @@ export class Engine {
           const respondingAsk = responseInput
             ? this.beginAskResponse(p.sessionId, session, responseInput)
             : undefined;
+          if (responseInput && respondingAsk === null) {
+            // Session-side resolution raced this answer (see beginAskResponse): acknowledge the
+            // client and drop the input — the adapter's pending entry is already gone.
+            this.sendSuccess(p.clientReqId);
+            return;
+          }
           try {
             await session.adapter.send(p.input);
           } catch (err) {
@@ -1102,6 +1108,18 @@ export class Engine {
               session.asks.set(event.requestId, { request: event, state: 'open' });
             }
             break;
+          case 'permission-resolved':
+          case 'question-resolved': {
+            const ask = session.asks.get(event.requestId);
+            if (ask && ask.state !== 'resolved') {
+              session.asks.set(event.requestId, {
+                request: ask.request,
+                state: 'resolved',
+                resolution: event,
+              });
+            }
+            break;
+          }
           case 'tool-call':
             // A terminal tool invalidates any still-open ask (also catches teardown's forced-failed
             // sweep on cancel), producing the explicit resolution clients use for pending state.
@@ -1311,7 +1329,7 @@ export class Engine {
     sessionId: SessionId,
     session: Session,
     input: AskResponseInput,
-  ): AskEvent {
+  ): AskEvent | null {
     if (session.closed) throw new Error(`Session is closed: ${sessionId}`);
     const ask = session.asks.get(input.requestId);
     if (!ask) throw new Error(`Unknown interactive request: ${input.requestId}`);
@@ -1319,6 +1337,10 @@ export class Engine {
       throw new Error(`Response already in flight: ${input.requestId}`);
     }
     if (ask.state === 'resolved') {
+      // A session-side resolution (a dialog's abort/timeout, a teardown sweep) can race an answer
+      // that was timely when the user sent it — that answer is dropped benignly, not rejected. A
+      // duplicate USER answer stays an error: the client already got the first resolution.
+      if (ask.resolution.source === 'session') return null;
       throw new Error(`Interactive request already resolved: ${input.requestId}`);
     }
     validateAskResponse(ask.request, input);

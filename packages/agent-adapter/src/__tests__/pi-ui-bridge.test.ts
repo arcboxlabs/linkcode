@@ -203,10 +203,17 @@ describe('pi extension UI bridge', () => {
   });
 
   it('resolves a dialog with its default when the timeout elapses', async () => {
-    const { bindings } = await startedAdapter();
+    const { events, bindings } = await startedAdapter();
     await expect(
       bindings.uiContext.input('name?', undefined, { timeout: 5 }),
     ).resolves.toBeUndefined();
+    const requestId = questionAsks(events)[0].requestId;
+    expect(events).toContainEqual({
+      type: 'question-resolved',
+      requestId,
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    });
   });
 
   it('cancel sweeps a pending dialog to its default via teardown', async () => {

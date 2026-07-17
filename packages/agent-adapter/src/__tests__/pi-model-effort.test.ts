@@ -8,6 +8,7 @@ interface FakePiModel {
   id: string;
   name?: string;
   reasoning: boolean;
+  thinkingLevelMap?: Record<string, string | null>;
 }
 
 const OPENAI_MODEL: FakePiModel = {
@@ -15,12 +16,17 @@ const OPENAI_MODEL: FakePiModel = {
   id: 'gpt-test',
   name: 'GPT Test',
   reasoning: true,
+  // xhigh counts as supported only when explicitly mapped (pi-ai getSupportedThinkingLevels).
+  thinkingLevelMap: { xhigh: 'xhigh' },
 };
 const ANTHROPIC_MODEL: FakePiModel = { provider: 'anthropic', id: 'claude-x', reasoning: true };
 
 const sdkMock = vi.hoisted(() => ({
   available: [] as unknown[],
   session: null as Record<string, unknown> | null,
+  /** null = every model counts as available (auth not modeled); a Set gates `getAvailable` on the
+   * providers it contains, mirroring the real registry's auth-gated availability view. */
+  authedProviders: null as Set<string> | null,
 }));
 
 vi.mock('@earendil-works/pi-coding-agent', async () => {
@@ -43,10 +49,22 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
           setModel: asyncNoop,
         },
       }),
-    AuthStorage: { create: () => ({ setRuntimeApiKey: noopFn }) },
+    AuthStorage: {
+      create: () => ({
+        setRuntimeApiKey(provider: string) {
+          sdkMock.authedProviders?.add(provider);
+        },
+      }),
+    },
     ModelRegistry: {
       create: () => ({
-        getAvailable: () => sdkMock.available,
+        getAvailable: () =>
+          sdkMock.authedProviders
+            ? (sdkMock.available as FakePiModel[]).filter((m) =>
+                sdkMock.authedProviders?.has(m.provider),
+              )
+            : sdkMock.available,
+        // find is deliberately NOT auth-gated, matching the real registry.
         find: (provider: string, id: string) =>
           (sdkMock.available as FakePiModel[]).find((m) => m.provider === provider && m.id === id),
         registerProvider: noopFn,
@@ -119,6 +137,7 @@ async function startedAdapter(state: FakeSessionState, startOpts: Record<string,
 beforeEach(() => {
   sdkMock.available = [OPENAI_MODEL, ANTHROPIC_MODEL];
   sdkMock.session = null;
+  sdkMock.authedProviders = null;
 });
 
 describe('pi dynamic model catalog', () => {
@@ -131,11 +150,39 @@ describe('pi dynamic model catalog', () => {
 
     expect(catalogs(events)).toHaveLength(1);
     expect(catalogs(events)[0]).toEqual([
-      { id: 'openai/gpt-test', label: 'GPT Test', description: 'openai/gpt-test' },
-      { id: 'anthropic/claude-x', label: 'claude-x', description: 'anthropic/claude-x' },
+      {
+        id: 'openai/gpt-test',
+        label: 'GPT Test',
+        description: 'openai/gpt-test',
+        effortLevels: ['low', 'medium', 'high', 'xhigh'],
+      },
+      {
+        id: 'anthropic/claude-x',
+        label: 'claude-x',
+        description: 'anthropic/claude-x',
+        // No thinkingLevelMap: xhigh needs an explicit mapping, so this model caps at high.
+        effortLevels: ['low', 'medium', 'high'],
+      },
     ]);
     expect(modelUpdates(events)).toEqual(['openai/gpt-test']);
     expect(effortUpdates(events)).toEqual(['medium']);
+  });
+
+  it('excludes levels the model explicitly nulls in its thinkingLevelMap', async () => {
+    sdkMock.available = [
+      {
+        provider: 'together',
+        id: 'deep-x',
+        reasoning: true,
+        thinkingLevelMap: { low: null, medium: null, high: 'high', xhigh: null },
+      },
+    ];
+    const { events } = await startedAdapter({
+      model: sdkMock.available[0] as FakePiModel,
+      thinkingLevel: 'high',
+      supportsThinking: true,
+    });
+    expect(catalogs(events)[0][0].effortLevels).toEqual(['high']);
   });
 
   it('narrows the catalog to the credential provider and rejects cross-provider switches', async () => {
@@ -160,6 +207,54 @@ describe('pi dynamic model catalog', () => {
     expect(catalogs(events)).toHaveLength(0);
     expect(modelUpdates(events)).toHaveLength(0);
     expect(effortUpdates(events)).toHaveLength(0);
+  });
+
+  it('advertises an empty effort set for a non-reasoning model', async () => {
+    const basic = { provider: 'openai', id: 'basic', reasoning: false };
+    sdkMock.available = [basic];
+    const { events } = await startedAdapter({
+      model: basic,
+      thinkingLevel: 'off',
+      supportsThinking: false,
+    });
+
+    expect(catalogs(events)[0]).toEqual([
+      {
+        id: 'openai/basic',
+        label: 'basic',
+        description: 'openai/basic',
+        effortLevels: [],
+      },
+    ]);
+  });
+
+  it('degrades a stale explicit model to the provider default with an error event', async () => {
+    const { events } = await startedAdapter(
+      { model: OPENAI_MODEL, thinkingLevel: 'medium', supportsThinking: true },
+      { model: 'openai/missing' },
+    );
+    const error = events.find((e) => e.type === 'error');
+    expect(error).toMatchObject({
+      message: "pi: model 'openai/missing' is not available — using the default model",
+      recoverable: true,
+    });
+    // Session creation still succeeded and the catalog is intact.
+    expect(catalogs(events)).toHaveLength(1);
+  });
+
+  it('injects the credential before resolving availability (bootstrap on a fresh machine)', async () => {
+    // No local auth at all: getAvailable() is empty until the runtime key lands.
+    sdkMock.authedProviders = new Set();
+    const { events } = await startedAdapter(
+      { model: OPENAI_MODEL, thinkingLevel: 'medium', supportsThinking: true },
+      { model: 'openai/gpt-test', config: { apiKey: 'sk-fresh' } },
+    );
+
+    // The provider was derived from the model STRING, the key injected, and the catalog then
+    // resolved against the now-authed provider — the old order left all of this empty.
+    expect(catalogs(events)).toHaveLength(1);
+    expect(catalogs(events)[0].map((m) => m.id)).toEqual(['openai/gpt-test']);
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(0);
   });
 });
 

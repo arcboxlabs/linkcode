@@ -36,7 +36,11 @@ import type { AgentAdapter } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
-type QuestionResolver = (outcome: QuestionOutcome) => void;
+interface QuestionResolver {
+  resolve(outcome: QuestionOutcome): void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+}
 
 /**
  * Adapter base class: event plumbing, lifecycle, tool-call normalization, and the permission
@@ -344,18 +348,43 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected requestQuestion(
     toolCall: ToolCallUpdate,
     questions: Question[],
+    signal?: AbortSignal,
   ): Promise<QuestionOutcome> {
+    if (signal?.aborted) return Promise.resolve({ outcome: 'cancelled' });
     const requestId = nextRequestId();
     return new Promise<QuestionOutcome>((resolve) => {
-      this.pendingQuestions.set(requestId, resolve);
+      const onAbort = signal
+        ? () => {
+            const pending = this.pendingQuestions.get(requestId);
+            if (!pending) return;
+            this.pendingQuestions.delete(requestId);
+            this.clearQuestionAbort(pending);
+            const outcome = { outcome: 'cancelled' } as const;
+            pending.resolve(outcome);
+            this.emit({
+              type: 'question-resolved',
+              requestId,
+              outcome,
+              source: 'session',
+            });
+          }
+        : undefined;
+      this.pendingQuestions.set(requestId, { resolve, signal, onAbort });
+      if (onAbort) signal?.addEventListener('abort', onAbort, { once: true });
       this.emit({ type: 'question-request', requestId, toolCall, questions });
     });
   }
   private resolvePendingQuestion(requestId: string, outcome: QuestionOutcome): void {
-    const resolve = this.pendingQuestions.get(requestId);
-    if (resolve) {
+    const pending = this.pendingQuestions.get(requestId);
+    if (pending) {
       this.pendingQuestions.delete(requestId);
-      resolve(outcome);
+      this.clearQuestionAbort(pending);
+      pending.resolve(outcome);
+    }
+  }
+  private clearQuestionAbort(pending: QuestionResolver): void {
+    if (pending.signal && pending.onAbort) {
+      pending.signal.removeEventListener('abort', pending.onAbort);
     }
   }
 
@@ -367,7 +396,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected teardown(): void {
     for (const resolve of this.pending.values()) resolve({ outcome: 'cancelled' });
     this.pending.clear();
-    for (const resolve of this.pendingQuestions.values()) resolve({ outcome: 'cancelled' });
+    for (const pending of this.pendingQuestions.values()) {
+      this.clearQuestionAbort(pending);
+      pending.resolve({ outcome: 'cancelled' });
+    }
     this.pendingQuestions.clear();
     for (const toolCall of this.toolCalls.values()) {
       if (toolCall.status === 'completed' || toolCall.status === 'failed') continue;

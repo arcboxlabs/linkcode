@@ -50,7 +50,8 @@ type PiModelRegistry = NonNullable<CreateAgentSessionOptions['modelRegistry']>;
 /** The EffortLevel ∩ pi ThinkingLevel intersection: pi's 'off'/'minimal' have no EffortLevel
  * representation, and 'max'/'ultracode' are claude-only concepts pi rejects. */
 type PiEffort = 'low' | 'medium' | 'high' | 'xhigh';
-const PI_EFFORTS = new Set<string>(['low', 'medium', 'high', 'xhigh'] satisfies PiEffort[]);
+const PI_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const satisfies readonly PiEffort[];
+const PI_EFFORTS = new Set<string>(PI_EFFORT_LEVELS);
 
 function isPiEffort(effort: string): effort is PiEffort {
   return PI_EFFORTS.has(effort);
@@ -58,6 +59,25 @@ function isPiEffort(effort: string): effort is PiEffort {
 
 function effortFromThinkingLevel(level: string): PiEffort | null {
   return isPiEffort(level) ? level : null;
+}
+
+function parsePiModelRef(ref: string): { provider: string; modelId: string } | null {
+  const [provider, ...rest] = ref.split('/');
+  const modelId = rest.join('/');
+  return provider && modelId ? { provider, modelId } : null;
+}
+
+/** Mirror of pi-ai's `getSupportedThinkingLevels` over our EffortLevel subset: a level explicitly
+ * nulled in `thinkingLevelMap` is unsupported, and `xhigh` counts only when explicitly mapped —
+ * a reasoning model with no map therefore caps at `high` (verified in pi-ai models.js:207-218). */
+function piEffortLevels(model: PiModel): PiEffort[] {
+  if (!model.reasoning) return [];
+  return PI_EFFORT_LEVELS.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    if (level === 'xhigh') return mapped !== undefined;
+    return true;
+  });
 }
 
 /**
@@ -164,24 +184,23 @@ export class PiAdapter extends BaseAgentAdapter {
       const file = await findPiSessionFile(this.resumeFrom);
       if (!file) throw new Error(`pi: history '${this.resumeFrom}' was not found`);
       sessionManager = pi.SessionManager.open(file);
-      savedProvider = lastPiModelChange(
-        pi.buildContextEntries(sessionManager.getEntries(), sessionManager.getLeafId()),
-      )?.provider;
+      savedProvider = lastPiModelChange(sessionManager.getBranch())?.provider;
     }
 
-    // Explicit model pick; a fresh session defaults to the first available, a resumed one leaves
-    // `model` unset so the SDK's own restore path wins.
-    let model: PiModel | undefined;
-    if (opts.model) {
-      const [provider, ...rest] = opts.model.split('/');
-      if (provider && rest.length > 0) model = modelRegistry.find(provider, rest.join('/'));
+    // The explicit ref is parsed from the STRING before any registry lookup: the provider prefix
+    // must be known before credential injection, and the registry's availability view
+    // (getAvailable) is auth-gated — a fresh account whose only auth is the injected credential
+    // has nothing "available" until the injection below lands.
+    const explicitRef = opts.model ? parsePiModelRef(opts.model) : null;
+    if (opts.model && !explicitRef) {
+      throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
     }
-    if (!model && !this.resumeFrom) model = modelRegistry.getAvailable()[0];
 
     // Pi resolves auth through AuthStorage; inject the account's key as a runtime override for the
     // session's provider so it takes precedence over ~/.pi/agent/auth.json and env vars. A
     // gateway account's base URL is registered on the model registry (it overrides the provider's URL).
-    const provider = model?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
+    const provider =
+      explicitRef?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
     const cred = readAgentCredential(opts.config);
     const key = cred.apiKey ?? cred.authToken;
     if (provider && (key || cred.baseUrl)) {
@@ -195,6 +214,25 @@ export class PiAdapter extends BaseAgentAdapter {
       this.credentialProviderId = provider;
     }
     this.modelRegistry = modelRegistry;
+
+    // Model pick, resolved AFTER injection so a credential-only account sees its provider's
+    // models. A resumed session leaves `model` unset so the SDK's own restore path wins. An
+    // explicit ref that no longer resolves (a stale persisted default, a retired model) degrades
+    // — to the provider's first available model fresh, to the SDK-restored saved model on resume
+    // — rather than killing session creation.
+    let model: PiModel | undefined;
+    if (explicitRef) {
+      model = modelRegistry.find(explicitRef.provider, explicitRef.modelId);
+      if (!model) {
+        this.emitError(
+          `pi: model '${opts.model}' is not available — using the ${this.resumeFrom ? "session's saved" : 'default'} model`,
+        );
+        if (!this.resumeFrom) {
+          model = modelRegistry.getAvailable().find((m) => m.provider === explicitRef.provider);
+        }
+      }
+    }
+    if (!model && !this.resumeFrom) model = modelRegistry.getAvailable()[0];
 
     // A resumed session runs in its own recorded cwd, not the caller's.
     const cwd = sessionManager?.getCwd() ?? opts.cwd;
@@ -236,7 +274,7 @@ export class PiAdapter extends BaseAgentAdapter {
     // 'rpc' is pi's own mode id for a headless embedder; extensions read it to skip TUI-only work.
     await session.bindExtensions({
       uiContext: createPiUiContext({
-        ask: (toolCall, questions) => this.requestQuestion(toolCall, questions),
+        ask: (toolCall, questions, signal) => this.requestQuestion(toolCall, questions, signal),
         reportError: (message) => this.emitError(`pi: ${message}`, 'extension-error'),
       }),
       mode: 'rpc',
@@ -280,17 +318,16 @@ export class PiAdapter extends BaseAgentAdapter {
     const { session, modelRegistry } = this;
     invariant(session, 'pi: session not started');
     invariant(modelRegistry, 'pi: session not started');
-    const [provider, ...rest] = model.split('/');
-    const modelId = rest.join('/');
-    if (!provider || !modelId) {
+    const ref = parsePiModelRef(model);
+    if (!ref) {
       throw new Error(`pi: model must be 'provider/modelId' (got '${model}')`);
     }
-    if (this.credentialProviderId && provider !== this.credentialProviderId) {
+    if (this.credentialProviderId && ref.provider !== this.credentialProviderId) {
       throw new Error(
-        `pi: this session's credential is scoped to '${this.credentialProviderId}' — start a new session to use provider '${provider}'`,
+        `pi: this session's credential is scoped to '${this.credentialProviderId}' — start a new session to use provider '${ref.provider}'`,
       );
     }
-    const found = modelRegistry.find(provider, modelId);
+    const found = modelRegistry.find(ref.provider, ref.modelId);
     if (!found) throw new Error(`pi: unknown model '${model}'`);
     // Live switch, applied from the next turn; throws when no auth is configured for the model.
     await session.setModel(found);
@@ -357,6 +394,7 @@ export class PiAdapter extends BaseAgentAdapter {
         id: `${m.provider}/${m.id}`,
         label: m.name ?? m.id,
         description: `${m.provider}/${m.id}`,
+        effortLevels: piEffortLevels(m),
       })),
     );
   }

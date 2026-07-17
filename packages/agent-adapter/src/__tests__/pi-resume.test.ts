@@ -67,6 +67,7 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
         return {
           getEntries: () => sdkMock.entries,
           getLeafId: () => null,
+          getBranch: () => sdkMock.entries,
           getCwd: () => '/recorded/cwd',
         };
       },
@@ -140,6 +141,26 @@ describe('pi resumeHistory', () => {
     await resume('res-2', { model: 'anthropic/claude-x' });
     expect(sdkMock.find).toHaveBeenCalledWith('anthropic', 'claude-x');
     expect(sdkMock.createOpts).toMatchObject({ model: found });
+  });
+
+  it('degrades an unavailable explicit model to the saved model with an error event', async () => {
+    seedSessionFile('res-missing-model');
+    sdkMock.find = vi.fn(noop);
+    const setKey = vi.fn();
+    sdkMock.setRuntimeApiKey = setKey;
+
+    const { events } = await resume('res-missing-model', {
+      model: 'anthropic/missing',
+      config: { apiKey: 'sk-ant' },
+    });
+    // The credential still lands (its provider comes from the model STRING, not the resolved
+    // model), the SDK restores the session's saved model, and the stale ref surfaces as an error.
+    expect(setKey).toHaveBeenCalledWith('anthropic', 'sk-ant');
+    expect(sdkMock.createOpts).not.toHaveProperty('model');
+    const error = events.find((e) => e.type === 'error');
+    expect(error).toMatchObject({
+      message: "pi: model 'anthropic/missing' is not available — using the session's saved model",
+    });
   });
 
   it('targets the saved model provider for credential injection', async () => {

@@ -75,12 +75,15 @@ export function agentCommandMatches(command: AgentCommand, name: string): boolea
 }
 
 /** A model a live session accepts via `AgentInput.set-model`, advertised by adapters whose model
- * set is install-dependent (opencode: whatever providers the user's local install has connected)
+ * set is install-dependent (opencode/pi: whatever providers the user's local install has connected)
  * rather than a fixed vendor list. `id` is the exact value to send back on `set-model`. */
 export const AgentModelOptionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   description: z.string().optional(),
+  /** Reasoning-effort levels this model accepts. Absent means the catalog has no per-model
+   * capability data; an empty list means the model does not support reasoning effort. */
+  effortLevels: z.array(EffortLevelSchema).optional(),
 });
 export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
 

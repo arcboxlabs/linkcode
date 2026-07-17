@@ -1,4 +1,5 @@
 import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import type { ModelOption } from './agent-models';
 
 export interface EffortOption {
   id: EffortLevel;
@@ -53,3 +54,13 @@ export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = 
     { id: 'xhigh', label: 'xHigh' },
   ],
 };
+
+export function effortOptionsForModel(
+  kind: AgentKind | undefined,
+  model: ModelOption | undefined,
+): EffortOption[] | undefined {
+  const options = kind ? AGENT_EFFORT_OPTIONS[kind] : undefined;
+  if (!options || model?.effortLevels === undefined) return options;
+  const supported = new Set<EffortLevel>(model.effortLevels);
+  return options.filter((option) => supported.has(option.id));
+}

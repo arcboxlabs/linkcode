@@ -9,7 +9,11 @@ import { nextToolCallId } from '../../adapter';
  * `reportError` surfaces extension-raised error notifications.
  */
 export interface PiUiHost {
-  ask(toolCall: ToolCallUpdate, questions: Question[]): Promise<QuestionOutcome>;
+  ask(
+    toolCall: ToolCallUpdate,
+    questions: Question[],
+    signal?: AbortSignal,
+  ): Promise<QuestionOutcome>;
   reportError(message: string): void;
 }
 
@@ -28,15 +32,20 @@ export interface PiUiHost {
 export function createPiUiContext(host: PiUiHost): ExtensionUIContext {
   const context = {
     select: (title, options, opts) =>
-      guarded(opts, undefined, async (): Promise<string | undefined> => {
+      guarded(opts, undefined, async (signal): Promise<string | undefined> => {
         if (options.length === 0) return undefined;
-        const answer = await askOne(host, title, {
-          questionId: 'select',
-          prompt: title,
-          multiSelect: false,
-          // Labels may repeat; index-based optionIds keep them unique.
-          options: options.map((label, index) => ({ optionId: String(index), label })),
-        });
+        const answer = await askOne(
+          host,
+          title,
+          {
+            questionId: 'select',
+            prompt: title,
+            multiSelect: false,
+            // Labels may repeat; index-based optionIds keep them unique.
+            options: options.map((label, index) => ({ optionId: String(index), label })),
+          },
+          signal,
+        );
         if (!answer) return undefined;
         const picked = answer.selectedOptionIds.at(0);
         if (picked !== undefined) return options[Number(picked)];
@@ -46,16 +55,21 @@ export function createPiUiContext(host: PiUiHost): ExtensionUIContext {
       }),
 
     confirm: (title, message, opts) =>
-      guarded(opts, false, async () => {
-        const answer = await askOne(host, title, {
-          questionId: 'confirm',
-          prompt: message ? `${title}\n\n${message}` : title,
-          multiSelect: false,
-          options: [
-            { optionId: 'yes', label: 'Yes' },
-            { optionId: 'no', label: 'No' },
-          ],
-        });
+      guarded(opts, false, async (signal) => {
+        const answer = await askOne(
+          host,
+          title,
+          {
+            questionId: 'confirm',
+            prompt: message ? `${title}\n\n${message}` : title,
+            multiSelect: false,
+            options: [
+              { optionId: 'yes', label: 'Yes' },
+              { optionId: 'no', label: 'No' },
+            ],
+          },
+          signal,
+        );
         return answer?.selectedOptionIds[0] === 'yes';
       }),
 
@@ -102,12 +116,13 @@ export function createPiUiContext(host: PiUiHost): ExtensionUIContext {
 }
 
 /** Single-question ask, unwrapped to the one answer (or null on cancel/skip). */
-async function askOne(host: PiUiHost, title: string, question: Question) {
+async function askOne(host: PiUiHost, title: string, question: Question, signal?: AbortSignal) {
   const outcome = await host.ask(
     // The question card is the whole surface for a UI dialog — there is no separate provider tool
     // card to join, so the payload's toolCall is synthesized and never emitted via emitTool.
     { toolCallId: nextToolCallId(), title, kind: 'other', status: 'in_progress' },
     [question],
+    signal,
   );
   if (outcome.outcome !== 'answered') return null;
   return outcome.answers[0] ?? null;
@@ -119,29 +134,32 @@ function textDialog(
   placeholder: string | undefined,
   opts: ExtensionUIDialogOptions | undefined,
 ): Promise<string | undefined> {
-  return guarded(opts, undefined, async () => {
-    const answer = await askOne(host, title, {
-      questionId: 'input',
-      prompt: title,
-      multiSelect: false,
-      // The schema requires at least one option; the lone structured choice is the skip path and
-      // the real answer travels as the question card's free-text `customText`.
-      options: [{ optionId: 'skip', label: 'Skip', description: placeholder }],
-    });
+  return guarded(opts, undefined, async (signal) => {
+    const answer = await askOne(
+      host,
+      title,
+      {
+        questionId: 'input',
+        prompt: title,
+        multiSelect: false,
+        // The schema requires at least one option; the lone structured choice is the skip path and
+        // the real answer travels as the question card's free-text `customText`.
+        options: [{ optionId: 'skip', label: 'Skip', description: placeholder }],
+      },
+      signal,
+    );
     return orUndefined(answer?.customText);
   });
 }
 
 /**
  * Apply pi's dialog dismissal contract (`ExtensionUIDialogOptions`): an aborted signal or an
- * elapsed timeout resolves the dialog with its default value. The underlying question ask cannot
- * be retracted from the client once emitted — a late human answer after a timeout resolves a
- * promise nobody awaits, which is the same tail pi's own rpc-mode leaves behind.
+ * elapsed timeout resolves the dialog with its default value and cancels the host-side question.
  */
 function guarded<T>(
   opts: ExtensionUIDialogOptions | undefined,
   fallback: T,
-  run: () => Promise<T>,
+  run: (signal?: AbortSignal) => Promise<T>,
 ): Promise<T> {
   if (opts?.signal?.aborted) return Promise.resolve(fallback);
   const signal = opts?.signal;
@@ -149,6 +167,7 @@ function guarded<T>(
   if (!signal && timeout === undefined) return run();
 
   return new Promise<T>((resolve) => {
+    const controller = new AbortController();
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => finish(fallback);
@@ -157,11 +176,12 @@ function guarded<T>(
       settled = true;
       if (timer !== undefined) clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
+      controller.abort();
       resolve(value);
     }
     signal?.addEventListener('abort', onAbort, { once: true });
     if (timeout !== undefined) timer = setTimeout(() => finish(fallback), timeout);
-    run()
+    run(controller.signal)
       .then(finish)
       .catch(() => finish(fallback));
   });
