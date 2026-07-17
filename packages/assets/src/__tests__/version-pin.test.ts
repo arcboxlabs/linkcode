@@ -47,5 +47,6 @@ describe('wantedVersion', () => {
     expect(wantedVersion(CATALOG['agent:claude-code'].version)).toMatch(SEMVER);
     expect(wantedVersion(CATALOG['agent:codex'].version)).toMatch(SEMVER);
     expect(wantedVersion(CATALOG['agent:opencode'].version)).toMatch(SEMVER);
+    expect(wantedVersion(CATALOG['agent:pi'].version)).toMatch(SEMVER);
   });
 });

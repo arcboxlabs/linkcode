@@ -1,10 +1,17 @@
-import type { AgentKind, AgentRuntimes } from '@linkcode/schema';
+import type { AgentKind, AgentRuntimeAvailability, AgentRuntimes } from '@linkcode/schema';
 import type { AgentCliProbe, DetectedAgentRuntime, ProbeableKind } from './base';
 import { ClaudeCodeProbe } from './claude-code';
 import { CodexProbe } from './codex';
 import { GrokBuildProbe } from './grok-build';
+import { piSdkPresent } from './pi';
 
 export type DetectedAgentRuntimes = Partial<Record<AgentKind, DetectedAgentRuntime>>;
+
+/** An installed managed npm-closure: the entry module an in-process adapter imports (CODE-219). */
+export interface ManagedEntryRuntime {
+  path: string;
+  version: string;
+}
 
 /**
  * Which agent CLIs this host can spawn — one {@link AgentCliProbe} per agent kind. The daemon
@@ -14,6 +21,7 @@ export type DetectedAgentRuntimes = Partial<Record<AgentKind, DetectedAgentRunti
 export class AgentRuntimeProber {
   private detected: DetectedAgentRuntimes = {};
   private managedResolver: ((kind: ProbeableKind) => string | undefined) | undefined;
+  private managedEntryResolver: ((kind: AgentKind) => ManagedEntryRuntime | undefined) | undefined;
 
   constructor(
     private readonly probes: AgentCliProbe[] = [
@@ -27,6 +35,16 @@ export class AgentRuntimeProber {
    * snapshot: a background managed install must win as soon as it lands on disk. */
   setManagedResolver(resolver: (kind: ProbeableKind) => string | undefined): void {
     this.managedResolver = resolver;
+  }
+
+  /** Same wiring for in-process agents (pi): the store's installed closure entry, live. */
+  setManagedEntryResolver(resolver: (kind: AgentKind) => ManagedEntryRuntime | undefined): void {
+    this.managedEntryResolver = resolver;
+  }
+
+  /** In-process import resolution: managed closure entry → `undefined` (SDK self-resolution). */
+  resolveEntry(kind: AgentKind): ManagedEntryRuntime | undefined {
+    return this.managedEntryResolver?.(kind);
   }
 
   /** Probe the known install locations for user-installed agent CLIs. */
@@ -74,7 +92,7 @@ export class AgentRuntimeProber {
    */
   async collect(): Promise<AgentRuntimes> {
     const detected = await this.probe();
-    const runtimes: AgentRuntimes = { pi: { status: 'available', source: 'builtin' } };
+    const runtimes: AgentRuntimes = { pi: this.piAvailability() };
     await Promise.all(
       this.probes.map(async (probe) => {
         const managed = this.managedResolver?.(probe.kind);
@@ -117,6 +135,18 @@ export class AgentRuntimeProber {
       }),
     );
     return runtimes;
+  }
+
+  /**
+   * pi runs in-process, not as a CLI (CODE-219): a managed closure install is the packaged
+   * source; dev/standalone daemons self-resolve the SDK out of node_modules. Neither present —
+   * a packaged host before the first download — reads as missing so onboarding offers it.
+   */
+  private piAvailability(): AgentRuntimeAvailability {
+    const managed = this.managedEntryResolver?.('pi');
+    if (managed) return { status: 'available', source: 'managed', ...managed };
+    if (piSdkPresent()) return { status: 'available', source: 'sdk' };
+    return { status: 'missing' };
   }
 }
 

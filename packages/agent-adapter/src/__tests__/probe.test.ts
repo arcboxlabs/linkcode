@@ -263,7 +263,7 @@ describe('AgentRuntimeProber probe/resolveBinary', () => {
 });
 
 describe('AgentRuntimeProber.collect', () => {
-  it('reports managed > detected > sdk sources plus builtin pi', async () => {
+  it('reports managed > detected > sdk sources, pi via its in-process resolution', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'probe-'));
     const claude = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
 
@@ -286,8 +286,27 @@ describe('AgentRuntimeProber.collect', () => {
       version: '9.9.9',
     });
     expect(runtimes.codex).toEqual({ status: 'available', source: 'sdk' });
-    expect(runtimes.pi).toEqual({ status: 'available', source: 'builtin' });
+    // This repo has the pi SDK in node_modules, so an uninjected prober reads it as sdk.
+    expect(runtimes.pi).toEqual({ status: 'available', source: 'sdk' });
     expect(runtimes.opencode).toBeUndefined();
+  });
+
+  it('reports pi managed once an entry resolver answers, live as installs land (CODE-219)', async () => {
+    const prober = new AgentRuntimeProber([]);
+    let installed: { path: string; version: string } | undefined;
+    prober.setManagedEntryResolver((kind) => (kind === 'pi' ? installed : undefined));
+
+    expect((await prober.collect()).pi).toEqual({ status: 'available', source: 'sdk' });
+    expect(prober.resolveEntry('pi')).toBeUndefined();
+
+    installed = { path: '/store/agent/pi/1.0.0/node_modules/pi/index.js', version: '1.0.0' };
+    expect((await prober.collect()).pi).toEqual({
+      status: 'available',
+      source: 'managed',
+      path: installed.path,
+      version: '1.0.0',
+    });
+    expect(prober.resolveEntry('pi')).toEqual(installed);
   });
 
   it('attaches probed auth to an sdk-resolved codex runtime', async () => {

@@ -1,8 +1,9 @@
 import type { AssetManager } from '@linkcode/assets';
 import type { AgentRuntimes } from '@linkcode/schema';
 
-/** The agent kinds whose CLI pair the managed-asset store can install (CODE-111/114). */
-export const MANAGED_AGENT_KINDS = ['claude-code', 'codex'] as const;
+/** The agent kinds the managed-asset store can install: CLI pairs (CODE-111/114) and pi's
+ * in-process npm closure (CODE-219). */
+export const MANAGED_AGENT_KINDS = ['claude-code', 'codex', 'pi'] as const;
 
 export type ManagedAgentKind = (typeof MANAGED_AGENT_KINDS)[number];
 
