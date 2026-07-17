@@ -21,6 +21,8 @@ export const DAEMON_RUNTIME_CHANGED_CHANNEL = 'linkcode.system.daemon.runtimeCha
 export const NOTIFICATION_CLICKED_CHANNEL = 'linkcode.system.notifications.clicked';
 /** Main → renderer push: a Browser-pane guest page opened a popup; payload is its http(s) URL. */
 export const BROWSER_OPEN_TAB_CHANNEL = 'linkcode.system.browser.openTab';
+/** Main → renderer push: a Browser-pane download finished (any terminal state). */
+export const BROWSER_DOWNLOAD_DONE_CHANNEL = 'linkcode.system.browser.downloadDone';
 
 export const systemIpcEvents = {
   windowMinimize: defineInvokeEventa<void>('linkcode.system.window.minimize'),
