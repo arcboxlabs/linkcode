@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   // the whole install lifecycle.
   void agentRuntimesReady
     .then((agentRuntimes) => {
-      for (const kind of agentsToRefresh(consentedAgents, agentRuntimes)) {
+      for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
         void assets
           .ensure(`agent:${kind}`)
           .catch((err) => {

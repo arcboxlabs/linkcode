@@ -23,9 +23,14 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   deleting a working install.
 - **Store layout** `<root>/<namespace>/<name>/<version>/<binary>` under the platform data dir
   (darwin `~/Library/Application Support/LinkCode/assets`; `LINKCODE_ASSETS_DIR` overrides —
-  tests and E2E must set it). All paths resolve at call time so a fake `$HOME` redirects them.
+  tests and E2E must set it). An artifact's `extraMembers` land as siblings of the binary under
+  their basenames (codex's Windows sandbox helpers, which the CLI resolves strictly next to its
+  own binary — CODE-234). All paths resolve at call time so a fake `$HOME` redirects them.
   Installs stage in a `.tmp-*` sibling and publish with one same-volume `rename`; losing the
-  rename race to a concurrent install is success (hash-verified identical bytes). Boot GC
+  rename race to a concurrent install is success (hash-verified identical bytes). A version dir
+  that exists but is missing catalog-expected files (an install made before its extra members
+  were declared) is backfilled file-by-file — never replaced, the executable may be running;
+  `AssetManager.needsRepair` feeds the daemon's boot refresh to trigger exactly that. Boot GC
   removes `.tmp-*` orphans and superseded versions, best-effort, before anything can spawn —
   but a superseded version only once the wanted one is installed: until then it is the consent
   marker that keeps a failed post-upgrade refresh retrying on later boots (CODE-221).

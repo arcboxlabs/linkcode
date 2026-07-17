@@ -36,6 +36,11 @@ export const ManagedAssetArtifactSchema = z.object({
   format: ManagedAssetFormatSchema,
   /** Archive member holding the executable (e.g. `package/claude`); absent for `raw`. */
   member: z.string().optional(),
+  /**
+   * Additional archive members installed as siblings of the executable under their basenames
+   * (e.g. codex's Windows sandbox helpers, which the CLI resolves next to its own binary).
+   */
+  extraMembers: z.array(z.string().min(1)).optional(),
 });
 export type ManagedAssetArtifact = z.infer<typeof ManagedAssetArtifactSchema>;
 

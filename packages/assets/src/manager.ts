@@ -12,7 +12,7 @@ import type { DownloadProgress } from './download';
 import type { GcReport } from './gc';
 import { collectGarbage } from './gc';
 import type { InstallOptions } from './install';
-import { installAsset, installedPath } from './install';
+import { installAsset, installedComplete, installedPath } from './install';
 import { assetDir } from './paths';
 import { wantedVersion } from './version-pin';
 
@@ -94,6 +94,19 @@ export class AssetManager {
     const descriptor = this.descriptors.get(id);
     const version = this.wanted.get(id);
     return descriptor && version ? installedPath(descriptor, version) : undefined;
+  }
+
+  /**
+   * True when the wanted version is on disk but missing files the current catalog expects —
+   * an install made before extra members were declared (e.g. codex's Windows sandbox helpers).
+   * The daemon's boot refresh backfills these via `ensure()`. A missing install is never
+   * repairable: first downloads stay user-prompted.
+   */
+  needsRepair(id: ManagedAssetId): boolean {
+    const descriptor = this.descriptors.get(id);
+    const version = this.wanted.get(id);
+    if (!descriptor || !version || !installedPath(descriptor, version)) return false;
+    return !installedComplete(descriptor, version, this.options.platform);
   }
 
   /**
