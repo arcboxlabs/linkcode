@@ -8,7 +8,12 @@ import type {
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Message, Part, Session } from '@opencode-ai/sdk/v2';
-import { asHistoryId, asMessageId, compactRecord, textHistoryEvent } from '../../history-util';
+import {
+  asHistoryId,
+  compactRecord,
+  textHistoryEvent,
+  thoughtHistoryEvent,
+} from '../../history-util';
 import { locationsFromToolInput, toolKindFromName } from '../../util';
 
 type ToolPart = Extract<Part, { type: 'tool' }>;
@@ -125,19 +130,11 @@ export function mapOpencodeHistoryEvents(
           if (event) events.push(event);
           break;
         }
-        case 'reasoning':
-          if (part.text.trim().length === 0) break;
-          events.push({
-            historyId,
-            itemId: part.id,
-            ts,
-            event: {
-              type: 'agent-thought-chunk',
-              messageId: asMessageId(part.id),
-              content: textBlock(part.text),
-            },
-          });
+        case 'reasoning': {
+          const event = thoughtHistoryEvent(historyId, part.id, part.text, ts);
+          if (event) events.push(event);
           break;
+        }
         case 'tool':
           events.push({
             historyId,
