@@ -7,6 +7,7 @@ import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
 import { CompactionMarker } from './compaction-marker';
 import { ContentBlockView } from './content-block-view';
+import { positionalBlockEntries } from './content-derived-keys';
 import {
   Conversation,
   ConversationContent,
@@ -139,10 +140,9 @@ export function ConversationView({
         return (
           <Message key={item.id} from="assistant">
             <MessageContent className="space-y-1">
-              {item.blocks.map((block, index) => (
+              {positionalBlockEntries(item.blocks).map(({ block, key }) => (
                 <ContentBlockView
-                  // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: appendBlock only pushes or extends the last block, so index+type is a stable position key across token-by-token re-renders
-                  key={`${index}:${block.type}`}
+                  key={key}
                   block={block}
                   smoothText
                   isStreaming={item.isStreaming}
