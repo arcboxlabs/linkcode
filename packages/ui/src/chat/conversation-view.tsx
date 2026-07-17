@@ -19,7 +19,7 @@ import {
   declinedToolCallIds,
   selectPendingPromptItems,
 } from './conversation-prompts';
-import { assistantTurnText, latestReceivedAt } from './conversation-text';
+import { assistantTurnText, latestReceivedAt, turnModel } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
 import { SubagentCard } from './subagent-card';
@@ -37,7 +37,7 @@ export interface ConversationViewProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   cwd?: string;
-  /** TODO(backend): shown in the per-turn meta once session state reflects the active model. */
+  /** Session-level fallback for the per-turn model meta (a turn's own message stamp wins). */
   modelName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Opens this turn's workspace changes in the host review surface. */
@@ -232,7 +232,7 @@ export function ConversationView({
                     <AgentTurnActions
                       agentKind={agentKind}
                       copyText={replyText}
-                      modelName={modelName}
+                      modelName={turnModel(segment.items) ?? modelName}
                       receivedAt={latestReceivedAt(segment.items)}
                     />
                   ) : null}

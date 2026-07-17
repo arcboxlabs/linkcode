@@ -151,7 +151,7 @@ describe('buildClaudeTranscriptSupplement', () => {
 
   it('collects the rows before the last boundary as dropped, excluding meta/sidechain rows', () => {
     const supplement = buildClaudeTranscriptSupplement([
-      convRow('user', 'u0'),
+      convRow('user', 'u0', { timestamp: '2026-07-16T08:00:00.000Z' }),
       convRow('assistant', 'a0'),
       convRow('user', 'meta0', { isMeta: true }),
       convRow('assistant', 'side0', { isSidechain: true }),
@@ -164,6 +164,8 @@ describe('buildClaudeTranscriptSupplement', () => {
       type: 'user',
       session_id: 'sid-1',
       parent_tool_use_id: null,
+      // The raw row's timestamp rides along so replayed pre-compaction rows keep their times.
+      timestamp: '2026-07-16T08:00:00.000Z',
     });
   });
 

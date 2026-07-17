@@ -51,6 +51,7 @@ function row(
   uuid: string,
   content: string | unknown[],
   parentToolUseId: string | null = null,
+  extra?: { timestamp?: string; model?: string },
 ): SessionMessage {
   return {
     type,
@@ -58,7 +59,8 @@ function row(
     session_id: 'h1',
     parent_tool_use_id: parentToolUseId,
     parent_agent_id: null,
-    message: { content },
+    message: { content, ...(extra?.model && { model: extra.model }) },
+    ...(extra?.timestamp && { timestamp: extra.timestamp }),
   };
 }
 
@@ -176,6 +178,61 @@ describe('createClaudeHistoryEventMapper', () => {
         },
       ]);
     }
+  });
+
+  it('stamps ts from the row timestamp and replays the served model as model-update', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const at = '2026-07-16T12:00:00.000Z';
+    const first = map(
+      row('assistant', 'u1', [{ type: 'text', text: 'hello' }], null, {
+        timestamp: at,
+        model: 'claude-opus-4-8',
+      }),
+    );
+    expect(first.map((e) => `${e.event.type}@${e.ts ?? ''}`)).toEqual([
+      `model-update@${Date.parse(at)}`,
+      `agent-message-chunk@${Date.parse(at)}`,
+    ]);
+    if (first[0].event.type === 'model-update') {
+      expect(first[0].event.model).toBe('claude-opus-4-8');
+    }
+
+    // Same model on the next row: no repeat announcement.
+    const second = map(
+      row('assistant', 'u2', [{ type: 'text', text: 'more' }], null, {
+        model: 'claude-opus-4-8',
+      }),
+    );
+    expect(second.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+
+    // A switch re-announces; a subagent row's model never does.
+    const switched = map(
+      row('assistant', 'u3', [{ type: 'text', text: 'switched' }], null, {
+        model: 'claude-sonnet-5',
+      }),
+    );
+    expect(switched.map((e) => e.event.type)).toEqual(['model-update', 'agent-message-chunk']);
+    const subagent = map(
+      row('assistant', 'u4', [{ type: 'text', text: 'sub' }], 'toolu_task', {
+        model: 'claude-haiku-4-5',
+      }),
+    );
+    expect(subagent.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+  });
+
+  it('stamps ts on user prompts and tool settles', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const at = '2026-07-16T12:34:56.000Z';
+    const prompt = map(row('user', 'u1', 'fix the bug', null, { timestamp: at }));
+    expect(prompt[0].ts).toBe(Date.parse(at));
+
+    map(row('assistant', 'u2', [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }]));
+    const settle = map(
+      row('user', 'u3', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'body' }], null, {
+        timestamp: at,
+      }),
+    );
+    expect(settle[0].ts).toBe(Date.parse(at));
   });
 
   it('keeps plain user prompts and assistant text as message events', () => {

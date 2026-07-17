@@ -66,6 +66,7 @@ import {
   firstText,
   isRecord,
   numberField,
+  stringField,
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
@@ -1341,7 +1342,7 @@ export function buildClaudeTranscriptSupplement(
   const records = new Map<string, ClaudeCompactionRecord>();
   const toolUseResults = new Map<string, Record<string, unknown>>();
   /** Conversation rows in file order, with the index of the last boundary seen before each. */
-  const rows: Array<{ row: SessionMessage; boundariesBefore: number }> = [];
+  const rows: Array<{ row: TimestampedSessionMessage; boundariesBefore: number }> = [];
   let boundaries = 0;
   let pending: ClaudeCompactionRecord | null = null;
   for (const line of lines) {
@@ -1386,6 +1387,7 @@ export function buildClaudeTranscriptSupplement(
         message: row.message,
         parent_tool_use_id: null,
         parent_agent_id: null,
+        ...(typeof row.timestamp === 'string' && { timestamp: row.timestamp }),
       },
       boundariesBefore: boundaries,
     });
@@ -1495,6 +1497,10 @@ async function readSubagentTranscripts(
  * the provider's `toolu_` ids, so a seeded timeline and live re-emits of the same call converge
  * by id (`buildConversation` replaces tool calls by id) instead of duplicating.
  */
+/** `getSessionMessages` rows (and the supplement's raw rows) carry an ISO `timestamp` at runtime
+ * that the SDK's `SessionMessage` type omits — verified live on 0.3.206. */
+type TimestampedSessionMessage = SessionMessage & { timestamp?: string };
+
 export function createClaudeHistoryEventMapper(
   historyId: AgentHistoryId,
   compactions?: ReadonlyMap<string, ClaudeCompactionRecord>,
@@ -1503,14 +1509,16 @@ export function createClaudeHistoryEventMapper(
   toolUseResults?: ReadonlyMap<string, Record<string, unknown>>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
-
-  const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
-    announced.set(toolCall.toolCallId, toolCall);
-    return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
-  };
+  /** Last model announced to the timeline; assistant rows re-announce only on change. */
+  let lastModel: string | undefined;
 
   return (message) => {
     if (message.type !== 'user' && message.type !== 'assistant') return [];
+    const ts = timestampMs((message as TimestampedSessionMessage).timestamp);
+    const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+      announced.set(toolCall.toolCallId, toolCall);
+      return { historyId, itemId: toolCall.toolCallId, ts, event: { type: 'tool-call', toolCall } };
+    };
     // A compaction's swapped-in summary is stored as a user row; replaying it as a user prompt
     // would fake a giant user turn (the reported CODE-141 symptom). It becomes the compaction
     // marker instead, placed exactly where the summary sits in the timeline.
@@ -1523,6 +1531,7 @@ export function createClaudeHistoryEventMapper(
         {
           historyId,
           itemId: compaction.compactionId,
+          ts,
           event: { type: 'compaction', ...compaction, ...(summary && { summary }) },
         },
       ];
@@ -1533,12 +1542,21 @@ export function createClaudeHistoryEventMapper(
     const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
+      // Every assistant row records the model that served it; replay it as the same model-update
+      // the live stream emits so seeded messages get their per-turn model stamp. Subagent rows
+      // are skipped — their model must not masquerade as the session's.
+      const model =
+        !parent && isRecord(message.message) ? stringField(message.message, 'model') : undefined;
+      if (model && model !== lastModel) {
+        lastModel = model;
+        events.push({ historyId, ts, event: { type: 'model-update', model } });
+      }
       const text = textHistoryEvent(
         historyId,
         'assistant',
         message.uuid,
         message.message,
-        undefined,
+        ts,
         parent,
       );
       if (text) events.push(text);
@@ -1585,7 +1603,7 @@ export function createClaudeHistoryEventMapper(
     // tool_results is a prompt the user actually typed.
     const promptValue =
       results.length === 0 ? message.message : blocks.filter((block) => !isToolResultBlock(block));
-    const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue);
+    const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue, ts);
     if (text) events.push(text);
     return events;
   };

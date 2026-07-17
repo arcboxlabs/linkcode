@@ -76,6 +76,30 @@ describe('buildConversation', () => {
     expect(c.items).toEqual([]);
   });
 
+  it('stamps assistant messages with the model serving them, backfilling late reports', () => {
+    const c = buildConversation([
+      { type: 'model-update', model: 'claude-opus-4-8' },
+      userText('first'),
+      text('reply one', 'm1'),
+      { type: 'model-update', model: 'claude-sonnet-5' },
+      userText('second'),
+      text('reply two', 'm2'),
+    ]);
+    const models = c.items.flatMap((item) =>
+      item.kind === 'message' && item.role === 'assistant' ? [item.model] : [],
+    );
+    expect(models).toEqual(['claude-opus-4-8', 'claude-sonnet-5']);
+
+    // A model reported only mid-stream still lands on the already-open message.
+    const late = buildConversation([
+      text('opens dateless', 'm3'),
+      { type: 'model-update', model: 'claude-opus-4-8' },
+      text(' — continued', 'm3'),
+    ]);
+    const item = late.items[0];
+    expect(item.kind === 'message' && item.model).toBe('claude-opus-4-8');
+  });
+
   it('coalesces same-messageId agent chunks into one streaming block', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },
