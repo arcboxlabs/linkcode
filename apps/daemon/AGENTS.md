@@ -104,8 +104,14 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   `[linkcode/daemon] unhandled rejection:` and keeps running — a rejection reaching it is a missed
   `.catch` to fix. **No fire-and-forget on data-plane paths**: await inside try/catch and log, and move
   user-visible side effects after the awaited op succeeds. Full bug catalog → `docs/DEVELOPMENT.md`.
-- **Lifecycle:** at boot the daemon `ensureChatWorkspace(~/LinkCode)` **before** any listener binds, so
-  `workspace.list` always includes the "Chats" workspace. A host terminal survives while any local
+- **Lifecycle:** boot/shutdown is an Effect v4 layer graph in `src/index.ts` (CODE-244; Effect is
+  beta-pinned and bundled — root `AGENTS.md` "Never Guess" applies before touching it): layers
+  acquire in order Shared (config, double-start gate, hub) → Engine → Listeners → RuntimeFile →
+  Uplink and release LIFO, so `ensureChatWorkspace(~/LinkCode)` still runs **before** any listener
+  binds and `workspace.list` always includes the "Chats" workspace. SIGINT/SIGTERM interrupt the
+  root fiber at any boot phase and unwind exactly the layers acquired; exit codes: graceful drain
+  `0`, already-running `3` (`DAEMON_EXIT_ALREADY_RUNNING`), anything else `1`. A hung drain
+  force-exits after 10s, as does a second signal. A host terminal survives while any local
   or relay-virtual connection retains an attachment; the Hub turns connection loss into detach, and
   the terminal is reaped 60s after its last attachment leaves. Reattaching within the window cancels
   the reap. Session/managed terminals keep their owner's lifecycle instead.

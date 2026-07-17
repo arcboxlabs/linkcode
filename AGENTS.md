@@ -107,6 +107,7 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 ## Never Guess — Ask First
 
 - **`tayori` is custom-made and absent from your training data.** Fetch <https://tayori.skk.moe/llms-full.txt> before touching any code that uses it. Do not guess at its API.
+- **Effect v4 (the daemon's boot orchestration) postdates your training data.** It was released 2026-02; v3 idioms actively mislead (`Context.Tag` → `Context.Service`, `Schedule.intersect` removed, `Effect.retry` takes an options object, …). Read the installed `.d.ts` under `node_modules/effect` and the [effect-smol migration guides](https://github.com/Effect-TS/effect-smol/blob/main/MIGRATION.md) before writing Effect code. The pin is an exact beta — bump it deliberately, as a small migration (CODE-244).
 - **The agent SDKs are fast-moving** (three are 0.x; opencode is 1.x) — read the installed `.d.ts` under `node_modules`, not vendor docs or your training memory, before relying on SDK behavior (`packages/agent-adapter/AGENTS.md`).
 - **The open questions in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** are genuinely undecided — never invent answers; ask first.
 
