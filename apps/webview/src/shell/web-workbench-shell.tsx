@@ -1,4 +1,4 @@
-import { ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
@@ -44,6 +44,11 @@ export function WebWorkbenchShell({
               <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
             )}
           </div>
+          {/* The draft page reports errors through its own banner. */}
+          <ErrorBadge
+            errorMessage={props.draft ? null : props.errorMessage}
+            onDismissError={props.onDismissError}
+          />
           <div className="ml-auto flex items-center gap-2">
             {/* No in-app browser in the web client: preview links always open a new tab. */}
             <WorkspaceServicesMenu cwd={props.activeSession?.cwd} />

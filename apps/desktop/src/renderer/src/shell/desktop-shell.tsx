@@ -3,6 +3,7 @@ import type { ComposerAttachment } from '@linkcode/ui';
 import {
   AgentIcon,
   ConversationSurface,
+  ErrorBadge,
   ErrorBanner,
   HostFooter,
   NewSessionSurface,
@@ -359,7 +360,6 @@ export function DesktopShell({
           TerminalBlockComponent={TerminalBlockComponent}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
-          topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           mentionItems={mentionItems}
           onMentionQueryChange={onMentionQueryChange}
           onSendPrompt={onSendPrompt}
@@ -554,6 +554,11 @@ export function DesktopShell({
                 onOpenDiff={() => openRightPanelSection('diff')}
               />
             ) : undefined}
+            <ErrorBadge
+              errorMessage={errorMessage}
+              onDismissError={onDismissError}
+              className="pointer-events-auto [-webkit-app-region:no-drag]"
+            />
           </>
         }
         onShowSidebar={() => updateSidebarOpen(true)}

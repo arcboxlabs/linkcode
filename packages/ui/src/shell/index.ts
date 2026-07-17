@@ -6,6 +6,7 @@ export * from './command-palette';
 export * from './composer';
 export * from './composer-attachments';
 export * from './conversation-surface';
+export * from './error-badge';
 export * from './error-banner';
 export * from './general-settings-panel';
 export * from './history/history-browser';

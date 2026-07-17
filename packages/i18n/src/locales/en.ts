@@ -115,6 +115,10 @@ export const en = {
         'Unable to connect to the daemon ({url}). It starts automatically with the app — retry, and restart the app if this keeps failing.',
       retry: 'Retry',
     },
+    errors: {
+      actionFailed: 'Action failed',
+      dismiss: 'Dismiss error',
+    },
     conversation: {
       emptyTitle: 'Start the conversation',
       emptyHint: 'Type a message below — {agent} will get to work in {cwd}.',
