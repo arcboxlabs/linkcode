@@ -120,21 +120,29 @@ async function run(win: Page): Promise<void> {
   });
   await win.waitForTimeout(2000);
 
+  // The code view renders inside @pierre/diffs' `diffs-container` shadow root.
   const viewer = await win.evaluate(() => {
-    const pre = [...document.querySelectorAll('pre')].find((el) =>
-      el.textContent?.includes('end-of-long-line'),
-    );
-    if (!pre) return null;
-    const rect = pre.getBoundingClientRect();
-    return {
-      right: rect.right,
-      innerWidth: window.innerWidth,
-      scrollWidth: pre.scrollWidth,
-      clientWidth: pre.clientWidth,
-    };
+    for (const host of document.querySelectorAll('diffs-container')) {
+      const pre = [...(host.shadowRoot?.querySelectorAll('pre') ?? [])].find((el) =>
+        el.textContent?.includes('end-of-long-line'),
+      );
+      if (!pre) continue;
+      const scroller =
+        pre.scrollWidth > pre.clientWidth
+          ? pre
+          : [pre, ...pre.querySelectorAll('*'), host].find((el) => el.scrollWidth > el.clientWidth);
+      const rect = host.getBoundingClientRect();
+      return {
+        right: rect.right,
+        innerWidth: window.innerWidth,
+        scrollWidth: scroller?.scrollWidth ?? 0,
+        clientWidth: scroller?.clientWidth ?? 0,
+      };
+    }
+    return null;
   });
   console.log('long-line viewer metrics:', JSON.stringify(viewer));
-  if (!viewer) fail('long-line.txt did not open in the plain-text viewer');
+  if (!viewer) fail('long-line.txt did not open in the code viewer');
   if (viewer.right > viewer.innerWidth + 1) {
     fail('viewer overflows the window instead of scrolling (missing min-w-0)');
   }
@@ -142,6 +150,34 @@ async function run(win: Page): Promise<void> {
     fail('long line is not horizontally scrollable inside the viewer');
   }
   console.log('long-line content scrolls inside the viewer');
+
+  // Syntax highlighting: a JSON file must render colored shiki tokens (CODE-269).
+  await win.evaluate(() => {
+    const host = document.querySelector('file-tree-container');
+    const row = host?.shadowRoot?.querySelector<HTMLElement>(
+      'button[data-type="item"][aria-label="app-config.json"]',
+    );
+    if (!row) throw new Error('no tree row for app-config.json');
+    row.click();
+  });
+  await win.waitForTimeout(2500);
+
+  const highlight = await win.evaluate(() => {
+    for (const host of document.querySelectorAll('diffs-container')) {
+      const shadow = host.shadowRoot;
+      if (!shadow?.textContent?.includes('tree-fixture-config')) continue;
+      const html = shadow.innerHTML;
+      return {
+        tokens: /color:\s*#|--shiki/.test(html),
+        sample: html.slice(html.indexOf('tree-fixture-config') - 200, 300),
+      };
+    }
+    return null;
+  });
+  console.log('highlight probe:', JSON.stringify(highlight)?.slice(0, 400));
+  if (!highlight) fail('app-config.json did not open in the code viewer');
+  if (!highlight.tokens) fail('JSON file rendered without shiki color tokens');
+  console.log('code viewer renders highlighted tokens');
 }
 
 async function main(): Promise<void> {
@@ -162,6 +198,7 @@ async function main(): Promise<void> {
   mkdirSync(join(chatRoot, '.hidden'), { recursive: true });
   writeFileSync(join(chatRoot, 'fixture-readme.md'), '# Tree fixture readme content\n');
   writeFileSync(join(chatRoot, 'long-line.txt'), `${'x'.repeat(2000)} end-of-long-line\n`);
+  writeFileSync(join(chatRoot, 'app-config.json'), '{"name":"tree-fixture-config","count":42}\n');
   writeFileSync(join(chatRoot, 'docs', 'notes.md'), '# Notes\n');
   writeFileSync(join(chatRoot, '.hidden', 'secret.txt'), 'nope\n');
 

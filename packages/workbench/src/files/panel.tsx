@@ -14,6 +14,8 @@ export interface FilesPanelProps {
   cwd: string | undefined;
   tabs: FileTab[];
   activeTabId: string | null;
+  /** Shiki theme pairing for the code viewer — same axis the Diff section receives. */
+  themeType?: 'system' | 'light' | 'dark';
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   /** Open a workspace file (cwd-relative path) as a viewer tab — tree clicks land here. */
@@ -25,6 +27,7 @@ export function FilesPanel({
   cwd,
   tabs,
   activeTabId,
+  themeType,
   onSelectTab,
   onCloseTab,
   onOpenFile,
@@ -68,7 +71,13 @@ export function FilesPanel({
             />
             <div className="min-h-0 flex-1">
               {active ? (
-                <FileViewer path={active.path} file={data} isLoading={isLoading} error={error} />
+                <FileViewer
+                  path={active.path}
+                  file={data}
+                  isLoading={isLoading}
+                  error={error}
+                  themeType={themeType}
+                />
               ) : null}
             </div>
           </>
