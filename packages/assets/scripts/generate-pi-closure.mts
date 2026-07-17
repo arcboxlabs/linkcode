@@ -8,7 +8,7 @@
  * when the committed manifest drifts from pnpm-lock.yaml.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import type { ClosurePackage } from '../src/closure';
 import { generateClosure } from '../src/closure-gen';
 
@@ -23,7 +23,7 @@ const piManifest = JSON.parse(
   readFileSync(join(repoRoot, 'node_modules', PI_PACKAGE, 'package.json'), 'utf8'),
 ) as { main?: string };
 if (!piManifest.main) throw new Error(`${PI_PACKAGE} package.json has no "main"`);
-const entry = join('node_modules', PI_PACKAGE, piManifest.main);
+const entry = posix.join('node_modules', PI_PACKAGE, piManifest.main);
 
 const closure = generateClosure({
   lockfileText: readFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'utf8'),
