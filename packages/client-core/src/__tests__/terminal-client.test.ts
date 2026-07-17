@@ -7,7 +7,7 @@ import type {
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
 import { createConnectedLocalClient } from './local-client';
 
@@ -112,6 +112,10 @@ describe('LinkCodeClient terminal error channel', () => {
 });
 
 describe('LinkCodeClient terminal attachments', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('ingests output captured before terminal.opened resolves', async () => {
     let uuidSeq = 0;
     const { client, serverTransport } = await createConnectedLocalClient({
@@ -374,6 +378,54 @@ describe('LinkCodeClient terminal attachments', () => {
     expect(exits).toEqual([7]);
 
     client.detachTerminal('term-finished');
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('acks ingested live output cumulatively, skipping replayed and deduped frames', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    vi.useFakeTimers();
+    const received: WirePayload[] = [];
+    serverTransport.onMessage((message) => {
+      const p = message.payload;
+      received.push(p);
+      if (p.kind !== 'terminal.attach') return;
+      serverTransport.send(
+        createWireMessage({
+          kind: 'terminal.attached',
+          replyTo: p.clientReqId,
+          terminal: metadata(p.terminalId, null),
+          replay: [{ type: 'write', seq: 1, data: 'replayed-not-acked' }],
+          cutoffSeq: 1,
+          truncated: false,
+        }),
+      );
+    });
+
+    await client.attachTerminal('term-ack');
+    const output = (seq: number, data: string) =>
+      serverTransport.send(
+        createWireMessage({ kind: 'terminal.output', terminalId: 'term-ack', seq, data }),
+      );
+
+    // A big frame crosses the 64K chunk threshold: the ack goes out immediately, and counts only
+    // live chars — the replayed event and the duplicate (stale seq) frame stay out of the total.
+    output(2, 'x'.repeat(64 * 1024));
+    output(2, 'duplicate-not-acked');
+    await vi.advanceTimersByTimeAsync(0);
+    const acks = () => received.filter((p) => p.kind === 'terminal.ack');
+    expect(acks()).toHaveLength(1);
+    expect(acks()[0]).toMatchObject({ terminalId: 'term-ack', acked: 64 * 1024 });
+
+    // A small tail is acked by the trailing timer rather than immediately.
+    output(3, 'tail');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(acks()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(acks()).toHaveLength(2);
+    expect(acks()[1]).toMatchObject({ acked: 64 * 1024 + 4 });
+
+    client.detachTerminal('term-ack');
     client.dispose();
     serverTransport.close();
   });
