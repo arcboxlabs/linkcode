@@ -37,7 +37,7 @@
     "expo-font": "~57.0.0",
     "expo-haptics": "~57.0.0",
     "expo-image-picker": "~57.0.2",
-    "expo-libghostty": "^0.4.0",
+    "expo-libghostty": "^0.5.0",
     "expo-linking": "~57.0.2",
     "expo-local-authentication": "~57.0.0",
     "expo-network": "~57.0.1",
