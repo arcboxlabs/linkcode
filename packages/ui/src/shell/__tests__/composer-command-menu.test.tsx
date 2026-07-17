@@ -4,22 +4,26 @@ import type { AgentCommand, AgentKind, SessionMode } from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES } from '@linkcode/schema';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { nullthrow } from 'foxts/guard';
-import type { LexicalEditor } from 'lexical';
 import {
   $getRoot,
   $getSelection,
   $isElementNode,
   $isRangeSelection,
   $isTextNode,
-  getNearestEditorFromDOMNode,
   UNDO_COMMAND,
 } from 'lexical';
 import { createRef } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ComposerHandle } from '../composer';
 import { Composer } from '../composer';
-import { $draftText, $insertDraftText } from '../composer-editor/serialize';
+import {
+  composerLexicalEditor,
+  composerText,
+  composerTextbox,
+  pressInComposer,
+  setupComposerTestDOM,
+  typeInComposer,
+} from './composer-test-utils';
 
 function translateKey(key: string): string {
   return key;
@@ -29,36 +33,7 @@ vi.mock('use-intl', () => ({
   useTranslations: () => translateKey,
 }));
 
-class InertMutationObserver implements MutationObserver {
-  private records: MutationRecord[] = [];
-
-  observe(): void {
-    this.records = [];
-  }
-
-  disconnect(): void {
-    this.records = [];
-  }
-
-  takeRecords(): MutationRecord[] {
-    const records = this.records;
-    this.records = [];
-    return records;
-  }
-}
-
-// jsdom's Selection/Range support is too partial for Lexical's DOM sync: focused updates throw
-// on missing layout APIs, `selectionchange` readback resets the editor selection to the document
-// start, and the mutation-observer pass then nulls it against the missing DOM selection. Lexical
-// guards a null DOM selection everywhere, so the reliable jsdom setup is: no DOM selection and
-// no mutation observer at all — editor-state selection (what the test helpers drive) stays
-// fully functional, and every edit here goes through the editor API anyway.
-beforeAll(() => {
-  window.getSelection = () => null;
-  document.getSelection = () => null;
-  window.scrollTo = vi.fn();
-  window.MutationObserver = InertMutationObserver;
-});
+beforeAll(setupComposerTestDOM);
 
 const COMMANDS: AgentCommand[] = [
   { name: 'compact', description: 'Compact the context' },
@@ -116,34 +91,6 @@ function renderComposer(): void {
   render(composer());
 }
 
-function composerTextbox(): HTMLElement {
-  return screen.getByRole('textbox');
-}
-
-function composerLexicalEditor(): LexicalEditor {
-  return nullthrow(getNearestEditorFromDOMNode(composerTextbox()), 'composer editor not mounted');
-}
-
-/** jsdom cannot drive a contenteditable through synthesized typing (Lexical's beforeinput /
- * mutation paths need a real browser), so draft text is inserted through the editor API. The
- * downstream pipeline — transforms, snapshot mirroring, trigger menus — runs identically. */
-function typeInComposer(text: string): void {
-  const editor = composerLexicalEditor();
-  act(() => {
-    editor.update(() => $insertDraftText(text), { discrete: true });
-  });
-}
-
-/** Control keys go through real keydown events on the editor root — Lexical's command pipeline
- * (and base-ui's document-level dismiss) handles them exactly as in a browser. Async because
- * the composer defers Enter's submit/select out of the key dispatch by a microtask. */
-async function pressInComposer(key: string): Promise<void> {
-  await act(async () => {
-    fireEvent.keyDown(composerTextbox(), { key });
-    await Promise.resolve();
-  });
-}
-
 /** State-level backspace: Lexical's `deleteCharacter` needs the non-standard `Selection.modify`
  * DOM API for collapsed selections, which jsdom lacks — so a key-driven Backspace can never
  * mutate the draft here. Deletes one char before the caret, or the node right before it. */
@@ -175,10 +122,6 @@ function backspaceInComposer(): void {
       { discrete: true },
     );
   });
-}
-
-function composerText(): string {
-  return composerLexicalEditor().read($draftText);
 }
 
 function selectComposerText(start: number, end: number): void {
