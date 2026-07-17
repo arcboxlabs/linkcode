@@ -10,6 +10,7 @@ class FakePtyProcess implements PtyProcess {
   killed = false;
   readonly writes: string[] = [];
   readonly resizes: Array<{ cols: number; rows: number }> = [];
+  readonly grants: number[] = [];
   private dataCbs: Array<(d: string) => void> = [];
   private exitCbs: Array<(c: number | null) => void> = [];
 
@@ -31,6 +32,9 @@ class FakePtyProcess implements PtyProcess {
   }
   resize(cols: number, rows: number): void {
     this.resizes.push({ cols, rows });
+  }
+  grantRead(bytes: number): void {
+    this.grants.push(bytes);
   }
   kill(): void {
     this.killed = true;
