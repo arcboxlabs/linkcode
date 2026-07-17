@@ -484,9 +484,10 @@ export const en = {
       hostFailed: 'Failed to host the preview',
     },
     files: {
-      empty: 'Files opened from the conversation show up here',
+      empty: 'Files opened from the tree or the conversation show up here',
       unsupported: 'No preview available for this file type',
       loadFailed: 'Failed to read the file',
+      treeUnavailable: 'Select a session to browse its workspace files',
     },
     preview: {
       services: 'Services',

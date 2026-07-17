@@ -680,6 +680,20 @@ export class Engine {
         });
         break;
       }
+      case 'file.list': {
+        await this.tryReply(p.clientReqId, async () => {
+          // Same opened-roots scoping as file.suggest below.
+          const workspace = nullthrow(
+            this.workspaces.findByCwd(p.cwd),
+            `Unknown workspace: ${p.cwd}`,
+          );
+          const files = await this.fileSuggest.list(workspace.cwd);
+          this.transport.send(
+            createWireMessage({ kind: 'file.list.result', replyTo: p.clientReqId, files }),
+          );
+        });
+        break;
+      }
       case 'file.suggest': {
         await this.tryReply(p.clientReqId, async () => {
           // Refuse a cwd no session ever ran in (opened-roots scoping, not a hard boundary);

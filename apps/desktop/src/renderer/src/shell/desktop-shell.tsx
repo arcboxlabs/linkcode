@@ -404,6 +404,7 @@ export function DesktopShell({
         onAddTerminalTab={addRightTerminalTab}
         onSelectFileTab={setActiveRightFileTab}
         onCloseFileTab={closeRightFileTab}
+        onOpenFileTab={openRightFileTab}
         onToggleMax={() => toggleMaxPanel('right')}
       />
     );

@@ -15,7 +15,6 @@ export * from './conversation-prompts';
 export * from './conversation-view';
 export * from './diff-block';
 export * from './error-message';
-export * from './file-tree';
 export * from './inline-citation';
 export * from './markdown';
 export * from './message';

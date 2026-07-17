@@ -6,7 +6,7 @@
 
 Each of these breaks the product, a release, or the build with **no loud error**.
 
-1. **Wire-protocol versions are lockstep.** `WIRE_PROTOCOL_VERSION` (currently 35) is a `z.literal` in `packages/schema/src/wire`; any change to any wire variant must bump it. Mismatched peers still complete the socket ("connected") but every frame fails validation and is **silently discarded** — zero messages, a hang-like failure. Rebuild and restart the daemon and every client together.
+1. **Wire-protocol versions are lockstep.** `WIRE_PROTOCOL_VERSION` (currently 37) is a `z.literal` in `packages/schema/src/wire`; any change to any wire variant must bump it. Mismatched peers still complete the socket ("connected") but every frame fails validation and is **silently discarded** — zero messages, a hang-like failure. Rebuild and restart the daemon and every client together.
 2. **`foxts/once` prewarms by default.** `once(fn)` runs `fn` immediately at construction and caches the result; call-at-most-once semantics need `once(fn, false)`. The default has already shipped a daemon that ran its shutdown at boot and transports whose close-callback fired at construction. Read any foxts helper's `.d.ts`/source before adopting it — the lodash-alike name lies.
 3. **Native deps must be allow-listed.** pnpm blocks install scripts by default; a native dep (e.g. `better-sqlite3`) missing from `allowBuilds:` in `pnpm-workspace.yaml` installs fine but fails at `require()` time with missing bindings.
 4. **CI does not run `pnpm test`.** The vitest suite (~57 test files, node-env pure logic) is absent from `check:ci` and from every workflow — CI gates only format/lint/typecheck plus the Rust job. A green PR does not mean the tests pass; run `pnpm test` yourself before every commit.

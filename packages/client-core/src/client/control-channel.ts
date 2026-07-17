@@ -241,6 +241,16 @@ export class ControlChannel {
     }));
   }
 
+  /** Every workspace file as a cwd-relative path. Like file.suggest, `cwd` must be a
+   * registered workspace root (session start/resume registers it); unknown roots are rejected. */
+  listFiles(cwd: string): Promise<string[]> {
+    return this.sendCorrelated('fileList', (clientReqId) => ({
+      kind: 'file.list',
+      clientReqId,
+      cwd,
+    }));
+  }
+
   /** Search workspace files by substring query. Unlike file.read/git.*, `cwd` must be a
    * registered workspace root (session start/resume registers it); unknown roots are rejected. */
   suggestFiles(cwd: string, query: string, limit?: number): Promise<FileSuggestion[]> {

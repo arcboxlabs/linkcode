@@ -29,7 +29,7 @@ import { normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
-import { mockFileFixture } from './data/files';
+import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
 import {
@@ -371,6 +371,14 @@ export class DevMockHost {
         else this.sendFailure(p.clientReqId, `Mock host has no fixture for ${p.path}`);
         break;
       }
+      case 'file.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'file.list.result',
+          replyTo: p.clientReqId,
+          files: [...MOCK_WORKSPACE_FILES],
+        });
+        break;
       case 'script.list': {
         await wait(CONTROL_LATENCY_MS);
         this.send({
