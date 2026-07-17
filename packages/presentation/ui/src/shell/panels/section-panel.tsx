@@ -3,8 +3,9 @@ import { cn } from '../../lib/cn';
 import type { ChromeSurface, PanelChromePortalProps } from './chrome-portal';
 import { getPanelChromePlacement, PanelContextualChromePortal } from './chrome-portal';
 import { PanelContextualControls } from './panel-controls';
+import { SectionBrowserTabStrip } from './section-browser-tabs';
 import { SectionTerminalTabStrip } from './section-terminal-tabs';
-import type { PanelSection, PanelSectionTab } from './vocabulary';
+import type { BrowserPanelSectionTab, PanelSection, PanelSectionTab } from './vocabulary';
 import {
   PANEL_SECTIONS,
   PANEL_TAB_ACTIVE_CLASSNAME,
@@ -17,6 +18,10 @@ export interface SectionPanelState {
   activeSection: PanelSection;
   terminal: {
     tabs: PanelSectionTab[];
+    activeTabId: string | null;
+  };
+  browser: {
+    tabs: BrowserPanelSectionTab[];
     activeTabId: string | null;
   };
 }
@@ -41,6 +46,9 @@ export interface SectionPanelRegionProps {
   onSelectTerminalTab: (id: string) => void;
   onCloseTerminalTab: (id: string) => void;
   onAddTerminalTab: () => void;
+  onSelectBrowserTab: (id: string) => void;
+  onCloseBrowserTab: (id: string) => void;
+  onAddBrowserTab: () => void;
   onToggleMax: () => void;
 }
 
@@ -62,6 +70,9 @@ export function SectionPanelRegion({
   onSelectTerminalTab,
   onCloseTerminalTab,
   onAddTerminalTab,
+  onSelectBrowserTab,
+  onCloseBrowserTab,
+  onAddBrowserTab,
   onToggleMax,
 }: SectionPanelRegionProps): React.ReactNode {
   const chromePlacement = getPanelChromePlacement('right', chromeSurface);
@@ -76,6 +87,15 @@ export function SectionPanelRegion({
           onSelectTab={onSelectTerminalTab}
           onCloseTab={onCloseTerminalTab}
           onAddTab={onAddTerminalTab}
+        />
+      )}
+      {panel.activeSection === 'browser' && (
+        <SectionBrowserTabStrip
+          tabs={panel.browser.tabs}
+          activeTabId={panel.browser.activeTabId}
+          onSelectTab={onSelectBrowserTab}
+          onCloseTab={onCloseBrowserTab}
+          onAddTab={onAddBrowserTab}
         />
       )}
       <div className="relative min-h-0 flex-1">

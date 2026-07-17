@@ -338,6 +338,7 @@ export const en = {
       },
       openWindow: 'Open window',
       newTerminalTab: 'New terminal',
+      newBrowserTab: 'New tab',
       closeTab: 'Close {label}',
       fullscreen: 'Fullscreen',
       restore: 'Restore',

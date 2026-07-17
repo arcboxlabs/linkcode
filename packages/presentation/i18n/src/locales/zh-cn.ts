@@ -328,6 +328,7 @@ export const zhCN = {
       },
       openWindow: '打开窗口',
       newTerminalTab: '新建终端',
+      newBrowserTab: '新建标签页',
       closeTab: '关闭 {label}',
       fullscreen: '全屏',
       restore: '还原',
