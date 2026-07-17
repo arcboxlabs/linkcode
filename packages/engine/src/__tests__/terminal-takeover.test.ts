@@ -54,6 +54,7 @@ class EchoPty implements PtyProcess {
   }
 
   resize = noop;
+  grantRead = noop;
 
   kill(): void {
     if (this.killed) return;
