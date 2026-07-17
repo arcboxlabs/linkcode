@@ -293,6 +293,7 @@ export const zhCN = {
       pinThread: '置顶线程',
       unpinThread: '取消置顶',
       closeThread: '关闭线程',
+      threadCount: '{count} 个线程',
       chooseDirectory: '选择目录…',
       registerWorkspaceError: '添加工作区失败：{message}',
       organization: '组织',

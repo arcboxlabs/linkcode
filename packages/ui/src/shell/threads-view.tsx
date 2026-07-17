@@ -185,6 +185,7 @@ export function ThreadsView({
             onToggleSessionPinned={onToggleSessionPinned}
             onTogglePreviewExpanded={onTogglePreviewExpanded}
             ImMenuComponent={ImMenuComponent}
+            BranchStatusComponent={BranchStatusComponent}
           />
         )}
 
@@ -259,6 +260,7 @@ export function ThreadsView({
           onStartDraft={onStartDraft}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           ImMenuComponent={ImMenuComponent}
+          BranchStatusComponent={BranchStatusComponent}
         />
       </Accordion>
     </DragDropProvider>
@@ -325,6 +327,7 @@ function ThreadGroupSection({
       onClose={() => onClose(session.sessionId)}
       onTogglePin={() => onToggleSessionPinned(session.sessionId)}
       ImMenuComponent={ImMenuComponent}
+      BranchStatusComponent={BranchStatusComponent}
     />
   );
 
@@ -334,7 +337,7 @@ function ThreadGroupSection({
         dragHandleRef={workspace ? handleRef : undefined}
         title={title}
         workspace={workspace}
-        sessionCount={group.sessions.length}
+        threadCount={group.sessions.length}
         collapsed={group.collapsed}
         onNewThread={workspace ? () => onStartDraft(workspace.workspaceId) : undefined}
         onRename={workspace ? (name) => onRenameWorkspace(workspace.workspaceId, name) : undefined}
