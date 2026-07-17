@@ -51,8 +51,8 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   claude/codex resolve via the runtime probe (`packages/agent-adapter/src/probe/`): managed
   install from the daemon's asset store (`@linkcode/assets` — platform data dir, e.g.
   `~/Library/Application Support/LinkCode/assets`, `LINKCODE_ASSETS_DIR` override for tests/E2E;
-  SDK-pinned exact pair, SRI-verified, GC'd at boot) → detected user install at known locations
-  (brew, `~/.local/bin`; version-verified) → SDK self-resolution from node_modules
+  SDK-pinned exact pair, SRI-verified, GC'd at boot) → detected user install (the daemon's PATH,
+  then fallback locations like brew and `~/.local/bin`; version-verified) → SDK self-resolution from node_modules
   (dev/standalone). **The first managed download is always user-prompted** (CODE-221): boot
   auto-refreshes only agents with a prior install in the asset store (standing consent — GC
   retains superseded versions until the replacement lands, so an offline refresh failure keeps
