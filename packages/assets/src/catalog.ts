@@ -1,4 +1,5 @@
 import type { ManagedAssetFormat, ManagedAssetId } from '@linkcode/schema';
+import type { NpmClosure } from './closure';
 import type { PlatformKey } from './platform';
 
 /**
@@ -35,13 +36,31 @@ export type ArtifactSource =
       format: ManagedAssetFormat;
     };
 
-export interface AssetDescriptor {
+export interface BinaryAssetDescriptor {
   id: ManagedAssetId;
   /** Executable base name inside the installed version dir (`.exe` appended on win32). */
   binaryBase: string;
   version: VersionPolicy;
   /** Per-platform source; an absent key means the asset does not support that platform. */
   artifacts: Partial<Record<PlatformKey, ArtifactSource>>;
+}
+
+/**
+ * An in-process npm tree (pi, CODE-219): installed as a whole `node_modules` layout the daemon
+ * imports, never spawns. The closure manifest is generated from pnpm-lock.yaml at build time.
+ */
+export interface NpmClosureAssetDescriptor {
+  id: ManagedAssetId;
+  version: VersionPolicy;
+  closure: NpmClosure;
+}
+
+export type AssetDescriptor = BinaryAssetDescriptor | NpmClosureAssetDescriptor;
+
+export function isClosureDescriptor(
+  descriptor: AssetDescriptor,
+): descriptor is NpmClosureAssetDescriptor {
+  return 'closure' in descriptor;
 }
 
 const PLATFORM_KEYS: PlatformKey[] = [
@@ -116,7 +135,7 @@ function aigatewayArtifact(
   };
 }
 
-export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
+export const CATALOG: Record<ManagedAssetId, BinaryAssetDescriptor> = {
   'agent:claude-code': {
     id: 'agent:claude-code',
     binaryBase: 'claude',

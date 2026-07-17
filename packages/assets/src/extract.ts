@@ -64,6 +64,25 @@ export async function extractMember(
   posixChmod(destFile);
 }
 
+/**
+ * Extract a whole npm package tarball into `destDir`, stripping the tarball's root directory
+ * (`package/` on npm-published tarballs; `strip` handles legacy roots too). node-tar refuses
+ * absolute and `..` paths by default, so a hostile archive cannot escape `destDir`.
+ */
+export async function extractPackageTree(archive: string, destDir: string): Promise<void> {
+  mkdirSync(destDir, { recursive: true });
+  try {
+    await tarExtract({ file: archive, cwd: destDir, strip: 1 });
+  } catch (error) {
+    throw new ExtractError(
+      `extracting package tree from ${archive}: ${extractErrorMessage(error)}`,
+      {
+        cause: error,
+      },
+    );
+  }
+}
+
 function posixChmod(file: string): void {
   if (process.platform !== 'win32') chmodSync(file, 0o755);
 }
