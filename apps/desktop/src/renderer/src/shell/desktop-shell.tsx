@@ -95,6 +95,7 @@ export function DesktopShell({
   onHostArtifact,
   onReadAttachmentFile,
   onOpenSearch,
+  onOpenAutomations,
   searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
@@ -609,6 +610,7 @@ export function DesktopShell({
                 }
                 onPickDirectory={pickDirectory}
                 onOpenSearch={onOpenSearch}
+                onOpenAutomations={onOpenAutomations}
                 searchShortcut={searchShortcut}
                 onRegisterWorkspace={onRegisterWorkspace}
                 onImportHistory={onImportHistory}

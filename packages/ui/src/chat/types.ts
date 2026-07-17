@@ -1,6 +1,7 @@
 import type {
   AgentCapabilities,
   AgentCommand,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -96,6 +97,9 @@ export interface ConversationViewModel {
   currentEffort: EffortLevel | null;
   /** Slash-command catalog from `available-commands-update`; null hides the composer's command menu. */
   availableCommands: AgentCommand[] | null;
+  /** Adapter-advertised model catalog from `available-models-update` (install-dependent agents);
+   * null falls the composer back to its static per-kind model table. */
+  availableModels: AgentModelOption[] | null;
   /** Adapter input features from `capabilities-update`; null until the session advertises. */
   capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */

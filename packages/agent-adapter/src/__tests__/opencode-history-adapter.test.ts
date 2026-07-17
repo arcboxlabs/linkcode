@@ -214,6 +214,69 @@ describe('OpenCodeAdapter.resumeHistory', () => {
   });
 });
 
+describe('OpenCodeAdapter.resumeHistory credential injection', () => {
+  it('pre-reads the recorded model so the spawn injects the right provider credential', async () => {
+    const recorded = makeSession({
+      id: 'ses-9',
+      directory: '/tmp/original',
+      model: { id: 'claude-sonnet-4-5', providerID: 'anthropic' },
+    });
+    sdkMock.createOpencodeClient = () => ({
+      session: { get: vi.fn(() => Promise.resolve({ data: recorded })) },
+    });
+    const client = makeLiveClient(recorded);
+    const spawns: unknown[] = [];
+    sdkMock.createOpencode = (opts: unknown) => {
+      spawns.push(opts);
+      return Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
+    };
+
+    const adapter = new HistoryTestAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.resumeHistory(
+      { historyId: 'ses-9' as AgentHistoryId },
+      { kind: 'opencode', cwd: '/tmp/elsewhere', config: { apiKey: 'sk-live' } },
+    );
+
+    // The spawn already carries the resumed provider's credential, not an empty config.
+    expect(spawns[0]).toMatchObject({
+      config: { provider: { anthropic: { options: { apiKey: 'sk-live' } } } },
+    });
+    expect(
+      events.some((e) => e.type === 'model-update' && e.model === 'anthropic/claude-sonnet-4-5'),
+    ).toBe(true);
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'go' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { providerID: 'anthropic', modelID: 'claude-sonnet-4-5' },
+      }),
+    );
+  });
+
+  it('falls back to spawning without injection when the record cannot be read', async () => {
+    sdkMock.createOpencodeClient = () => ({
+      session: { get: vi.fn(() => Promise.reject(new Error('history server down'))) },
+    });
+    const client = makeLiveClient(makeSession({ id: 'ses-9', directory: '/tmp/original' }));
+    const spawns: unknown[] = [];
+    sdkMock.createOpencode = (opts: unknown) => {
+      spawns.push(opts);
+      return Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
+    };
+
+    const adapter = new HistoryTestAdapter();
+    adapter.onEvent(noop);
+    await adapter.resumeHistory(
+      { historyId: 'ses-9' as AgentHistoryId },
+      { kind: 'opencode', cwd: '/tmp/elsewhere', config: { apiKey: 'sk-live' } },
+    );
+
+    expect((spawns[0] as { config?: unknown }).config).toBeUndefined();
+  });
+});
+
 describe('OpenCodeAdapter fresh-session session-ref', () => {
   it('defers the announce until the first on-stream turn acknowledgement', async () => {
     const client = makeLiveClient(null);

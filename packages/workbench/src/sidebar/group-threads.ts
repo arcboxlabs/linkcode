@@ -4,6 +4,16 @@ import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 /** Sentinel key for the fallback group: sessions whose `cwd` matches no registered workspace. */
 export const UNREGISTERED_THREAD_GROUP_KEY = 'unregistered';
 
+/**
+ * Drop sessions an automation (loop/schedule) created — they are managed from the Automations
+ * surface, not the Threads sidebar. The full list stays available for explicit by-id selection (an
+ * automation's detail view can still open its run's conversation); only the sidebar and landing
+ * fallbacks filter through this.
+ */
+export function withoutAutomationSessions(sessions: readonly SessionInfo[]): SessionInfo[] {
+  return sessions.filter((session) => session.automation === undefined);
+}
+
 /** Sentinel key for the synthetic pinned group — see {@link extractPinnedGroup}. */
 export const PINNED_THREAD_GROUP_KEY = 'pinned';
 

@@ -541,6 +541,26 @@ describe('engine attach replay', () => {
     ]);
   });
 
+  it('replays the latest model catalog to an attaching client', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'available-models-update', models: [{ id: 'stale/old', label: 'Old' }] });
+    adapter.emit({
+      type: 'available-models-update',
+      models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const catalogs = eventsAfter(sent, mark).filter((e) => e.type === 'available-models-update');
+    // Full-replace semantics: only the latest catalog is replayed.
+    expect(catalogs).toEqual([
+      {
+        type: 'available-models-update',
+        models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
+      },
+    ]);
+  });
+
   it('replays the latest adapter capabilities to an attaching client', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({

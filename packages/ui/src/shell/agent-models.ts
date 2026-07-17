@@ -3,6 +3,9 @@ import type { AgentKind } from '@linkcode/schema';
 export interface ModelOption {
   id: string;
   label: string;
+  /** Secondary line in the picker (adapter-advertised catalogs carry the provider name here,
+   * disambiguating same-named models across providers); static table entries omit it. */
+  description?: string;
 }
 
 /**

@@ -19,6 +19,11 @@ import type {
   PermissionOutcome,
   ProvidersConfig,
   QuestionOutcome,
+  Schedule,
+  ScheduleId,
+  ScheduleRun,
+  ScheduleSpec,
+  ScheduleUpdate,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -266,4 +271,49 @@ export function archiveWorkspace(
   options: Options<{ workspaceId: WorkspaceId }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).archiveWorkspace(options.workspaceId);
+}
+
+/** Every schedule the daemon holds (active, paused, and completed). */
+export function listSchedules(options?: Options): RequestResult<Schedule[]> {
+  return resolveClient(options).listSchedules();
+}
+
+export function createSchedule(options: Options<{ spec: ScheduleSpec }>): RequestResult<Schedule> {
+  return resolveClient(options).createSchedule(options.spec);
+}
+
+export function updateSchedule(
+  options: Options<{ scheduleId: ScheduleId; patch: ScheduleUpdate }>,
+): RequestResult<Schedule> {
+  return resolveClient(options).updateSchedule(options.scheduleId, options.patch);
+}
+
+export function deleteSchedule(
+  options: Options<{ scheduleId: ScheduleId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).deleteSchedule(options.scheduleId);
+}
+
+export function pauseSchedule(
+  options: Options<{ scheduleId: ScheduleId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).pauseSchedule(options.scheduleId);
+}
+
+export function resumeSchedule(
+  options: Options<{ scheduleId: ScheduleId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).resumeSchedule(options.scheduleId);
+}
+
+export function runScheduleOnce(
+  options: Options<{ scheduleId: ScheduleId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).runScheduleOnce(options.scheduleId);
+}
+
+export function listScheduleRuns(
+  options: Options<{ scheduleId: ScheduleId; limit?: number }>,
+): RequestResult<ScheduleRun[]> {
+  return resolveClient(options).listScheduleRuns(options.scheduleId, options.limit);
 }

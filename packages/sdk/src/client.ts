@@ -25,6 +25,11 @@ import type {
   PermissionOutcome,
   ProvidersConfig,
   QuestionOutcome,
+  Schedule,
+  ScheduleId,
+  ScheduleRun,
+  ScheduleSpec,
+  ScheduleUpdate,
   SessionId,
   SessionInfo,
   SessionNotification,
@@ -308,6 +313,38 @@ export class LinkCodeSdkClient {
   /** Drop a workspace from the registry; never touches the directory on disk. */
   archiveWorkspace(workspaceId: WorkspaceId): RequestResult<{ ok: true }> {
     return toResult(this.raw.archiveWorkspace(workspaceId));
+  }
+
+  createSchedule(spec: ScheduleSpec): RequestResult<Schedule> {
+    return toResult(this.raw.createSchedule(spec));
+  }
+
+  updateSchedule(scheduleId: ScheduleId, patch: ScheduleUpdate): RequestResult<Schedule> {
+    return toResult(this.raw.updateSchedule(scheduleId, patch));
+  }
+
+  deleteSchedule(scheduleId: ScheduleId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.deleteSchedule(scheduleId));
+  }
+
+  pauseSchedule(scheduleId: ScheduleId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.pauseSchedule(scheduleId));
+  }
+
+  resumeSchedule(scheduleId: ScheduleId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.resumeSchedule(scheduleId));
+  }
+
+  runScheduleOnce(scheduleId: ScheduleId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.runScheduleOnce(scheduleId));
+  }
+
+  listSchedules(): RequestResult<Schedule[]> {
+    return toResult(this.raw.listSchedules());
+  }
+
+  listScheduleRuns(scheduleId: ScheduleId, limit?: number): RequestResult<ScheduleRun[]> {
+    return toResult(this.raw.listScheduleRuns(scheduleId, limit));
   }
 }
 

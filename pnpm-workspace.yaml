@@ -38,6 +38,9 @@ allowBuilds:
   # Downloads the checksum-pinned GhosttyKit.xcframework backing the mobile terminal view;
   # without it pod install fails on a missing vendored framework.
   expo-libghostty: true
+  # Transitive dep of @effect/platform-node (CODE-244). Our runtime path (NodeRuntime.runMain)
+  # never touches msgpackr, and msgpackr falls back to pure JS without the native extension.
+  msgpackr-extract: false
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.
@@ -100,6 +103,9 @@ catalog:
   "@iconify-json/material-icon-theme": ^1.2.69
 
 minimumReleaseAgeExclude:
+  # Effect v4 betas ship every 1-2 days; the daemon pins an exact beta (CODE-244).
+  - effect@4.0.0-beta.98
+  - "@effect/platform-node@4.0.0-beta.98"
   # First-party mobile terminal view, released same-day as the integration.
   - expo-libghostty@0.6.0
   # codex platform artifacts are versions of @openai/codex keyed <ver>-<platform>-<arch>.

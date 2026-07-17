@@ -2,6 +2,7 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -14,6 +15,7 @@ import type {
   ToolCall,
   ToolCallContent,
   ToolCallUpdate,
+  UsageReport,
 } from '@linkcode/schema';
 
 /**
@@ -104,6 +106,10 @@ export interface ConversationViewModel {
   status: SessionStatus | null;
   /** Latest cumulative token usage. */
   usage: TokenUsage | null;
+  /** Latest structured usage snapshot, from `usage-report` (the whole reply of a provider usage
+   * command such as claude-code's `/usage` — the invocation produces no transcript text). Replaced
+   * wholesale per report; `null` until the session serves one. */
+  usageReport: UsageReport | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
@@ -119,6 +125,9 @@ export interface ConversationViewModel {
   /** Slash-command catalog from `available-commands-update` (full-replace). `null` means the agent
    * advertised none — the composer then offers no command menu. */
   availableCommands: AgentCommand[] | null;
+  /** Model catalog from `available-models-update` (full-replace). `null` means the agent
+   * advertised none — the composer then falls back to its static per-kind table. */
+  availableModels: AgentModelOption[] | null;
   /** Adapter input features from `capabilities-update`; null until the live session advertises. */
   capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */
@@ -186,11 +195,13 @@ export function createConversationBuilder(): ConversationBuilder {
   let gen = 0;
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
+  let usageReport: UsageReport | null = null;
   let currentModeId: string | null = null;
   let approvalPolicy: ApprovalPolicyState | null = null;
   let currentModel: string | null = null;
   let currentEffort: EffortLevel | null = null;
   let availableCommands: AgentCommand[] | null = null;
+  let availableModels: AgentModelOption[] | null = null;
   let capabilities: AgentCapabilities | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
@@ -375,6 +386,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'available-commands-update':
         availableCommands = event.commands;
         break;
+      case 'available-models-update':
+        availableModels = event.models;
+        break;
       case 'capabilities-update':
         capabilities = event.capabilities;
         break;
@@ -383,6 +397,9 @@ export function createConversationBuilder(): ConversationBuilder {
         break;
       case 'token-usage':
         usage = event.usage;
+        break;
+      case 'usage-report':
+        usageReport = event.report;
         break;
       case 'stop':
         stopReason = event.stopReason;
@@ -517,11 +534,13 @@ export function createConversationBuilder(): ConversationBuilder {
       items: out,
       status,
       usage,
+      usageReport,
       currentModeId,
       approvalPolicy,
       currentModel,
       currentEffort,
       availableCommands,
+      availableModels,
       capabilities,
       stopReason,
       pendingPermissionIds: approvals.filter((requestId) => !permissionResolutions.has(requestId)),

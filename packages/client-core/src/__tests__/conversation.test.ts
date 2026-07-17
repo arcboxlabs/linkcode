@@ -61,6 +61,21 @@ describe('buildConversation', () => {
     expect(c.items).toEqual([]);
   });
 
+  it('replaces the model catalog wholesale on each available-models-update', () => {
+    const c = buildConversation([
+      { type: 'available-models-update', models: [{ id: 'stale/old', label: 'Old' }] },
+      {
+        type: 'available-models-update',
+        models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
+      },
+    ]);
+    expect(c.availableModels).toEqual([
+      { id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' },
+    ]);
+    // Catalog updates never add timeline items.
+    expect(c.items).toEqual([]);
+  });
+
   it('coalesces same-messageId agent chunks into one streaming block', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },
@@ -486,6 +501,32 @@ describe('buildConversation', () => {
     expect(c.items.filter((i) => i.kind === 'error')).toHaveLength(1);
     const error = c.items.find((i) => i.kind === 'error');
     expect(error?.turnId).toBeNull();
+  });
+
+  it('exposes the latest usage-report wholesale without adding timeline items', () => {
+    expect(buildConversation([]).usageReport).toBeNull();
+    const first = {
+      subscriptionType: 'max',
+      rateLimits: {
+        windows: [
+          { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
+        ],
+      },
+    };
+    const second = {
+      subscriptionType: 'max',
+      rateLimits: {
+        windows: [
+          { id: 'five_hour', utilization: 42, resetsAt: '2026-07-16T12:49:00Z', durationMins: 300 },
+        ],
+      },
+    };
+    const c = buildConversation([
+      { type: 'usage-report', report: first },
+      { type: 'usage-report', report: second },
+    ]);
+    expect(c.usageReport).toEqual(second);
+    expect(c.items).toHaveLength(0);
   });
 
   it('reflects the latest approval-policy state without adding timeline items', () => {
