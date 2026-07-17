@@ -6,6 +6,7 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useDesktopShellStore } from '../store/store';
+import { registerBrowserWebview } from './webview-registry';
 
 /** All in-app pages share one persisted session (cookies/storage survive restarts). */
 const BROWSER_PARTITION = 'persist:linkcode-browser';
@@ -53,7 +54,9 @@ export function BrowserWebviewPane({
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
   const captureWebview = (element: HTMLWebViewElement | null): void => {
-    setWebview(element as WebviewTag | null);
+    const webviewElement = element as WebviewTag | null;
+    registerBrowserWebview(tabId, webviewElement);
+    setWebview(webviewElement);
   };
 
   useAbortableEffect(

@@ -20,6 +20,7 @@
     "@linkcode/transport": "workspace:*",
     "@openai/codex": "^0.144.1",
     "@opencode-ai/sdk": "^1.17.18",
+    "@sinclair/typebox": "0.27.10",
     "cross-spawn": "^7.0.6",
     "foxts": "^5.8.0",
     "smol-toml": "^1.7.0",

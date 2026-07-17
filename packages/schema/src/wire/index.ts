@@ -4,6 +4,7 @@ import { MessageIdSchema, SessionIdSchema, TimestampSchema } from '../common';
 import { agentLoginWireVariants } from './agent-login';
 import { agentRuntimeWireVariants } from './agent-runtime';
 import { artifactWireVariants } from './artifact';
+import { browserWireVariants } from './browser';
 import { configWireVariants } from './config';
 import { fileWireVariants } from './file';
 import { gitWireVariants } from './git';
@@ -33,7 +34,7 @@ export {
  * so request/response control messages correlate via `clientReqId` → `replyTo`.
  */
 
-export const WIRE_PROTOCOL_VERSION = 37 as const;
+export const WIRE_PROTOCOL_VERSION = 38 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
@@ -50,6 +51,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...scheduleWireVariants,
   ...loopWireVariants,
   ...artifactWireVariants,
+  ...browserWireVariants,
 
   // ── Data plane ──
   z.object({

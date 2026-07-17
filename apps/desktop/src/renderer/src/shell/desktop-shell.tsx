@@ -21,6 +21,7 @@ import {
   isAbsoluteFilePath,
   locateFileArtifact,
   TerminalPanel,
+  useBrowserHostRegistration,
   useCloudHosts,
   useSelectedHostStore,
   WorkspaceServicesMenu,
@@ -35,6 +36,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { DesktopThreadImMenu } from '../cloud-auth/thread-im-menu';
 import { useCloudAccount } from '../cloud-auth/use-cloud-account';
+import { BrowserCommandExecutor } from './browser/browser-command-executor';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
@@ -243,6 +245,15 @@ export function DesktopShell({
     () => systemBridge.browser.onOpenTab(openBrowserTab),
     [systemBridge, openBrowserTab],
   );
+
+  // Desktop is the browser host: broker commands from the daemon drive the same webview
+  // tabs the user sees. The executor is stateless across generations; registration re-runs
+  // per connection generation via the workbench hook.
+  const { current: browserExecutor } = useSingleton(() => {
+    const executor = new BrowserCommandExecutor();
+    return executor.execute.bind(executor);
+  });
+  useBrowserHostRegistration(browserExecutor);
 
   const tBrowser = useTranslations('workbench.preview.browser');
   useAbortableEffect(

@@ -5,6 +5,7 @@ import { env } from 'node:process';
 import type {
   CanUseTool,
   HookCallback,
+  McpSdkServerConfigWithInstance,
   PermissionMode,
   PermissionResult,
   Query,
@@ -55,7 +56,8 @@ import {
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
-import { AUTH_FAILED_ERROR_CODE } from '../adapter';
+import type { BrowserToolsetFactory } from '../adapter';
+import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
 import {
@@ -410,6 +412,49 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** The last published slash-command catalog — the alias authority for command interception
    * (`/cost` resolves to `/usage` via the provider's own aliases, not a hardcoded list). */
   private commandCatalog: AgentCommand[] = [];
+  /** Browser code-mode toolset factory (CODE-267); set by the engine before start when the
+   * feature is enabled. The REPL is created once per Query and rides `options.mcpServers`. */
+  private browserTools: BrowserToolsetFactory | undefined;
+
+  attachBrowserTools(createToolset: BrowserToolsetFactory): void {
+    this.browserTools = createToolset;
+  }
+
+  /** In-process MCP server exposing the single code-mode `execute` tool. */
+  private async buildBrowserMcpServer(): Promise<Record<string, McpSdkServerConfigWithInstance>> {
+    const factory = nullthrow(this.browserTools, 'claude-code: browser tools not attached');
+    const { createSdkMcpServer, tool } = await import('@anthropic-ai/claude-agent-sdk');
+    const toolset = factory();
+    return {
+      browser: createSdkMcpServer({
+        name: 'browser',
+        tools: [
+          tool(
+            'execute',
+            toolset.documentation,
+            { code: z.string().describe('JavaScript for the persistent browser REPL') },
+            async ({ code }) => {
+              const rendered = renderBrowserToolResult(await toolset.execute(code));
+              return {
+                content: [
+                  { type: 'text' as const, text: rendered.text },
+                  ...(rendered.image
+                    ? [
+                        {
+                          type: 'image' as const,
+                          data: rendered.image.base64,
+                          mimeType: rendered.image.mimeType,
+                        },
+                      ]
+                    : []),
+                ],
+              };
+            },
+          ),
+        ],
+      }),
+    };
+  }
 
   protected async onStart(opts: StartOptions): Promise<void> {
     await this.loadSdk(
@@ -611,11 +656,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
     // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
+    // Browser code-mode toolset (CODE-267): an in-process MCP server per Query — the REPL's vm
+    // context lives exactly as long as the conversation process pairing it.
+    const mcpServers = this.browserTools ? await this.buildBrowserMcpServer() : undefined;
     const q = query({
       prompt: queue,
       options: {
         cwd: opts.cwd,
         model: opts.model,
+        ...(mcpServers && { mcpServers }),
         // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
         // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
         pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),

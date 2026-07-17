@@ -11,6 +11,7 @@ export * from './automations/hooks';
 export * from './automations/items';
 export * from './automations/loop-items';
 export * from './automations/store';
+export * from './browser/use-browser-host';
 export * from './cloud';
 export * from './files/hooks';
 export * from './files/locate';

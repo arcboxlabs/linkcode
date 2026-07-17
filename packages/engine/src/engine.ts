@@ -44,6 +44,8 @@ import {
   ScheduleService,
   watchTurn,
 } from './automation';
+import { BrowserBrokerService } from './browser/broker';
+import { BrowserReplHost } from './browser/repl-host';
 import { readWorkspaceFile } from './file-service';
 import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
@@ -102,6 +104,9 @@ type AskRecord =
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
   factory?: AdapterFactory;
+  /** Browser code-mode tools for agents (CODE-267). Default OFF: when false/absent no adapter
+   * ever sees the execute tool; the broker itself always runs (host registration is harmless). */
+  browserToolsEnabled?: boolean;
   sessionStore?: SessionStore;
   ptyBackend?: PtyBackend;
   providerStore?: ProviderConfigStore;
@@ -167,6 +172,8 @@ export class Engine {
   private readonly scheduler: ScheduleService;
   private readonly loops: LoopService;
   private readonly artifactHost: ArtifactHostService;
+  private readonly browserBroker: BrowserBrokerService;
+  private readonly browserToolsEnabled: boolean;
   /** Boot snapshot, replaced by every {@link enqueueRuntimesCollect} pass (install/login/auth
    * events and read-triggered revalidation alike). */
   private agentRuntimes: AgentRuntimes;
@@ -216,6 +223,8 @@ export class Engine {
         )
       : undefined;
     this.artifactHost = new ArtifactHostService(routes);
+    this.browserBroker = new BrowserBrokerService(transport);
+    this.browserToolsEnabled = deps.browserToolsEnabled ?? false;
     this.scheduler = new ScheduleService(
       transport,
       deps.scheduleStore ?? new InMemoryScheduleStore(),
@@ -999,6 +1008,28 @@ export class Engine {
         });
         break;
       }
+      case 'browser.host.register': {
+        this.browserBroker.registerHost(p.hostId);
+        this.sendSuccess(p.clientReqId);
+        break;
+      }
+      case 'browser.host.detached': {
+        this.browserBroker.detachHost(p.hostId);
+        break;
+      }
+      case 'browser.command.result': {
+        this.browserBroker.settle(p.commandId, p.result);
+        break;
+      }
+      case 'browser.execute': {
+        // Awaiting here never blocks the message loop: handle() runs per-message, so the
+        // host's browser.command.result is processed while this dispatch is in flight.
+        const result = await this.browserBroker.dispatch(p.op, p.args);
+        this.transport.send(
+          createWireMessage({ kind: 'browser.executed', replyTo: p.clientReqId, result }),
+        );
+        break;
+      }
       case 'agent-login.start': {
         const logins = this.logins;
         if (!logins) {
@@ -1030,6 +1061,7 @@ export class Engine {
     // Stop launching new automation sessions before the session-teardown sweep runs.
     this.scheduler.shutdown();
     this.loops.shutdown();
+    this.browserBroker.shutdown();
     await Promise.all(
       Array.from(this.sessions.values(), async (session) => {
         session.unsub();
@@ -1058,6 +1090,11 @@ export class Engine {
   ): Promise<void> {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
+    if (this.browserToolsEnabled) {
+      adapter.attachBrowserTools?.(
+        () => new BrowserReplHost((op, args) => this.browserBroker.dispatch(op, args)),
+      );
+    }
     const session: Session = {
       adapter,
       unsub: noop,

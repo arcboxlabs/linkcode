@@ -9,6 +9,7 @@ export * from './account';
 export * from './agent';
 export * from './agent-runtime';
 export * from './artifact';
+export * from './browser';
 export * from './common';
 export * from './content';
 export * from './daemon-runtime';

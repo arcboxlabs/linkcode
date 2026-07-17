@@ -52,6 +52,8 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import type { AgentLoginHandlers } from './client/agent-login-channel';
 import { AgentLoginChannel } from './client/agent-login-channel';
+import type { BrowserCommandExecutor } from './client/browser-host-channel';
+import { BrowserHostChannel } from './client/browser-host-channel';
 import type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
@@ -62,6 +64,7 @@ import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
 export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
+export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
 
@@ -131,6 +134,7 @@ export class LinkCodeClient {
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
+  private readonly browserHost: BrowserHostChannel;
   private readonly agentLogin: AgentLoginChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
   private readonly scheduleEventSubs = new Set<ScheduleEventCb>();
@@ -156,6 +160,7 @@ export class LinkCodeClient {
     this.pending = new PendingRegistry(randomUUID);
     this.control = new ControlChannel(transport, this.pending);
     this.terminals = new TerminalChannel(transport, this.pending, randomUUID);
+    this.browserHost = new BrowserHostChannel(transport, this.pending, randomUUID);
     this.agentLogin = new AgentLoginChannel(transport, this.pending);
   }
 
@@ -421,6 +426,9 @@ export class LinkCodeClient {
       case 'terminal.controller.changed':
       case 'terminal.exit':
         this.terminals.handleMessage(p);
+        break;
+      case 'browser.command':
+        this.browserHost.handleMessage(p);
         break;
       case 'agent-login.started':
       case 'agent-login.url':
@@ -758,6 +766,11 @@ export class LinkCodeClient {
 
   eventsSnapshot(sessionId: SessionId): readonly SequencedAgentEvent[] {
     return this.events.snapshot(sessionId);
+  }
+
+  /** Register this client as THE browser host; `executor` runs broker commands (desktop only). */
+  registerBrowserHost(executor: BrowserCommandExecutor): Promise<void> {
+    return this.browserHost.register(executor);
   }
 
   openTerminal(opts: {

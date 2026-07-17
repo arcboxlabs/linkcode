@@ -181,6 +181,8 @@ async function main(): Promise<void> {
       // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
       const agentRuntimesReady = agentRuntimeProber.collect();
       const engine = new Engine(hub, {
+        // Browser code-mode tools (CODE-267): opt-in env gate until the Settings toggle lands.
+        browserToolsEnabled: process.env.LINKCODE_BROWSER_TOOLS === '1',
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         sessionStore: createSessionStore(databasePath()),
