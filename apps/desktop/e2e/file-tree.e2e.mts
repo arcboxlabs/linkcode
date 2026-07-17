@@ -107,6 +107,41 @@ async function run(win: Page): Promise<void> {
     fail('clicking the tree row did not open the file viewer with its content');
   }
   console.log('viewer opened with file content after tree click');
+
+  // Long unwrapped lines must scroll inside the viewer, not clip at the window edge
+  // (regression: the viewer flex column lacked min-w-0 and grew to its content width).
+  await win.evaluate(() => {
+    const host = document.querySelector('file-tree-container');
+    const row = host?.shadowRoot?.querySelector<HTMLElement>(
+      'button[data-type="item"][aria-label="long-line.txt"]',
+    );
+    if (!row) throw new Error('no tree row for long-line.txt');
+    row.click();
+  });
+  await win.waitForTimeout(2000);
+
+  const viewer = await win.evaluate(() => {
+    const pre = [...document.querySelectorAll('pre')].find((el) =>
+      el.textContent?.includes('end-of-long-line'),
+    );
+    if (!pre) return null;
+    const rect = pre.getBoundingClientRect();
+    return {
+      right: rect.right,
+      innerWidth: window.innerWidth,
+      scrollWidth: pre.scrollWidth,
+      clientWidth: pre.clientWidth,
+    };
+  });
+  console.log('long-line viewer metrics:', JSON.stringify(viewer));
+  if (!viewer) fail('long-line.txt did not open in the plain-text viewer');
+  if (viewer.right > viewer.innerWidth + 1) {
+    fail('viewer overflows the window instead of scrolling (missing min-w-0)');
+  }
+  if (viewer.scrollWidth <= viewer.clientWidth) {
+    fail('long line is not horizontally scrollable inside the viewer');
+  }
+  console.log('long-line content scrolls inside the viewer');
 }
 
 async function main(): Promise<void> {
@@ -126,6 +161,7 @@ async function main(): Promise<void> {
   mkdirSync(join(chatRoot, 'docs'), { recursive: true });
   mkdirSync(join(chatRoot, '.hidden'), { recursive: true });
   writeFileSync(join(chatRoot, 'fixture-readme.md'), '# Tree fixture readme content\n');
+  writeFileSync(join(chatRoot, 'long-line.txt'), `${'x'.repeat(2000)} end-of-long-line\n`);
   writeFileSync(join(chatRoot, 'docs', 'notes.md'), '# Notes\n');
   writeFileSync(join(chatRoot, '.hidden', 'secret.txt'), 'nope\n');
 

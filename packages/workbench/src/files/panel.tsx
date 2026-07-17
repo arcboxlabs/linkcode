@@ -51,7 +51,9 @@ export function FilesPanel({
           <WorkspaceFileTree key={cwd} paths={treeFiles} onFileOpen={onOpenFile} />
         )}
       </div>
-      <div className="flex h-full min-h-0 flex-1 flex-col">
+      {/* min-w-0: without it this flex item's min-width tracks the viewer's widest line and
+          long unwrapped content clips at the panel edge instead of scrolling inside the pre. */}
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
         {tabs.length === 0 ? (
           <div className="flex h-full items-center justify-center p-6 text-center text-muted-foreground text-sm">
             {t('empty')}
