@@ -8,8 +8,12 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  LoopInspection,
+  LoopRecord,
   ManagedAssetStatus,
   ProvidersConfig,
+  Schedule,
+  ScheduleRun,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -47,9 +51,8 @@ export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
 }
 
 /**
- * The value each correlated request kind resolves with. One entry per distinct control request the
- * client can have in flight, keyed by a short tag rather than the wire message kind (several kinds,
- * e.g. `session.start`/`session.resume`/`history.resume`, share the same reply and the same tag).
+ * The value each correlated request kind resolves with, keyed by a short tag rather than the wire
+ * kind — several kinds (e.g. `session.start`/`session.resume`/`history.resume`) share one tag.
  */
 export interface PendingValueMap {
   start: SessionId;
@@ -71,6 +74,13 @@ export interface PendingValueMap {
   artifactHost: HostedArtifact;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
+  scheduleCreate: Schedule;
+  scheduleUpdate: Schedule;
+  scheduleList: Schedule[];
+  scheduleRuns: ScheduleRun[];
+  loopStart: LoopRecord;
+  loopList: LoopRecord[];
+  loopInspect: LoopInspection;
   ack: RequestAck;
   terminalOpen: string;
   terminalList: TerminalMetadata[];
@@ -81,9 +91,8 @@ export interface PendingValueMap {
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };
 
 /**
- * One map per correlated request kind (see {@link PendingValueMap}), so each kind keeps its own
- * strong result type while `register`/`resolve`/`reject`/`failAll` are implemented once instead of
- * once per kind. Replaces the client's former 13 parallel `pendingXxx` maps.
+ * One pending map per correlated request kind (see {@link PendingValueMap}), keeping each kind's
+ * strong result type behind a single register/resolve/reject/failAll implementation.
  */
 export class PendingRegistry {
   private readonly maps: PendingMaps = {
@@ -106,6 +115,13 @@ export class PendingRegistry {
     artifactHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
+    scheduleCreate: new Map(),
+    scheduleUpdate: new Map(),
+    scheduleList: new Map(),
+    scheduleRuns: new Map(),
+    loopStart: new Map(),
+    loopList: new Map(),
+    loopInspect: new Map(),
     ack: new Map(),
     terminalOpen: new Map(),
     terminalList: new Map(),
@@ -173,9 +189,8 @@ function toError(err: unknown): Error {
 }
 
 /**
- * Send a request correlated by a fresh `clientReqId`, registering it with `pending` before the send
- * so a reply that races the send (same tick, e.g. a local transport) can never resolve before the
- * awaiter exists. A send failure (sync throw or rejected promise) rejects the same pending entry.
+ * Send a request correlated by a fresh `clientReqId`, registered BEFORE the send so a same-tick
+ * reply (local transport) can't beat the awaiter. A send failure rejects the same pending entry.
  */
 export function sendCorrelated<K extends keyof PendingValueMap>(
   transport: Transport,

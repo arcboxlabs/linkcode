@@ -6,9 +6,8 @@ import { PROFILE } from './constants';
 import { getSettings } from './settings';
 
 /**
- * Resolve the daemon endpoint the renderer should dial: the explicit settings override when
- * present, else the endpoint the running daemon advertises in the profile's runtime.json,
- * else the default port. Synchronous so it can serve the renderer's boot snapshot.
+ * Daemon endpoint for the renderer: settings override → the running daemon's runtime.json
+ * advertisement → the default port. Synchronous so it can serve the renderer's boot snapshot.
  */
 export function resolveDaemonUrl(): string {
   return getSettings().daemonUrl ?? discoverRuntimeUrl() ?? DAEMON_DEFAULT_URL;
@@ -27,9 +26,8 @@ function discoverRuntimeUrl(): string | null {
 const RUNTIME_WATCH_DEBOUNCE_MS = 100;
 
 /**
- * Watch the daemon runtime file and fire `onChange` (debounced) when a daemon (re)starts or
- * stops. Watches the parent directory: the file itself is created/removed across daemon
- * lifetimes, and a watcher pinned to a deleted inode goes blind.
+ * Fire `onChange` (debounced) when a daemon (re)starts or stops. Watches the parent directory:
+ * the file is created/removed across daemon lifetimes, and a watcher on a deleted inode goes blind.
  */
 export function watchDaemonRuntime(onChange: () => void): () => void {
   const file = daemonRuntimeFilePath(PROFILE);

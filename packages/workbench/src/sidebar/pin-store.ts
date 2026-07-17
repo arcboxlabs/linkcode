@@ -17,10 +17,8 @@ export interface SidebarPinState {
   togglePinned: (id: SessionId) => void;
 }
 
-/**
- * Persists which threads are pinned in the sidebar. Ids of sessions that no longer exist are
- * harmless — they simply match nothing when ordering — so the store never prunes.
- */
+/** Persists which threads are pinned in the sidebar. Ids of dead sessions are harmless — they
+ * match nothing when ordering — so the store never prunes. */
 export const useSidebarPinStore = create<SidebarPinState>()(
   zodPersist<SidebarPinState, [], [], PersistedPinnedThreads, PersistedPinnedThreads>(
     (set) => ({

@@ -7,8 +7,7 @@ interface DiffRow {
   text: string;
 }
 
-// A file's content normally ends in a newline; splitting on '\n' would then yield a trailing empty
-// element that counts as a phantom extra line (e.g. "added\n" → 2 lines). Strip one trailing newline.
+// Strip one trailing newline: "added\n".split('\n') would count a phantom extra line.
 const TRAILING_NEWLINE_RE = /\n$/;
 
 export function diffLines(oldStr: string, newStr: string): DiffRow[] {
@@ -18,9 +17,8 @@ export function diffLines(oldStr: string, newStr: string): DiffRow[] {
   const m = oldLines.length;
   const n = newLines.length;
 
-  // The LCS DP matrix is O(m*n) cells; a multi-thousand-line diff (e.g. 1000x1000) would allocate
-  // millions of entries on every render. Above ~250k cells, skip the alignment and fall back to a
-  // trivial diff (all old lines removed, all new lines added).
+  // The LCS DP matrix is O(m*n) cells and reallocates per render; above ~250k cells, skip
+  // alignment and fall back to a trivial diff (all old lines removed, all new lines added).
   if (m * n > 250000) {
     const rows: DiffRow[] = [];
     for (let i = 0; i < m; i++) {

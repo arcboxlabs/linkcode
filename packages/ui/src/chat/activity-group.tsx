@@ -23,7 +23,12 @@ import { DiffCounter } from './diff-block';
 import { toolCallDiffStats } from './diff-utils';
 import { TOOL_DETAIL_SCROLL_CLASS_NAME } from './tool';
 import { ToolCallBody } from './tool-call-item';
-import { hasToolBody, toolCallHeaderSummary } from './tool-utils';
+import {
+  hasToolBody,
+  toolCallContextSummary,
+  toolCallDisplayTitle,
+  toolCallHeaderSummary,
+} from './tool-utils';
 import { FilePathTooltip } from './with-tooltip';
 
 export type ActivityToolGroup = Extract<TimelineEntry, { type: 'group' }>;
@@ -75,7 +80,10 @@ export function ActivityGroup({
             {open
               ? ''
               : summaries
-                  .map((summary, index) => summary?.label ?? group.items[index].toolCall.title)
+                  .map(
+                    (summary, index) =>
+                      summary?.label ?? toolCallDisplayTitle(group.items[index].toolCall),
+                  )
                   .join(', ')}
           </span>
           <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
@@ -141,8 +149,9 @@ function ActivityGroupRow({
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
   const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
-  const summary = toolCallHeaderSummary(toolCall);
-  const summaryIsTitle = summary?.label === toolCall.title;
+  const summary = toolCallContextSummary(toolCall);
+  const title = toolCallDisplayTitle(toolCall);
+  const summaryIsTitle = summary?.label === title;
   const titleAnchorRef = summaryIsTitle ? tooltipAnchorRef : undefined;
   const titleClassName = cn(
     'flex min-w-0 items-center py-0.5 text-left text-sm',
@@ -151,7 +160,7 @@ function ActivityGroupRow({
   const label = (
     <>
       <span className="min-w-0 truncate" ref={titleAnchorRef}>
-        {toolCall.title}
+        {title}
       </span>
       {summary && !summaryIsTitle ? (
         <>

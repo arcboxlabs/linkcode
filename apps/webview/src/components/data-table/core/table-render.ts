@@ -53,19 +53,11 @@ export interface TableRender<TData, TSort = undefined, TSizing = undefined> {
 }
 
 /**
- * Pre-keys every column, row, and cell AND invokes the cell renderers, so UI
- * code maps `columns` / `rows` directly into elements without touching
- * `getRowId` / `getCellId` / `column.cell` itself. `data` may be undefined
- * (first fetch still in flight) — that yields no rows; loading/empty branching
- * stays with the caller.
- *
- * Optional `features` integrates sort / column-sizing state: each rendered
- * column carries the resolved fields directly (e.g. `column.sort.sortDirection`,
- * `column.sort.sortHandler`) so the consumer never has to do manual id lookups.
- *
- * Pure derivation, deliberately NOT a hook: it holds no state, so it stays
- * callable from any layer and React Compiler memoizes call sites inside
- * components.
+ * Pre-keys every column/row/cell and invokes the cell renderers, so UI maps
+ * `columns` / `rows` straight into elements. Undefined `data` (first fetch) yields
+ * no rows — loading/empty branching stays with the caller. Optional `features` folds
+ * sort / column-sizing state into each rendered column (no manual id lookups).
+ * Pure derivation, deliberately NOT a hook, so React Compiler memoizes call sites.
  */
 export function createTableRender<
   TData,

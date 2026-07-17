@@ -2,9 +2,8 @@ import { RenderPrefsProvider } from '@linkcode/ui';
 import { useAppearancePrefsStore } from './appearance-store';
 
 /**
- * Bridges the shared appearance store into UI's `RenderPrefs` context so presentation components
- * (e.g. the streaming `Shimmer`) can honor the reduce-motion preference. Mounted once at the
- * workbench app root, above every surface that renders motion.
+ * Bridges the appearance store into UI's `RenderPrefs` context so presentation components can
+ * honor the reduce-motion preference. Mounted once at the workbench app root, above all motion.
  */
 export function AppearanceRenderPrefsProvider({
   children,

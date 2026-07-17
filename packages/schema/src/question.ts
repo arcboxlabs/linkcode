@@ -1,11 +1,9 @@
 import { z } from 'zod';
 import { ToolCallUpdateSchema } from './tool-call';
 
-/**
- * Structured question flow — the agent asks the user to choose among options (claude-code's
- * AskUserQuestion tool). Distinct from the permission flow: a permission ask is allow/deny over a
- * tool's execution, while a question ask collects answers that become the tool's own result.
- */
+/** Structured question flow (claude-code's AskUserQuestion). Distinct from the permission flow:
+ * a permission ask is allow/deny over a tool's execution, while a question ask collects answers
+ * that become the tool's own result. */
 
 export const QuestionOptionSchema = z.object({
   optionId: z.string().trim().min(1),

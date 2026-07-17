@@ -10,6 +10,7 @@ import { Engine } from '../engine';
 function harness(
   agentRuntimes?: AgentRuntimes,
   collectAgentRuntimes?: () => Promise<AgentRuntimes>,
+  agentRuntimesReady?: Promise<AgentRuntimes>,
 ) {
   const sent: WirePayload[] = [];
   let handler: ((msg: WireMessage) => void) | null = null;
@@ -25,7 +26,7 @@ function harness(
     onClose: () => noop,
     close: noop,
   };
-  const engine = new Engine(transport, { agentRuntimes, collectAgentRuntimes });
+  const engine = new Engine(transport, { agentRuntimes, collectAgentRuntimes, agentRuntimesReady });
   function inject(payload: WirePayload): void {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
   }
@@ -172,5 +173,71 @@ describe('agent-runtime.list revalidation (CODE-172)', () => {
     await flushBackground();
     expect(calls).toBe(2);
     expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: fresh });
+  });
+});
+
+describe('boot probe seeding (CODE-225)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const probed: AgentRuntimes = {
+    pi: { status: 'available', source: 'builtin' },
+    'claude-code': {
+      status: 'available',
+      source: 'detected',
+      path: '/x/claude',
+      version: '2.1.202',
+    },
+  };
+
+  it('holds agent-runtime.list until the boot probe lands, then serves the probed snapshot', async () => {
+    let resolveProbe!: (runtimes: AgentRuntimes) => void;
+    const ready = new Promise<AgentRuntimes>((resolve) => {
+      resolveProbe = resolve;
+    });
+    const { engine, sent, inject } = harness(undefined, undefined, ready);
+    await engine.start();
+
+    inject({ kind: 'agent-runtime.list', clientReqId: 'r1' });
+    await flushBackground();
+    expect(sent.filter((p) => p.kind === 'agent-runtime.listed')).toEqual([]);
+
+    resolveProbe(probed);
+    await flushBackground();
+    expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: probed });
+    expect(sent).toContainEqual({ kind: 'agent-runtime.listed', replyTo: 'r1', runtimes: probed });
+  });
+
+  it('a read right after the seed rides the seed cooldown instead of re-probing', async () => {
+    const collect = vi.fn(() => Promise.resolve(probed));
+    const { engine, sent, inject } = harness(undefined, collect, Promise.resolve(probed));
+    await engine.start();
+    await flushBackground();
+
+    inject({ kind: 'agent-runtime.list', clientReqId: 'r1' });
+    await flushBackground();
+    expect(sent).toContainEqual({ kind: 'agent-runtime.listed', replyTo: 'r1', runtimes: probed });
+    expect(collect).not.toHaveBeenCalled();
+  });
+
+  it('a failed boot probe unblocks reads without arming the cooldown', async () => {
+    vi.spyOn(console, 'error').mockImplementation(noop);
+    const collect = vi.fn(() => Promise.resolve(probed));
+    const { engine, sent, inject } = harness(
+      undefined,
+      collect,
+      Promise.reject(new Error('probe died')),
+    );
+    await engine.start();
+    await flushBackground();
+
+    inject({ kind: 'agent-runtime.list', clientReqId: 'r1' });
+    // Unseeded snapshot is served rather than hanging the read forever…
+    expect(sent).toContainEqual({ kind: 'agent-runtime.listed', replyTo: 'r1', runtimes: {} });
+    // …and the unarmed cooldown lets the read-triggered revalidation retry immediately.
+    await flushBackground();
+    expect(collect).toHaveBeenCalledTimes(1);
+    expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: probed });
   });
 });

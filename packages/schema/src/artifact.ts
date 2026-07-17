@@ -1,10 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Ephemeral artifact hosting (CODE-62): the daemon serves an inline artifact's content
- * under its own `artifact--<hash>.localhost` origin through the preview proxy — one
- * origin per artifact, so browser same-origin policy isolates them from each other and
- * from the daemon. Content-addressed, in-memory only: a daemon restart revokes all.
+ * Ephemeral artifact hosting (CODE-62): the daemon serves an inline artifact's content under its
+ * own `artifact--<hash>.localhost` origin through the preview proxy, so same-origin policy
+ * isolates artifacts. Content-addressed, in-memory only: a daemon restart revokes all.
  */
 
 /** Hard cap on hosted content (it crosses the JSON wire and lives in daemon memory). */

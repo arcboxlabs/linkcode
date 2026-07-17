@@ -25,13 +25,10 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   '.html': 'text/html',
 };
 
-/**
- * Read a file for a client's viewer. `requestPath` resolves against the session's
- * workspace directory but may point anywhere the daemon user can read — agents
- * legitimately write outside the workspace, and the daemon serves same-user loopback
- * clients (remote access must gate reads in its own authz layer, not here). Throws
- * (→ `sendFailure`) on a missing or non-file target or an oversized read.
- */
+/** Read a file for a client's viewer. `requestPath` resolves against the workspace directory but
+ * may point anywhere the daemon user can read — agents legitimately write outside the workspace;
+ * remote access must gate reads in its own authz layer, not here. Throws (→ `sendFailure`) on a
+ * missing or non-file target or an oversized read. */
 export async function readWorkspaceFile(cwd: string, requestPath: string): Promise<WorkspaceFile> {
   const resolved = path.resolve(cwd, requestPath);
 
@@ -47,9 +44,8 @@ export async function readWorkspaceFile(cwd: string, requestPath: string): Promi
     await handle.read(buffer, 0, stat.size, 0);
 
     const mimeType = MIME_BY_EXTENSION[path.extname(resolved).toLowerCase()];
-    // Known-binary types (PDF, raster images) must round-trip as base64 even when no NUL lands in
-    // the sniff window — a utf8 decode would corrupt the bytes, and the client's `atob()` on a
-    // utf8-tagged payload throws. SVG stays text (it's XML).
+    // Known-binary types (PDF, raster images) must round-trip as base64 even when no NUL lands
+    // in the sniff window — a utf8 decode would corrupt the bytes. SVG stays text (it's XML).
     const binary = isBinary(buffer) || isBinaryMime(mimeType);
     return {
       path: resolved,

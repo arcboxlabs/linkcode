@@ -4,10 +4,8 @@ export type StartupTarget =
   | { kind: 'host'; hostId: string };
 
 /**
- * Where the startup screen lands once the host registry and account state
- * have both loaded: saved hosts win (last active first), otherwise a
- * signed-in user gets the machine list and a signed-out one first-run
- * sign-in.
+ * Startup destination: saved hosts win (last active first); otherwise signed-in
+ * lands on the machine list, signed-out on first-run sign-in.
  */
 export function resolveStartupTarget(input: {
   hosts: ReadonlyArray<{ id: string }>;

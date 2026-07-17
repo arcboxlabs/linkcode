@@ -7,16 +7,12 @@ export default defineConfig({
   format: ['esm'],
   target: 'node24',
   clean: true,
-  // Each entry must be a single self-contained file. tsup splits ESM by default, hoisting shared and
-  // dynamically-imported modules (e.g. p-map, reached via @linkcode/assets) into sibling chunk-*.js
-  // files — but the desktop packaging copies only index.js into the asar (electron.vite.config.ts
-  // bundle-daemon-artifact), so a split bundle boots to ERR_MODULE_NOT_FOUND on the missing chunk.
+  // Desktop packaging copies only index.js into the asar (electron.vite.config.ts
+  // bundle-daemon-artifact); a split bundle boots to ERR_MODULE_NOT_FOUND on the missing chunk-*.js.
   splitting: false,
-  // Inlined CJS deps (socket.io's tree) call `require()` at runtime; esbuild's ESM output has no
-  // implicit require, so provide one or the bundle dies on boot with "Dynamic require of ... is
-  // not supported". The import binding carries a private alias: the banner is prepended AFTER
-  // esbuild, so a bundled module's own preserved `import { createRequire }` would otherwise
-  // redeclare the identifier and kill the boot.
+  // Inlined CJS deps call `require()`; esbuild's ESM output has none, so provide one or boot dies
+  // with "Dynamic require of ... is not supported". The private alias avoids redeclaring a bundled
+  // module's own preserved `import { createRequire }` (the banner is prepended after esbuild).
   banner: {
     js: "import { createRequire as __linkcodeCreateRequire } from 'node:module'; const require = __linkcodeCreateRequire(import.meta.url);",
   },
@@ -24,7 +20,9 @@ export default defineConfig({
   // too (it's pure JS and daemon-only, and lives in devDependencies): keeping it external would
   // put its whole 15 MB dual-format dist into both deploy closures (desktop asar + standalone)
   // when the bundle only uses the better-sqlite3 dialect.
-  noExternal: [/^@linkcode\//, 'drizzle-orm'],
+  // effect + @effect/platform-node follow the same pattern: pure JS, daemon-only, devDependencies,
+  // bundled in so neither deploy closure has to carry them (CODE-244).
+  noExternal: [/^@linkcode\//, 'drizzle-orm', /^effect(\/|$)/, /^@effect\/platform-node(\/|$)/],
   // The agent SDKs are pulled in (lazily) via @linkcode/agent-adapter, but must stay external: several
   // ship platform-specific native binaries / spawn subprocesses and break if bundled. They load from
   // node_modules at runtime. `ws` (via @linkcode/transport/server) is externalized for the same reason.

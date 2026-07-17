@@ -38,18 +38,12 @@ function replayEventBytes(event: TerminalReplayEvent): number {
     : TERMINAL_RESIZE_REPLAY_BYTES;
 }
 
-/**
- * Cap on retained accumulated output, in characters (see {@link TerminalChannel.outputSnapshot}).
- * This backs a read-only display buffer, so unbounded agent output would otherwise grow memory and
- * per-chunk re-render cost without limit.
- */
+/** Cap (in characters) on retained output for {@link TerminalChannel.outputSnapshot} — unbounded
+ * agent output would grow memory and per-chunk re-render cost without limit. */
 const TERMINAL_OUTPUT_CAP = 200000;
 
-/**
- * Trim buffered terminal output to a cap on a line boundary. Slicing raw would leave the buffer
- * starting mid-ANSI-escape (the head byte gone, the tail rendered as literal garbage); dropping the
- * partial leading line keeps the replay parseable.
- */
+/** Trim buffered output to the cap on a line boundary — a raw slice can start mid-ANSI-escape and
+ * render the tail as literal garbage. */
 function capOutput(text: string, cap: number): string {
   if (text.length <= cap) return text;
   const sliced = text.slice(-cap);
@@ -359,11 +353,8 @@ export class TerminalChannel {
     return () => set.delete(cb);
   }
 
-  /**
-   * Accumulated output for a terminal, capped at {@link TERMINAL_OUTPUT_CAP}. A plain string is
-   * always a stable `useSyncExternalStore` snapshot — two calls with no new output return equal
-   * (by value) primitives — without needing a cached array-like wrapper.
-   */
+  /** Accumulated output, capped at {@link TERMINAL_OUTPUT_CAP}. A plain string is inherently a
+   * stable `useSyncExternalStore` snapshot (value-equal primitives), no cached wrapper needed. */
   outputSnapshot(terminalId: string): string {
     return this.output.get(terminalId) ?? '';
   }

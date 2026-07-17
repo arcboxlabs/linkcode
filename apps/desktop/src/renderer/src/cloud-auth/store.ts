@@ -11,11 +11,10 @@ interface CloudAuthState {
 }
 
 /**
- * Renderer-side view of the cloud auth session. The main process owns the actual session (keychain,
- * browser flow, deep-link callback); this store stays in sync via the plugin's `onAuthenticated` /
- * `onUserUpdated` / `onAuthError` bridges — never a `useEffect` watcher. The subscriptions are wired
- * once when the store is created; the initial seed and focus refresh of `user` come from the
- * `getUser()` SWR resource in `useCloudAccount`.
+ * Renderer-side view of the cloud auth session — the main process owns the real one. Synced via
+ * the plugin's `onAuthenticated`/`onUserUpdated`/`onAuthError` bridges, wired once at store
+ * creation (never a `useEffect` watcher); the initial seed and focus refresh of `user` come from
+ * the `getUser()` SWR resource in `useCloudAccount`.
  */
 export const useCloudAuthStore = create<CloudAuthState>((set) => {
   window.onAuthenticated((user) => set({ user, authenticating: false }));
@@ -27,13 +26,10 @@ export const useCloudAuthStore = create<CloudAuthState>((set) => {
     authenticating: false,
     signIn() {
       set({ authenticating: true });
-      // Re-assert this app as the linkcode(-dev):// default handler before the browser handoff, so
-      // the OAuth callback deep-link routes back to THIS app even if a running `pnpm dev` or the
-      // other channel grabbed the OS-global scheme after startup. `allSettled` → a failed re-assert
-      // still proceeds to sign-in (falling back to the last handler to register).
-      // requestAuth resolves once the system browser has been handed the sign-in URL; the rest of
-      // the flow happens out-of-app (deep link → onAuthenticated). Clear the flag on that handoff —
-      // otherwise abandoning the browser leaves no callback to fire and the button stays disabled.
+      // Re-assert the deep-link scheme before the browser handoff so the OAuth callback routes
+      // back to THIS app; `allSettled` lets a failed re-assert still proceed to sign-in.
+      // requestAuth resolves once the system browser has the sign-in URL — clear the flag on that
+      // handoff, otherwise abandoning the browser leaves no callback and the button stays disabled.
       void Promise.allSettled([window.linkcodeCloud.claimDeepLink()])
         .then(() => window.requestAuth())
         .finally(() => set({ authenticating: false }));

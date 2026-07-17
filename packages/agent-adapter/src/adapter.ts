@@ -15,11 +15,9 @@ import type {
 import type { Unsubscribe } from '@linkcode/transport';
 
 /**
- * AgentAdapter: the unified adapter interface for integrating each coding agent
- * (docs/ARCHITECTURE.md#key-contracts). One adapter per agent, hiding their differences from the
- * upper layers; no per-SDK branching scattered across the upper layers (interface-first,
- * docs/ARCHITECTURE.md#core-principles). Implementations normalize their native events into the
- * zod `AgentEvent` contract (ACP-aligned), and accept the normalized `AgentInput`.
+ * Unified adapter interface, one per coding agent (docs/ARCHITECTURE.md#key-contracts): no per-SDK
+ * branching in upper layers (docs/ARCHITECTURE.md#core-principles). Implementations normalize
+ * native events into the zod `AgentEvent` contract (ACP-aligned) and accept `AgentInput`.
  */
 export interface AgentAdapter {
   readonly kind: AgentKind;
@@ -62,7 +60,7 @@ export function nextRequestId(): string {
 }
 
 /**
- * `AgentEvent` error `code` for a failed-authentication turn (the agent CLI is signed out or its
- * token expired). The daemon re-probes login state on it so a stale "signed in" snapshot self-heals.
+ * `AgentEvent` error `code` for a failed-authentication turn (signed out / expired token); the
+ * daemon keys its login re-probe on it.
  */
 export const AUTH_FAILED_ERROR_CODE = 'authentication_failed';

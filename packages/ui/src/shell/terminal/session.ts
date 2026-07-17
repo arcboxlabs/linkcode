@@ -1,9 +1,7 @@
 import type { TerminalReplayEvent } from '@linkcode/schema';
 
-/**
- * The seam between `<LiveTerminal>` (pure restty rendering) and its data source. The component knows
- * only this interface, so a daemon-backed source or a mock can be supplied by the owning runtime.
- */
+/** Seam between `<LiveTerminal>` and its data source: the component knows only this interface,
+ * so the owning runtime can supply a daemon-backed source or a mock. */
 export interface TerminalSession {
   /** Initial authoritative grid for a viewer attaching before any resize event exists. */
   initialSize(): { cols: number; rows: number } | null;

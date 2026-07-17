@@ -26,20 +26,16 @@ const AGENT_ASSET_IDS: Partial<Record<AgentKind, ManagedAssetId>> = {
 };
 
 /**
- * Kinds whose login CLI opens the browser ITSELF with its loopback-redirect URL (CODE-175):
- * claude prints only the manual code-page URL to stdout while racing an auto-completing
- * localhost callback in the tab it opens — opening the printed URL too would put the user on
- * the paste-code page of a second tab. codex is absent: its app-server returns the URL without
- * opening anything, so the client must open it.
+ * Kinds whose login CLI opens the browser ITSELF (CODE-175): claude prints only the manual
+ * code-page URL, so opening it too would race the CLI's auto-completing tab with a second
+ * paste-code tab. codex is absent — its app-server returns the URL without opening it.
  */
 const SELF_OPENING_LOGIN_KINDS: ReadonlySet<AgentKind> = new Set(['claude-code']);
 
 /**
- * Client-local install activity per asset, layered over the pulled snapshots: `downloading` and
- * `failed` come from the `asset.progress` / `asset.settled` broadcasts, `installed` bridges the
- * gap between a successful settle and the `agent-runtime.changed` re-probe that confirms it
- * (cleared once a push shows this asset's own agent `available`, so probe truth wins — see
- * {@link dropConfirmedInstalls}).
+ * Client-local install activity layered over the pulled snapshots (fed by the `asset.progress` /
+ * `asset.settled` broadcasts). `installed` bridges the gap between a successful settle and the
+ * `agent-runtime.changed` re-probe — probe truth wins (see {@link dropConfirmedInstalls}).
  */
 export type AssetActivity =
   | { kind: 'downloading'; receivedBytes: number; totalBytes?: number }
@@ -59,11 +55,9 @@ function installedAssetKind(id: ManagedAssetId): AgentKind | undefined {
 }
 
 /**
- * Drop the `installed` bridge entries a runtime push confirms — only those whose own agent now
- * probes `available`. Since reads revalidate the snapshot (CODE-172), a push can be caused by an
- * unrelated kind while this asset's probe hasn't caught up yet; clearing on any push would flash
- * the Download card back over a just-settled install. Entries with no owning agent (tool assets)
- * have no cue to guard and drop on any push, as before.
+ * Drop only the `installed` bridges whose own agent now probes `available`: a push can come from
+ * an unrelated kind (reads revalidate, CODE-172), and clearing on any push would flash the
+ * Download card back over a just-settled install. Entries with no owning agent drop on any push.
  */
 export function dropConfirmedInstalls(
   activity: AssetActivityMap,
@@ -83,9 +77,7 @@ export function dropConfirmedInstalls(
 
 /**
  * Client-local progress of an interactive `agent-login`, layered over the probed `loggedIn: false`.
- * `opening` waits for the browser URL, `awaiting-code` holds it for the paste-code step, `failed`
- * shows the error. Success carries no activity — the `agent-runtime.changed` re-probe flips the
- * probed status to logged-in and the cue disappears.
+ * Success carries no activity — the `agent-runtime.changed` re-probe flips the probed status.
  */
 export type LoginActivity =
   | { kind: 'opening' }
@@ -99,9 +91,9 @@ function versionKey(runtime: AgentRuntimeAvailability): string {
 }
 
 /**
- * Pure cue derivation for the onboarding UI (CODE-112). A kind absent from `runtimes` yields no
- * cue (unevaluated — opencode until CODE-76); `runtimes` still loading yields no cues at all
- * rather than a flash of "missing".
+ * Pure cue derivation for the onboarding UI (CODE-112). A kind absent from `runtimes` is
+ * unevaluated (opencode until CODE-76) and yields no cue; `runtimes` still loading yields no
+ * cues at all rather than a flash of "missing".
  */
 export function deriveAgentRuntimeCues(
   runtimes: AgentRuntimes | undefined,
@@ -135,9 +127,8 @@ function loginCue(activity: LoginActivity | undefined): AgentRuntimeCue {
 }
 
 /**
- * The cue for an install in flight (or just settled) for this asset, whatever the probed status
- * said: `downloading` shows progress, `failed` offers retry, and `installed` bridges the gap to
- * the `agent-runtime.changed` re-probe by clearing the cue (probe truth wins once it arrives).
+ * Cue for an in-flight (or just settled) install, overriding the probed status. `installed`
+ * clears the cue, bridging to the `agent-runtime.changed` re-probe (probe truth wins).
  */
 function activityCue(
   current: AssetActivity | undefined,
@@ -165,17 +156,14 @@ function deriveCue(
 ): AgentRuntimeCue | undefined {
   switch (runtime.status) {
     case 'available':
-      // Installed but signed out — offer the login flow. `auth` absent means unprobed (pi/opencode)
-      // or a fail-open probe: don't block. A configured API key is injected as ANTHROPIC_API_KEY at
-      // spawn (applyProviderDefaults), so it makes a signed-out CLI runnable — skip the cue then. An
-      // in-flight login overrides while it runs.
+      // `auth` absent means unprobed or a fail-open probe — don't block. A configured API key is
+      // injected at spawn (applyProviderDefaults), making a signed-out CLI runnable — no cue then.
       return runtime.auth?.loggedIn === false && !providers[kind]?.apiKey
         ? loginCue(loginActivity[kind])
         : undefined;
     case 'out-of-range': {
-      // "Download paired version" runs the same install as the missing flow — its activity must
-      // win over the probed status here too, or the card never shows progress and a settled
-      // install stays blocked until the re-probe push lands.
+      // "Download paired version" is the same install as the missing flow — activity must win over
+      // the probed status here too, or progress never shows and a settled install stays blocked.
       const assetId = AGENT_ASSET_IDS[kind];
       const fromActivity = activityCue(assetId ? activity[assetId] : undefined);
       if (fromActivity === 'installed') return undefined;
@@ -199,8 +187,7 @@ function deriveCue(
 }
 
 /**
- * Everything the onboarding UI needs, per agent kind: the derived cue map plus the download and
- * "continue with unverified version" actions. Progress and terminal state stream in via the
+ * The derived cue map plus the onboarding actions, per agent kind. Progress streams in via the
  * asset broadcasts; snapshots revalidate through the push-aware useAssets/useAgentRuntimes.
  */
 export function useAgentRuntimeOnboarding(): {
@@ -304,10 +291,8 @@ export function useAgentRuntimeOnboarding(): {
         entry.loginId = loginId;
         client.subscribeAgentLogin(loginId, {
           onUrl(url) {
-            // Desktop routes `_blank` to the system browser (main-process window handler); webview
-            // opens a tab. A fallback link in the card reopens `url` if the launch was blocked.
-            // Self-opening CLIs already launched their auto-completing loopback tab — the printed
-            // manual URL stays on the card as the fallback instead of racing it in a second tab.
+            // Desktop routes `_blank` to the system browser; the card keeps `url` as a fallback
+            // link. Self-opening CLIs already launched their own tab — don't race it in a second.
             if (!SELF_OPENING_LOGIN_KINDS.has(kind)) {
               window.open(url, '_blank', 'noopener,noreferrer');
             }

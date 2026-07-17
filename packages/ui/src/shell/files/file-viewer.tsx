@@ -106,9 +106,8 @@ function pdfBlobUrlFor(file: WorkspaceFile): string {
   return url;
 }
 
-/** Chromium's built-in PDF viewer refuses `data:` documents (and in Electron only
- * loads via frame navigation, not <object>/<embed>), so the base64 payload becomes a
- * blob URL in an iframe. */
+/** Chromium's PDF viewer refuses `data:` documents (and in Electron loads only via frame
+ * navigation, not <object>/<embed>), so the base64 payload becomes a blob URL in an iframe. */
 function PdfView({
   file,
   className,

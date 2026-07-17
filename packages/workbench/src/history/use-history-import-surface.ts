@@ -29,10 +29,9 @@ export interface HistoryImportSurface {
 }
 
 /**
- * Headless container for the history import surface: one instance feeds both the host's chrome
- * controls (title count, refresh, sort) and the conversation list. A second
- * `useWorkbenchSessions` instance is safe here: the session list rides one shared SWR key and
- * selection/navigation live in module-scope stores.
+ * Headless container for the history import surface, feeding both the host's chrome controls and
+ * the conversation list. A second `useWorkbenchSessions` instance is safe here: the session list
+ * rides one shared SWR key and selection/navigation live in module-scope stores.
  */
 export function useHistoryImportSurface(
   kind: AgentKind,

@@ -16,21 +16,16 @@ export interface WsReconnectOptions {
 
 export interface WsTransportOptions {
   url: string;
-  /**
-   * Auth-token provider for the tunnel handshake, appended as the `access_token` query param on every
-   * (re)connect. It's a function, not a static string, so a reconnect after the short-lived tunnel JWT
-   * has expired re-mints a fresh one. Omit for unauthenticated endpoints (e.g. a local ws daemon).
-   */
+  /** Auth-token provider for the tunnel handshake, appended as `access_token` on every
+   * (re)connect. A function so a reconnect after the short-lived tunnel JWT expires re-mints a
+   * fresh one; omit for unauthenticated endpoints. */
   getToken?: () => string | Promise<string>;
   /** WebSocket subprotocol(s) to offer — the cloud tunnel requires its versioned subprotocol. */
   protocols?: string | string[];
-  /**
-   * Auto-reconnect an *established* connection that drops, with exponential backoff. Off by default,
-   * preserving the plain "close on drop" behavior; the initial `connect()` never auto-retries either
-   * way, so callers keep their "connect rejects when the host is unreachable" contract. `true` uses
-   * the defaults. While reconnecting, `onClose` stays silent — it fires only on a terminal close
-   * (`close()` or the retry budget exhausted).
-   */
+  /** Auto-reconnect an *established* connection that drops, with exponential backoff (off by
+   * default; `true` uses the defaults). The initial `connect()` never auto-retries, so "connect
+   * rejects when the host is unreachable" still holds. While reconnecting, `onClose` stays
+   * silent — it fires only on a terminal close (`close()` or the retry budget exhausted). */
   reconnect?: WsReconnectOptions | boolean;
   /** Inject a WebSocket implementation (for older Node / testing); defaults to the global WebSocket. */
   WebSocketImpl?: typeof WebSocket;
@@ -44,10 +39,9 @@ const RECONNECT_DEFAULTS: Required<WsReconnectOptions> = {
 };
 
 /**
- * WsTransport: remote implementation via a Server tunnel (docs/ARCHITECTURE.md#packages--repo-layout).
- * Reuses the global WebSocket (available in browsers / RN / Node ≥ 22). Carries the tunnel auth token
- * and, when enabled, transparently reconnects a dropped connection with exponential backoff so upper
- * layers see one continuous session.
+ * Remote Transport over the global WebSocket (browsers / RN / Node ≥ 22). Carries the tunnel
+ * auth token and, when enabled, transparently reconnects a dropped connection with exponential
+ * backoff so upper layers see one continuous session.
  */
 export class WsTransport extends WireConnection {
   private ws: WebSocket | null = null;

@@ -1,7 +1,6 @@
 /**
  * @linkcode/client-core — the data layer shared across all three platforms
- * (docs/ARCHITECTURE.md#packages--repo-layout).
- * Data fetching / caching can be paired with TanStack Query / SWR on each platform; the event stream flows through the subscription hooks here.
+ * (docs/ARCHITECTURE.md#packages--repo-layout); the event stream flows through its subscription hooks.
  */
 export * from './client';
 export * from './conversation';

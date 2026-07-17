@@ -5,6 +5,8 @@ import type {
   AgentCommand,
   AgentEvent,
   AgentHistoryId,
+  AgentKind,
+  AgentModelOption,
   AgentRuntimes,
   ApprovalPolicyState,
   AssetInstallEvent,
@@ -13,6 +15,7 @@ import type {
   InstalledAsset,
   ManagedAssetId,
   ManagedAssetStatus,
+  SessionAutomation,
   SessionId,
   SessionInfo,
   SessionNotificationReason,
@@ -33,6 +36,14 @@ import { ArtifactHostService } from './artifacts/host-service';
 import type { AskEvent, AskResolutionEvent, AskResponseInput } from './ask-response';
 import { sessionCancellation, userResolution, validateAskResponse } from './ask-response';
 import { assertAttachmentContentAllowed } from './attachment-guard';
+import type { LoopStore, ScheduleStore, SessionDriver } from './automation';
+import {
+  InMemoryLoopStore,
+  InMemoryScheduleStore,
+  LoopService,
+  ScheduleService,
+  watchTurn,
+} from './automation';
 import { readWorkspaceFile } from './file-service';
 import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
@@ -76,6 +87,9 @@ interface Session {
   /** Latest slash-command catalog the adapter advertised, replayed on attach for the same reason —
    * without it a reconnecting client's composer loses the command menu. */
   availableCommands?: AgentCommand[];
+  /** Latest model catalog the adapter advertised (install-dependent agents only), replayed on
+   * attach for the same reason — without it a reconnecting client loses the model picker. */
+  availableModels?: AgentModelOption[];
   /** Stable adapter input surface, replayed on attach so clients never infer it from agent kind. */
   capabilities: AgentCapabilities;
 }
@@ -98,6 +112,11 @@ export interface EngineDeps {
   previewRoutes?: PreviewRouteRegistry;
   /** Boot-time probe result (`collectAgentRuntimes()`), served to clients on `agent-runtime.list`. */
   agentRuntimes?: AgentRuntimes;
+  /** In-flight boot probe (CODE-225). The daemon binds listeners without waiting on the CLI
+   * spawns behind `collect()`, handing the pending promise in instead: the engine seeds the
+   * snapshot from it, holds `agent-runtime.list` replies and live-session starts until it
+   * settles, and pushes the seeded result as `agent-runtime.changed`. */
+  agentRuntimesReady?: Promise<AgentRuntimes>;
   /** Managed-asset store, served on `asset.list` and driven by `asset.ensure`. */
   assets?: AssetService;
   /** Re-probe hook: refreshes the served runtime snapshot after a managed agent install lands,
@@ -107,6 +126,10 @@ export interface EngineDeps {
   resolveLoginBinary?: LoginBinaryResolver;
   /** Local Anthropic⇄OpenAI translation sidecar; absent Engines reject cross-protocol accounts. */
   translator?: TranslatorService;
+  /** Durable store for schedules; the in-memory default keeps bare engines and tests dependency-free. */
+  scheduleStore?: ScheduleStore;
+  /** Durable store for loops; the in-memory default keeps bare engines and tests dependency-free. */
+  loopStore?: LoopStore;
 }
 
 /** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
@@ -123,15 +146,10 @@ const ASSET_PROGRESS_INTERVAL_MS = 150;
 const RUNTIME_REVALIDATE_COOLDOWN_MS = 5000;
 
 /**
- * Engine: the local core engine — the "host" that runs the agents
- * (docs/ARCHITECTURE.md#the-host-engine-adapters-abstraction).
- * Manages multiple agent sessions, pushing each adapter's normalized events down to clients over the
- * transport and routing input back up to the matching adapter.
- *
- * The transport is decoupled from the carrier: a direct local connection, a fan-out Hub serving many
- * clients, or a tunnel through the Server all use the same Engine (docs/ARCHITECTURE.md#core-principles). Because the daemon broadcasts
- * events to every attached client, request/response control messages are correlated by id: `session.start`
- * carries a `clientReqId` that the matching `session.started` echoes back as `replyTo`.
+ * The local core engine — the "host" that runs the agents, carrier-agnostic
+ * (docs/ARCHITECTURE.md#the-host-engine-adapters-abstraction, #core-principles).
+ * Events broadcast to every attached client, so request/response control messages are correlated
+ * by id: a request's `clientReqId` echoes back as `replyTo` on the matching reply.
  */
 export class Engine {
   private readonly sessions = new Map<SessionId, Session>();
@@ -146,10 +164,17 @@ export class Engine {
   private readonly git: GitService;
   private readonly fileSuggest: FileSuggestService;
   private readonly scripts?: ScriptService;
+  private readonly scheduler: ScheduleService;
+  private readonly loops: LoopService;
   private readonly artifactHost: ArtifactHostService;
   /** Boot snapshot, replaced by every {@link enqueueRuntimesCollect} pass (install/login/auth
    * events and read-triggered revalidation alike). */
   private agentRuntimes: AgentRuntimes;
+  /** Settles when {@link agentRuntimes} is authoritative — immediately, unless the daemon handed
+   * in a pending boot probe (CODE-225). */
+  private readonly agentRuntimesReady: Promise<void> = Promise.resolve();
+  /** False only while that boot probe is in flight; gates the `agent-runtime.list` fast path. */
+  private agentRuntimesSeeded = true;
   private readonly assets?: AssetService;
   private readonly logins?: AgentLoginService;
   private readonly translator?: TranslatorService;
@@ -159,9 +184,8 @@ export class Engine {
   private runtimesCollect: Promise<void> = Promise.resolve();
   /** Queued + running collect passes; read-triggered revalidation coalesces onto them. */
   private runtimesCollectActive = 0;
-  /** When the last collect pass SUCCEEDED — the read-revalidation cooldown reference. A failed
-   * pass leaves it alone so the next read retries immediately instead of serving stale data
-   * behind a cooldown nothing actually refreshed. */
+  /** When the last collect pass SUCCEEDED (the read-revalidation cooldown reference); a failed
+   * pass leaves it alone so the next read retries immediately. */
   private runtimesCollectedAt = 0;
   /** An event-triggered pass that has not started probing yet; simultaneous events join it. */
   private pendingEventPass: Promise<void> | undefined;
@@ -192,7 +216,20 @@ export class Engine {
         )
       : undefined;
     this.artifactHost = new ArtifactHostService(routes);
+    this.scheduler = new ScheduleService(
+      transport,
+      deps.scheduleStore ?? new InMemoryScheduleStore(),
+      this.buildSessionDriver(),
+    );
+    this.loops = new LoopService(
+      transport,
+      deps.loopStore ?? new InMemoryLoopStore(),
+      this.buildSessionDriver(),
+    );
     this.agentRuntimes = deps.agentRuntimes ?? {};
+    if (deps.agentRuntimesReady) {
+      this.agentRuntimesReady = this.seedAgentRuntimes(deps.agentRuntimesReady);
+    }
     this.assets = deps.assets;
     this.translator = deps.translator;
     this.collectAgentRuntimes = deps.collectAgentRuntimes;
@@ -210,6 +247,11 @@ export class Engine {
       this.records.set(record.sessionId, record);
     }
     await this.workspaces.start();
+    // After the session records are loaded (the schedule orphan-sweep reads them) and before the
+    // transport connects, so the first tick can't race an unconnected transport.
+    await this.scheduler.start();
+    // Loops don't resume across a restart; start() only sweeps interrupted loops to `stopped`.
+    await this.loops.start();
     await this.transport.connect();
     this.transport.onMessage((msg) => {
       // Per-request failures already reply over the wire via tryReply; this is the last-resort
@@ -220,20 +262,14 @@ export class Engine {
     });
   }
 
-  /**
-   * Ensure the daemon-owned chat workspace exists at `cwd` — see
-   * {@link WorkspaceRegistry.ensureChatWorkspace}. Called once by the daemon at startup, before any
-   * client can connect.
-   */
+  /** Ensure the daemon-owned chat workspace exists at `cwd` ({@link WorkspaceRegistry.ensureChatWorkspace}).
+   * Called once by the daemon at startup, before any client can connect. */
   ensureChatWorkspace(cwd: string): Promise<WorkspaceRecord> {
     return this.workspaces.ensureChatWorkspace(cwd);
   }
 
-  /**
-   * Resolve a session's StartOptions: apply the bound account/provider defaults, then, for a
-   * cross-protocol account, route the agent through the local translation sidecar (rewriting the
-   * endpoint to its loopback URL). A session that needs translation with no sidecar available fails.
-   */
+  /** Apply the bound account/provider defaults, then route a cross-protocol account through the
+   * local translation sidecar; a session that needs translation with no sidecar available fails. */
   private async resolveStartOptions(opts: StartOptions): Promise<StartOptions> {
     const resolved = applyProviderDefaults(
       opts,
@@ -306,10 +342,9 @@ export class Engine {
             throw error;
           }
           if (startsTurn) session.turnInputActive = true;
-          // Echo the user's prompt into the broadcast stream (and set the title) before awaiting
-          // send: provider events can outrun the dispatch acknowledgement, so waiting would let
-          // assistant output arrive before its user turn. A failed send is broadcast as an explicit
-          // input_rejected error below as well as replying request.failed to the originating client.
+          // Echo the prompt (and set the title) before awaiting send: provider events can outrun
+          // the dispatch ack, so waiting would let assistant output arrive before its user turn.
+          // A failed send still broadcasts input_rejected below and replies request.failed.
           if (p.input.type === 'prompt') {
             assertAttachmentContentAllowed(p.input.content);
             this.transport.send(
@@ -321,9 +356,8 @@ export class Engine {
             );
             this.maybeSetTitle(p.sessionId, p.input.content);
           }
-          // Command/shell inputs echo as the text the user typed (`/name args` / `$ cmd`) so the
-          // transcript shows the invocation; they never drive the title (a session named "/compact"
-          // helps nobody).
+          // Echo command/shell inputs as the text the user typed so the transcript shows the
+          // invocation; they never drive the title.
           if (p.input.type === 'command' || p.input.type === 'shell-command') {
             const text =
               p.input.type === 'command'
@@ -392,9 +426,8 @@ export class Engine {
       }
       case 'session.delete': {
         await this.tryReply(p.clientReqId, async () => {
-          // Idempotent, unlike session.stop: the target is usually cold (the sidebar lists stopped
-          // sessions too) and another client may have deleted it already. Provider-local history is
-          // left untouched, so the conversation stays re-importable via session.import.
+          // Idempotent, unlike session.stop: the target is usually cold or already deleted by
+          // another client. Provider-local history stays untouched, so session.import still works.
           const session = this.sessions.get(p.sessionId);
           if (session) {
             this.closeSessionInteractions(p.sessionId, session);
@@ -430,32 +463,9 @@ export class Engine {
         break;
       }
       case 'session.resume': {
-        await this.tryReply(p.clientReqId, async () => {
-          if (this.sessions.has(p.sessionId)) {
-            throw new Error(`Session is already running: ${p.sessionId}`);
-          }
-          const record = nullthrow(
-            this.records.get(p.sessionId),
-            `Unknown session: ${p.sessionId}`,
-          );
-          // A never-prompted session has no provider transcript to resume from (the adapter only
-          // mints one on the first prompt); waking it is a fresh start under the same Link Code id.
-          const historyId = latestHistoryId(record);
-          const startOpts = await this.resolveStartOptions({
-            kind: record.kind,
-            cwd: record.cwd,
-          });
-          record.runs.push({ historyId, startedAt: Date.now() });
-          await this.startLiveSession(p.clientReqId, record, (adapter) =>
-            historyId === undefined
-              ? adapter.start(startOpts)
-              : this.history.resume(adapter, historyId, startOpts),
-          );
-          // Same contract as session.start / history.resume: waking a session (re)registers its
-          // directory, so imported records and roots archived since still pass the file.suggest
-          // workspace check once their session is live again.
-          if (record.cwd) this.workspaces.touch(record.cwd);
-        });
+        await this.tryReply(p.clientReqId, () =>
+          this.resumeSessionById(p.clientReqId, p.sessionId),
+        );
         break;
       }
       case 'session.import': {
@@ -523,17 +533,14 @@ export class Engine {
         break;
       }
       case 'agent-runtime.list': {
-        this.transport.send(
-          createWireMessage({
-            kind: 'agent-runtime.listed',
-            replyTo: p.clientReqId,
-            runtimes: this.agentRuntimes,
-          }),
-        );
-        // Serve-stale-then-revalidate (CODE-172): login state and user CLI installs change behind
-        // the daemon's back, so a read also kicks a background re-probe; a differing result is
-        // pushed as `agent-runtime.changed`.
-        this.revalidateAgentRuntimes();
+        if (this.agentRuntimesSeeded) {
+          this.replyAgentRuntimes(p.clientReqId);
+        } else {
+          // Held until the boot probe lands (CODE-225): a pre-probe snapshot reads as every
+          // agent missing, and under prompt-first installs (CODE-221) the Download card that
+          // presents is a consent surface — it must not appear on transient ignorance.
+          void this.agentRuntimesReady.then(() => this.replyAgentRuntimes(p.clientReqId));
+        }
         break;
       }
       case 'asset.list': {
@@ -675,11 +682,8 @@ export class Engine {
       }
       case 'file.suggest': {
         await this.tryReply(p.clientReqId, async () => {
-          // Scope suggestions to roots the user has opened: session start/resume `touch`-registers
-          // its cwd, so every legitimate composer root is in the registry, while a stray cwd no
-          // session ever ran in is refused instead of enumerated. (Not a hard boundary — clients
-          // can register workspaces — just the same opened-roots scoping the rest of the product
-          // uses.) The search runs under the registered record's cwd, not the caller's spelling.
+          // Refuse a cwd no session ever ran in (opened-roots scoping, not a hard boundary);
+          // the search runs under the registered record's cwd, not the caller's spelling.
           const workspace = nullthrow(
             this.workspaces.findByCwd(p.cwd),
             `Unknown workspace: ${p.cwd}`,
@@ -745,6 +749,121 @@ export class Engine {
         this.sendSuccess(p.clientReqId);
         break;
       }
+      case 'schedule.create': {
+        await this.tryReply(p.clientReqId, async () => {
+          const schedule = await this.scheduler.create(p.spec);
+          this.transport.send(
+            createWireMessage({ kind: 'schedule.created', replyTo: p.clientReqId, schedule }),
+          );
+        });
+        break;
+      }
+      case 'schedule.update': {
+        await this.tryReply(p.clientReqId, async () => {
+          const schedule = await this.scheduler.update(p.scheduleId, p.patch);
+          this.transport.send(
+            createWireMessage({ kind: 'schedule.updated', replyTo: p.clientReqId, schedule }),
+          );
+        });
+        break;
+      }
+      case 'schedule.delete': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.scheduler.delete(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'schedule.pause': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.scheduler.pause(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'schedule.resume': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.scheduler.resume(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'schedule.run-once': {
+        await this.tryReply(p.clientReqId, () => {
+          this.scheduler.runOnce(p.scheduleId);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'schedule.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'schedule.listed',
+            replyTo: p.clientReqId,
+            schedules: this.scheduler.list(),
+          }),
+        );
+        break;
+      }
+      case 'schedule.runs.list': {
+        await this.tryReply(p.clientReqId, async () => {
+          const runs = await this.scheduler.listRuns(p.scheduleId, p.limit);
+          this.transport.send(
+            createWireMessage({ kind: 'schedule.runs.listed', replyTo: p.clientReqId, runs }),
+          );
+        });
+        break;
+      }
+      case 'loop.start': {
+        await this.tryReply(p.clientReqId, async () => {
+          const loop = await this.loops.startLoop(p.spec);
+          this.transport.send(
+            createWireMessage({ kind: 'loop.started', replyTo: p.clientReqId, loop }),
+          );
+        });
+        break;
+      }
+      case 'loop.stop': {
+        await this.tryReply(p.clientReqId, () => {
+          this.loops.stopLoop(p.loopId);
+          this.sendSuccess(p.clientReqId);
+          return Promise.resolve();
+        });
+        break;
+      }
+      case 'loop.delete': {
+        await this.tryReply(p.clientReqId, async () => {
+          await this.loops.deleteLoop(p.loopId);
+          this.sendSuccess(p.clientReqId);
+        });
+        break;
+      }
+      case 'loop.list': {
+        this.transport.send(
+          createWireMessage({
+            kind: 'loop.listed',
+            replyTo: p.clientReqId,
+            loops: this.loops.list(),
+          }),
+        );
+        break;
+      }
+      case 'loop.inspect': {
+        await this.tryReply(p.clientReqId, async () => {
+          const { loop, iterations, logs } = await this.loops.inspect(p.loopId);
+          this.transport.send(
+            createWireMessage({
+              kind: 'loop.inspected',
+              replyTo: p.clientReqId,
+              loop,
+              iterations,
+              logs,
+            }),
+          );
+        });
+        break;
+      }
       case 'session.attach': {
         // The Hub has already attached this connection to the session before forwarding the frame.
         // Re-emit the buffered state that a history read cannot recover: live status (which gates
@@ -772,6 +891,9 @@ export class Engine {
         replay({ type: 'capabilities-update', capabilities: attached.capabilities });
         if (attached.availableCommands) {
           replay({ type: 'available-commands-update', commands: attached.availableCommands });
+        }
+        if (attached.availableModels) {
+          replay({ type: 'available-models-update', models: attached.availableModels });
         }
         for (const ask of attached.asks.values()) {
           if (ask.state === 'resolved') {
@@ -891,6 +1013,9 @@ export class Engine {
   }
 
   async stop(): Promise<void> {
+    // Stop launching new automation sessions before the session-teardown sweep runs.
+    this.scheduler.shutdown();
+    this.loops.shutdown();
     await Promise.all(
       Array.from(this.sessions.values(), async (session) => {
         session.unsub();
@@ -910,13 +1035,10 @@ export class Engine {
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
   }
 
-  /**
-   * Bind a (new or resumed) record to a live adapter run. The record — already carrying its
-   * current run as the last entry of `runs` — becomes the persisted identity; the adapter's
-   * `session-ref` event later backfills that run's provider-local id.
-   */
+  /** Bind a (new or resumed) record — its current run already last in `runs` — to a live adapter
+   * run; the adapter's `session-ref` event later backfills that run's provider-local id. */
   private async startLiveSession(
-    replyTo: string,
+    replyTo: string | undefined,
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Promise<void>,
   ): Promise<void> {
@@ -932,9 +1054,8 @@ export class Engine {
       capabilities: adapter.capabilities,
     };
     session.unsub = adapter.onEvent((event) => {
-      // The adapter invokes this synchronously; an uncaught throw here would bubble out of
-      // whatever triggered the event (the adapter's own internals, in most cases) instead of
-      // staying contained to this session.
+      // The adapter invokes this synchronously; an uncaught throw would bubble into whatever
+      // triggered the event instead of staying contained to this session.
       try {
         switch (event.type) {
           case 'status':
@@ -983,13 +1104,15 @@ export class Engine {
           case 'available-commands-update':
             session.availableCommands = event.commands;
             break;
+          case 'available-models-update':
+            session.availableModels = event.models;
+            break;
           case 'capabilities-update':
             session.capabilities = event.capabilities;
             break;
           case 'error':
-            // A signed-out/expired-token turn: re-probe so the runtime snapshot flips to
-            // `loggedIn: false` and the client surfaces the login cue, self-healing an out-of-band
-            // auth change the boot-time probe couldn't see.
+            // Signed-out/expired-token turn: re-probe so the runtime snapshot flips to
+            // `loggedIn: false` and the client surfaces the login cue.
             if (event.code === AUTH_FAILED_ERROR_CODE) void this.refreshAgentRuntimes();
             break;
           default:
@@ -1006,6 +1129,15 @@ export class Engine {
     // persistRecord() never throws (see its doc) — a disk failure here logs and moves on rather
     // than failing this request or leaving the session registered without a caller-visible error.
     this.persistRecord(record);
+    // A start can land between listener bind and the boot probe settling (CODE-225); wait, or
+    // `resolveBinary` misses a detected-only install and a packaged host fails the spawn. The
+    // wait sits AFTER registration so a session.delete arriving mid-wait finds the session and
+    // tears it down — the guard then aborts this start instead of resurrecting the deleted record.
+    await this.agentRuntimesReady;
+    if (this.sessions.get(sessionId) !== session) {
+      await adapter.stop().catch(noop);
+      throw new Error(`Session was closed while starting: ${sessionId}`);
+    }
     try {
       await startAdapter(adapter);
     } catch (err) {
@@ -1021,7 +1153,144 @@ export class Engine {
       await adapter.stop().catch(noop);
       throw new Error(`Session was closed while starting: ${sessionId}`);
     }
-    this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+    // Automation-driven sessions have no client awaiting a reply (replyTo === undefined).
+    if (replyTo !== undefined) {
+      this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+    }
+  }
+
+  /**
+   * The session-orchestration surface the automation services drive agents through, as bound
+   * closures over the Engine's internals — so the services never import the Engine (avoiding a
+   * cycle), mirroring how ScriptService receives a `workspaceName` lookup.
+   */
+  private buildSessionDriver(): SessionDriver {
+    return {
+      createSession: async (opts: {
+        kind: AgentKind;
+        cwd: string;
+        model?: string;
+        title?: string;
+        automation: SessionAutomation;
+      }): Promise<SessionId> => {
+        const startOpts = await this.resolveStartOptions({
+          kind: opts.kind,
+          cwd: opts.cwd,
+          model: opts.model,
+        });
+        const now = Date.now();
+        const record: SessionRecord = {
+          sessionId: this.nextSessionId(),
+          kind: startOpts.kind,
+          cwd: startOpts.cwd,
+          title: opts.title,
+          origin: { type: 'created' },
+          automation: opts.automation,
+          createdAt: now,
+          updatedAt: now,
+          runs: [{ startedAt: now }],
+        };
+        await this.startLiveSession(undefined, record, (adapter) => adapter.start(startOpts));
+        if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
+        return record.sessionId;
+      },
+      hasRecord: (sessionId) => this.records.has(sessionId),
+      isBusy: (sessionId) => {
+        const session = this.sessions.get(sessionId);
+        return session !== undefined && (session.turnInputActive || session.status === 'running');
+      },
+      ensureLive: async (sessionId) => {
+        if (this.sessions.has(sessionId)) return;
+        await this.resumeSessionById(undefined, sessionId);
+      },
+      makeUnattended: async (sessionId) => {
+        const session = this.sessions.get(sessionId);
+        if (!session) return;
+        try {
+          // Both policy-bearing adapters (claude-code, codex) name their most permissive policy
+          // `bypassPermissions`; opencode/pi have no policy axis and reject this — swallowed, so a
+          // later ask fails the run instead. Applied only to automation-created sessions.
+          await session.adapter.send({
+            type: 'set-approval-policy',
+            policyId: 'bypassPermissions',
+          });
+        } catch {
+          // Adapter has no approval-policy axis; unattended is best-effort.
+        }
+      },
+      prompt: (sessionId, text, opts) => this.promptAutomationTurn(sessionId, text, opts),
+      stopSession: (sessionId) => this.stopSessionById(sessionId),
+    };
+  }
+
+  /** Echo a prompt into the broadcast stream, dispatch it, and wait for the turn (see watchTurn). */
+  private promptAutomationTurn(
+    sessionId: SessionId,
+    text: string,
+    opts?: { timeoutMs?: number },
+  ): Promise<Awaited<ReturnType<typeof watchTurn>>> {
+    const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
+    if (session.turnInputActive) throw new Error(`Session is busy: ${sessionId}`);
+    session.turnInputActive = true;
+    const content: ContentBlock[] = [{ type: 'text', text }];
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent.event',
+        sessionId,
+        event: { type: 'user-message', content },
+      }),
+    );
+    this.maybeSetTitle(sessionId, content);
+    return watchTurn(
+      session.adapter,
+      () => session.adapter.send({ type: 'prompt', content }),
+      opts,
+    ).catch((err: unknown) => {
+      // The turn never latched running (fatal dispatch/ask); release the gate the status handler
+      // would otherwise have cleared on idle/stopped.
+      if (session.status !== 'running') session.turnInputActive = false;
+      throw err;
+    });
+  }
+
+  /** Stop a live session idempotently, keeping its record. Shared by session.stop and the driver. */
+  private async stopSessionById(sessionId: SessionId): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.unsub();
+    await session.adapter.stop().catch(noop);
+    this.sessions.delete(sessionId);
+    this.terminals?.killBySession(sessionId);
+    this.sealCurrentRun(sessionId);
+  }
+
+  /**
+   * Wake a cold session in place under the same Link Code id. Shared by the `session.resume` wire
+   * handler (which passes its `clientReqId` so `startLiveSession` echoes `session.started`) and the
+   * automation SessionDriver (which passes `undefined` — no client is awaiting a reply).
+   */
+  private async resumeSessionById(
+    replyTo: string | undefined,
+    sessionId: SessionId,
+  ): Promise<void> {
+    if (this.sessions.has(sessionId)) {
+      throw new Error(`Session is already running: ${sessionId}`);
+    }
+    const record = nullthrow(this.records.get(sessionId), `Unknown session: ${sessionId}`);
+    // A never-prompted session has no provider transcript to resume from (the adapter only mints one
+    // on the first prompt); waking it is a fresh start under the same Link Code id.
+    const historyId = latestHistoryId(record);
+    const startOpts = await this.resolveStartOptions({ kind: record.kind, cwd: record.cwd });
+    record.runs.push({ historyId, startedAt: Date.now() });
+    await this.startLiveSession(replyTo, record, (adapter) =>
+      historyId === undefined
+        ? adapter.start(startOpts)
+        : this.history.resume(adapter, historyId, startOpts),
+    );
+    // Same contract as session.start / history.resume: waking a session (re)registers its directory,
+    // so imported records and roots archived since still pass the file.suggest workspace check once
+    // their session is live again.
+    if (record.cwd) this.workspaces.touch(record.cwd);
   }
 
   private beginAskResponse(
@@ -1147,10 +1416,9 @@ export class Engine {
     );
   }
 
-  /** Broadcast `session.notification` for notification-worthy adapter events. Classification is
-   * daemon-side so clients never fold background sessions' event streams; whether to surface it
-   * (focus suppression, user prefs) is client-side presentation policy. Always a broadcast — even
-   * once per-connection subscription modes exist (CODE-72), this frame must reach every client. */
+  /** Classification is daemon-side so clients never fold background sessions' event streams;
+   * surfacing is client-side policy. Must stay a broadcast even once per-connection subscription
+   * modes exist (CODE-72). */
   private maybeNotify(sessionId: SessionId, event: AgentEvent): void {
     const reason = notificationReason(event);
     const record = this.records.get(sessionId);
@@ -1180,6 +1448,7 @@ export class Engine {
       title: record.title,
       origin: record.origin,
       createdVia: record.createdVia,
+      automation: record.automation,
       historyId: latestHistoryId(record),
     };
   }
@@ -1210,22 +1479,14 @@ export class Engine {
     this.persistRecord(record);
   }
 
-  /**
-   * Persist best-effort: `this.records` (in-memory) is the source of truth for a running daemon,
-   * so a persistence failure is logged, not surfaced to the caller — it must never fail the
-   * request that triggered it (e.g. `session.start`) or unwind a session that is already live.
-   * `sessionStore.save` may throw synchronously (the daemon's drizzle/better-sqlite3 store) or
-   * reject asynchronously; both are caught and logged here.
-   */
+  /** Persist best-effort: `this.records` is the source of truth for a running daemon, so a save
+   * failure (sync throw or async rejection) is logged and must never fail the triggering request. */
   private persistRecord(record: SessionRecord): void {
     record.updatedAt = Date.now();
     void this.persistRecordSafely(record);
   }
 
-  /**
-   * `await` inside `try` catches both a synchronous throw (the daemon's drizzle/better-sqlite3
-   * store) and an async rejection with the same catch block, so this never rejects.
-   */
+  /** `await` inside `try` catches both a sync throw and an async rejection, so this never rejects. */
   private async persistRecordSafely(record: SessionRecord): Promise<void> {
     try {
       await this.sessionStore.save(record);
@@ -1282,6 +1543,46 @@ export class Engine {
     }
   }
 
+  /** Reply to `agent-runtime.list`, then serve-stale-and-revalidate (CODE-172): login state and
+   * user CLI installs change behind the daemon's back, so a read also kicks a background
+   * re-probe; a differing result is pushed as `agent-runtime.changed`. */
+  private replyAgentRuntimes(replyTo: string): void {
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent-runtime.listed',
+        replyTo,
+        runtimes: this.agentRuntimes,
+      }),
+    );
+    this.revalidateAgentRuntimes();
+  }
+
+  /**
+   * First pass of the runtime-collect queue: adopt the boot probe the daemon started before
+   * binding listeners (CODE-225). Seeds the snapshot, arms the read-revalidation cooldown, and
+   * pushes the result; event/read passes queue behind it via {@link runtimesCollect}. A failed
+   * probe seeds nothing and leaves the cooldown unarmed, so the next read re-probes immediately.
+   */
+  private seedAgentRuntimes(ready: Promise<AgentRuntimes>): Promise<void> {
+    this.agentRuntimesSeeded = false;
+    this.runtimesCollectActive += 1;
+    const pass = ready
+      .then((runtimes) => {
+        this.agentRuntimes = runtimes;
+        this.runtimesCollectedAt = Date.now();
+        this.transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes }));
+      })
+      .catch((err: unknown) => {
+        console.error('Boot agent-runtime probe failed:', err);
+      })
+      .finally(() => {
+        this.agentRuntimesSeeded = true;
+        this.runtimesCollectActive -= 1;
+      });
+    this.runtimesCollect = pass;
+    return pass;
+  }
+
   /**
    * Event-triggered re-probe (managed agent install landed, interactive login settled, a turn
    * failed with `authentication_failed`): the push is unconditional — clients treat it as the
@@ -1302,13 +1603,9 @@ export class Engine {
     return pass;
   }
 
-  /**
-   * Read-triggered revalidation for `agent-runtime.list` (CODE-172): out-of-band changes the boot
-   * probe can't see (`claude auth logout`, a hand-installed CLI) surface on the next read instead
-   * of on the next failed turn. Coalesced onto any queued collect and rate-limited, because every
-   * client re-reads on the very `agent-runtime.changed` push this can produce; that push is also
-   * diff-gated, or the read→push→read cycle would never converge.
-   */
+  /** Read-triggered revalidation for `agent-runtime.list` (CODE-172): out-of-band changes surface
+   * on the next read. Coalesced, rate-limited, and diff-gated — every client re-reads on the
+   * `agent-runtime.changed` push this produces, so the read→push→read cycle must converge. */
   private revalidateAgentRuntimes(): void {
     if (!this.collectAgentRuntimes) return;
     if (this.runtimesCollectActive > 0) return;
@@ -1361,10 +1658,9 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
   return record.origin.type === 'imported' ? record.origin.historyId : undefined;
 }
 
-/** The notification-worthy subset of adapter events. `stop` is the turn boundary (`status: 'idle'`
- * also fires at session start, so it can't be the trigger); a `permission-request` or
- * `question-request` ask is the only real "awaiting input" signal — no adapter emits an
- * `awaiting-input` status. */
+/** The notification-worthy subset of adapter events. `stop` marks the turn boundary (`idle` also
+ * fires at session start, so it can't be the trigger); an ask is the only "awaiting input" signal
+ * any adapter emits. */
 function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
   switch (event.type) {
     case 'stop':

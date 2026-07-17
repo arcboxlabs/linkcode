@@ -20,9 +20,8 @@ const PersistedTerminalPrefsSchema = z
 type PersistedTerminalPrefs = z.infer<typeof PersistedTerminalPrefsSchema>;
 
 /**
- * Shared interactive-terminal appearance — persisted per renderer, never sent to the daemon. Pure
- * client render knobs both desktop and webview surface (the live terminal itself is desktop-only,
- * but webview persists the same prefs for parity).
+ * Shared interactive-terminal appearance — persisted per renderer, never sent to the daemon. The
+ * live terminal is desktop-only, but webview persists the same prefs for parity.
  */
 export interface TerminalPrefsState {
   /** Monospace family name, or empty for the bundled default chain. */

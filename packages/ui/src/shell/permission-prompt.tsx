@@ -5,6 +5,7 @@ import { ShieldAlertIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { PermissionConversationItem, PermissionDecision } from '../chat/conversation-prompts';
+import { mcpToolName } from '../chat/tool-utils';
 import { PromptCard } from './prompt-card';
 
 export function PermissionPrompt({
@@ -25,7 +26,10 @@ export function PermissionPrompt({
   const [lastDecision, setLastDecision] = useState<PermissionDecision | null>(null);
   const selectedOptionId =
     lastDecision?.outcome === 'selected' ? lastDecision.option.optionId : undefined;
-  const title = item.toolCall.title ?? item.toolCall.toolCallId;
+  const rawTitle = item.toolCall.title ?? item.toolCall.toolCallId;
+  const mcp = mcpToolName(rawTitle);
+  // A permission judgment needs provenance, so the MCP server rides along with the tool name.
+  const title = mcp ? `${mcp.tool} · ${mcp.server}` : rawTitle;
   const persistentOptions = item.options.filter((option) => option.kind.endsWith('_always'));
   const immediateOptions = item.options
     .filter((option) => !option.kind.endsWith('_always'))

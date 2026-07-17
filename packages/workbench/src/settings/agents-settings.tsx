@@ -11,9 +11,8 @@ import { bindingAvailability } from './providers/capability';
 import { AGENT_KINDS, withEnabled } from './providers/view';
 
 /**
- * The collapsed Agents tab: per-agent runtime concerns only — enabled toggle, probed runtime /
- * login state, and a read-only provider summary that jumps to the Providers page (the single edit
- * surface for account bindings and models). Instant save; no form.
+ * The collapsed Agents tab: per-agent runtime concerns only — account bindings and models are
+ * edited solely on the Providers page. Instant save; no form.
  */
 export function AgentsSettingsPanel({
   onOpenProviders,

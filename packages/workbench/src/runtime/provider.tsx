@@ -94,10 +94,9 @@ export function useWorkbenchSdkClient(): LinkCodeSdkClient {
 }
 
 /**
- * Keeps the SWR cache and connection controller stable while remounting SDK, tayori, and raw-client
- * contexts together for each physical connection generation. Connection state does not gate those
- * contexts, so ungated surfaces remain mounted during recovery after the first generation exists.
- * Gating the main experience is `WorkbenchConnectionGate`'s job.
+ * Keeps the SWR cache and connection controller stable while remounting the SDK/tayori/raw-client
+ * contexts together per connection generation. Connection state does not gate those contexts
+ * (ungated surfaces stay mounted during recovery); gating is `WorkbenchConnectionGate`'s job.
  */
 export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): React.ReactNode {
   const { connectionSource, children, noGenerationFallback = null } = props;

@@ -5,9 +5,8 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useData } from '../runtime/tayori';
 
 /**
- * The workspace's declared scripts with live lifecycle/health. The list itself is a
- * cheap RPC, so `script.status` broadcasts simply revalidate it instead of merging
- * patches client-side.
+ * The workspace's declared scripts with live lifecycle/health. The list is a cheap RPC, so
+ * `script.status` broadcasts simply revalidate it instead of merging patches client-side.
  */
 export function useWorkspaceScripts(cwd: string | undefined) {
   const client = useLinkCodeClient();

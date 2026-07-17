@@ -60,17 +60,10 @@ function buildPaginationRange(
 }
 
 /**
- * Derived pagination view, mounted BELOW the data-fetching hook — this is where
- * the server-provided page count joins the raw pagination state (the same split
- * TanStack Table achieves with controlled state + `pageCount` in its options).
- * For future front-end pagination, this is also the seam where a locally
- * computed page count would be fed in instead.
- *
- * State fields and derived fields are getters delegating to the tracked state
- * instance: reading a field during render subscribes the component to exactly
- * the state it depends on. Read fields directly off the instance — never spread
- * it or copy fields into a new object, that snapshots current values and breaks
- * the getter-based tracking.
+ * Derived pagination view, mounted BELOW the data-fetching hook — where the
+ * server-provided (or locally computed) page count joins the raw pagination state.
+ * Fields are getters into the tracked state — read them directly off the instance;
+ * spreading or copying snapshots current values and breaks the tracking.
  */
 export interface PaginationPageRange {
   pageIndex: number;
@@ -89,15 +82,9 @@ export interface PaginationRender {
   readonly canPreviousPage: boolean;
   /** Derived: whether a next page exists. */
   readonly canNextPage: boolean;
-  /**
-   * Derived: the page stepper layout (first/last always visible, ellipses in
-   * between) — map it straight to the pagination UI.
-   */
+  /** Derived: the page stepper layout (first/last always visible, ellipses between) — maps straight to the UI. */
   readonly range: PaginationRangeItem[];
-  /**
-   * Derived: per-page row ranges ("rows 26–50 are page 2") — map it straight to
-   * a page-jump select. Label formatting is left to the renderer.
-   */
+  /** Derived: per-page row ranges for a page-jump select; label formatting is left to the renderer. */
   readonly pageRanges: PaginationPageRange[];
   setPageIndex: (pageIndex: number) => void;
   setPageSize: (pageSize: number) => void;
@@ -135,9 +122,8 @@ export function usePaginationRender({
     pagination.setPageIndex(clamp(pagination.pageIndex + 1, 0, Math.max(0, pageCount - 1)));
   }, [pagination, pageCount]);
 
-  // The instance only recreates when pageCount/rowCount change (state and actions
-  // are referentially stable). Everything reading live state goes through getters,
-  // so values stay current AND reads register render dependencies.
+  // Recreated only when pageCount/rowCount change; live state goes through getters,
+  // so values stay current and reads register render dependencies.
   return useMemo(
     () => ({
       pageCount,

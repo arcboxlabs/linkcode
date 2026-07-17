@@ -1,10 +1,9 @@
 import type { Unsubscribe } from '@linkcode/transport';
 
 /**
- * Host-side PTY boundary (interface-first, docs/ARCHITECTURE.md#core-principles). The daemon injects a concrete implementation
- * (a Rust sidecar); the engine itself carries no native PTY dependency and stays testable against a
- * fake backend. This is the only seam where terminal I/O touches the OS — everything above it (the
- * `TerminalService`, the wire contract) is platform-agnostic.
+ * Host-side PTY boundary (interface-first, docs/ARCHITECTURE.md#core-principles): the daemon
+ * injects the concrete implementation (a Rust sidecar), keeping the engine free of native PTY
+ * dependencies. This is the only seam where terminal I/O touches the OS.
  */
 
 /** Parameters for spawning a PTY-backed terminal. */
@@ -21,10 +20,8 @@ export interface PtyOpenOptions {
   env?: Record<string, string>;
 }
 
-/**
- * A live PTY. Data crosses this boundary as UTF-8 strings — the backend owns the streaming byte→string
- * decode so the rest of the engine (and the JSON wire) never handle raw bytes or base64.
- */
+/** A live PTY. Data crosses this boundary as UTF-8 strings — the backend owns the streaming
+ * byte→string decode, so the rest of the engine (and the JSON wire) never handles raw bytes. */
 export interface PtyProcess {
   /** The first subscriber receives any output that arrived between spawn and `open()` resolving. */
   onData(cb: (data: string) => void): Unsubscribe;

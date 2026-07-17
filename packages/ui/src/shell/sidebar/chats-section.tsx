@@ -36,12 +36,9 @@ export interface ChatsSectionProps {
   BranchStatusComponent?: BranchStatusComponentType;
 }
 
-/**
- * The sidebar's "Chats" section: threads started without picking a workspace, backed by the
- * daemon-owned chat root directory. Threads render as a flat list — no group-header framing,
- * branch badge, or rename/archive/import-history menu, since the chat workspace is a fixed
- * system entry rather than something the user manages.
- */
+/** The sidebar's "Chats" section: threads started without picking a workspace, backed by the
+ * daemon-owned chat root. Flat list — no group framing or rename/archive menus, since the chat
+ * workspace is a fixed system entry rather than user-managed. */
 export function ChatsSection({
   workspace,
   sessions,

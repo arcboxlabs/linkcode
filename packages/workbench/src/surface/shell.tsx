@@ -20,17 +20,15 @@ export interface WorkbenchShellNavigation {
 export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
   navigation: WorkbenchShellNavigation;
-  /** Reads a natively-picked attachment path via the daemon. Only a shell that also supplies its
-   * own native picker trigger (desktop) can do anything with this — the bare fallback shell has
-   * no picker to pair it with, so it's dropped here rather than forwarded to `ShellFrame`. */
+  /** Reads a natively-picked attachment path via the daemon. Only a shell that supplies its own
+   * native picker trigger (desktop) can use it — the bare fallback shell drops it. */
   onReadAttachmentFile?: (path: string) => Promise<ComposerAttachment>;
 }
 
 export type WorkbenchShellComponent = (props: WorkbenchShellProps) => React.ReactNode;
 
-// `navigation` and `onReadAttachmentFile` are deliberately dropped here: the bare fallback shell
-// renders no chrome controls and has no native picker to pair a file read with — app shells (the
-// desktop chrome, the webview title strip) own the ‹ › buttons and any picker composition.
+// `navigation` and `onReadAttachmentFile` are deliberately dropped: the bare fallback shell has
+// no chrome controls or native picker — app shells own the ‹ › buttons and picker composition.
 export function DefaultWorkbenchShell({
   header,
   navigation,

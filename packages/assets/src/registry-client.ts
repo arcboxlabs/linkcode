@@ -31,10 +31,8 @@ export interface FetchNpmDistOptions {
 
 /**
  * Resolve a package version's tarball URL + SRI integrity via the single-version manifest
- * (`<registry>/<pkg>/<version>` — a few hundred bytes; the full packument for the agent CLIs
- * runs to megabytes). Scoped names go in the path unencoded; the registry accepts them.
- * Registries are an ordered fallback list: the first one that answers wins. Fetching goes
- * through make-fetch-happen (retry + proxy env support).
+ * (`<registry>/<pkg>/<version>`; the full packument runs to megabytes). Scoped names go in
+ * the path unencoded. Registries are an ordered fallback list — the first answer wins.
  */
 export async function fetchNpmDist(
   pkg: string,

@@ -2,6 +2,7 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -14,13 +15,12 @@ import type {
   ToolCall,
   ToolCallContent,
   ToolCallUpdate,
+  UsageReport,
 } from '@linkcode/schema';
 
 /**
- * Conversation view-model. The daemon streams a flat, append-only `AgentEvent[]`; the UI needs a
- * structured timeline (turn-grouped messages bucketed by messageId, tool calls as full snapshots, plan,
- * permissions) plus the session's live lifecycle state. `buildConversation` is a pure reducer over the
- * event list so it can be unit-tested without a transport (mirrors the adapter normalizer convention).
+ * Conversation view-model: folds the daemon's flat, append-only `AgentEvent[]` into the structured
+ * timeline the UI needs. `buildConversation` is a pure reducer, unit-testable without a transport.
  */
 
 export type ConversationTurnId = string | null;
@@ -33,9 +33,10 @@ export type QuestionResolution = Pick<
   'outcome' | 'source'
 >;
 
-/** A single semantic item in the conversation timeline. `receivedAt` is the client receive time of
- * the item's latest event (see {@link SequencedAgentEvent}); it drives relative timestamps in the
- * UI and is absent for items reconstructed from a history read. */
+/** A single semantic item in the conversation timeline. `receivedAt` is the best-known time of the
+ * item's latest event: the client receive time for live events (see {@link SequencedAgentEvent}),
+ * the provider's own timestamp for items reconstructed from a history read, absent when neither is
+ * known. It drives the timestamps in the UI. */
 export type ConversationItem = (
   | {
       kind: 'message';
@@ -46,6 +47,8 @@ export type ConversationItem = (
       isStreaming: boolean;
       /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
       parentToolCallId?: string;
+      /** The model serving the session when this assistant message opened (from `model-update`). */
+      model?: string;
     }
   | {
       kind: 'reasoning';
@@ -104,14 +107,17 @@ export interface ConversationViewModel {
   status: SessionStatus | null;
   /** Latest cumulative token usage. */
   usage: TokenUsage | null;
+  /** Latest structured usage snapshot, from `usage-report` (the whole reply of a provider usage
+   * command such as claude-code's `/usage` — the invocation produces no transcript text). Replaced
+   * wholesale per report; `null` until the session serves one. */
+  usageReport: UsageReport | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
    * null (or an empty list) means the agent has no switchable policies and the UI hides the menu. */
   approvalPolicy: ApprovalPolicyState | null;
-  /** The model the session is actually running on, from `model-update`. `null` until the adapter
-   * reports it (before the first turn, or for adapters that can't observe their model) — the composer
-   * then shows a placeholder rather than a guess. */
+  /** The model the session actually runs on, from `model-update`. `null` until the adapter
+   * reports it — the composer then shows a placeholder rather than a guess. */
   currentModel: string | null;
   /** The reasoning-effort level the session is running at, from `effort-update`. `null` until the
    * adapter reports it — same placeholder rule as `currentModel`. */
@@ -119,6 +125,9 @@ export interface ConversationViewModel {
   /** Slash-command catalog from `available-commands-update` (full-replace). `null` means the agent
    * advertised none — the composer then offers no command menu. */
   availableCommands: AgentCommand[] | null;
+  /** Model catalog from `available-models-update` (full-replace). `null` means the agent
+   * advertised none — the composer then falls back to its static per-kind table. */
+  availableModels: AgentModelOption[] | null;
   /** Adapter input features from `capabilities-update`; null until the live session advertises. */
   capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */
@@ -151,8 +160,9 @@ function appendBlock(blocks: readonly ContentBlock[], block: ContentBlock): Cont
 }
 
 export interface ConversationBuilder {
-  /** Fold one more event into the running state. `receivedAt` is the client receive time to stamp
-   * on the item(s) this event touches (omitted for events replayed from a history read). */
+  /** Fold one more event into the running state. `receivedAt` is the time to stamp on the item(s)
+   * this event touches: the client receive time for live events, the provider's own event
+   * timestamp for history-read replays (omitted when the provider recorded none). */
   advance(event: AgentEvent, receivedAt?: number): void;
   /** The current view-model. Cached between advances; every changed item is a fresh object
    * (copy-on-write), so React memoization over items keeps working across snapshots. */
@@ -160,9 +170,8 @@ export interface ConversationBuilder {
 }
 
 /**
- * Incremental form of {@link buildConversation}: the same fold, but advanced one event at a time
- * so a streaming delta costs O(delta) instead of re-reducing the whole history. Item updates are
- * copy-on-write — previously returned snapshots are never mutated retroactively.
+ * Incremental form of {@link buildConversation}: advanced one event at a time (O(delta), not a full
+ * re-reduce). Item updates are copy-on-write — previously returned snapshots are never mutated.
  */
 export function createConversationBuilder(): ConversationBuilder {
   const items: ConversationItem[] = [];
@@ -186,11 +195,13 @@ export function createConversationBuilder(): ConversationBuilder {
   let gen = 0;
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
+  let usageReport: UsageReport | null = null;
   let currentModeId: string | null = null;
   let approvalPolicy: ApprovalPolicyState | null = null;
   let currentModel: string | null = null;
   let currentEffort: EffortLevel | null = null;
   let availableCommands: AgentCommand[] | null = null;
+  let availableModels: AgentModelOption[] | null = null;
   let capabilities: AgentCapabilities | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
@@ -213,6 +224,8 @@ export function createConversationBuilder(): ConversationBuilder {
           ...item,
           blocks: appendBlock(item.blocks, block),
           receivedAt: receivedAt ?? item.receivedAt,
+          // Backfill a model the adapter only reported after this message opened.
+          ...(item.kind === 'message' && { model: item.model ?? currentModel ?? undefined }),
         };
         return;
       }
@@ -227,6 +240,7 @@ export function createConversationBuilder(): ConversationBuilder {
         isStreaming: false,
         parentToolCallId,
         receivedAt,
+        model: currentModel ?? undefined,
       });
     } else {
       items.push({
@@ -304,9 +318,8 @@ export function createConversationBuilder(): ConversationBuilder {
       }
 
       case 'compaction': {
-        // The adapter emits the boundary first (metadata only) and again once the summary text is
-        // known; history replay repeats the same compactionId. Merge instead of replacing so a
-        // later partial emit never wipes fields an earlier one carried.
+        // The boundary arrives more than once (metadata first, summary later; history replay
+        // repeats the compactionId) — merge, so a partial emit never wipes earlier fields.
         const existing = compactionIndex.get(event.compactionId);
         if (existing === undefined) {
           items.push({
@@ -375,6 +388,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'available-commands-update':
         availableCommands = event.commands;
         break;
+      case 'available-models-update':
+        availableModels = event.models;
+        break;
       case 'capabilities-update':
         capabilities = event.capabilities;
         break;
@@ -383,6 +399,9 @@ export function createConversationBuilder(): ConversationBuilder {
         break;
       case 'token-usage':
         usage = event.usage;
+        break;
+      case 'usage-report':
+        usageReport = event.report;
         break;
       case 'stop':
         stopReason = event.stopReason;
@@ -517,11 +536,13 @@ export function createConversationBuilder(): ConversationBuilder {
       items: out,
       status,
       usage,
+      usageReport,
       currentModeId,
       approvalPolicy,
       currentModel,
       currentEffort,
       availableCommands,
+      availableModels,
       capabilities,
       stopReason,
       pendingPermissionIds: approvals.filter((requestId) => !permissionResolutions.has(requestId)),
@@ -540,11 +561,18 @@ export function buildConversation(events: readonly AgentEvent[]): Conversation {
   return builder.snapshot();
 }
 
+/** One seeded event with the provider's own timestamp (`AgentHistoryEvent.ts`), which stands in
+ * for the receive time live events get — without it, every history-seeded item is dateless. */
+export interface ConversationSeedEvent {
+  event: AgentEvent;
+  ts?: number;
+}
+
 /** A point-in-time transcript snapshot: past events read from provider history, plus the live
  * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). The
  * conversation store folds the seed first, then only the live events past the `uptoSeq` cut. */
 export interface ConversationSeed {
-  events: AgentEvent[];
+  events: ConversationSeedEvent[];
   /** The snapshot covers every live event with seq ≤ this; 0 = supersedes nothing. */
   uptoSeq: number;
 }

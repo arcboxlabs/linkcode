@@ -8,21 +8,15 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 
-/**
- * Per-agent runtime cue the workbench derives for the onboarding flow (CODE-112). Absence of a
- * cue means the runtime is ready (or unevaluated, e.g. opencode until CODE-76) — nothing renders
- * and sending is not blocked. Any present cue blocks sending for that agent.
- */
+/** Per-agent runtime cue for the onboarding flow (CODE-112). Absence = ready or unevaluated
+ * (e.g. opencode until CODE-76) — nothing renders; any present cue blocks sending for that agent. */
 export type AgentRuntimeCue =
   | { state: 'missing'; downloadable: boolean }
   | { state: 'downloading'; receivedBytes: number; totalBytes?: number }
   | { state: 'failed'; error: string }
   | { state: 'unverified'; version?: string }
-  /**
-   * The CLI is installed but signed out. `phase` tracks the interactive login: `idle` (offer the
-   * button) → `opening` (browser launching) → `awaiting-code` (paste the code from `url`) →
-   * `failed`. Success removes the cue via the runtime re-probe rather than a phase.
-   */
+  /** CLI installed but signed out. `phase`: `idle` → `opening` → `awaiting-code` (paste the code
+   * from `url`) → `failed`; success removes the cue via the runtime re-probe, not a phase. */
   | {
       state: 'needs-login';
       phase: 'idle' | 'opening' | 'awaiting-code' | 'failed';
@@ -36,11 +30,8 @@ function formatMegabytes(bytes: number): string {
   return (bytes / 1_048_576).toFixed(1);
 }
 
-/**
- * Inline guidance for an agent whose CLI runtime is not ready: offers the managed download
- * (with live progress and retry) or, for unverified detected versions, the choice to continue.
- * Pure presentation — every decision and side effect arrives via props.
- */
+/** Inline guidance for an agent whose CLI runtime is not ready. Pure presentation — every
+ * decision and side effect arrives via props. */
 export function AgentOnboardingCard({
   kind,
   cue,
@@ -160,18 +151,12 @@ export function AgentOnboardingCard({
   }
 }
 
-/** Kinds whose flow hands the user an authorization code to paste back (claude's remote callback
- * page); the rest (codex) complete on the CLI's own localhost callback — the awaiting phase just
- * waits for the browser. */
+/** Kinds whose flow hands back an authorization code to paste (claude); the rest complete on
+ * the CLI's own localhost callback — the awaiting phase just waits for the browser. */
 const PASTE_CODE_KINDS: ReadonlySet<AgentKind> = new Set(['claude-code']);
 
-/**
- * The signed-out branch of {@link AgentOnboardingCard}: a self-contained login flow. `idle` offers
- * the button; `opening` shows a spinner while the browser launches; `awaiting-code` takes the
- * authorization code pasted from the browser (with a fallback link to reopen the URL) — or, for
- * kinds without a code hand-back, waits for the browser flow to settle; `failed` offers a retry.
- * Owns only the ephemeral code-input value — everything else arrives via props.
- */
+/** Signed-out branch of {@link AgentOnboardingCard}: the interactive login flow per `phase`.
+ * Owns only the ephemeral code-input value — everything else arrives via props. */
 function AgentLoginCard({
   kind,
   cue,

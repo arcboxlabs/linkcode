@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import type {
   AssetInstallEvent,
   InstalledAsset,
@@ -12,6 +13,7 @@ import type { GcReport } from './gc';
 import { collectGarbage } from './gc';
 import type { InstallOptions } from './install';
 import { installAsset, installedPath } from './install';
+import { assetDir } from './paths';
 import { wantedVersion } from './version-pin';
 
 export interface AssetManagerOptions extends InstallOptions {
@@ -21,18 +23,14 @@ export interface AssetManagerOptions extends InstallOptions {
   pinFrom?: string;
 }
 
-// Install lifecycle events (`AssetInstallEvent`, defined in @linkcode/schema) fan out to every
-// subscriber regardless of which caller triggered the install. Per-call `onProgress` is
-// unreliable for observers: the in-flight dedupe in install.ts keeps only the first caller's
-// callback, so anything that must see every install (the engine's wire broadcasts) subscribes.
+// Install events fan out to every subscriber. Per-call `onProgress` is unreliable (install.ts's
+// in-flight dedupe keeps only the first caller's callback) — observers must subscribe instead.
 export type { AssetInstallEvent } from '@linkcode/schema';
 
 /**
- * The daemon-facing facade: one instance per daemon owns pin → GC → ensure orchestration and
- * answers the prober's synchronous managed-binary lookups. Wanted versions are resolved once
- * at construction — SDK pins cannot change while this daemon runs. `ensure()` is async and
- * meant for background warm-up or on-demand installs; boot stays fast because availability
- * comes from the synchronous already-on-disk scan.
+ * Daemon-facing facade (one per daemon): pin → GC → ensure orchestration plus the prober's
+ * synchronous managed-binary lookups. Wanted versions resolve once at construction — SDK pins
+ * cannot change while the daemon runs; availability is a synchronous on-disk scan, `ensure()` async.
  */
 export class AssetManager {
   private readonly descriptors: ReadonlyMap<ManagedAssetId, AssetDescriptor>;
@@ -63,6 +61,23 @@ export class AssetManager {
   /** Drop superseded versions and tmp orphans. Best-effort; never throws. */
   gcAtBoot(): GcReport {
     return collectGarbage(this.wanted);
+  }
+
+  /**
+   * Any completed (non-`.tmp-*`) version directory on disk, regardless of the wanted pin: a prior
+   * install = standing consent to auto-refresh (CODE-221). GC keeps superseded versions until
+   * their replacement lands, so a failed refresh never erases this. Directories only — a stray
+   * file (Finder's `.DS_Store`) must not read as consent.
+   */
+  hasInstallOnDisk(id: ManagedAssetId): boolean {
+    if (!this.descriptors.has(id)) return false;
+    try {
+      return readdirSync(assetDir(id), { withFileTypes: true }).some(
+        (entry) => entry.isDirectory() && !entry.name.startsWith('.tmp-'),
+      );
+    } catch {
+      return false;
+    }
   }
 
   /** Live snapshot for the `asset.list` wire resource. */
@@ -96,9 +111,8 @@ export class AssetManager {
   }
 
   /**
-   * Ensure the wanted version is installed, downloading on miss (deduped per id+version).
-   * `undefined` when the asset cannot be pinned or is unknown — callers fall back to
-   * detected/SDK resolution.
+   * Ensure the wanted version is installed, downloading on miss (deduped per id+version);
+   * `undefined` when unpinnable or unknown — callers fall back to detected/SDK resolution.
    */
   async ensure(
     id: ManagedAssetId,

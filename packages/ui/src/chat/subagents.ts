@@ -1,12 +1,8 @@
 import type { ConversationItem } from './types';
 
-/**
- * Splits subagent transcript items out of a timeline slice. An item belongs to a subagent when it
- * carries a `parentToolCallId` (narration/reasoning) or its tool call does — the id of the
- * `task`-kind tool call that spawned it. Children keep their arrival order per parent; orphans
- * (parent not announced in this slice, e.g. a page-windowed history read) fall back to the
- * top-level timeline so nothing silently disappears.
- */
+/** Splits subagent items (those whose `parentToolCallId` names the spawning `task` call) out of
+ * a timeline slice; children keep arrival order per parent. Orphans (parent not in the slice,
+ * e.g. a page-windowed history read) fall back to top level so nothing silently disappears. */
 export interface SubagentPartition {
   topLevel: ConversationItem[];
   childrenByParent: ReadonlyMap<string, ConversationItem[]>;

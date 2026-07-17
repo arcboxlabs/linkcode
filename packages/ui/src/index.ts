@@ -1,7 +1,5 @@
-/**
- * @linkcode/ui — shared, business-free UI primitives and workbench presentation for Link Code.
- * Apps own routing, daemon connections, and session orchestration. UI receives view models and callbacks.
- */
+/** @linkcode/ui — shared, business-free presentation. Apps own routing, daemon connections, and
+ * session orchestration; UI receives view models and callbacks. */
 
 export * from './brand/animated-mark';
 export * from './chat';

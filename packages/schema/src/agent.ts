@@ -20,12 +20,11 @@ import {
   StopReasonSchema,
 } from './session';
 import { ToolCallSchema } from './tool-call';
-import { TokenUsageSchema } from './usage';
+import { TokenUsageSchema, UsageReportSchema } from './usage';
 
 /**
- * Agent data-plane contract. The abstraction layer normalizes each vendor's native agent events into the
- * `AgentEvent` union, tailored to the four supported agents (claude-code / codex / opencode / pi) and the
- * front-end. The flow is always "change the schema first, then the implementation"
+ * Agent data-plane contract: the abstraction layer normalizes each vendor's native events into
+ * the `AgentEvent` union. The flow is always "change the schema first, then the implementation"
  * (docs/ARCHITECTURE.md#core-principles).
  */
 
@@ -51,11 +50,9 @@ export const StartOptionsSchema = z.object({
 });
 export type StartOptions = z.infer<typeof StartOptionsSchema>;
 
-/** Reasoning-effort levels. low–xhigh switch live via the adapters' settings channel; `max` cannot
- * (Claude only accepts it at process startup), so adapters honor it by restarting the underlying
- * process with the new effort and resuming the conversation in place under the same session.
- * `ultracode` is claude-code's xhigh-plus-standing-orchestration mode — modeled as a level because
- * that's how Claude's own effort menu presents it; it switches live like the plain levels. */
+/** Reasoning-effort levels. low–xhigh switch live; `max` only applies at process startup, so
+ * adapters honor it by restarting the underlying process and resuming in place. `ultracode` is
+ * claude-code's xhigh-plus-standing-orchestration mode, modeled as a level; it switches live. */
 export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
 export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
@@ -76,6 +73,16 @@ export type AgentCommand = z.infer<typeof AgentCommandSchema>;
 export function agentCommandMatches(command: AgentCommand, name: string): boolean {
   return command.name === name || (command.aliases?.includes(name) ?? false);
 }
+
+/** A model a live session accepts via `AgentInput.set-model`, advertised by adapters whose model
+ * set is install-dependent (opencode: whatever providers the user's local install has connected)
+ * rather than a fixed vendor list. `id` is the exact value to send back on `set-model`. */
+export const AgentModelOptionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().optional(),
+});
+export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
 
 /** Input features a live adapter session accepts. Kept separate from command catalogs: catalogs
  * change provider-side, while these booleans describe the adapter's stable input surface. */
@@ -172,10 +179,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tool-call'), toolCall: ToolCallSchema }),
 
   // ── Context compaction: the agent summarized earlier turns in place to free context window ──
-  /** Emitted at the compaction boundary with whatever is known at that moment, and again once the
-   * swapped-in summary text is learned (it arrives on a later frame). Consumers merge events by
-   * `compactionId` — the provider's own boundary id — so partial emits, live re-emits, and history
-   * replay of the same compaction all converge into one timeline marker. */
+  /** Emitted at the compaction boundary and again once the swapped-in summary text is learned.
+   * Consumers merge events by `compactionId` (the provider's own boundary id), so partial emits,
+   * live re-emits, and history replay converge into one timeline marker. */
   z.object({
     type: z.literal('compaction'),
     compactionId: z.string().min(1),
@@ -193,14 +199,14 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   /** Full approval-policy state (advertised list + current), at session start and after switches. */
   z.object({ type: z.literal('approval-policy-update'), state: ApprovalPolicyStateSchema }),
   /** The model the session is actually running on, so clients reflect the true value instead of a
-   * placeholder. The available list is the static UI catalog (not adapter-advertised, unlike
-   * approval policies), so only the current id travels. Emitted once the adapter learns the served
-   * model (claude-code's init/assistant frames report it even when no model was requested) and on
-   * every switch. Adapters that can't observe their model never emit it. */
+   * placeholder. Only the current id travels here — the available list is either the static UI
+   * catalog (claude-code/codex) or the adapter-advertised `available-models-update` catalog.
+   * Emitted once the adapter learns the served model (claude-code's init/assistant frames report
+   * it even when no model was requested) and on every switch. Adapters that can't observe their
+   * model never emit it. */
   z.object({ type: z.literal('model-update'), model: z.string().min(1) }),
-  /** The reasoning-effort level the session is actually running at. Same rationale as `model-update`.
-   * Emitted on every switch and, for adapters that can observe the resolved default (claude-code via
-   * a Stop hook's `effort.level`), once the default is learned. `undefined`/never-emitted keeps the
+  /** The reasoning-effort level the session is actually running at. Emitted on every switch and
+   * once the resolved default is learned (claude-code via a Stop hook); never-emitted keeps the
    * client showing a placeholder rather than a guessed value. */
   z.object({ type: z.literal('effort-update'), effort: EffortLevelSchema }),
   /** Stable input capabilities for this live adapter session. Emitted at adapter start and replayed
@@ -209,18 +215,25 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('capabilities-update'),
     capabilities: AgentCapabilitiesSchema,
   }),
-  /** The slash-command catalog the session accepts via `AgentInput.command` — emitted once the
-   * adapter learns it and again on every provider-side change, full-replace semantics (consumers
-   * swap their cached list wholesale). */
+  /** The slash-command catalog the session accepts via `AgentInput.command` — emitted once
+   * learned and on every provider-side change, full-replace semantics. */
   z.object({ type: z.literal('available-commands-update'), commands: z.array(AgentCommandSchema) }),
+  /** The model catalog the session accepts via `AgentInput.set-model` — same full-replace contract
+   * as the command catalog. Only adapters whose model set is install-dependent emit it (opencode);
+   * agents with a curated static catalog (claude-code/codex) never do, and clients fall back to
+   * their static tables. */
+  z.object({ type: z.literal('available-models-update'), models: z.array(AgentModelOptionSchema) }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),
-  /** The provider-local native id of the live run, once the adapter learns it. Lets the host bind
-   * the Link Code session to provider history for later resume; adapters without history support
-   * never emit it. */
+  /** The provider-local native id of the live run, once learned — binds the session to provider
+   * history for later resume. Adapters without history support never emit it. */
   z.object({ type: z.literal('session-ref'), historyId: AgentHistoryIdSchema }),
   z.object({ type: z.literal('token-usage'), usage: TokenUsageSchema }),
+  /** Structured usage snapshot produced by a provider usage command (claude-code `/usage`, alias
+   * `/cost`). The invocation is intercepted adapter-side — it produces no transcript text and no
+   * turn; this event is the whole reply, and the trigger a client uses to present usage. */
+  z.object({ type: z.literal('usage-report'), report: UsageReportSchema }),
   z.object({ type: z.literal('stop'), stopReason: StopReasonSchema }),
   z.object({
     type: z.literal('error'),

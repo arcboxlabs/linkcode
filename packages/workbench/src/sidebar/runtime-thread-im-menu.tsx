@@ -19,9 +19,9 @@ export interface RuntimeThreadImMenuProps {
 }
 
 /**
- * Hook-backed adapter for the thread row's Telegram menu. Mounts when the row's dropdown opens,
- * so the fetches ride the shared SWR cache and only fire on first open. The app renders this
- * only when a cloud session exists (the source needs its credential).
+ * Hook-backed adapter for the thread row's Telegram menu. Mounts when the dropdown opens, so the
+ * fetches ride the shared SWR cache and only fire on first open; the app renders this only when
+ * a cloud session exists (the source needs its credential).
  */
 export function RuntimeThreadImMenu({
   session,

@@ -1,10 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Git data contracts (data plane). Capability-shaped and provider-neutral: the wire never names the
- * daemon-side implementation (today plain `git` plus the GitHub `gh` CLI; later token-backed API
- * clients). Everything here is keyed by `cwd` — git state is directory-backed and shared by every
- * session on the same directory, never owned by a session.
+ * Git data contracts (data plane). Capability-shaped and provider-neutral: the wire never names
+ * the daemon-side implementation. Everything is keyed by `cwd` — git state is directory-backed,
+ * shared by every session on the same directory, never owned by a session.
  */
 
 /** Hosting providers the contract reserves vocabulary for. Only `github` is implemented today. */
@@ -68,10 +67,8 @@ export const GitDiffSchema = z.object({
 });
 export type GitDiff = z.infer<typeof GitDiffSchema>;
 
-/**
- * Why the provider layer cannot answer for a directory. These are expected product states — clients
- * hide the surface or show a setup hint (e.g. "run `gh auth login`") — not errors.
- */
+/** Why the provider layer cannot answer for a directory. Expected product states — clients hide
+ * the surface or show a setup hint — not errors. */
 export const GitProviderBlockerSchema = z.enum([
   'not_git_repo',
   'no_remote',
@@ -111,11 +108,9 @@ export const GitPullRequestSummarySchema = z.object({
 });
 export type GitPullRequestSummary = z.infer<typeof GitPullRequestSummarySchema>;
 
-/**
- * The provider's answer for a directory's current branch. `ok` with a null `pullRequest` means the
- * branch simply has none; `unavailable` carries a {@link GitProviderBlocker}; `error` carries a
- * genuine provider failure (network, rate limit, unexpected output).
- */
+/** The provider's answer for a directory's current branch. `ok` with a null `pullRequest` means
+ * the branch simply has none; `unavailable` carries a {@link GitProviderBlocker}; `error` carries
+ * a genuine provider failure. */
 export const GitPullRequestStatusSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('ok'), pullRequest: GitPullRequestSummarySchema.nullable() }),
   z.object({ status: z.literal('unavailable'), reason: GitProviderBlockerSchema }),

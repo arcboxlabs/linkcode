@@ -58,16 +58,13 @@ export interface CloudImBinding {
   updatedAt: number;
 }
 
-/**
- * Expected link failures are data, not exceptions: `not-found` is a wrong/expired code,
- * `conflict` means the Telegram identity is already linked to another LinkCode user.
- */
+/** Expected link failures are data, not exceptions: `not-found` = wrong/expired code, `conflict`
+ * = the Telegram identity is already linked to another LinkCode user. */
 export type CloudImLinkResult = { ok: true } | { ok: false; reason: 'not-found' | 'conflict' };
 
 /**
  * IM Channel management calls against the cloud API. Injected by the app because the credential
- * lives outside the data plane — desktop reads the keychain session in its main process and
- * exposes these over a bridge.
+ * lives outside the data plane (desktop: keychain session in main, exposed over a bridge).
  */
 export interface CloudImSource {
   overview: () => Promise<CloudImOverview>;
@@ -99,11 +96,9 @@ const IM_BINDINGS_KEY = 'cloud/im/bindings';
 const IM_PREFERENCES_KEY = 'cloud/im/preferences';
 
 /*
- * Every read hook keys its cache by `accountKey` (a stable per-account identifier, e.g. the
- * account email) for the same reason as `useCloudHosts`: accounts can switch without a renderer
- * restart, and an account-agnostic key plus the provider-wide `keepPreviousData` would serve the
- * previous account's IM data to the next until revalidation. A falsy key means signed out, so the
- * endpoint is never hit.
+ * Every read hook keys its cache by `accountKey` (same reason as `useCloudHosts`): an
+ * account-agnostic key plus `keepPreviousData` would serve the previous account's IM data after
+ * an account switch. A falsy key means signed out — the endpoint is never hit.
  */
 
 /** Linked IM accounts + registered chats for the signed-in cloud account. */
@@ -118,10 +113,8 @@ export function useCloudImOverview(
   );
 }
 
-/**
- * Topic↔session bindings on the caller's relay. Bindings change out-of-band (from Telegram or
- * the daemon), so revalidate on focus and on a slow interval.
- */
+/** Topic↔session bindings on the caller's relay; they change out-of-band (Telegram or the
+ * daemon), so revalidate on focus and on a slow interval. */
 export function useCloudImBindings(
   accountKey: string | null | undefined,
 ): SWRResponse<CloudImBinding[]> {

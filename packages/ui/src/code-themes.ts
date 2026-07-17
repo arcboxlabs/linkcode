@@ -1,10 +1,7 @@
 import type { BundledTheme } from 'streamdown';
 
-/**
- * Curated shiki bundled themes offered for chat code blocks, split by the background they are made
- * for. `satisfies readonly BundledTheme[]` pins every id to a real shiki theme at compile time.
- * Streamdown renders the [light, dark] pair together and activates the dark member under `.dark`.
- */
+/** Curated shiki themes for chat code blocks, split by background. Streamdown renders the
+ * [light, dark] pair together and activates the dark member under `.dark`. */
 export const CODE_THEME_LIGHT_IDS = [
   'github-light',
   'one-light',

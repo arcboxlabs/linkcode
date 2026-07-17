@@ -171,11 +171,9 @@ export function AddAccountForm({
   );
 }
 
-/**
- * A subscription account delegates to the agent CLI's own login — no secret to collect. The probed
- * login state is shown as a cue; a signed-out CLI still accepts the account (sessions will surface
- * the login error, and the in-app login lives on the workbench onboarding card).
- */
+/** A subscription account delegates to the agent CLI's own login — no secret to collect. A
+ * signed-out CLI is still accepted; sessions surface the login error, and in-app login lives on
+ * the workbench onboarding card. */
 function OauthCreateForm({
   service,
   runtimes,

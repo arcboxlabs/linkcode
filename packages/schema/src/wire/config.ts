@@ -2,11 +2,9 @@ import { z } from 'zod';
 import { AccountsSchema } from '../account';
 import { ProvidersConfigSchema } from '../provider-config';
 
-/**
- * Host configuration wire variants — the daemon-owned data-plane config: the per-agent provider
- * settings (see provider-config.ts) plus the global account pool (see account.ts). Both travel
- * together so a single `config.get`/`config.set` round-trips the whole editable config.
- */
+/** Host configuration wire variants — per-agent provider settings (provider-config.ts) plus the
+ * global account pool (account.ts); both travel together so a single `config.get`/`config.set`
+ * round-trips the whole editable config. */
 export const configWireVariants = [
   z.object({ kind: z.literal('config.get'), clientReqId: z.string().min(1) }),
   z.object({

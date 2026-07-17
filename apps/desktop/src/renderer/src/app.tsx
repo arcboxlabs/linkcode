@@ -12,6 +12,7 @@ import {
 } from '@linkcode/workbench';
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
+import { DesktopAutomationsView } from './automations/automations-view';
 import { desktopDaemonConnectionSource } from './daemon-connection-source';
 import { systemBridge } from './ipc';
 import { presentDesktopNotification } from './notifications';
@@ -29,6 +30,7 @@ const cloudImSource = window.linkcodeCloud.im;
 export function DesktopApp(): React.ReactNode {
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
   const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
+  const automationsOpen = useNavigationHistoryStore((state) => state.overlay === 'automations');
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
@@ -39,16 +41,14 @@ export function DesktopApp(): React.ReactNode {
             // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
             // URL), yet its history-import panel can still use the data plane once connected.
             ungated={settingsOpen ? <SettingsView /> : null}
-            fallback={
-              <SettingsUnderlay>
-                <DesktopConnectionFallback />
-              </SettingsUnderlay>
-            }
+            fallback={<DesktopConnectionFallback />}
           >
             <SessionNotifier present={presentDesktopNotification} />
-            <SettingsUnderlay>
+            <OverlayUnderlay>
               <Workbench shellComponent={DesktopWorkbenchShell} />
-            </SettingsUnderlay>
+            </OverlayUnderlay>
+            {/* Gated: Automations lists schedules over the data plane, so it mounts inside the gate. */}
+            {automationsOpen ? <DesktopAutomationsView /> : null}
           </WorkbenchProviders>
           {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
               can always minimize/maximize/close — including while the daemon is connecting or down. */}
@@ -60,33 +60,31 @@ export function DesktopApp(): React.ReactNode {
 }
 
 /**
- * Hides (never unmounts) the workbench-side layer while Settings covers it: both shells are
- * translucent over the native backdrop, so painted pixels underneath ghost through the settings
- * sidebar. `visibility` keeps layout/PTY state intact; `inert` blocks focus/interaction.
+ * Hides (never unmounts) the workbench-side layer while a full-page overlay (Settings, Automations)
+ * covers it: both shells are translucent over the native backdrop, so painted pixels underneath
+ * ghost through the overlay. `visibility` keeps layout/PTY state intact; `inert` blocks focus.
  */
-function SettingsUnderlay({ children }: React.PropsWithChildren): React.ReactNode {
-  const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
+function OverlayUnderlay({ children }: React.PropsWithChildren): React.ReactNode {
+  const overlayOpen = useNavigationHistoryStore((state) => state.overlay !== null);
   return (
-    <div className={settingsOpen ? 'invisible h-full' : 'h-full'} inert={settingsOpen}>
+    <div className={overlayOpen ? 'invisible h-full' : 'h-full'} inert={overlayOpen}>
       {children}
     </div>
   );
 }
 
 /**
- * A supervised daemon needs a beat to boot (fork + engine + listener bind, ~250ms measured);
- * early dial failures within this window are startup, not an outage — keep the skeleton up.
- * Measured from renderer boot, not from mount: a later successful connection generation replaces
- * the runtime contexts, so a subsequent outage mounts this fallback again. Restarting the grace
- * then would hide the error screen — and its Retry button — for another full window.
+ * Early dial failures on a supervised daemon are startup (~250ms boot measured), not an outage —
+ * keep the skeleton up. Measured from renderer boot, not mount: a later outage remounts this
+ * fallback, and restarting the grace then would hide the error screen (and its Retry button)
+ * for another full window.
  */
 const MANAGED_STARTUP_GRACE_MS = 10000;
 const RENDERER_BOOT_AT = Date.now();
 
 /**
- * Desktop connection gate: a shell-shaped skeleton while connecting (plus a startup grace window
- * on managed hosts), then the shared `ConnectionState` once genuinely errored. Endpoint
- * rediscovery is owned by the always-on desktop connection source, not this fallback.
+ * Desktop connection gate: a shell-shaped skeleton while connecting (plus the managed startup grace),
+ * then the shared `ConnectionState`. Endpoint rediscovery is owned by the connection source, not here.
  */
 function DesktopConnectionFallback(): React.ReactNode {
   const status = useWorkbenchRuntimeStatus();

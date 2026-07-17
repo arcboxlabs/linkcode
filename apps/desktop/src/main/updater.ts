@@ -8,11 +8,9 @@ import { CHANNEL } from './constants';
 const updatesDisabled = (): boolean => CHANNEL === 'development';
 
 /**
- * Auto-update wiring (system plane only — never carries business data).
- *
- * electron-updater reads its feed from the `publish` block baked into the packaged
- * app by electron-builder, so no URL is configured here. Updates only run in a
- * packaged app; this is a no-op in `electron-vite dev`.
+ * Auto-update wiring (system plane only). electron-updater reads its feed from the `publish` block
+ * electron-builder bakes into the packaged app, so no URL is configured here; a no-op outside a
+ * packaged app.
  */
 
 type UpdaterStatusListener = (status: UpdaterStatus) => void;

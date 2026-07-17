@@ -16,9 +16,8 @@ import {
 import type { TerminalSession } from './session';
 import { applyTerminalTheme } from './terminal-theme';
 
-// Every mounted LiveTerminal needs to re-theme on the same `.dark` class flip, but terminal tabs
-// stay mounted (visibility-toggled, not unmounted) while N tabs are open — so share a single
-// MutationObserver across all instances instead of one per terminal.
+// Terminal tabs stay mounted (visibility-toggled) while N tabs are open, so share one
+// MutationObserver for the `.dark` class flip across all instances instead of one per terminal.
 const themeChangeListeners = new Set<() => void>();
 let themeChangeObserver: MutationObserver | null = null;
 const ignoreTerminalResize: (cols: number, rows: number) => void = noop;
@@ -47,13 +46,9 @@ function subscribeThemeChange(listener: () => void): () => void {
   };
 }
 
-/**
- * Bridge a {@link TerminalSession} to restty's native PTY transport. This is load-bearing: with a
- * connected transport, restty sends keystrokes straight out through its key encoder and does NOT
- * echo them into its own core. The xterm-shim `write`/`onData` path has no transport, so restty
- * locally echoes every keystroke — which, on top of the shell's own echo, shows each character
- * twice and breaks backspace.
- */
+/** Bridge a {@link TerminalSession} to restty's native PTY transport. Load-bearing: with a
+ * connected transport restty does NOT locally echo keystrokes; the transportless xterm-shim path
+ * echoes on top of the shell's own echo — every character twice and broken backspace. */
 export function createSessionPtyTransport(
   session: TerminalSession,
   applyHostResize: (cols: number, rows: number) => void,
@@ -112,14 +107,10 @@ export function createSessionPtyTransport(
 }
 
 /**
- * Interactive terminal rendered by restty (native API), fed from a {@link TerminalSession}.
- * Presentation-only: it owns no connection logic. `session` must be stable per terminal (memoize it)
- * or the effect will tear the terminal down and re-create it on every render.
- *
- * `suspended` freezes the terminal's box at its current pixel size (an ancestor with
- * `overflow-hidden` clips it). Set it while a host panel animates shut/open: restty's
- * ResizeObserver never sees the transient sizes, so no PTY resizes reach the shell — each one
- * would make it redraw the prompt, stacking a blank prompt line per toggle.
+ * Interactive restty terminal fed from a {@link TerminalSession}; presentation-only. `session`
+ * must be stable per terminal (memoize it) or the effect tears the terminal down every render.
+ * `suspended` freezes the box at its current pixel size while a host panel animates, so restty's
+ * ResizeObserver never sees transient sizes — each PTY resize would stack a blank prompt line.
  */
 export function LiveTerminal({
   session,
@@ -151,9 +142,8 @@ export function LiveTerminal({
   const resttyRef = useRef<Restty | null>(null);
 
   // Layout effect so the freeze lands before the panel's first shrink frame paints. Freeze only
-  // when the terminal's content box has real extent: a collapsed mount (panel never opened yet)
-  // measures 0 there — pinning that would trap restty at birth size — while the frame itself
-  // still reports its padding, so the content box is the reliable signal.
+  // when the content box has real extent: a collapsed mount measures 0 (the frame still reports
+  // its padding), and pinning that would trap restty at birth size.
   useLayoutEffect(() => {
     const frame = frameRef.current;
     const container = containerRef.current;
@@ -188,11 +178,9 @@ export function LiveTerminal({
         if (signal.aborted) return;
         const restty = new Restty({
           root: container,
-          // Init manually: connectPty must land only once the renderer core is ready, so the
-          // shell's initial prompt (replayed from the client prebuffer on subscribe) isn't
-          // dropped before the WASM terminal can render it.
-          // LinkCode owns terminal tabs/panels. Restty's unscoped Cmd/Ctrl+D pane splitter would
-          // otherwise fire once per mounted terminal, including hidden tabs.
+          // Init manually: connectPty must land only once the renderer core is ready, or the
+          // replayed initial prompt is dropped before the WASM terminal can render it. shortcuts
+          // off: restty's unscoped Cmd/Ctrl+D pane splitter would fire per mounted terminal.
           surface: { autoInit: false, shortcuts: false },
           terminal: { autoResize: false, fonts, fontSize, forwardTerminalReplies: false },
           services: {
@@ -239,15 +227,14 @@ export function LiveTerminal({
         destroyTerminal();
       };
     },
-    // fontFamily/fontSize/colorScheme seed the initial restty config, then are live-synced by the
-    // effects below; adding them here would tear the terminal down and rebuild it on every change.
+    // fontFamily/fontSize/colorScheme only seed the initial config (live-synced by the effects
+    // below); as deps they would tear the terminal down and rebuild it on every change.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: initial seed only
     [session],
   );
 
-  // Live-apply appearance prefs without tearing the terminal down. Each runs after the async
-  // construct populates resttyRef; on first mount resttyRef is still null and they no-op — the
-  // constructor config above having already applied the initial values.
+  // Live-apply appearance prefs without tearing the terminal down; on first mount resttyRef is
+  // still null and they no-op — the constructor config already applied the initial values.
   useAbortableEffect(() => {
     resttyRef.current?.setFontSize(fontSize);
   }, [fontSize]);

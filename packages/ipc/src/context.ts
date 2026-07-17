@@ -1,10 +1,9 @@
 import { z } from 'zod';
 
 /**
- * System IPC carries only system / UI capabilities and never carries business data
- * (docs/ARCHITECTURE.md#core-principles, #packages--repo-layout).
- * SystemContext is the injection point for the implementation of these capabilities: the Electron main
- * process provides the real implementation, while the shared contract stays business-free.
+ * System IPC carries only system / UI capabilities, never business data
+ * (docs/ARCHITECTURE.md#core-principles). SystemContext is the injection point: the Electron
+ * main process provides the real implementation while the shared contract stays business-free.
  */
 export interface SystemContext {
   window: {
@@ -58,11 +57,9 @@ export const PickFileOptionsSchema = z.object({
 });
 export type PickFileOptions = z.infer<typeof PickFileOptionsSchema>;
 
-/**
- * Display parameters for one OS notification — a native-UI operation, not a data channel. The
- * renderer decides whether/what to notify; `clickToken` is opaque to this layer and is echoed
- * back verbatim on click so the renderer can route (e.g. select the matching session).
- */
+/** Display parameters for one OS notification — a native-UI operation, not a data channel. The
+ * renderer decides whether/what to notify; `clickToken` is opaque to this layer and echoed back
+ * verbatim on click so the renderer can route. */
 export const SystemNotificationSchema = z.object({
   title: z.string(),
   body: z.string(),
@@ -74,10 +71,8 @@ export type SystemNotification = z.infer<typeof SystemNotificationSchema>;
 export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark']);
 export type ThemePreference = z.infer<typeof ThemePreferenceSchema>;
 
-/**
- * System-plane desktop settings — color scheme, locale override, and the daemon endpoint the
- * renderer dials. Carries no business data; persisted by the main process under `userData`.
- */
+/** System-plane desktop settings — color scheme, locale override, and the daemon endpoint the
+ * renderer dials. Carries no business data; persisted by the main process under `userData`. */
 export const DesktopSettingsSchema = z.object({
   theme: ThemePreferenceSchema.default('system'),
   /** Locale override; `null` follows the OS (navigator.languages). */
@@ -87,10 +82,8 @@ export const DesktopSettingsSchema = z.object({
 });
 export type DesktopSettings = z.infer<typeof DesktopSettingsSchema>;
 
-/**
- * A settings patch — every field optional, **no defaults** so absent keys are left untouched
- * (a `DesktopSettingsSchema.partial()` would re-inject defaults and clobber the stored values).
- */
+/** A settings patch — every field optional, **no defaults** so absent keys are left untouched
+ * (a `DesktopSettingsSchema.partial()` would re-inject defaults and clobber the stored values). */
 export const DesktopSettingsPatchSchema = z.object({
   theme: ThemePreferenceSchema.optional(),
   locale: z.string().nullable().optional(),

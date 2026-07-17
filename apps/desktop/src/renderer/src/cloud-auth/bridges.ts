@@ -1,8 +1,7 @@
 /**
- * Type surface for the LinkCode Cloud auth bridges the preload exposes on `window` via the
- * better-auth electron plugin (`@better-auth/electron/preload`). Kept as an explicit contract
- * because the bridge lives in the main process — the renderer can't import its inferred type
- * across the process boundary, so we mirror the vendor's stable public shape here.
+ * Type surface for the cloud auth bridges the preload exposes on `window`
+ * (`@better-auth/electron/preload`). An explicit contract: the renderer cannot import the main
+ * process's inferred types across the process boundary, so the vendor's stable shape is mirrored here.
  */
 
 import type { CloudHost, CloudImSource } from '@linkcode/workbench';
@@ -32,8 +31,8 @@ export interface CloudDataBridges {
     /** Lists the signed-in account's online hosts; main attaches the session and validates. */
     listHosts: () => Promise<CloudHost[]>;
     /**
-     * Re-asserts this app as the OS default handler for the deep-link scheme, so the OAuth callback
-     * routes back here. Called right before a sign-in. Resolves to whether the OS accepted it.
+     * Re-asserts this app as the scheme's OS default so the OAuth callback routes back here;
+     * called right before a sign-in. Resolves to whether the OS accepted it.
      */
     claimDeepLink: () => Promise<boolean>;
     /** IM Channel management (`/im/*`); same session-in-main model as listHosts. */

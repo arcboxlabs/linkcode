@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 /**
  * Build the PTY sidecar (crates/linkcode-pty) and stage it where electron-builder's
- * `extraResources: sidecar/${arch}` (electron-builder.yml) picks it up.
- *
- *   node scripts/stage-sidecar.mts          # host arch (local `package`)
- *   node scripts/stage-sidecar.mts --all    # host + cross arch (CI, .github/actions/build-sidecar)
+ * `extraResources: sidecar/${arch}` (electron-builder.yml) picks it up. Default = host arch
+ * (local `package`); `--all` adds the cross arch (CI, .github/actions/build-sidecar).
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync } from 'node:fs';

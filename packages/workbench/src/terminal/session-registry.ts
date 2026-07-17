@@ -46,12 +46,10 @@ interface RegistryEntry {
 }
 
 /**
- * Host-terminal lifetime is keyed to the acquiring key (the panel tab id), not to component
- * mount: the docked and maximized panel instances hand the same PTY off between them, so
- * maximizing never spawns a second host terminal. The deferred close bridges the
- * unmount→mount gap of that handoff (cleanup and setup run in the same React commit);
- * when a tab actually closes, nothing re-acquires and this client detaches. The daemon owns the
- * PTY lifetime so another device can keep using it.
+ * Host-terminal lifetime is keyed to the acquiring key (the panel tab id), not component mount:
+ * the deferred close bridges the unmount→mount gap of the docked↔maximized handoff, so maximizing
+ * never spawns a second host terminal. When a tab actually closes, nothing re-acquires and this
+ * client detaches — the daemon owns the PTY lifetime so another device can keep using it.
  */
 const CLOSE_DELAY_MS = 50;
 /** Past this the open is surfaced as failed; a late success is closed, not adopted. */

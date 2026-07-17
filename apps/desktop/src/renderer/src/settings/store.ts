@@ -17,12 +17,10 @@ export type SettingsCategory =
   | 'history-import';
 
 /**
- * System-plane settings mirror, living above the connection gate. Seeded synchronously from the
+ * System-plane settings mirror, living above the connection gate: seeded synchronously from the
  * main-process snapshot so first paint is correct; every change writes through to main, which owns
- * validation and persistence — nothing persists renderer-side. (The Settings surface open state
- * lives in the workbench navigation history store.)
- *
- * Also holds the renderer-only Settings *view* state.
+ * validation and persistence — nothing persists renderer-side. Also holds the renderer-only
+ * Settings *view* state (the surface's open state lives in the navigation history store).
  */
 export interface DesktopSettingsState {
   theme: ThemePreference;
@@ -71,9 +69,8 @@ export const useDesktopSettingsStore = create<DesktopSettingsState>()((set) => (
 }));
 
 /**
- * Open the Settings overlay at a category. Every entry point routes through here: generic ones
- * (sidebar button, palette "Open settings", the native menu) take the `general` default so a
- * previous deep link doesn't leak into the next open — the category is store-held and would
+ * Open the Settings overlay at a category. Every entry point routes through here; generic ones
+ * take the `general` default because the category is store-held and a previous deep link would
  * otherwise stick across close/reopen.
  */
 export function openDesktopSettings(category: SettingsCategory = 'general'): void {

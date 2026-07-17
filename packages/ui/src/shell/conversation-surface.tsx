@@ -20,7 +20,7 @@ export interface ConversationSurfaceProps {
   /** Frontend capability stub used until attachment support is advertised by the session. */
   attachmentsSupported?: boolean;
   cwd?: string;
-  /** TODO(backend): thread the session's active model here once the daemon reflects it. */
+  /** Overrides the session's reported model (`conversation.currentModel`) in the per-turn meta. */
   modelName?: string;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
@@ -57,9 +57,8 @@ export interface ConversationSurfaceProps {
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
   onOpenPreviewUrl?: (url: string) => void;
-  /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only
-   * (built by combining the system dialog with a daemon file read) — absent on webview, where
-   * the composer's "Attach" action falls back to the Coss file input. */
+  /** Native file picker returning picked images ready to stage. Desktop-only — absent on
+   * webview, where the composer's "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
@@ -109,9 +108,8 @@ export function ConversationSurface({
   onRunShellCommand,
 }: ConversationSurfaceProps): React.ReactNode {
   const composerRef = useRef<ComposerHandle | null>(null);
-  // Only the signed-out cue matters mid-session: the next turn would fail on auth anyway, so
-  // block it and offer the login flow in place. A missing/unverified CLI stays a new-session
-  // concern — this session's process is already running.
+  // Only the signed-out cue matters mid-session (the next turn would fail on auth); a missing or
+  // unverified CLI stays a new-session concern — this session's process is already running.
   const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
   const loginCue = cue?.state === 'needs-login' ? cue : undefined;
   const hasPromptCard = selectPendingPromptItems(conversation).length > 0;
@@ -134,7 +132,7 @@ export function ConversationSurface({
             conversation={conversation}
             agentKind={agentKind}
             cwd={cwd}
-            modelName={modelName}
+            modelName={modelName ?? conversation.currentModel ?? undefined}
             TerminalBlockComponent={TerminalBlockComponent}
             onReviewChanges={onReviewChanges}
           />
@@ -178,6 +176,7 @@ export function ConversationSurface({
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
           agentCommands={conversation.availableCommands}
+          agentModels={conversation.availableModels}
           agentCapabilities={conversation.capabilities}
           onSend={onSendPrompt}
           onInvokeCommand={onInvokeCommand}

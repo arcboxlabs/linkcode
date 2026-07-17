@@ -4,10 +4,8 @@ import * as SecureStore from 'expo-secure-store';
 import { z } from 'zod';
 
 /**
- * The LinkCode Cloud auth client: one better-auth client for the whole app, its
- * session cookie kept in SecureStore, OAuth running in the system browser and
- * landing back through the `linkcode://` scheme. Account state, device
- * enrollment, and host discovery each build on this from their own module.
+ * The single better-auth client for LinkCode Cloud: session cookie in SecureStore,
+ * OAuth in the system browser landing back through the `linkcode://` scheme.
  */
 
 export const CLOUD_URL = 'https://api.linkcode.ai';

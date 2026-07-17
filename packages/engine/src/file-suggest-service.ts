@@ -24,14 +24,10 @@ const WALK_IGNORED_DIRECTORY_NAMES = new Set([
 ]);
 
 /**
- * FileSuggestService: workspace file search backing `file.suggest` (the composer's @-mention
- * source). Sits beside {@link import('./git/git-service').GitService} in the Engine and is keyed
- * by `cwd` like the other directory-backed services; the TTL cache's in-flight dedup converges
- * concurrent keystroke queries onto one enumeration. Enumeration prefers `git ls-files` (respects
- * the real .gitignore, tracked + untracked); non-git workspaces fall back to a bounded
- * breadth-first readdir walk. Matching is substring-tiered — deliberately consistent with the
- * composer's own client-side substring re-filter, so nothing the daemon returns gets dropped
- * client-side.
+ * Workspace file search backing `file.suggest` (the composer's @-mention source). The TTL cache's
+ * in-flight dedup converges concurrent keystroke queries onto one enumeration. Matching is
+ * substring-tiered — deliberately consistent with the composer's client-side substring re-filter,
+ * so nothing the daemon returns gets dropped client-side.
  */
 export class FileSuggestService {
   private readonly listCache = new TtlCache<string[]>(LIST_CACHE_TTL_MS);
@@ -102,10 +98,9 @@ async function walkFiles(root: string): Promise<string[]> {
   return files;
 }
 
-/** Match tiers, best first: basename equals → basename starts-with → basename contains →
- * full relative path contains. Non-matches are dropped. Ties order by path depth
- * (shallow first), then locale compare — so an empty query (everything tier 3) reads as
- * a shallow-first browse listing. */
+/** Match tiers, best first: basename equals → starts-with → contains → full path contains.
+ * Ties order by path depth then locale compare, so an empty query reads as a shallow-first
+ * browse listing. */
 function rankFiles(files: string[], query: string): string[] {
   const needle = query.toLowerCase();
   const ranked: Array<{ file: string; tier: number; depth: number }> = [];

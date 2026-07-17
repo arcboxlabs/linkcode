@@ -27,10 +27,9 @@ export function getEffectiveSashBounds(
 }
 
 /**
- * Resolved size of the coupled (reclaim) track while its neighbor pane is dragged to
- * `paneSize`. Mirrors the CSS clamp coupling in index.css — `--lc-right-col` yields toward
- * its minimum as the sidebar grows past the main floor, and re-expands toward its
- * preferred size when space returns. CSS clamp() semantics: the lower bound wins.
+ * Resolved size of the coupled (reclaim) track while its neighbor pane is dragged to `paneSize`.
+ * Mirrors the CSS clamp coupling in index.css (`--lc-right-col` yields toward its minimum, then
+ * re-expands as space returns); CSS clamp() semantics — the lower bound wins.
  */
 export function getResolvedReclaimTrack(
   paneSize: number,
