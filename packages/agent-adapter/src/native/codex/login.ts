@@ -11,13 +11,11 @@ export type StartLoginServer = (opts: CodexAppServerOptions) => Promise<CodexLog
 
 /**
  * Drive codex's ChatGPT OAuth through a short-lived `codex app-server`: `account/login/start`
- * returns `{loginId, authUrl}`, the app-server runs its own localhost callback server, and
- * `account/login/completed {loginId, success, error?}` settles the flow (all verified live on
- * codex-cli 0.144.1). Unlike claude's remote-callback flow there is no code for the user to hand
- * back, so `submitCode` is a no-op — the browser callback completes everything. The child
- * inherits the daemon environment and writes `$CODEX_HOME/auth.json` where the probe and future
- * session spawns read it (a RUNNING session's app-server caches credentials and only picks the
- * login up when it respawns — the adapter's auth retirement arms exactly that).
+ * returns `{loginId, authUrl}`, the app-server runs its own localhost callback, and
+ * `account/login/completed {loginId, success, error?}` settles the flow (verified live on
+ * codex-cli 0.144.1). No code is handed back — `submitCode` is a no-op. The child inherits the
+ * daemon environment and writes `$CODEX_HOME/auth.json` where the probe and future session spawns
+ * read it (a RUNNING app-server caches credentials until respawn — the adapter's auth retirement).
  */
 export function startCodexLogin(
   binaryPath: string,

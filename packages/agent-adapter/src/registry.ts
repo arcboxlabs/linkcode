@@ -3,14 +3,14 @@ import { never } from 'foxts/guard';
 import type { AgentAdapter } from './adapter';
 import { ClaudeCodeAdapter } from './native/claude-code';
 import { CodexAdapter } from './native/codex';
+import { GrokBuildAdapter } from './native/grok-build';
 import { OpenCodeAdapter } from './native/opencode';
 import { PiAdapter } from './native/pi';
 
 /**
- * Adapter factory: instantiate the native adapter for a given agent kind. Each adapter lazy-loads its SDK
- * in `start()`, so a missing SDK degrades to a clear error event rather than breaking the daemon
- * (interface-first, docs/ARCHITECTURE.md#core-principles). Per-session parameters (cwd / model / config)
- * are passed via `StartOptions` to `start()`.
+ * Adapter factory. Each adapter lazy-loads its SDK in `start()`, so a missing SDK degrades to a
+ * clear error event rather than breaking the daemon (docs/ARCHITECTURE.md#core-principles).
+ * Per-session parameters (cwd / model / config) travel via `StartOptions`.
  */
 export function createAdapter(kind: AgentKind): AgentAdapter {
   switch (kind) {
@@ -22,6 +22,8 @@ export function createAdapter(kind: AgentKind): AgentAdapter {
       return new OpenCodeAdapter();
     case 'pi':
       return new PiAdapter();
+    case 'grok-build':
+      return new GrokBuildAdapter();
     default:
       return never(kind, 'agent kind');
   }

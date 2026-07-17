@@ -26,10 +26,8 @@ export function boundAgentKinds(
   return AGENT_KINDS.filter((kind) => providers?.[kind]?.activeAccountId === accountId);
 }
 
-/**
- * The `providers` slice this account currently writes into `~/.linkcode/config.json`, pretty-printed
- * for the detail pane's config preview. Contains no secret (the account itself holds the credential).
- */
+/** The `providers` slice this account writes into `~/.linkcode/config.json`, pretty-printed for
+ * the detail pane preview. Contains no secret (the account itself holds the credential). */
 export function accountConfigSnippet(
   providers: ProvidersConfig | undefined,
   accountId: string,

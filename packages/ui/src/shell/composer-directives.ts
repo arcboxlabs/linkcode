@@ -9,13 +9,9 @@ export type ComposerDirective =
 
 const WHITESPACE_RE = /\s/;
 
-/**
- * Classify a submitted draft (already trimmed). `/name args` becomes a command directive only when
- * `name` is in the advertised catalog — canonical name or provider alias — anything else stays a
- * plain prompt, so free-typed slash text keeps today's pass-through behavior. `$ cmd` becomes a
- * shell directive only when the agent advertises it through its capabilities; a bare `$` with
- * nothing after it stays text.
- */
+/** Classify a submitted draft (already trimmed). `/name args` is a command directive only when
+ * `name` is in the advertised catalog (canonical or alias) — anything else stays a plain prompt.
+ * `$ cmd` is a shell directive only when the agent advertises it; a bare `$` stays text. */
 export function parseComposerDirective(
   text: string,
   opts: { commands: readonly AgentCommand[]; shellEnabled: boolean },

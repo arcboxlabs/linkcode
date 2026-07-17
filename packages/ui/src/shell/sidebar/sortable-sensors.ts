@@ -10,17 +10,11 @@ function isTextInputTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * Sensor configuration for the sidebar's sortables, overriding two PointerSensor defaults that
- * assume drag handles are non-interactive:
- *
- * - `preventActivation` normally blocks drags whose pointerdown lands on an interactive child.
- *   Sidebar rows and group headers are *made of* buttons, so that default made them undraggable.
- *   Only text inputs stay protected — dragging to select text in the header's rename field must
- *   never start a group drag.
- * - `activationConstraints` normally activates instantly (no threshold) inside an explicit
- *   handle, which would swallow plain clicks on the header's collapse toggle and action buttons.
- *   A uniform 5px distance threshold keeps clicks as clicks; touch keeps a hold delay so
- *   scrolling over rows doesn't start drags.
+ * Overrides two PointerSensor defaults that assume non-interactive drag handles: default
+ * `preventActivation` would make the button-built rows/headers undraggable, so only text inputs
+ * stay protected (drag-to-select in the rename field must not start a group drag); and instant
+ * in-handle activation would swallow plain clicks, so a 5px distance threshold keeps clicks as
+ * clicks while touch keeps a hold delay so scrolling over rows doesn't start drags.
  */
 export const SIDEBAR_SORTABLE_SENSORS: Sensors = [
   PointerSensor.configure({

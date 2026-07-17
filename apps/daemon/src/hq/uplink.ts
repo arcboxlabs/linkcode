@@ -13,18 +13,11 @@ const log = (message: string): void => console.log(`[linkcode/daemon] ${message}
 const CONNECT_RETRY_MS = 30000;
 
 /**
- * Attach this daemon to the cloud relay as the account's host. The relay
- * attests remote peer ids, and {@link TunnelTransportServer} presents each
- * peer as its own Hub connection.
- *
- * Transient drops reconnect inside {@link TunnelTransportServer}; only a first
- * dial that never succeeds is retried here (the daemon may boot offline).
- * A *permanent* close — replaced by another daemon under the same device id,
- * credential revoked, signed out — stops the uplink for good: retrying would
- * either fight the replacement or spam a dead credential. Sign in again and
- * restart the daemon to recover.
- *
- * Returns a stop function for shutdown.
+ * Attach this daemon to the cloud relay as the account's host; {@link TunnelTransportServer}
+ * presents each relay-attested peer as its own Hub connection. Transient drops reconnect inside
+ * it — only a never-successful first dial is retried here (the daemon may boot offline). A
+ * *permanent* close (replaced under the same device id, credential revoked, signed out) stops the
+ * uplink for good; sign in again and restart to recover. Returns a stop function for shutdown.
  */
 export function startHqUplink(hub: Hub): () => void {
   const credentials = loadHqCredentials();

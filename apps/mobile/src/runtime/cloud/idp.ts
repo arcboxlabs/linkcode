@@ -7,13 +7,9 @@ import { z } from 'zod';
 import { CLOUD_URL, cloudAuthClient } from './client';
 
 /**
- * Native sign-in through the central IdP (auth.arcbox.dev), no browser: the
- * Apple sheet yields an identityToken, the IdP verifies it natively (this
- * app's bundle id is on its audience whitelist) and opens its own session,
- * and a short-lived IdP JWT is then swapped for a LinkCode Cloud session at
- * `/auth/exchange/idp-token`. The IdP session lives in its own SecureStore
- * slot and only ever backs this flow — signing out of the cloud does not
- * touch it, mirroring "still signed into the IdP in the browser" semantics.
+ * Browserless sign-in: Apple identityToken → central IdP (this bundle id is on its
+ * audience whitelist) → short-lived IdP JWT → cloud session at `/auth/exchange/idp-token`.
+ * The IdP session has its own SecureStore slot; signing out of the cloud never touches it.
  */
 
 const IDP_URL = 'https://auth.arcbox.dev';

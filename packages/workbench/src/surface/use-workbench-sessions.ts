@@ -12,6 +12,7 @@ import { useMemo, useRef } from 'react';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
+import { withoutAutomationSessions } from '../sidebar/group-threads';
 import type { WorkbenchSessionDraft } from './selection-store';
 import { useSessionSelectionStore } from './selection-store';
 
@@ -49,9 +50,9 @@ export interface WorkbenchSessions {
 const EMPTY_LIST_DRAFT: WorkbenchSessionDraft = { workspaceId: null };
 
 /**
- * Session orchestration over the daemon's persisted session list. The daemon is the single
- * authority — the list includes cold (stopped) sessions, so there is no client-side optimistic
- * bookkeeping; mutations just revalidate. Selecting a cold session resumes it in place (same id).
+ * Session orchestration over the daemon's persisted session list: the daemon is the single
+ * authority, so no client-side optimistic bookkeeping — mutations just revalidate. Selecting a
+ * cold session resumes it in place (same id).
  */
 export function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSessions {
   const { data: remoteSessions, isLoading, mutate } = useData(listSessions, {});
@@ -60,9 +61,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const resumeMutation = useMutation(resumeSession, { onError });
   const selectedId = useSessionSelectionStore((state) => state.selectedId);
   const setSelectedId = useSessionSelectionStore((state) => state.setSelectedId);
-  // Shared, not hook-local: a selection applied from another instance (palette, notification
-  // click-through, history import) must clear the draft the visible workbench renders, or the
-  // draft page wins over it.
+  // Shared, not hook-local: a selection applied from another instance must clear the draft the
+  // visible workbench renders, or the draft page wins over it.
   const explicitDraft = useSessionSelectionStore((state) => state.draft);
   const startExplicitDraft = useSessionSelectionStore((state) => state.startDraft);
 
@@ -70,20 +70,25 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     () => [...(remoteSessions ?? [])].sort((a, b) => a.createdAt - b.createdAt),
     [remoteSessions],
   );
+  // Automation-created sessions are hidden from the Threads sidebar and the landing fallbacks; the
+  // full `sessions` stays for explicit by-id resolution (an automation detail view opens its run).
+  const visibleSessions = useMemo(() => withoutAutomationSessions(sessions), [sessions]);
 
   // The page is also the landing state once the list has loaded empty — there is nothing to
-  // select, so the auto-select-recent fallback below would render a dead conversation column.
-  const listLoadedEmpty = !isLoading && remoteSessions != null && sessions.length === 0;
+  // select, so the auto-select-recent fallback below would render a dead conversation column. An
+  // all-automation list counts as empty for landing unless one was explicitly selected from its
+  // run detail; explicit selections resolve against the full session list below.
+  const listLoadedEmpty =
+    !isLoading && remoteSessions != null && visibleSessions.length === 0 && selectedId === null;
   const draft = explicitDraft ?? (listLoadedEmpty ? EMPTY_LIST_DRAFT : null);
 
   const active = useMemo(() => {
     if (draft) return null;
-    // An explicit selection absent from the loaded list (e.g. a session another client created,
-    // reached via a notification click) must NOT fall back to a different thread — that would show
-    // the wrong conversation. Hold null; the effect below refreshes the list so it resolves.
+    // An explicit selection absent from the loaded list must NOT fall back to a different thread
+    // (wrong conversation). Hold null; the effect below refreshes the list so it resolves.
     if (selectedId) return sessionById(sessions, selectedId);
-    return preferredActiveSession(sessions) ?? sessions.at(-1) ?? null;
-  }, [draft, selectedId, sessions]);
+    return preferredActiveSession(visibleSessions) ?? visibleSessions.at(-1) ?? null;
+  }, [draft, selectedId, sessions, visibleSessions]);
   const activeId = active?.sessionId ?? null;
 
   const recordNavigation = useNavigationHistoryStore((state) => state.record);
@@ -93,9 +98,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const overlay = useNavigationHistoryStore((state) => state.overlay);
   const setOverlay = useNavigationHistoryStore((state) => state.setOverlay);
 
-  // What the surface currently renders, as a history location: an overlay surface covers the
-  // draft page, which wins over the fallback-resolved thread (mirroring the `active` derivation
-  // above).
+  // What the surface currently renders, as a history location: an overlay covers the draft page,
+  // which wins over the fallback-resolved thread (mirroring the `active` derivation above).
   const currentLocation: NavLocation | null = overlay
     ? { surface: overlay }
     : draft
@@ -105,8 +109,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
         : null;
 
   // Refresh the list once when an explicit selection isn't in it yet, so a click-through to a
-  // not-yet-listed session resolves instead of leaving the surface blank. Deduped per id so a
-  // genuinely gone session doesn't spin.
+  // not-yet-listed session resolves; deduped per id so a genuinely gone session doesn't spin.
   const refreshedForRef = useRef<SessionId | null>(null);
   useAbortableEffect(() => {
     if (selectedId == null || draft) return;
@@ -205,7 +208,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }
 
   return {
-    sessions,
+    // The sidebar and keyboard-recent cycle see only non-automation sessions.
+    sessions: visibleSessions,
     active,
     activeId,
     isLoading,

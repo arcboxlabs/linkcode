@@ -23,9 +23,8 @@ const IDLE_NAV: WebviewNavState = {
 };
 
 /**
- * The Browser section's Electron `<webview>`. Mounted once inside the shell's resident
- * panel-content stack (never unmounted on section switches — moving a webview in the
- * DOM reloads it), showing/hiding via the stack's visibility toggle.
+ * The Browser section's Electron `<webview>`, mounted once inside the shell's resident
+ * panel-content stack (moving a webview in the DOM reloads it) and shown/hidden via visibility.
  */
 export function BrowserWebviewPane(): React.ReactNode {
   const t = useTranslations('workbench.preview.browser');

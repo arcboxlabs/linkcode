@@ -204,9 +204,8 @@ fn shutdown_flushes_a_final_exit_frame() {
     let (type_byte, _) = read_frame(&mut stdout).expect("opened frame");
     assert_eq!(type_byte, OPENED);
 
-    // Closing the control pipe (EOF) triggers shutdown. It must kill the terminal, then join the
-    // reader thread *before* stopping the writer, so the reader's final EXIT frame is flushed
-    // rather than raced away by the writer shutting down first.
+    // Control-pipe EOF triggers shutdown, which must join the reader *before* stopping the
+    // writer so the final EXIT frame is flushed rather than raced away.
     drop(stdin);
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut exited = false;
@@ -373,9 +372,8 @@ fn close_escalates_to_sigkill_when_the_shell_ignores_sighup() {
         wait_for(&mut stdout, 10, |type_byte, _| type_byte == OPENED),
         "terminal should open"
     );
-    // Wait for the trap to actually be installed before closing — otherwise CLOSE can race the
-    // shell's own startup and land while SIGHUP still has its default (terminating) disposition,
-    // which would exit the shell without ever exercising the escalation this test targets.
+    // Wait for the trap to be installed before closing — otherwise CLOSE can land while SIGHUP
+    // still has its default (terminating) disposition and never exercise the escalation.
     assert!(
         wait_for(&mut stdout, 10, |type_byte, body| {
             type_byte == OUTPUT && frame_text(body).contains("ready-linkcode")

@@ -1,7 +1,6 @@
 /**
- * IPC channels for the renderer's `linkcodeCloud` bridge. The fetches run in main (it holds the
- * keychain session); the renderer never calls the cloud API directly. Shared here so main and the
- * dependency-light preload agree on the channel names.
+ * IPC channels for the renderer's `linkcodeCloud` bridge — the fetches run in main, which holds
+ * the keychain session. Shared so main and the dependency-light preload agree on channel names.
  */
 export const CLOUD_LIST_HOSTS_CHANNEL = 'linkcode.cloud.list-hosts';
 

@@ -3,7 +3,7 @@ import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { AssetManager } from '@linkcode/assets';
 import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
-import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
+import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import { Hub } from '@linkcode/transport/server';
 import type { Runtime } from 'effect';
 import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
@@ -14,6 +14,7 @@ import type { DaemonConfig } from './config';
 import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
+import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
@@ -24,6 +25,7 @@ import {
   removeRuntimeFile,
   writeRuntimeFile,
 } from './runtime';
+import { createScheduleStore } from './schedule-store';
 import { createSessionStore } from './session-store';
 import { createWorkspaceStore } from './workspace-store';
 
@@ -168,7 +170,10 @@ async function main(): Promise<void> {
       if (gc.skipped.length > 0) {
         console.warn(`[linkcode/daemon] assets gc: skipped ${gc.skipped.join(', ')}`);
       }
-      agentRuntimeProber.setManagedResolver((kind) => assets.managedBinary(`agent:${kind}`));
+      agentRuntimeProber.setManagedResolver((kind) => {
+        const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
+        return id.success ? assets.managedBinary(id.data) : undefined;
+      });
       // Probed once per boot (user-installed CLIs self-update, so results must not outlive a
       // boot); fills the adapters' spawn-path resolution and is served on `agent-runtime.list`.
       // Deliberately not awaited (CODE-225): collect() spawns agent CLIs (`--version`, `auth
@@ -179,6 +184,9 @@ async function main(): Promise<void> {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         sessionStore: createSessionStore(databasePath()),
+        // After sessionStore so its migration-ledger reconcile runs before this store migrates.
+        scheduleStore: createScheduleStore(databasePath()),
+        loopStore: createLoopStore(databasePath()),
         workspaceStore: createWorkspaceStore(databasePath()),
         previewRoutes,
         agentRuntimesReady,

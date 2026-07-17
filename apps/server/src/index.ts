@@ -3,19 +3,10 @@ import type { RawData, WebSocket } from 'ws';
 import { WebSocketServer } from 'ws';
 
 /**
- * Link Code Server — relay / tunnel (docs/ARCHITECTURE.md#packages--repo-layout).
- * It does not run an agent itself; it only lets external devices (Mobile) connect to the local Host.
- * Both Host ↔ Server and Mobile ↔ Server use websockets carrying the WireMessage defined by schema.
- *
- * ❓ The data models / protocol details for the following capabilities are still to be confirmed
- *   (see docs/ARCHITECTURE.md#open-questions); this is only a minimal skeleton for now:
- *   - token    authentication: validate the token on connection to identify the user / device.
- *   - perm     permissions: authorization policy for tool calls.
- *   - store    storage: persistence of session history.
- *   - realtime real-time: presence / multi-device synchronization.
- *
- * The current tunnel is a placeholder implementation that broadcasts between host ↔ client within the same room;
- * it does not yet route precisely by tunnel id / session.
+ * Link Code Server — relay/tunnel placeholder (docs/ARCHITECTURE.md#packages--repo-layout):
+ * runs no agent, only relays schema WireMessages over websockets between Host and external
+ * clients, room-broadcast (no per-tunnel/session routing yet). Token auth, permissions,
+ * storage, and realtime sync are open questions (docs/ARCHITECTURE.md#open-questions).
  */
 
 type Role = 'host' | 'client';

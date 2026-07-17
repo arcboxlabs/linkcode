@@ -37,9 +37,8 @@ export class PiAdapter extends BaseAgentAdapter {
       }
     }
 
-    // Pi resolves auth through AuthStorage; inject the account's key as a runtime override for the
-    // selected model's provider so it takes precedence over ~/.pi/agent/auth.json and env vars. A
-    // gateway account's base URL is registered on the model registry (it overrides the provider's URL).
+    // Inject the account's key as a runtime override so it outranks ~/.pi/agent/auth.json and env
+    // vars; a gateway base URL is registered on the model registry, overriding the provider's URL.
     const cred = readAgentCredential(opts.config);
     const key = cred.apiKey ?? cred.authToken;
     if (key) authStorage.setRuntimeApiKey(model.provider, key);

@@ -1,9 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Content blocks shared by all four supported agents. The discriminator is `type`; values stay in MCP
- * snake_case form (`resource_link`) so MCP tool results and resources map across with no renaming.
- */
+/** Content blocks shared by all five supported agents. The discriminator is `type`; values stay
+ * in MCP snake_case form (`resource_link`) so MCP results map across with no renaming. */
 
 /** Optional MCP-style annotations attached to a content block. */
 export const AnnotationsSchema = z.object({
@@ -67,9 +65,8 @@ function base64Length(bytes: number): number {
   return 4 * Math.ceil(bytes / 3);
 }
 
-/** Image types every image-capable adapter accepts (Claude's `Base64ImageSource.media_type` enum
- * is the narrowest set). The composer offers only these and the engine rejects prompts carrying
- * anything else, so adapters may forward image blocks without re-validating. */
+/** Image types every image-capable adapter accepts (Claude's enum is the narrowest set). The
+ * composer offers only these and the engine rejects the rest, so adapters skip re-validation. */
 export const SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES = [
   'image/jpeg',
   'image/png',

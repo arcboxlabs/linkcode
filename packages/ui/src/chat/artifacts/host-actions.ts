@@ -6,16 +6,14 @@ export interface ArtifactHostActions {
   /** Insert a reference produced from an artifact interaction into the composer draft
    * (never auto-sends). */
   referenceToComposer: (text: string) => void;
-  /** Open a workspace file in the host's viewer (desktop: right-panel files section).
-   * Relative paths are anchored to the session cwd by the host. Absent when the shell
-   * has no file viewer (webview) — cards then render without the open affordance. */
+  /** Open a workspace file in the host's viewer; relative paths anchor to the session cwd.
+   * Absent (webview has no viewer) — cards then render without the open affordance. */
   openFile?: (path: string) => void;
   /** Open the workspace-change review surface. File results use this when the target no longer
    * exists (for example, a completed delete) or one adapter result spans multiple files. */
   reviewChanges?: () => void;
-  /** Host inline content on the daemon's ephemeral per-artifact origin (CODE-62);
-   * absent when the data plane doesn't support hosting — sandboxed previews then stay
-   * unavailable and the fence renders as code. */
+  /** Host inline content on the daemon's ephemeral per-artifact origin (CODE-62); absent when
+   * the data plane can't host — the fence then renders as code. */
   hostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promote a hosted artifact/preview URL to the host's browser surface (desktop:
    * Browser pane). Absent → the renderer falls back to a new browser tab. */

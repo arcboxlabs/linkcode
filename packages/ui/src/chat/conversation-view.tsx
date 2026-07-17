@@ -7,6 +7,7 @@ import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
 import { CompactionMarker } from './compaction-marker';
 import { ContentBlockView } from './content-block-view';
+import { positionalBlockEntries } from './content-derived-keys';
 import {
   Conversation,
   ConversationContent,
@@ -19,7 +20,7 @@ import {
   declinedToolCallIds,
   selectPendingPromptItems,
 } from './conversation-prompts';
-import { assistantTurnText, latestReceivedAt } from './conversation-text';
+import { assistantTurnText, latestReceivedAt, turnModel } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
 import { SubagentCard } from './subagent-card';
@@ -37,7 +38,7 @@ export interface ConversationViewProps {
   conversation: ConversationViewModel;
   agentKind?: AgentKind;
   cwd?: string;
-  /** TODO(backend): shown in the per-turn meta once session state reflects the active model. */
+  /** Session-level fallback for the per-turn model meta (a turn's own message stamp wins). */
   modelName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Opens this turn's workspace changes in the host review surface. */
@@ -139,10 +140,9 @@ export function ConversationView({
         return (
           <Message key={item.id} from="assistant">
             <MessageContent className="space-y-1">
-              {item.blocks.map((block, index) => (
+              {positionalBlockEntries(item.blocks).map(({ block, key }) => (
                 <ContentBlockView
-                  // eslint-disable-next-line @eslint-react/no-array-index-key -- append-only stream: appendBlock only pushes or extends the last block, so index+type is a stable position key across token-by-token re-renders
-                  key={`${index}:${block.type}`}
+                  key={key}
                   block={block}
                   smoothText
                   isStreaming={item.isStreaming}
@@ -232,7 +232,7 @@ export function ConversationView({
                     <AgentTurnActions
                       agentKind={agentKind}
                       copyText={replyText}
-                      modelName={modelName}
+                      modelName={turnModel(segment.items) ?? modelName}
                       receivedAt={latestReceivedAt(segment.items)}
                     />
                   ) : null}

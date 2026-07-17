@@ -3,10 +3,9 @@ import { getGitDiff, getGitPullRequestStatus, getGitStatus } from '@linkcode/sdk
 import { useData } from '../runtime/tayori';
 
 /**
- * Freshness is poll-based for now: the daemon's per-cwd TTL caches (5s status / 10s diff / 30s PR)
- * converge every polling client onto one underlying call, so these intervals cost one RPC, not one
- * subprocess, per tick. A daemon-side watcher pushing `git.*.updated` events is a purely additive
- * upgrade that would replace the intervals.
+ * Poll-based freshness: the daemon's per-cwd TTL caches converge every polling client onto one
+ * underlying call (one RPC, not one subprocess, per tick). A daemon-side `git.*.updated` push
+ * would be a purely additive replacement for these intervals.
  */
 const GIT_STATUS_REFRESH_MS = 10000;
 const GIT_DIFF_REFRESH_MS = 15000;

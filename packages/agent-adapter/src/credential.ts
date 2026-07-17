@@ -2,10 +2,9 @@ import type { StartOptions } from '@linkcode/schema';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 
 /**
- * The credential/endpoint bundle the engine resolves from a session's bound account
- * (`@linkcode/engine`'s `applyProviderDefaults`) and hands to an adapter via `StartOptions.config`.
- * Each adapter maps these onto its own auth / base-URL mechanism. All fields are optional — an
- * `oauth` account contributes none, delegating to the agent CLI's own login store.
+ * Credential/endpoint bundle the engine resolves from a session's bound account into
+ * `StartOptions.config`; each adapter maps it onto its own auth mechanism. All fields optional —
+ * an `oauth` account contributes none, delegating to the agent CLI's own login store.
  */
 export interface AgentCredential {
   /** Provider key (x-api-key style). */
@@ -32,13 +31,10 @@ export function readAgentCredential(config: StartOptions['config']): AgentCreden
 
 /**
  * Build the `env` for the claude-code subprocess. The SDK `env` **replaces** the process
- * environment, so `base` (usually `process.env`) is spread to preserve PATH/HOME. Returns undefined
- * when the account contributes nothing, so the caller omits `env` and the CLI inherits the parent
- * environment (the login / OAuth path).
- *
- * With an `authToken` the token goes to `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` is blanked:
- * Claude Code prefers a non-empty `ANTHROPIC_API_KEY` over the token, so a leftover inherited key
- * would silently defeat a gateway that authenticates by bearer token.
+ * environment, so `base` is spread to preserve PATH/HOME; undefined when the account contributes
+ * nothing, so the CLI inherits the parent environment (the login / OAuth path). With an `authToken`,
+ * `ANTHROPIC_API_KEY` is blanked — Claude Code prefers a non-empty key over the token, so a leftover
+ * inherited key would silently defeat a bearer-token gateway.
  */
 export function claudeCodeEnv(
   base: Record<string, string | undefined>,
@@ -60,15 +56,27 @@ export function claudeCodeEnv(
 
 /**
  * Build the extra `env` for the codex app-server subprocess. `CodexAppServer.start` **merges** this
- * over the inherited env, so only the account's own keys are returned (no base spread). `CODEX_API_KEY`
- * takes the account's key or bearer token; `OPENAI_BASE_URL` points codex's default provider at a
- * custom endpoint. Returns undefined when nothing is contributed.
+ * over the inherited env, so only the account's own keys are returned (no base spread); undefined
+ * when nothing is contributed.
  */
 export function codexEnv(cred: AgentCredential): Record<string, string> | undefined {
   const env: Record<string, string> = {};
   const key = cred.apiKey ?? cred.authToken;
   if (key) env.CODEX_API_KEY = key;
   if (cred.baseUrl) env.OPENAI_BASE_URL = cred.baseUrl;
+  if (cred.extraEnv) Object.assign(env, cred.extraEnv);
+  return isObjectEmpty(env) ? undefined : env;
+}
+
+/**
+ * Extra env for the Grok Build headless CLI. The runner merges this over the inherited env so
+ * OAuth/login still reads `~/.grok/auth.json` when no key is present. An account key becomes
+ * `XAI_API_KEY` (Grok's API-key auth path).
+ */
+export function grokEnv(cred: AgentCredential): Record<string, string> | undefined {
+  const env: Record<string, string> = {};
+  const key = cred.apiKey ?? cred.authToken;
+  if (key) env.XAI_API_KEY = key;
   if (cred.extraEnv) Object.assign(env, cred.extraEnv);
   return isObjectEmpty(env) ? undefined : env;
 }

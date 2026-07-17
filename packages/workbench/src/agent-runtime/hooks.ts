@@ -4,10 +4,9 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useData } from '../runtime/tayori';
 
 /**
- * Which agent CLIs the host can actually spawn, keyed by agent kind (`AgentRuntimes`). Probed at
- * daemon boot and re-probed after a managed install lands — the `agent-runtime.changed` push
- * revalidates the snapshot here. Kinds the host has not evaluated are absent (opencode until
- * CODE-76).
+ * Which agent CLIs the host can actually spawn, keyed by kind (`AgentRuntimes`); the
+ * `agent-runtime.changed` push revalidates the snapshot here. Kinds the host has not evaluated
+ * are absent (opencode until CODE-76).
  */
 export function useAgentRuntimes() {
   const client = useLinkCodeClient();

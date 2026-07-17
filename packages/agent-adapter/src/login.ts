@@ -40,12 +40,11 @@ export interface LoginChildProcess {
 export type LoginSpawn = (command: string, args: string[]) => LoginChildProcess;
 
 /**
- * Drive `claude auth login` as a short-lived headless child (piped stdio, no PTY). Streams the
- * browser authorize URL to `onUrl`, accepts the pasted code via `submitCode` (written to stdin),
- * and reports the outcome to `onSettled`. `--claudeai` selects the subscription flow; the CLI's
- * OAuth uses a remote callback page, so the code round-trips through the user, not a local server.
- * The child inherits the daemon's environment so it writes credentials where the SDK later reads
- * them (macOS keychain / `~/.claude`).
+ * Drive `claude auth login` as a short-lived headless child (piped stdio, no PTY): authorize URL
+ * out via `onUrl`, pasted code in via `submitCode` (stdin), outcome via `onSettled`. `--claudeai`
+ * selects the subscription flow; the CLI's OAuth callback page is remote, so the code round-trips
+ * through the user. The child inherits the daemon's environment so credentials land where the SDK
+ * later reads them (macOS keychain / `~/.claude`).
  */
 export function startClaudeLogin(
   binaryPath: string,

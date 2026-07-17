@@ -48,12 +48,9 @@ const TERMINAL_CLOSE_CODES = new Set<number>([
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 const ROTATE_AFTER_MS = TUNNEL_MAX_CONNECTION_AGE_MS - 60 * 60 * 1000;
-/**
- * Reconnecting client for the tunnel v2 relay. Client-role callers use
- * send/onMessage; host-role callers receive one directed channel per peer.
- *
- * ponytail: remove this local seam once the published package includes v2.
- */
+/** Reconnecting client for the tunnel v2 relay: client-role callers use send/onMessage;
+ * host-role callers receive one directed channel per peer.
+ * ponytail: remove this local seam once the published package includes v2. */
 export class TunnelClient {
   private readonly inbound = new Listeners<string>();
   private readonly closed = new Listeners<void>();

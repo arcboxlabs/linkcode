@@ -9,14 +9,12 @@ import { watchDaemonRuntime } from './daemon-discovery';
 import { getSettings } from './settings';
 
 /**
- * Supervises the bundled daemon (out/daemon/index.mjs, see electron.vite.config.ts): forks it
- * under Electron's Node via `utilityProcess` and ties its lifetime to the app — started when the
- * app is ready, SIGTERMed on quit (Cmd+Q). Closing windows (Cmd+W on macOS) leaves it running.
- *
- * The supervisor just spawns; the one-daemon-per-profile contract lives in the daemon itself
- * (apps/daemon/src/runtime.ts). When another daemon already serves this profile the child exits
- * with DAEMON_EXIT_ALREADY_RUNNING and the supervisor stands down — which daemon clients dial is
- * discovery's job (runtime.json), not the supervisor's.
+ * Supervises the bundled daemon (out/daemon/index.mjs): forks it under Electron's Node via
+ * `utilityProcess`, started on app-ready, SIGTERMed on quit; closing windows leaves it running.
+ * It only spawns — the one-daemon-per-profile contract lives in the daemon itself
+ * (apps/daemon/src/runtime.ts): an external daemon makes the child exit
+ * DAEMON_EXIT_ALREADY_RUNNING and the supervisor stands down; which daemon clients dial is
+ * discovery's job (runtime.json).
  */
 
 const RESPAWN_DELAY_MS = 1000;
@@ -49,9 +47,8 @@ export function startDaemonSupervisor(): void {
 }
 
 /**
- * Re-evaluate an automatic stand-down when runtime.json changes. A live external daemon makes
- * our child exit with code 3; when that daemon later stops, its runtime-file change lets this app
- * take ownership again. A crash-loop give-up is intentionally sticky until an explicit retry.
+ * Re-evaluate an automatic stand-down when runtime.json changes: when the displacing external
+ * daemon stops, this app takes ownership again. A crash-loop give-up is sticky until explicit retry.
  */
 function syncDaemonSupervisor(): void {
   if (quitting || !isDaemonManaged()) return;

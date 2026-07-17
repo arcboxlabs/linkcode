@@ -9,10 +9,9 @@ const MAX_HOSTED_ARTIFACTS = 128;
 const OWNER = 'artifact-host';
 
 /**
- * Ephemeral artifact hosting (CODE-62): content-addressed, in-memory documents served
- * through the preview proxy under `artifact--<hash>.localhost` — one origin per
- * artifact, so the browser's same-origin policy isolates artifacts from each other and
- * from the daemon. A daemon restart (or LRU eviction / explicit revoke) 404s the URL.
+ * Ephemeral artifact hosting (CODE-62): content-addressed in-memory documents served via the
+ * preview proxy, one `artifact--<hash>.localhost` origin each so same-origin policy isolates
+ * them. A daemon restart, LRU eviction, or explicit revoke 404s the URL.
  */
 export class ArtifactHostService {
   /** Insertion order doubles as LRU order (re-hosting refreshes by delete+set). */

@@ -7,13 +7,11 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /** Startup output kept for the failure message when the server never reports readiness. */
 const STARTUP_OUTPUT_CAP = 8192;
-/** Rolling window the readiness regex runs over — a couple of lines is plenty for the readiness
- * line, and a bounded window (unlike a capped-then-frozen buffer) cannot stop matching just
- * because a chatty startup produced a lot of output first. */
+/** Rolling window the readiness regex runs over — bounded (unlike a capped-then-frozen buffer) so
+ * a chatty startup cannot stop it matching. */
 const READINESS_WINDOW = 512;
 /** The server's readiness line: `opencode server listening on http://127.0.0.1:<port>`. The
- * trailing newline is required so a URL split across chunks can't match on its half-arrived
- * prefix. */
+ * trailing newline keeps a URL split across chunks from matching on its half-arrived prefix. */
 const RE_LISTENING = /listening on\s+(https?:\/\/\S+)\s*[\r\n]/;
 
 /** The slice of `ChildProcess` this manager drives — a structural type so tests can hand in a
@@ -40,10 +38,9 @@ export interface OpencodeHistoryServerOptions {
    * `opencode serve`. */
   spawnServer?: (args: { port: number; cwd: string }) => HistoryServerProcess;
   allocatePort?: () => Promise<number>;
-  /** Spawn cwd for the server. opencode treats its cwd as the default workspace and indexes the
-   * whole tree under it, so this must be a neutral empty directory — NEVER the daemon's cwd (a
-   * daemon launched from `$HOME` would index the entire home tree; the SDK's `createOpencode()`
-   * has no cwd option, which is why this manager spawns the server itself). */
+  /** Spawn cwd. opencode indexes its cwd as the default workspace, so this must be a neutral
+   * empty directory — NEVER the daemon's cwd (from `$HOME` it would index the whole home tree).
+   * The SDK's `createOpencode()` has no cwd option, which is why this manager spawns itself. */
   neutralCwd?: string;
   /** How long the server may sit with no in-flight history call before it is shut down. */
   idleMs?: number;
@@ -75,20 +72,14 @@ class StartupExitError extends Error {
 }
 
 /**
- * Daemon-shared `opencode serve` for history reads (CODE-171). History `list`/`read` are served to
- * never-started adapter instances (`HistoryService` constructs one per call via the factory), so
- * the server backing them cannot belong to any live session — it is a lazily-spawned, idle-reaped
- * process shared across all history calls. Live sessions keep their own per-session SDK server.
- *
- * The server is multi-tenant: history calls carry no `directory`, and the neutral-cwd instance
- * lists and reads sessions across every project (verified live on opencode 1.17.11).
- *
- * Scope note for the eventual paseo-style consolidation (live sessions sharing this server,
- * CODE-140): `withServer`'s callback-scoped single-shot contract deliberately cannot express what
- * live sessions need — a session-lifetime acquire/release handle plus a "generation rotated,
- * reconnect" signal after a crash respawn. Consolidation means REWRITING this class's public
- * interface, not extending it; do not try to squeeze a live session into one long `withServer`
- * call.
+ * Daemon-shared `opencode serve` for history reads (CODE-171): history `list`/`read` run on
+ * never-started adapter instances, so the backing server belongs to no live session — it is a
+ * lazily-spawned, idle-reaped process shared across all history calls (live sessions keep their
+ * own per-session SDK server). Multi-tenant: history calls carry no `directory`, and the
+ * neutral-cwd instance lists/reads sessions across every project (verified live on 1.17.11).
+ * For the eventual live-session consolidation (CODE-140): `withServer`'s callback-scoped
+ * single-shot contract deliberately cannot express a session-lifetime acquire/release handle —
+ * consolidation means REWRITING this class's public interface, not extending it.
  */
 export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   private readonly spawnServer: (args: { port: number; cwd: string }) => HistoryServerProcess;
@@ -106,10 +97,8 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   private inFlight = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private exitHookInstalled = false;
-  /** Installed ONCE for the manager's lifetime and never removed: it reads `current` dynamically,
-   * so one registration serves every generation. (Removing it per-generation is how an old
-   * generation's exit once stripped the NEW generation's cleanup — the shared function reference
-   * made `removeListener` blind to which registration it was deleting — orphaning the server on
+  /** Installed ONCE for the manager's lifetime and never removed — it reads `current` dynamically.
+   * (Per-generation removal once stripped the NEW generation's cleanup and orphaned the server on
    * daemon exit.) Process 'exit' handlers cannot wait; SIGKILL is the only reliable cleanup left. */
   private readonly onProcessExit = (): void => {
     const proc = this.current?.proc;
@@ -168,17 +157,15 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
       return await this.spawnGeneration();
     } catch (err) {
       // One retry with a fresh port: allocatePort is check-then-use, so the port can be stolen
-      // between probe and the child's bind — which surfaces as an immediate startup-window exit.
-      // A genuine config failure just fails once more with the same captured output.
+      // between probe and bind (an immediate startup-window exit). A config failure just fails twice.
       if (err instanceof StartupExitError) return this.spawnGeneration();
       throw err;
     }
   }
 
   private async spawnGeneration(): Promise<string> {
-    // A dispose (idle reap, or a future external caller) may still be inside its SIGTERM grace
-    // window; overlapping it would briefly run two servers. Checked per attempt — the startup
-    // retry must honor it too, not just the first spawn.
+    // A dispose may still be inside its SIGTERM grace window; overlapping it would briefly run
+    // two servers. Checked per attempt — the startup retry must honor it too.
     if (this.stopping) await this.stopping;
     const port = await this.allocatePort();
     const proc = this.spawnServer({ port, cwd: this.neutralCwd });
@@ -281,9 +268,8 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
 }
 
 function defaultSpawnServer(args: { port: number; cwd: string }): HistoryServerProcess {
-  // `--port=0` does NOT auto-allocate (the server falls back to its default 4096, verified live
-  // on 1.17.11) — the free port must be found up front. cross-spawn matches the SDK's own PATH
-  // resolution, including Windows `.cmd` shims.
+  // `--port=0` does NOT auto-allocate (falls back to 4096, verified live on 1.17.11) — the free
+  // port must be found up front. cross-spawn matches the SDK's PATH resolution, incl. Windows `.cmd`.
   return crossSpawn('opencode', ['serve', '--hostname=127.0.0.1', `--port=${args.port}`], {
     cwd: args.cwd,
     stdio: ['ignore', 'pipe', 'pipe'],

@@ -12,9 +12,8 @@ interface CommandPaletteState {
 }
 
 /**
- * Command-palette state shared across the whole client. Lives at module scope (not in the
- * `Workbench` tree) so app edges — the desktop shell, webview routes — can open the palette and
- * register their own commands without threading props through the surface. Not persisted.
+ * Command-palette state at module scope (not in the `Workbench` tree), so app edges can open the
+ * palette and register their own commands without threading props through. Not persisted.
  */
 export const useCommandPaletteStore = create<CommandPaletteState>()((set) => ({
   open: false,

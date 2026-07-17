@@ -65,9 +65,8 @@ function ProfileCard({ user }: { user: CloudUser }) {
 }
 
 /**
- * The account's registered devices. Revoking cuts a device's access to new
- * tunnel tokens; revoking this phone also signs it out, since the cloud kills its
- * sessions with the device.
+ * The account's registered devices. Revoking cuts access to new tunnel tokens;
+ * revoking this phone also signs it out (the cloud kills its sessions).
  */
 function DevicesSection() {
   const t = useTranslations('mobile.account');

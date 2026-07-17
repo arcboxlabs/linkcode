@@ -1,14 +1,9 @@
 /**
  * OS-notification E2E (CODE-116): boots an isolated daemon + the built desktop app, drives a real
- * pi session, and asserts the whole notify chain — daemon `session.notification` broadcast →
- * workbench policy → SystemBridge → main-process `Notification` → click-through (focus window +
- * select session, exiting an open new-session draft).
- *
- * Run: `pnpm -F @linkcode/desktop e2e:notifications`
- * Prereqs: `pnpm -F @linkcode/daemon build` and `pnpm -F @linkcode/desktop build`; the `pi` CLI on
- * PATH (auth-free, ships in node_modules/.bin). Not part of `pnpm test` — needs a display and real
- * processes. `Notification.prototype.show` is stubbed in main, so main-side behavior is captured
- * without spamming the developer's notification center.
+ * pi session, and asserts the whole notify chain from daemon broadcast through main-process
+ * `Notification` to click-through. Run `pnpm -F @linkcode/desktop e2e:notifications` after building
+ * daemon and desktop; needs the `pi` CLI on PATH. Not part of `pnpm test` (needs a display and real
+ * processes); `Notification.prototype.show` is stubbed in main to keep the notification center quiet.
  */
 
 import type { ChildProcess } from 'node:child_process';
@@ -124,9 +119,8 @@ async function main(): Promise<void> {
     fail('apps/desktop/out is missing — run `pnpm -F @linkcode/desktop build` first');
   }
 
-  // Fresh fake HOME per run: isolates the daemon (runtime.json, DB, agent workspaces) and the app
-  // (settings, single-instance lock) from the developer's real instances. A reused HOME carries an
-  // old daemon DB and leaves the composer disabled (docs/DEVELOPMENT.md).
+  // Fresh fake HOME per run isolates the daemon and app from the developer's real instances; a
+  // reused HOME carries an old daemon DB and leaves the composer disabled (docs/DEVELOPMENT.md).
   const home = mkdtempSync(join(tmpdir(), 'linkcode-e2e-home-'));
   const userData = mkdtempSync(join(tmpdir(), 'linkcode-e2e-userdata-'));
 

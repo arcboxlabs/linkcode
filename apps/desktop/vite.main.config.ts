@@ -38,14 +38,10 @@ export default defineConfig({
     assetPlugin(),
     {
       name: 'bundle-daemon-artifact',
-      // The daemon ships inside the desktop app (CODE-86): the supervisor forks the daemon's own
-      // tsup (esbuild) build artifact under Electron's Node. Consuming apps/daemon/dist — built
-      // first via turbo `^build`, since @linkcode/daemon is a dependency — keeps bundling owned
-      // by the daemon and out/daemon identical to the standalone prod bundle (`pnpm start`).
-      // Its runtime externals (better-sqlite3, agent SDKs, …) resolve from asar node_modules,
-      // collected by electron-builder through the @linkcode/daemon dependency edge.
-      // instrument.js is deliberately not shipped: @sentry/profiling-node is a native module the
-      // Electron rebuild need not carry; child crashes surface via the supervisor's stderr pipe.
+      // The daemon ships inside the desktop app (CODE-86): consume apps/daemon/dist (turbo `^build`
+      // orders it) so bundling stays owned by the daemon; its runtime externals resolve from asar
+      // node_modules through the @linkcode/daemon dependency edge. instrument.js is deliberately not
+      // shipped (@sentry/profiling-node is a native module the Electron rebuild need not carry).
       closeBundle() {
         const dist = resolve(__dirname, '../daemon/dist/index.js');
         if (!existsSync(dist)) {

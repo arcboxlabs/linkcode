@@ -23,10 +23,8 @@ function formatTokens(count: number): string {
   return count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
 }
 
-/**
- * Timeline divider marking a context compaction: everything above it stays visible; the agent
- * itself continues from the swapped-in summary. With a summary the row expands to show it.
- */
+/** Timeline divider for a context compaction: turns above stay visible while the agent continues
+ * from the swapped-in summary; the row expands to show the summary when present. */
 export function CompactionMarker({
   preTokens,
   postTokens,

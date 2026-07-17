@@ -7,12 +7,10 @@ import {
 
 /**
  * Managed-asset wire surface (CODE-111/112): pull status, trigger installs, observe progress.
- *
- * `asset.ensure` is correlated and replies only once the install settles — the pending registry
- * has no timeout, so a multi-minute download resolves the same promise (a disconnect rejects it
- * via `failAll`); failures reply with the generic `request.failed`. `asset.progress` and
+ * `asset.ensure` is correlated and replies only once the install settles (no timeout; a
+ * disconnect rejects it; failures reply the generic `request.failed`). `asset.progress` /
  * `asset.settled` are broadcasts (no correlation, own routing key — like `script.status`) so
- * boot-time background installs are just as visible as client-triggered ones.
+ * boot-time background installs are as visible as client-triggered ones.
  */
 export const managedAssetWireVariants = [
   z.object({ kind: z.literal('asset.list'), clientReqId: z.string().min(1) }),

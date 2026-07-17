@@ -37,6 +37,7 @@ import {
   CONTROL_LATENCY_MS,
   FAIL_PROMPT,
   MOCK_REPLY,
+  MOCK_USAGE_REPORT,
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
 import { mockScriptDeclarations } from './data/scripts';
@@ -157,9 +158,8 @@ export class DevMockHost {
   }
 
   /**
-   * Onboarding fixtures (CODE-112), one kind per state: claude-code is missing (downloadable),
-   * codex is detected out-of-range (both "continue unverified" and "download paired" apply),
-   * pi is builtin, opencode is unevaluated (absent) until CODE-76.
+   * Onboarding fixtures (CODE-112), one kind per state: claude-code missing (downloadable), codex
+   * out-of-range (unverified-continue + paired-download), pi builtin, opencode absent until CODE-76.
    */
   private agentRuntimes(): AgentRuntimes {
     return {
@@ -798,6 +798,24 @@ export class DevMockHost {
         break;
       case 'permission-response':
         this.respondPermission(replyTo, sessionId, input.requestId, input.outcome);
+        break;
+      case 'command':
+        // Parity with the real engine + claude-code /usage intercept (CODE-213): the engine
+        // echoes the invocation text as a user-message before dispatch, the adapter brackets the
+        // control request with status running→idle, and the reply is one structured usage-report
+        // — no transcript text. Unknown commands mirror the engine's prevalidation reject (no echo).
+        if (input.name === 'usage' || input.name === 'cost') {
+          this.emit(sessionId, {
+            type: 'user-message',
+            content: [textBlock(`/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`)],
+          });
+          this.emit(sessionId, { type: 'status', status: 'running' });
+          this.emit(sessionId, { type: 'usage-report', report: MOCK_USAGE_REPORT });
+          this.emit(sessionId, { type: 'status', status: 'idle' });
+          this.sendSuccess(replyTo);
+        } else {
+          this.sendFailure(replyTo, 'Dev mock host only mocks the /usage command.');
+        }
         break;
       case 'question-response':
         this.respondQuestion(replyTo, sessionId, input.requestId, input.outcome);

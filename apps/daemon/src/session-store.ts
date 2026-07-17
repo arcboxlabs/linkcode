@@ -15,14 +15,11 @@ type SessionRow = typeof sessions.$inferSelect;
 type RunRow = typeof sessionRuns.$inferSelect;
 
 /**
- * drizzle's migrator decides "already applied?" by comparing each migration's journal `when`
- * (`folderMillis`) against the newest recorded `created_at` — it never looks at the content hash.
- * A migration regenerated during development keeps identical SQL but gets a fresh, larger `when`,
- * so the migrator re-runs it; the resulting non-idempotent DDL (`ALTER TABLE … ADD COLUMN`) then
- * crashes the daemon at boot on a DB that recorded the older timestamp. Since the stored hash is
- * the sha256 of the migration SQL, a recorded hash proves that exact migration already ran — so we
- * realign its `created_at` to the current journal before migrating. Steady state writes nothing;
- * genuinely new migrations (unrecorded hash) still run and still fail loudly on real errors.
+ * drizzle's migrator keys "already applied?" on the journal `when` vs the recorded `created_at`,
+ * never the content hash — a regenerated migration gets a fresh `when`, re-runs its non-idempotent
+ * DDL, and crashes the daemon at boot. A recorded hash (sha256 of the SQL) proves that migration
+ * already ran, so realign its `created_at` to the current journal before migrating; genuinely new
+ * migrations (unrecorded hash) still run and still fail loudly.
  */
 function reconcileMigrationLedger(sqlite: Sqlite.Database, migrationsFolder: string): void {
   const hasLedger = sqlite
@@ -40,9 +37,8 @@ function reconcileMigrationLedger(sqlite: Sqlite.Database, migrationsFolder: str
 }
 
 /**
- * SQLite-backed `SessionStore` (drizzle over better-sqlite3), owning the session registry at
- * `~/.linkcode/daemon.db`. Rows are validated back through `SessionRecordSchema` on load — the
- * zod schema stays the contract; the tables are just its storage shape.
+ * SQLite-backed `SessionStore` (drizzle over better-sqlite3) at `~/.linkcode/daemon.db`. Rows are
+ * validated back through `SessionRecordSchema` on load — the zod schema stays the contract.
  */
 export function createSessionStore(dbPath: string): SessionStore {
   if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
@@ -117,6 +113,8 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     originHistoryId: record.origin.type === 'imported' ? record.origin.historyId : null,
     originImportedAt: record.origin.type === 'imported' ? record.origin.importedAt : null,
     createdVia: record.createdVia ?? null,
+    automationKind: record.automation?.kind ?? null,
+    automationId: record.automation?.id ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -137,6 +135,10 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
           }
         : { type: 'created' },
     createdVia: row.createdVia ?? undefined,
+    automation:
+      row.automationKind && row.automationId
+        ? { kind: row.automationKind, id: row.automationId }
+        : undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     runs: runRows.map((run) => ({

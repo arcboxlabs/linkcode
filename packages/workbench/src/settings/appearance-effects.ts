@@ -1,10 +1,8 @@
 import type { AppearancePrefsState, TextSize } from './appearance-store';
 import { useAppearancePrefsStore } from './appearance-store';
 
-/**
- * Root font size per text-size preference. `default` clears the inline size so the stylesheet/UA
- * default applies; `small`/`large` scale every rem-based utility proportionally.
- */
+/** Root font size per text-size preference. `default` clears the inline size so the stylesheet/UA
+ * default applies; `small`/`large` scale every rem-based utility proportionally. */
 const TEXT_SIZE_ROOT_PX: Record<TextSize, string> = {
   small: '14px',
   default: '',
@@ -36,10 +34,8 @@ function applyAppearancePrefs(state: AppearancePrefsState): void {
   applyFontOverride('--font-mono', state.codeFont);
 }
 
-/**
- * Apply the persisted appearance preferences to the document root and keep them in sync with the
- * store. Called once per renderer at startup (before first paint). Returns an uninstaller.
- */
+/** Apply persisted appearance prefs to the document root and keep them synced with the store.
+ * Called once per renderer before first paint; returns an uninstaller. */
 export function installAppearancePrefs(): () => void {
   applyAppearancePrefs(useAppearancePrefsStore.getState());
   return useAppearancePrefsStore.subscribe(applyAppearancePrefs);

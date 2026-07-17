@@ -1,7 +1,5 @@
-/**
- * @linkcode/transport — the communication protocol layer (docs/ARCHITECTURE.md#packages--repo-layout).
- * Local, WebSocket, and Socket.IO implementations share the same Transport abstraction and WireMessage format.
- */
+/** @linkcode/transport — the communication protocol layer (docs/ARCHITECTURE.md#packages--repo-layout):
+ * local, WebSocket, and Socket.IO implementations share one Transport abstraction and WireMessage format. */
 
 export type { HostInfo, TunnelRole } from '@linkcode/tunnel';
 export {

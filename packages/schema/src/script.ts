@@ -1,10 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Workspace scripts (directory-backed like git.*: keyed by cwd). Declared in the
- * workspace's `linkcode.json` under `scripts`; `service` scripts get a planned port,
- * the LINKCODE_* env contract, and a stable preview URL through the daemon's
- * Host-routed reverse proxy.
+ * Workspace scripts (directory-backed like git.*: keyed by cwd), declared in `linkcode.json`
+ * under `scripts`; `service` scripts get a planned port, the LINKCODE_* env contract, and a
+ * stable preview URL through the daemon's Host-routed reverse proxy.
  */
 
 export const ScriptTypeSchema = z.enum(['task', 'service']);

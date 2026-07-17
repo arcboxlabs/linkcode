@@ -17,11 +17,10 @@ function asSandboxMode(value: unknown): CodexSandboxMode | undefined {
 }
 
 /**
- * The sandbox the user configured in `~/.codex/config.toml` — the active profile's `sandbox_mode`
- * if a `profile` is selected and defines one, else the top-level `sandbox_mode`. Returns undefined
- * when unset or the file is absent/malformed. codex resolves this itself when the client sends no
- * sandbox override; we read it only to decide whether an override may be sent at all — never
- * silently loosen a stricter configured choice like read-only.
+ * The sandbox configured in `~/.codex/config.toml`: the active profile's `sandbox_mode` if set,
+ * else the top-level one; undefined when unset or the file is absent/malformed. Read only to
+ * decide whether a sandbox override may be sent at all (codex resolves the config itself when
+ * none is sent) — a stricter configured choice like read-only must never be silently loosened.
  */
 export async function codexConfiguredSandbox(): Promise<CodexSandboxMode | undefined> {
   let config: unknown;

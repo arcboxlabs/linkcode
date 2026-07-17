@@ -58,9 +58,8 @@ async function createStorage() {
 
 describe('cloud-auth safe storage', () => {
   it('resolves the store path at call time, not at construction', async () => {
-    // Regression: the storage is constructed at module scope, before main re-points
-    // userData to the app identity's directory. An eagerly captured path leaks the
-    // store into the productName-derived profile.
+    // Regression: the storage is constructed at module scope, before main re-points userData —
+    // an eagerly captured path leaks the store into the productName-derived profile.
     const wrongDir = mocks.userData;
     const storage = await createStorage();
 

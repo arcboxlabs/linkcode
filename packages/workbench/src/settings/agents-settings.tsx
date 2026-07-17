@@ -12,12 +12,10 @@ import { bindingAvailability } from './providers/capability';
 import { AGENT_KINDS, withEnabled } from './providers/view';
 
 /**
- * The collapsed Agents tab: per-agent runtime concerns only — enabled toggle, probed runtime /
- * login state, and a read-only provider summary that jumps to the Providers page (the single edit
- * surface for account bindings and models). Instant save; no form. An enabled agent whose runtime
- * isn't ready additionally gets the onboarding card under its row (CODE-249) — the same
- * download / retry / login / unverified flow as the new-session surface, driven by the same
- * cue state machine.
+ * The collapsed Agents tab: per-agent runtime concerns only — account bindings and models are
+ * edited solely on the Providers page. Instant save; no form. An enabled agent whose runtime
+ * isn't ready gets the onboarding card under its row (CODE-249), driven by the same cue state
+ * machine as the new-session surface.
  */
 export function AgentsSettingsPanel({
   onOpenProviders,

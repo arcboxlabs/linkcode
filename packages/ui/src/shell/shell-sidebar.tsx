@@ -3,8 +3,7 @@ import { SidebarContext } from 'coss-ui/components/sidebar';
 import { noop } from 'foxts/noop';
 import { cn } from '../lib/cn';
 
-// The shells own sidebar visibility and width, so the coss-ui menu primitives run against a
-// fixed "expanded" context instead of `SidebarProvider` — the provider persists a cookie and
+// Fixed "expanded" context instead of `SidebarProvider`: the provider persists a cookie and
 // binds a global ⌘B, both of which collide with the desktop shell (shortcut layer owns ⌘B).
 const STATIC_SIDEBAR_CONTEXT: SidebarContextProps = {
   state: 'expanded',

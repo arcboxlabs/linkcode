@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Package the daemon as a self-contained, standalone distribution — run it anywhere with plain
- * Node, independent of the desktop app.
+ * Package the daemon as a self-contained standalone dir (default apps/daemon/standalone; argv[2]
+ * overrides for CI) via `pnpm --prod deploy`: the tsup bundle plus its runtime externals flat in
+ * the dir's own node_modules, runnable as `node --import ./dist/instrument.js dist/index.js`.
  *
  *   pnpm -F @linkcode/daemon package         # -> apps/daemon/standalone
  *   node scripts/package-daemon.mts <outDir> # explicit destination (CI)

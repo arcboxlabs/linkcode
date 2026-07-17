@@ -1,11 +1,12 @@
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { delimiter, join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AgentRuntimeProber,
   ClaudeCodeProbe,
   CodexProbe,
+  GrokBuildProbe,
   parseClaudeAuthStatus,
   parseCodexLoginStatus,
 } from '../probe';
@@ -32,6 +33,7 @@ function proberAt(dir: string): AgentRuntimeProber {
   return new AgentRuntimeProber([
     new ClaudeCodeProbe([join(dir, 'claude')]),
     new CodexProbe([join(dir, 'codex')]),
+    new GrokBuildProbe([join(dir, 'grok')]),
   ]);
 }
 
@@ -39,11 +41,14 @@ describe('version parsers', () => {
   it('accepts real CLI output and rejects impostors', () => {
     const claude = new ClaudeCodeProbe();
     const codex = new CodexProbe();
+    const grok = new GrokBuildProbe();
     expect(claude.parseVersion('2.1.202 (Claude Code)\n')).toBe('2.1.202');
     expect(claude.parseVersion('2.1.202')).toBeUndefined();
     expect(claude.parseVersion('not a version')).toBeUndefined();
     expect(codex.parseVersion('codex-cli 0.142.4\n')).toBe('0.142.4');
     expect(codex.parseVersion('0.142.4')).toBeUndefined();
+    expect(grok.parseVersion('grok 0.2.102 (ab5ebf69acec)\n')).toBe('0.2.102');
+    expect(grok.parseVersion('0.2.102')).toBeUndefined();
   });
 });
 
@@ -165,6 +170,48 @@ describe('AgentCliProbe.probeAt', () => {
 
   it('returns undefined for a missing file', async () => {
     await expect(new ClaudeCodeProbe().probeAt('/nonexistent/claude')).resolves.toBeUndefined();
+  });
+});
+
+describe('AgentCliProbe.knownLocations', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('scans absolute PATH entries in order, ahead of the fallback locations', () => {
+    vi.stubEnv('PATH', '');
+    const fallback = new ClaudeCodeProbe().knownLocations();
+    const binary = new ClaudeCodeProbe().binaryName();
+
+    const dirA = join(tmpdir(), 'probe-path-a');
+    const dirB = join(tmpdir(), 'probe-path-b');
+    // Relative, empty, and duplicate entries must be dropped; quotes stripped.
+    vi.stubEnv('PATH', [dirA, 'relative/bin', '', `"${dirB}"`, dirA].join(delimiter));
+    expect(new ClaudeCodeProbe().knownLocations()).toEqual([
+      join(dirA, binary),
+      join(dirB, binary),
+      ...fallback,
+    ]);
+  });
+
+  it('detects a CLI through a PATH entry with no curated location involved', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const real = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
+    vi.stubEnv('PATH', dir);
+    await expect(new ClaudeCodeProbe().detect()).resolves.toEqual({
+      path: real,
+      version: '9.9.9',
+    });
+  });
+
+  it('detects Grok Build through PATH before its vendor-specific fallbacks', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const real = fakeCli(dir, 'grok', 'grok 0.2.102 (test)');
+    vi.stubEnv('PATH', dir);
+    await expect(new GrokBuildProbe().detect()).resolves.toEqual({
+      path: real,
+      version: '0.2.102',
+    });
   });
 });
 

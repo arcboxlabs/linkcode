@@ -47,9 +47,8 @@ function directTitleText(el: DiagramElement): string | null {
 
 const SVG_TEXT_TAGS = new Set(['text', 'tspan', 'textpath']);
 
-/** Walk from the clicked element up to (excluding) the svg root; the nearest labeled
- * element wins. Per element: `aria-label`, then `<title>`, then a text element's own
- * content. */
+/** Nearest labeled element wins, walking up to (excluding) the svg root; per element:
+ * `aria-label`, then `<title>`, then a text element's own content. */
 export function extractSvgLabel(target: DiagramElement, root: DiagramElement): string | null {
   for (let el: DiagramElement | null = target; el && el !== root; el = el.parentElement) {
     const label =

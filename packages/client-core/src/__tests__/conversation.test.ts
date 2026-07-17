@@ -76,6 +76,30 @@ describe('buildConversation', () => {
     expect(c.items).toEqual([]);
   });
 
+  it('stamps assistant messages with the model serving them, backfilling late reports', () => {
+    const c = buildConversation([
+      { type: 'model-update', model: 'claude-opus-4-8' },
+      userText('first'),
+      text('reply one', 'm1'),
+      { type: 'model-update', model: 'claude-sonnet-5' },
+      userText('second'),
+      text('reply two', 'm2'),
+    ]);
+    const models = c.items.flatMap((item) =>
+      item.kind === 'message' && item.role === 'assistant' ? [item.model] : [],
+    );
+    expect(models).toEqual(['claude-opus-4-8', 'claude-sonnet-5']);
+
+    // A model reported only mid-stream still lands on the already-open message.
+    const late = buildConversation([
+      text('opens dateless', 'm3'),
+      { type: 'model-update', model: 'claude-opus-4-8' },
+      text(' — continued', 'm3'),
+    ]);
+    const item = late.items[0];
+    expect(item.kind === 'message' && item.model).toBe('claude-opus-4-8');
+  });
+
   it('coalesces same-messageId agent chunks into one streaming block', () => {
     const c = buildConversation([
       { type: 'status', status: 'running' },
@@ -501,6 +525,32 @@ describe('buildConversation', () => {
     expect(c.items.filter((i) => i.kind === 'error')).toHaveLength(1);
     const error = c.items.find((i) => i.kind === 'error');
     expect(error?.turnId).toBeNull();
+  });
+
+  it('exposes the latest usage-report wholesale without adding timeline items', () => {
+    expect(buildConversation([]).usageReport).toBeNull();
+    const first = {
+      subscriptionType: 'max',
+      rateLimits: {
+        windows: [
+          { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
+        ],
+      },
+    };
+    const second = {
+      subscriptionType: 'max',
+      rateLimits: {
+        windows: [
+          { id: 'five_hour', utilization: 42, resetsAt: '2026-07-16T12:49:00Z', durationMins: 300 },
+        ],
+      },
+    };
+    const c = buildConversation([
+      { type: 'usage-report', report: first },
+      { type: 'usage-report', report: second },
+    ]);
+    expect(c.usageReport).toEqual(second);
+    expect(c.items).toHaveLength(0);
   });
 
   it('reflects the latest approval-policy state without adding timeline items', () => {

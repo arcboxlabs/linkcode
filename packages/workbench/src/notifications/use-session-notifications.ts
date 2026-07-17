@@ -17,11 +17,10 @@ export interface SessionNotificationDisplay {
 export type PresentSessionNotification = (display: SessionNotificationDisplay) => void;
 
 /**
- * The shared decision layer: folds daemon-classified `session.notification` broadcasts through
- * presentation policy ({@link shouldPresent}) and hands the survivors to the app's presenter.
- * Suppression keys on the explicitly selected session (the selection store), so this can mount in
- * a persistent layer instead of the routed workbench — otherwise a webview navigating to Settings
- * would unmount the subscription and drop background notifications. Inert without a presenter.
+ * Folds daemon-classified `session.notification` broadcasts through {@link shouldPresent} and
+ * hands survivors to the app's presenter. Suppression keys on the selection store, so this can
+ * mount in a persistent layer — a routed mount would drop background notifications whenever the
+ * user navigates away. Inert without a presenter.
  */
 export function useSessionNotifications(present: PresentSessionNotification | undefined): void {
   const client = useLinkCodeClient();
@@ -48,9 +47,8 @@ export function useSessionNotifications(present: PresentSessionNotification | un
 }
 
 /**
- * Headless mount of {@link useSessionNotifications} for a persistent layer (desktop's permanent
- * shell, webview's root layout below the connection gate) so the subscription outlives route
- * changes. Renders nothing.
+ * Headless mount of {@link useSessionNotifications} for a persistent layer, so the subscription
+ * outlives route changes. Renders nothing.
  */
 export function SessionNotifier({
   present,

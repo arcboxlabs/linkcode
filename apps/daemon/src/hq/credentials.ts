@@ -4,9 +4,8 @@ import { hqCredentialsPath } from '../config';
 import { isRecord } from './api';
 
 /**
- * The daemon's HQ sign-in state, persisted at `~/.linkcode/hq.json` by the
- * `login` command and read at boot to start the tunnel uplink. Absent file =
- * not signed in; the daemon then serves the local network only.
+ * HQ sign-in state, persisted at `~/.linkcode/hq.json` by `login` and read at boot to start the
+ * tunnel uplink. Absent file = not signed in; the daemon then serves the local network only.
  */
 export interface HqCredentials {
   /** HQ origin the daemon signed in to. */

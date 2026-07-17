@@ -20,8 +20,7 @@ export function contentToText(content: ContentBlock[]): string {
 }
 
 /** Extract image blocks in the vendor-agnostic shape every adapter's own image mapping starts
- * from — the target shape (Claude's ContentBlockParam, opencode's FilePartInput, pi's
- * ImageContent, ...) differs per vendor, so only this extraction step is shared. */
+ * from — the target shape differs per vendor, so only this extraction step is shared. */
 export function imageBlocksFrom(
   content: ContentBlock[],
 ): Array<{ data: string; mimeType: string }> {

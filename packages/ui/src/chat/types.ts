@@ -21,9 +21,9 @@ import type {
 export type ConversationTurnId = string | null;
 
 /**
- * Fields every timeline item carries. `receivedAt` is the client receive time of the item's
- * latest event — TODO(wire): approximate and absent for history-seeded items; replace with an
- * authoritative event timestamp once the wire carries one.
+ * Fields every timeline item carries. `receivedAt` is the best-known time of the item's latest
+ * event: client receive time for live events, the provider's own timestamp for history-seeded
+ * items, absent when neither is known.
  */
 interface ConversationItemBase {
   id: string;
@@ -40,6 +40,8 @@ export type ConversationItem =
       isStreaming: boolean;
       /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
       parentToolCallId?: string;
+      /** The model serving the session when this assistant message opened (from `model-update`). */
+      model?: string;
     })
   | (ConversationItemBase & {
       kind: 'reasoning';

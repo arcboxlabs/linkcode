@@ -23,9 +23,9 @@ const systemBridge = createElectronSystemBridge(ipcRenderer, process.platform);
 
 contextBridge.exposeInMainWorld('linkcodeSystem', systemBridge);
 
-// LinkCode Cloud auth bridges (window.requestAuth / onAuthenticated / signOut / …). This is the
-// better-auth electron plugin's own contextBridge surface — system-plane by nature (open browser,
-// keychain-backed session) and sandbox-safe (electron IPC only), so it coexists with the bridge above.
+// LinkCode Cloud auth bridges (window.requestAuth / onAuthenticated / signOut / …): the better-auth
+// plugin's own contextBridge surface — system-plane and sandbox-safe (electron IPC only), so it
+// coexists with the bridge above.
 setupRenderer();
 
 // Cloud data bridge: the renderer lists the account's online hosts through main (which holds the

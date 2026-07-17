@@ -15,10 +15,9 @@ import type { DaemonListenerConfig } from './config';
 import { runtimeFilePath } from './config';
 
 /**
- * Daemon runtime discovery: bind listeners with port hunting, refuse to double-start
- * (one daemon per profile — they would share that profile's `daemon.db`), and advertise the
- * actually-bound endpoints in the runtime file for local clients (desktop main, cli) to read.
- * Daemons of other profiles are just port neighbors: the hunt skips past them.
+ * Runtime discovery: bind listeners with port hunting, refuse to double-start (one daemon per
+ * profile — two would share its `daemon.db`), and advertise the actually-bound endpoints in the
+ * runtime file for local clients. Daemons of other profiles are port neighbors: the hunt skips them.
  */
 
 const PORT_HUNT_ATTEMPTS = 10;
@@ -91,9 +90,8 @@ async function huntFrom(
     if (!isAddrInUse(err)) throw err;
     const probeUrl = httpUrl(listener.host, port);
     const occupant = await probeDaemonIdentity(probeUrl);
-    // Our own pid means another of this daemon's listeners hunted onto the port — keep going.
-    // A daemon of another profile (absent field = default profile) is not a double-start
-    // either: profiles are isolated universes, so hunt past it like any foreign process.
+    // Our own pid = another of this daemon's listeners hunted onto the port; another profile
+    // (absent field = default) is an isolated universe, not a double-start — hunt past both.
     if (occupant && occupant.pid !== identity.pid && occupant.profile === identity.profile) {
       throw new DaemonAlreadyRunningError(occupant, probeUrl);
     }
@@ -108,9 +106,8 @@ async function huntFrom(
 }
 
 /**
- * The daemon advertised by the runtime file, or `null` when there is none: file missing or
- * malformed (stale leftovers are overwritten on the next successful start), pid dead, or the
- * advertised endpoint no longer answering as a linkcode daemon.
+ * The daemon advertised by the runtime file, or `null`: file missing/malformed (stale leftovers
+ * are overwritten on next start), pid dead, or the endpoint not answering as a linkcode daemon.
  */
 export async function findRunningDaemon(): Promise<DaemonRuntimeInfo | null> {
   const parsed = DaemonRuntimeInfoSchema.safeParse(readJsonFileSync(runtimeFilePath()));

@@ -6,10 +6,9 @@ export function importedSessionKey(kind: AgentKind, historyId: string): string {
 }
 
 /**
- * Maps every provider history id already present in the session list to its session, so a
- * history browser can mark entries as imported instead of minting duplicates. A cold import
- * carries the id only on `origin`; a session that has run carries the latest run's id on
- * `historyId` — check both.
+ * Maps every provider history id in the session list to its session, so a history browser marks
+ * entries as imported instead of minting duplicates. A cold import carries the id only on
+ * `origin`; a session that has run carries the latest run's id on `historyId` — check both.
  */
 export function importedSessionByHistoryId(
   sessions: readonly SessionInfo[],

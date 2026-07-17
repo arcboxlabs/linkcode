@@ -37,11 +37,9 @@ interface WorkspaceScriptsState {
 }
 
 /**
- * ScriptService: runs the workspace's declared scripts in managed PTYs, plans service
- * ports, injects the LINKCODE_* env contract, registers preview proxy routes, probes
- * service health over TCP, and broadcasts `script.status` on every change. Sits beside
- * `TerminalService` in the Engine; declarations are re-read from `linkcode.json` on
- * every list/start so config edits apply without a daemon restart.
+ * Runs the workspace's declared scripts in managed PTYs (port planning, LINKCODE_* env contract,
+ * preview routes, TCP health probes, `script.status` broadcasts). Declarations are re-read from
+ * `linkcode.json` on every list/start, so config edits apply without a daemon restart.
  */
 export class ScriptService {
   private readonly workspaces = new Map<string, WorkspaceScriptsState>();

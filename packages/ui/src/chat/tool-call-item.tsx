@@ -8,8 +8,9 @@ import { ToolResultPreview } from './tool-result-preview';
 import type { ToolMetadata } from './tool-utils';
 import {
   hasToolBody,
+  mcpToolName,
+  toolCallContextSummary,
   toolCallFailureMessage,
-  toolCallHeaderSummary,
   toolCallMetadata,
 } from './tool-utils';
 
@@ -22,11 +23,11 @@ function ToolMetadataList({ metadata }: { metadata: ToolMetadata[] }): React.Rea
       {metadata.map((item) => (
         <Badge
           className="max-w-full gap-1.5 font-normal"
-          key={`${item.key}:${item.value}`}
+          key={`${item.key}:${item.label ?? ''}:${item.value}`}
           size="sm"
           variant={item.tone === 'error' ? 'error' : 'secondary'}
         >
-          <span className="text-muted-foreground">{t(item.key)}</span>
+          <span className="text-muted-foreground">{item.label ?? t(item.key)}</span>
           <code className="truncate">{item.value}</code>
         </Badge>
       ))}
@@ -85,22 +86,24 @@ export function ToolCallItem({
 
   const kindKey = `kind${toolCall.kind[0].toUpperCase()}${toolCall.kind.slice(1)}`;
   const hasBody = hasToolBody(toolCall);
-  const summary = toolCallHeaderSummary(toolCall);
+  const summary = toolCallContextSummary(toolCall);
   const diffTotals = toolCallDiffStats(toolCall);
+  const mcp = mcpToolName(toolCall.title);
+  const title = mcp?.tool ?? toolCall.title;
 
   return (
     <Tool>
       <ToolHeader
         awaitingApproval={awaitingApproval}
-        badge={t(kindKey)}
+        badge={mcp ? 'MCP' : t(kindKey)}
         declinedBadge={declined ? tp('declined') : undefined}
         diffStats={diffTotals}
         hasBody={hasBody}
         icon={icon}
         kind={toolCall.kind}
         status={toolCall.status}
-        summary={summary?.label === toolCall.title ? undefined : summary?.label}
-        title={toolCall.title}
+        summary={summary?.label === title ? undefined : summary?.label}
+        title={title}
         tooltip={summary?.tooltip}
       />
 

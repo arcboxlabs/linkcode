@@ -6,16 +6,11 @@ import { dirname } from 'node:path';
 import { deviceKeyPath, deviceKeysDir } from '../config';
 
 /**
- * The daemon's device key — the machine's identity. Registered once with the
- * cloud, it keeps the device id (and therefore the tunnel host id) stable
- * across re-logins and account switches; signing with it is how the daemon
- * proves it is that machine (registration `keyProof`, tunnel handshake).
- *
- * Custody ladder: `@arcboxlabs/deviceid` holds a P-256 key in the platform's
- * security hardware (Secure Enclave / TPM) where available. When its native
- * module can't load or has no usable backend, a software Ed25519 keypair at
- * `~/.linkcode/device-key.pem` (0600) takes over — same interface, honestly
- * reported via `protection`. The server verifies both algorithms.
+ * The device key is the machine's identity: it keeps the device id (= tunnel host id) stable
+ * across re-logins and account switches, and signing with it proves possession (registration
+ * `keyProof`, tunnel handshake). Custody: hardware P-256 via `@arcboxlabs/deviceid` where
+ * available, else a software Ed25519 keypair at `~/.linkcode/device-key.pem` (0600), honestly
+ * reported via `protection`; the server verifies both algorithms.
  */
 export interface DeviceKey {
   /** SPKI PEM, sent on device registration. */
