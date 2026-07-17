@@ -15,10 +15,11 @@ export type SeedCacheStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem
 const INDEX_KEY = 'linkcode.seed-index';
 const MAX_ENTRIES = 20;
 
-/** Persisted seeds embed the wire version: any protocol bump invalidates them wholesale. */
+/** Persisted seeds embed the wire version: any protocol bump invalidates them wholesale.
+ * (Entries in the pre-`ts` shape fail this parse and degrade to a cache miss.) */
 const PersistedSeedSchema = z.object({
   v: z.literal(WIRE_PROTOCOL_VERSION),
-  events: z.array(AgentEventSchema),
+  events: z.array(z.object({ event: AgentEventSchema, ts: z.number().optional() })),
 });
 
 /** Parse results are memoized per storage so render-time loads don't re-parse megabyte JSON. */

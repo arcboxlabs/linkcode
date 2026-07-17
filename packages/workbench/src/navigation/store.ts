@@ -1,11 +1,10 @@
 import { trueFn } from 'foxts/noop';
 import { create } from 'zustand';
 import { useSessionSelectionStore } from '../surface/selection-store';
-import type { NavHistoryStacks, NavLocation } from './history';
+import type { NavHistoryStacks, NavLocation, WorkbenchOverlaySurface } from './history';
 import { recordTransition, travel } from './history';
 
-/** Full-page surfaces that overlay the workbench and participate in navigation history. */
-export type WorkbenchOverlaySurface = 'settings';
+export type { WorkbenchOverlaySurface } from './history';
 
 interface NavigationHistoryState extends NavHistoryStacks {
   /** The surface overlaying the workbench, or null when the workbench shows. Desktop renders

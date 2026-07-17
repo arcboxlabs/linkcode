@@ -1,9 +1,7 @@
 import ibmPlexMono400 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2?inline';
 import ibmPlexMono700 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-700-normal.woff2?inline';
+import notoEmoji from '@fontsource/noto-emoji/files/noto-emoji-emoji-400-normal.woff2?inline';
 import type { ResttyFontInput } from 'restty';
-// Not in git: fetched (pinned tag + sha256) by scripts/fetch-noto-emoji.mjs on install. If the
-// import fails to resolve, run `pnpm -F @linkcode/ui postinstall`.
-import notoEmojiTtf from './vendor/noto-emoji-regular.ttf?inline';
 
 function decodeDataUri(uri: string): ArrayBuffer {
   const binary = atob(uri.slice(uri.indexOf(',') + 1));
@@ -37,17 +35,17 @@ const SYMBOLS_FAMILIES = [
   'powerline',
 ];
 
-// CJK priority. Arial Unicode MS leads deliberately: ships with every macOS and its tall metrics
-// dodge restty's wide-glyph upscale, keeping mixed CJK/latin on one baseline (CODE-138). PingFang
-// is deliberately absent (rasterizes every glyph blank in restty's shaper); a bare 'hiragino sans'
-// matcher is unsafe — the Japanese variant lacks simplified-Chinese glyphs, only GB is safe.
+// CJK priority, best quality first — needs restty ≥0.2.3 (wide fallbacks keep natural scale on
+// the primary baseline; restty#24). PingFang stays out: it claims glyphs but rasterizes them
+// blank — restty ≥0.2.1 skips such faces (restty#25) but has never rendered it. A bare
+// 'hiragino sans' matcher is unsafe: the Japanese variant lacks simplified-Chinese glyphs.
 const CJK_FAMILIES = [
-  'arial unicode',
   'hiragino sans gb',
   'heiti sc',
   'microsoft yahei',
   'noto sans cjk',
   'source han sans',
+  'arial unicode',
 ];
 
 // Only Apple Color Emoji (sbix) is verified in restty 0.2.0. restty prefers a color-classified
@@ -103,9 +101,9 @@ async function buildTerminalFonts(preferredFamily: string): Promise<ResttyFontIn
     { data: decodeDataUri(ibmPlexMono700), name: 'IBM Plex Mono Bold', weight: 700 },
     ...(symbols ? [{ family: symbols }] : []),
     ...(cjk ? [{ family: cjk }] : []),
-    // Monochrome backstop (vendored Noto Emoji, Unicode 11 / Apache 2.0 — the last static release;
-    // newer builds fail to parse in restty's shaper) for machines without renderable color emoji.
-    colorEmoji ? { family: colorEmoji } : { data: decodeDataUri(notoEmojiTtf), name: 'Noto Emoji' },
+    // Bundled monochrome emoji backstops machines without a renderable color emoji font
+    // (current Noto Emoji builds parse since text-shaper 0.1.26; text-shaper#3).
+    colorEmoji ? { family: colorEmoji } : { data: decodeDataUri(notoEmoji), name: 'Noto Emoji' },
     ...(mono ? [{ family: mono }] : []),
   ];
 }

@@ -4,6 +4,7 @@
  */
 export * from '@linkcode/agent-adapter';
 export * from './artifacts/host-service';
+export * from './automation';
 export * from './engine';
 export * from './file-service';
 export * from './git/git-service';

@@ -16,11 +16,13 @@ const EMPTY_CONVERSATION: Conversation = {
   items: [],
   status: null,
   usage: null,
+  usageReport: null,
   currentModeId: null,
   approvalPolicy: null,
   currentModel: null,
   currentEffort: null,
   availableCommands: null,
+  availableModels: null,
   capabilities: null,
   stopReason: null,
   pendingPermissionIds: [],
@@ -28,9 +30,10 @@ const EMPTY_CONVERSATION: Conversation = {
 };
 
 /**
- * Event types a provider-transcript read can reproduce — the only ones the `uptoSeq` cut may drop.
- * Everything else (permission asks, status, stop, …) never appears in `history.read`, so cutting
- * it would erase it outright, e.g. stranding a pending permission-request un-answerable (CODE-35).
+ * Event types a provider-transcript read can reproduce — the only ones the `uptoSeq` cut may drop
+ * as "already in the snapshot". Everything else (interactive requests and resolutions, status,
+ * stop, errors, usage …) is ephemeral: it never appears in `history.read`, so cutting it would erase
+ * it outright — a pending permission-request would vanish and strand the turn (CODE-35).
  */
 const SEEDABLE_EVENT_TYPES = new Set<AgentEvent['type']>([
   'user-message',
@@ -64,7 +67,7 @@ export function createConversationStore(
   const sync = (): void => {
     if (!seeded) {
       seeded = true;
-      if (seed) for (const event of seed.events) builder.advance(event);
+      if (seed) for (const entry of seed.events) builder.advance(entry.event, entry.ts);
     }
     if (client.eventSeq(sessionId) <= consumedSeq) return;
     const events = client.eventsSnapshot(sessionId);

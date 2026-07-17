@@ -11,6 +11,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -25,6 +26,7 @@ import type {
   TokenUsage,
   ToolCall,
   ToolCallUpdate,
+  UsageReport,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
@@ -284,6 +286,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected emitUsage(usage: TokenUsage): void {
     this.emit({ type: 'token-usage', usage });
   }
+  /** Announce a structured usage snapshot (a provider usage command's whole reply — see schema). */
+  protected emitUsageReport(report: UsageReport): void {
+    this.emit({ type: 'usage-report', report });
+  }
   protected emitApprovalPolicy(state: ApprovalPolicyState): void {
     this.emit({ type: 'approval-policy-update', state });
   }
@@ -302,6 +308,11 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   /** Announce the session's slash-command catalog (full-replace semantics — see schema). */
   protected emitCommands(commands: AgentCommand[]): void {
     this.emit({ type: 'available-commands-update', commands });
+  }
+  /** Announce the session's model catalog (full-replace semantics — see schema). Only adapters
+   * with an install-dependent model set emit this; static-catalog agents never do. */
+  protected emitModels(models: AgentModelOption[]): void {
+    this.emit({ type: 'available-models-update', models });
   }
   protected emitStop(stopReason: StopReason): void {
     this.emit({ type: 'stop', stopReason });

@@ -195,6 +195,27 @@ describe('ClaudeCodeAdapter AskUserQuestion', () => {
     });
   });
 
+  it('omits skipped questions from the folded answers so the CLI reports them unanswered', async () => {
+    const harness = await makeHarness();
+    const result = await askAndAnswer(harness, {
+      outcome: 'answered',
+      answers: [
+        { questionId: 'q0', selectedOptionIds: [] },
+        { questionId: 'q1', selectedOptionIds: ['o1'] },
+      ],
+    });
+
+    expect(result).toEqual({
+      behavior: 'allow',
+      updatedInput: {
+        ...QUESTION_INPUT,
+        answers: {
+          'Which features do you want to enable?': 'Retry',
+        },
+      },
+    });
+  });
+
   it('denies with the CLI-native decline message when cancelled', async () => {
     const harness = await makeHarness();
     const result = await askAndAnswer(harness, { outcome: 'cancelled' });

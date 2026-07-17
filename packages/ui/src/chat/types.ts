@@ -1,12 +1,16 @@
 import type {
   AgentCapabilities,
   AgentCommand,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
   PermissionOption,
+  PermissionOutcome,
   Plan,
+  PromptResolutionSource,
   Question,
+  QuestionOutcome,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -16,8 +20,11 @@ import type {
 
 export type ConversationTurnId = string | null;
 
-/** `receivedAt` = client receive time of the item's latest event — TODO(wire): approximate and
- * absent for history-seeded items; replace once the wire carries an authoritative timestamp. */
+/**
+ * Fields every timeline item carries. `receivedAt` is the best-known time of the item's latest
+ * event: client receive time for live events, the provider's own timestamp for history-seeded
+ * items, absent when neither is known.
+ */
 interface ConversationItemBase {
   id: string;
   turnId: ConversationTurnId;
@@ -33,6 +40,8 @@ export type ConversationItem =
       isStreaming: boolean;
       /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
       parentToolCallId?: string;
+      /** The model serving the session when this assistant message opened (from `model-update`). */
+      model?: string;
     })
   | (ConversationItemBase & {
       kind: 'reasoning';
@@ -54,12 +63,16 @@ export type ConversationItem =
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
+      responding: boolean;
+      resolution?: { outcome: PermissionOutcome; source: PromptResolutionSource };
     })
   | (ConversationItemBase & {
       kind: 'question';
       requestId: string;
       toolCall: ToolCallUpdate;
       questions: Question[];
+      responding: boolean;
+      resolution?: { outcome: QuestionOutcome; source: PromptResolutionSource };
     })
   | (ConversationItemBase & {
       kind: 'error';
@@ -86,6 +99,9 @@ export interface ConversationViewModel {
   currentEffort: EffortLevel | null;
   /** Slash-command catalog from `available-commands-update`; null hides the composer's command menu. */
   availableCommands: AgentCommand[] | null;
+  /** Adapter-advertised model catalog from `available-models-update` (install-dependent agents);
+   * null falls the composer back to its static per-kind model table. */
+  availableModels: AgentModelOption[] | null;
   /** Adapter input features from `capabilities-update`; null until the session advertises. */
   capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */

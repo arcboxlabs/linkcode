@@ -2,6 +2,7 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentKind,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -112,6 +113,10 @@ export interface ComposerProps {
   /** Slash-command catalog reflected from `available-commands-update`. Empty or absent → the `/`
    * menu offers no command entries and a typed `/name` submits as plain text. */
   agentCommands?: AgentCommand[] | null;
+  /** The session's adapter-advertised model catalog, reflected from `available-models-update`
+   * (install-dependent agents like opencode). Takes precedence over the static per-kind table;
+   * empty or absent falls back to that table. */
+  agentModels?: AgentModelOption[] | null;
   /** Stable input features advertised by the live adapter session. */
   agentCapabilities?: AgentCapabilities | null;
   onSend: (content: ContentBlock[]) => void;
@@ -172,6 +177,7 @@ export function Composer({
   currentModel,
   currentEffort,
   agentCommands,
+  agentModels,
   agentCapabilities,
   onSend,
   onInvokeCommand,
@@ -601,7 +607,14 @@ export function Composer({
   }
 
   const placeholderAgent = agentLabel ?? 'agent';
-  const modelOptions = agentKind ? AGENT_MODEL_OPTIONS[agentKind] : undefined;
+  // The adapter-advertised catalog wins over the static table: an install-dependent agent
+  // (opencode) knows its own reachable models; the table only covers curated vendor lists.
+  const modelOptions =
+    agentModels && agentModels.length > 0
+      ? agentModels
+      : agentKind
+        ? AGENT_MODEL_OPTIONS[agentKind]
+        : undefined;
   const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
 
   // Workflow mode and approval policy are orthogonal axes (see session-modes.ts, approval-policy.ts).

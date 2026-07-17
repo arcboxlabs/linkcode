@@ -8,6 +8,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { waitFor } from 'foxts/wait-for';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
 import { FileSuggestService } from '../file-suggest-service';
@@ -34,13 +35,6 @@ function fakeAdapter(): AgentAdapter {
   };
 }
 
-/** Let the fire-and-forget handle() chains settle. */
-function tick(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
 function harness(store: SessionStore = new InMemorySessionStore()) {
   const sent: WirePayload[] = [];
   let handler: ((msg: WireMessage) => void) | null = null;
@@ -60,9 +54,11 @@ function harness(store: SessionStore = new InMemorySessionStore()) {
   const suggest = vi.spyOn(fileSuggest, 'suggest').mockResolvedValue([{ path: 'src/index.ts' }]);
   const engine = new Engine(transport, { factory: fakeAdapter, fileSuggest, sessionStore: store });
 
-  async function inject(payload: WirePayload): Promise<void> {
+  // handle() is fire-and-forget, so a fixed tick races the reply under parallel-suite load;
+  // every request kind replies via tryReply, so the echoed replyTo is the settled signal.
+  async function inject(payload: Extract<WirePayload, { clientReqId: string }>): Promise<void> {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
-    await tick();
+    await waitFor(() => sent.some((p) => 'replyTo' in p && p.replyTo === payload.clientReqId), 5);
   }
 
   return { engine, sent, inject, suggest };

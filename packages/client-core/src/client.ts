@@ -16,11 +16,22 @@ import type {
   GitStatus,
   HostedArtifact,
   InstalledAsset,
+  LoopId,
+  LoopInspection,
+  LoopIteration,
+  LoopLogEntry,
+  LoopRecord,
+  LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
   QuestionOutcome,
+  Schedule,
+  ScheduleId,
+  ScheduleRun,
+  ScheduleSpec,
+  ScheduleUpdate,
   SessionId,
   SessionInfo,
   SessionNotification,
@@ -45,6 +56,7 @@ import type { HistoryListClientOptions, HistoryReadClientOptions } from './clien
 import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
+import { LoopLogBuffer } from './client/loop-log-buffer';
 import type { RandomUUID, RequestAck } from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
@@ -90,6 +102,20 @@ type AssetProgressCb = (event: AssetProgressEvent) => void;
 type AssetSettledCb = (event: AssetSettledEvent) => void;
 type AgentRuntimesChangedCb = (runtimes: AgentRuntimes) => void;
 type ConnectionCloseCb = (error: Error) => void;
+
+/** A broadcast about a schedule's or its runs' state — the three `schedule.*` push variants. */
+export type ScheduleEvent =
+  | { type: 'changed'; schedule: Schedule }
+  | { type: 'removed'; scheduleId: ScheduleId }
+  | { type: 'run'; run: ScheduleRun };
+type ScheduleEventCb = (event: ScheduleEvent) => void;
+
+/** A broadcast about a loop's or its iterations' state. Live log lines route to the log buffer, not here. */
+export type LoopEvent =
+  | { type: 'changed'; loop: LoopRecord }
+  | { type: 'removed'; loopId: LoopId }
+  | { type: 'iteration'; iteration: LoopIteration };
+type LoopEventCb = (event: LoopEvent) => void;
 type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
@@ -107,6 +133,9 @@ export class LinkCodeClient {
   private readonly terminals: TerminalChannel;
   private readonly agentLogin: AgentLoginChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
+  private readonly scheduleEventSubs = new Set<ScheduleEventCb>();
+  private readonly loopEventSubs = new Set<LoopEventCb>();
+  private readonly loopLogs = new LoopLogBuffer();
   private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
@@ -312,6 +341,53 @@ export class LinkCodeClient {
         break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
+        break;
+      case 'schedule.created':
+        this.pending.resolve('scheduleCreate', p.replyTo, p.schedule);
+        break;
+      case 'schedule.updated':
+        this.pending.resolve('scheduleUpdate', p.replyTo, p.schedule);
+        break;
+      case 'schedule.listed':
+        this.pending.resolve('scheduleList', p.replyTo, p.schedules);
+        break;
+      case 'schedule.runs.listed':
+        this.pending.resolve('scheduleRuns', p.replyTo, p.runs);
+        break;
+      case 'schedule.changed':
+        for (const cb of this.scheduleEventSubs) cb({ type: 'changed', schedule: p.schedule });
+        break;
+      case 'schedule.removed':
+        for (const cb of this.scheduleEventSubs) cb({ type: 'removed', scheduleId: p.scheduleId });
+        break;
+      case 'schedule.run':
+        for (const cb of this.scheduleEventSubs) cb({ type: 'run', run: p.run });
+        break;
+      case 'loop.started':
+        this.pending.resolve('loopStart', p.replyTo, p.loop);
+        break;
+      case 'loop.listed':
+        this.pending.resolve('loopList', p.replyTo, p.loops);
+        break;
+      case 'loop.inspected':
+        this.loopLogs.seed(p.loop.loopId, p.logs);
+        this.pending.resolve('loopInspect', p.replyTo, {
+          loop: p.loop,
+          iterations: p.iterations,
+          logs: p.logs,
+        });
+        break;
+      case 'loop.changed':
+        for (const cb of this.loopEventSubs) cb({ type: 'changed', loop: p.loop });
+        break;
+      case 'loop.removed':
+        for (const cb of this.loopEventSubs) cb({ type: 'removed', loopId: p.loopId });
+        break;
+      case 'loop.iteration':
+        for (const cb of this.loopEventSubs) cb({ type: 'iteration', iteration: p.iteration });
+        break;
+      case 'loop.log':
+        this.loopLogs.ingest(p.loopId, p.entry);
         break;
       case 'session.notification':
         for (const cb of this.sessionNotificationSubs) cb(p.notification);
@@ -589,6 +665,80 @@ export class LinkCodeClient {
     return this.control.archiveWorkspace(workspaceId);
   }
 
+  createSchedule(spec: ScheduleSpec): Promise<Schedule> {
+    return this.control.createSchedule(spec);
+  }
+
+  updateSchedule(scheduleId: ScheduleId, patch: ScheduleUpdate): Promise<Schedule> {
+    return this.control.updateSchedule(scheduleId, patch);
+  }
+
+  deleteSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.deleteSchedule(scheduleId);
+  }
+
+  pauseSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.pauseSchedule(scheduleId);
+  }
+
+  resumeSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.resumeSchedule(scheduleId);
+  }
+
+  runScheduleOnce(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.runScheduleOnce(scheduleId);
+  }
+
+  listSchedules(): Promise<Schedule[]> {
+    return this.control.listSchedules();
+  }
+
+  listScheduleRuns(scheduleId: ScheduleId, limit?: number): Promise<ScheduleRun[]> {
+    return this.control.listScheduleRuns(scheduleId, limit);
+  }
+
+  /** Fold `schedule.changed` / `schedule.removed` / `schedule.run` broadcasts (e.g. to revalidate). */
+  subscribeScheduleEvents(cb: ScheduleEventCb): Unsubscribe {
+    this.scheduleEventSubs.add(cb);
+    return () => this.scheduleEventSubs.delete(cb);
+  }
+
+  startLoop(spec: LoopSpec): Promise<LoopRecord> {
+    return this.control.startLoop(spec);
+  }
+
+  stopLoop(loopId: LoopId): Promise<RequestAck> {
+    return this.control.stopLoop(loopId);
+  }
+
+  deleteLoop(loopId: LoopId): Promise<RequestAck> {
+    return this.control.deleteLoop(loopId);
+  }
+
+  listLoops(): Promise<LoopRecord[]> {
+    return this.control.listLoops();
+  }
+
+  /** A loop's record + iterations + log tail; also seeds the client's log buffer for the loop. */
+  inspectLoop(loopId: LoopId): Promise<LoopInspection> {
+    return this.control.inspectLoop(loopId);
+  }
+
+  /** Fold `loop.changed` / `loop.removed` / `loop.iteration` broadcasts (e.g. to revalidate). */
+  subscribeLoopEvents(cb: LoopEventCb): Unsubscribe {
+    this.loopEventSubs.add(cb);
+    return () => this.loopEventSubs.delete(cb);
+  }
+
+  /** Stable log-tail snapshot for a loop (pairs with {@link subscribeLoopLog} for useSyncExternalStore). */
+  loopLogSnapshot(loopId: LoopId): readonly LoopLogEntry[] {
+    return this.loopLogs.snapshot(loopId);
+  }
+
+  subscribeLoopLog(loopId: LoopId, cb: () => void): Unsubscribe {
+    return this.loopLogs.subscribe(loopId, cb);
+  }
+
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {
     return this.events.subscribe(sessionId, cb);
   }
@@ -711,6 +861,7 @@ export class LinkCodeClient {
     this.connectionCloseSubs.clear();
     this.pending.failAll(error);
     this.events.clearAll();
+    this.loopLogs.clear();
     this.terminals.disposeAll();
     this.agentLogin.disposeAll();
     this.transport.close();

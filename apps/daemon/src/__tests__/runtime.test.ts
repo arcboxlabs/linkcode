@@ -93,6 +93,29 @@ describe('probeDaemonIdentity', () => {
     });
     await expect(probeDaemonIdentity(`http://127.0.0.1:${port}`)).resolves.toBeNull();
   });
+
+  it('retries a timed-out attempt and recovers a slow daemon', async () => {
+    const id = identity(1234);
+    let requests = 0;
+    // First request hangs past the probe timeout; the retry is answered immediately.
+    const port = await listen((_req, res) => {
+      requests += 1;
+      if (requests === 1) return;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(id));
+    });
+    await expect(probeDaemonIdentity(`http://127.0.0.1:${port}`, 200)).resolves.toEqual(id);
+    expect(requests).toBe(2);
+  });
+
+  it('returns null once every timeout retry is exhausted', async () => {
+    let requests = 0;
+    const port = await listen(() => {
+      requests += 1;
+    });
+    await expect(probeDaemonIdentity(`http://127.0.0.1:${port}`, 50)).resolves.toBeNull();
+    expect(requests).toBe(3);
+  });
 });
 
 describe('listenWithPortHunt', () => {

@@ -20,16 +20,6 @@ export interface CurrentPlan {
   complete: boolean;
 }
 
-export interface PromptPageCursor {
-  promptId: string | null;
-  segmentId: string | null;
-  index: number;
-}
-
-export interface PromptPageItem {
-  promptId: string;
-}
-
 export function conversationFlowItems(
   items: readonly ConversationItem[],
 ): Array<Exclude<ConversationItem, PlanConversationItem>> {
@@ -76,34 +66,21 @@ export function selectPendingPromptItems(
   );
 }
 
-export function resolvePromptPageIndex(
-  items: readonly PromptPageItem[],
-  cursor: PromptPageCursor,
-): number {
-  if (items.length === 0) return 0;
-  if (cursor.promptId) {
-    const selectedIndex = items.findIndex((item) => item.promptId === cursor.promptId);
-    if (selectedIndex >= 0) return selectedIndex;
-  }
-  if (cursor.segmentId !== items[0].promptId) return 0;
-  return Math.min(Math.max(cursor.index, 0), items.length - 1);
-}
-
-export function isPermissionDeclined(decision: PermissionDecision | undefined): boolean {
-  if (!decision) return false;
-  if (decision.outcome === 'cancelled') return true;
-  return decision.option.kind === 'reject_once' || decision.option.kind === 'reject_always';
-}
-
-/** toolCallIds whose gating permission the user declined in this client. */
-export function declinedToolCallIds(
-  items: readonly ConversationItem[],
-  decisions: ReadonlyMap<string, PermissionDecision>,
-): Set<string> {
+/** toolCallIds whose authoritative permission resolution declined the gated action. */
+export function declinedToolCallIds(items: readonly ConversationItem[]): Set<string> {
   const ids = new Set<string>();
   for (const item of items) {
     if (item.kind !== 'approval') continue;
-    if (isPermissionDeclined(decisions.get(item.requestId))) ids.add(item.toolCall.toolCallId);
+    if (!item.resolution) continue;
+    const outcome = item.resolution.outcome;
+    if (outcome.outcome === 'cancelled') {
+      if (item.resolution.source === 'user') ids.add(item.toolCall.toolCallId);
+      continue;
+    }
+    const option = item.options.find((candidate) => candidate.optionId === outcome.optionId);
+    if (option?.kind === 'reject_once' || option?.kind === 'reject_always') {
+      ids.add(item.toolCall.toolCallId);
+    }
   }
   return ids;
 }

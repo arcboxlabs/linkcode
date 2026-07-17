@@ -4,6 +4,8 @@ import { SHOWCASE_TERMINAL_ID } from './sessions';
 
 export const SHOWCASE_PERMISSION_ID = 'mock-permission-edit';
 export const SHOWCASE_PERMISSION_TOOL_ID = 'mock-tool-permission-edit';
+export const SHOWCASE_QUESTION_ID = 'mock-question-batch';
+export const SHOWCASE_QUESTION_TOOL_ID = 'mock-tool-question-batch';
 
 const TRANSPARENT_PIXEL =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
@@ -98,8 +100,58 @@ export const SHOWCASE_PERMISSION_DIFF: Extract<ToolCall['content'][number], { ty
 
 export const SHOWCASE_PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' },
+  { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject_once', name: 'Reject', kind: 'reject_once' },
 ];
+
+export const SHOWCASE_QUESTION = {
+  type: 'question-request',
+  requestId: SHOWCASE_QUESTION_ID,
+  toolCall: {
+    toolCallId: SHOWCASE_QUESTION_TOOL_ID,
+    title: 'Request user input',
+    kind: 'other',
+    status: 'pending',
+    content: [],
+  },
+  questions: [
+    {
+      questionId: 'scope',
+      prompt: 'How broad should the change be?',
+      header: 'Scope',
+      multiSelect: false,
+      options: [
+        { optionId: 'focused', label: 'Focused', description: 'Only the requested behavior.' },
+        {
+          optionId: 'broad',
+          label: 'Broad',
+          description:
+            'Include adjacent cleanup across the touched interaction flow, consolidate duplicated state handling, and update related tests when those changes materially improve consistency without broadening the requested product behavior.',
+        },
+      ],
+    },
+    {
+      questionId: 'checks',
+      prompt: 'Which checks should run?',
+      header: 'Checks',
+      multiSelect: true,
+      options: [
+        { optionId: 'targeted', label: 'Targeted tests' },
+        { optionId: 'full', label: 'Full suite' },
+      ],
+    },
+    {
+      questionId: 'handoff',
+      prompt: 'How should the result be handed off?',
+      header: 'Handoff',
+      multiSelect: false,
+      options: [
+        { optionId: 'summary', label: 'Summary' },
+        { optionId: 'details', label: 'Detailed notes' },
+      ],
+    },
+  ],
+} satisfies Extract<AgentEvent, { type: 'question-request' }>;
 
 const SHOWCASE_PERMISSION_EDIT_TOOL: ToolCall = {
   toolCallId: SHOWCASE_PERMISSION_TOOL_ID,
@@ -364,6 +416,26 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
     ],
     wrapUp: [
       {
+        toolCallId: 'mock-tool-fetch-envelope',
+        title: 'WebFetch',
+        kind: 'fetch',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('# Arknights\n\nA tower-defense mobile game by Hypergryph.'),
+          },
+        ],
+        rawInput: { url: 'https://en.wikipedia.org/wiki/Arknights' },
+        rawOutput: {
+          bytes: 192511,
+          code: 200,
+          codeText: 'OK',
+          durationMs: 5404,
+          url: 'https://en.wikipedia.org/wiki/Arknights',
+        },
+      },
+      {
         toolCallId: 'mock-tool-fetch',
         title: 'Fetch unavailable preview',
         kind: 'fetch',
@@ -411,6 +483,20 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         rawOutput: { ok: true, internalRequestId: 'mock-other-result-173' },
       },
       {
+        toolCallId: 'mock-tool-mcp-slug',
+        title: 'mcp__linear__get_issue',
+        kind: 'other',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('CODE-228 · feat(ui): richer tool-call details'),
+          },
+        ],
+        rawInput: { id: 'CODE-228', includeRelations: true },
+        rawOutput: { content: [{ type: 'text', text: 'CODE-228' }] },
+      },
+      {
         toolCallId: 'mock-tool-task-review',
         title: 'Review metadata policy',
         kind: 'task',
@@ -428,6 +514,7 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         },
         rawOutput: { agentId: 'mock-subagent-internal', traceId: 'mock-task-173' },
       },
+      SHOWCASE_QUESTION.toolCall,
       ...SHOWCASE_PERMISSIONS.map((permission) => permission.toolCall),
     ],
   };

@@ -4,8 +4,10 @@ import { useTranslations } from 'use-intl';
 import type { TerminalRendererProps } from './terminal-renderer.types';
 
 /**
- * Non-iOS fallback — must never import `expo-libghostty` (Apple-only native view);
- * Metro picks `terminal-renderer.ios.tsx` on iOS. Android is a separate gated effort.
+ * Non-native fallback. `expo-libghostty` only registers a native view, so
+ * this variant must never import it — Metro resolves
+ * `terminal-renderer.native.tsx` on iOS/Android and this file everywhere else
+ * (web).
  */
 export default function TerminalRenderer({ ref }: TerminalRendererProps): React.ReactNode {
   const t = useTranslations('mobile.terminal');
@@ -13,10 +15,10 @@ export default function TerminalRenderer({ ref }: TerminalRendererProps): React.
     ref,
     () => ({
       events() {
-        // No surface to render into off iOS.
+        // No surface to render into off the native platforms.
       },
       exit() {
-        // No surface to render into off iOS.
+        // No surface to render into off the native platforms.
       },
     }),
     [],

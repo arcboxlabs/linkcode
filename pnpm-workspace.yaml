@@ -38,6 +38,9 @@ allowBuilds:
   # Downloads the checksum-pinned GhosttyKit.xcframework backing the mobile terminal view;
   # without it pod install fails on a missing vendored framework.
   expo-libghostty: true
+  # Transitive dep of @effect/platform-node (CODE-244). Our runtime path (NodeRuntime.runMain)
+  # never touches msgpackr, and msgpackr falls back to pure JS without the native extension.
+  msgpackr-extract: false
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.
@@ -100,8 +103,11 @@ catalog:
   "@iconify-json/material-icon-theme": ^1.2.69
 
 minimumReleaseAgeExclude:
+  # Effect v4 betas ship every 1-2 days; the daemon pins an exact beta (CODE-244).
+  - effect@4.0.0-beta.98
+  - "@effect/platform-node@4.0.0-beta.98"
   # First-party mobile terminal view, released same-day as the integration.
-  - expo-libghostty@0.2.0
+  - expo-libghostty@0.4.0
   # codex platform artifacts are versions of @openai/codex keyed <ver>-<platform>-<arch>.
   - '@openai/codex@0.144.1-darwin-arm64 || 0.144.1-darwin-x64 || 0.144.1-linux-arm64 || 0.144.1-linux-x64 || 0.144.1-win32-arm64 || 0.144.1-win32-x64 || 0.144.1'
   - '@earendil-works/pi-agent-core@0.80.6'
@@ -172,12 +178,20 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-arm64@7.0.2'
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
-  - expo-crypto@57.0.1
+  # Upstream fixes for our terminal font reports, adopted same-day: restty#24/#25 + text-shaper#3
+  # (CODE-223), then VS16/format 14 via our text-shaper#5 plus the CJK ic_width fix (CODE-241).
+  - restty@0.2.3 || 0.2.5
+  - text-shaper@0.1.26 || 0.1.27
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
   # ends at 0.24.2 on npm — the fix actually shipped in 0.25.0.
   esbuild@<=0.24.2: ^0.25.0
+  # Dedup: @streamdown/code pins shiki ^3 while @pierre/diffs resolves shiki 4, so the
+  # renderer bundles two complete language+theme chunk graphs (~9 MB / 300 files, CODE-215).
+  # The plugin only uses createHighlighter/bundledLanguages/createJavaScriptRegexEngine —
+  # all unchanged in shiki 4.
+  shiki@<4.0.0: ^4.3.0
   linkify-it@<=5.0.0: ^5.0.1
   undici@>=8.0.0 <8.5.0: ^8.5.0
   uuid@<11.1.1: ^11.1.1

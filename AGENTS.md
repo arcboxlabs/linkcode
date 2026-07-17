@@ -6,7 +6,7 @@
 
 Each of these breaks the product, a release, or the build with **no loud error**.
 
-1. **Wire-protocol versions are lockstep.** `WIRE_PROTOCOL_VERSION` (currently 29) is a `z.literal` in `packages/schema/src/wire`; any change to any wire variant must bump it. Mismatched peers still complete the socket ("connected") but every frame fails validation and is **silently discarded** — zero messages, a hang-like failure. Rebuild and restart the daemon and every client together.
+1. **Wire-protocol versions are lockstep.** `WIRE_PROTOCOL_VERSION` (currently 35) is a `z.literal` in `packages/schema/src/wire`; any change to any wire variant must bump it. Mismatched peers still complete the socket ("connected") but every frame fails validation and is **silently discarded** — zero messages, a hang-like failure. Rebuild and restart the daemon and every client together.
 2. **`foxts/once` prewarms by default.** `once(fn)` runs `fn` immediately at construction and caches the result; call-at-most-once semantics need `once(fn, false)`. The default has already shipped a daemon that ran its shutdown at boot and transports whose close-callback fired at construction. Read any foxts helper's `.d.ts`/source before adopting it — the lodash-alike name lies.
 3. **Native deps must be allow-listed.** pnpm blocks install scripts by default; a native dep (e.g. `better-sqlite3`) missing from `allowBuilds:` in `pnpm-workspace.yaml` installs fine but fails at `require()` time with missing bindings.
 4. **CI does not run `pnpm test`.** The vitest suite (~57 test files, node-env pure logic) is absent from `check:ci` and from every workflow — CI gates only format/lint/typecheck plus the Rust job. A green PR does not mean the tests pass; run `pnpm test` yourself before every commit.
@@ -107,6 +107,7 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 ## Never Guess — Ask First
 
 - **`tayori` is custom-made and absent from your training data.** Fetch <https://tayori.skk.moe/llms-full.txt> before touching any code that uses it. Do not guess at its API.
+- **Effect v4 (the daemon's boot orchestration) postdates your training data.** It was released 2026-02; v3 idioms actively mislead (`Context.Tag` → `Context.Service`, `Schedule.intersect` removed, `Effect.retry` takes an options object, …). Before writing Effect code, load the `effect-ts` skill (its `references/` guides are v4-canonical) and read the installed `.d.ts` under `node_modules/effect`; the skill's source-research prerequisite is a gitignored clone at `.repos/effect` (`git clone https://github.com/Effect-TS/effect-smol .repos/effect`). Repo policy overrides the skill's `effect@beta` install rule: the pin is an exact beta — bump it deliberately, as a small migration (CODE-244).
 - **The agent SDKs are fast-moving** (three are 0.x; opencode is 1.x) — read the installed `.d.ts` under `node_modules`, not vendor docs or your training memory, before relying on SDK behavior (`packages/agent-adapter/AGENTS.md`).
 - **The open questions in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** are genuinely undecided — never invent answers; ask first.
 

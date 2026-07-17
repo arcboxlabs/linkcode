@@ -68,10 +68,8 @@ export function DesktopShell({
   onSubmitLoginCode,
   onCancelLogin,
   conversation,
-  permissionDecisions,
-  respondingPermissions,
-  answeredQuestionIds,
-  respondingQuestions,
+  respondingRequestIds,
+  responseErrors,
   errorMessage,
   pinnedSessionIds,
   collapsedSections,
@@ -97,6 +95,7 @@ export function DesktopShell({
   onHostArtifact,
   onReadAttachmentFile,
   onOpenSearch,
+  onOpenAutomations,
   searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
@@ -355,10 +354,8 @@ export function DesktopShell({
           onLoginAgent={onLoginAgent}
           onSubmitLoginCode={onSubmitLoginCode}
           onCancelLogin={onCancelLogin}
-          permissionDecisions={permissionDecisions}
-          respondingPermissions={respondingPermissions}
-          answeredQuestionIds={answeredQuestionIds}
-          respondingQuestions={respondingQuestions}
+          respondingRequestIds={respondingRequestIds}
+          responseErrors={responseErrors}
           TerminalBlockComponent={TerminalBlockComponent}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
@@ -607,6 +604,7 @@ export function DesktopShell({
                 }
                 onPickDirectory={pickDirectory}
                 onOpenSearch={onOpenSearch}
+                onOpenAutomations={onOpenAutomations}
                 searchShortcut={searchShortcut}
                 onRegisterWorkspace={onRegisterWorkspace}
                 onImportHistory={onImportHistory}

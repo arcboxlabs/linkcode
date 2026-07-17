@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, isAbsolute, join } from 'node:path';
 import process from 'node:process';
 import { promisify } from 'node:util';
 import type { AgentAuthStatus } from '@linkcode/schema';
@@ -19,12 +19,32 @@ export interface DetectedAgentRuntime {
 export type ProbeableKind = 'claude-code' | 'codex';
 
 /**
- * Absolute install locations probed in order. PATH is deliberately not searched — a probe both
- * locates and *executes* the candidate, so only well-known installer targets qualify. Windows
- * locations are unverified: detection degrades to "nothing detected" there until CODE-113's win
- * runner pins them down.
+ * Candidate paths from the daemon's own PATH, searched ahead of the fallback locations
+ * (CODE-220): PATH is the user's declared resolution order, and its order decides which of
+ * several installs wins. Deriving candidates executes nothing — verification stays in
+ * `probeAt`'s `--version` vendor marker — so only entries that don't denote a fixed location
+ * are dropped: relative and empty segments (both resolve against the daemon's incidental cwd).
+ * npm's Windows `.cmd` shims are skipped implicitly (only `<dir>/<binary>` with the platform
+ * suffix is probed; `execFile` can't run a shim anyway) — those installs ride the managed tier.
  */
-function defaultInstallLocations(binary: string): string[] {
+function pathInstallLocations(binary: string): string[] {
+  const locations: string[] = [];
+  for (const entry of (process.env.PATH ?? '').split(delimiter)) {
+    // Windows PATH entries with spaces are conventionally double-quoted.
+    const dir = entry.replaceAll('"', '');
+    if (dir.length > 0 && isAbsolute(dir)) locations.push(join(dir, binary));
+  }
+  return locations;
+}
+
+/**
+ * Fallback absolute install locations, probed after the PATH scan for daemons whose PATH was
+ * stripped by a GUI launch (macOS launchd passes only `/usr/bin:/bin:/usr/sbin:/sbin`).
+ * win32 has no entries: Windows GUI processes inherit the registry-composed user PATH, which
+ * installers (winget Links, claude's `%USERPROFILE%\.local\bin`, scoop shims) join by design,
+ * so the PATH scan already covers them.
+ */
+function fallbackInstallLocations(binary: string): string[] {
   const home = homedir();
   switch (process.platform) {
     case 'darwin':
@@ -35,10 +55,12 @@ function defaultInstallLocations(binary: string): string[] {
         join('/usr/local/bin', binary),
       ];
     case 'linux':
+      // /usr/bin is where distro packages land (e.g. Arch's codex).
       return [
         join(home, '.local', 'bin', binary),
         join('/home/linuxbrew/.linuxbrew/bin', binary),
         join('/usr/local/bin', binary),
+        join('/usr/bin', binary),
       ];
     default:
       return [];
@@ -55,7 +77,7 @@ export abstract class AgentCliProbe {
   /** The SDK JS package; its platform CLI package installs as a same-scope sibling. */
   protected abstract readonly sdkPackage: string;
 
-  /** @param locations test seam — overrides the per-platform known install locations. */
+  /** @param locations test seam — overrides the PATH scan and the per-platform fallback locations. */
   constructor(private readonly locations?: string[]) {}
 
   /** Extract the CLI version from `--version` output; `undefined` rejects an impostor binary. */
@@ -101,7 +123,9 @@ export abstract class AgentCliProbe {
   }
 
   knownLocations(): string[] {
-    return this.locations ?? defaultInstallLocations(this.binaryName());
+    if (this.locations) return this.locations;
+    const binary = this.binaryName();
+    return [...new Set([...pathInstallLocations(binary), ...fallbackInstallLocations(binary)])];
   }
 
   /** Version-probe one candidate binary. `undefined` means "not this one" (absent, not executable,
@@ -109,7 +133,8 @@ export abstract class AgentCliProbe {
   async probeAt(file: string): Promise<DetectedAgentRuntime | undefined> {
     if (!existsSync(file)) return undefined;
     try {
-      const { stdout } = await execFileAsync(file, ['--version'], { timeout: 5000 });
+      // 10s: Windows Defender's first-touch scan can stall a binary's first exec past 5s.
+      const { stdout } = await execFileAsync(file, ['--version'], { timeout: 10_000 });
       const version = this.parseVersion(stdout);
       return version ? { path: file, version } : undefined;
     } catch {

@@ -12,6 +12,7 @@ import type {
   MessageId,
   PermissionOutcome,
   ProvidersConfig,
+  QuestionOutcome,
   SessionId,
   SessionInfo,
   SessionStatus,
@@ -36,6 +37,7 @@ import {
   CONTROL_LATENCY_MS,
   FAIL_PROMPT,
   MOCK_REPLY,
+  MOCK_USAGE_REPORT,
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
 import { mockScriptDeclarations } from './data/scripts';
@@ -55,6 +57,7 @@ import {
   SHOWCASE_PERMISSION_GRANTED_CONTENT,
   SHOWCASE_PERMISSIONS,
   SHOWCASE_PLAN,
+  SHOWCASE_QUESTION,
   SHOWCASE_SCRIPT_START_DELAY_MS,
   SHOWCASE_SCRIPT_STEP_LATENCY_MS,
   SHOWCASE_STREAM_CHUNK_LATENCY_MS,
@@ -124,12 +127,19 @@ function createMockTerminal(
   };
 }
 
+interface PendingQuestion {
+  sessionId: SessionId;
+  /** The pending snapshot the ask was raised for; the response re-emits it resolved. */
+  toolCall: ToolCall;
+}
+
 export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
   private readonly permissions = new Map<string, PendingPermission>();
+  private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
   private readonly terminals = new Map<string, MockTerminal>();
   private readonly scripts = new Map<string, Map<string, WorkspaceScript>>();
@@ -739,7 +749,7 @@ export class DevMockHost {
       return;
     }
     session.epoch += 1;
-    this.drainSessionPermissions(sessionId, { outcome: 'cancelled' });
+    this.drainSessionPrompts(sessionId);
     session.status = 'stopped';
     this.emit(sessionId, { type: 'status', status: 'stopped' });
     this.sendSuccess(replyTo);
@@ -767,7 +777,7 @@ export class DevMockHost {
         break;
       case 'cancel':
         session.epoch += 1;
-        this.drainSessionPermissions(sessionId, { outcome: 'cancelled' });
+        this.drainSessionPrompts(sessionId);
         session.status = 'idle';
         this.emit(sessionId, { type: 'stop', stopReason: 'cancelled' });
         this.emit(sessionId, { type: 'status', status: 'idle' });
@@ -788,6 +798,27 @@ export class DevMockHost {
         break;
       case 'permission-response':
         this.respondPermission(replyTo, sessionId, input.requestId, input.outcome);
+        break;
+      case 'command':
+        // Parity with the real engine + claude-code /usage intercept (CODE-213): the engine
+        // echoes the invocation text as a user-message before dispatch, the adapter brackets the
+        // control request with status running→idle, and the reply is one structured usage-report
+        // — no transcript text. Unknown commands mirror the engine's prevalidation reject (no echo).
+        if (input.name === 'usage' || input.name === 'cost') {
+          this.emit(sessionId, {
+            type: 'user-message',
+            content: [textBlock(`/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`)],
+          });
+          this.emit(sessionId, { type: 'status', status: 'running' });
+          this.emit(sessionId, { type: 'usage-report', report: MOCK_USAGE_REPORT });
+          this.emit(sessionId, { type: 'status', status: 'idle' });
+          this.sendSuccess(replyTo);
+        } else {
+          this.sendFailure(replyTo, 'Dev mock host only mocks the /usage command.');
+        }
+        break;
+      case 'question-response':
+        this.respondQuestion(replyTo, sessionId, input.requestId, input.outcome);
         break;
       default:
         this.sendFailure(replyTo, 'Dev mock host does not support that input yet.');
@@ -954,6 +985,11 @@ export class DevMockHost {
     }
     if (!(await waitForShowcaseStep(session, epoch))) return false;
     this.writeTerminal(terminalId, SHOWCASE_TERMINAL_START_OUTPUT);
+    this.questions.set(SHOWCASE_QUESTION.requestId, {
+      sessionId: session.sessionId,
+      toolCall: SHOWCASE_QUESTION.toolCall,
+    });
+    if (!(await this.emitShowcaseEvent(session, epoch, SHOWCASE_QUESTION))) return false;
     for (const permission of SHOWCASE_PERMISSIONS) {
       this.permissions.set(permission.requestId, {
         sessionId: session.sessionId,
@@ -1008,10 +1044,10 @@ export class DevMockHost {
       type: 'token-usage',
       usage: { inputTokens: 148, outputTokens: 96, totalCostUsd: 0 },
     });
-    // A real agent turn stays in flight while a permission ask awaits its reply. Poll instead of
-    // coordinating with respondPermission so the turn lifecycle stays in this one method.
-    while (this.hasPendingPermission(session.sessionId)) {
-      // eslint-disable-next-line no-await-in-loop -- deliberate poll while awaiting the permission reply.
+    // A real agent turn stays in flight while a prompt awaits its reply. Poll instead of
+    // coordinating with the responders so the turn lifecycle stays in this one method.
+    while (this.hasPendingPrompt(session.sessionId)) {
+      // eslint-disable-next-line no-await-in-loop -- deliberate poll while awaiting prompt replies.
       await wait(200);
       if (!isRunningTurn(session, epoch)) return;
     }
@@ -1020,17 +1056,43 @@ export class DevMockHost {
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
   }
 
-  private hasPendingPermission(sessionId: SessionId): boolean {
+  private hasPendingPrompt(sessionId: SessionId): boolean {
+    for (const pending of this.questions.values()) {
+      if (pending.sessionId === sessionId) return true;
+    }
     for (const pending of this.permissions.values()) {
       if (pending.sessionId === sessionId) return true;
     }
     return false;
   }
 
-  private drainSessionPermissions(sessionId: SessionId, outcome: PermissionOutcome): void {
+  private drainSessionPrompts(sessionId: SessionId): void {
     for (const [requestId, pending] of this.permissions) {
       if (pending.sessionId !== sessionId) continue;
       this.permissions.delete(requestId);
+      const outcome: PermissionOutcome = { outcome: 'cancelled' };
+      this.emit(sessionId, {
+        type: 'permission-resolved',
+        requestId,
+        outcome,
+        source: 'session',
+      });
+      this.emitToolSnapshot(sessionId, {
+        ...pending.toolCall,
+        status: 'failed',
+        rawOutput: { outcome },
+      });
+    }
+    for (const [requestId, pending] of this.questions) {
+      if (pending.sessionId !== sessionId) continue;
+      this.questions.delete(requestId);
+      const outcome: QuestionOutcome = { outcome: 'cancelled' };
+      this.emit(sessionId, {
+        type: 'question-resolved',
+        requestId,
+        outcome,
+        source: 'session',
+      });
       this.emitToolSnapshot(sessionId, {
         ...pending.toolCall,
         status: 'failed',
@@ -1051,6 +1113,12 @@ export class DevMockHost {
       return;
     }
     this.permissions.delete(requestId);
+    this.emit(sessionId, {
+      type: 'permission-resolved',
+      requestId,
+      outcome,
+      source: 'user',
+    });
     const allowed = outcome.outcome === 'selected' && outcome.optionId.startsWith('allow');
     this.emitToolSnapshot(sessionId, {
       ...pending.toolCall,
@@ -1064,6 +1132,32 @@ export class DevMockHost {
             : SHOWCASE_PERMISSION_DENIED_CONTENT,
         },
       ],
+      rawOutput: { outcome },
+    });
+    this.sendSuccess(replyTo);
+  }
+
+  private respondQuestion(
+    replyTo: string,
+    sessionId: SessionId,
+    requestId: string,
+    outcome: QuestionOutcome,
+  ): void {
+    const pending = this.questions.get(requestId);
+    if (pending?.sessionId !== sessionId) {
+      this.sendFailure(replyTo, `Unknown question request: ${requestId}`);
+      return;
+    }
+    this.questions.delete(requestId);
+    this.emit(sessionId, {
+      type: 'question-resolved',
+      requestId,
+      outcome,
+      source: 'user',
+    });
+    this.emitToolSnapshot(sessionId, {
+      ...pending.toolCall,
+      status: outcome.outcome === 'answered' ? 'completed' : 'failed',
       rawOutput: { outcome },
     });
     this.sendSuccess(replyTo);

@@ -1,10 +1,13 @@
 import type { SessionId, WorkspaceId } from '@linkcode/schema';
 
+/** Full-page surfaces that overlay the workbench and participate in navigation history. */
+export type WorkbenchOverlaySurface = 'settings' | 'automations';
+
 /** A place the workbench main surface can navigate back/forward to. */
 export type NavLocation =
   | { surface: 'thread'; sessionId: SessionId }
   | { surface: 'new-thread'; workspaceId: WorkspaceId | null }
-  | { surface: 'settings' };
+  | { surface: WorkbenchOverlaySurface };
 
 export interface NavHistoryStacks {
   back: NavLocation[];

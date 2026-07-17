@@ -2,8 +2,8 @@ import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentEvent } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
-import type { ClaudeCompactionSupplement } from '../native/claude-code';
-import { buildClaudeCompactionSupplement, ClaudeCodeAdapter } from '../native/claude-code';
+import type { ClaudeTranscriptSupplement } from '../native/claude-code';
+import { buildClaudeTranscriptSupplement, ClaudeCodeAdapter } from '../native/claude-code';
 
 /**
  * Context compaction (CODE-141), verified live against SDK 0.3.179: the CLI compacts **in place**
@@ -116,7 +116,7 @@ describe('ClaudeCodeAdapter live compaction', () => {
   });
 });
 
-describe('buildClaudeCompactionSupplement', () => {
+describe('buildClaudeTranscriptSupplement', () => {
   const boundaryRow = JSON.stringify({
     type: 'system',
     subtype: 'compact_boundary',
@@ -139,7 +139,7 @@ describe('buildClaudeCompactionSupplement', () => {
     });
 
   it('keys the boundary record by the summary row uuid', () => {
-    const supplement = buildClaudeCompactionSupplement([boundaryRow, summaryRow]);
+    const supplement = buildClaudeTranscriptSupplement([boundaryRow, summaryRow]);
     expect(supplement.records.get(ANCHOR_UUID)).toEqual({
       compactionId: BOUNDARY_UUID,
       trigger: 'manual',
@@ -149,8 +149,8 @@ describe('buildClaudeCompactionSupplement', () => {
   });
 
   it('collects the rows before the last boundary as dropped, excluding meta/sidechain rows', () => {
-    const supplement = buildClaudeCompactionSupplement([
-      convRow('user', 'u0'),
+    const supplement = buildClaudeTranscriptSupplement([
+      convRow('user', 'u0', { timestamp: '2026-07-16T08:00:00.000Z' }),
       convRow('assistant', 'a0'),
       convRow('user', 'meta0', { isMeta: true }),
       convRow('assistant', 'side0', { isSidechain: true }),
@@ -163,6 +163,8 @@ describe('buildClaudeCompactionSupplement', () => {
       type: 'user',
       session_id: 'sid-1',
       parent_tool_use_id: null,
+      // The raw row's timestamp rides along so replayed pre-compaction rows keep their times.
+      timestamp: '2026-07-16T08:00:00.000Z',
     });
   });
 
@@ -179,7 +181,7 @@ describe('buildClaudeCompactionSupplement', () => {
       isCompactSummary: true,
       message: { role: 'user', content: 'Second summary.' },
     });
-    const supplement = buildClaudeCompactionSupplement([
+    const supplement = buildClaudeTranscriptSupplement([
       convRow('user', 'u0'),
       boundaryRow,
       summaryRow,
@@ -195,7 +197,7 @@ describe('buildClaudeCompactionSupplement', () => {
   });
 
   it('skips corrupt lines and rows without the markers', () => {
-    const supplement = buildClaudeCompactionSupplement([
+    const supplement = buildClaudeTranscriptSupplement([
       '{"type":"system","subtype":"compact_boundary"', // torn write
       JSON.stringify({ type: 'user', uuid: 'u1', message: { content: 'plain compact talk' } }),
       boundaryRow,
@@ -205,18 +207,41 @@ describe('buildClaudeCompactionSupplement', () => {
   });
 
   it('keys an orphaned summary row by its own uuid', () => {
-    const supplement = buildClaudeCompactionSupplement([summaryRow]);
+    const supplement = buildClaudeTranscriptSupplement([summaryRow]);
     expect(supplement.records.get(ANCHOR_UUID)).toEqual({ compactionId: ANCHOR_UUID });
   });
 
   it('drops nothing when the session never compacted', () => {
-    const supplement = buildClaudeCompactionSupplement([convRow('user', 'u0')]);
+    const supplement = buildClaudeTranscriptSupplement([convRow('user', 'u0')]);
     expect(supplement.droppedRows).toEqual([]);
     expect(supplement.records.size).toBe(0);
   });
+
+  it('harvests single-result toolUseResult envelopes keyed by tool_use_id', () => {
+    const resultRow = (uuid: string, ids: string[], toolUseResult: unknown) =>
+      JSON.stringify({
+        type: 'user',
+        uuid,
+        message: {
+          role: 'user',
+          content: ids.map((id) => ({ type: 'tool_result', tool_use_id: id, content: 'ok' })),
+        },
+        toolUseResult,
+      });
+    const supplement = buildClaudeTranscriptSupplement([
+      resultRow('r1', ['toolu_1'], { code: 200, codeText: 'OK', result: 'x'.repeat(400) }),
+      // Ambiguous multi-result row: the row-level field cannot be paired, so it is skipped.
+      resultRow('r2', ['toolu_2', 'toolu_3'], { code: 404 }),
+      // Error results carry a plain string — nothing to project.
+      resultRow('r3', ['toolu_4'], 'String to replace not found'),
+    ]);
+    expect([...supplement.toolUseResults.entries()]).toEqual([
+      ['toolu_1', { code: 200, codeText: 'OK' }],
+    ]);
+  });
 });
 
-describe('ClaudeCodeAdapter readHistory compaction', () => {
+describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
   const SESSION = 'session-compact';
 
   function row(type: 'user' | 'assistant', uuid: string, content: unknown): SessionMessage {
@@ -230,12 +255,16 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
     };
   }
 
+  function supplementOf(partial: Partial<ClaudeTranscriptSupplement>): ClaudeTranscriptSupplement {
+    return { records: new Map(), droppedRows: [], toolUseResults: new Map(), ...partial };
+  }
+
   class HistoryClaude extends ClaudeCodeAdapter {
     supplementReads = 0;
 
     constructor(
       private readonly messages: SessionMessage[],
-      private readonly supplement: ClaudeCompactionSupplement,
+      private readonly supplement: ClaudeTranscriptSupplement,
     ) {
       super();
     }
@@ -248,7 +277,7 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
       } as T);
     }
 
-    protected override readCompactionSupplement(): Promise<ClaudeCompactionSupplement> {
+    protected override readTranscriptSupplement(): Promise<ClaudeTranscriptSupplement> {
       this.supplementReads += 1;
       return Promise.resolve(this.supplement);
     }
@@ -269,7 +298,7 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
         row('user', ANCHOR_UUID, 'Summary: everything so far.'),
         row('user', 'u2', [{ type: 'text', text: 'continue' }]),
       ],
-      { records: new Map([[ANCHOR_UUID, record]]), droppedRows: [] },
+      supplementOf({ records: new Map([[ANCHOR_UUID, record]]) }),
     );
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
     expect(result.events.map((e) => `${e.event.type}:${e.itemId ?? ''}`)).toEqual([
@@ -297,7 +326,7 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
         row('assistant', 'kept', [{ type: 'text', text: 'preserved reply' }]),
         row('user', 'after', [{ type: 'text', text: 'continue' }]),
       ],
-      {
+      supplementOf({
         records: new Map([[ANCHOR_UUID, record]]),
         // The raw transcript's pre-boundary rows include the preserved row ('kept'), which the
         // SDK also returned — it must not appear twice.
@@ -306,7 +335,7 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
           row('assistant', 'pre1', [{ type: 'text', text: 'first reply' }]),
           row('assistant', 'kept', [{ type: 'text', text: 'preserved reply' }]),
         ],
-      },
+      }),
     );
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
     expect(result.events.map((e) => `${e.event.type}:${e.itemId ?? ''}`)).toEqual([
@@ -319,22 +348,48 @@ describe('ClaudeCodeAdapter readHistory compaction', () => {
   });
 
   it('reads history unchanged when the session has no compactions', async () => {
-    const adapter = new HistoryClaude([row('user', 'u0', [{ type: 'text', text: 'hello' }])], {
-      records: new Map(),
-      droppedRows: [],
-    });
+    const adapter = new HistoryClaude(
+      [row('user', 'u0', [{ type: 'text', text: 'hello' }])],
+      supplementOf({}),
+    );
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
     expect(result.events.map((e) => e.event.type)).toEqual(['user-message']);
   });
 
-  it('skips the transcript read on pages after the first', async () => {
-    const adapter = new HistoryClaude([row('user', 'u0', [{ type: 'text', text: 'hello' }])], {
-      records: new Map([[ANCHOR_UUID, record]]),
-      droppedRows: [],
-    });
-    await adapter.readHistory({ historyId: asHistoryId(SESSION) });
-    expect(adapter.supplementReads).toBe(1);
-    await adapter.readHistory({ historyId: asHistoryId(SESSION), cursor: '1000' });
-    expect(adapter.supplementReads).toBe(1);
+  it('attaches recovered toolUseResult envelopes to replayed settles', async () => {
+    const envelope = { code: 200, codeText: 'OK', durationMs: 12 };
+    const adapter = new HistoryClaude(
+      [
+        row('assistant', 'a0', [
+          { type: 'tool_use', id: 'toolu_1', name: 'WebFetch', input: { url: 'https://a.test' } },
+        ]),
+        row('user', 'u0', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '# Page' }]),
+      ],
+      supplementOf({ toolUseResults: new Map([['toolu_1', envelope]]) }),
+    );
+    const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+    const settle = result.events.at(-1)?.event;
+    expect(settle?.type).toBe('tool-call');
+    if (settle?.type === 'tool-call') {
+      expect(settle.toolCall.status).toBe('completed');
+      expect(settle.toolCall.rawOutput).toEqual(envelope);
+    }
+  });
+
+  it('reads the supplement on every page but splices dropped rows only into the first', async () => {
+    const adapter = new HistoryClaude(
+      [row('user', 'u0', [{ type: 'text', text: 'hello' }])],
+      supplementOf({
+        records: new Map([[ANCHOR_UUID, record]]),
+        droppedRows: [row('user', 'pre0', [{ type: 'text', text: 'first prompt' }])],
+      }),
+    );
+    const first = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+    expect(first.events.map((e) => e.itemId)).toEqual(['pre0', 'u0']);
+    // Later pages still read the supplement (their settles need the envelope map) without
+    // re-splicing the pre-compaction rows the first page already emitted.
+    const second = await adapter.readHistory({ historyId: asHistoryId(SESSION), cursor: '1000' });
+    expect(adapter.supplementReads).toBe(2);
+    expect(second.events.map((e) => e.itemId)).toEqual(['u0']);
   });
 });

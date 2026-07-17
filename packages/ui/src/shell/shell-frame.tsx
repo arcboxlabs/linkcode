@@ -56,10 +56,8 @@ export interface ShellFrameProps
   /** Aborts an in-flight login. */
   onCancelLogin?: (kind: AgentKind) => void;
   conversation: ConversationViewModel;
-  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
-  respondingPermissions: ReadonlySet<string>;
-  answeredQuestionIds: ReadonlySet<string>;
-  respondingQuestions: ReadonlySet<string>;
+  respondingRequestIds: ReadonlySet<string>;
+  responseErrors?: ReadonlyMap<string, string>;
   header?: React.ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
@@ -90,6 +88,8 @@ export interface ShellFrameProps
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Opens the command palette — the sidebar Search entry stays disabled without it. */
   onOpenSearch?: () => void;
+  /** Opens the Automations surface — the sidebar Automations entry stays disabled without it. */
+  onOpenAutomations?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
@@ -118,10 +118,8 @@ export function ShellFrame({
   onSubmitLoginCode,
   onCancelLogin,
   conversation,
-  permissionDecisions,
-  respondingPermissions,
-  answeredQuestionIds,
-  respondingQuestions,
+  respondingRequestIds,
+  responseErrors,
   header,
   errorMessage,
   pinnedSessionIds,
@@ -147,6 +145,7 @@ export function ShellFrame({
   onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
+  onOpenAutomations,
   searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
@@ -185,6 +184,7 @@ export function ShellFrame({
           onToggleSectionCollapsed={onToggleSectionCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           onOpenSearch={onOpenSearch}
+          onOpenAutomations={onOpenAutomations}
           searchShortcut={searchShortcut}
           BranchStatusComponent={BranchStatusComponent}
         />
@@ -226,10 +226,8 @@ export function ShellFrame({
             onLoginAgent={onLoginAgent}
             onSubmitLoginCode={onSubmitLoginCode}
             onCancelLogin={onCancelLogin}
-            permissionDecisions={permissionDecisions}
-            respondingPermissions={respondingPermissions}
-            answeredQuestionIds={answeredQuestionIds}
-            respondingQuestions={respondingQuestions}
+            respondingRequestIds={respondingRequestIds}
+            responseErrors={responseErrors}
             TerminalBlockComponent={TerminalBlockComponent}
             mentionItems={mentionItems}
             onMentionQueryChange={onMentionQueryChange}

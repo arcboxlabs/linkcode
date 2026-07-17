@@ -6,37 +6,72 @@ import { ToolCallUpdateSchema } from './tool-call';
  * that become the tool's own result. */
 
 export const QuestionOptionSchema = z.object({
-  optionId: z.string().min(1),
-  label: z.string().min(1),
+  optionId: z.string().trim().min(1),
+  label: z.string().trim().min(1),
   /** What choosing this option means (trade-offs, implications). */
   description: z.string().optional(),
 });
 export type QuestionOption = z.infer<typeof QuestionOptionSchema>;
 
+const QuestionOptionsSchema = z
+  .array(QuestionOptionSchema)
+  .min(1)
+  .superRefine((options, ctx) => {
+    const optionIds = new Set<string>();
+    for (const [index, option] of options.entries()) {
+      if (optionIds.has(option.optionId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [index, 'optionId'],
+          message: `Duplicate question option ID: ${option.optionId}`,
+        });
+      }
+      optionIds.add(option.optionId);
+    }
+  });
+
 export const QuestionSchema = z.object({
-  questionId: z.string().min(1),
+  questionId: z.string().trim().min(1),
   /** The full question text. */
-  prompt: z.string().min(1),
+  prompt: z.string().trim().min(1),
   /** Very short chip/tag label (vendor-capped; claude-code caps it at 12 chars). */
-  header: z.string().optional(),
+  header: z.string().trim().min(1).optional(),
   /** Whether multiple options may be selected. */
   multiSelect: z.boolean(),
-  options: z.array(QuestionOptionSchema).min(1),
+  options: QuestionOptionsSchema,
 });
 export type Question = z.infer<typeof QuestionSchema>;
 
 /** The agent's question ask: which tool call is waiting, and the questions to answer. */
+const QuestionsSchema = z
+  .array(QuestionSchema)
+  .min(1)
+  .superRefine((questions, ctx) => {
+    const questionIds = new Set<string>();
+    for (const [index, question] of questions.entries()) {
+      if (questionIds.has(question.questionId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [index, 'questionId'],
+          message: `Duplicate question ID: ${question.questionId}`,
+        });
+      }
+      questionIds.add(question.questionId);
+    }
+  });
+
 export const QuestionRequestSchema = z.object({
   /** The asking tool call — pending-tracking joins on `toolCallId`, like the permission flow. */
   toolCall: ToolCallUpdateSchema,
-  questions: z.array(QuestionSchema).min(1),
+  questions: QuestionsSchema,
 });
 export type QuestionRequest = z.infer<typeof QuestionRequestSchema>;
 
 /** One question's answer: selected options, or free text typed instead of selecting. */
 export const QuestionAnswerSchema = z.object({
   questionId: z.string().min(1),
-  /** Chosen options; a single-select answer carries exactly one entry. */
+  /** Chosen options; a single-select answer carries at most one entry. Empty with no
+   * `customText` marks the question as skipped — adapters report it as unanswered. */
   selectedOptionIds: z.array(z.string().min(1)),
   /** Freeform answer typed instead of picking a structured option. */
   customText: z.string().optional(),

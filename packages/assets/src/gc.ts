@@ -12,10 +12,13 @@ export interface GcReport {
 }
 
 /**
- * Boot-time GC: delete everything in each asset dir that is not the wanted version (superseded
- * versions, `.tmp-*` orphans); safe because it runs before any spawn on a one-per-machine daemon.
- * An `undefined` pin skips the asset — "cannot pin" must never delete a working install.
- * Strictly best-effort: GC never takes the boot down.
+ * Boot-time GC: inside each asset dir, delete superseded versions and orphaned `.tmp-*` install
+ * dirs. Runs before any agent spawns, so nothing here is in use by this daemon, and the
+ * one-per-machine contract means no other daemon's children hold these files. An asset whose pin
+ * is `undefined` is skipped entirely: "cannot pin" must never translate into deleting a working
+ * install. Superseded versions are deleted only once the wanted version is on disk — until the
+ * replacement lands they are the only evidence of the user's install consent (CODE-221), and an
+ * offline refresh failure must not erase it. Strictly best-effort — GC never takes the boot down.
  */
 export function collectGarbage(wanted: ReadonlyMap<ManagedAssetId, string | undefined>): GcReport {
   const report: GcReport = { removed: [], skipped: [] };
@@ -29,8 +32,11 @@ export function collectGarbage(wanted: ReadonlyMap<ManagedAssetId, string | unde
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') report.skipped.push(dir);
       continue;
     }
+    // Version dirs publish via atomic rename, so presence = a complete install.
+    const wantedInstalled = entries.includes(version);
     for (const entry of entries) {
       if (entry === version) continue;
+      if (!wantedInstalled && !entry.startsWith('.tmp-')) continue;
       const target = join(dir, entry);
       try {
         rmSync(target, { recursive: true, force: true });

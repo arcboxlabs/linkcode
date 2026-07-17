@@ -91,9 +91,11 @@ export function Workbench({
   useWorkbenchKeyboardShortcuts(rootRef, sessions);
   const conversation = useSeededConversation(sessions.active, handleError);
 
-  // Deliberately NOT keyed by the active session: the shell must stay permanently mounted across
-  // session switches (remounting flashes the whole window). Per-session reset happens at the
-  // conversation column; the permission state survives — adapter requestIds are globally unique.
+  // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
+  // sidebar, panels, terminals), which must stay permanently mounted across session switches —
+  // remounting it flashes the entire window. Per-session UI reset happens at the conversation
+  // column (the shells key their ConversationSurface), and in-flight prompt response state below
+  // survives switches safely because adapter requestIds are globally unique.
   return (
     <div ref={rootRef} className="h-full min-h-0">
       <WorkbenchSessionSurface
@@ -128,21 +130,27 @@ function WorkbenchSessionSurface({
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
   const tComposer = useTranslations('workbench.composer');
+  const tPrompt = useTranslations('workbench.prompt');
   const searchShortcut = useKeyboardShortcutLabel('workbench.command-palette');
   const cancelMutation = useMutation(cancelTurn, { onError });
-  const permissionMutation = useMutation(respondPermission, { onError });
-  const questionMutation = useMutation(respondQuestion, { onError });
+  const permissionMutation = useMutation(respondPermission);
+  const questionMutation = useMutation(respondQuestion);
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
   // Prompts (with attachments) and workflow-mode/approval-policy switches all ride this generic
   // input op; each reflects back via its own session event.
   const inputMutation = useMutation(sendInput, { onError });
-  const [permissionDecisions, setPermissionDecisions] = useState(
-    () => new Map<string, PermissionDecision>(),
-  );
-  const [responding, addResponding, removeResponding] = useSet<string>();
-  const [answeredQuestions, addAnsweredQuestion] = useSet<string>();
-  const [respondingQuestions, addRespondingQuestion, removeRespondingQuestion] = useSet<string>();
+  const [respondingRequestIds, addRespondingRequest, removeRespondingRequest] = useSet<string>();
+  const [responseErrors, setResponseErrors] = useState(() => new Map<string, string>());
+  const visibleResponseErrors = new Map<string, string>();
+  for (const requestId of conversation.pendingPermissionIds) {
+    const message = responseErrors.get(requestId);
+    if (message) visibleResponseErrors.set(requestId, message);
+  }
+  for (const requestId of conversation.pendingQuestionIds) {
+    const message = responseErrors.get(requestId);
+    if (message) visibleResponseErrors.set(requestId, message);
+  }
   const active = sessions.active;
   const { mentionItems, onMentionQueryChange } = useFileMentionSource(active?.cwd);
   const sdkClient = useWorkbenchSdkClient();
@@ -404,9 +412,9 @@ function WorkbenchSessionSurface({
     : null;
 
   function handleRespond(requestId: string, decision: PermissionDecision): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    addResponding(requestId);
+    if (!sessions.activeId || respondingRequestIds.has(requestId)) return;
+    clearResponseError(requestId);
+    addRespondingRequest(requestId);
     void permissionMutation
       .trigger({
         sessionId: sessions.activeId,
@@ -417,28 +425,37 @@ function WorkbenchSessionSurface({
             ? { outcome: 'cancelled' }
             : { outcome: 'selected', optionId: decision.option.optionId },
       })
-      .then(() => {
-        setPermissionDecisions((previous) => new Map(previous).set(requestId, decision));
-      })
-      .catch(noop)
+      .catch((error: unknown) => recordResponseError(requestId, error))
       .finally(() => {
-        removeResponding(requestId);
+        removeRespondingRequest(requestId);
       });
   }
 
   function handleRespondQuestion(requestId: string, outcome: QuestionOutcome): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    addRespondingQuestion(requestId);
+    if (!sessions.activeId || respondingRequestIds.has(requestId)) return;
+    clearResponseError(requestId);
+    addRespondingRequest(requestId);
     void questionMutation
       .trigger({ sessionId: sessions.activeId, requestId, outcome })
-      .then(() => {
-        addAnsweredQuestion(requestId);
-      })
-      .catch(noop)
+      .catch((error: unknown) => recordResponseError(requestId, error))
       .finally(() => {
-        removeRespondingQuestion(requestId);
+        removeRespondingRequest(requestId);
       });
+  }
+
+  function clearResponseError(requestId: string): void {
+    setResponseErrors((current) => {
+      if (!current.has(requestId)) return current;
+      const next = new Map(current);
+      next.delete(requestId);
+      return next;
+    });
+  }
+
+  function recordResponseError(requestId: string, error: unknown): void {
+    setResponseErrors((current) =>
+      new Map(current).set(requestId, extractErrorMessage(error) ?? tPrompt('responseError')),
+    );
   }
 
   return (
@@ -458,10 +475,8 @@ function WorkbenchSessionSurface({
       onSubmitLoginCode={onboarding.submitLoginCode}
       onCancelLogin={onboarding.cancelLogin}
       conversation={conversation}
-      permissionDecisions={permissionDecisions}
-      respondingPermissions={responding}
-      answeredQuestionIds={answeredQuestions}
-      respondingQuestions={respondingQuestions}
+      respondingRequestIds={respondingRequestIds}
+      responseErrors={visibleResponseErrors}
       header={{
         title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
         subtitle: active?.cwd,

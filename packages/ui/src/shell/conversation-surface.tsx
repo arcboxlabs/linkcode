@@ -2,6 +2,7 @@ import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@lin
 import { useRef } from 'react';
 import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
 import type { PermissionDecision } from '../chat/conversation-prompts';
+import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
@@ -19,14 +20,13 @@ export interface ConversationSurfaceProps {
   /** Frontend capability stub used until attachment support is advertised by the session. */
   attachmentsSupported?: boolean;
   cwd?: string;
-  /** TODO(backend): thread the session's active model here once the daemon reflects it. */
+  /** Overrides the session's reported model (`conversation.currentModel`) in the per-turn meta. */
   modelName?: string;
-  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
-  respondingPermissions: ReadonlySet<string>;
-  answeredQuestionIds: ReadonlySet<string>;
-  respondingQuestions: ReadonlySet<string>;
-  /** Runtime availability cues (CODE-172): only a `needs-login` cue surfaces here —
-   * install/version cues never block a session that is already running. */
+  respondingRequestIds: ReadonlySet<string>;
+  responseErrors?: ReadonlyMap<string, string>;
+  /** Runtime availability cues (CODE-172): only a `needs-login` cue for this session's agent
+   * surfaces here — the sign-in recovery after an auth-failed turn. Install/version cues never
+   * block a session that is already running. */
   runtimeCues?: AgentRuntimeCues;
   /** Starts (or retries) the interactive login for the signed-out agent. */
   onLoginAgent?: (kind: AgentKind) => void;
@@ -77,10 +77,8 @@ export function ConversationSurface({
   attachmentsSupported = false,
   cwd,
   modelName,
-  permissionDecisions,
-  respondingPermissions,
-  answeredQuestionIds,
-  respondingQuestions,
+  respondingRequestIds,
+  responseErrors,
   runtimeCues,
   onLoginAgent,
   onSubmitLoginCode,
@@ -114,6 +112,7 @@ export function ConversationSurface({
   // unverified CLI stays a new-session concern — this session's process is already running.
   const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
   const loginCue = cue?.state === 'needs-login' ? cue : undefined;
+  const hasPromptCard = selectPendingPromptItems(conversation).length > 0;
   // Artifact interactions (click-to-reference) land in this surface's own composer;
   // the loop stays inside the presentation layer.
   const artifactActions = {
@@ -133,8 +132,7 @@ export function ConversationSurface({
             conversation={conversation}
             agentKind={agentKind}
             cwd={cwd}
-            modelName={modelName}
-            permissionDecisions={permissionDecisions}
+            modelName={modelName ?? conversation.currentModel ?? undefined}
             TerminalBlockComponent={TerminalBlockComponent}
             onReviewChanges={onReviewChanges}
           />
@@ -142,10 +140,8 @@ export function ConversationSurface({
       </div>
       <ConversationPromptDock
         conversation={conversation}
-        permissionDecisions={permissionDecisions}
-        respondingPermissions={respondingPermissions}
-        answeredQuestionIds={answeredQuestionIds}
-        respondingQuestions={respondingQuestions}
+        respondingRequestIds={respondingRequestIds}
+        responseErrors={responseErrors}
         onRespondPermission={onRespondPermission}
         onRespondQuestion={onRespondQuestion}
       />
@@ -162,34 +158,37 @@ export function ConversationSurface({
           </div>
         </div>
       )}
-      {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) once the daemon
-          emits it; the composer stubs the workflow-mode list today. */}
-      <Composer
-        handleRef={composerRef}
-        agentLabel={agentLabel}
-        agentKind={agentKind}
-        attachmentsSupported={attachmentsSupported}
-        disabled={disabled}
-        isRunning={isRunning}
-        mentionItems={mentionItems}
-        onMentionQueryChange={onMentionQueryChange}
-        sendBlocked={loginCue !== undefined}
-        currentModeId={conversation.currentModeId}
-        approvalPolicy={conversation.approvalPolicy}
-        currentModel={conversation.currentModel}
-        currentEffort={conversation.currentEffort}
-        agentCommands={conversation.availableCommands}
-        agentCapabilities={conversation.capabilities}
-        onSend={onSendPrompt}
-        onInvokeCommand={onInvokeCommand}
-        onRunShellCommand={onRunShellCommand}
-        onStop={onStopTurn}
-        onPickAttachmentFiles={onPickAttachmentFiles}
-        onModeChange={onModeChange}
-        onApprovalPolicyChange={onApprovalPolicyChange}
-        onModelChange={onModelChange}
-        onEffortChange={onEffortChange}
-      />
+      <div hidden={hasPromptCard}>
+        {/* TODO(backend): pass the agent-advertised mode list (session-modes.ts) once the daemon
+            emits it; the composer stubs the workflow-mode list today. */}
+        <Composer
+          handleRef={composerRef}
+          agentLabel={agentLabel}
+          agentKind={agentKind}
+          attachmentsSupported={attachmentsSupported}
+          disabled={disabled}
+          isRunning={isRunning}
+          mentionItems={mentionItems}
+          onMentionQueryChange={onMentionQueryChange}
+          sendBlocked={loginCue !== undefined}
+          currentModeId={conversation.currentModeId}
+          approvalPolicy={conversation.approvalPolicy}
+          currentModel={conversation.currentModel}
+          currentEffort={conversation.currentEffort}
+          agentCommands={conversation.availableCommands}
+          agentModels={conversation.availableModels}
+          agentCapabilities={conversation.capabilities}
+          onSend={onSendPrompt}
+          onInvokeCommand={onInvokeCommand}
+          onRunShellCommand={onRunShellCommand}
+          onStop={onStopTurn}
+          onPickAttachmentFiles={onPickAttachmentFiles}
+          onModeChange={onModeChange}
+          onApprovalPolicyChange={onApprovalPolicyChange}
+          onModelChange={onModelChange}
+          onEffortChange={onEffortChange}
+        />
+      </div>
     </div>
   );
 }

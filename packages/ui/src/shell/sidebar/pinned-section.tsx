@@ -2,6 +2,7 @@ import type { SessionId, SessionInfo } from '@linkcode/schema';
 import { AccordionItem, AccordionPanel } from 'coss-ui/components/accordion';
 import { SidebarGroup, SidebarMenu } from 'coss-ui/components/sidebar';
 import { useTranslations } from 'use-intl';
+import type { BranchStatusComponentType } from './branch-status';
 import { SectionAccordionTrigger } from './section-header';
 import { ShowMoreToggle } from './show-more-toggle';
 import type { ThreadImMenuComponentType } from './thread-im-menu';
@@ -22,6 +23,7 @@ export interface PinnedSectionProps {
   onToggleSessionPinned: (id: SessionId) => void;
   onTogglePreviewExpanded: (groupKey: string) => void;
   ImMenuComponent?: ThreadImMenuComponentType;
+  BranchStatusComponent?: BranchStatusComponentType;
 }
 
 /** Every pinned thread across all groups, flat. Only rendered while something is pinned (hence
@@ -38,6 +40,7 @@ export function PinnedSection({
   onToggleSessionPinned,
   onTogglePreviewExpanded,
   ImMenuComponent,
+  BranchStatusComponent,
 }: PinnedSectionProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
 
@@ -58,6 +61,7 @@ export function PinnedSection({
               onClose={() => onClose(session.sessionId)}
               onTogglePin={() => onToggleSessionPinned(session.sessionId)}
               ImMenuComponent={ImMenuComponent}
+              BranchStatusComponent={BranchStatusComponent}
             />
           ))}
           {hasOverflow && (

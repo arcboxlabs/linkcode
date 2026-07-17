@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
+import { positionalBlockEntries } from './content-derived-keys';
 import { contentBlocksText } from './conversation-text';
 import { Message, MessageAction, MessageActions, MessageContent } from './message';
 import type { ConversationItem } from './types';
@@ -29,9 +30,8 @@ export function UserMessage({ item }: { item: MessageItem }): React.ReactNode {
     <Message from="user">
       <MessageContent>
         <div className={collapsible && !expanded ? 'line-clamp-[20]' : undefined}>
-          {item.blocks.map((block, index) => (
-            // eslint-disable-next-line @eslint-react/no-array-index-key -- static user message; index+type is a stable position key
-            <ContentBlockView key={`${index}:${block.type}`} block={block} />
+          {positionalBlockEntries(item.blocks).map(({ block, key }) => (
+            <ContentBlockView key={key} block={block} />
           ))}
         </div>
         {collapsible ? (

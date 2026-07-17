@@ -16,10 +16,16 @@ export default defineConfig({
   banner: {
     js: "import { createRequire as __linkcodeCreateRequire } from 'node:module'; const require = __linkcodeCreateRequire(import.meta.url);",
   },
-  // Workspace packages are exported as TS source and must be bundled in.
-  noExternal: [/^@linkcode\//],
-  // The agent SDKs must stay external — they ship native binaries / spawn subprocesses and break
-  // if bundled; `ws` (via @linkcode/transport/server) likewise.
+  // Workspace packages are exported as TS source and must be bundled in. drizzle-orm is bundled
+  // too (it's pure JS and daemon-only, and lives in devDependencies): keeping it external would
+  // put its whole 15 MB dual-format dist into both deploy closures (desktop asar + standalone)
+  // when the bundle only uses the better-sqlite3 dialect.
+  // effect + @effect/platform-node follow the same pattern: pure JS, daemon-only, devDependencies,
+  // bundled in so neither deploy closure has to carry them (CODE-244).
+  noExternal: [/^@linkcode\//, 'drizzle-orm', /^effect(\/|$)/, /^@effect\/platform-node(\/|$)/],
+  // The agent SDKs are pulled in (lazily) via @linkcode/agent-adapter, but must stay external: several
+  // ship platform-specific native binaries / spawn subprocesses and break if bundled. They load from
+  // node_modules at runtime. `ws` (via @linkcode/transport/server) is externalized for the same reason.
   external: [
     '@anthropic-ai/claude-agent-sdk',
     '@openai/codex',
