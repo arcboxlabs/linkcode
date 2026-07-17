@@ -3,7 +3,7 @@ import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
 import { ChevronLeftIcon, ChevronRightIcon, SettingsIcon } from 'lucide-react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
 export function WebWorkbenchShell({
@@ -12,12 +12,16 @@ export function WebWorkbenchShell({
   ...props
 }: WorkbenchShellProps): React.ReactNode {
   const t = useTranslations('workbench.palette');
+  const navigate = useNavigate();
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
   return (
     <ShellFrame
       {...props}
+      onOpenAutomations={() => {
+        void navigate('/automations');
+      }}
       header={
         <TitleStrip className="border-border border-b">
           <ShellIconButton

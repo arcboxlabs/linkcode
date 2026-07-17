@@ -88,6 +88,8 @@ export interface ShellFrameProps
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Opens the command palette — the sidebar Search entry stays disabled without it. */
   onOpenSearch?: () => void;
+  /** Opens the Automations surface — the sidebar Automations entry stays disabled without it. */
+  onOpenAutomations?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
@@ -143,6 +145,7 @@ export function ShellFrame({
   onRespondQuestion,
   onHostArtifact,
   onOpenSearch,
+  onOpenAutomations,
   searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
@@ -181,6 +184,7 @@ export function ShellFrame({
           onToggleSectionCollapsed={onToggleSectionCollapsed}
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           onOpenSearch={onOpenSearch}
+          onOpenAutomations={onOpenAutomations}
           searchShortcut={searchShortcut}
           BranchStatusComponent={BranchStatusComponent}
         />

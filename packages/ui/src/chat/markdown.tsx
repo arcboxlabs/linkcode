@@ -1,6 +1,6 @@
 import { cjk } from '@streamdown/cjk';
 import { createCodePlugin } from '@streamdown/code';
-import type { Components, PluginConfig } from 'streamdown';
+import type { Components, PluginConfig, StreamdownProps } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
 import { useRenderPrefs } from '../render-prefs';
@@ -8,6 +8,7 @@ import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
 import { detectInlineFilePath } from './artifacts/file-kind';
 import { useArtifactHostActions } from './artifacts/host-actions';
 import { artifactFenceLanguages } from './artifacts/registry';
+import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
 
@@ -143,13 +144,22 @@ const artifactRenderers = [
   { language: artifactFenceLanguages(), component: ArtifactFenceRenderer },
 ];
 
-export function Markdown({
-  children,
-  className,
-}: {
+const INSTANT_STREAM_ANIMATION = {
+  duration: 0,
+  stagger: 0,
+} satisfies NonNullable<StreamdownProps['animated']>;
+
+interface MarkdownProps {
   children: string;
   className?: string;
-}): React.ReactNode {
+  animated?: StreamdownProps['animated'];
+}
+
+interface SmoothMarkdownProps extends MarkdownProps {
+  isStreaming: boolean;
+}
+
+export function Markdown({ children, className, animated }: MarkdownProps): React.ReactNode {
   const { codeTheme } = useRenderPrefs();
   // The @streamdown/code plugin's getThemes() wins over the shikiTheme prop, so the selected theme
   // must be baked into the plugin. createCodePlugin is cheap — its highlighter is created lazily.
@@ -164,9 +174,24 @@ export function Markdown({
       // matching the previous react-markdown renderer.
       className={cn('space-y-0 break-words text-sm leading-relaxed', className)}
       components={components}
+      animated={animated}
       plugins={plugins}
     >
       {children}
     </Streamdown>
+  );
+}
+
+/** Markdown whose append-only source growth is drained from a small presentation buffer. */
+export function SmoothMarkdown({
+  children,
+  isStreaming,
+  ...props
+}: SmoothMarkdownProps): React.ReactNode {
+  const visibleText = useSmoothText(children, isStreaming);
+  return (
+    <Markdown {...props} animated={INSTANT_STREAM_ANIMATION}>
+      {visibleText}
+    </Markdown>
   );
 }

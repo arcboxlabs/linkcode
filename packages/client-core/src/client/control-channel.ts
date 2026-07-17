@@ -16,11 +16,20 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  LoopId,
+  LoopInspection,
+  LoopRecord,
+  LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
   ProvidersConfig,
   QuestionOutcome,
+  Schedule,
+  ScheduleId,
+  ScheduleRun,
+  ScheduleSpec,
+  ScheduleUpdate,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -408,6 +417,118 @@ export class ControlChannel {
       kind: 'workspace.archive',
       clientReqId,
       workspaceId,
+    }));
+  }
+
+  /** Create a recurring schedule; state changes then stream via `subscribeScheduleEvents`. */
+  createSchedule(spec: ScheduleSpec): Promise<Schedule> {
+    return this.sendCorrelated('scheduleCreate', (clientReqId) => ({
+      kind: 'schedule.create',
+      clientReqId,
+      spec,
+    }));
+  }
+
+  /** Edit a schedule's mutable fields (everything but its target). */
+  updateSchedule(scheduleId: ScheduleId, patch: ScheduleUpdate): Promise<Schedule> {
+    return this.sendCorrelated('scheduleUpdate', (clientReqId) => ({
+      kind: 'schedule.update',
+      clientReqId,
+      scheduleId,
+      patch,
+    }));
+  }
+
+  deleteSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'schedule.delete',
+      clientReqId,
+      scheduleId,
+    }));
+  }
+
+  pauseSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'schedule.pause',
+      clientReqId,
+      scheduleId,
+    }));
+  }
+
+  resumeSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'schedule.resume',
+      clientReqId,
+      scheduleId,
+    }));
+  }
+
+  /** Fire one manual run now without touching the cadence. */
+  runScheduleOnce(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'schedule.run-once',
+      clientReqId,
+      scheduleId,
+    }));
+  }
+
+  listSchedules(): Promise<Schedule[]> {
+    return this.sendCorrelated('scheduleList', (clientReqId) => ({
+      kind: 'schedule.list',
+      clientReqId,
+    }));
+  }
+
+  /** A schedule's run history, newest first. */
+  listScheduleRuns(scheduleId: ScheduleId, limit?: number): Promise<ScheduleRun[]> {
+    return this.sendCorrelated('scheduleRuns', (clientReqId) => ({
+      kind: 'schedule.runs.list',
+      clientReqId,
+      scheduleId,
+      limit,
+    }));
+  }
+
+  /** Start an iterate-until-verified loop; progress then streams via `subscribeLoopEvents`. */
+  startLoop(spec: LoopSpec): Promise<LoopRecord> {
+    return this.sendCorrelated('loopStart', (clientReqId) => ({
+      kind: 'loop.start',
+      clientReqId,
+      spec,
+    }));
+  }
+
+  /** Signal a running loop to stop; it settles to `stopped`. */
+  stopLoop(loopId: LoopId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'loop.stop',
+      clientReqId,
+      loopId,
+    }));
+  }
+
+  /** Delete a settled loop and its iteration history; rejects while it is still running. */
+  deleteLoop(loopId: LoopId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'loop.delete',
+      clientReqId,
+      loopId,
+    }));
+  }
+
+  listLoops(): Promise<LoopRecord[]> {
+    return this.sendCorrelated('loopList', (clientReqId) => ({
+      kind: 'loop.list',
+      clientReqId,
+    }));
+  }
+
+  /** A loop's full detail: record + iterations + the live log tail (ring-buffered snapshot). */
+  inspectLoop(loopId: LoopId): Promise<LoopInspection> {
+    return this.sendCorrelated('loopInspect', (clientReqId) => ({
+      kind: 'loop.inspect',
+      clientReqId,
+      loopId,
     }));
   }
 

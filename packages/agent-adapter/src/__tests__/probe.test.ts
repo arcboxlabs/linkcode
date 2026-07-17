@@ -1,7 +1,7 @@
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { delimiter, join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AgentRuntimeProber,
   ClaudeCodeProbe,
@@ -165,6 +165,38 @@ describe('AgentCliProbe.probeAt', () => {
 
   it('returns undefined for a missing file', async () => {
     await expect(new ClaudeCodeProbe().probeAt('/nonexistent/claude')).resolves.toBeUndefined();
+  });
+});
+
+describe('AgentCliProbe.knownLocations', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('scans absolute PATH entries in order, ahead of the fallback locations', () => {
+    vi.stubEnv('PATH', '');
+    const fallback = new ClaudeCodeProbe().knownLocations();
+    const binary = new ClaudeCodeProbe().binaryName();
+
+    const dirA = join(tmpdir(), 'probe-path-a');
+    const dirB = join(tmpdir(), 'probe-path-b');
+    // Relative, empty, and duplicate entries must be dropped; quotes stripped.
+    vi.stubEnv('PATH', [dirA, 'relative/bin', '', `"${dirB}"`, dirA].join(delimiter));
+    expect(new ClaudeCodeProbe().knownLocations()).toEqual([
+      join(dirA, binary),
+      join(dirB, binary),
+      ...fallback,
+    ]);
+  });
+
+  it('detects a CLI through a PATH entry with no curated location involved', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const real = fakeCli(dir, 'claude', '9.9.9 (Claude Code)');
+    vi.stubEnv('PATH', dir);
+    await expect(new ClaudeCodeProbe().detect()).resolves.toEqual({
+      path: real,
+      version: '9.9.9',
+    });
   });
 });
 

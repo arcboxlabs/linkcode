@@ -23,6 +23,7 @@ import { runtimeFilePath } from './config';
 
 const PORT_HUNT_ATTEMPTS = 10;
 const PROBE_TIMEOUT_MS = 1000;
+const PROBE_TIMEOUT_RETRIES = 2;
 
 /** The configured port is held by a live linkcode daemon — the caller should exit instead of hunting on. */
 export class DaemonAlreadyRunningError extends Error {
@@ -39,17 +40,27 @@ export class DaemonAlreadyRunningError extends Error {
  * Ask whoever answers HTTP at `baseUrl` for its `GET /linkcode` identity.
  * `null` — by contract, not as a swallowed error — means "not a linkcode daemon"
  * (connection refused, timeout, non-200, or a body that fails the schema).
+ *
+ * Refused/reset/bad-schema are definitive; a timeout is not — a live daemon answering slowly
+ * (cold machine under load) misread as a foreign process would let a second daemon of the same
+ * profile hunt past it and split its daemon.db. Timeouts are retried before giving up.
  */
-export async function probeDaemonIdentity(baseUrl: string): Promise<DaemonIdentity | null> {
-  try {
-    const res = await fetch(new URL(DAEMON_IDENTITY_PATH, baseUrl), {
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    if (!res.ok) return null;
-    const parsed = DaemonIdentitySchema.safeParse(await res.json());
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
+export async function probeDaemonIdentity(
+  baseUrl: string,
+  timeoutMs: number = PROBE_TIMEOUT_MS,
+): Promise<DaemonIdentity | null> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const res = await fetch(new URL(DAEMON_IDENTITY_PATH, baseUrl), {
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) return null;
+      const parsed = DaemonIdentitySchema.safeParse(await res.json());
+      return parsed.success ? parsed.data : null;
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'TimeoutError';
+      if (!timedOut || attempt >= PROBE_TIMEOUT_RETRIES) return null;
+    }
   }
 }
 

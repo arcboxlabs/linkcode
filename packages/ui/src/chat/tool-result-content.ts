@@ -40,8 +40,13 @@ export function toolCallFetchUrl(toolCall: ToolCall): string | undefined {
 
 export function toolCallFetchStatus(toolCall: ToolCall): string | undefined {
   const output = recordValue(toolCall.rawOutput);
-  const status = output?.status ?? output?.statusCode;
-  return typeof status === 'string' || typeof status === 'number' ? String(status) : undefined;
+  // `code`/`codeText` is Claude's WebFetch envelope ("200 OK"); status/statusCode are the rest.
+  const status = output?.status ?? output?.statusCode ?? output?.code;
+  if (typeof status !== 'string' && typeof status !== 'number') return undefined;
+  const statusText = output?.codeText;
+  return typeof statusText === 'string' && statusText.length > 0
+    ? `${status} ${statusText}`
+    : String(status);
 }
 
 /**

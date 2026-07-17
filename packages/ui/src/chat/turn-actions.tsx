@@ -18,10 +18,10 @@ export function AgentTurnActions({
   modelName,
 }: {
   copyText: string;
-  /** Client receive time of the turn's last event (see ConversationItem.receivedAt). */
+  /** Best-known time of the turn's last event (see ConversationItem.receivedAt). */
   receivedAt?: number;
   agentKind?: AgentKind;
-  /** TODO(backend): no session state reflects the active model yet; hidden until one does. */
+  /** The model that served this turn (message stamp, else the session's reported model). */
   modelName?: string;
 }): React.ReactNode {
   const t = useTranslations('workbench.message');

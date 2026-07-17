@@ -1,5 +1,6 @@
 import { Badge } from 'coss-ui/components/badge';
 import { CheckCircleIcon, CircleIcon, XCircleIcon } from 'lucide-react';
+import prettyMilliseconds from 'pretty-ms';
 import { cn } from '../lib/cn';
 
 const EMPTY_TEST_RESULTS: readonly ChatTestResult[] = [];
@@ -108,7 +109,7 @@ export function TestResult({
       </div>
       {typeof result.durationMs === 'number' ? (
         <span className="shrink-0 text-xs text-muted-foreground">
-          {formatDuration(result.durationMs)}
+          {prettyMilliseconds(result.durationMs)}
         </span>
       ) : null}
     </div>
@@ -149,8 +150,4 @@ function testStatusClass(status: ChatTestResult['status']): string {
     default:
       return 'text-warning-foreground';
   }
-}
-
-function formatDuration(durationMs: number): string {
-  return durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(2)}s`;
 }

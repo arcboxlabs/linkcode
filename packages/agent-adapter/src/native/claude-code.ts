@@ -9,6 +9,7 @@ import type {
   PermissionResult,
   Query,
   SDKCompactBoundaryMessage,
+  SDKControlGetUsageResponse,
   SDKMessage,
   SDKPermissionDeniedMessage,
   SDKSessionInfo,
@@ -39,8 +40,16 @@ import type {
   SupportedAttachmentImageMimeType,
   ToolCall,
   ToolCallContent,
+  UsageRateLimitWindow,
+  UsageReport,
 } from '@linkcode/schema';
-import { EffortLevelSchema, isSupportedAttachmentImageMimeType, textBlock } from '@linkcode/schema';
+import {
+  agentCommandMatches,
+  EffortLevelSchema,
+  isSupportedAttachmentImageMimeType,
+  textBlock,
+  UsageReportSchema,
+} from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
@@ -57,6 +66,7 @@ import {
   firstText,
   isRecord,
   numberField,
+  stringField,
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
@@ -255,7 +265,112 @@ function mapClaudeCommand(command: SlashCommand): AgentCommand {
   };
 }
 
-const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
+/** Flatten the SDK's named rate-limit windows into the schema's self-describing `windows` table.
+ * Claude carries each window's length in its field NAME, not its payload, so the mapper supplies
+ * the explicit `durationMins` (5-hour = 300; the seven_day* fields and the per-model buckets are
+ * weekly = 10080 per the SDK's own doc comments). A window the server reported as null
+ * ("not available") or omitted is simply absent from the table. */
+function usageWindows(
+  limits: NonNullable<SDKControlGetUsageResponse['rate_limits']>,
+): UsageRateLimitWindow[] {
+  const windows: UsageRateLimitWindow[] = [];
+  const push = (
+    id: string,
+    durationMins: number,
+    window: { utilization: number | null; resets_at: string | null } | null | undefined,
+  ): void => {
+    if (!window) return;
+    windows.push({ id, utilization: window.utilization, resetsAt: window.resets_at, durationMins });
+  };
+  push('five_hour', 300, limits.five_hour);
+  push('seven_day', 10_080, limits.seven_day);
+  push('seven_day_oauth_apps', 10_080, limits.seven_day_oauth_apps);
+  push('seven_day_opus', 10_080, limits.seven_day_opus);
+  push('seven_day_sonnet', 10_080, limits.seven_day_sonnet);
+  for (const bucket of limits.model_scoped ?? []) {
+    windows.push({
+      label: bucket.display_name,
+      utilization: bucket.utilization,
+      resetsAt: bucket.resets_at,
+      durationMins: 10_080,
+    });
+  }
+  return windows;
+}
+
+type SdkBehaviorWindow = NonNullable<SDKControlGetUsageResponse['behaviors']>['day'];
+
+function usageBehaviorWindow(
+  window: SdkBehaviorWindow,
+): NonNullable<NonNullable<UsageReport['behaviors']>['day']> {
+  return {
+    requestCount: window.request_count,
+    sessionCount: window.session_count,
+    behaviors: window.behaviors.map((b) => ({ key: b.key, pct: b.pct, count: b.count })),
+    agents: window.agents,
+    skills: window.skills,
+    plugins: window.plugins,
+    mcpServers: window.mcp_servers,
+  };
+}
+
+/**
+ * Map the SDK's experimental get-usage response onto the Link Code `UsageReport` contract, then
+ * validate at this trust boundary: a drifted CLI reply fails the parse (surfacing as the command's
+ * error) instead of shipping malformed data downstream. This mapper and `reportUsage` are the only
+ * places the experimental SDK surface is allowed to appear. Verified against SDK 0.3.206.
+ */
+export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageReport {
+  const limits = raw.rate_limits;
+  return UsageReportSchema.parse({
+    session: {
+      totalCostUsd: raw.session.total_cost_usd,
+      totalApiDurationMs: raw.session.total_api_duration_ms,
+      totalDurationMs: raw.session.total_duration_ms,
+      totalLinesAdded: raw.session.total_lines_added,
+      totalLinesRemoved: raw.session.total_lines_removed,
+      modelUsage: Object.fromEntries(
+        Object.entries(raw.session.model_usage).map(([model, usage]) => [
+          model,
+          {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadInputTokens,
+            cacheCreationTokens: usage.cacheCreationInputTokens,
+            totalCostUsd: usage.costUSD,
+          },
+        ]),
+      ),
+    },
+    subscriptionType: raw.subscription_type,
+    rateLimits: limits
+      ? {
+          windows: usageWindows(limits),
+          extraUsage: limits.extra_usage
+            ? {
+                isEnabled: limits.extra_usage.is_enabled,
+                monthlyLimit: limits.extra_usage.monthly_limit,
+                usedCredits: limits.extra_usage.used_credits,
+                utilization: limits.extra_usage.utilization,
+                currency: limits.extra_usage.currency,
+              }
+            : limits.extra_usage,
+        }
+      : limits,
+    behaviors: raw.behaviors
+      ? {
+          day: usageBehaviorWindow(raw.behaviors.day),
+          week: usageBehaviorWindow(raw.behaviors.week),
+        }
+      : raw.behaviors,
+  } satisfies UsageReport);
+}
+
+const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
+  records: new Map(),
+  droppedRows: [],
+  toolUseResults: new Map(),
+};
 
 /**
  * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` via `query()` in **streaming input
@@ -302,6 +417,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     event: Extract<AgentEvent, { type: 'compaction' }>;
     anchorUuid: string | undefined;
   } | null = null;
+  /** The last published slash-command catalog — the alias authority for command interception
+   * (`/cost` resolves to `/usage` via the provider's own aliases, not a hardcoded list). */
+  private commandCatalog: AgentCommand[] = [];
 
   protected async onStart(opts: StartOptions): Promise<void> {
     await this.loadSdk(
@@ -385,20 +503,24 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
-    const [info, messages, subagentEvents, compactions] = await Promise.all([
+    const [info, messages, subagentEvents, supplement] = await Promise.all([
       mod.getSessionInfo(opts.historyId),
       mod.getSessionMessages(opts.historyId, {
         limit: limit + 1,
         offset,
       }),
       readSubagentTranscripts(mod, opts.historyId),
-      // The supplement only affects the first page — the swapped-in summary is the SDK chain's
-      // head row and the dropped rows are prepended before it — so later pages skip the
-      // whole-transcript read.
-      offset === 0 ? this.readCompactionSupplement(opts.historyId) : EMPTY_SUPPLEMENT,
+      // Every page needs the raw transcript: getSessionMessages strips each result row's
+      // structured toolUseResult, so the mapper re-attaches envelopes from here. The compaction
+      // splice below stays first-page-only (the swapped-in summary is the SDK chain's head row).
+      this.readTranscriptSupplement(opts.historyId),
     ]);
     const historyId = opts.historyId;
-    const mapper = createClaudeHistoryEventMapper(historyId, compactions.records);
+    const mapper = createClaudeHistoryEventMapper(
+      historyId,
+      supplement.records,
+      supplement.toolUseResults,
+    );
     const events: AgentHistoryEvent[] = [];
     // Splice each subagent's transcript in right after its spawn announce, so the seeded order
     // matches the live stream and the children land inside the parent's turn (the UI's per-segment
@@ -427,7 +549,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // relinked into the post-compaction chain) are deduped by uuid. The dedup window is this page
     // only — safe because the preserved segment sits right after the summary head, well inside it.
     const returned = new Set(page.map((message) => message.uuid));
-    const dropped = compactions.droppedRows.filter((row) => !returned.has(row.uuid));
+    const dropped =
+      offset === 0 ? supplement.droppedRows.filter((row) => !returned.has(row.uuid)) : [];
     for (const message of [...dropped, ...page]) {
       for (const event of mapper(message)) pushWithSubagents(event);
     }
@@ -440,9 +563,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     };
   }
 
-  /** Test seam over the raw transcript probe (see `readClaudeCompactionSupplement`). */
-  protected readCompactionSupplement(sessionId: string): Promise<ClaudeCompactionSupplement> {
-    return readClaudeCompactionSupplement(sessionId);
+  /** Test seam over the raw transcript probe (see `readClaudeTranscriptSupplement`). */
+  protected readTranscriptSupplement(sessionId: string): Promise<ClaudeTranscriptSupplement> {
+    return readClaudeTranscriptSupplement(sessionId);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -589,11 +712,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * no command menu until (if ever) a `commands_changed` push arrives. */
   private async publishCommands(q: Query): Promise<void> {
     try {
-      const commands = await q.supportedCommands();
-      this.emitCommands(commands.map(mapClaudeCommand));
+      this.publishCatalog(await q.supportedCommands());
     } catch {
       // Dropped on purpose — see above.
     }
+  }
+
+  /** Normalize, cache (the alias authority for `isUsageCommand`), and broadcast the catalog. */
+  private publishCatalog(commands: SlashCommand[]): void {
+    this.commandCatalog = commands.map(mapClaudeCommand);
+    this.emitCommands(this.commandCatalog);
   }
 
   protected override async onCancel(): Promise<void> {
@@ -685,10 +813,56 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Invoking a command is pushing a plain user message through the existing prompt path: the
    * vendored CLI parses a leading "/" on every user message even in streaming-input mode (verified
    * against the vendored binary), so there is no separate "run this command" control request — a
-   * command's status/settle rides the normal turn lifecycle exactly like a typed prompt. */
+   * command's status/settle rides the normal turn lifecycle exactly like a typed prompt.
+   *
+   * `/usage` (provider alias `/cost`) is the one exception: like Claude Code's own TUI — where it
+   * opens a dialog and never writes to the transcript — it is intercepted into a structured
+   * `usage-report` event instead of a turn. No `result` frame will follow, so `reportUsage`
+   * brackets itself with status `running`→`idle` per the base.ts turn contract — the busy window
+   * (the control request is network-bound and can span a process respawn) stays visible to the
+   * composer, and the engine's input gate releases at send()-resolve because status is already
+   * back to idle. */
   protected override onCommand(name: string, args?: string): Promise<void> {
+    if (this.isUsageCommand(name)) return this.reportUsage();
     const text = `/${name}${args ? ` ${args}` : ''}`;
     return this.onPrompt([textBlock(text)]);
+  }
+
+  /** True when `name` invokes the provider's `usage` command — canonical name or alias, resolved
+   * against the advertised catalog. Catalog discovery is async and may still be pending on an
+   * early invocation; until it lands only the literal name matches. */
+  private isUsageCommand(name: string): boolean {
+    const usage = this.commandCatalog.find((command) => command.name === 'usage');
+    return usage ? agentCommandMatches(usage, name) : name === 'usage';
+  }
+
+  /** Serve `/usage` from the SDK's get-usage control request (the structured data behind the CLI's
+   * own usage dialog). The SDK marks the method EXPERIMENTAL — its very name says it will be
+   * renamed on stabilization — so the call is feature-detected and isolated here plus
+   * `mapClaudeUsageReport`; an SDK/CLI pair that dropped or renamed it degrades to a session
+   * error, never a silent no-op. No text fallback by design: the invocation must never surface as
+   * transcript text. Verified against SDK 0.3.206 × CLI 2.1.206. */
+  private async reportUsage(): Promise<void> {
+    // Announce the busy window synchronously (base.ts turn contract): the engine's input gate and
+    // the composer both read status, and without this the session looks idle while a concurrent
+    // input gets rejected with "Session is busy". No result frame follows an intercepted command,
+    // so the matching 'idle' is also emitted here (finally) — success and failure alike.
+    this.emitStatus('running');
+    try {
+      // Same lazy recovery as onPrompt: a crashed or deliberately rebuilt process (an effort
+      // transition into/out of max) is recreated on demand, so /usage works right after either.
+      if (!this.q) await this.createQuery();
+      const q = nullthrow(this.q, 'claude-code: session not started');
+      if (typeof q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET !== 'function') {
+        throw new TypeError('the get-usage control request is unavailable on this SDK');
+      }
+      const raw = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
+      this.emitUsageReport(mapClaudeUsageReport(raw));
+    } catch (err) {
+      this.emitError(`claude-code: /usage failed (${extractErrorMessage(err) ?? 'unknown error'})`);
+    } finally {
+      this.emitStatus('idle');
+    }
   }
 
   /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs.
@@ -821,14 +995,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         } else if (msg.subtype === 'commands_changed') {
           // Fire-and-forget full-replace push (`supportedCommands()` is captured once at init and
           // never reflects mid-session changes) — swap the cached catalog wholesale.
-          this.emitCommands(msg.commands.map(mapClaudeCommand));
+          this.publishCatalog(msg.commands);
         } else if (msg.subtype === 'local_command_output') {
-          // A local command (e.g. /usage) produces no assistant frame of its own; the SDK's own doc
+          // A local command (e.g. /voice) produces no assistant frame of its own; the SDK's own doc
           // comment says to display it "as assistant-style text in the transcript". Bracket it in
           // its own segment so it never merges with narration on either side of it — the command
           // invocation itself (`onCommand`) rides the normal prompt path and its status/settle
           // comes from the matching `result` frame like any other turn (verified live: a local
           // command still ends in a normal zero-token `result`, not a distinct settle shape).
+          // `/usage` no longer reaches this path — it is intercepted in `onCommand` (`reportUsage`).
           this.freshSegment();
           this.emitAssistantText(msg.content, this.messageId);
           this.freshSegment();
@@ -974,6 +1149,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private handleUser(msg: UserSDKMessage): void {
     const content = msg.message.content;
     if (typeof content === 'string') return;
+    // tool_use_result is message-level; only an unambiguous single-result frame can claim it.
+    const results = content.filter((block) => block.type === 'tool_result');
+    const envelope = results.length === 1 ? toolUseResultEnvelope(msg.tool_use_result) : undefined;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
       const diff = this.pendingEditDiffs.get(block.tool_use_id) ?? [];
@@ -985,7 +1163,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         parentToolCallId: msg.parent_tool_use_id ?? undefined,
         status: block.is_error === true ? 'failed' : 'completed',
         content: [...diff, ...toolResultContent(block.content)],
-        rawOutput: block.content,
+        rawOutput: envelope ?? block.content,
       });
     }
   }
@@ -1054,24 +1232,59 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
   return undefined;
 }
 
+const TOOL_USE_RESULT_SCALAR_MAX = 256;
+
+/**
+ * Claude pairs every tool_result with a structured `tool_use_result` (live SDK user frames and raw
+ * transcript rows both carry it; `getSessionMessages` strips it). It mixes small envelope fields
+ * the UI wants (WebFetch `code`/`codeText`/`durationMs`/`bytes`, ToolSearch counts) with bulk
+ * payloads duplicating the result content (`originalFile`, `file.content`, `stdout`). Project only
+ * the scalars onto `rawOutput`: badges need them, and re-shipping whole files in every settle frame
+ * is pure bloat. Strings above the cap are payload, not envelope.
+ */
+export function toolUseResultEnvelope(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  const envelope: Record<string, unknown> = {};
+  let fields = 0;
+  for (const [key, field] of Object.entries(value)) {
+    const scalar =
+      typeof field === 'string'
+        ? field.length > 0 && field.length <= TOOL_USE_RESULT_SCALAR_MAX
+        : typeof field === 'number' || typeof field === 'boolean';
+    if (!scalar) continue;
+    envelope[key] = field;
+    fields += 1;
+  }
+  return fields > 0 ? envelope : undefined;
+}
+
 /** Normalize a tool_result's payload (string or content blocks) into tool-call content. Accepts
- * `unknown` because it also runs over untyped transcript rows, not only live SDK messages. */
+ * `unknown` because it also runs over untyped transcript rows, not only live SDK messages.
+ * ToolSearch settles with `tool_reference` blocks and no text at all; flatten those to one
+ * name-per-line text block so the call doesn't render as an empty result. */
 function toolResultContent(content: unknown): ToolCallContent[] {
   if (typeof content === 'string') {
     return content.length > 0 ? [{ type: 'content', content: textBlock(content) }] : [];
   }
   if (!Array.isArray(content)) return [];
-  return content.reduce<ToolCallContent[]>((items, block) => {
-    if (
-      isRecord(block) &&
-      block.type === 'text' &&
-      typeof block.text === 'string' &&
-      block.text.length > 0
-    ) {
+  const toolReferences: string[] = [];
+  const items = content.reduce<ToolCallContent[]>((items, block) => {
+    if (!isRecord(block)) return items;
+    if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 0) {
       items.push({ type: 'content', content: textBlock(block.text) });
+    } else if (
+      block.type === 'tool_reference' &&
+      typeof block.tool_name === 'string' &&
+      block.tool_name.length > 0
+    ) {
+      toolReferences.push(block.tool_name);
     }
     return items;
   }, []);
+  if (toolReferences.length > 0) {
+    items.push({ type: 'content', content: textBlock(toolReferences.join('\n')) });
+  }
+  return items;
 }
 
 /** Flatten a user message's payload (string or API content blocks) into plain text — the shape a
@@ -1098,8 +1311,8 @@ export interface ClaudeCompactionRecord {
   postTokens?: number;
 }
 
-/** What the raw transcript knows about compactions that the SDK read API loses. */
-export interface ClaudeCompactionSupplement {
+/** What the raw transcript knows that the SDK read API loses. */
+export interface ClaudeTranscriptSupplement {
   /** Swapped-in-summary row uuid → its boundary's record, for the mapper to turn the summary row
    * into a compaction marker instead of a fake user prompt. */
   records: Map<string, ClaudeCompactionRecord>;
@@ -1108,23 +1321,28 @@ export interface ClaudeCompactionSupplement {
    * before the last compaction vanishes from the read. In file (= chronological) order; rows the
    * SDK does still return (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
+  /** tool_use_id → projected `toolUseResult` envelope (`toolUseResultEnvelope`), another field
+   * `getSessionMessages` strips per row. Keyed only for unambiguous single-result rows. */
+  toolUseResults: Map<string, Record<string, unknown>>;
 }
 
 /**
- * Recover, from raw transcript lines, what the SDK read API strips about compactions (verified
- * against SDK 0.3.179). On disk a compaction is a `system/compact_boundary` row (camelCase
- * `compactMetadata`) followed by an `isCompactSummary:true` user row carrying the swapped-in
- * summary; a boundary claims the next summary row. `getSessionMessages` keeps only
- * type/uuid/session_id/message/parent_tool_use_id/timestamp per row — the boundary's metadata and
- * the summary flag never survive — and its chain reconstruction drops every row logically before
- * the newest summary, so both the marker and the pre-compaction timeline must come from here.
+ * Recover, from raw transcript lines, what the SDK read API strips (verified against SDK 0.3.179;
+ * `toolUseResult` re-verified on 0.3.206). On disk a compaction is a `system/compact_boundary` row
+ * (camelCase `compactMetadata`) followed by an `isCompactSummary:true` user row carrying the
+ * swapped-in summary; a boundary claims the next summary row. `getSessionMessages` keeps only
+ * type/uuid/session_id/message/parent_tool_use_id/timestamp per row — the boundary's metadata, the
+ * summary flag, and each result row's structured `toolUseResult` never survive — and its chain
+ * reconstruction drops every row logically before the newest summary, so the marker, the
+ * pre-compaction timeline, and the result envelopes must all come from here.
  */
-export function buildClaudeCompactionSupplement(
+export function buildClaudeTranscriptSupplement(
   lines: Iterable<string>,
-): ClaudeCompactionSupplement {
+): ClaudeTranscriptSupplement {
   const records = new Map<string, ClaudeCompactionRecord>();
+  const toolUseResults = new Map<string, Record<string, unknown>>();
   /** Conversation rows in file order, with the index of the last boundary seen before each. */
-  const rows: Array<{ row: SessionMessage; boundariesBefore: number }> = [];
+  const rows: Array<{ row: TimestampedSessionMessage; boundariesBefore: number }> = [];
   let boundaries = 0;
   let pending: ClaudeCompactionRecord | null = null;
   for (const line of lines) {
@@ -1156,6 +1374,9 @@ export function buildClaudeCompactionSupplement(
       records.set(uuid, pending ?? { compactionId: uuid });
       pending = null;
     } else if (row.type !== 'user' && row.type !== 'assistant') continue;
+    // Harvested before the exclusions: tool_use ids are globally unique, so keying a row the
+    // timeline itself skips is harmless.
+    if (row.type === 'user') harvestToolUseResult(toolUseResults, row);
     // Same exclusions as the SDK's own reader: meta rows, sidechains, and teammate rows.
     if (row.isMeta === true || row.isSidechain === true || row.teamName) continue;
     rows.push({
@@ -1166,6 +1387,7 @@ export function buildClaudeCompactionSupplement(
         message: row.message,
         parent_tool_use_id: null,
         parent_agent_id: null,
+        ...(typeof row.timestamp === 'string' && { timestamp: row.timestamp }),
       },
       boundariesBefore: boundaries,
     });
@@ -1178,18 +1400,39 @@ export function buildClaudeCompactionSupplement(
       if (r.boundariesBefore < boundaries) dropped.push(r.row);
       return dropped;
     }, []),
+    toolUseResults,
   };
 }
 
+/** Key a raw result row's `toolUseResult` envelope by its tool_use id. The field is row-level, so
+ * only a row with exactly one tool_result block pairs unambiguously. */
+function harvestToolUseResult(
+  map: Map<string, Record<string, unknown>>,
+  row: Record<string, unknown>,
+): void {
+  const envelope = toolUseResultEnvelope(row.toolUseResult);
+  if (!envelope) return;
+  const message = isRecord(row.message) ? row.message : undefined;
+  const content = message?.content;
+  if (!Array.isArray(content)) return;
+  const ids = content.reduce<string[]>((ids, block) => {
+    if (isRecord(block) && block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+      ids.push(block.tool_use_id);
+    }
+    return ids;
+  }, []);
+  if (ids.length === 1) map.set(ids[0], envelope);
+}
+
 /**
- * Locate the session's transcript and build its compaction supplement. `readHistory` carries no
- * cwd, so — mirroring `getSessionMessages` without `dir` — every project dir is probed for
+ * Locate the session's transcript and build its supplement. `readHistory` carries no cwd, so —
+ * mirroring `getSessionMessages` without `dir` — every project dir is probed for
  * `<sessionId>.jsonl` (the id is unique, so at most one probe succeeds). Any failure degrades to
- * an empty supplement: history still reads, just without compaction markers.
+ * an empty supplement: history still reads, just without compaction markers or result envelopes.
  */
-async function readClaudeCompactionSupplement(
+async function readClaudeTranscriptSupplement(
   sessionId: string,
-): Promise<ClaudeCompactionSupplement> {
+): Promise<ClaudeTranscriptSupplement> {
   // The id becomes a filename — refuse anything that could traverse out of the projects dir.
   if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
   const projectsDir = path.join(homedir(), '.claude', 'projects');
@@ -1205,7 +1448,7 @@ async function readClaudeCompactionSupplement(
     ),
   );
   const text = texts.find((t) => t !== null);
-  return text ? buildClaudeCompactionSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
+  return text ? buildClaudeTranscriptSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
 }
 
 function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
@@ -1254,19 +1497,28 @@ async function readSubagentTranscripts(
  * the provider's `toolu_` ids, so a seeded timeline and live re-emits of the same call converge
  * by id (`buildConversation` replaces tool calls by id) instead of duplicating.
  */
+/** `getSessionMessages` rows (and the supplement's raw rows) carry an ISO `timestamp` at runtime
+ * that the SDK's `SessionMessage` type omits — verified live on 0.3.206. */
+type TimestampedSessionMessage = SessionMessage & { timestamp?: string };
+
 export function createClaudeHistoryEventMapper(
   historyId: AgentHistoryId,
   compactions?: ReadonlyMap<string, ClaudeCompactionRecord>,
+  /** Result envelopes recovered from the raw transcript (`ClaudeTranscriptSupplement`) —
+   * getSessionMessages strips them, so replayed settles read theirs from here. */
+  toolUseResults?: ReadonlyMap<string, Record<string, unknown>>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
-
-  const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
-    announced.set(toolCall.toolCallId, toolCall);
-    return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
-  };
+  /** Last model announced to the timeline; assistant rows re-announce only on change. */
+  let lastModel: string | undefined;
 
   return (message) => {
     if (message.type !== 'user' && message.type !== 'assistant') return [];
+    const ts = timestampMs((message as TimestampedSessionMessage).timestamp);
+    const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+      announced.set(toolCall.toolCallId, toolCall);
+      return { historyId, itemId: toolCall.toolCallId, ts, event: { type: 'tool-call', toolCall } };
+    };
     // A compaction's swapped-in summary is stored as a user row; replaying it as a user prompt
     // would fake a giant user turn (the reported CODE-141 symptom). It becomes the compaction
     // marker instead, placed exactly where the summary sits in the timeline.
@@ -1279,6 +1531,7 @@ export function createClaudeHistoryEventMapper(
         {
           historyId,
           itemId: compaction.compactionId,
+          ts,
           event: { type: 'compaction', ...compaction, ...(summary && { summary }) },
         },
       ];
@@ -1289,12 +1542,21 @@ export function createClaudeHistoryEventMapper(
     const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
+      // Every assistant row records the model that served it; replay it as the same model-update
+      // the live stream emits so seeded messages get their per-turn model stamp. Subagent rows
+      // are skipped — their model must not masquerade as the session's.
+      const model =
+        !parent && isRecord(message.message) ? stringField(message.message, 'model') : undefined;
+      if (model && model !== lastModel) {
+        lastModel = model;
+        events.push({ historyId, ts, event: { type: 'model-update', model } });
+      }
       const text = textHistoryEvent(
         historyId,
         'assistant',
         message.uuid,
         message.message,
-        undefined,
+        ts,
         parent,
       );
       if (text) events.push(text);
@@ -1330,7 +1592,7 @@ export function createClaudeHistoryEventMapper(
           // Announce-time content is the Edit diff (or empty); keep it ahead of the result text.
           content: [...(existing?.content ?? []), ...toolResultContent(block.content)],
           rawInput: existing?.rawInput,
-          rawOutput: block.content,
+          rawOutput: toolUseResults?.get(block.tool_use_id) ?? block.content,
         }),
       );
     }
@@ -1341,7 +1603,7 @@ export function createClaudeHistoryEventMapper(
     // tool_results is a prompt the user actually typed.
     const promptValue =
       results.length === 0 ? message.message : blocks.filter((block) => !isToolResultBlock(block));
-    const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue);
+    const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue, ts);
     if (text) events.push(text);
     return events;
   };

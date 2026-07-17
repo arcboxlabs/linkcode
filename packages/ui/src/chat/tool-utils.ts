@@ -11,6 +11,8 @@ import {
   Trash2Icon,
   WrenchIcon,
 } from 'lucide-react';
+import prettyBytes from 'pretty-bytes';
+import prettyMilliseconds from 'pretty-ms';
 import { toolCallFilePresentation } from './file-tool-presentation';
 import {
   recordValue,
@@ -22,10 +24,20 @@ import {
   toolCallSearchQuery,
 } from './tool-result-content';
 
-export type ToolMetadataKey = 'files' | 'matches' | 'query' | 'status' | 'url';
+export type ToolMetadataKey =
+  | 'duration'
+  | 'files'
+  | 'matches'
+  | 'param'
+  | 'query'
+  | 'size'
+  | 'status'
+  | 'url';
 
 export interface ToolMetadata {
   key: ToolMetadataKey;
+  /** Verbatim label (a tool's own parameter name); when absent the key is localized. */
+  label?: string;
   value: string;
   tone?: 'error';
 }
@@ -34,6 +46,31 @@ function countValue(value: unknown): number | undefined {
   if (Array.isArray(value)) return value.length;
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
   return undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+export interface McpToolName {
+  server: string;
+  tool: string;
+}
+
+/** Splits Claude Code's `mcp__<server>__<tool>` slug on the first `__` after the prefix (server
+ * keys never contain `__`; tool names may). Non-matching titles — including other adapters' MCP
+ * formats — return undefined and display verbatim. */
+export function mcpToolName(title: string): McpToolName | undefined {
+  if (!title.startsWith('mcp__')) return undefined;
+  const rest = title.slice(5);
+  const separator = rest.indexOf('__');
+  if (separator <= 0 || separator + 2 >= rest.length) return undefined;
+  return { server: rest.slice(0, separator), tool: rest.slice(separator + 2) };
+}
+
+/** The human-facing tool name: MCP slugs shed their `mcp__<server>__` envelope. */
+export function toolCallDisplayTitle(toolCall: ToolCall): string {
+  return mcpToolName(toolCall.title)?.tool ?? toolCall.title;
 }
 
 export function toolCallCommand(toolCall: ToolCall): string | undefined {
@@ -51,7 +88,12 @@ export function toolCallFailureMessage(toolCall: ToolCall): string | undefined {
   return stringValue(recordValue(toolCall.rawOutput), ['message']);
 }
 
-/** Whitelisted normal-mode metadata. Arbitrary raw payloads stay in the model, not the transcript. */
+/**
+ * Curated normal-mode metadata: classified kinds project only their known fields, and an
+ * unclassified (`other`) call shows its scalar input params. Raw payloads are never dumped
+ * wholesale — nested objects/arrays (request envelopes, credentials, bulk content) stay in
+ * the model, not the transcript.
+ */
 export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
   const output = recordValue(toolCall.rawOutput);
 
@@ -83,16 +125,48 @@ export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
           tone: toolCall.status === 'failed' ? 'error' : undefined,
         });
       }
+      const duration = numberValue(output?.durationMs);
+      if (duration !== undefined) {
+        metadata.push({ key: 'duration', value: prettyMilliseconds(duration) });
+      }
+      const bytes = numberValue(output?.bytes);
+      if (bytes !== undefined) metadata.push({ key: 'size', value: prettyBytes(bytes) });
       return metadata;
     }
+    case 'other':
+      return toolCallParamMetadata(toolCall);
     case 'execute':
     case 'think':
     case 'task':
-    case 'other':
       return [];
     default:
       return toolCall.kind satisfies never;
   }
+}
+
+const PARAM_BADGE_LIMIT = 8;
+const PARAM_VALUE_MAX = 160;
+
+/** Scalar inputs of an unclassified call, labeled by the tool's own param names (verbatim —
+ * they aren't localizable). Bounded so one badge is a detail, not a payload dump. */
+function toolCallParamMetadata(toolCall: ToolCall): ToolMetadata[] {
+  const input = recordValue(toolCall.rawInput);
+  if (!input) return [];
+  const metadata: ToolMetadata[] = [];
+  for (const [key, value] of Object.entries(input)) {
+    if (metadata.length >= PARAM_BADGE_LIMIT) break;
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      continue;
+    }
+    const text = String(value);
+    if (text.length === 0) continue;
+    metadata.push({
+      key: 'param',
+      label: key,
+      value: text.length > PARAM_VALUE_MAX ? `${text.slice(0, PARAM_VALUE_MAX)}…` : text,
+    });
+  }
+  return metadata;
 }
 
 export interface ToolCallHeaderSummary {
@@ -112,7 +186,8 @@ export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary
     case 'delete':
     case 'move': {
       const file = toolCallFilePresentation(toolCall);
-      return file ? { label: file.label, tooltip: file.tooltip } : undefined;
+      if (file) return { label: file.label, tooltip: file.tooltip };
+      break;
     }
     case 'search':
       label = toolCallSearchQuery(toolCall);
@@ -123,11 +198,21 @@ export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary
     case 'think':
     case 'task':
     case 'other':
-      return undefined;
+      break;
     default:
       return toolCall.kind satisfies never;
   }
   return label ? { label } : undefined;
+}
+
+/** Header context beside a visible tool name: the kind summary, else — for an MCP call, whose
+ * name alone doesn't say where it runs — the server (full slug on hover). Collapsed group joins
+ * must NOT use this: with no tool name in sight, the server label would read as one. */
+export function toolCallContextSummary(toolCall: ToolCall): ToolCallHeaderSummary | undefined {
+  const summary = toolCallHeaderSummary(toolCall);
+  if (summary) return summary;
+  const mcp = mcpToolName(toolCall.title);
+  return mcp ? { label: mcp.server, tooltip: toolCall.title } : undefined;
 }
 
 export function hasToolBody(toolCall: ToolCall): boolean {

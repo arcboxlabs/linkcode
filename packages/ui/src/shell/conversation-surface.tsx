@@ -20,7 +20,7 @@ export interface ConversationSurfaceProps {
   /** Frontend capability stub used until attachment support is advertised by the session. */
   attachmentsSupported?: boolean;
   cwd?: string;
-  /** TODO(backend): thread the session's active model here once the daemon reflects it. */
+  /** Overrides the session's reported model (`conversation.currentModel`) in the per-turn meta. */
   modelName?: string;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
@@ -134,7 +134,7 @@ export function ConversationSurface({
             conversation={conversation}
             agentKind={agentKind}
             cwd={cwd}
-            modelName={modelName}
+            modelName={modelName ?? conversation.currentModel ?? undefined}
             TerminalBlockComponent={TerminalBlockComponent}
             onReviewChanges={onReviewChanges}
           />
@@ -178,6 +178,7 @@ export function ConversationSurface({
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
           agentCommands={conversation.availableCommands}
+          agentModels={conversation.availableModels}
           agentCapabilities={conversation.capabilities}
           onSend={onSendPrompt}
           onInvokeCommand={onInvokeCommand}

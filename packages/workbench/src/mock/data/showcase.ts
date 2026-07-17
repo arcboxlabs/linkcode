@@ -416,6 +416,26 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
     ],
     wrapUp: [
       {
+        toolCallId: 'mock-tool-fetch-envelope',
+        title: 'WebFetch',
+        kind: 'fetch',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('# Arknights\n\nA tower-defense mobile game by Hypergryph.'),
+          },
+        ],
+        rawInput: { url: 'https://en.wikipedia.org/wiki/Arknights' },
+        rawOutput: {
+          bytes: 192511,
+          code: 200,
+          codeText: 'OK',
+          durationMs: 5404,
+          url: 'https://en.wikipedia.org/wiki/Arknights',
+        },
+      },
+      {
         toolCallId: 'mock-tool-fetch',
         title: 'Fetch unavailable preview',
         kind: 'fetch',
@@ -461,6 +481,20 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
           traceId: 'mock-other-173',
         },
         rawOutput: { ok: true, internalRequestId: 'mock-other-result-173' },
+      },
+      {
+        toolCallId: 'mock-tool-mcp-slug',
+        title: 'mcp__linear__get_issue',
+        kind: 'other',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('CODE-228 · feat(ui): richer tool-call details'),
+          },
+        ],
+        rawInput: { id: 'CODE-228', includeRelations: true },
+        rawOutput: { content: [{ type: 'text', text: 'CODE-228' }] },
       },
       {
         toolCallId: 'mock-tool-task-review',

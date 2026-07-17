@@ -8,8 +8,12 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  LoopInspection,
+  LoopRecord,
   ManagedAssetStatus,
   ProvidersConfig,
+  Schedule,
+  ScheduleRun,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -71,6 +75,13 @@ export interface PendingValueMap {
   artifactHost: HostedArtifact;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
+  scheduleCreate: Schedule;
+  scheduleUpdate: Schedule;
+  scheduleList: Schedule[];
+  scheduleRuns: ScheduleRun[];
+  loopStart: LoopRecord;
+  loopList: LoopRecord[];
+  loopInspect: LoopInspection;
   ack: RequestAck;
   terminalOpen: string;
   terminalList: TerminalMetadata[];
@@ -106,6 +117,13 @@ export class PendingRegistry {
     artifactHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
+    scheduleCreate: new Map(),
+    scheduleUpdate: new Map(),
+    scheduleList: new Map(),
+    scheduleRuns: new Map(),
+    loopStart: new Map(),
+    loopList: new Map(),
+    loopInspect: new Map(),
     ack: new Map(),
     terminalOpen: new Map(),
     terminalList: new Map(),

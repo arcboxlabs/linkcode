@@ -9,7 +9,9 @@ import { fileWireVariants } from './file';
 import { gitWireVariants } from './git';
 import { historyWireVariants } from './history';
 import { keepAliveWireVariants } from './keep-alive';
+import { loopWireVariants } from './loop';
 import { managedAssetWireVariants } from './managed-asset';
+import { scheduleWireVariants } from './schedule';
 import { scriptWireVariants } from './script';
 import { sessionWireVariants } from './session';
 import { terminalWireVariants } from './terminal';
@@ -38,7 +40,7 @@ export {
  * originating client can pair the reply despite the broadcast.
  */
 
-export const WIRE_PROTOCOL_VERSION = 31 as const;
+export const WIRE_PROTOCOL_VERSION = 35 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
@@ -52,6 +54,8 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...gitWireVariants,
   ...fileWireVariants,
   ...scriptWireVariants,
+  ...scheduleWireVariants,
+  ...loopWireVariants,
   ...artifactWireVariants,
 
   // ── Data plane ──

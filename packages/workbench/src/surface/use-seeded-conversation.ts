@@ -1,12 +1,6 @@
-import type { Conversation, ConversationSeed } from '@linkcode/client-core';
+import type { Conversation, ConversationSeed, ConversationSeedEvent } from '@linkcode/client-core';
 import { useConversation } from '@linkcode/client-core';
-import type {
-  AgentEvent,
-  AgentHistoryId,
-  AgentKind,
-  SessionId,
-  SessionInfo,
-} from '@linkcode/schema';
+import type { AgentHistoryId, AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import type { Options, RequestResult } from '@linkcode/sdk';
 import { resolveClient } from '@linkcode/sdk';
 import { useData } from '../runtime/tayori';
@@ -25,7 +19,7 @@ async function readConversationSeed(
   options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId; sessionId: SessionId }>,
 ): RequestResult<ConversationSeed> {
   const client = resolveClient(options);
-  const events: AgentEvent[] = [];
+  const events: ConversationSeedEvent[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAX_SEED_PAGES; page += 1) {
     // eslint-disable-next-line no-await-in-loop -- cursor pagination: each page's cursor comes from the previous reply
@@ -34,7 +28,7 @@ async function readConversationSeed(
       cursor,
       forceRefresh: page === 0,
     });
-    for (const entry of data.events) events.push(entry.event);
+    for (const entry of data.events) events.push({ event: entry.event, ts: entry.ts });
     cursor = data.cursor;
     if (cursor === undefined) break;
   }
