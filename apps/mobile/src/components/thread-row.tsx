@@ -1,7 +1,7 @@
 import type { SessionInfo } from '@linkcode/schema';
 import { AGENT_LABELS, AgentIcon, repositoryLabel } from '@linkcode/ui/native';
 import { ListGroup } from 'heroui-native';
-import { useFormatter } from 'use-intl';
+import { formatRelativeShort } from '../utils/relative-time';
 import { SessionStatusDot } from './session-status-dot';
 
 /** One thread row: agent glyph, title (desktop-matching fallback), recency, status dot. */
@@ -12,7 +12,6 @@ export function ThreadRow({
   session: SessionInfo;
   onPress: () => void;
 }): React.ReactNode {
-  const format = useFormatter();
   const title = session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
 
   return (
@@ -23,7 +22,7 @@ export function ThreadRow({
       <ListGroup.ItemContent>
         <ListGroup.ItemTitle numberOfLines={1}>{title}</ListGroup.ItemTitle>
         <ListGroup.ItemDescription>
-          {format.relativeTime(new Date(session.updatedAt))}
+          {formatRelativeShort(session.updatedAt)}
         </ListGroup.ItemDescription>
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix>

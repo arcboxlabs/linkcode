@@ -4,7 +4,7 @@ import { noop } from 'foxact/noop';
 import { Avatar, Button, Card, Chip, ListGroup, Spinner } from 'heroui-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import type { CloudUser } from '../runtime/cloud/account';
 import { signOutOfCloud, useCloudAccount } from '../runtime/cloud/account';
 import type { CloudDevice } from '../runtime/cloud/devices';
@@ -14,6 +14,7 @@ import {
   getEnrolledDeviceId,
   revokeDevice,
 } from '../runtime/cloud/devices';
+import { formatRelativeShort } from '../utils/relative-time';
 
 /** Account screen: profile, the account's device registry, and sign-out. */
 export default function AccountScreen() {
@@ -71,7 +72,6 @@ function ProfileCard({ user }: { user: CloudUser }) {
  */
 function DevicesSection() {
   const t = useTranslations('mobile.account');
-  const format = useFormatter();
 
   const [devices, setDevices] = useState<CloudDevice[] | null>(null);
   const [devicesError, setDevicesError] = useState(false);
@@ -135,7 +135,7 @@ function DevicesSection() {
     const kind = t(`deviceKind.${device.kind}`);
     const platform = device.platform ? `${kind} · ${device.platform}` : kind;
     return device.lastSeenAt
-      ? `${platform} · ${t('lastSeen', { time: format.relativeTime(new Date(device.lastSeenAt)) })}`
+      ? `${platform} · ${t('lastSeen', { time: formatRelativeShort(new Date(device.lastSeenAt).getTime()) })}`
       : platform;
   };
 
