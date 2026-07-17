@@ -21,6 +21,11 @@ import type {
   PermissionOutcome,
   ProvidersConfig,
   QuestionOutcome,
+  Schedule,
+  ScheduleId,
+  ScheduleRun,
+  ScheduleSpec,
+  ScheduleUpdate,
   SessionId,
   SessionInfo,
   SessionNotification,
@@ -90,6 +95,13 @@ type AssetProgressCb = (event: AssetProgressEvent) => void;
 type AssetSettledCb = (event: AssetSettledEvent) => void;
 type AgentRuntimesChangedCb = (runtimes: AgentRuntimes) => void;
 type ConnectionCloseCb = (error: Error) => void;
+
+/** A broadcast about a schedule's or its runs' state — the three `schedule.*` push variants. */
+export type ScheduleEvent =
+  | { type: 'changed'; schedule: Schedule }
+  | { type: 'removed'; scheduleId: ScheduleId }
+  | { type: 'run'; run: ScheduleRun };
+type ScheduleEventCb = (event: ScheduleEvent) => void;
 type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
@@ -114,6 +126,7 @@ export class LinkCodeClient {
   private readonly terminals: TerminalChannel;
   private readonly agentLogin: AgentLoginChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
+  private readonly scheduleEventSubs = new Set<ScheduleEventCb>();
   private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
@@ -319,6 +332,27 @@ export class LinkCodeClient {
         break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
+        break;
+      case 'schedule.created':
+        this.pending.resolve('scheduleCreate', p.replyTo, p.schedule);
+        break;
+      case 'schedule.updated':
+        this.pending.resolve('scheduleUpdate', p.replyTo, p.schedule);
+        break;
+      case 'schedule.listed':
+        this.pending.resolve('scheduleList', p.replyTo, p.schedules);
+        break;
+      case 'schedule.runs.listed':
+        this.pending.resolve('scheduleRuns', p.replyTo, p.runs);
+        break;
+      case 'schedule.changed':
+        for (const cb of this.scheduleEventSubs) cb({ type: 'changed', schedule: p.schedule });
+        break;
+      case 'schedule.removed':
+        for (const cb of this.scheduleEventSubs) cb({ type: 'removed', scheduleId: p.scheduleId });
+        break;
+      case 'schedule.run':
+        for (const cb of this.scheduleEventSubs) cb({ type: 'run', run: p.run });
         break;
       case 'session.notification':
         for (const cb of this.sessionNotificationSubs) cb(p.notification);
@@ -594,6 +628,44 @@ export class LinkCodeClient {
 
   archiveWorkspace(workspaceId: WorkspaceId): Promise<RequestAck> {
     return this.control.archiveWorkspace(workspaceId);
+  }
+
+  createSchedule(spec: ScheduleSpec): Promise<Schedule> {
+    return this.control.createSchedule(spec);
+  }
+
+  updateSchedule(scheduleId: ScheduleId, patch: ScheduleUpdate): Promise<Schedule> {
+    return this.control.updateSchedule(scheduleId, patch);
+  }
+
+  deleteSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.deleteSchedule(scheduleId);
+  }
+
+  pauseSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.pauseSchedule(scheduleId);
+  }
+
+  resumeSchedule(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.resumeSchedule(scheduleId);
+  }
+
+  runScheduleOnce(scheduleId: ScheduleId): Promise<RequestAck> {
+    return this.control.runScheduleOnce(scheduleId);
+  }
+
+  listSchedules(): Promise<Schedule[]> {
+    return this.control.listSchedules();
+  }
+
+  listScheduleRuns(scheduleId: ScheduleId, limit?: number): Promise<ScheduleRun[]> {
+    return this.control.listScheduleRuns(scheduleId, limit);
+  }
+
+  /** Fold `schedule.changed` / `schedule.removed` / `schedule.run` broadcasts (e.g. to revalidate). */
+  subscribeScheduleEvents(cb: ScheduleEventCb): Unsubscribe {
+    this.scheduleEventSubs.add(cb);
+    return () => this.scheduleEventSubs.delete(cb);
   }
 
   subscribe(sessionId: SessionId, cb: EventCb): Unsubscribe {

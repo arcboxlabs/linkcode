@@ -11,6 +11,7 @@ import {
   groupThreadsByWorkspace,
   PINNED_THREAD_GROUP_KEY,
   UNREGISTERED_THREAD_GROUP_KEY,
+  withoutAutomationSessions,
 } from '../group-threads';
 
 describe('groupThreadsByWorkspace', () => {
@@ -122,6 +123,22 @@ describe('extractPinnedGroup', () => {
   it('returns no group and every session when nothing matches', () => {
     expect(extractPinnedGroup(sessions, [])).toEqual({ pinnedGroup: null, rest: sessions });
     expect(extractPinnedGroup(sessions, ids(['s-gone'])).pinnedGroup).toBeNull();
+  });
+});
+
+describe('withoutAutomationSessions', () => {
+  it('drops sessions tagged by an automation and keeps the rest', () => {
+    const plain = createSession('s-1', '/repo', 1);
+    const loop = {
+      ...createSession('s-2', '/repo', 2),
+      automation: { kind: 'loop', id: 'lp-1' },
+    } satisfies SessionInfo;
+    const schedule = {
+      ...createSession('s-3', '/repo', 3),
+      automation: { kind: 'schedule', id: 'sch-1' },
+    } satisfies SessionInfo;
+
+    expect(withoutAutomationSessions([plain, loop, schedule])).toEqual([plain]);
   });
 });
 

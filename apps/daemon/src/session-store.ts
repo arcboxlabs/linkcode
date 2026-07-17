@@ -117,6 +117,8 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     originHistoryId: record.origin.type === 'imported' ? record.origin.historyId : null,
     originImportedAt: record.origin.type === 'imported' ? record.origin.importedAt : null,
     createdVia: record.createdVia ?? null,
+    automationKind: record.automation?.kind ?? null,
+    automationId: record.automation?.id ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -137,6 +139,10 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
           }
         : { type: 'created' },
     createdVia: row.createdVia ?? undefined,
+    automation:
+      row.automationKind && row.automationId
+        ? { kind: row.automationKind, id: row.automationId }
+        : undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     runs: runRows.map((run) => ({

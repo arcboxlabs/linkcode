@@ -10,6 +10,8 @@ import type {
   HostedArtifact,
   ManagedAssetStatus,
   ProvidersConfig,
+  Schedule,
+  ScheduleRun,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -71,6 +73,10 @@ export interface PendingValueMap {
   artifactHost: HostedArtifact;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
+  scheduleCreate: Schedule;
+  scheduleUpdate: Schedule;
+  scheduleList: Schedule[];
+  scheduleRuns: ScheduleRun[];
   ack: RequestAck;
   terminalOpen: string;
   terminalList: TerminalMetadata[];
@@ -106,6 +112,10 @@ export class PendingRegistry {
     artifactHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
+    scheduleCreate: new Map(),
+    scheduleUpdate: new Map(),
+    scheduleList: new Map(),
+    scheduleRuns: new Map(),
     ack: new Map(),
     terminalOpen: new Map(),
     terminalList: new Map(),

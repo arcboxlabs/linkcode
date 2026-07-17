@@ -29,6 +29,20 @@
       "when": 1783903858539,
       "tag": "0003_lame_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784160984718,
+      "tag": "0004_orange_living_mummy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784162676737,
+      "tag": "0005_stormy_thunderball",
+      "breakpoints": true
     }
   ]
 }
