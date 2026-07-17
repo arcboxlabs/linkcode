@@ -1130,6 +1130,34 @@ describe('OpenCodeAdapter server spawn (CODE-242)', () => {
   });
 });
 
+describe('OpenCodeAdapter server spawn retry', () => {
+  afterEach(() => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+  });
+
+  it('retries once with a fresh port when the first spawn fails (stolen-port race)', async () => {
+    const ports: unknown[] = [];
+    let attempts = 0;
+    sdkMock.createOpencode = (opts: unknown) => {
+      ports.push((opts as { port?: unknown }).port);
+      attempts += 1;
+      if (attempts === 1) throw new Error('Server exited with code 1');
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const adapter = new OpenCodeAdapter();
+    adapter.onEvent(noop);
+
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo' });
+
+    expect(attempts).toBe(2);
+    expect(ports[0]).not.toBe(ports[1]);
+  });
+});
+
 describe('OpenCodeAdapter control plane (CODE-224)', () => {
   afterEach(() => {
     // Restore the default fresh-client factory (same discipline as the command-catalog block).

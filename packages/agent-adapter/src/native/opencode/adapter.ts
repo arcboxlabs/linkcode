@@ -190,8 +190,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // The SDK's server port is a FIXED default of 4096 (opencode's own `--port=0` does not
       // auto-allocate either), and this adapter spawns one server per session — without an
       // explicitly allocated free port, the second concurrent session's server dies at bind
-      // (exit 1, ServeError) and the session never starts.
-      started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
+      // (exit 1, ServeError) and the session never starts. allocatePort is check-then-use (the
+      // port can be stolen between the probe and the child's bind), so one failed spawn retries
+      // with a fresh port — the same discipline as the shared history server.
+      try {
+        started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
+      } catch {
+        started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
+      }
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);
