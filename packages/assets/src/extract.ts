@@ -46,7 +46,9 @@ export async function extractMember(
     }
   } else {
     try {
-      await execFileAsync(zipTarBinary(), ['-xf', archive, '-C', workDir, member]);
+      await execFileAsync(zipTarBinary(), ['-xf', archive, '-C', workDir, member], {
+        windowsHide: true,
+      });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new UnsupportedPlatformError('system tar is unavailable for zip extraction', {

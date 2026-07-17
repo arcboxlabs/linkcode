@@ -100,7 +100,7 @@ export function startClaudeLogin(
 
 function defaultSpawn(command: string, args: string[]): LoginChildProcess {
   // No `env` override: inherit the daemon's environment so credentials land where the SDK reads them.
-  return nodeSpawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  return nodeSpawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
 }
 
 /** Agent kinds whose CLI login LinkCode can drive headlessly; the engine rejects the rest. */

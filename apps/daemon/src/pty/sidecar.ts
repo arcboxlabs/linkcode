@@ -119,7 +119,12 @@ export class SidecarPtyBackend implements PtyBackend {
 
   private ensureChild(): SidecarChild {
     if (this.child) return this.child;
-    const child = spawn(this.binaryPath, [], { stdio: ['pipe', 'pipe', 'inherit'] });
+    // windowsHide: the daemon runs console-less (Electron utilityProcess), so spawning a
+    // console-subsystem binary without CREATE_NO_WINDOW pops a visible console on Windows.
+    const child = spawn(this.binaryPath, [], {
+      stdio: ['pipe', 'pipe', 'inherit'],
+      windowsHide: true,
+    });
     this.child = child;
     child.stdout.on('data', (chunk: Buffer) => {
       try {

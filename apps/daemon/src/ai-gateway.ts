@@ -154,5 +154,5 @@ function tomlString(value: string): string {
 }
 
 function defaultSpawn(command: string, args: string[]): SidecarChildProcess {
-  return nodeSpawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  return nodeSpawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 }

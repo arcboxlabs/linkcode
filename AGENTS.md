@@ -11,6 +11,7 @@ Each of these breaks the product, a release, or the build with **no loud error**
 3. **Native deps must be allow-listed.** pnpm blocks install scripts by default; a native dep (e.g. `better-sqlite3`) missing from `allowBuilds:` in `pnpm-workspace.yaml` installs fine but fails at `require()` time with missing bindings.
 4. **CI does not run `pnpm test`.** The vitest suite (~57 test files, node-env pure logic) is absent from `check:ci` and from every workflow — CI gates only format/lint/typecheck plus the Rust job. A green PR does not mean the tests pass; run `pnpm test` yourself before every commit.
 5. **A release is a version+tag pair.** Bump `apps/desktop/package.json` `version`, then push a `v*.*.*` tag; CI fails unless `v${version}` equals the tag. Never hand-tag or hand-edit workspace versions ([`docs/RELEASE.md`](docs/RELEASE.md)).
+6. **Every daemon-side child process sets `windowsHide: true`.** Node defaults it to `false`, and the daemon runs console-less (Electron `utilityProcess`), so a console-subsystem child spawned without it — agent CLI, git, sidecar, bsdtar — pops a visible console window on packaged Windows only; silent everywhere else, dev included. Applies to every `spawn`/`exec*`/cross-spawn call in `apps/daemon` and `packages/{engine,agent-adapter,assets}` (CODE-236 swept all sites 2026-07 — keep new ones consistent). SDK-internal spawns are out of reach: claude's SDK hides its own, opencode's `createOpencodeServer` does not.
 
 ## Routing — touching X, read Y first
 

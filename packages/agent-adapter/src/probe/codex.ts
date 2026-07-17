@@ -42,7 +42,10 @@ export class CodexProbe extends AgentCliProbe {
   override async probeAuth(file: string): Promise<AgentAuthStatus | undefined> {
     let output = '';
     try {
-      const { stdout, stderr } = await execFileAsync(file, ['login', 'status'], { timeout: 5000 });
+      const { stdout, stderr } = await execFileAsync(file, ['login', 'status'], {
+        timeout: 5000,
+        windowsHide: true,
+      });
       output = `${stdout}\n${stderr}`;
     } catch (err) {
       const { stdout, stderr } = err as { stdout?: unknown; stderr?: unknown };

@@ -33,6 +33,7 @@ export function runCommand(
       env: { ...process.env, ...options.env },
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     });
 
     const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
