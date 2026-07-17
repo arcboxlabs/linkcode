@@ -72,7 +72,12 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
     ],
     connection: [t('connection.title'), t('connection.url')],
     about: [t('about.version'), t('about.checkForUpdates')],
-    agents: [t('agents.title'), t('agents.enabled')],
+    agents: [
+      t('agents.title'),
+      t('agents.enabled'),
+      t('agents.runtimeMissing'),
+      t('agents.loggedOut'),
+    ],
     providers: [
       t('providers.title'),
       t('providers.addAccount'),

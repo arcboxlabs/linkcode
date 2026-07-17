@@ -1,18 +1,21 @@
 import type { AgentKind, AgentRuntimeAvailability } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setProviderConfig } from '@linkcode/sdk';
-import { AgentIcon } from '@linkcode/ui';
+import { AgentIcon, AgentOnboardingCard } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Switch } from 'coss-ui/components/switch';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../agent-runtime/hooks';
+import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { useData, useMutation } from '../runtime/tayori';
 import { bindingAvailability } from './providers/capability';
 import { AGENT_KINDS, withEnabled } from './providers/view';
 
 /**
  * The collapsed Agents tab: per-agent runtime concerns only — account bindings and models are
- * edited solely on the Providers page. Instant save; no form.
+ * edited solely on the Providers page. Instant save; no form. An enabled agent whose runtime
+ * isn't ready gets the onboarding card under its row (CODE-249), driven by the same cue state
+ * machine as the new-session surface.
  */
 export function AgentsSettingsPanel({
   onOpenProviders,
@@ -25,6 +28,7 @@ export function AgentsSettingsPanel({
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: accounts } = useData(getAccounts, {});
   const { data: runtimes } = useAgentRuntimes();
+  const onboarding = useAgentRuntimeOnboarding();
   const saveProviders = useMutation(setProviderConfig);
 
   const applyEnabled = async (kind: AgentKind, enabled: boolean): Promise<void> => {
@@ -43,6 +47,9 @@ export function AgentsSettingsPanel({
           const runtime = runtimes?.[kind];
           const boundId = providers?.[kind]?.activeAccountId;
           const boundAccount = accounts?.find((account) => account.id === boundId);
+          const enabled = providers?.[kind]?.enabled ?? true;
+          // A disabled agent's runtime gaps don't matter — no card, just the badge.
+          const cue = enabled ? onboarding.cues[kind] : undefined;
           const translated =
             boundAccount !== undefined &&
             bindingAvailability(boundAccount, kind).tier === 'translate';
@@ -52,36 +59,48 @@ export function AgentsSettingsPanel({
               ? runtime.auth.email
               : undefined;
           return (
-            <div
-              key={kind}
-              className="flex items-center gap-3 border-border border-t px-3 py-3 first:border-t-0"
-            >
-              <AgentIcon kind={kind} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{tAgent(kind)}</span>
-                  <RuntimeChip runtime={runtime} />
+            <div key={kind} className="border-border border-t px-3 py-3 first:border-t-0">
+              <div className="flex items-center gap-3">
+                <AgentIcon kind={kind} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{tAgent(kind)}</span>
+                    <RuntimeChip runtime={runtime} />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-mx-2 h-auto px-2 py-0.5 font-normal text-muted-foreground text-xs"
+                    onClick={() => onOpenProviders(boundId)}
+                  >
+                    {boundAccount ? boundAccount.label : t('followCli')}
+                    {translated ? ` · ${t('translated')}` : ''}
+                    {cliIdentity === undefined ? '' : ` · ${cliIdentity}`}
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="-mx-2 h-auto px-2 py-0.5 font-normal text-muted-foreground text-xs"
-                  onClick={() => onOpenProviders(boundId)}
-                >
-                  {boundAccount ? boundAccount.label : t('followCli')}
-                  {translated ? ` · ${t('translated')}` : ''}
-                  {cliIdentity === undefined ? '' : ` · ${cliIdentity}`}
-                </Button>
+                <Switch
+                  aria-label={t('enabled')}
+                  checked={enabled}
+                  disabled={saveProviders.isMutating}
+                  onCheckedChange={(next) => {
+                    void applyEnabled(kind, next);
+                  }}
+                />
               </div>
-              <Switch
-                aria-label={t('enabled')}
-                checked={providers?.[kind]?.enabled ?? true}
-                disabled={saveProviders.isMutating}
-                onCheckedChange={(enabled) => {
-                  void applyEnabled(kind, enabled);
-                }}
-              />
+              {cue && (
+                <div className="mt-2">
+                  <AgentOnboardingCard
+                    kind={kind}
+                    cue={cue}
+                    onDownload={onboarding.download}
+                    onContinueUnverified={onboarding.acknowledgeUnverified}
+                    onLogin={onboarding.login}
+                    onSubmitLoginCode={onboarding.submitLoginCode}
+                    onCancelLogin={onboarding.cancelLogin}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
