@@ -172,9 +172,10 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-arm64@7.0.2'
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
-  # Upstream fixes for our terminal font reports (restty#24/#25, text-shaper#3), adopted same-day (CODE-223).
-  - restty@0.2.3
-  - text-shaper@0.1.26
+  # Upstream fixes for our terminal font reports, adopted same-day: restty#24/#25 + text-shaper#3
+  # (CODE-223), then VS16/format 14 via our text-shaper#5 plus the CJK ic_width fix (CODE-241).
+  - restty@0.2.3 || 0.2.5
+  - text-shaper@0.1.26 || 0.1.27
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x

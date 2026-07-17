@@ -42,7 +42,7 @@
     "lucide-react": "^1.23.0",
     "mermaid": "^11.16.0",
     "motion": "^12.42.2",
-    "restty": "^0.2.3",
+    "restty": "^0.2.5",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
     "use-intl": "catalog:",
