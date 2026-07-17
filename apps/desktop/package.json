@@ -17,6 +17,7 @@
     "e2e:notifications": "node e2e/notifications.e2e.mts",
     "e2e:file-tree": "node e2e/file-tree.e2e.mts",
     "e2e:browser-tabs": "node e2e/browser-tabs.e2e.mts",
+    "e2e:browser-broker": "node e2e/browser-broker.e2e.mts",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
