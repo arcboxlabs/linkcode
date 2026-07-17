@@ -1,5 +1,5 @@
 import type { ManagedAssetArtifact } from '@linkcode/schema';
-import type { AssetDescriptor } from './catalog';
+import type { BinaryAssetDescriptor } from './catalog';
 import { UnsupportedPlatformError } from './errors';
 import type { PlatformKey } from './platform';
 import { currentPlatformKey } from './platform';
@@ -15,7 +15,7 @@ export interface ResolveArtifactOptions {
 
 /** Resolve the concrete downloadable artifact for one asset version on one platform. */
 export async function resolveArtifact(
-  descriptor: AssetDescriptor,
+  descriptor: BinaryAssetDescriptor,
   version: string,
   options: ResolveArtifactOptions = {},
 ): Promise<ManagedAssetArtifact> {

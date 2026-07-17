@@ -6,6 +6,7 @@
  */
 
 export * from './catalog';
+export * from './closure';
 export * from './download';
 export * from './errors';
 export * from './extract';

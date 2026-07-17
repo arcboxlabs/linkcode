@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AssetDescriptor } from '../catalog';
+import type { BinaryAssetDescriptor } from '../catalog';
 import type { AssetInstallEvent } from '../manager';
 import { AssetManager } from '../manager';
 import { assetDir } from '../paths';
@@ -25,7 +25,7 @@ function freshStore(): void {
   vi.stubEnv('LINKCODE_ASSETS_DIR', mkdtempSync(join(tmpdir(), 'manager-store-')));
 }
 
-async function servedDescriptor(version: string): Promise<AssetDescriptor> {
+async function servedDescriptor(version: string): Promise<BinaryAssetDescriptor> {
   const fixture: TgzFixture = makeTgz('package/tool', `#!/bin/sh\necho ${version}\n`);
   const server = await startLocalServer((_req, res) => {
     res.end(fixture.bytes);
@@ -94,7 +94,7 @@ describe('AssetManager', () => {
 
   it('leaves unpinnable assets alone: ensure() is undefined and GC does not touch their dirs', async () => {
     freshStore();
-    const unpinnable: AssetDescriptor = {
+    const unpinnable: BinaryAssetDescriptor = {
       id: 'agent:opencode',
       binaryBase: 'opencode',
       version: { kind: 'sdk-version', package: 'absent-sdk' },
@@ -130,7 +130,7 @@ describe('AssetManager', () => {
   it('emits failed (and keeps the caller rejection) when the install cannot complete', async () => {
     freshStore();
     const descriptor = await servedDescriptor('2.0.0');
-    const broken: AssetDescriptor = {
+    const broken: BinaryAssetDescriptor = {
       ...descriptor,
       artifacts: {
         [platform]: {
