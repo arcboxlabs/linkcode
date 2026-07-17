@@ -34,8 +34,13 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   at `package/vendor/<rust-triple>/bin/codex`. All members in `catalog.ts` were read off real
   tarballs; re-verify against a fresh tarball when bumping an SDK.
 - **The fetch/verify/extract stack is npm's own, taken at the right layer**: `make-fetch-happen`
-  (per-source retry + `HTTPS_PROXY`/`NO_PROXY` env support), `ssri` (integrity streams), `tar`
-  (node-tar, pure JS — tgz extraction assumes no system tar), `semver`. This is deliberately
+  (per-source retry + explicit `HTTPS_PROXY`/`NO_PROXY` env support, with the OS-configured manual
+  proxy filling in when the environment names none — `system-proxy/`: win32 reads WinINET via
+  `reg.exe`, darwin reads `scutil` via `mac-system-proxy`; both legs adapted from httptoolkit's
+  os-proxy-config, vendored because its win32 leg needs the native `registry-js` addon, whose
+  win32-only prebuilds would force a node-gyp toolchain on every mac/linux install. PAC
+  configurations fail explicitly), `ssri` (integrity streams), `tar` (node-tar, pure JS — tgz
+  extraction assumes no system tar), `semver`. This is deliberately
   pacote's engine *without* pacote: its extra layers (sigstore, run-script, git, packlist) are
   npm-CLI semantics that would enter the binary-installing path unused. `env-paths` was
   evaluated and rejected — it hardcodes a `\Data` level on win32 and captures `homedir` at

@@ -1,8 +1,7 @@
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import fetch from 'make-fetch-happen';
 import { z } from 'zod';
-import './mfh-augment';
 import { DownloadError } from './errors';
+import { fetchWithSystemProxy } from './system-proxy';
 
 /** Default ordered registry list; a mirror (e.g. npmmirror for CN hosts) can be appended later. */
 const DEFAULT_REGISTRIES = ['https://registry.npmjs.org'] as const;
@@ -33,6 +32,8 @@ export interface FetchNpmDistOptions {
  * Resolve a package version's tarball URL + SRI integrity via the single-version manifest
  * (`<registry>/<pkg>/<version>`; the full packument runs to megabytes). Scoped names go in
  * the path unencoded. Registries are an ordered fallback list — the first answer wins.
+ * Fetching goes through make-fetch-happen (retry + proxy env support, plus the OS-configured
+ * system proxy when the env names none — `system-proxy.ts`).
  */
 export async function fetchNpmDist(
   pkg: string,
@@ -56,7 +57,7 @@ async function fetchDist(
   failures: string[],
 ): Promise<NpmDist | undefined> {
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithSystemProxy(url, {
       headers: { accept: 'application/json' },
       retry,
       signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
