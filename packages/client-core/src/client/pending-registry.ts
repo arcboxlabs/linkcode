@@ -69,6 +69,7 @@ export interface PendingValueMap {
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
   fileRead: WorkspaceFile;
+  fileList: string[];
   fileSuggest: FileSuggestion[];
   scriptList: WorkspaceScript[];
   artifactHost: HostedArtifact;
@@ -110,6 +111,7 @@ export class PendingRegistry {
     gitPrStatus: new Map(),
     gitDiff: new Map(),
     fileRead: new Map(),
+    fileList: new Map(),
     fileSuggest: new Map(),
     scriptList: new Map(),
     artifactHost: new Map(),

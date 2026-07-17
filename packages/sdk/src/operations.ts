@@ -218,6 +218,12 @@ export function readWorkspaceFile(
   return resolveClient(options).readFile(options.cwd, options.path);
 }
 
+/** Every workspace file as a cwd-relative path. Like file.suggest, `cwd` must be a
+ * registered workspace root (session start/resume registers it); unknown roots are rejected. */
+export function listWorkspaceFiles(options: Options<{ cwd: string }>): RequestResult<string[]> {
+  return resolveClient(options).listFiles(options.cwd);
+}
+
 /** Search workspace files by substring query. Unlike file.read/git.*, `cwd` must be a
  * registered workspace root (session start/resume registers it); unknown roots are rejected. */
 export function suggestWorkspaceFiles(

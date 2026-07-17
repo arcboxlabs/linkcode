@@ -330,6 +330,9 @@ export class LinkCodeClient {
       case 'file.read.result':
         this.pending.resolve('fileRead', p.replyTo, p.file);
         break;
+      case 'file.list.result':
+        this.pending.resolve('fileList', p.replyTo, p.files);
+        break;
       case 'file.suggest.result':
         this.pending.resolve('fileSuggest', p.replyTo, p.suggestions);
         break;
@@ -610,6 +613,12 @@ export class LinkCodeClient {
   /** Read a file contained to a workspace directory (directory-backed, like git.*). */
   readFile(cwd: string, path: string): Promise<WorkspaceFile> {
     return this.control.readFile(cwd, path);
+  }
+
+  /** Every workspace file as a cwd-relative path. Like file.suggest, `cwd` must be a
+   * registered workspace root (session start/resume registers it); unknown roots are rejected. */
+  listFiles(cwd: string): Promise<string[]> {
+    return this.control.listFiles(cwd);
   }
 
   /** Search workspace files by substring query. Unlike file.read/git.*, `cwd` must be a

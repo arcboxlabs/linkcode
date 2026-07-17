@@ -262,6 +262,12 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.readFile(cwd, path));
   }
 
+  /** Every workspace file as a cwd-relative path. Like file.suggest, `cwd` must be a
+   * registered workspace root (session start/resume registers it); unknown roots are rejected. */
+  listFiles(cwd: string): RequestResult<string[]> {
+    return toResult(this.raw.listFiles(cwd));
+  }
+
   /** Search workspace files by substring query. Unlike file.read/git.*, `cwd` must be a
    * registered workspace root (session start/resume registers it); unknown roots are rejected. */
   suggestFiles(cwd: string, query: string, limit?: number): RequestResult<FileSuggestion[]> {
