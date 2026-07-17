@@ -76,7 +76,7 @@ export class CommandNode extends DecoratorNode<React.ReactNode> {
   }
 
   override decorate(): React.ReactNode {
-    return <CommandChip name={this.__name} />;
+    return <CommandChip name={this.__name} nodeKey={this.getKey()} />;
   }
 }
 
@@ -127,7 +127,7 @@ export class ShellNode extends DecoratorNode<React.ReactNode> {
   }
 
   override decorate(): React.ReactNode {
-    return <ShellChip />;
+    return <ShellChip nodeKey={this.getKey()} />;
   }
 }
 
