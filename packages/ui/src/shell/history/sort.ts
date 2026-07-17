@@ -1,4 +1,4 @@
-import { repositoryLabel } from '../repository-label';
+import { repositoryLabel } from '../../repository-label';
 import type { HistoryBrowserEntry } from './history-browser';
 
 /** How the history browser arranges entries: by project directory, or by recency. */

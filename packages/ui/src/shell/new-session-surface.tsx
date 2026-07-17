@@ -30,12 +30,12 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
+import { repositoryLabel } from '../repository-label';
 import { AGENT_MODEL_OPTIONS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
-import { repositoryLabel } from './repository-label';
 import { DEFAULT_MODE_ID } from './session-modes';
 
 export interface NewSessionDraft {

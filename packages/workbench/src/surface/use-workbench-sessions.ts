@@ -6,13 +6,13 @@ import type {
   WorkspaceId,
 } from '@linkcode/schema';
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
+import { withoutAutomationSessions } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useMemo, useRef } from 'react';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
-import { withoutAutomationSessions } from '../sidebar/group-threads';
 import type { WorkbenchSessionDraft } from './selection-store';
 import { useSessionSelectionStore } from './selection-store';
 
