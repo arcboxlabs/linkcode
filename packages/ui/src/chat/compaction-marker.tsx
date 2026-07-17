@@ -9,8 +9,11 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { Markdown } from './markdown';
+import { Shimmer } from './shimmer';
 
 export interface CompactionMarkerProps {
+  /** Live compaction still running: renders a shimmering "compacting…" row instead of the divider. */
+  inProgress?: boolean;
   preTokens?: number;
   postTokens?: number;
   /** The summary the agent swapped in for the compacted turns; expandable when present. */
@@ -26,6 +29,7 @@ function formatTokens(count: number): string {
 /** Timeline divider for a context compaction: turns above stay visible while the agent continues
  * from the swapped-in summary; the row expands to show the summary when present. */
 export function CompactionMarker({
+  inProgress,
   preTokens,
   postTokens,
   summary,
@@ -36,6 +40,15 @@ export function CompactionMarker({
     preTokens !== undefined && postTokens !== undefined
       ? t('compactedTokens', { pre: formatTokens(preTokens), post: formatTokens(postTokens) })
       : null;
+
+  if (inProgress) {
+    return (
+      <div className="my-2 flex items-center gap-2 text-[13px] text-muted-foreground">
+        <FoldVerticalIcon className="size-3.5 shrink-0" />
+        <Shimmer className="font-medium">{t('compacting')}</Shimmer>
+      </div>
+    );
+  }
 
   const row = (
     <>
