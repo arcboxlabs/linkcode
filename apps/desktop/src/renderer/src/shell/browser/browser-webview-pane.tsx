@@ -62,9 +62,6 @@ export function BrowserWebviewPane({
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
   const captureWebview = (element: HTMLWebViewElement | null): void => {
-    // React 19 rejects a boolean value for this custom content attribute. Electron only
-    // cares about its presence, so set it directly before the guest navigation begins.
-    element?.toggleAttribute('allowpopups', true);
     setWebview(element as WebviewTag | null);
   };
 
@@ -231,6 +228,12 @@ export function BrowserWebviewPane({
             ref={captureWebview}
             src={url}
             partition={BROWSER_PARTITION}
+            // Must be present BEFORE the element attaches — Electron snapshots webview params at
+            // attach time, and a post-mount toggle leaves popups silently blocked (the guest
+            // window-open handler is then never consulted; verified via main-process probe).
+            // @ts-expect-error -- React types this boolean, but React 19 only forwards the
+            // string form; the empty string is the boolean-attribute-present form.
+            allowpopups=""
             className="h-full w-full"
           />
         )}
