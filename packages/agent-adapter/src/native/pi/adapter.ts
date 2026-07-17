@@ -1,14 +1,18 @@
 import type {
   AgentSession,
   AgentSessionEvent,
+  CreateAgentSessionOptions,
   PromptOptions,
+  SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import type {
   AgentHistoryCapabilities,
+  AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
+  AgentHistoryResumeOptions,
   ContentBlock,
   StartOptions,
   StopReason,
@@ -16,14 +20,23 @@ import type {
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
+import { asHistoryId } from '../../history-util';
 import {
   contentToText,
   imageBlocksFrom,
   locationsFromToolInput,
   toolKindFromName,
 } from '../../util';
-import { importPiSdk, listPiHistory, readPiHistory } from './history';
+import {
+  findPiSessionFile,
+  importPiSdk,
+  lastPiModelChange,
+  listPiHistory,
+  readPiHistory,
+} from './history';
 import { createPiUiContext } from './ui-bridge';
+
+type PiModel = NonNullable<CreateAgentSessionOptions['model']>;
 
 /**
  * Pi adapter — drives `@earendil-works/pi-coding-agent` via `createAgentSession()`. Events arrive through
@@ -39,11 +52,13 @@ export class PiAdapter extends BaseAgentAdapter {
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
-    resume: false,
+    resume: true,
   };
 
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
+  /** Set by `resumeHistory` before `start()`; tells `onStart` to continue this session natively. */
+  private resumeFrom: AgentHistoryId | null = null;
 
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     return listPiHistory(await importPiSdk(), opts);
@@ -51,6 +66,14 @@ export class PiAdapter extends BaseAgentAdapter {
 
   override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
     return readPiHistory(await importPiSdk(), opts);
+  }
+
+  override async resumeHistory(
+    opts: AgentHistoryResumeOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    this.resumeFrom = opts.historyId;
+    await this.start(startOpts);
   }
 
   protected async onStart(opts: StartOptions): Promise<void> {
@@ -61,35 +84,61 @@ export class PiAdapter extends BaseAgentAdapter {
     const authStorage = pi.AuthStorage.create();
     const modelRegistry = pi.ModelRegistry.create(authStorage);
 
-    let model = modelRegistry.getAvailable()[0];
+    // Resume = reopen the on-disk session and hand its manager to the SDK, which restores the
+    // saved model/thinking level itself. The saved model is pre-read here anyway because the
+    // credential injection below is provider-scoped and must target the model the session will
+    // actually run on (the opencode resume precedent).
+    let sessionManager: SessionManager | undefined;
+    let savedProvider: string | undefined;
+    if (this.resumeFrom) {
+      const file = await findPiSessionFile(this.resumeFrom);
+      if (!file) throw new Error(`pi: history '${this.resumeFrom}' was not found`);
+      sessionManager = pi.SessionManager.open(file);
+      savedProvider = lastPiModelChange(
+        pi.buildContextEntries(sessionManager.getEntries(), sessionManager.getLeafId()),
+      )?.provider;
+    }
+
+    // Explicit model pick; a fresh session defaults to the first available, a resumed one leaves
+    // `model` unset so the SDK's own restore path wins.
+    let model: PiModel | undefined;
     if (opts.model) {
       const [provider, ...rest] = opts.model.split('/');
-      if (provider && rest.length > 0) {
-        const found = modelRegistry.find(provider, rest.join('/'));
-        if (found) model = found;
+      if (provider && rest.length > 0) model = modelRegistry.find(provider, rest.join('/'));
+    }
+    if (!model && !this.resumeFrom) model = modelRegistry.getAvailable()[0];
+
+    // Pi resolves auth through AuthStorage; inject the account's key as a runtime override for the
+    // session's provider so it takes precedence over ~/.pi/agent/auth.json and env vars. A
+    // gateway account's base URL is registered on the model registry (it overrides the provider's URL).
+    const provider = model?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
+    const cred = readAgentCredential(opts.config);
+    const key = cred.apiKey ?? cred.authToken;
+    if (provider) {
+      if (key) authStorage.setRuntimeApiKey(provider, key);
+      if (cred.baseUrl) {
+        modelRegistry.registerProvider(provider, {
+          baseUrl: cred.baseUrl,
+          ...(key && { apiKey: key }),
+        });
       }
     }
 
-    // Inject the account's key as a runtime override so it outranks ~/.pi/agent/auth.json and env
-    // vars; a gateway base URL is registered on the model registry, overriding the provider's URL.
-    const cred = readAgentCredential(opts.config);
-    const key = cred.apiKey ?? cred.authToken;
-    if (key) authStorage.setRuntimeApiKey(model.provider, key);
-    if (cred.baseUrl) {
-      modelRegistry.registerProvider(model.provider, {
-        baseUrl: cred.baseUrl,
-        ...(key && { apiKey: key }),
-      });
-    }
-
-    const { session } = await pi.createAgentSession({
-      cwd: opts.cwd,
+    const { session, modelFallbackMessage } = await pi.createAgentSession({
+      // A resumed session runs in its own recorded cwd, not the caller's.
+      cwd: sessionManager?.getCwd() ?? opts.cwd,
       authStorage,
       modelRegistry,
-      model,
+      ...(model && { model }),
+      ...(sessionManager && { sessionManager }),
       tools: this.tools(),
     });
     this.session = session;
+    if (modelFallbackMessage) this.emitError(`pi: ${modelFallbackMessage}`);
+    // A resumed transcript is real, so announcing immediately is safe; fresh sessions defer the
+    // announce to the first agent_start (see handleEvent) so a client seed never reads an empty
+    // transcript whose cut would swallow the first prompt.
+    if (this.resumeFrom) this.emitSessionRef(this.resumeFrom);
     this.unsub = session.subscribe((ev) => this.handleEvent(ev));
     // 'rpc' is pi's own mode id for a headless embedder; extensions read it to skip TUI-only work.
     await session.bindExtensions({
@@ -154,6 +203,9 @@ export class PiAdapter extends BaseAgentAdapter {
       case 'agent_start':
         // Fresh ids at the turn start; a tool boundary later opens the next segment (see below).
         this.freshSegment();
+        // First turn running = the transcript now has real entries; `emitSessionRef` dedupes, so
+        // later turns are no-ops and a resumed session's earlier announce wins.
+        if (this.session) this.emitSessionRef(asHistoryId(this.session.sessionId));
         this.emitStatus('running');
         break;
       case 'agent_end': {

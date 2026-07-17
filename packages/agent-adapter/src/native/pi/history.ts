@@ -241,6 +241,18 @@ export function mapPiHistoryEvents(
   return events;
 }
 
+/** The model the session was last switched to on its context path, for resume credential
+ * targeting — runtime key injection is provider-scoped and happens before the SDK's own restore. */
+export function lastPiModelChange(
+  entries: SessionEntry[],
+): { provider: string; modelId: string } | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.type === 'model_change') return { provider: entry.provider, modelId: entry.modelId };
+  }
+  return null;
+}
+
 function firstUserPreview(entries: SessionEntry[]): string | undefined {
   for (const entry of entries) {
     if (entry.type !== 'message') continue;
