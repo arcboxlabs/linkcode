@@ -535,7 +535,20 @@ export function DesktopShell({
         sidebarShortcut={sidebarShortcut}
         rightPanelShortcut={rightPanelShortcut}
         bottomPanelShortcut={bottomPanelShortcut}
-        titleContent={hideMainTitle ? null : undefined}
+        titleContent={
+          hideMainTitle ? (
+            // An untitled conversation hides the title area, which would also hide the error
+            // badge with no banner fallback; keep the badge alone. The draft page stays bare —
+            // it reports errors through its own in-page banner.
+            draft === null ? (
+              <ErrorBadge
+                errorMessage={errorMessage}
+                onDismissError={onDismissError}
+                className="pointer-events-auto [-webkit-app-region:no-drag]"
+              />
+            ) : null
+          ) : undefined
+        }
         titleIcon={
           titledSession ? (
             <AgentIcon className="text-foreground" kind={titledSession.kind} variant="ghost" />
