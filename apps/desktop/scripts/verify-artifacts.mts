@@ -89,9 +89,10 @@ const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.js
 /**
  * Agent CLI platform packages must NOT ship (CODE-114); the daemon provisions them at runtime.
  * Prefixes match only the platform-suffixed binary packages — the JS entry packages stay in the
- * asar. The pi npm closure (CODE-219) is a managed download too: these prefixes are pi-only in
- * the production closure (electron-builder.yml carries the same list; the root @anthropic-ai/sdk
- * and other shared deps deliberately stay).
+ * asar. The pi npm closure (CODE-219) is a managed download too — its SDK is a devDependency of
+ * agent-adapter, so `--prod deploy` staging drops the whole tree; these prefixes (pi-only in the
+ * production closure — the root @anthropic-ai/sdk and other shared deps deliberately stay) guard
+ * against anything reintroducing it as a prod dep.
  */
 const EXCLUDED_MODULE_PREFIXES = [
   'node_modules/@anthropic-ai/claude-agent-sdk-',
