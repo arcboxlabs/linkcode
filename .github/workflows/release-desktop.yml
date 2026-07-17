@@ -151,7 +151,7 @@ jobs:
 
       - name: Bump Homebrew cask
         if: ${{ steps.tap-token.outputs.token != '' }}
-        uses: arcboxlabs/homebrew-tap/.github/actions/bump-cask@master
+        uses: arcboxlabs/homebrew-tap/.github/actions/bump-cask@19f97aa3ca8a15c3fdbbf018c1b79651bfdebb8d
         with:
           token: ${{ steps.tap-token.outputs.token }}
           cask: linkcode
