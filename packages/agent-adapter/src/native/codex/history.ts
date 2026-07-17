@@ -49,17 +49,19 @@ export function isSyntheticCodexUserText(text: string): boolean {
 /** codex 0.144 glues AGENTS.md and `<environment_context>` into ONE user row as separate content
  * parts, so the row is machine-injected when ANY part carries a marker — checking only the joined
  * text would miss every part after the first. Markers alone can false-positive on a pasted prompt,
- * so a row whose part is echoed as an `event_msg`/`user_message` (real prompts always are, both
- * TUI- and app-server-written; injected rows never are) is rescued. Rollouts without event_msg
- * rows degrade to marker-only. */
+ * so the row is rescued when every marker-bearing part is echoed as an `event_msg`/`user_message`
+ * (real prompts always are, both TUI- and app-server-written; injected rows never are). Only the
+ * marked parts count — an unmarked part that happens to equal a real prompt must not drag the
+ * injected parts of a glued row back in. Rollouts without event_msg rows degrade to marker-only. */
 export function isSyntheticCodexUserPayload(
   payload: JsonRecord,
   realPromptTexts?: ReadonlySet<string>,
 ): boolean {
   const content = payload.content;
   const texts = (Array.isArray(content) ? content : [payload]).map((part) => textFromUnknown(part));
-  if (!texts.some((text) => isSyntheticCodexUserText(text))) return false;
-  return !realPromptTexts || !texts.some((text) => realPromptTexts.has(text));
+  const marked = texts.filter((text) => isSyntheticCodexUserText(text));
+  if (marked.length === 0) return false;
+  return !realPromptTexts || !marked.every((text) => realPromptTexts.has(text));
 }
 
 /** The texts codex echoed as `event_msg`/`user_message` rows — the real prompts of the rollout. */

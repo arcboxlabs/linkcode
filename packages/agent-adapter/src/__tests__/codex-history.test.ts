@@ -113,6 +113,36 @@ describe('mapCodexHistoryEvents', () => {
     }
   });
 
+  it('still drops a glued row when an unmarked twin of one part was echoed as a real prompt', () => {
+    // The echoed prompt text coincides with the glued row's env part; the AGENTS.md part was
+    // never echoed, so the injected row must stay filtered while the real prompt replays.
+    const envText = '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>';
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'event_msg', payload: { type: 'user_message', message: envText } },
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: envText }],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>',
+          },
+          { type: 'input_text', text: envText },
+        ],
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toMatchObject({ type: 'user-message' });
+    if (events[0].event.type === 'user-message') {
+      expect(events[0].event.content).toEqual([{ type: 'text', text: envText }]);
+    }
+  });
+
   it('replays exec_command like the live commandExecution item: command title, unwrapped output', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
