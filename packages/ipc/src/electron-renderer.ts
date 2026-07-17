@@ -5,6 +5,7 @@ import type { IpcRenderer } from 'electron';
 import type { SystemBridge } from './bridge';
 import type { DesktopSettings, UpdaterStatus } from './context';
 import {
+  BROWSER_OPEN_TAB_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   DAEMON_URL_SNAPSHOT_CHANNEL,
   NOTIFICATION_CLICKED_CHANNEL,
@@ -95,6 +96,15 @@ export function createElectronSystemBridge(
         };
         ipcRenderer.on(NOTIFICATION_CLICKED_CHANNEL, handler);
         return () => ipcRenderer.removeListener(NOTIFICATION_CLICKED_CHANNEL, handler);
+      },
+    },
+    browser: {
+      onOpenTab(cb) {
+        const handler: IpcRendererListener = (_event, value: unknown) => {
+          if (typeof value === 'string') cb(value);
+        };
+        ipcRenderer.on(BROWSER_OPEN_TAB_CHANNEL, handler);
+        return () => ipcRenderer.removeListener(BROWSER_OPEN_TAB_CHANNEL, handler);
       },
     },
   };
