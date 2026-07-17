@@ -8,7 +8,7 @@ export type SettingsCategory =
   | 'general'
   | 'appearance'
   | 'terminal'
-  | 'connection'
+  | 'developer'
   | 'notifications'
   | 'about'
   | 'providers'

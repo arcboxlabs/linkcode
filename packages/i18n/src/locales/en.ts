@@ -539,7 +539,7 @@ export const en = {
       general: 'General',
       appearance: 'Appearance',
       terminal: 'Terminal',
-      connection: 'Connection',
+      developer: 'Developer',
       notifications: 'Notifications',
       about: 'About',
       providers: 'Providers',
@@ -604,6 +604,9 @@ export const en = {
       colorScheme: 'Color scheme',
       colorSchemeHint: 'Terminal colors. "Follow theme" tracks the app light/dark mode.',
       colorSchemeAuto: 'Follow theme',
+    },
+    developer: {
+      warning: 'Do not change these settings unless necessary.',
     },
     connection: {
       title: 'Daemon',
