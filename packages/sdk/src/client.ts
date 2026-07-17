@@ -13,6 +13,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -215,6 +216,11 @@ export class LinkCodeSdkClient {
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
   listAgentRuntimes(): RequestResult<AgentRuntimes> {
     return toResult(this.raw.listAgentRuntimes());
+  }
+
+  /** Pre-session picker data (models / approval tiers) for one agent kind. */
+  getAgentCatalog(agentKind: AgentKind, cwd?: string): RequestResult<AgentStartCatalog> {
+    return toResult(this.raw.getAgentCatalog(agentKind, cwd));
   }
 
   /** Managed-asset store status: wanted versions and what is installed (CODE-111). */

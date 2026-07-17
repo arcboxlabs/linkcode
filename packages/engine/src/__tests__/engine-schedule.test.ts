@@ -6,6 +6,7 @@ import type {
   AgentHistoryListResult,
   AgentHistoryReadResult,
   AgentInput,
+  AgentStartCatalog,
   MessageId,
   Schedule,
   WireMessage,
@@ -53,6 +54,10 @@ class ScheduleFakeAdapter implements AgentAdapter {
 
   stop(): Promise<void> {
     return Promise.resolve();
+  }
+
+  startCatalog(): Promise<AgentStartCatalog> {
+    return Promise.resolve({ models: [], policies: [] });
   }
 
   listHistory(): Promise<AgentHistoryListResult> {

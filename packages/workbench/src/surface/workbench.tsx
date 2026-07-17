@@ -57,6 +57,7 @@ import { useWorkspaces } from '../workspace/hooks';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
+import { useAgentStartCatalogs } from './use-agent-catalogs';
 import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
@@ -209,6 +210,7 @@ function WorkbenchSessionSurface({
   const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
   const onboarding = useAgentRuntimeOnboarding();
+  const agentCatalogs = useAgentStartCatalogs();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
@@ -288,6 +290,8 @@ function WorkbenchSessionSurface({
       kind: submission.kind,
       cwd: submission.cwd,
       model: submission.model,
+      effort: submission.effort,
+      approvalPolicyId: submission.approvalPolicyId,
       modeId: submission.modeId,
     });
     rememberNewSessionDefaults(submission.kind, submission.workspaceId);
@@ -495,6 +499,7 @@ function WorkbenchSessionSurface({
       activeSession={active}
       draft={draft}
       runtimeCues={onboarding.cues}
+      agentCatalogs={agentCatalogs}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
       onLoginAgent={onboarding.login}

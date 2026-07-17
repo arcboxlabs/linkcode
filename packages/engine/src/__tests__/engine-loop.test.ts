@@ -9,6 +9,7 @@ import type {
   AgentHistoryListResult,
   AgentHistoryReadResult,
   AgentInput,
+  AgentStartCatalog,
   LoopSpec,
   MessageId,
   WireMessage,
@@ -56,6 +57,10 @@ class LoopFakeAdapter implements AgentAdapter {
 
   stop(): Promise<void> {
     return Promise.resolve();
+  }
+
+  startCatalog(): Promise<AgentStartCatalog> {
+    return Promise.resolve({ models: [], policies: [] });
   }
 
   listHistory(): Promise<AgentHistoryListResult> {

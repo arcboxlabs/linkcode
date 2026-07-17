@@ -8,6 +8,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   ContentBlock,
   EffortLevel,
   FileSuggestion,
@@ -322,6 +323,17 @@ export class ControlChannel {
     return this.sendCorrelated('agentRuntimeList', (clientReqId) => ({
       kind: 'agent-runtime.list',
       clientReqId,
+    }));
+  }
+
+  /** Pre-session picker data (models / approval tiers) for one agent kind — the new-session
+   * surface's data source, served from a never-started adapter on the daemon. */
+  getAgentCatalog(agentKind: AgentKind, cwd?: string): Promise<AgentStartCatalog> {
+    return this.sendCorrelated('agentCatalog', (clientReqId) => ({
+      kind: 'agent.catalog',
+      clientReqId,
+      agentKind,
+      cwd,
     }));
   }
 

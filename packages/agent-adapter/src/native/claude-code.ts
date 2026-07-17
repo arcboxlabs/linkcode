@@ -30,6 +30,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentHistorySession,
+  AgentStartCatalog,
   ApprovalPolicy,
   ApprovalPolicyState,
   ContentBlock,
@@ -414,6 +415,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    // Initial picks from the new-session surface; an unknown tier degrades to the settings
+    // default with an error event rather than failing session creation.
+    if (opts.approvalPolicyId) {
+      const picked = APPROVAL_POLICIES.find((p) => p.policyId === opts.approvalPolicyId);
+      if (picked) this.approvalPolicy = picked.policyId;
+      else {
+        this.emitError(
+          `claude-code: unknown approval policy '${opts.approvalPolicyId}' — using the settings default`,
+        );
+      }
+    }
+    // Applied at Query creation: 'max' rides the startup --effort flag, every other level the
+    // post-create flag-settings switch (see createQuery); a CLI-rejected level degrades there.
+    this.effort ??= opts.effort;
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
     // Query init is the only authoritative slash-command catalog source: start the persistent
@@ -461,6 +476,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   ): Promise<void> {
     this.resumeFrom = opts.historyId;
     await this.start(startOpts);
+  }
+
+  override async startCatalog(opts: { cwd?: string }): Promise<AgentStartCatalog> {
+    return {
+      // Claude's model list is a fixed vendor set; the static AGENT_MODEL_OPTIONS table covers it.
+      models: [],
+      policies: [...APPROVAL_POLICIES],
+      defaultPolicyId: opts.cwd ? ((await settingsDefaultMode(opts.cwd)) ?? 'default') : 'default',
+    };
   }
 
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {

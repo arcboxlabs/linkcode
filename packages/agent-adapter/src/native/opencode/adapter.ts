@@ -10,6 +10,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentModelOption,
+  AgentStartCatalog,
   ApprovalPolicy,
   ContentBlock,
   PermissionOption,
@@ -101,6 +102,69 @@ function parseModelRef(model: string): { providerID: string; modelID: string } |
 
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
 type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['client'];
+
+type OpencodeAgentList = ReadonlyArray<{
+  name: string;
+  mode: string;
+  hidden?: boolean;
+  description?: string;
+}>;
+
+interface OpencodeProviderList {
+  all: ReadonlyArray<{
+    id: string;
+    name: string;
+    source?: string;
+    models: Record<string, { name?: string }>;
+  }>;
+  connected: string[];
+}
+
+/** Selectable agents (opencode's approval-policy axis) with the TUI's own default: the first
+ * `primary`, else the first selectable; null when discovery returned nothing usable. */
+function opencodeAgentPolicies(
+  agents: OpencodeAgentList,
+): { policies: ApprovalPolicy[]; defaultPolicyId: string } | null {
+  const selectable = agents.filter(
+    (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
+  );
+  const fallback = selectable.find((agent) => agent.mode === 'primary') ?? selectable.at(0);
+  if (!fallback) return null;
+  return {
+    policies: selectable.map((agent) => ({
+      policyId: agent.name,
+      name: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
+      ...(agent.description && { description: agent.description }),
+    })),
+    defaultPolicyId: fallback.name,
+  };
+}
+
+/** Reachable models: every connected (or key-less `api`-source) provider's models, narrowed to
+ * the credential-injected provider when one is in play (live sessions only; pre-session has no
+ * credential context). */
+function opencodeModelOptions(
+  listed: OpencodeProviderList,
+  credentialProviderId: string | null,
+): AgentModelOption[] {
+  const connected = new Set(listed.connected);
+  const models: AgentModelOption[] = [];
+  for (const provider of listed.all) {
+    if (credentialProviderId) {
+      if (provider.id !== credentialProviderId) continue;
+    } else if (!connected.has(provider.id) && provider.source !== 'api') {
+      continue;
+    }
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      models.push({
+        id: `${provider.id}/${modelId}`,
+        label: model.name || modelId,
+        description: provider.name,
+      });
+    }
+  }
+  return models;
+}
 
 /**
  * OpenCode adapter — the server/client model: `createOpencode()` spawns a local OpenCode server
@@ -247,12 +311,18 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
     // list must not fail session start — absence is itself the capability signal (no command /
     // model / approval-policy state ever fires for this session). They are independent reads of
-    // the same local server, so they run concurrently.
+    // the same local server, so they run concurrently. An explicit new-session policy pick (the
+    // agent axis) outranks a resumed session's recorded agent.
     await Promise.all([
       this.fetchCommandCatalog(),
-      this.fetchAgentCatalog(resumedAgent),
+      this.fetchAgentCatalog(opts.approvalPolicyId ?? resumedAgent),
       this.fetchModelCatalog(),
     ]);
+    if (opts.approvalPolicyId && this.currentAgent && this.currentAgent !== opts.approvalPolicyId) {
+      this.emitError(
+        `opencode: agent '${opts.approvalPolicyId}' is not available — using '${this.currentAgent}'`,
+      );
+    }
     // Reflect the model the session will prompt with (configured, or adopted from the resumed
     // session above) so the client chip is right before the first turn.
     if (opts.model) this.emitModel(opts.model);
@@ -289,34 +359,20 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     try {
       const listed = await this.client.provider.list({ directory: this.directory });
       if (listed.error !== undefined) return;
-      const connected = new Set(listed.data.connected);
-      const models: AgentModelOption[] = [];
-      for (const provider of listed.data.all) {
-        if (this.credentialProviderId) {
-          if (provider.id !== this.credentialProviderId) continue;
-        } else if (!connected.has(provider.id) && provider.source !== 'api') {
-          continue;
-        }
-        for (const [modelId, model] of Object.entries(provider.models)) {
-          models.push({
-            id: `${provider.id}/${modelId}`,
-            label: model.name || modelId,
-            description: provider.name,
-          });
-        }
-      }
+      const models = opencodeModelOptions(listed.data, this.credentialProviderId);
       if (models.length > 0) this.emitModels(models);
     } catch {
       // Non-fatal — see onStart.
     }
   }
 
-  /** Best-effort agent catalog fetch — swallows every failure (see `onStart`). */
-  private async fetchAgentCatalog(resumedAgent: string | null): Promise<void> {
+  /** Best-effort agent catalog fetch — swallows every failure (see `onStart`). `preferredAgent`
+   * is the new-session pick or a resumed session's recorded agent; it wins when selectable. */
+  private async fetchAgentCatalog(preferredAgent: string | null): Promise<void> {
     if (!this.client) return;
     try {
       const agents = await this.client.app.agents({ directory: this.directory });
-      if (agents.error === undefined) this.adoptAgentCatalog(agents.data, resumedAgent);
+      if (agents.error === undefined) this.adoptAgentCatalog(agents.data, preferredAgent);
     } catch {
       // Non-fatal — see onStart.
     }
@@ -507,6 +563,24 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     await this.start(startOpts);
   }
 
+  override async startCatalog(opts: { cwd?: string }): Promise<AgentStartCatalog> {
+    // Same shared-server route as the history reads (never-started instances). Both lists are
+    // directory-scoped: providers by connected auth, agents by the workspace's own config.
+    return this.withHistoryClient(async (client) => {
+      const directory = opts.cwd;
+      const [providers, agents] = await Promise.all([
+        client.provider.list(directory !== undefined ? { directory } : {}),
+        client.app.agents(directory !== undefined ? { directory } : {}),
+      ]);
+      const agentCatalog = agents.error === undefined ? opencodeAgentPolicies(agents.data) : null;
+      return {
+        models: providers.error === undefined ? opencodeModelOptions(providers.data, null) : [],
+        policies: agentCatalog?.policies ?? [],
+        ...(agentCatalog && { defaultPolicyId: agentCatalog.defaultPolicyId }),
+      };
+    });
+  }
+
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const offset = cursorOffset(opts?.cursor);
     const limit = boundedLimit(opts?.limit, 50, 200);
@@ -628,25 +702,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * the upstream TUI: the first primary agent, else the first selectable; a resumed session's
    * recorded agent wins while it is still selectable. Nothing selectable → the axis stays hidden
    * (an empty `availablePolicies` is never emitted). */
-  private adoptAgentCatalog(
-    agents: ReadonlyArray<{ name: string; mode: string; hidden?: boolean; description?: string }>,
-    resumedAgent: string | null,
-  ): void {
-    const selectable = agents.filter(
-      (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
-    );
-    const fallback = selectable.find((agent) => agent.mode === 'primary') ?? selectable.at(0);
-    if (!fallback) return;
+  private adoptAgentCatalog(agents: OpencodeAgentList, preferredAgent: string | null): void {
+    const catalog = opencodeAgentPolicies(agents);
+    if (!catalog) return;
     const current =
-      resumedAgent && selectable.some((agent) => agent.name === resumedAgent)
-        ? resumedAgent
-        : fallback.name;
+      preferredAgent && catalog.policies.some((policy) => policy.policyId === preferredAgent)
+        ? preferredAgent
+        : catalog.defaultPolicyId;
     this.currentAgent = current;
-    this.agentPolicies = selectable.map((agent) => ({
-      policyId: agent.name,
-      name: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
-      ...(agent.description && { description: agent.description }),
-    }));
+    this.agentPolicies = catalog.policies;
     this.emitApprovalPolicy({ availablePolicies: this.agentPolicies, currentPolicyId: current });
   }
 

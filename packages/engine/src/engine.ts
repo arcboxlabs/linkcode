@@ -549,6 +549,17 @@ export class Engine {
         }
         break;
       }
+      case 'agent.catalog': {
+        await this.tryReply(p.clientReqId, async () => {
+          // A never-started factory instance, the history-read pattern: startCatalog must not
+          // touch any start() state, so a throwaway adapter is safe and needs no cleanup.
+          const catalog = await this.factory(p.agentKind).startCatalog({ cwd: p.cwd });
+          this.transport.send(
+            createWireMessage({ kind: 'agent.cataloged', replyTo: p.clientReqId, catalog }),
+          );
+        });
+        break;
+      }
       case 'asset.list': {
         this.transport.send(
           createWireMessage({

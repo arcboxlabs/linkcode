@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  EffortLevel,
   SessionId,
   SessionInfo,
   SessionModeId,
@@ -38,6 +39,8 @@ export interface WorkbenchSessions {
     kind: AgentKind;
     cwd: string;
     model?: string;
+    effort?: EffortLevel;
+    approvalPolicyId?: string;
     modeId?: SessionModeId;
   }) => Promise<SessionId>;
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
@@ -177,6 +180,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     kind: AgentKind;
     cwd: string;
     model?: string;
+    effort?: EffortLevel;
+    approvalPolicyId?: string;
     modeId?: SessionModeId;
   }): Promise<SessionId> {
     // Captured now: by resolve time the surface still shows the draft, and the recorded

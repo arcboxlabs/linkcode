@@ -6,6 +6,7 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  AgentStartCatalog,
   ApprovalPolicy,
   ApprovalPolicyState,
   ContentBlock,
@@ -276,7 +277,34 @@ export class CodexAdapter extends BaseAgentAdapter {
     // Reflect a model chosen at new-session time; codex has no live channel to observe the
     // config.toml default when none was picked, so a fresh unset session shows a placeholder.
     if (this.model) this.emitModel(this.model);
+    // Initial picks from the new-session surface: both ride the next `turn/start` like their live
+    // switches; invalid values degrade with an error event rather than failing session creation.
+    if (opts.approvalPolicyId) {
+      if (isCodexPolicyId(opts.approvalPolicyId)) this.policyId = opts.approvalPolicyId;
+      else {
+        this.emitError(
+          `codex: unknown approval policy '${opts.approvalPolicyId}' — using '${INITIAL_POLICY_ID}'`,
+        );
+      }
+    }
+    if (opts.effort) {
+      if (opts.effort === 'max' || opts.effort === 'ultracode') {
+        this.emitError(`codex: effort '${opts.effort}' is not supported (low through xhigh)`);
+      } else {
+        this.effort = opts.effort;
+        this.emitEffort(opts.effort);
+      }
+    }
     await this.ensureThread();
+  }
+
+  override startCatalog(_opts: { cwd?: string }): Promise<AgentStartCatalog> {
+    // Models stay on the static AGENT_MODEL_OPTIONS table (a fixed vendor list).
+    return Promise.resolve({
+      models: [],
+      policies: [...APPROVAL_POLICIES],
+      defaultPolicyId: INITIAL_POLICY_ID,
+    });
   }
 
   override async resumeHistory(

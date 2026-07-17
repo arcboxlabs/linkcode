@@ -24,6 +24,7 @@ const ANTHROPIC_MODEL: FakePiModel = { provider: 'anthropic', id: 'claude-x', re
 const sdkMock = vi.hoisted(() => ({
   available: [] as unknown[],
   session: null as Record<string, unknown> | null,
+  createOpts: null as Record<string, unknown> | null,
   /** null = every model counts as available (auth not modeled); a Set gates `getAvailable` on the
    * providers it contains, mirroring the real registry's auth-gated availability view. */
   authedProviders: null as Set<string> | null,
@@ -32,8 +33,9 @@ const sdkMock = vi.hoisted(() => ({
 vi.mock('@earendil-works/pi-coding-agent', async () => {
   const { asyncNoop, noop: noopFn } = await import('foxts/noop');
   return {
-    createAgentSession: () =>
-      Promise.resolve({
+    createAgentSession(opts: Record<string, unknown>) {
+      sdkMock.createOpts = opts;
+      return Promise.resolve({
         session: sdkMock.session ?? {
           isStreaming: false,
           sessionId: 'sess-1',
@@ -48,7 +50,8 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
           setThinkingLevel: noopFn,
           setModel: asyncNoop,
         },
-      }),
+      });
+    },
     AuthStorage: {
       create: () => ({
         setRuntimeApiKey(provider: string) {
@@ -137,7 +140,53 @@ async function startedAdapter(state: FakeSessionState, startOpts: Record<string,
 beforeEach(() => {
   sdkMock.available = [OPENAI_MODEL, ANTHROPIC_MODEL];
   sdkMock.session = null;
+  sdkMock.createOpts = null;
   sdkMock.authedProviders = null;
+});
+
+describe('pi startCatalog', () => {
+  it('serves models and policy tiers from a never-started instance', async () => {
+    const adapter = new PiAdapter();
+    const catalog = await adapter.startCatalog({});
+
+    expect(catalog.models.map((m) => m.id)).toEqual(['openai/gpt-test', 'anthropic/claude-x']);
+    expect(catalog.models[0].effortLevels).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(catalog.policies.map((p) => p.policyId)).toEqual([
+      'default',
+      'acceptEdits',
+      'bypassPermissions',
+    ]);
+    expect(catalog.defaultPolicyId).toBe('default');
+    // Never started: no events, no session.
+    expect(sdkMock.createOpts).toBeNull();
+  });
+});
+
+describe('pi start-time picks', () => {
+  it('applies an initial effort and approval tier at session creation', async () => {
+    const { events } = await startedAdapter(
+      { model: OPENAI_MODEL, thinkingLevel: 'high', supportsThinking: true },
+      { effort: 'high', approvalPolicyId: 'bypassPermissions' },
+    );
+
+    expect(sdkMock.createOpts).toMatchObject({ thinkingLevel: 'high' });
+    const policy = events.findLast((e) => e.type === 'approval-policy-update');
+    expect(policy).toMatchObject({ state: { currentPolicyId: 'bypassPermissions' } });
+  });
+
+  it('degrades invalid initial picks with error events instead of failing start', async () => {
+    const { events } = await startedAdapter(
+      { model: OPENAI_MODEL, thinkingLevel: 'medium', supportsThinking: true },
+      { effort: 'max', approvalPolicyId: 'plan' },
+    );
+
+    expect(sdkMock.createOpts).not.toHaveProperty('thinkingLevel');
+    const messages = events.flatMap((e) => (e.type === 'error' ? [e.message] : []));
+    expect(messages).toContainEqual("pi: effort 'max' is not supported (low–xhigh only)");
+    expect(messages).toContainEqual("pi: unknown approval policy 'plan' — using default");
+    const policy = events.findLast((e) => e.type === 'approval-policy-update');
+    expect(policy).toMatchObject({ state: { currentPolicyId: 'default' } });
+  });
 });
 
 describe('pi dynamic model catalog', () => {

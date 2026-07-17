@@ -12,6 +12,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentModelOption,
+  AgentStartCatalog,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -90,6 +91,11 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.emit({ type: 'capabilities-update', capabilities: this.capabilities });
     await this.onStart(opts);
     this.emitStatus('idle');
+  }
+
+  /** Default: nothing to offer pre-session; the UI falls back to its static tables. */
+  startCatalog(_opts: { cwd?: string }): Promise<AgentStartCatalog> {
+    return Promise.resolve({ models: [], policies: [] });
   }
 
   listHistory(_opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {

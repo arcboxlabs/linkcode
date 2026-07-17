@@ -10,6 +10,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentRuntimes,
+  AgentStartCatalog,
   MessageId,
   SessionId,
   StartOptions,
@@ -44,6 +45,14 @@ class FakeAdapter implements AgentAdapter {
   start(opts: StartOptions): Promise<void> {
     this.startedWith = opts;
     return Promise.resolve();
+  }
+
+  startCatalog(): Promise<AgentStartCatalog> {
+    return Promise.resolve({
+      models: [{ id: 'fake/model-1', label: 'Model 1' }],
+      policies: [{ policyId: 'default', name: 'Ask' }],
+      defaultPolicyId: 'default',
+    });
   }
 
   listHistory(): Promise<AgentHistoryListResult> {
@@ -764,6 +773,25 @@ describe('engine attach replay', () => {
       source: 'session',
     });
     expect(eventsAfter(sent, mark)).not.toContainEqual(QUESTION_ASK);
+  });
+
+  it('serves the pre-session agent catalog from a never-started factory instance', async () => {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({ kind: 'agent.catalog', clientReqId: 'rc1', agentKind: 'claude-code' });
+
+    expect(h.sent).toContainEqual({
+      kind: 'agent.cataloged',
+      replyTo: 'rc1',
+      catalog: {
+        models: [{ id: 'fake/model-1', label: 'Model 1' }],
+        policies: [{ policyId: 'default', name: 'Ask' }],
+        defaultPolicyId: 'default',
+      },
+    });
+    // The catalog adapter was never started and never announced as a session.
+    expect(h.adapters[0]?.startedWith).toBeNull();
+    expect(h.sent.some((m) => m.kind === 'session.started')).toBe(false);
   });
 
   it('acknowledges a response that raced a session-side resolution instead of rejecting it', async () => {

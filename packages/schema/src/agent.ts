@@ -13,6 +13,7 @@ import { PlanSchema } from './plan';
 import { QuestionOutcomeSchema, QuestionRequestSchema } from './question';
 import {
   ApprovalPolicyIdSchema,
+  ApprovalPolicySchema,
   ApprovalPolicyStateSchema,
   McpServerSchema,
   SessionModeIdSchema,
@@ -30,6 +31,14 @@ import { TokenUsageSchema, UsageReportSchema } from './usage';
 
 // ── Upstream: client → host → agent ──────────────────────────────────────────
 
+/** Reasoning-effort levels. low–xhigh switch live via the adapters' settings channel; `max` cannot
+ * (Claude only accepts it at process startup), so adapters honor it by restarting the underlying
+ * process with the new effort and resuming the conversation in place under the same session.
+ * `ultracode` is claude-code's xhigh-plus-standing-orchestration mode — modeled as a level because
+ * that's how Claude's own effort menu presents it; it switches live like the plain levels. */
+export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
+export type EffortLevel = z.infer<typeof EffortLevelSchema>;
+
 /** Parameters required to start an agent session. */
 export const StartOptionsSchema = z.object({
   kind: AgentKindSchema,
@@ -37,6 +46,10 @@ export const StartOptionsSchema = z.object({
   cwd: z.string().min(1),
   /** Model id override (vendor-specific); defaults to the adapter's configured default. */
   model: z.string().optional(),
+  /** Initial reasoning-effort level; adapters without an effort axis ignore it. */
+  effort: EffortLevelSchema.optional(),
+  /** Initial approval-policy tier; adapters validate against their own advertised set. */
+  approvalPolicyId: ApprovalPolicyIdSchema.optional(),
   /** Initial session mode (e.g. plan / accept-edits), if the agent advertises modes. */
   modeId: SessionModeIdSchema.optional(),
   /** MCP servers the agent should connect to. */
@@ -49,12 +62,6 @@ export const StartOptionsSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
 });
 export type StartOptions = z.infer<typeof StartOptionsSchema>;
-
-/** Reasoning-effort levels. low–xhigh switch live; `max` only applies at process startup, so
- * adapters honor it by restarting the underlying process and resuming in place. `ultracode` is
- * claude-code's xhigh-plus-standing-orchestration mode, modeled as a level; it switches live. */
-export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
-export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
 /** A provider slash command the session can invoke, normalized across agents (claude-code
  * `SlashCommand`, opencode `Command`). `name` carries no leading slash. */
@@ -86,6 +93,18 @@ export const AgentModelOptionSchema = z.object({
   effortLevels: z.array(EffortLevelSchema).optional(),
 });
 export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
+
+/** What an agent kind can offer BEFORE a session exists — the new-session pickers' data source,
+ * served over the `agent.catalog` wire request from a never-started adapter instance (the history
+ * pattern). Empty arrays mean the axis has no pre-session data: the UI falls back to its static
+ * per-kind tables (models: claude/codex) or hides the picker. */
+export const AgentStartCatalogSchema = z.object({
+  models: z.array(AgentModelOptionSchema),
+  policies: z.array(ApprovalPolicySchema),
+  /** The tier a session starts on when the user picks nothing. */
+  defaultPolicyId: ApprovalPolicyIdSchema.optional(),
+});
+export type AgentStartCatalog = z.infer<typeof AgentStartCatalogSchema>;
 
 /** Input features a live adapter session accepts. Kept separate from command catalogs: catalogs
  * change provider-side, while these booleans describe the adapter's stable input surface. */

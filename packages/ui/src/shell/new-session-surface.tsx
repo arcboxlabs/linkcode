@@ -1,6 +1,8 @@
 import type {
   AgentKind,
+  AgentStartCatalog,
   ContentBlock,
+  EffortLevel,
   SessionModeId,
   WorkspaceId,
   WorkspaceRecord,
@@ -50,11 +52,16 @@ export interface NewSessionSubmission {
   /** The picked workspace backing `cwd` — lets the caller persist it as the next draft's default. */
   workspaceId: WorkspaceId;
   model?: string;
+  effort?: EffortLevel;
+  approvalPolicyId?: string;
   modeId?: SessionModeId;
   content: ContentBlock[];
 }
 
 export type AttachmentSupportByAgent = Readonly<Partial<Record<AgentKind, true>>>;
+
+/** Pre-session picker data per agent kind, fetched by the workbench over `agent.catalog`. */
+export type AgentStartCatalogs = Readonly<Partial<Record<AgentKind, AgentStartCatalog>>>;
 
 export interface NewSessionSurfaceProps {
   draft: NewSessionDraft;
@@ -68,6 +75,9 @@ export interface NewSessionSurfaceProps {
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
+  /** Pre-session model/policy catalogs; a kind without an entry falls back to the static model
+   * table and hides the policy picker (exactly the live composer's fallback behavior). */
+  agentCatalogs?: AgentStartCatalogs;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
@@ -91,8 +101,52 @@ export interface NewSessionSurfaceProps {
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
 
-/** Unified new-session page: heading + shared `Composer` + workspace context bar. Model and
- * workflow-mode picks ride into the submission; the session reflects them from then on. */
+/** The provider-scoped picker state the surface accumulates before submission. */
+export interface NewSessionPicks {
+  provider: AgentKind;
+  model: string | null;
+  effort: EffortLevel | null;
+  policyId: string | null;
+  modeId: string;
+}
+
+/**
+ * Fold the picker state and the provider's catalog into the submission's optional fields — pure
+ * so the ride/skip rules are unit-testable: a model rides only when the picked provider actually
+ * offers it (dynamic catalog first, static table fallback); the approval tier rides only when it
+ * diverges from the catalog default (the adapter starts there anyway).
+ */
+export function deriveNewSessionPicks(
+  picks: NewSessionPicks,
+  catalog: AgentStartCatalog | undefined,
+): Pick<NewSessionSubmission, 'model' | 'effort' | 'approvalPolicyId' | 'modeId'> {
+  const catalogModels = catalog !== undefined && catalog.models.length > 0 ? catalog.models : null;
+  const providerModels = catalogModels ?? AGENT_MODEL_OPTIONS[picks.provider];
+  const defaultPolicyId =
+    catalog === undefined ? undefined : (catalog.defaultPolicyId ?? catalog.policies[0]?.policyId);
+  const pickedPolicyId =
+    picks.policyId !== null && catalog?.policies.some((p) => p.policyId === picks.policyId)
+      ? picks.policyId
+      : undefined;
+  return {
+    model:
+      picks.model !== null && providerModels?.some((option) => option.id === picks.model)
+        ? picks.model
+        : undefined,
+    effort: picks.effort ?? undefined,
+    approvalPolicyId:
+      pickedPolicyId !== undefined && pickedPolicyId !== defaultPolicyId
+        ? pickedPolicyId
+        : undefined,
+    modeId: picks.modeId === DEFAULT_MODE_ID ? undefined : picks.modeId,
+  };
+}
+
+/**
+ * The unified new-session page rendered in the main column while drafting: heading + the shared
+ * `Composer` (its provider submenu picks the agent) + a context bar carrying the workspace picker.
+ * Model / workflow-mode picks ride into the submission; the session reflects them from then on.
+ */
 export function NewSessionSurface({
   draft,
   workspaces,
@@ -101,6 +155,7 @@ export function NewSessionSurface({
   topContent,
   runtimeCues,
   attachmentSupport,
+  agentCatalogs,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -115,6 +170,8 @@ export function NewSessionSurface({
   const [provider, setProvider] = useState(draft.initialProvider);
   const [workspaceId, setWorkspaceId] = useState(draft.initialWorkspaceId);
   const [model, setModel] = useState<string | null>(null);
+  const [effort, setEffort] = useState<EffortLevel | null>(null);
+  const [policyId, setPolicyId] = useState<string | null>(null);
   const [modeId, setModeId] = useState<string>(DEFAULT_MODE_ID);
   const [pending, setPending] = useState(false);
 
@@ -123,20 +180,30 @@ export function NewSessionSurface({
     selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   const isChatSelected = selected != null && selected === chatWorkspace;
 
+  // Pre-session data for the picked provider. Model/effort picks feed the Composer's normal
+  // fallback chain (dynamic catalog → static table); policies have no static fallback, so the
+  // picker only renders for kinds whose catalog carries tiers.
+  const catalog = agentCatalogs?.[provider];
+  const catalogModels = catalog !== undefined && catalog.models.length > 0 ? catalog.models : null;
+  const defaultPolicyId =
+    catalog === undefined ? undefined : (catalog.defaultPolicyId ?? catalog.policies[0]?.policyId);
+  const currentPolicyId =
+    policyId !== null && catalog?.policies.some((p) => p.policyId === policyId)
+      ? policyId
+      : defaultPolicyId;
+  const approvalPolicy =
+    catalog !== undefined && catalog.policies.length > 0 && currentPolicyId !== undefined
+      ? { availablePolicies: catalog.policies, currentPolicyId }
+      : undefined;
+
   function handleSend(content: ContentBlock[]): void {
     if (!selected) return;
-    // The model rides only when it belongs to the submitted provider — mirroring what the
-    // composer's trigger displays (a pick made under another provider shows as "Default").
-    const providerModels = AGENT_MODEL_OPTIONS[provider];
-    const validModel =
-      model != null && providerModels?.some((option) => option.id === model) ? model : undefined;
     setPending(true);
     onSubmit({
       kind: provider,
       cwd: selected.cwd,
       workspaceId: selected.workspaceId,
-      model: validModel,
-      modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
+      ...deriveNewSessionPicks({ provider, model, effort, policyId, modeId }, catalog),
       content,
     })
       .catch(noop)
@@ -145,11 +212,26 @@ export function NewSessionSurface({
 
   function handleProviderChange(nextProvider: AgentKind): Promise<void> {
     setProvider(nextProvider);
+    // Model ids, effort axes, and policy tiers are all provider-scoped: stale picks must not
+    // leak across a provider switch.
+    setModel(null);
+    setEffort(null);
+    setPolicyId(null);
     return Promise.resolve();
   }
 
   function handleModelChange(nextModel: string): Promise<void> {
     setModel(nextModel);
+    return Promise.resolve();
+  }
+
+  function handleEffortChange(nextEffort: EffortLevel): Promise<void> {
+    setEffort(nextEffort);
+    return Promise.resolve();
+  }
+
+  function handlePolicyChange(nextPolicyId: string): Promise<void> {
+    setPolicyId(nextPolicyId);
     return Promise.resolve();
   }
 
@@ -197,12 +279,17 @@ export function NewSessionSurface({
             sendBlocked={cue !== undefined}
             currentModeId={modeId}
             currentModel={model}
+            currentEffort={effort}
+            agentModels={catalogModels}
+            approvalPolicy={approvalPolicy}
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
             onStop={noop}
             onPickAttachmentFiles={onPickAttachmentFiles}
             onModeChange={handleModeChange}
             onModelChange={handleModelChange}
+            onEffortChange={handleEffortChange}
+            onApprovalPolicyChange={handlePolicyChange}
             onProviderChange={handleProviderChange}
             contextBar={
               <NewSessionContextBar

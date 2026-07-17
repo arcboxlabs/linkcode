@@ -16,6 +16,8 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  AgentModelOption,
+  AgentStartCatalog,
   ApprovalPolicy,
   ApprovalPolicyState,
   ContentBlock,
@@ -78,6 +80,15 @@ function piEffortLevels(model: PiModel): PiEffort[] {
     if (level === 'xhigh') return mapped !== undefined;
     return true;
   });
+}
+
+function piModelOptions(models: readonly PiModel[]): AgentModelOption[] {
+  return models.map((m) => ({
+    id: `${m.provider}/${m.id}`,
+    label: m.name ?? m.id,
+    description: `${m.provider}/${m.id}`,
+    effortLevels: piEffortLevels(m),
+  }));
 }
 
 /**
@@ -150,6 +161,19 @@ export class PiAdapter extends BaseAgentAdapter {
    * and scoped to one provider, so live model switches must stay inside it (opencode parity). */
   private credentialProviderId: string | null = null;
 
+  override async startCatalog(_opts: { cwd?: string }): Promise<AgentStartCatalog> {
+    // Plain import on a never-started instance (the history precedent). The catalog reflects the
+    // machine's own auth: an account credential only lands at start(), so its provider's models
+    // appear pre-session only when local auth also covers them.
+    const pi = await importPiSdk();
+    const registry = pi.ModelRegistry.create(pi.AuthStorage.create());
+    return {
+      models: piModelOptions(registry.getAvailable()),
+      policies: [...APPROVAL_POLICIES],
+      defaultPolicyId: INITIAL_POLICY_ID,
+    };
+  }
+
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     return listPiHistory(await importPiSdk(), opts);
   }
@@ -171,6 +195,17 @@ export class PiAdapter extends BaseAgentAdapter {
       '@earendil-works/pi-coding-agent',
       () => import('@earendil-works/pi-coding-agent'),
     );
+    // Initial picks from the new-session surface; invalid values degrade with an error event
+    // rather than failing session creation (same posture as a stale explicit model below).
+    if (opts.approvalPolicyId) {
+      if (isPiPolicyId(opts.approvalPolicyId)) this.policyId = opts.approvalPolicyId;
+      else this.emitError(`pi: unknown approval policy '${opts.approvalPolicyId}' — using default`);
+    }
+    let initialThinking: PiEffort | undefined;
+    if (opts.effort) {
+      if (isPiEffort(opts.effort)) initialThinking = opts.effort;
+      else this.emitError(`pi: effort '${opts.effort}' is not supported (low–xhigh only)`);
+    }
     const authStorage = pi.AuthStorage.create();
     const modelRegistry = pi.ModelRegistry.create(authStorage);
 
@@ -254,6 +289,9 @@ export class PiAdapter extends BaseAgentAdapter {
       modelRegistry,
       resourceLoader,
       ...(model && { model }),
+      // An explicit initial pick overrides both the settings default and a resume's restore;
+      // the SDK clamps it to the model's supported levels.
+      ...(initialThinking && { thinkingLevel: initialThinking }),
       ...(sessionManager && { sessionManager }),
       tools: this.tools(),
     });
@@ -389,14 +427,7 @@ export class PiAdapter extends BaseAgentAdapter {
       ? registry.getAvailable().filter((m) => m.provider === this.credentialProviderId)
       : registry.getAvailable();
     if (models.length === 0) return;
-    this.emitModels(
-      models.map((m) => ({
-        id: `${m.provider}/${m.id}`,
-        label: m.name ?? m.id,
-        description: `${m.provider}/${m.id}`,
-        effortLevels: piEffortLevels(m),
-      })),
-    );
+    this.emitModels(piModelOptions(models));
   }
 
   private registerApprovalGate(ext: ExtensionAPI): void {

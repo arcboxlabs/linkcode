@@ -62,6 +62,7 @@ export function DesktopShell({
   activeSession,
   draft,
   runtimeCues,
+  agentCatalogs,
   attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
@@ -330,6 +331,7 @@ export function DesktopShell({
           chatWorkspace={chatWorkspace}
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
+          agentCatalogs={agentCatalogs}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
           onDownloadAgent={onDownloadAgent}

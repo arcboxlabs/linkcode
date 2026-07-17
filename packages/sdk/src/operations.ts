@@ -7,6 +7,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -178,6 +179,13 @@ export function setAccounts(options: Options<{ accounts: Accounts }>): RequestRe
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */
 export function listAgentRuntimes(options?: Options): RequestResult<AgentRuntimes> {
   return resolveClient(options).listAgentRuntimes();
+}
+
+/** Pre-session picker data (models / approval tiers) for one agent kind. */
+export function getAgentCatalog(
+  options: Options<{ agentKind: AgentKind; cwd?: string }>,
+): RequestResult<AgentStartCatalog> {
+  return resolveClient(options).getAgentCatalog(options.agentKind, options.cwd);
 }
 
 /** Managed-asset store status: wanted versions and what is installed (CODE-111). */

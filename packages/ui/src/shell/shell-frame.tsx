@@ -14,6 +14,7 @@ import type { MentionItem } from './composer';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import type {
+  AgentStartCatalogs,
   AttachmentSupportByAgent,
   NewSessionDraft,
   NewSessionSubmission,
@@ -45,6 +46,8 @@ export interface ShellFrameProps
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
+  /** Pre-session model/policy catalogs for the new-session pickers (`agent.catalog`). */
+  agentCatalogs?: AgentStartCatalogs;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
@@ -111,6 +114,7 @@ export function ShellFrame({
   activeSession,
   draft,
   runtimeCues,
+  agentCatalogs,
   attachmentSupport,
   onDownloadAgent,
   onContinueUnverified,
@@ -202,6 +206,7 @@ export function ShellFrame({
             chatWorkspace={chatWorkspace}
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
+            agentCatalogs={agentCatalogs}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}
             onLoginAgent={onLoginAgent}
