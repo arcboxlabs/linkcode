@@ -5,8 +5,11 @@ import type {
   ContentBlock,
   EffortLevel,
   PermissionOption,
+  PermissionOutcome,
   Plan,
+  PromptResolutionSource,
   Question,
+  QuestionOutcome,
   SessionStatus,
   StopReason,
   TokenUsage,
@@ -57,12 +60,16 @@ export type ConversationItem =
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
+      responding: boolean;
+      resolution?: { outcome: PermissionOutcome; source: PromptResolutionSource };
     })
   | (ConversationItemBase & {
       kind: 'question';
       requestId: string;
       toolCall: ToolCallUpdate;
       questions: Question[];
+      responding: boolean;
+      resolution?: { outcome: QuestionOutcome; source: PromptResolutionSource };
     })
   | (ConversationItemBase & {
       kind: 'error';

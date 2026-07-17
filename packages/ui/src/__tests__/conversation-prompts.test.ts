@@ -1,17 +1,10 @@
 import type { PermissionOption, Plan } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import {
-  isConversationPromptResponseSubmittable,
-  STUB_PLAN_REVIEW_PROMPTS,
-} from '../chat/conversation-prompt';
-import { choiceIndexForNumberShortcut } from '../chat/conversation-prompt-keyboard';
-import type { PermissionConversationItem, PermissionDecision } from '../chat/conversation-prompts';
+import type { PermissionConversationItem } from '../chat/conversation-prompts';
 import {
   conversationFlowItems,
   declinedToolCall,
   declinedToolCallIds,
-  isPermissionDeclined,
-  resolvePromptPageIndex,
   selectCurrentPlan,
   selectPendingPromptItems,
 } from '../chat/conversation-prompts';
@@ -73,18 +66,11 @@ function approval(requestId: string): PermissionConversationItem {
     requestId,
     toolCall: { toolCallId: `tool-${requestId}`, title: requestId },
     options: [],
+    responding: false,
   };
 }
 
 describe('conversation prompt selectors', () => {
-  it('maps physical and fallback number shortcuts independent of keyboard layout', () => {
-    expect(choiceIndexForNumberShortcut('Digit2', 'é')).toBe(1);
-    expect(choiceIndexForNumberShortcut('Numpad9', '9')).toBe(8);
-    expect(choiceIndexForNumberShortcut('Numpad9', 'PageUp')).toBeNull();
-    expect(choiceIndexForNumberShortcut('Unidentified', '3')).toBe(2);
-    expect(choiceIndexForNumberShortcut('Digit0', '0')).toBeNull();
-  });
-
   it('excludes plans from conversation flow items', () => {
     const message = user('turn-0');
     const item = plan('turn-0', [{ content: 'Read files', priority: 'high', status: 'pending' }]);
@@ -146,57 +132,36 @@ describe('conversation prompt selectors', () => {
     expect(selectPendingPromptItems(conversation([item]))).toEqual([]);
   });
 
-  it('preserves a standalone prompt page and falls forward when it resolves', () => {
-    const first = { promptId: 'first' };
-    const second = { promptId: 'second' };
-    const third = { promptId: 'third' };
-
-    expect(
-      resolvePromptPageIndex([first, second, third], {
-        promptId: 'second',
-        segmentId: 'first',
-        index: 1,
-      }),
-    ).toBe(1);
-    expect(
-      resolvePromptPageIndex([first, third], {
-        promptId: 'second',
-        segmentId: 'first',
-        index: 1,
-      }),
-    ).toBe(1);
-    expect(
-      resolvePromptPageIndex([first], { promptId: 'third', segmentId: 'first', index: 2 }),
-    ).toBe(0);
-    expect(
-      resolvePromptPageIndex([second, third], {
-        promptId: 'missing',
-        segmentId: 'previous-segment',
-        index: 1,
-      }),
-    ).toBe(0);
-  });
-
-  it('collects reject and cancelled decisions as declined tool calls', () => {
+  it('collects authoritative reject and cancelled resolutions as declined tool calls', () => {
     const items = [
-      approval('allowed'),
-      approval('rejected'),
-      approval('skipped'),
+      {
+        ...approval('allowed'),
+        options: [ALLOW],
+        resolution: {
+          outcome: { outcome: 'selected' as const, optionId: ALLOW.optionId },
+          source: 'user' as const,
+        },
+      },
+      {
+        ...approval('rejected'),
+        options: [REJECT],
+        resolution: {
+          outcome: { outcome: 'selected' as const, optionId: REJECT.optionId },
+          source: 'user' as const,
+        },
+      },
+      {
+        ...approval('cancelled'),
+        resolution: { outcome: { outcome: 'cancelled' as const }, source: 'user' as const },
+      },
+      {
+        ...approval('teardown'),
+        resolution: { outcome: { outcome: 'cancelled' as const }, source: 'session' as const },
+      },
       approval('unanswered'),
     ];
-    const decisions = new Map<string, PermissionDecision>([
-      ['allowed', { outcome: 'selected', option: ALLOW }],
-      ['rejected', { outcome: 'selected', option: REJECT }],
-      ['skipped', { outcome: 'cancelled' }],
-    ]);
 
-    expect(isPermissionDeclined({ outcome: 'selected', option: ALLOW })).toBe(false);
-    expect(isPermissionDeclined({ outcome: 'selected', option: REJECT })).toBe(true);
-    expect(isPermissionDeclined({ outcome: 'cancelled' })).toBe(true);
-    expect(isPermissionDeclined(undefined)).toBe(false);
-    expect(declinedToolCallIds(items, decisions)).toEqual(
-      new Set(['tool-rejected', 'tool-skipped']),
-    );
+    expect(declinedToolCallIds(items)).toEqual(new Set(['tool-rejected', 'tool-cancelled']));
   });
 
   it('materializes a failed tool call from a declined permission snapshot', () => {
@@ -212,65 +177,6 @@ describe('conversation prompt selectors', () => {
     });
   });
 
-  it('validates generic single and multiple prompt responses', () => {
-    const choices = [
-      { id: 'yes', label: 'Yes' },
-      { id: 'no', label: 'No' },
-    ];
-
-    expect(
-      isConversationPromptResponseSubmittable(
-        { mode: 'single', choices },
-        { selectedIds: ['yes'] },
-      ),
-    ).toBe(true);
-    expect(
-      isConversationPromptResponseSubmittable(
-        { mode: 'single', choices },
-        { selectedIds: ['yes', 'no'] },
-      ),
-    ).toBe(false);
-    expect(
-      isConversationPromptResponseSubmittable(
-        { mode: 'multiple', choices },
-        { selectedIds: ['yes', 'no'] },
-      ),
-    ).toBe(true);
-    expect(
-      isConversationPromptResponseSubmittable({ mode: 'multiple', choices }, { selectedIds: [] }),
-    ).toBe(false);
-  });
-
-  it('validates inline custom prompt responses', () => {
-    const choices = [
-      { id: 'yes', label: 'Yes' },
-      { id: 'no', label: 'No' },
-    ];
-
-    expect(
-      isConversationPromptResponseSubmittable(
-        { mode: 'single', choices },
-        { selectedIds: [], customText: '' },
-      ),
-    ).toBe(false);
-    expect(
-      isConversationPromptResponseSubmittable(
-        { mode: 'single', choices },
-        { selectedIds: [], customText: 'Use a safer command' },
-      ),
-    ).toBe(true);
-    expect(
-      isConversationPromptResponseSubmittable(
-        { mode: 'multiple', choices },
-        { selectedIds: [], customText: 'Use a safer command' },
-      ),
-    ).toBe(true);
-  });
-
-  it('leaves future prompt stubs empty until the backend schema exists', () => {
-    expect(STUB_PLAN_REVIEW_PROMPTS).toEqual([]);
-  });
-
   it('selects pending question items only while the turn is live', () => {
     const question: ConversationItem = {
       kind: 'question',
@@ -278,6 +184,7 @@ describe('conversation prompt selectors', () => {
       turnId: 'turn-1',
       requestId: 'ask1',
       toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+      responding: false,
       questions: [
         {
           questionId: 'q0',

@@ -3,6 +3,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PermissionConversationItem } from '../../chat/conversation-prompts';
 import type { ConversationViewModel } from '../../chat/types';
 import type { AgentRuntimeCues } from '../agent-onboarding-card';
 import { ConversationSurface } from '../conversation-surface';
@@ -13,6 +14,10 @@ function translateKey(key: string): string {
 
 vi.mock('use-intl', () => ({
   useTranslations: () => translateKey,
+}));
+
+vi.mock('../../chat/conversation-view', () => ({
+  ConversationView: () => null,
 }));
 
 const EMPTY_CONVERSATION: ConversationViewModel = {
@@ -30,15 +35,25 @@ const EMPTY_CONVERSATION: ConversationViewModel = {
   pendingQuestionIds: [],
 };
 
-function surface(runtimeCues?: AgentRuntimeCues): React.ReactNode {
+const PERMISSION_ITEM: PermissionConversationItem = {
+  kind: 'approval',
+  id: 'permission-1',
+  turnId: 'turn-1',
+  requestId: 'permission-1',
+  toolCall: { toolCallId: 'command-1', title: 'Run command' },
+  options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+  responding: false,
+};
+
+function surface(
+  runtimeCues?: AgentRuntimeCues,
+  conversation: ConversationViewModel = EMPTY_CONVERSATION,
+): React.ReactNode {
   return (
     <ConversationSurface
-      conversation={EMPTY_CONVERSATION}
+      conversation={conversation}
       agentKind="claude-code"
-      permissionDecisions={new Map()}
-      respondingPermissions={new Set()}
-      answeredQuestionIds={new Set()}
-      respondingQuestions={new Set()}
+      respondingRequestIds={new Set()}
       isRunning={false}
       runtimeCues={runtimeCues}
       onLoginAgent={vi.fn()}
@@ -51,6 +66,28 @@ function surface(runtimeCues?: AgentRuntimeCues): React.ReactNode {
 }
 
 afterEach(cleanup);
+
+describe('ConversationSurface prompt card', () => {
+  it('hides the composer while a prompt card is visible and preserves its draft', async () => {
+    const user = userEvent.setup();
+    const pendingConversation: ConversationViewModel = {
+      ...EMPTY_CONVERSATION,
+      items: [PERMISSION_ITEM],
+      status: 'running',
+      pendingPermissionIds: [PERMISSION_ITEM.requestId],
+    };
+    const { rerender } = render(surface());
+
+    await user.type(screen.getByRole('textbox'), 'Keep this draft');
+    rerender(surface(undefined, pendingConversation));
+
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeTruthy();
+    expect(screen.queryByRole('textbox')).toBeNull();
+
+    rerender(surface());
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('Keep this draft');
+  });
+});
 
 describe('ConversationSurface needs-login recovery (CODE-172)', () => {
   it('renders the sign-in card and blocks send for a needs-login cue', async () => {

@@ -30,6 +30,8 @@ import { noop } from 'foxts/noop';
 import type { LoginBinaryResolver } from './agent-login-service';
 import { AgentLoginService } from './agent-login-service';
 import { ArtifactHostService } from './artifacts/host-service';
+import type { AskEvent, AskResolutionEvent, AskResponseInput } from './ask-response';
+import { sessionCancellation, userResolution, validateAskResponse } from './ask-response';
 import { assertAttachmentContentAllowed } from './attachment-guard';
 import { readWorkspaceFile } from './file-service';
 import { FileSuggestService } from './file-suggest-service';
@@ -54,16 +56,18 @@ interface Session {
   adapter: AgentAdapter;
   unsub: Unsubscribe;
   status: SessionInfo['status'];
+  /** Set before Engine-initiated stop/delete teardown so suspended input handlers cannot reopen it. */
+  closed: boolean;
   /** Engine-owned input gate: adapters differ in whether send() blocks for dispatch or a full turn,
    * so the host serializes turn-initiating inputs until the adapter reports idle/stopped. */
   turnInputActive: boolean;
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
-  /** Open permission/question asks by requestId, replayed on attach like the approval policy: the
-   * ask event is its only carrier (history reads reproduce no ephemeral events), so without the
-   * replay a client that (re)connects mid-ask has no card to answer and the turn hangs. */
-  pendingAsks: Map<string, PendingAskEvent>;
+  /** Interactive asks and their response lifecycle. Attach replays unresolved requests (plus an
+   * in-flight status) or the latest turn's resolved outcomes. A new turn drops resolved tombstones
+   * so this live-state cache cannot grow with session history. */
+  asks: Map<string, AskRecord>;
   /** Latest model/effort the adapter reported, replayed to freshly-attached clients for the same
    * reason as `approvalPolicy` — a reconnecting client missed the emit and would otherwise show a
    * placeholder instead of the value the session is actually running on. */
@@ -76,7 +80,10 @@ interface Session {
   capabilities: AgentCapabilities;
 }
 
-type PendingAskEvent = Extract<AgentEvent, { type: 'permission-request' | 'question-request' }>;
+type AskRecord =
+  | { request: AskEvent; state: 'open' }
+  | { request: AskEvent; state: 'responding'; invalidated: boolean }
+  | { request: AskEvent; state: 'resolved'; resolution: AskResolutionEvent };
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
@@ -330,14 +337,19 @@ export class Engine {
               }),
             );
           }
-          // The answer settles the ask the moment it arrives; drop it before awaiting send so a
-          // concurrent session.attach (handlers aren't serialized) can't replay an already-answered ask.
-          if (p.input.type === 'permission-response' || p.input.type === 'question-response') {
-            session.pendingAsks.delete(p.input.requestId);
-          }
+          const responseInput =
+            p.input.type === 'permission-response' || p.input.type === 'question-response'
+              ? p.input
+              : undefined;
+          const respondingAsk = responseInput
+            ? this.beginAskResponse(p.sessionId, session, responseInput)
+            : undefined;
           try {
             await session.adapter.send(p.input);
           } catch (err) {
+            if (responseInput && respondingAsk) {
+              this.restoreAsk(p.sessionId, session, responseInput.requestId, respondingAsk);
+            }
             if (startsTurn && session.status !== 'running') session.turnInputActive = false;
             if (startsTurn) {
               this.broadcastInputRejected(
@@ -346,6 +358,9 @@ export class Engine {
               );
             }
             throw err;
+          }
+          if (responseInput && respondingAsk) {
+            this.resolveUserAsk(p.sessionId, session, responseInput, respondingAsk);
           }
           // Synchronous controls such as Codex /compact may not produce lifecycle events. A real
           // turn has reported running by this point — BaseAgentAdapter's turn contract requires
@@ -362,11 +377,15 @@ export class Engine {
             this.sessions.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
+          this.closeSessionInteractions(p.sessionId, session);
           session.unsub();
-          await session.adapter.stop();
-          this.sessions.delete(p.sessionId);
-          this.terminals?.killBySession(p.sessionId);
-          this.sealCurrentRun(p.sessionId);
+          try {
+            await session.adapter.stop();
+          } finally {
+            this.sessions.delete(p.sessionId);
+            this.terminals?.killBySession(p.sessionId);
+            this.sealCurrentRun(p.sessionId);
+          }
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -378,14 +397,26 @@ export class Engine {
           // left untouched, so the conversation stays re-importable via session.import.
           const session = this.sessions.get(p.sessionId);
           if (session) {
+            this.closeSessionInteractions(p.sessionId, session);
             session.unsub();
-            await session.adapter.stop();
-            this.sessions.delete(p.sessionId);
-            this.terminals?.killBySession(p.sessionId);
+            try {
+              await session.adapter.stop();
+            } catch (error) {
+              this.sealCurrentRun(p.sessionId);
+              throw error;
+            } finally {
+              this.sessions.delete(p.sessionId);
+              this.terminals?.killBySession(p.sessionId);
+            }
           }
           // Persisted delete first: if the store throws, the record stays listed (now cold) and the
           // client's retry still works — dropping it from memory first would desync the two.
-          await this.sessionStore.delete(p.sessionId);
+          try {
+            await this.sessionStore.delete(p.sessionId);
+          } catch (error) {
+            if (session) this.sealCurrentRun(p.sessionId);
+            throw error;
+          }
           this.records.delete(p.sessionId);
           this.sendSuccess(p.clientReqId);
         });
@@ -718,8 +749,9 @@ export class Engine {
         // The Hub has already attached this connection to the session before forwarding the frame.
         // Re-emit the buffered state that a history read cannot recover: live status (which gates
         // pending-ask cards and the Stop affordance), adapter capabilities and approval policy,
-        // the latest command catalog, and open permission/question asks. Clients fold this state
-        // idempotently and dedupe asks by requestId.
+        // the latest command catalog, and live permission/question state. Unresolved asks replay
+        // their request; settled asks replay only their outcome so old cards cannot enter a later
+        // turn. Clients fold this state idempotently and dedupe asks by requestId.
         const attached = this.sessions.get(p.sessionId);
         if (!attached) break;
         const replay = (event: AgentEvent): void => {
@@ -741,7 +773,20 @@ export class Engine {
         if (attached.availableCommands) {
           replay({ type: 'available-commands-update', commands: attached.availableCommands });
         }
-        for (const ask of attached.pendingAsks.values()) replay(ask);
+        for (const ask of attached.asks.values()) {
+          if (ask.state === 'resolved') {
+            replay(ask.resolution);
+          } else {
+            replay(ask.request);
+            if (ask.state === 'responding') {
+              replay({
+                type: 'prompt-response-status',
+                requestId: ask.request.requestId,
+                status: 'responding',
+              });
+            }
+          }
+        }
         break;
       }
       case 'session.detach': {
@@ -881,8 +926,9 @@ export class Engine {
       adapter,
       unsub: noop,
       status: 'starting',
+      closed: false,
       turnInputActive: false,
-      pendingAsks: new Map(),
+      asks: new Map(),
       capabilities: adapter.capabilities,
     };
     session.unsub = adapter.onEvent((event) => {
@@ -892,14 +938,21 @@ export class Engine {
       try {
         switch (event.type) {
           case 'status':
+            if (event.status === 'running' && session.status !== 'running') {
+              for (const [requestId, ask] of session.asks) {
+                if (ask.state === 'resolved') session.asks.delete(requestId);
+              }
+            }
             session.status = event.status;
             if (event.status === 'running') session.turnInputActive = true;
             if (event.status === 'idle' || event.status === 'stopped') {
               session.turnInputActive = false;
             }
-            // A turn boundary settles every ask: the adapter's teardown has resolved them
-            // (cancelled) — replaying one after this would present an unanswerable card.
-            if (event.status === 'idle' || event.status === 'stopped') session.pendingAsks.clear();
+            // A turn boundary invalidates every unanswered ask. Keep a canonical cancellation
+            // record so attached clients converge instead of merely making the card disappear.
+            if (event.status === 'idle' || event.status === 'stopped') {
+              this.cancelOpenAsks(sessionId, session);
+            }
             if (event.status === 'stopped') this.sealCurrentRun(sessionId);
             break;
           case 'session-ref':
@@ -910,17 +963,15 @@ export class Engine {
             break;
           case 'permission-request':
           case 'question-request':
-            session.pendingAsks.set(event.requestId, event);
+            if (!session.asks.has(event.requestId)) {
+              session.asks.set(event.requestId, { request: event, state: 'open' });
+            }
             break;
           case 'tool-call':
-            // Mirrors the client's pending semantics: an ask is open until its tool call reaches
-            // a terminal status (also catches teardown's forced-failed sweep on cancel).
+            // A terminal tool invalidates any still-open ask (also catches teardown's forced-failed
+            // sweep on cancel), producing the explicit resolution clients use for pending state.
             if (event.toolCall.status === 'completed' || event.toolCall.status === 'failed') {
-              for (const [requestId, ask] of session.pendingAsks) {
-                if (ask.toolCall.toolCallId === event.toolCall.toolCallId) {
-                  session.pendingAsks.delete(requestId);
-                }
-              }
+              this.cancelOpenAsks(sessionId, session, event.toolCall.toolCallId);
             }
             break;
           case 'model-update':
@@ -971,6 +1022,119 @@ export class Engine {
       throw new Error(`Session was closed while starting: ${sessionId}`);
     }
     this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+  }
+
+  private beginAskResponse(
+    sessionId: SessionId,
+    session: Session,
+    input: AskResponseInput,
+  ): AskEvent {
+    if (session.closed) throw new Error(`Session is closed: ${sessionId}`);
+    const ask = session.asks.get(input.requestId);
+    if (!ask) throw new Error(`Unknown interactive request: ${input.requestId}`);
+    if (ask.state === 'responding') {
+      throw new Error(`Response already in flight: ${input.requestId}`);
+    }
+    if (ask.state === 'resolved') {
+      throw new Error(`Interactive request already resolved: ${input.requestId}`);
+    }
+    validateAskResponse(ask.request, input);
+    session.asks.set(input.requestId, {
+      request: ask.request,
+      state: 'responding',
+      invalidated: false,
+    });
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent.event',
+        sessionId,
+        event: {
+          type: 'prompt-response-status',
+          requestId: input.requestId,
+          status: 'responding',
+        },
+      }),
+    );
+    return ask.request;
+  }
+
+  private restoreAsk(
+    sessionId: SessionId,
+    session: Session,
+    requestId: string,
+    request: AskEvent,
+  ): void {
+    if (session.closed) return;
+    const ask = session.asks.get(requestId);
+    if (ask?.state !== 'responding' || ask.request !== request) return;
+    if (ask.invalidated) {
+      const resolution = sessionCancellation(request);
+      session.asks.set(requestId, { request, state: 'resolved', resolution });
+      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: resolution }));
+      return;
+    }
+    session.asks.set(requestId, { request, state: 'open' });
+    this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: request }));
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent.event',
+        sessionId,
+        event: { type: 'prompt-response-status', requestId, status: 'open' },
+      }),
+    );
+  }
+
+  private resolveUserAsk(
+    sessionId: SessionId,
+    session: Session,
+    input: AskResponseInput,
+    request: AskEvent,
+  ): void {
+    // A session.stop/delete that raced the in-flight send has already cancelled every ask and
+    // broadcast the resolutions; the adapter accepted the answer, so the send stays successful.
+    if (session.closed) return;
+    const ask = session.asks.get(input.requestId);
+    if (ask?.state !== 'responding' || ask.request !== request) {
+      throw new Error(`Interactive request changed while responding: ${input.requestId}`);
+    }
+    const resolution = userResolution(input);
+    session.asks.set(input.requestId, { request, state: 'resolved', resolution });
+    this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: resolution }));
+  }
+
+  private cancelOpenAsks(sessionId: SessionId, session: Session, toolCallId?: string): void {
+    for (const [requestId, ask] of session.asks) {
+      if (toolCallId !== undefined && ask.request.toolCall.toolCallId !== toolCallId) continue;
+      if (ask.state === 'responding') {
+        session.asks.set(requestId, { ...ask, invalidated: true });
+      } else if (ask.state === 'open') {
+        const resolution = sessionCancellation(ask.request);
+        session.asks.set(requestId, { request: ask.request, state: 'resolved', resolution });
+        this.transport.send(
+          createWireMessage({ kind: 'agent.event', sessionId, event: resolution }),
+        );
+      }
+    }
+  }
+
+  private closeSessionInteractions(sessionId: SessionId, session: Session): void {
+    if (session.closed) return;
+    session.closed = true;
+    session.status = 'stopped';
+    session.turnInputActive = false;
+    for (const [requestId, ask] of session.asks) {
+      if (ask.state === 'resolved') continue;
+      const resolution = sessionCancellation(ask.request);
+      session.asks.set(requestId, { request: ask.request, state: 'resolved', resolution });
+      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: resolution }));
+    }
+    this.transport.send(
+      createWireMessage({
+        kind: 'agent.event',
+        sessionId,
+        event: { type: 'status', status: 'stopped' },
+      }),
+    );
   }
 
   private broadcastInputRejected(sessionId: SessionId, message: string): void {

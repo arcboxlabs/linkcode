@@ -128,12 +128,18 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
 ]);
 export type AgentInput = z.infer<typeof AgentInputSchema>;
 
+/** Who settled an interactive request: an explicit client reply, or session lifecycle teardown. */
+export const PromptResolutionSourceSchema = z.enum(['user', 'session']);
+export type PromptResolutionSource = z.infer<typeof PromptResolutionSourceSchema>;
+export const PromptResponseStatusSchema = z.enum(['open', 'responding']);
+export type PromptResponseStatus = z.infer<typeof PromptResponseStatusSchema>;
+
 // ── Downstream: agent → abstraction layer (normalized) → client ──────────────
 
 /**
  * Normalized agent event: the single downstream vocabulary every adapter emits and the front-end folds
- * into a conversation. The `permission-request` variant expects a matching reply via `AgentInput`,
- * correlated by `requestId`.
+ * into a conversation. Permission/question requests expect a matching reply via `AgentInput`; the
+ * host confirms settlement with the corresponding `*-resolved` event, correlated by `requestId`.
  */
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // ── User message: a complete, atomic message (not streamed) ──
@@ -231,6 +237,23 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   QuestionRequestSchema.extend({
     type: z.literal('question-request'),
     requestId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('prompt-response-status'),
+    requestId: z.string().min(1),
+    status: PromptResponseStatusSchema,
+  }),
+  z.object({
+    type: z.literal('permission-resolved'),
+    requestId: z.string().min(1),
+    outcome: PermissionOutcomeSchema,
+    source: PromptResolutionSourceSchema,
+  }),
+  z.object({
+    type: z.literal('question-resolved'),
+    requestId: z.string().min(1),
+    outcome: QuestionOutcomeSchema,
+    source: PromptResolutionSourceSchema,
   }),
 ]);
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
