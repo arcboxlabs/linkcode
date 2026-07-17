@@ -9,7 +9,6 @@ export function useStackScreenOptions(): StackScreenOptions {
   const [background, foreground, accent] = useThemeColor(['background', 'foreground', 'accent']);
   return {
     headerShown: false,
-    headerStyle: { backgroundColor: background },
     headerTintColor: accent,
     headerTitleStyle: { color: foreground },
     headerLargeTitleStyle: { color: foreground },
