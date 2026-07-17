@@ -86,12 +86,26 @@ export function diffStats(oldText: string | undefined, newText: string): DiffSta
   };
 }
 
+export type DiffToolCallContent = Extract<ToolCall['content'][number], { type: 'diff' }>;
+
+// diffStats runs an O(m×n) LCS; the builder replaces content objects instead of mutating them,
+// so object identity is a sound cache key across re-renders and re-folds.
+const diffContentStatsCache = new WeakMap<DiffToolCallContent, DiffStats>();
+
+export function diffContentStats(content: DiffToolCallContent): DiffStats {
+  const cached = diffContentStatsCache.get(content);
+  if (cached) return cached;
+  const stats = diffStats(content.oldText, content.newText);
+  diffContentStatsCache.set(content, stats);
+  return stats;
+}
+
 export function toolCallDiffStats(toolCall: Pick<ToolCall, 'content'>): DiffStats {
   let additions = 0;
   let deletions = 0;
   for (const content of toolCall.content) {
     if (content.type !== 'diff') continue;
-    const stats = diffStats(content.oldText, content.newText);
+    const stats = diffContentStats(content);
     additions += stats.additions;
     deletions += stats.deletions;
   }

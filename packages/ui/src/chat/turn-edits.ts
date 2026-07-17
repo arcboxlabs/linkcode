@@ -1,4 +1,4 @@
-import { diffStats } from './diff-utils';
+import { diffContentStats } from './diff-utils';
 import type { ConversationItem, ConversationTurnId } from './types';
 
 export interface TurnSegment<T extends ConversationItem = ConversationItem> {
@@ -18,6 +18,46 @@ export function splitTurnSegments<T extends ConversationItem>(
     else segments.push({ turnId: item.turnId, items: [item] });
   }
   return segments;
+}
+
+export interface TurnSegmentsSnapshot<T extends ConversationItem = ConversationItem> {
+  items: readonly T[];
+  segments: Array<TurnSegment<T>>;
+}
+
+/**
+ * Re-derive segments incrementally: the conversation builder replaces only changed items (the
+ * live tail), so every segment fully inside the shared item prefix is reused by reference —
+ * settled turns keep segment identity across events and memoized per-turn views skip them.
+ */
+export function advanceTurnSegments<T extends ConversationItem>(
+  prev: TurnSegmentsSnapshot<T> | null,
+  items: readonly T[],
+): Array<TurnSegment<T>> {
+  if (!prev) return splitTurnSegments(items);
+  if (prev.items === items) return prev.segments;
+
+  const shared = Math.min(prev.items.length, items.length);
+  let stable = 0;
+  while (stable < shared && prev.items[stable] === items[stable]) stable += 1;
+
+  const reused: Array<TurnSegment<T>> = [];
+  let covered = 0;
+  for (const segment of prev.segments) {
+    if (covered + segment.items.length > stable) break;
+    reused.push(segment);
+    covered += segment.items.length;
+  }
+  // The run at the cut may continue into the rebuilt suffix (same turnId); rebuild that segment
+  // from its start so the run stays one segment. Consecutive segments never share a turnId, so
+  // one step back suffices.
+  const boundary = reused.at(-1);
+  if (boundary && covered < items.length && items[covered].turnId === boundary.turnId) {
+    reused.pop();
+    covered -= boundary.items.length;
+  }
+  if (covered === items.length && reused.length === prev.segments.length) return prev.segments;
+  return [...reused, ...splitTurnSegments(items.slice(covered))];
 }
 
 export interface TurnFileEdit {
@@ -40,7 +80,7 @@ export function turnFileEdits(items: readonly ConversationItem[]): TurnEdits | n
     if (item.kind !== 'tool' || item.toolCall.status !== 'completed') continue;
     for (const content of item.toolCall.content) {
       if (content.type !== 'diff') continue;
-      const stats = diffStats(content.oldText, content.newText);
+      const stats = diffContentStats(content);
       const edit = byPath.get(content.path) ?? { path: content.path, additions: 0, deletions: 0 };
       edit.additions += stats.additions;
       edit.deletions += stats.deletions;

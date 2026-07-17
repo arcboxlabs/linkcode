@@ -1,6 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { splitTurnSegments, turnFileEdits } from '../chat/turn-edits';
+import { advanceTurnSegments, splitTurnSegments, turnFileEdits } from '../chat/turn-edits';
 import type { ConversationItem } from '../chat/types';
 
 function user(turnId: string | null, id: string): ConversationItem {
@@ -71,5 +71,78 @@ describe('turn edit selectors', () => {
       ]),
     ).toBeNull();
     expect(turnFileEdits([tool('turn-1', 'no-diff', 'completed')])).toBeNull();
+  });
+});
+
+describe('advanceTurnSegments', () => {
+  const u1 = user('turn-1', 'u1');
+  const t1 = tool('turn-1', 't1', 'completed');
+  const u2 = user('turn-2', 'u2');
+  const t2 = tool('turn-2', 't2', 'in_progress');
+
+  it('matches splitTurnSegments without a previous snapshot', () => {
+    expect(advanceTurnSegments(null, [u1, t1, u2])).toEqual(splitTurnSegments([u1, t1, u2]));
+  });
+
+  it('returns the previous segments array for identical items', () => {
+    const items = [u1, t1, u2];
+    const segments = advanceTurnSegments(null, items);
+    expect(advanceTurnSegments({ items, segments }, items)).toBe(segments);
+  });
+
+  it('keeps the segments array identity when a new items array has unchanged references', () => {
+    const items = [u1, t1, u2, t2];
+    const segments = advanceTurnSegments(null, items);
+    expect(advanceTurnSegments({ items, segments }, [...items])).toBe(segments);
+  });
+
+  it('reuses settled segment objects when the active turn grows', () => {
+    const items = [u1, t1, u2];
+    const segments = advanceTurnSegments(null, items);
+    const next = [u1, t1, u2, t2];
+    const advanced = advanceTurnSegments({ items, segments }, next);
+
+    expect(advanced).toEqual(splitTurnSegments(next));
+    expect(advanced[0]).toBe(segments[0]);
+    expect(advanced[1]).not.toBe(segments[1]);
+  });
+
+  it('rebuilds the boundary segment when a new turn opens', () => {
+    const items = [u1, t1];
+    const segments = advanceTurnSegments(null, items);
+    const next = [u1, t1, u2, t2];
+    const advanced = advanceTurnSegments({ items, segments }, next);
+
+    expect(advanced).toEqual(splitTurnSegments(next));
+    expect(advanced[0]).toBe(segments[0]);
+  });
+
+  it('reuses segments below an in-place item replacement and rebuilds from it', () => {
+    const t2Done = tool('turn-2', 't2', 'completed');
+    const items = [u1, t1, u2, t2];
+    const segments = advanceTurnSegments(null, items);
+    const next = [u1, t1, u2, t2Done];
+    const advanced = advanceTurnSegments({ items, segments }, next);
+
+    expect(advanced).toEqual(splitTurnSegments(next));
+    expect(advanced[0]).toBe(segments[0]);
+    expect(advanced[1]).not.toBe(segments[1]);
+  });
+
+  it('rebuilds everything for an unrelated timeline', () => {
+    const items = [u1, t1];
+    const segments = advanceTurnSegments(null, items);
+    const other = [user('turn-9', 'u9')];
+
+    expect(advanceTurnSegments({ items, segments }, other)).toEqual(splitTurnSegments(other));
+  });
+
+  it('handles a shrunken timeline (items removed from the tail)', () => {
+    const items = [u1, t1, u2, t2];
+    const segments = advanceTurnSegments(null, items);
+    const next = [u1, t1];
+    const advanced = advanceTurnSegments({ items, segments }, next);
+
+    expect(advanced).toEqual(splitTurnSegments(next));
   });
 });
