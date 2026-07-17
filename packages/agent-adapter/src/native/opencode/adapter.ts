@@ -8,6 +8,7 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  ApprovalPolicy,
   ContentBlock,
   PermissionOption,
   Question,
@@ -15,6 +16,7 @@ import type {
 } from '@linkcode/schema';
 import type { Event, FilePartInput, Part, TextPartInput } from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { invariant } from 'foxts/guard';
 import { falseFn } from 'foxts/noop';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
@@ -86,6 +88,15 @@ function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T
   throw new Error(`${context} failed: ${detail}`);
 }
 
+/** Split a `providerID/modelID` model string; undefined for anything else — opencode model refs
+ * are always provider-scoped, a bare id has no provider to route by. */
+function parseModelRef(model: string): { providerID: string; modelID: string } | undefined {
+  const [providerID, ...rest] = model.split('/');
+  const modelID = rest.join('/');
+  if (!providerID || !modelID) return undefined;
+  return { providerID, modelID };
+}
+
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
 type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['client'];
 
@@ -143,8 +154,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * `message.updated {role:'user'}` precedes its parts), and replaying that text would
    * double-render the prompt as an agent bubble. Cleared at each turn settle. */
   private readonly userMessageIds = new Set<string>();
-  /** Cached result of `resolveShellAgent` — resolved lazily, once, on first shell command. */
-  private shellAgent: string | null = null;
+  /** Provider the spawn-time credential injection scoped to (null = nothing injected): the only
+   * provider a mid-session set-model may target while a per-account credential is in play. */
+  private credentialProviderId: string | null = null;
+  /** The opencode agent (build/plan/custom) surfaced as the approval-policy axis (CODE-224): the
+   * pick rides every subsequent prompt/command as the `agent` field — next-turn semantics, an
+   * in-flight turn keeps the agent it started with. Null until `adoptAgentCatalog` resolves. */
+  private currentAgent: string | null = null;
+  /** Selectable agents advertised as approval policies — empty when discovery failed or returned
+   * nothing, which keeps the axis hidden client-side (empty list = no selector, see schema). */
+  private agentPolicies: ApprovalPolicy[] = [];
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
@@ -162,6 +181,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       providerID && (options.apiKey || options.baseURL)
         ? { config: { provider: { [providerID]: { options } } } }
         : undefined;
+    // The injection is spawn-time-only: remember which provider it scoped to so a later
+    // set-model can refuse a cross-provider switch the running server holds no credentials for.
+    this.credentialProviderId = serverOptions ? (providerID ?? null) : null;
     try {
       started = await mod.createOpencode(serverOptions);
     } catch (err) {
@@ -171,6 +193,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     this.client = started.client;
     this.closeServer = () => started.server.close();
+    let resumedAgent: string | null = null;
     if (this.resumeFrom) {
       // Adopt the existing provider session instead of creating one, and announce its id right
       // away — a resumed session's transcript is real, so the seed read is safe immediately
@@ -181,6 +204,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
       this.sessionId = got.data.id;
       this.directory = got.data.directory;
+      // A resumed session continues under its recorded control state unless the caller overrode
+      // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
+      // fields update after every turn), so the next turn resends what the session last ran with.
+      if (!opts.model && got.data.model) {
+        opts.model = `${got.data.model.providerID}/${got.data.model.id}`;
+      }
+      resumedAgent = got.data.agent ?? null;
       this.emitSessionRef(asHistoryId(got.data.id));
     } else {
       const created = okOrThrow(
@@ -192,9 +222,20 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.sessionId = id;
       this.directory = opts.cwd;
     }
-    // Catalog fetch is best-effort: there is no SSE event for catalog changes (poll-only), and a
-    // failed list must not fail session start — catalog absence is itself a capability signal (no
-    // `available-commands-update` ever fires for this session).
+    // Both catalog fetches are best-effort: neither has an SSE change event (poll-only), and a
+    // failed list must not fail session start — absence is itself the capability signal (no
+    // `available-commands-update` / approval-policy state ever fires for this session). They are
+    // independent reads of the same local server, so they run concurrently.
+    await Promise.all([this.fetchCommandCatalog(), this.fetchAgentCatalog(resumedAgent)]);
+    // Reflect the model the session will prompt with (configured, or adopted from the resumed
+    // session above) so the client chip is right before the first turn.
+    if (opts.model) this.emitModel(opts.model);
+    void this.consumeEvents();
+  }
+
+  /** Best-effort slash-command catalog fetch — swallows every failure (see `onStart`). */
+  private async fetchCommandCatalog(): Promise<void> {
+    if (!this.client) return;
     try {
       const listed = await this.client.command.list({ directory: this.directory });
       if (listed.error === undefined && listed.data.length > 0) {
@@ -209,9 +250,19 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         );
       }
     } catch {
-      // Non-fatal — see comment above.
+      // Non-fatal — see onStart.
     }
-    void this.consumeEvents();
+  }
+
+  /** Best-effort agent catalog fetch — swallows every failure (see `onStart`). */
+  private async fetchAgentCatalog(resumedAgent: string | null): Promise<void> {
+    if (!this.client) return;
+    try {
+      const agents = await this.client.app.agents({ directory: this.directory });
+      if (agents.error === undefined) this.adoptAgentCatalog(agents.data, resumedAgent);
+    } catch {
+      // Non-fatal — see onStart.
+    }
   }
 
   /** Turn-state setup shared by every turn-initiating input (prompt / command / shell command):
@@ -250,6 +301,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       sessionID: this.sessionId,
       directory: this.directory,
       model: this.model(),
+      agent: this.currentAgent ?? undefined,
       parts,
     });
     if (result.error !== undefined) {
@@ -276,6 +328,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         command: name,
         arguments: args ?? '',
         model: this.opts?.model,
+        agent: this.currentAgent ?? undefined,
       })
       .then((result) => {
         if (result.error === undefined) return;
@@ -335,25 +388,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       });
   }
 
-  /** Resolves (and caches) the agent name `session.shell` runs under: the session's current primary
-   * agent, mirroring the upstream TUI's own shell dispatch. Fallback chain on any failure to read the
-   * catalog — no primary found, an empty catalog, or the RPC itself failing — bottoms out at
+  /** Resolves the agent name `session.shell` runs under: the session's currently selected agent
+   * (the approval-policy pick), mirroring the upstream TUI's own shell dispatch under the current
+   * primary agent. When the start-time catalog fetch failed, retry it here — a late success also
+   * re-arms the approval-policy axis (`adoptAgentCatalog` emits the state). Bottoms out at
    * `'build'`, opencode's config-defined default primary agent (not a protocol constant). */
   private async resolveShellAgent(): Promise<string> {
-    if (this.shellAgent) return this.shellAgent;
-    let agents: Array<{ name: string; mode: string }> = [];
-    try {
-      if (this.client) {
-        const result = await this.client.app.agents({ directory: this.directory });
-        if (result.error === undefined) agents = result.data;
-      }
-    } catch {
-      // Falls through to the literal default below.
-    }
-    const resolved =
-      agents.find((a) => a.mode === 'primary')?.name ?? agents.at(0)?.name ?? 'build';
-    this.shellAgent = resolved;
-    return resolved;
+    if (!this.currentAgent) await this.fetchAgentCatalog(null);
+    return this.currentAgent ?? 'build';
   }
 
   protected override async onCancel(): Promise<void> {
@@ -494,19 +536,82 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return this.historyServer().withServer((baseUrl) => fn(mod.createOpencodeClient({ baseUrl })));
   }
 
-  // No onSetModel override: like claude-code's persistent Query (BaseAgentAdapter#onSetModel calls
-  // Query#setModel()), opencode's this.model() also re-derives from this.opts?.model fresh every
-  // onPrompt call — the mechanism looks live-switchable — but this has not been verified against a
-  // real provider yet (claude-code's own "looks live-switchable from reading the code" turned out
-  // wrong the first time, before it moved off the single-message + resume design that silently
-  // ignored the override). Falls back to the base class's reject until someone verifies it live.
+  /** Model switching (CODE-224): stored and resent on the next `session.promptAsync` /
+   * `session.command` — `model()` re-derives from `opts.model` fresh every turn, so this is a
+   * pure store-then-emit like codex. Next-turn semantics; nothing can alter an in-flight turn.
+   * Live-verified on binary 1.18.2 × SDK 1.17.18: a mid-session model change routes the very
+   * next turn (assistant `providerID`/`modelID` readback), and no switched/ack event fires on
+   * the legacy bus — the immediate reflect below is the only confirmation channel there is. */
+  protected override onSetModel(model: string): Promise<void> {
+    invariant(this.opts, 'opencode: session not started');
+    const parsed = parseModelRef(model);
+    if (!parsed) {
+      // Storing an unparseable ref would emit a "successful" model-update while every following
+      // prompt silently omits the model field and keeps running on the previous one.
+      return Promise.reject(
+        new Error(`opencode: model must be 'providerID/modelID' (got '${model}')`),
+      );
+    }
+    // The per-account credential is injected for exactly one provider at server spawn; the
+    // running server holds no credentials for any other, so a cross-provider switch would strand
+    // the next turn on an auth failure after the UI already reported the switch as successful.
+    if (this.credentialProviderId && parsed.providerID !== this.credentialProviderId) {
+      return Promise.reject(
+        new Error(
+          `opencode: the session's server holds credentials for '${this.credentialProviderId}' only — start a new session to use provider '${parsed.providerID}'`,
+        ),
+      );
+    }
+    this.opts.model = model;
+    // Reflect the pick now; it applies from the next prompt.
+    this.emitModel(model);
+    return Promise.resolve();
+  }
+
+  /** Approval-policy axis = opencode's agent axis (CODE-224): the selectable agents advertised by
+   * `adoptAgentCatalog` are the policies, and the pick rides the next prompt/command as the
+   * `agent` field. The permission posture itself stays config-driven (CODE-136) — this axis picks
+   * which agent persona (each carrying its own permission ruleset, e.g. read-only `plan`) runs
+   * the following turns. Live-verified on binary 1.18.2 × SDK 1.17.18: a mid-session `agent`
+   * change applies to the very next turn (assistant `agent`/`mode` readback both flip). */
+  protected override onSetApprovalPolicy(policyId: string): Promise<void> {
+    if (!this.agentPolicies.some((policy) => policy.policyId === policyId)) {
+      return Promise.reject(new Error(`opencode: unknown approval policy '${policyId}'`));
+    }
+    this.currentAgent = policyId;
+    this.emitApprovalPolicy({ availablePolicies: this.agentPolicies, currentPolicyId: policyId });
+    return Promise.resolve();
+  }
+
+  /** Surface opencode's selectable agents (`primary`/`all`, non-hidden — subagents are spawn
+   * targets, not personas a user runs a turn under) as the approval-policy axis. Default mirrors
+   * the upstream TUI: the first primary agent, else the first selectable; a resumed session's
+   * recorded agent wins while it is still selectable. Nothing selectable → the axis stays hidden
+   * (an empty `availablePolicies` is never emitted). */
+  private adoptAgentCatalog(
+    agents: ReadonlyArray<{ name: string; mode: string; hidden?: boolean; description?: string }>,
+    resumedAgent: string | null,
+  ): void {
+    const selectable = agents.filter(
+      (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
+    );
+    const fallback = selectable.find((agent) => agent.mode === 'primary') ?? selectable.at(0);
+    if (!fallback) return;
+    const current =
+      resumedAgent && selectable.some((agent) => agent.name === resumedAgent)
+        ? resumedAgent
+        : fallback.name;
+    this.currentAgent = current;
+    this.agentPolicies = selectable.map((agent) => ({
+      policyId: agent.name,
+      name: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
+      ...(agent.description && { description: agent.description }),
+    }));
+    this.emitApprovalPolicy({ availablePolicies: this.agentPolicies, currentPolicyId: current });
+  }
 
   private model(): { providerID: string; modelID: string } | undefined {
-    const m = this.opts?.model;
-    if (!m) return undefined;
-    const [providerID, ...rest] = m.split('/');
-    if (!providerID || rest.length === 0) return undefined;
-    return { providerID, modelID: rest.join('/') };
+    return this.opts?.model ? parseModelRef(this.opts.model) : undefined;
   }
 
   /** Runs for the whole session, dispatching every SSE event the OpenCode server pushes over the
