@@ -81,6 +81,38 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].event).toMatchObject({ type: 'user-message' });
   });
 
+  it('keeps a real prompt that begins with a marker when its event_msg echo pairs it', () => {
+    const pasted = '# AGENTS.md instructions for /repo — why does codex inject this?';
+    const events = mapCodexHistoryEvents(HID, [
+      // Real prompts are echoed as event_msg/user_message; injected rows never are.
+      { type: 'event_msg', payload: { type: 'user_message', message: pasted } },
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: pasted }],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>',
+          },
+          {
+            type: 'input_text',
+            text: '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>',
+          },
+        ],
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toMatchObject({ type: 'user-message' });
+    if (events[0].event.type === 'user-message') {
+      expect(events[0].event.content).toEqual([{ type: 'text', text: pasted }]);
+    }
+  });
+
   it('replays exec_command like the live commandExecution item: command title, unwrapped output', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({

@@ -48,13 +48,31 @@ export function isSyntheticCodexUserText(text: string): boolean {
 
 /** codex 0.144 glues AGENTS.md and `<environment_context>` into ONE user row as separate content
  * parts, so the row is machine-injected when ANY part carries a marker — checking only the joined
- * text would miss every part after the first. */
-export function isSyntheticCodexUserPayload(payload: JsonRecord): boolean {
+ * text would miss every part after the first. Markers alone can false-positive on a pasted prompt,
+ * so a row whose part is echoed as an `event_msg`/`user_message` (real prompts always are, both
+ * TUI- and app-server-written; injected rows never are) is rescued. Rollouts without event_msg
+ * rows degrade to marker-only. */
+export function isSyntheticCodexUserPayload(
+  payload: JsonRecord,
+  realPromptTexts?: ReadonlySet<string>,
+): boolean {
   const content = payload.content;
-  if (Array.isArray(content)) {
-    return content.some((part) => isSyntheticCodexUserText(textFromUnknown(part)));
+  const texts = (Array.isArray(content) ? content : [payload]).map((part) => textFromUnknown(part));
+  if (!texts.some((text) => isSyntheticCodexUserText(text))) return false;
+  return !realPromptTexts || !texts.some((text) => realPromptTexts.has(text));
+}
+
+/** The texts codex echoed as `event_msg`/`user_message` rows — the real prompts of the rollout. */
+export function collectCodexPromptTexts(rows: JsonRecord[]): Set<string> {
+  const texts = new Set<string>();
+  for (const row of rows) {
+    if (stringField(row, 'type') !== 'event_msg') continue;
+    const payload = recordField(row, 'payload');
+    if (!payload || stringField(payload, 'type') !== 'user_message') continue;
+    const message = stringField(payload, 'message');
+    if (message) texts.add(message);
   }
-  return isSyntheticCodexUserText(textFromUnknown(payload));
+  return texts;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -166,6 +184,7 @@ async function readCodexTranscriptSummary(
 ): Promise<CodexTranscriptSummary | undefined> {
   const [rows, fileStat] = await Promise.all([readJsonlFile(path), statOrUndefined(path)]);
   if (rows.length === 0) return undefined;
+  const promptTexts = collectCodexPromptTexts(rows);
 
   let id: string | undefined;
   let cwd: string | undefined;
@@ -218,7 +237,7 @@ async function readCodexTranscriptSummary(
         if (role !== 'user' && role !== 'assistant') continue;
         const text = textFromUnknown(payload);
         if (text.trim().length === 0) continue;
-        if (role === 'user' && isSyntheticCodexUserPayload(payload)) continue;
+        if (role === 'user' && isSyntheticCodexUserPayload(payload, promptTexts)) continue;
         messageCount += 1;
         if (role === 'user') firstUserText ??= previewText(text);
         else firstAssistantText ??= previewText(text);
@@ -318,6 +337,7 @@ export function mapCodexHistoryEvents(
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
   const announced = new Map<string, ToolCall>();
+  const promptTexts = collectCodexPromptTexts(rows);
   /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
   const planCalls = new Set<string>();
 
@@ -355,7 +375,7 @@ export function mapCodexHistoryEvents(
 
     const role = stringField(payload, 'role');
     if (role !== 'user' && role !== 'assistant') return;
-    if (role === 'user' && isSyntheticCodexUserPayload(payload)) return;
+    if (role === 'user' && isSyntheticCodexUserPayload(payload, promptTexts)) return;
     const itemId =
       stringField(payload, 'id') ?? stringField(row, 'id') ?? `${role}-${index.toString(36)}`;
     const event = textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));
