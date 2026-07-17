@@ -165,6 +165,7 @@ function harness(
   store: SessionStore = new InMemorySessionStore(),
   makeAdapter: () => FakeAdapter = () => new FakeAdapter(),
   collectAgentRuntimes?: () => Promise<AgentRuntimes>,
+  agentRuntimesReady?: Promise<AgentRuntimes>,
 ) {
   const sent: WirePayload[] = [];
   let handler: ((msg: WireMessage) => void) | null = null;
@@ -186,7 +187,12 @@ function harness(
     adapters.push(adapter);
     return adapter;
   };
-  const engine = new Engine(transport, { factory, sessionStore: store, collectAgentRuntimes });
+  const engine = new Engine(transport, {
+    factory,
+    sessionStore: store,
+    collectAgentRuntimes,
+    agentRuntimesReady,
+  });
 
   async function inject(payload: WirePayload): Promise<void> {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
@@ -1378,5 +1384,66 @@ describe('auth-failure re-probe', () => {
     adapter.emit({ type: 'error', message: 'boom', recoverable: true });
     await tick();
     expect(collect).toHaveBeenCalledOnce();
+  });
+});
+
+describe('boot probe gating (CODE-225)', () => {
+  it('holds a live session start until the boot probe lands', async () => {
+    let resolveProbe!: (runtimes: AgentRuntimes) => void;
+    const ready = new Promise<AgentRuntimes>((resolve) => {
+      resolveProbe = resolve;
+    });
+    const { engine, sent, inject, adapters } = harness(undefined, undefined, undefined, ready);
+    await engine.start();
+
+    await inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    // Registered but not started: spawn-path resolution reads the probe's detection state.
+    expect(adapters).toHaveLength(1);
+    expect(adapters[0].startedWith).toBeNull();
+    expect(sent.filter((p) => p.kind === 'session.started')).toEqual([]);
+
+    resolveProbe({ pi: { status: 'available', source: 'builtin' } });
+    await tick();
+    expect(adapters[0].startedWith).not.toBeNull();
+    expect(startedId(sent, 'r1')).toBeTruthy();
+  });
+
+  it('a session deleted while waiting for the probe is not resurrected by the pending start', async () => {
+    const store = new InMemorySessionStore();
+    // Cold record made under an engine with no pending probe.
+    const warm = harness(store);
+    await warm.engine.start();
+    await warm.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(warm.sent, 'r1');
+    await warm.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    let resolveProbe!: (runtimes: AgentRuntimes) => void;
+    const ready = new Promise<AgentRuntimes>((resolve) => {
+      resolveProbe = resolve;
+    });
+    const cold = harness(store, undefined, undefined, ready);
+    await cold.engine.start();
+
+    await cold.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+    await cold.inject({ kind: 'session.delete', clientReqId: 'r4', sessionId });
+    expect(cold.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'r4' });
+
+    resolveProbe({ pi: { status: 'available', source: 'builtin' } });
+    await tick();
+    const failed = cold.sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r3');
+    if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r3');
+    expect(failed.message).toContain('closed while starting');
+    expect(cold.sent.filter((p) => p.kind === 'session.started' && p.replyTo === 'r3')).toEqual([]);
+    expect(await store.load()).toEqual([]);
+    expect(cold.adapters[0].startedWith).toBeNull();
+    expect(cold.adapters[0].stopped).toBe(true);
   });
 });
