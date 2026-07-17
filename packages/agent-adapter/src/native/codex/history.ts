@@ -27,13 +27,34 @@ import { codexToolAnnounce, codexToolSettle } from './history-tools';
 const WHITESPACE_RUN_RE = /\s+/g;
 
 /** Codex persists machine-injected context as ordinary user-role messages recognizable only by
- * their wrapper tag; they must not replay as user bubbles or become a title preview. Match the
- * known tags exactly — a real user message could begin with `<` too. */
-const SYNTHETIC_USER_TAGS = ['<environment_context>', '<user_instructions>', '<turn_aborted>'];
+ * their leading marker; they must not replay as user bubbles or become a title preview. The XML
+ * wrappers are the pre-0.14x shapes; codex 0.144 heads the AGENTS.md part with the prose markers
+ * instead (all verbatim in the 0.144.1 binary). Match markers exactly — a real user message could
+ * begin with `<` or `#` too. */
+const SYNTHETIC_USER_MARKERS = [
+  '<environment_context>',
+  '<user_instructions>',
+  '<turn_aborted>',
+  '<apps_instructions>',
+  '# AGENTS.md instructions',
+  'These AGENTS.md instructions replace all previously provided AGENTS.md instructions.',
+  'The previously provided AGENTS.md instructions no longer apply.',
+];
 
 export function isSyntheticCodexUserText(text: string): boolean {
   const trimmed = text.trimStart();
-  return SYNTHETIC_USER_TAGS.some((tag) => trimmed.startsWith(tag));
+  return SYNTHETIC_USER_MARKERS.some((marker) => trimmed.startsWith(marker));
+}
+
+/** codex 0.144 glues AGENTS.md and `<environment_context>` into ONE user row as separate content
+ * parts, so the row is machine-injected when ANY part carries a marker — checking only the joined
+ * text would miss every part after the first. */
+export function isSyntheticCodexUserPayload(payload: JsonRecord): boolean {
+  const content = payload.content;
+  if (Array.isArray(content)) {
+    return content.some((part) => isSyntheticCodexUserText(textFromUnknown(part)));
+  }
+  return isSyntheticCodexUserText(textFromUnknown(payload));
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -197,7 +218,7 @@ async function readCodexTranscriptSummary(
         if (role !== 'user' && role !== 'assistant') continue;
         const text = textFromUnknown(payload);
         if (text.trim().length === 0) continue;
-        if (role === 'user' && isSyntheticCodexUserText(text)) continue;
+        if (role === 'user' && isSyntheticCodexUserPayload(payload)) continue;
         messageCount += 1;
         if (role === 'user') firstUserText ??= previewText(text);
         else firstAssistantText ??= previewText(text);
@@ -334,7 +355,7 @@ export function mapCodexHistoryEvents(
 
     const role = stringField(payload, 'role');
     if (role !== 'user' && role !== 'assistant') return;
-    if (role === 'user' && isSyntheticCodexUserText(textFromUnknown(payload))) return;
+    if (role === 'user' && isSyntheticCodexUserPayload(payload)) return;
     const itemId =
       stringField(payload, 'id') ?? stringField(row, 'id') ?? `${role}-${index.toString(36)}`;
     const event = textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));

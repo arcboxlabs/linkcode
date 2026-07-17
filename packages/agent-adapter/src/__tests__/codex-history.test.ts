@@ -43,6 +43,44 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].ts).toBe(Date.parse('2026-07-01T00:00:00Z'));
   });
 
+  it('drops the 0.144 injection row: AGENTS.md prose part glued to <environment_context> (CODE-235)', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      // codex 0.144 dropped the <user_instructions> wrapper: one user row, two content parts.
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '# AGENTS.md instructions for C:\\Users\\flynn\\Desktop\\yose-chat\n\n<INSTRUCTIONS>\nimmer + combine 是标准组合\n</INSTRUCTIONS>',
+          },
+          {
+            type: 'input_text',
+            text: '<environment_context>\n  <cwd>C:\\Users\\flynn\\Desktop\\yose-chat</cwd>\n  <shell>powershell</shell>\n</environment_context>',
+          },
+        ],
+      }),
+      // A mid-session AGENTS.md change re-injects with a replacement preamble, no env part.
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: 'These AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\n# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>',
+          },
+        ],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: '介绍一下这个项目' }],
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toMatchObject({ type: 'user-message' });
+  });
+
   it('replays exec_command like the live commandExecution item: command title, unwrapped output', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
