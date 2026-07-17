@@ -19,6 +19,7 @@ import type {
   ApprovalPolicy,
   ApprovalPolicyState,
   ContentBlock,
+  EffortLevel,
   StartOptions,
   StopReason,
   ToolKind,
@@ -44,6 +45,20 @@ import {
 import { createPiUiContext } from './ui-bridge';
 
 type PiModel = NonNullable<CreateAgentSessionOptions['model']>;
+type PiModelRegistry = NonNullable<CreateAgentSessionOptions['modelRegistry']>;
+
+/** The EffortLevel ∩ pi ThinkingLevel intersection: pi's 'off'/'minimal' have no EffortLevel
+ * representation, and 'max'/'ultracode' are claude-only concepts pi rejects. */
+type PiEffort = 'low' | 'medium' | 'high' | 'xhigh';
+const PI_EFFORTS = new Set<string>(['low', 'medium', 'high', 'xhigh'] satisfies PiEffort[]);
+
+function isPiEffort(effort: string): effort is PiEffort {
+  return PI_EFFORTS.has(effort);
+}
+
+function effortFromThinkingLevel(level: string): PiEffort | null {
+  return isPiEffort(level) ? level : null;
+}
 
 /**
  * The approval-policy axis pi advertises — the shared tier ids mapped onto an adapter-local
@@ -110,6 +125,10 @@ export class PiAdapter extends BaseAgentAdapter {
   private policyId: PiPolicyId = INITIAL_POLICY_ID;
   /** Tool names granted "always allow" for this session (an `allow_always` permission reply). */
   private readonly sessionAllowedTools = new Set<string>();
+  private modelRegistry: PiModelRegistry | null = null;
+  /** Set when a per-account credential was injected at start — the injection is start-time-only
+   * and scoped to one provider, so live model switches must stay inside it (opencode parity). */
+  private credentialProviderId: string | null = null;
 
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     return listPiHistory(await importPiSdk(), opts);
@@ -165,7 +184,7 @@ export class PiAdapter extends BaseAgentAdapter {
     const provider = model?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
     const cred = readAgentCredential(opts.config);
     const key = cred.apiKey ?? cred.authToken;
-    if (provider) {
+    if (provider && (key || cred.baseUrl)) {
       if (key) authStorage.setRuntimeApiKey(provider, key);
       if (cred.baseUrl) {
         modelRegistry.registerProvider(provider, {
@@ -173,7 +192,9 @@ export class PiAdapter extends BaseAgentAdapter {
           ...(key && { apiKey: key }),
         });
       }
+      this.credentialProviderId = provider;
     }
+    this.modelRegistry = modelRegistry;
 
     // A resumed session runs in its own recorded cwd, not the caller's.
     const cwd = sessionManager?.getCwd() ?? opts.cwd;
@@ -200,6 +221,12 @@ export class PiAdapter extends BaseAgentAdapter {
     });
     this.session = session;
     this.emitApprovalPolicy(this.approvalPolicyState());
+    // Dynamic catalog (CODE-226 contract): pi's model set is whatever the user's auth.json (or
+    // the injected credential) unlocks — install-dependent, so the composer gets it from here.
+    this.emitModelCatalog(modelRegistry);
+    if (session.model) this.emitModel(`${session.model.provider}/${session.model.id}`);
+    const effort = effortFromThinkingLevel(session.thinkingLevel);
+    if (effort) this.emitEffort(effort);
     if (modelFallbackMessage) this.emitError(`pi: ${modelFallbackMessage}`);
     // A resumed transcript is real, so announcing immediately is safe; fresh sessions defer the
     // announce to the first agent_start (see handleEvent) so a client seed never reads an empty
@@ -249,6 +276,49 @@ export class PiAdapter extends BaseAgentAdapter {
     }
   }
 
+  protected override async onSetModel(model: string): Promise<void> {
+    const { session, modelRegistry } = this;
+    invariant(session, 'pi: session not started');
+    invariant(modelRegistry, 'pi: session not started');
+    const [provider, ...rest] = model.split('/');
+    const modelId = rest.join('/');
+    if (!provider || !modelId) {
+      throw new Error(`pi: model must be 'provider/modelId' (got '${model}')`);
+    }
+    if (this.credentialProviderId && provider !== this.credentialProviderId) {
+      throw new Error(
+        `pi: this session's credential is scoped to '${this.credentialProviderId}' — start a new session to use provider '${provider}'`,
+      );
+    }
+    const found = modelRegistry.find(provider, modelId);
+    if (!found) throw new Error(`pi: unknown model '${model}'`);
+    // Live switch, applied from the next turn; throws when no auth is configured for the model.
+    await session.setModel(found);
+    this.emitModel(model);
+    // setModel re-clamps the thinking level to the new model's capabilities; reflect the result.
+    const effort = effortFromThinkingLevel(session.thinkingLevel);
+    if (effort) this.emitEffort(effort);
+  }
+
+  protected override onSetEffort(effort: EffortLevel): Promise<void> {
+    const { session } = this;
+    invariant(session, 'pi: session not started');
+    if (!isPiEffort(effort)) {
+      return Promise.reject(new Error(`pi: effort '${effort}' is not supported (low–xhigh only)`));
+    }
+    if (!session.supportsThinking()) {
+      return Promise.reject(
+        new Error('pi: the current model does not support a reasoning-effort level'),
+      );
+    }
+    // Synchronous live switch; the SDK clamps to the model's supported levels, so reflect the
+    // readback rather than the request.
+    session.setThinkingLevel(effort);
+    const applied = effortFromThinkingLevel(session.thinkingLevel);
+    if (applied) this.emitEffort(applied);
+    return Promise.resolve();
+  }
+
   protected override onSetApprovalPolicy(policyId: string): Promise<void> {
     if (!isPiPolicyId(policyId)) {
       return Promise.reject(new Error(`pi: unknown approval policy '${policyId}'`));
@@ -275,6 +345,20 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private approvalPolicyState(): ApprovalPolicyState {
     return { availablePolicies: [...APPROVAL_POLICIES], currentPolicyId: this.policyId };
+  }
+
+  private emitModelCatalog(registry: PiModelRegistry): void {
+    const models = this.credentialProviderId
+      ? registry.getAvailable().filter((m) => m.provider === this.credentialProviderId)
+      : registry.getAvailable();
+    if (models.length === 0) return;
+    this.emitModels(
+      models.map((m) => ({
+        id: `${m.provider}/${m.id}`,
+        label: m.name ?? m.id,
+        description: `${m.provider}/${m.id}`,
+      })),
+    );
   }
 
   private registerApprovalGate(ext: ExtensionAPI): void {
@@ -368,6 +452,12 @@ export class PiAdapter extends BaseAgentAdapter {
           rawOutput: ev.result,
         });
         break;
+      case 'thinking_level_changed': {
+        // Covers changes we didn't initiate (an extension, or a clamp after a model switch).
+        const effort = effortFromThinkingLevel(ev.level);
+        if (effort) this.emitEffort(effort);
+        break;
+      }
       default:
         break;
     }

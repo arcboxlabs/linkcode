@@ -12,8 +12,18 @@ export interface EffortOption {
  * process and resumes in place (entering and leaving — the startup flag outranks flag-settings);
  * `ultracode` needs dynamic workflows enabled, else the pick is rejected and the selector keeps
  * the previous level.
- * codex: exactly these four (`minimal` isn't in our EffortLevel vocabulary; `max`/`ultracode` are
- * claude-only and rejected); switches apply from the next turn, not mid-turn.
+ *
+ * codex supports exactly these four levels (its `model/list` advertises low–xhigh for every
+ * model; `minimal` exists in codex config but not in our EffortLevel vocabulary, and
+ * `max`/`ultracode` are claude-only concepts the codex adapter rejects). Switching rides the
+ * next `turn/start`'s `effort` override — applies from the next turn, not mid-turn. Verified
+ * live per level by reading `collaboration_mode.settings.reasoning_effort` back from the
+ * rollout's `turn_context` rows.
+ *
+ * pi maps these four onto its in-process `setThinkingLevel` (a synchronous live switch, applies
+ * from the next turn; verified via SDK readback on 0.80.6). pi's extra `off`/`minimal` levels
+ * have no EffortLevel representation and stay unreachable from this picker; the adapter reflects
+ * the SDK's clamp readback when a model supports fewer levels.
  */
 export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = {
   'claude-code': [
@@ -35,5 +45,11 @@ export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = 
     { id: 'low', label: 'Low' },
     { id: 'medium', label: 'Medium' },
     { id: 'high', label: 'High' },
+  ],
+  pi: [
+    { id: 'low', label: 'Low' },
+    { id: 'medium', label: 'Medium' },
+    { id: 'high', label: 'High' },
+    { id: 'xhigh', label: 'xHigh' },
   ],
 };
