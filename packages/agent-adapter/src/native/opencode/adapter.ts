@@ -1,5 +1,6 @@
 import { realpath } from 'node:fs/promises';
 import { parse, sep } from 'node:path';
+import { allocatePort } from '@linkcode/common/node';
 import type {
   AgentCommand,
   AgentHistoryCapabilities,
@@ -186,7 +187,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // set-model can refuse a cross-provider switch the running server holds no credentials for.
     this.credentialProviderId = serverOptions ? (providerID ?? null) : null;
     try {
-      started = await mod.createOpencode(serverOptions);
+      // The SDK's server port is a FIXED default of 4096 (opencode's own `--port=0` does not
+      // auto-allocate either), and this adapter spawns one server per session — without an
+      // explicitly allocated free port, the second concurrent session's server dies at bind
+      // (exit 1, ServeError) and the session never starts.
+      started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);

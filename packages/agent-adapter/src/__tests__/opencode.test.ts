@@ -1106,6 +1106,30 @@ describe('OpenCodeAdapter shell-command dispatch', () => {
   });
 });
 
+describe('OpenCodeAdapter server spawn (CODE-242)', () => {
+  afterEach(() => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+  });
+
+  it('passes a dedicated allocated port so concurrent sessions never collide on 4096', async () => {
+    const seen: unknown[] = [];
+    sdkMock.createOpencode = (opts: unknown) => {
+      seen.push(opts);
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    await makeAdapter();
+
+    expect(seen).toHaveLength(1);
+    const opts = seen[0] as { port?: unknown };
+    expect(typeof opts.port).toBe('number');
+    expect(opts.port).not.toBe(4096);
+  });
+});
+
 describe('OpenCodeAdapter control plane (CODE-224)', () => {
   afterEach(() => {
     // Restore the default fresh-client factory (same discipline as the command-catalog block).
