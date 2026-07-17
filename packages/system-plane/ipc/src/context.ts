@@ -104,3 +104,9 @@ export const UpdaterStatusSchema = z.enum([
   'error',
 ]);
 export type UpdaterStatus = z.infer<typeof UpdaterStatusSchema>;
+
+/** Terminal state of a Browser-pane download, pushed main → renderer for a toast. */
+export interface BrowserDownloadDone {
+  filename: string;
+  state: 'completed' | 'cancelled' | 'interrupted';
+}

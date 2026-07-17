@@ -3,8 +3,9 @@ import { defineInvokes } from '@moeru/eventa';
 import { createContext as createRendererContext } from '@moeru/eventa/adapters/electron/renderer';
 import type { IpcRenderer } from 'electron';
 import type { SystemBridge } from './bridge';
-import type { DesktopSettings, UpdaterStatus } from './context';
+import type { BrowserDownloadDone, DesktopSettings, UpdaterStatus } from './context';
 import {
+  BROWSER_DOWNLOAD_DONE_CHANNEL,
   BROWSER_OPEN_TAB_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   DAEMON_URL_SNAPSHOT_CHANNEL,
@@ -106,6 +107,21 @@ export function createElectronSystemBridge(
         };
         ipcRenderer.on(BROWSER_OPEN_TAB_CHANNEL, handler);
         return () => ipcRenderer.removeListener(BROWSER_OPEN_TAB_CHANNEL, handler);
+      },
+      onDownloadDone(cb) {
+        const handler: IpcRendererListener = (_event, value: unknown) => {
+          // Main constructs the payload; a shape check is enough in the zod-free preload.
+          if (
+            typeof value === 'object' &&
+            value !== null &&
+            'filename' in value &&
+            'state' in value
+          ) {
+            cb(value as BrowserDownloadDone);
+          }
+        };
+        ipcRenderer.on(BROWSER_DOWNLOAD_DONE_CHANNEL, handler);
+        return () => ipcRenderer.removeListener(BROWSER_DOWNLOAD_DONE_CHANNEL, handler);
       },
     },
   };

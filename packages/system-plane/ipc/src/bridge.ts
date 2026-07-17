@@ -1,4 +1,5 @@
 import type {
+  BrowserDownloadDone,
   DesktopSettings,
   DesktopSettingsPatch,
   PickFileOptions,
@@ -64,5 +65,7 @@ export interface SystemBridge {
     /** Subscribe to Browser-pane guest popups (window.open / target=_blank) redirected by main;
      * the renderer opens the URL in a new in-app browser tab. */
     onOpenTab(cb: (url: string) => void): () => void;
+    /** Subscribe to finished Browser-pane downloads (main default download flow). */
+    onDownloadDone(cb: (result: BrowserDownloadDone) => void): () => void;
   };
 }

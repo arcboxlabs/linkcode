@@ -1,8 +1,10 @@
+import { isKeyboardShortcutLocalTarget, useKeyboardShortcut } from '@linkcode/ui';
+import type { BrowserFindState } from '@linkcode/ui/shell/browser';
 import { BrowserPane } from '@linkcode/ui/shell/browser';
 import type { WebviewTag } from 'electron';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useDesktopShellStore } from '../store/store';
 
@@ -22,6 +24,14 @@ const IDLE_NAV: WebviewNavState = {
   canGoForward: false,
   failure: null,
 };
+
+function whenNotLocal(event: KeyboardEvent): boolean {
+  return !isKeyboardShortcutLocalTarget(event.target);
+}
+
+/** Chromium's supported zoom-level range (each level is a 1.2× factor step). */
+const MIN_ZOOM_LEVEL = -8;
+const MAX_ZOOM_LEVEL = 9;
 
 /**
  * One browser tab's Electron `<webview>`, mounted once inside the shell's resident
@@ -45,8 +55,10 @@ export function BrowserWebviewPane({
       state.rightPanel.activeSection === 'browser' &&
       state.rightPanel.browser.activeTabId === tabId,
   );
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [webview, setWebview] = useState<WebviewTag | null>(null);
   const [nav, setNav] = useState<WebviewNavState>(IDLE_NAV);
+  const [find, setFind] = useState<BrowserFindState | null>(null);
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
   const captureWebview = (element: HTMLWebViewElement | null): void => {
@@ -84,12 +96,24 @@ export function BrowserWebviewPane({
           failure: t('loadFailed', { error: event.errorDescription }),
         }));
       };
+      const onFoundInPage = (event: Electron.FoundInPageEvent): void => {
+        if (signal.aborted) return;
+        setFind((prev) =>
+          prev === null
+            ? prev
+            : {
+                ...prev,
+                matches: { active: event.result.activeMatchOrdinal, total: event.result.matches },
+              },
+        );
+      };
       webview.addEventListener('did-start-loading', sync);
       webview.addEventListener('did-stop-loading', sync);
       webview.addEventListener('did-navigate', onNavigate);
       webview.addEventListener('did-navigate-in-page', onNavigate);
       webview.addEventListener('page-title-updated', onTitleUpdated);
       webview.addEventListener('did-fail-load', onFail);
+      webview.addEventListener('found-in-page', onFoundInPage);
       return () => {
         webview.removeEventListener('did-start-loading', sync);
         webview.removeEventListener('did-stop-loading', sync);
@@ -97,6 +121,7 @@ export function BrowserWebviewPane({
         webview.removeEventListener('did-navigate-in-page', onNavigate);
         webview.removeEventListener('page-title-updated', onTitleUpdated);
         webview.removeEventListener('did-fail-load', onFail);
+        webview.removeEventListener('found-in-page', onFoundInPage);
       };
     },
     [webview, tabId, setBrowserTabUrl, setBrowserTabTitle, t],
@@ -113,26 +138,103 @@ export function BrowserWebviewPane({
       .catch(noop);
   }, [webview, visible]);
 
+  const openFind = (): void => {
+    setFind((prev) => prev ?? { query: '', matches: null });
+  };
+  const closeFind = (): void => {
+    webview?.stopFindInPage('clearSelection');
+    setFind(null);
+  };
+  const changeFindQuery = (query: string): void => {
+    setFind({ query, matches: null });
+    if (query.length > 0) webview?.findInPage(query);
+    else webview?.stopFindInPage('clearSelection');
+  };
+  const stepFind = (forward: boolean): void => {
+    if (find !== null && find.query.length > 0) {
+      webview?.findInPage(find.query, { forward, findNext: true });
+    }
+  };
+  const zoom = (action: 'in' | 'out' | 'reset'): void => {
+    if (webview === null) return;
+    const level = webview.getZoomLevel();
+    if (action === 'in') webview.setZoomLevel(Math.min(level + 1, MAX_ZOOM_LEVEL));
+    else if (action === 'out') webview.setZoomLevel(Math.max(level - 1, MIN_ZOOM_LEVEL));
+    else webview.setZoomLevel(0);
+  };
+
+  // Owner-scoped chords: the registry only fires these while this tab's pane is the
+  // visible (non-inert) item of the resident stack.
+  useKeyboardShortcut({
+    actionId: 'browser.find',
+    shortcut: { code: 'KeyF', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      openFind();
+      return true;
+    },
+  });
+  useKeyboardShortcut({
+    actionId: 'browser.zoom-in',
+    shortcut: { code: 'Equal', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      zoom('in');
+      return true;
+    },
+  });
+  useKeyboardShortcut({
+    actionId: 'browser.zoom-out',
+    shortcut: { code: 'Minus', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      zoom('out');
+      return true;
+    },
+  });
+  useKeyboardShortcut({
+    actionId: 'browser.zoom-reset',
+    shortcut: { code: 'Digit0', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      zoom('reset');
+      return true;
+    },
+  });
+
   return (
-    <BrowserPane
-      url={url}
-      isLoading={nav.isLoading}
-      canGoBack={nav.canGoBack}
-      canGoForward={nav.canGoForward}
-      failure={nav.failure}
-      onNavigate={(next) => setBrowserTabUrl(tabId, next)}
-      onBack={() => webview?.goBack()}
-      onForward={() => webview?.goForward()}
-      onReload={() => webview?.reload()}
-    >
-      {url !== null && (
-        <webview
-          ref={captureWebview}
-          src={url}
-          partition={BROWSER_PARTITION}
-          className="h-full w-full"
-        />
-      )}
-    </BrowserPane>
+    <div ref={rootRef} className="h-full min-h-0">
+      <BrowserPane
+        url={url}
+        isLoading={nav.isLoading}
+        canGoBack={nav.canGoBack}
+        canGoForward={nav.canGoForward}
+        failure={nav.failure}
+        find={find}
+        onNavigate={(next) => setBrowserTabUrl(tabId, next)}
+        onBack={() => webview?.goBack()}
+        onForward={() => webview?.goForward()}
+        onReload={() => webview?.reload()}
+        onFindQueryChange={changeFindQuery}
+        onFindStep={stepFind}
+        onFindClose={closeFind}
+        onOpenFind={openFind}
+        onZoom={zoom}
+        onOpenDevTools={() => webview?.openDevTools()}
+      >
+        {url !== null && (
+          <webview
+            ref={captureWebview}
+            src={url}
+            partition={BROWSER_PARTITION}
+            className="h-full w-full"
+          />
+        )}
+      </BrowserPane>
+    </div>
   );
 }

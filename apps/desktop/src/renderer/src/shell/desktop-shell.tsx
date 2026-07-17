@@ -25,6 +25,7 @@ import {
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
+import { toastManager } from 'coss-ui/components/toast';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -242,6 +243,20 @@ export function DesktopShell({
   useAbortableEffect(
     () => systemBridge.browser.onOpenTab(openBrowserTab),
     [systemBridge, openBrowserTab],
+  );
+
+  const tBrowser = useTranslations('workbench.preview.browser');
+  useAbortableEffect(
+    () =>
+      systemBridge.browser.onDownloadDone(({ filename, state }) => {
+        // 'cancelled' is the user dismissing the save dialog — nothing to report.
+        if (state === 'completed') {
+          toastManager.add({ title: tBrowser('downloadCompleted', { filename }) });
+        } else if (state === 'interrupted') {
+          toastManager.add({ title: tBrowser('downloadFailed', { filename }), type: 'error' });
+        }
+      }),
+    [systemBridge, tBrowser],
   );
 
   const active = activeSession;

@@ -1,13 +1,15 @@
 import { release } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { BrowserDownloadDone } from '@linkcode/ipc';
 import {
+  BROWSER_DOWNLOAD_DONE_CHANNEL,
   BROWSER_OPEN_TAB_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   UPDATER_STATUS_CHANNEL,
 } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
-import { BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
+import { BrowserWindow, ipcMain, nativeTheme, session, shell } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 // electron-vite resolves `?asset` to a runtime file path. Used as the Win/Linux window icon in dev
 // (packaged builds get the real icon from the bundle). macOS uses a separate Dock image set at bootstrap.
@@ -24,6 +26,9 @@ import {
   persistWindowStateOnClose,
   readWindowState,
 } from './window-state';
+
+/** Must match the renderer's Browser-pane `<webview partition>`. */
+const BROWSER_PARTITION = 'persist:linkcode-browser';
 
 export function createDesktopWindow(): BrowserWindow {
   const win = createWindow();
@@ -44,6 +49,19 @@ export function createDesktopWindow(): BrowserWindow {
     if (!win.isDestroyed()) win.webContents.send(DAEMON_RUNTIME_CHANGED_CHANNEL);
   });
   win.once('closed', unwatchRuntime);
+
+  // Browser-pane downloads keep Electron's default save flow; the renderer only gets a
+  // terminal-state push for its toast.
+  const browserSession = session.fromPartition(BROWSER_PARTITION);
+  const onWillDownload = (_event: Electron.Event, item: Electron.DownloadItem): void => {
+    item.once('done', (_doneEvent, state) => {
+      if (win.isDestroyed()) return;
+      const result: BrowserDownloadDone = { filename: item.getFilename(), state };
+      win.webContents.send(BROWSER_DOWNLOAD_DONE_CHANNEL, result);
+    });
+  };
+  browserSession.on('will-download', onWillDownload);
+  win.once('closed', () => browserSession.removeListener('will-download', onWillDownload));
 
   return win;
 }
