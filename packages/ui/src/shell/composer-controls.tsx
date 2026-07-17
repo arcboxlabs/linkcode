@@ -26,7 +26,7 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
 import type { ModelOption } from './agent-models';
-import { resolveModel } from './agent-models';
+import { groupModelsByProvider, resolveModel } from './agent-models';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
 
 // Linear lookup: the policy/effort lists are a handful of entries at most.
@@ -208,6 +208,7 @@ export function ModelSelectorMenu({
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const selectedModel = resolveModel(modelOptions, selectedModelId);
+  const providerGroups = groupModelsByProvider(modelOptions);
   const selectedEffort = optionById(effortOptions, selectedEffortId);
   const providers = selectableProviders ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
@@ -258,18 +259,42 @@ export function ModelSelectorMenu({
                   value={selectedModel?.id ?? selectedModelId ?? ''}
                   onValueChange={(value) => onSelectModel(String(value))}
                 >
-                  {modelOptions?.map((option) => (
-                    <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                      <span className="flex min-w-0 flex-col">
-                        <span>{option.label}</span>
-                        {option.description ? (
-                          <span className="text-muted-foreground text-xs">
-                            {option.description}
-                          </span>
-                        ) : null}
-                      </span>
-                    </MenuRadioItem>
-                  ))}
+                  {providerGroups === null ? (
+                    modelOptions?.map((option) => (
+                      <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                        <span className="flex min-w-0 flex-col">
+                          <span>{option.label}</span>
+                          {option.description ? (
+                            <span className="text-muted-foreground text-xs">
+                              {option.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </MenuRadioItem>
+                    ))
+                  ) : (
+                    <>
+                      {providerGroups.ungrouped.map((option) => (
+                        <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                          {option.label}
+                        </MenuRadioItem>
+                      ))}
+                      {/* One submenu per provider; the trigger names the provider, so items drop
+                       * the subtitle the flat list needs for disambiguation. */}
+                      {providerGroups.groups.map((group) => (
+                        <MenuSub key={group.label}>
+                          <MenuSubTrigger>{group.label}</MenuSubTrigger>
+                          <MenuSubPopup className="w-56">
+                            {group.options.map((option) => (
+                              <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                                {option.label}
+                              </MenuRadioItem>
+                            ))}
+                          </MenuSubPopup>
+                        </MenuSub>
+                      ))}
+                    </>
+                  )}
                 </MenuRadioGroup>
               </MenuSubPopup>
             </MenuSub>
