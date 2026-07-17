@@ -3,24 +3,21 @@ import { accountProtocol } from './catalog';
 
 /**
  * Which accounts each agent can bind, derived from the adapters' real injection seams — the UI
- * consumes this module and hardcodes nothing. Facts as of 2026-07 (packages/agent-adapter
- * `credential.ts` + native adapters, packages/engine `translator.ts`):
- *
- * - claude-code speaks Anthropic natively (`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` /
- *   `ANTHROPIC_API_KEY`); an `openai-chat` endpoint is reachable through the local aigateway
- *   translator, which needs both a base URL and a key (`translationUpstream`).
+ * hardcodes nothing. Facts as of 2026-07 (packages/agent-adapter `credential.ts` + native
+ * adapters, packages/engine `translator.ts`):
+ * - claude-code speaks Anthropic natively (`ANTHROPIC_*` env); an `openai-chat` endpoint is
+ *   reachable through the local aigateway translator, which needs a base URL AND a key.
  * - codex reaches any OpenAI-shaped endpoint via `OPENAI_BASE_URL` + `CODEX_API_KEY`.
- * - opencode nests `options.{apiKey,baseURL}` under the provider prefixed in the session's model id;
- *   openai-chat endpoints are the verified path. An Anthropic endpoint plausibly works with an
- *   `anthropic/…` model but is unverified against the SDK — flip it here once verified live.
- * - pi registers the key per model provider (`setRuntimeApiKey`) and overrides the provider's base
- *   URL via `modelRegistry.registerProvider`; same openai-chat-verified / anthropic-unverified split.
+ * - opencode and pi: openai-chat is the verified path; an Anthropic endpoint plausibly works but
+ *   is unverified against the SDK — flip it here once verified live.
+ * - grok-build only consumes an xAI key as `XAI_API_KEY`; it ignores custom endpoint base URLs.
  */
 const AGENT_NATIVE_PROTOCOLS: Record<AgentKind, AccountProtocol[]> = {
   'claude-code': ['anthropic'],
   codex: ['openai-chat', 'openai-responses'],
   opencode: ['openai-chat'],
   pi: ['openai-chat'],
+  'grok-build': [],
 };
 
 /** Cross-protocol pairs the local translation sidecar serves (engine `translationUpstream`). */
@@ -48,6 +45,13 @@ export function bindingAvailability(account: Account, kind: AgentKind): BindingA
       : { tier: 'unavailable', reason: 'oauth-other-agent' };
   }
   const protocol = accountProtocol(account);
+  if (kind === 'grok-build') {
+    // The headless CLI has no base-URL flag: only the xAI catalog entry is known to target its
+    // endpoint. Preserve pre-catalog bare keys, whose vendor was never recorded.
+    return account.service === 'xai' || (account.service === undefined && protocol === undefined)
+      ? { tier: 'native' }
+      : { tier: 'unavailable', reason: 'protocol-unsupported' };
+  }
   // Unknown protocol (pre-catalog custom account without endpoint): keep it bindable everywhere,
   // matching the pre-catalog behavior — the user knows which vendor the bare key belongs to.
   if (protocol === undefined) return { tier: 'native' };

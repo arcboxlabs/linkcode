@@ -4,10 +4,9 @@ import { BrowserWindow, Menu } from 'electron';
 import { APP_NAME } from './constants';
 
 /**
- * Native application menu. Setting a custom menu replaces Electron's default entirely, so the full
- * standard template (Edit/View/Window via roles) must be rebuilt — otherwise copy/paste/quit break.
- * The only addition is a "Settings…" item bound to the platform-standard `Cmd+,` accelerator, which
- * pushes an open-settings event to the focused window's renderer.
+ * Native application menu. A custom menu replaces Electron's default entirely, so the full standard
+ * template (Edit/View/Window via roles) must be rebuilt — otherwise copy/paste/quit break. The only
+ * addition is "Settings…" (`Cmd+,`), pushing an open-settings event to the focused renderer.
  */
 function openSettings(): void {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().at(0);

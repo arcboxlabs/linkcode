@@ -35,12 +35,10 @@ interface SubagentTranscriptProps {
   onExpand?: (toolCallId: string) => void;
 }
 
-/** The nested transcript body, shared between the inline card and the full-size viewer. Children
- * render linearly (no recursive activity grouping), except a nested spawn (`task`-kind child),
- * which recurses into its own SubagentCard — partitioning buckets grandchildren under the inner
- * task, so a plain tool row would silently drop them. The Task's own rawOutput is not repeated —
- * the transcript already ends with the subagent's report — except as the empty-transcript
- * fallback when a degraded/partial history does not contain that report. */
+/** Nested transcript body, shared by the inline card and the full-size viewer. A nested spawn
+ * must recurse into its own SubagentCard — partitioning buckets grandchildren under the inner
+ * task, so a plain tool row would silently drop them. The Task's own rawOutput renders only as
+ * the empty-transcript fallback (the transcript already ends with the subagent's report). */
 export function SubagentTranscript({
   toolCall,
   items,
@@ -129,9 +127,8 @@ export function SubagentCard(props: SubagentCardProps): React.ReactNode {
   return <SubagentCardContent {...props} constrainHeight />;
 }
 
-/** Inline collapsible card for one subagent run: header shows the agent type + task description
- * and live status; the body nests the full transcript. Auto-open while running but the user's
- * toggle always wins (unlike ActivityGroup's forced-open) — a subagent can run for minutes. */
+/** Inline collapsible card for one subagent run. Auto-open while running, but the user's toggle
+ * always wins (unlike ActivityGroup's forced-open) — a subagent can run for minutes. */
 function SubagentCardContent({
   toolCall,
   items,

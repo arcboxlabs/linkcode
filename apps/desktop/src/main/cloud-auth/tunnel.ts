@@ -16,10 +16,9 @@ const hostsResponseSchema = z.object({
 });
 
 /**
- * List the signed-in account's online hosts (`GET /tunnel/hosts`). The renderer never talks to the
- * cloud API directly (see client.ts) — the keychain session lives in main, so we attach it (the
- * better-auth electron client replays the stored session cookie) and hand back only the validated
- * list. Throws on a non-2xx response so the SWR layer surfaces it; callers gate on a live session.
+ * List the signed-in account's online hosts (`GET /tunnel/hosts`). The keychain session lives in
+ * main (the renderer never talks to the cloud API — see client.ts), so attach it here and hand
+ * back only the validated list. Throws on non-2xx so SWR surfaces it; callers gate on a live session.
  */
 export async function listCloudHosts(): Promise<CloudHost[]> {
   const res = await fetch(`${CLOUD_API_URL}/tunnel/hosts`, {

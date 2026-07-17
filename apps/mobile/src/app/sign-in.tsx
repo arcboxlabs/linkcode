@@ -11,9 +11,8 @@ import { signInToCloud, useCloudAccount } from '../runtime/cloud/account';
 import { isAppleSignInCancel, signInWithApple } from '../runtime/cloud/idp';
 
 /**
- * First-run welcome: native Sign in with Apple when the platform offers it,
- * the browser OAuth flow for everything else, or skip to manual host setup.
- * Signed-in visitors bounce straight to the machine list.
+ * First-run welcome: native Apple sign-in when available, browser OAuth otherwise,
+ * or skip to manual host setup. Signed-in visitors bounce to the machine list.
  */
 export default function SignInScreen() {
   const t = useTranslations('mobile.signIn');

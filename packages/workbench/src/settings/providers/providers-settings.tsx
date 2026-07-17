@@ -12,12 +12,10 @@ import { useProvidersSettingsStore } from './store';
 import { withBinding, withModel, withoutAccount } from './view';
 
 /**
- * The Providers settings page: the global account pool (master list) and, per selected account, its
- * credential and agent bindings (detail). A transport-backed container — it reads/writes accounts
- * and per-agent config over the data plane, so it must render inside `WorkbenchProviders`, but it
- * may sit above the connection gate (both apps mount it in their Settings surface), where it
- * degrades to loading/error while the daemon is down. The add flow takes over the detail pane
- * (design: v2 master/detail with the v1 two-step add flow).
+ * The Providers settings page: the global account pool (master list) plus per-account credential
+ * and agent bindings (detail); the add flow takes over the detail pane. Transport-backed — it
+ * must render inside `WorkbenchProviders`, but may sit above the connection gate, degrading to
+ * loading/error while the daemon is down.
  */
 export function ProvidersSettingsPanel(): React.ReactNode {
   const t = useTranslations('settings.providers');

@@ -1,10 +1,7 @@
 import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 
-/**
- * Durable storage for workspace records (registered directories). The daemon injects a
- * database-backed implementation; the in-memory default keeps bare engines and tests
- * dependency-free.
- */
+/** Durable storage for workspace records (registered directories). The daemon injects a database-
+ * backed implementation; the in-memory default keeps bare engines and tests dependency-free. */
 export interface WorkspaceStore {
   load(): Promise<WorkspaceRecord[]>;
   save(record: WorkspaceRecord): void | Promise<void>;

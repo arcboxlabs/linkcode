@@ -17,10 +17,8 @@ export interface SocketIoTransportOptions {
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'closed';
 
 /**
- * SocketIoTransport: browser / RN / Node client implementation backed by Socket.IO.
- *
- * Socket.IO stays a product-level carrier here: business semantics are still carried as schema-validated
- * WireMessage frames, so upper layers do not depend on Socket.IO event names. Each instance owns one
+ * Socket.IO-backed client Transport (browser / RN / Node). Socket.IO stays a carrier only —
+ * business semantics travel as schema-validated WireMessage frames. Each instance owns one
  * connection lifetime; recovery creates a fresh transport instead of reconnecting underneath its owner.
  */
 export class SocketIoTransport extends WireConnection {

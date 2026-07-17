@@ -11,14 +11,13 @@ export interface SashDragStyleWriter {
 const SASH_CENTER_OFFSET = 4;
 
 /**
- * Live sash drags bypass the `--lc-*` shell variables: rewriting an inherited custom
- * property re-resolves style across the whole shell subtree (~14ms/frame measured, killing
- * 120Hz), while writing the resolved tracks inline on the few consuming elements stays
- * well under 1ms. The templates and sash offsets mirror `.linkcode-shell-grid` /
- * `.linkcode-sash-*` in index.css and CHROME_BACKGROUND_GRID_STYLE in chrome.tsx.
- * `restore()` puts every touched declaration back (the chrome grid keeps a React-owned
- * inline template, so values are snapshotted, not cleared) and the settled size then goes
- * through the variable writers once on release.
+ * Live sash drags bypass the `--lc-*` shell variables: rewriting an inherited custom property
+ * re-resolves style across the whole shell subtree (~14ms/frame measured, killing 120Hz), while
+ * inline resolved tracks on the few consuming elements stay well under 1ms. The templates and
+ * offsets mirror `.linkcode-shell-grid` / `.linkcode-sash-*` in index.css and
+ * CHROME_BACKGROUND_GRID_STYLE in chrome.tsx. `restore()` puts every touched declaration back
+ * (the chrome grid's React-owned inline template is snapshotted, not cleared); the settled size
+ * then goes through the variable writers once on release.
  */
 export function createSashDragStyleWriter(
   sashElement: HTMLElement,

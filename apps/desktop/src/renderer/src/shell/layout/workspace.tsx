@@ -35,13 +35,11 @@ const PANE_ID = {
 } as const;
 
 /**
- * The shell workspace: one CSS grid whose tracks read the `--lc-*` shell variables
- * (index.css `.linkcode-shell-grid`). Pane toggles write a variable once and a scoped
- * grid-template transition glides every edge on the same 300ms timeline as the titlebar
- * chrome; sash drags write resolved inline tracks per frame (sash-drag-style.ts) and
- * settle the variable once on release.
- * While a pane animates, its content is locked to the settled size so nothing rewraps
- * per frame — only grid tracks move.
+ * The shell workspace: one CSS grid whose tracks read the `--lc-*` shell variables (index.css
+ * `.linkcode-shell-grid`). Pane toggles write a variable once and the scoped grid-template
+ * transition glides every edge on the titlebar chrome's 300ms timeline; sash drags write resolved
+ * inline tracks per frame (sash-drag-style.ts) and settle the variable once on release. While a
+ * pane animates its content is locked to the settled size — only grid tracks move.
  */
 export function DesktopWorkspace({
   sidebar,
@@ -105,9 +103,8 @@ export function DesktopWorkspace({
   };
   const handleTransitionCancel = (event: React.TransitionEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return;
-    // A retargeted transition can dispatch the canceled generation before the replacement's
-    // transitionrun. Cancel therefore never proves the grid has stopped; transitionend or the
-    // versioned fallback owns settlement.
+    // A retargeted transition can dispatch cancel before the replacement's transitionrun, so
+    // cancel never proves the grid stopped; transitionend or the versioned fallback owns settlement.
     rearmTransition(event.propertyName);
   };
 

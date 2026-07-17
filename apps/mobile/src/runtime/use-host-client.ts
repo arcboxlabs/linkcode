@@ -15,9 +15,8 @@ export interface HostClientState {
 }
 
 /**
- * Owns one client's connection lifecycle for a host, mirroring the state machine
- * of workbench's WorkbenchRuntimeConnection: connecting → ready | error, retry by
- * recreating the transport + client pair.
+ * One client's connection lifecycle per host, mirroring workbench's WorkbenchRuntimeConnection:
+ * connecting → ready | error; retry recreates the transport + client pair.
  */
 export function useHostClient(host: HostProfile): HostClientState {
   const [client, setClient] = useState(() => createClient(host));

@@ -3,9 +3,8 @@ import type { BrowserWindowConstructorOptions } from 'electron';
 import { nativeTheme } from 'electron';
 
 /**
- * Apply the user's color-scheme preference. Setting `nativeTheme.themeSource` is the single lever:
- * it drives the renderer's `prefers-color-scheme` (so the existing media-query listener flips `.dark`)
- * and `nativeTheme.shouldUseDarkColors` (so `desktopBackgroundColor()` keeps the window chrome correct).
+ * `nativeTheme.themeSource` is the single lever: it drives the renderer's `prefers-color-scheme`
+ * (flipping `.dark`) and `shouldUseDarkColors` (keeping `desktopBackgroundColor()` chrome correct).
  */
 export function applyThemePreference(theme: ThemePreference): void {
   nativeTheme.themeSource = theme;

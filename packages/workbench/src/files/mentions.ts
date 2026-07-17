@@ -14,12 +14,10 @@ export interface FileMentionSource {
   onMentionQueryChange: (query: string | null) => void;
 }
 
-/** The live `@` query plus which open-trigger it belongs to. The generation bumps every time a
- * trigger opens (null → string), so a trailing debounced value is recognizable as belonging to
- * the current trigger or to a previous one — `useDebouncedValue` itself never resets, and right
- * after a reopen it still holds the previous trigger's settled query for up to the debounce
- * window. `openingQuery` is the query the trigger opened with: the one value worth fetching
- * before the debounce first catches up, stable across a typing burst. */
+/** The live `@` query plus its open-trigger generation. The generation bumps on every trigger
+ * open, so a trailing debounced value can be told apart from a previous trigger's — the debounce
+ * itself never resets. `openingQuery` is what the trigger opened with: the one value worth
+ * fetching before the debounce first catches up, stable across a typing burst. */
 interface MentionQuery {
   cwd: string | undefined;
   query: string | null;
@@ -35,18 +33,14 @@ const NO_MENTION_QUERY: MentionQuery = {
 };
 
 /**
- * Backs the composer's `@` menu with `file.suggest` daemon searches for the active
- * session's workspace. Queries are debounced and scoped to the cwd that opened the trigger, so a
- * session switch cannot reuse the old query or file list.
+ * Backs the composer's `@` menu with `file.suggest` daemon searches. Queries are debounced and
+ * scoped to the cwd that opened the trigger, so a session switch cannot reuse the old file list.
  */
 export function useFileMentionSource(cwd: string | undefined): FileMentionSource {
   const [live, setLive] = useState<MentionQuery>(NO_MENTION_QUERY);
   const debounced = useDebouncedValue(live, MENTION_QUERY_DEBOUNCE_MS);
-  // Until the debounce first catches up with THIS trigger (generation mismatch: the trailing
-  // value still belongs to a previous one), fetch the query the trigger opened with — immediate
-  // first render, one stable key across the opening burst, and never a stale previous-trigger
-  // query. Once caught up, the trailing debounced query takes over; the composer's client-side
-  // substring re-filter keeps the menu responsive between fetches either way.
+  // Until the debounce catches up with THIS trigger (generation mismatch = the trailing value is
+  // a previous trigger's), fetch the opening query; once caught up, the debounced one takes over.
   const effectiveQuery =
     cwd === undefined || live.cwd !== cwd || live.query === null
       ? null

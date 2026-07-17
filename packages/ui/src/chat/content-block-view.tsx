@@ -2,14 +2,26 @@ import type { ContentBlock } from '@linkcode/schema';
 import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { CodeBlock } from './code-block';
-import { Markdown } from './markdown';
+import { Markdown, SmoothMarkdown } from './markdown';
 
-export function ContentBlockView({ block }: { block: ContentBlock }): React.ReactNode {
+export function ContentBlockView({
+  block,
+  smoothText = false,
+  isStreaming = false,
+}: {
+  block: ContentBlock;
+  smoothText?: boolean;
+  isStreaming?: boolean;
+}): React.ReactNode {
   const t = useTranslations('workbench.content');
 
   switch (block.type) {
     case 'text':
-      return <Markdown>{block.text}</Markdown>;
+      return smoothText ? (
+        <SmoothMarkdown isStreaming={isStreaming}>{block.text}</SmoothMarkdown>
+      ) : (
+        <Markdown>{block.text}</Markdown>
+      );
     case 'image':
       return (
         <img

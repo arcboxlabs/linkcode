@@ -10,8 +10,8 @@ export interface AppearanceSettingsContainerProps {
 
 /**
  * Wires the shared appearance store into the presentational {@link AppearanceSettingsPanel}. The
- * theme control is app-owned and threaded through as props; everything else reads the store here so
- * both apps' Appearance tabs stay in sync without duplicating the store reads.
+ * theme control is app-owned (props); everything else reads the store here, keeping both apps'
+ * Appearance tabs in sync.
  */
 export function AppearanceSettingsContainer({
   theme,

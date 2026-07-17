@@ -5,10 +5,9 @@ import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ManagedAssetArtifact } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import fetch from 'make-fetch-happen';
 import ssri from 'ssri';
-import './mfh-augment';
 import { DownloadError, IntegrityError } from './errors';
+import { fetchWithSystemProxy } from './system-proxy';
 
 export interface DownloadProgress {
   receivedBytes: number;
@@ -28,14 +27,12 @@ const DEFAULT_RETRY = 2;
 const INTEGRITY_CODES = new Set(['EINTEGRITY', 'EBADSIZE']);
 
 /**
- * Download an artifact to `destFile`, walking the ordered source list until one delivers
- * SRI-verified bytes. Transport is make-fetch-happen (npm's own fetch): per-source retry and
- * `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` env support come with it. The body streams to disk
- * through `ssri.integrityStream` — no buffering, and a truncated or tampered transfer can
- * never leave a "valid" file: the destination is deleted on any failure. An integrity mismatch
- * just fails that source (hash-pinning makes sources interchangeable) but is reported as
- * `IntegrityError` when no source survives. ENOSPC aborts the walk — the next source cannot
- * help a full disk.
+ * Download to `destFile`, walking the ordered source list until one delivers SRI-verified
+ * bytes (make-fetch-happen transport: per-source retry + proxy env support, plus the
+ * OS-configured system proxy when the env names none — `system-proxy.ts`). The body streams
+ * through `ssri.integrityStream` and the destination is deleted on any failure, so a truncated
+ * or tampered transfer never leaves a "valid" file. An integrity mismatch fails just that
+ * source but surfaces as `IntegrityError` when no source survives; ENOSPC aborts the walk.
  */
 export async function downloadVerified(
   artifact: ManagedAssetArtifact,
@@ -69,7 +66,7 @@ async function downloadFrom(
   artifact: ManagedAssetArtifact,
   options: DownloadOptions,
 ): Promise<void> {
-  const res = await fetch(url, {
+  const res = await fetchWithSystemProxy(url, {
     retry: options.retry ?? DEFAULT_RETRY,
     signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
   });

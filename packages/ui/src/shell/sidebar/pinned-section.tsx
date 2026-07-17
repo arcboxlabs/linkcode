@@ -26,11 +26,8 @@ export interface PinnedSectionProps {
   BranchStatusComponent?: BranchStatusComponentType;
 }
 
-/**
- * The sidebar's "Pinned" section: every pinned thread across all groups, as a flat list. Callers
- * only render it while something is pinned, so it has no empty state or skeleton; unpinning a row
- * returns the thread to its original group.
- */
+/** Every pinned thread across all groups, flat. Only rendered while something is pinned (hence
+ * no empty state or skeleton); unpinning a row returns the thread to its original group. */
 export function PinnedSection({
   sessions,
   hasOverflow,

@@ -13,11 +13,8 @@ export interface ScreenScrollProps {
   children: React.ReactNode;
 }
 
-/**
- * Screen chrome shared by every top-level mobile screen: a scroll container with
- * safe-area-aware padding and a title row. Owns no routing or data — screens pass
- * already-translated strings and their own content.
- */
+/** Screen chrome for top-level mobile screens: safe-area-aware scroll container + title row.
+ * Owns no routing or data — screens pass already-translated strings and their own content. */
 export function ScreenScroll({
   title,
   headerRight,

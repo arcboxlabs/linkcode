@@ -4,10 +4,8 @@ import { app } from 'electron';
 import { DEFAULT_WORKSPACES_DIRNAME } from './constants';
 
 /**
- * The default directory the native file/folder picker opens into: a visible `~/LinkCode` folder,
- * so agent sessions land in one place by default. The user can still navigate elsewhere. Created
- * on demand. Unrelated to `WorkspaceRecord` (the registered-directory identity in `@linkcode/schema`)
- * despite the naming overlap — this is purely a picker-dialog default path.
+ * Default directory the native file/folder picker opens into (a visible `~/LinkCode`, created on
+ * demand). Unrelated to `WorkspaceRecord` despite the naming overlap — purely a picker default path.
  */
 export async function ensureDefaultPickerDirectory(): Promise<string> {
   const dir = join(app.getPath('home'), DEFAULT_WORKSPACES_DIRNAME);

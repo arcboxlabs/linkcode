@@ -24,10 +24,9 @@ export class ClaudeCodeProbe extends AgentCliProbe {
   }
 
   /**
-   * Login status via `claude auth status --json` (`{ loggedIn, authMethod, subscriptionType, … }`).
-   * The JSON rides stdout even when the command exits non-zero (signed out), so the payload is
-   * parsed regardless of exit code; unparseable output fails open to `undefined` ("unknown", never
-   * blocks). This reads the same keychain/credentials the SDK later inherits, so it needs no auth.
+   * Login status via `claude auth status --json`. The JSON rides stdout even on a non-zero exit
+   * (signed out), so the payload is parsed regardless of exit code; unparseable output fails open
+   * to `undefined` ("unknown", never blocks). Reads the same keychain/credentials the SDK inherits.
    */
   override async probeAuth(file: string): Promise<AgentAuthStatus | undefined> {
     let stdout = '';
@@ -41,11 +40,9 @@ export class ClaudeCodeProbe extends AgentCliProbe {
   }
 }
 
-/**
- * Narrow the `claude auth status --json` payload to the fields we surface. Returns `undefined`
- * (fail-open) when the output is not JSON or lacks a boolean `loggedIn` — never a false negative
- * that would wrongly block a signed-in user.
- */
+/** Narrow the `claude auth status --json` payload to the surfaced fields. `undefined` (fail-open)
+ * when the output is not JSON or lacks a boolean `loggedIn` — never a false negative that would
+ * wrongly block a signed-in user. */
 export function parseClaudeAuthStatus(stdout: string): AgentAuthStatus | undefined {
   let data: unknown;
   try {

@@ -21,10 +21,9 @@ const PersistedAppearanceSchema = z
 type PersistedAppearance = z.infer<typeof PersistedAppearanceSchema>;
 
 /**
- * Shared renderer appearance preferences — persisted to each renderer's localStorage, never sent
- * to the daemon. Pure client-side rendering knobs both desktop and webview need, so they live here
- * rather than in the desktop-only main-process settings (theme/locale/daemonUrl). `theme` stays in
- * each app's own store because it is a system-plane value on desktop.
+ * Shared renderer appearance preferences — persisted per renderer in localStorage, never sent to
+ * the daemon; both apps need them, so they cannot live in the desktop-only main-process settings.
+ * `theme` stays in each app's own store because it is a system-plane value on desktop.
  */
 export interface AppearancePrefsState {
   /** Root font scale applied to the whole UI. */

@@ -18,11 +18,9 @@ interface DragState {
 }
 
 /**
- * Drag handle on a workspace grid divider. Positioning comes from the `className` hook
- * (index.css — it rides the same `--lc-*-col`/`--lc-*-row` variables as the grid tracks).
- * Dragging writes resolved inline tracks per frame through the drag style writer (a
- * per-frame shell-variable rewrite would recalc style across the whole shell — see
- * sash-drag-style.ts); the shell variable and layout store settle once on release.
+ * Drag handle on a workspace grid divider. Positioning comes from the `className` hook (index.css,
+ * riding the same `--lc-*` variables as the grid tracks). Dragging writes resolved inline tracks
+ * per frame (see sash-drag-style.ts); the shell variable and layout store settle once on release.
  */
 export function Sash({
   orientation,

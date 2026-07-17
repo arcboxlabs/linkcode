@@ -1,18 +1,30 @@
+import { createRequire } from 'node:module';
 import * as Sentry from '@sentry/node';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 /**
- * Sentry bootstrap, loaded via `node --import` (prod) / `tsx --import` (dev) so the SDK installs its
- * auto-instrumentation before the engine, transport, or any agent SDK is imported — ESM requires this,
- * a top-level `import` in index.ts would run too late (see Sentry's ESM setup docs).
+ * Sentry bootstrap, loaded via `--import` so auto-instrumentation installs before anything else is
+ * imported — ESM requires this; a top-level `import` in index.ts would run too late (Sentry ESM
+ * setup docs). The DSN is publishable, not a secret; without `LINKCODE_SENTRY_DSN` the SDK no-ops.
  *
- * The DSN is a publishable identifier, not a secret. With no `LINKCODE_SENTRY_DSN` the SDK no-ops, so
- * local runs report nothing unless the env var is set.
+ * Profiling is optional and loaded with createRequire so the desktop-packaged daemon can ship this
+ * file without pulling in `@sentry/profiling-node`'s native binding (wrong ABI under Electron).
+ * Standalone Node keeps profiling when the package is installed.
  */
-Sentry.init({
+const initOptions: Parameters<typeof Sentry.init>[0] = {
   dsn: process.env.LINKCODE_SENTRY_DSN,
-  integrations: [nodeProfilingIntegration()],
+  integrations: [],
   tracesSampleRate: 1,
-  profileSessionSampleRate: 1,
-  profileLifecycle: 'trace',
-});
+};
+
+try {
+  const require = createRequire(import.meta.url);
+  const { nodeProfilingIntegration } =
+    require('@sentry/profiling-node') as typeof import('@sentry/profiling-node');
+  initOptions.integrations = [nodeProfilingIntegration()];
+  initOptions.profileSessionSampleRate = 1;
+  initOptions.profileLifecycle = 'trace';
+} catch {
+  // Native profiler missing or unloadable — error reporting still works.
+}
+
+Sentry.init(initOptions);

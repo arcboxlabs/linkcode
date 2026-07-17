@@ -19,11 +19,9 @@ const DEFAULT_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 /** stderr is only ever surfaced as an error summary — keep a short head, drop the rest. */
 const STDERR_CAP_BYTES = 8 * 1024;
 
-/**
- * Spawn a CLI and collect its output. `shell: false` — arguments are never shell-interpreted, so
- * branch names and paths need no quoting. A non-zero exit **resolves** (probing commands branch on
- * the exit code); only spawn failures (ENOENT), timeouts, and output overruns reject.
- */
+/** Spawn a CLI and collect its output (`shell: false` — arguments are never shell-interpreted).
+ * A non-zero exit **resolves** (callers branch on the exit code); only spawn failures (ENOENT),
+ * timeouts, and output overruns reject. */
 export function runCommand(
   bin: string,
   args: readonly string[],

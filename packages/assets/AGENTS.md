@@ -39,15 +39,32 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   at `package/vendor/<rust-triple>/bin/codex`. All members in `catalog.ts` were read off real
   tarballs; re-verify against a fresh tarball when bumping an SDK.
 - **The fetch/verify/extract stack is npm's own, taken at the right layer**: `make-fetch-happen`
-  (per-source retry + `HTTPS_PROXY`/`NO_PROXY` env support), `ssri` (integrity streams), `tar`
-  (node-tar, pure JS — tgz extraction assumes no system tar), `semver`. This is deliberately
+  (per-source retry + explicit `HTTPS_PROXY`/`NO_PROXY` env support, with the OS-configured manual
+  proxy filling in when the environment names none — `system-proxy/`: win32 reads WinINET via
+  `reg.exe`, darwin reads `scutil` via `mac-system-proxy`; both legs adapted from httptoolkit's
+  os-proxy-config, vendored because its win32 leg needs the native `registry-js` addon, whose
+  win32-only prebuilds would force a node-gyp toolchain on every mac/linux install. PAC
+  configurations fail explicitly), `ssri` (integrity streams), `tar` (node-tar, pure JS — tgz
+  extraction assumes no system tar), `semver`. This is deliberately
   pacote's engine *without* pacote: its extra layers (sigstore, run-script, git, packlist) are
   npm-CLI semantics that would enter the binary-installing path unused. `env-paths` was
   evaluated and rejected — it hardcodes a `\Data` level on win32 and captures `homedir` at
   module load, breaking call-time path resolution.
 - Extraction takes exactly the declared member — no archive content is trusted beyond it. The
   one zip artifact (tectonic win32) shells out to the system bsdtar (System32 since Win10 1809;
-  macOS tar is bsdtar too, keeping the branch testable on darwin).
+  macOS tar is bsdtar too, keeping the branch testable on darwin). Closure packages are the
+  exception: whole npm tarballs, extracted with `strip: 1` (node-tar rejects absolute/`..`
+  paths, so a hostile archive cannot escape the staging dir).
+- **npm-closure assets (CODE-219)**: an asset can be a whole npm tree the daemon imports
+  in-process (pi) instead of a binary it spawns. The manifest (`src/pi-closure.gen.ts`) is
+  generated from pnpm-lock.yaml — `pnpm -F @linkcode/assets run generate:pi-closure` after a
+  pi bump; `closure.test.ts` fails the suite on drift, and a manifest whose version disagrees
+  with the SDK pin reads as unpinnable. Layout follows node resolution (highest version
+  hoisted, conflicting versions nested under their dependents). The runtime downloads exact
+  tgz bytes per package (lockfile SRI baked at build time; npmmirror as URL fallback), stages
+  the whole tree, publishes with the same atomic rename — it never resolves versions, never
+  runs install scripts, never mutates an installed tree. `managedBinary()` stays binary-only;
+  closures answer through `managedEntry()`.
 
 ## Consumers
 

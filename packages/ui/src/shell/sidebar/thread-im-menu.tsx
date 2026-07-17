@@ -10,11 +10,8 @@ import {
 import { Link2OffIcon, SendIcon, SettingsIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 
-/**
- * Adapter contract for the thread row's IM menu: the app provides a runtime-backed component
- * (workbench `RuntimeThreadImMenu`) that loads binding state and renders {@link ThreadImMenuItems}.
- * Rendered inside the row's dropdown popup, so it must emit menu items only.
- */
+/** Adapter contract for the thread row's IM menu (workbench `RuntimeThreadImMenu`, rendering
+ * {@link ThreadImMenuItems}). Lives inside the row's dropdown popup — must emit menu items only. */
 export type ThreadImMenuComponentType = React.ComponentType<{ session: SessionInfo }>;
 
 export interface ThreadImMenuChatView {

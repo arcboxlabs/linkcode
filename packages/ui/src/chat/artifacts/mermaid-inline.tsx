@@ -19,9 +19,8 @@ export function MermaidInline({ artifact, isIncomplete }: InlineArtifactProps): 
   const t = useTranslations('workbench.artifact');
   const actions = useArtifactHostActions();
   const reactId = useId();
-  // Streaming produces mostly-invalid intermediate sources, so successes and failures
-  // are tracked separately: the last good diagram stays up while newer chunks fail to
-  // parse, and only a failure of the *final* source degrades to the code block.
+  // Streaming yields mostly-invalid intermediates: the last good diagram stays up while newer
+  // chunks fail to parse; only a failure of the *final* source degrades to the code block.
   const [lastGood, setLastGood] = useState<RenderedDiagram | null>(null);
   const [failedCode, setFailedCode] = useState<string | null>(null);
   const code = artifact.source.text.trim();

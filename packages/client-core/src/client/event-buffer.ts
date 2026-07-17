@@ -2,9 +2,8 @@ import type { AgentEvent, SessionId } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 
 /**
- * An event paired with its connection-scoped receive sequence number: the Nth `agent.event` this
- * client received for its session (1-based, monotone for the lifetime of the connection). A
- * transcript snapshot taken when the counter read N supersedes exactly the events with seq ≤ N.
+ * An event plus its connection-scoped receive sequence (1-based, monotone per connection): a
+ * transcript snapshot taken at counter N supersedes exactly the events with seq ≤ N.
  */
 export interface SequencedAgentEvent {
   event: AgentEvent;
@@ -19,9 +18,8 @@ type EventCb = (event: AgentEvent, seq: number) => void;
 const EMPTY_EVENTS: readonly SequencedAgentEvent[] = [];
 
 /**
- * Per-session buffer of received `agent.event`s, their receive sequence numbers, and the
- * subscribers replaying/watching them. Backs both the push-model `subscribe` callback and the
- * `useSyncExternalStore`-shaped `snapshot`/`eventSeq` pair.
+ * Per-session buffer of sequenced `agent.event`s; backs both the push-model `subscribe` callback
+ * and the `useSyncExternalStore`-shaped `snapshot`/`eventSeq` pair.
  */
 export class EventBuffer {
   private readonly subscribers = new Map<SessionId, Set<EventCb>>();
@@ -29,9 +27,8 @@ export class EventBuffer {
   private readonly events = new Map<SessionId, SequencedAgentEvent[]>();
   /** Cached immutable copies of {@link events}, invalidated per event — `snapshot`'s source. */
   private readonly snapshots = new Map<SessionId, readonly SequencedAgentEvent[]>();
-  /** Per-session receive counters. Deliberately NOT cleared with the buffer on `clearSession`: a
-   * stop→resume in the same connection must keep seq monotone, or a seed's `uptoSeq` sampled
-   * before the stop would swallow the resumed session's fresh events. */
+  /** Deliberately NOT cleared on `clearSession`: a stop→resume in one connection must keep seq
+   * monotone, or a seed's `uptoSeq` sampled before the stop swallows the resumed session's events. */
   private readonly seqs = new Map<SessionId, number>();
   /** Terminal prompt outcomes are immutable by request ID. Attach may replay them, but retaining
    * the same outcome repeatedly would grow the live buffer without changing the projection. */
@@ -67,26 +64,21 @@ export class EventBuffer {
       this.subscribers.set(sessionId, set);
     }
     set.add(cb);
-    // Replay any buffered events (with their original sequence numbers) so a late subscriber sees
-    // the full timeline, not a blank pane.
+    // Replay buffered events with their original seqs so a late subscriber sees the full timeline.
     const buf = this.events.get(sessionId);
     if (buf) for (const { event, seq } of buf) cb(event, seq);
     return () => set.delete(cb);
   }
 
   /**
-   * The receive counter for a session: how many `agent.event`s this client has seen for it on this
-   * connection. Sampled right after a transcript read resolves, it becomes that snapshot's
-   * `uptoSeq` — the ordered cut "everything at or before this is already in the snapshot".
+   * Receive counter for a session on this connection. Sampled right after a transcript read
+   * resolves it becomes that snapshot's `uptoSeq`: everything at or before it is in the snapshot.
    */
   eventSeq(sessionId: SessionId): number {
     return this.seqs.get(sessionId) ?? 0;
   }
 
-  /**
-   * Immutable snapshot of a session's buffered events, cached until the next event arrives.
-   * Stable identity between changes makes it a valid `useSyncExternalStore` getSnapshot source.
-   */
+  /** Immutable snapshot, cached until the next event — identity-stable, so a valid `useSyncExternalStore` getSnapshot source. */
   snapshot(sessionId: SessionId): readonly SequencedAgentEvent[] {
     const cached = this.snapshots.get(sessionId);
     if (cached) return cached;

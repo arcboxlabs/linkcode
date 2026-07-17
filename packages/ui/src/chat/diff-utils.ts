@@ -7,8 +7,7 @@ interface DiffRow {
   text: string;
 }
 
-// A file's content normally ends in a newline; splitting on '\n' would then yield a trailing empty
-// element that counts as a phantom extra line (e.g. "added\n" → 2 lines). Strip one trailing newline.
+// Strip one trailing newline: "added\n".split('\n') would count a phantom extra line.
 const TRAILING_NEWLINE_RE = /\n$/;
 
 export function diffLines(oldStr: string, newStr: string): DiffRow[] {
@@ -18,9 +17,8 @@ export function diffLines(oldStr: string, newStr: string): DiffRow[] {
   const m = oldLines.length;
   const n = newLines.length;
 
-  // The LCS DP matrix is O(m*n) cells; a multi-thousand-line diff (e.g. 1000x1000) would allocate
-  // millions of entries on every render. Above ~250k cells, skip the alignment and fall back to a
-  // trivial diff (all old lines removed, all new lines added).
+  // The LCS DP matrix is O(m*n) cells and reallocates per render; above ~250k cells, skip
+  // alignment and fall back to a trivial diff (all old lines removed, all new lines added).
   if (m * n > 250000) {
     const rows: DiffRow[] = [];
     for (let i = 0; i < m; i++) {
@@ -88,12 +86,26 @@ export function diffStats(oldText: string | undefined, newText: string): DiffSta
   };
 }
 
+export type DiffToolCallContent = Extract<ToolCall['content'][number], { type: 'diff' }>;
+
+// diffStats runs an O(m×n) LCS; the builder replaces content objects instead of mutating them,
+// so object identity is a sound cache key across re-renders and re-folds.
+const diffContentStatsCache = new WeakMap<DiffToolCallContent, DiffStats>();
+
+export function diffContentStats(content: DiffToolCallContent): DiffStats {
+  const cached = diffContentStatsCache.get(content);
+  if (cached) return cached;
+  const stats = diffStats(content.oldText, content.newText);
+  diffContentStatsCache.set(content, stats);
+  return stats;
+}
+
 export function toolCallDiffStats(toolCall: Pick<ToolCall, 'content'>): DiffStats {
   let additions = 0;
   let deletions = 0;
   for (const content of toolCall.content) {
     if (content.type !== 'diff') continue;
-    const stats = diffStats(content.oldText, content.newText);
+    const stats = diffContentStats(content);
     additions += stats.additions;
     deletions += stats.deletions;
   }

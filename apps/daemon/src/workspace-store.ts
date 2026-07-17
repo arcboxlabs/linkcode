@@ -13,9 +13,8 @@ import { workspaces } from './db/schema';
 type WorkspaceRow = typeof workspaces.$inferSelect;
 
 /**
- * SQLite-backed `WorkspaceStore` (drizzle over better-sqlite3), sharing the daemon's registry
- * database at `~/.linkcode/daemon.db`. Rows are validated back through `WorkspaceRecordSchema` on
- * load — the zod schema stays the contract; the table is just its storage shape.
+ * SQLite-backed `WorkspaceStore` (drizzle over better-sqlite3), sharing `~/.linkcode/daemon.db`.
+ * Rows are validated back through `WorkspaceRecordSchema` on load — the zod schema stays the contract.
  */
 export function createWorkspaceStore(dbPath: string): WorkspaceStore {
   if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });

@@ -81,11 +81,8 @@ export interface ImChannelSettingsPanelProps {
   onPreferencesChange: (pref: ImChannelPreferencesView) => Promise<void>;
 }
 
-/**
- * IM Channel settings: connect a Telegram account to LinkCode Cloud, inspect the linked
- * account/groups and the live topic↔session bindings, and disconnect. Business-free — all
- * data and mutations arrive via props from the app's container.
- */
+/** IM Channel settings (link/inspect/disconnect a Telegram account). Business-free — all data
+ * and mutations arrive via props from the app's container. */
 export function ImChannelSettingsPanel({
   signedIn,
   onSignIn,

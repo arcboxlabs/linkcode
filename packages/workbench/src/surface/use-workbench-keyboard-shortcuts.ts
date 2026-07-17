@@ -21,10 +21,8 @@ const JUMP_SHORTCUTS: ReadonlyArray<{ code: string; modifiers: readonly ['primar
     modifiers: ['primary'],
   }));
 
-/**
- * The palette's empty-query Recent ordering over raw sessions. Title/workspace never affect the
- * empty-query path, so bare wrappers keep the ⌘n targets in lockstep with what the palette shows.
- */
+/** The palette's empty-query Recent ordering over raw sessions — title/workspace never affect the
+ * empty-query path, so bare wrappers keep the ⌘n targets in lockstep with what the palette shows. */
 function recentThreads(sessions: readonly SessionInfo[]): SessionInfo[] {
   return matchPaletteThreads(
     sessions.map((session) => ({ session, title: '', workspaceLabel: null })),

@@ -33,9 +33,8 @@ enum Teardown {
 }
 
 impl Terminal {
-    /// Signal the terminal's whole process group, not just the shell. The shell is a `setsid`
-    /// session leader (its pid is the group id), so a child that inherited the slave — and would
-    /// otherwise keep the master from ever reaching EOF — is torn down with it.
+    /// Signal the whole process group, not just the shell: the shell is a `setsid` leader (pid =
+    /// group id), so children that inherited the slave — which block master EOF — die with it.
     #[cfg(unix)]
     fn signal_group(&self, teardown: Teardown) {
         let signal = match teardown {
@@ -68,10 +67,8 @@ impl Terminal {
     }
 }
 
-/// How long `close` waits for `SIGHUP` to take effect before escalating to `SIGKILL` — long enough
-/// for a well-behaved shell to run its exit traps, short enough that a client closing a terminal
-/// doesn't wait indefinitely on one that ignores (or never received, e.g. a detached grandchild)
-/// the signal.
+/// How long `close` waits for `SIGHUP` before escalating to `SIGKILL` — long enough for a shell
+/// to run its exit traps, short enough that a signal-ignoring terminal doesn't stall the close.
 const CLOSE_GRACE_PERIOD: Duration = Duration::from_secs(3);
 
 /// A frame bound for the daemon, or the sentinel that tells the writer thread to drain and stop.
@@ -80,10 +77,9 @@ enum OutMsg {
     Shutdown,
 }
 
-/// Routes control frames to PTYs and PTY output back to the daemon. Shared across the per-terminal
-/// reader threads via `Arc`. Every outbound frame is funneled through `out` to the single writer
-/// thread that owns stdout, so a slow or blocked stdout can't head-of-line block one terminal's
-/// output behind another's, and concurrent readers can never interleave (tear) a frame.
+/// Routes control frames to PTYs and PTY output back to the daemon; `Arc`-shared with the
+/// per-terminal reader threads. Every outbound frame funnels through `out` to the single
+/// stdout-owning writer thread — no torn frames, no head-of-line blocking on a slow stdout.
 pub struct Mux {
     terminals: Mutex<HashMap<String, Arc<Terminal>>>,
     out: Sender<OutMsg>,
@@ -195,9 +191,7 @@ impl Mux {
     }
 
     /// Request termination; the `EXIT` frame and map removal follow from the reader hitting EOF.
-    /// If the terminal is still alive after [`CLOSE_GRACE_PERIOD`] — its reader hasn't reaped it,
-    /// so `SIGHUP` didn't end it — escalate to `SIGKILL` on the same process group. This reuses
-    /// `signal_group`, the same primitive `shutdown` uses for its unconditional kill.
+    /// A terminal still alive after [`CLOSE_GRACE_PERIOD`] is escalated to `SIGKILL` on its group.
     pub fn close(self: &Arc<Self>, terminal_id: &str) {
         if let Some(terminal) = self.terminal(terminal_id) {
             terminal.signal_group(Teardown::Hangup);
@@ -215,10 +209,9 @@ impl Mux {
         });
     }
 
-    /// Tear every terminal down, then join the reader threads (so their final `EXIT` frames are
-    /// queued) and stop the writer thread once its queue has drained. Called once when the daemon
-    /// closes the control pipe. Groups are `SIGKILL`ed so the blocking master reads are guaranteed
-    /// to hit EOF and the joins can't hang (barring a child stuck in an uninterruptible syscall).
+    /// Called once when the daemon closes the control pipe: `SIGKILL` every group (guaranteeing
+    /// the blocking master reads hit EOF, so the joins can't hang), join the readers so their
+    /// final `EXIT` frames are queued, then stop the writer once its queue drains.
     pub fn shutdown(&self) {
         for terminal in self.lock_terminals().values() {
             terminal.signal_group(Teardown::Kill);
@@ -273,8 +266,7 @@ impl Mux {
     }
 
     /// Remove a terminal and wait on its child for the exit code (`None` if the wait failed).
-    /// Kept as `i64` so a platform exit code with the high bit set (e.g. a Windows crash code like
-    /// 0xC0000005) is preserved as its true unsigned value rather than wrapping to a negative `i32`.
+    /// `i64` so a high-bit platform exit code (e.g. Windows 0xC0000005) doesn't wrap negative in `i32`.
     fn reap(&self, terminal_id: &str) -> Option<i64> {
         let terminal = self.lock_terminals().remove(terminal_id)?;
         // `take` the child before waiting so a concurrent `signal_group` sees `None` and won't

@@ -24,9 +24,8 @@ export interface SidebarGroupCollapseState {
 }
 
 /**
- * Persists which sidebar thread groups are collapsed, keyed by `ThreadGroup.collapseKey` — a
- * workspace's `cwd`, not its `workspaceId` — so the state survives an archive/re-register cycle,
- * which mints a fresh `workspaceId` for the same directory.
+ * Persists which sidebar thread groups are collapsed, keyed by `ThreadGroup.collapseKey` (the
+ * workspace `cwd`, not `workspaceId`) so the state survives an archive/re-register cycle.
  */
 export const useSidebarGroupCollapseStore = create<SidebarGroupCollapseState>()(
   zodPersist<SidebarGroupCollapseState, [], [], PersistedCollapsedGroups, PersistedCollapsedGroups>(

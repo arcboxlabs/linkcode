@@ -7,11 +7,8 @@ export interface NotificationPolicyPrefs {
   error: boolean;
 }
 
-/**
- * Presentation policy for a daemon-classified `session.notification`: preference gates, no
- * notification for user-initiated cancels, and suppression while the user is already looking at
- * the session (window focused + session active).
- */
+/** Presentation policy for a daemon-classified `session.notification`: preference gates, skip
+ * user-initiated cancels, suppress while already looking (window focused + session active). */
 export function shouldPresent(
   prefs: NotificationPolicyPrefs,
   notification: SessionNotification,

@@ -1,10 +1,7 @@
 import type { SessionId, SessionRecord } from '@linkcode/schema';
 
-/**
- * Durable storage for session records (identity + provider-run linkage; transcripts stay in
- * provider-local history). The daemon injects a database-backed implementation; the in-memory
- * default keeps bare engines and tests dependency-free.
- */
+/** Durable session-record storage (identity + provider-run linkage; transcripts stay in provider-
+ * local history). The daemon injects a DB-backed implementation; the in-memory default is for tests. */
 export interface SessionStore {
   load(): Promise<SessionRecord[]>;
   save(record: SessionRecord): Promise<void>;

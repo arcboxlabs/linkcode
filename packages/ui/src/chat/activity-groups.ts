@@ -2,10 +2,8 @@ import type { ToolCall } from '@linkcode/schema';
 import type { ConversationItem } from './types';
 
 /**
- * Codex-style transcript grouping. Consecutive tool calls of the same review bucket collapse into
- * a group; any other item kind (assistant text, reasoning, approval, error) is the flush boundary,
- * mirroring Codex's "flush on narration" rule. Approval-gated calls stay standalone because they
- * are interaction points, and lone calls render as plain rows.
+ * Codex-style grouping: consecutive same-bucket tool calls collapse; any other item kind flushes.
+ * Approval-gated calls stay standalone (interaction points); lone calls render as plain rows.
  */
 
 export type ActivityBucket = 'explore' | 'command' | 'fetch' | 'think' | 'files' | 'other';

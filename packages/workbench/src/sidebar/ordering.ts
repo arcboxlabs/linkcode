@@ -2,12 +2,9 @@ import type { SessionId, SessionInfo } from '@linkcode/schema';
 import type { ThreadGroup } from './group-threads';
 
 /**
- * Applies the manual sidebar order to project groups. Groups whose `collapseKey` appears in
- * `orderedKeys` come first, in that order; groups not yet listed (workspaces registered after the
- * last drag) follow in their incoming order (`lastUsedAt` descending). The chat group and the
- * unregistered fallback group are not sortable: they are re-appended after the project groups,
- * matching where the sidebar renders them (Chats is extracted into its own section; the fallback
- * group always renders last).
+ * Applies the manual sidebar order to project groups: groups listed in `orderedKeys` first, in
+ * that order; unlisted ones (registered after the last drag) follow in their incoming order. The
+ * chat and unregistered fallback groups are not sortable — re-appended after the project groups.
  */
 export function orderGroups(
   groups: readonly ThreadGroup[],
@@ -29,10 +26,9 @@ export function orderGroups(
 }
 
 /**
- * Orders a group's sessions for display: the pinned segment first, then the unpinned one. Within
- * each segment, sessions not yet in `manualIds` (threads created after the last drag) come first
- * in their incoming order (most recent first — inbox semantics), followed by the manually ordered
- * ones. Ids in `pinnedIds`/`manualIds` that match no session are ignored.
+ * Orders a group's sessions: pinned segment first, then unpinned. Within each segment, sessions
+ * not yet in `manualIds` come first in incoming order (most recent first — inbox semantics),
+ * followed by the manually ordered ones. Ids matching no session are ignored.
  */
 export function orderThreads(
   sessions: readonly SessionInfo[],
@@ -64,11 +60,9 @@ export interface ThreadDragInput {
 }
 
 /**
- * Computes the group's next manual order after dropping `activeId` relative to `overId`. The drop
- * position is clamped to the dragged thread's own segment: a pinned thread cannot land below the
- * pinned segment, an unpinned one cannot land above it — pin membership only changes through the
- * explicit pin button, never as a drag side effect. Returns `null` when the drag is a no-op
- * (self-drop) or either id is not in the list.
+ * The group's next manual order after dropping `activeId` relative to `overId`. The drop position
+ * is clamped to the dragged thread's own segment — pin membership only changes through the
+ * explicit pin button, never as a drag side effect. Returns `null` on a self-drop or unknown id.
  */
 export function applyThreadDrag(input: ThreadDragInput): SessionId[] | null {
   const { orderedIds, pinnedIds, activeId, overId, placement } = input;

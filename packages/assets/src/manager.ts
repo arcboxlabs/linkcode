@@ -7,7 +7,7 @@ import type {
 } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { AssetDescriptor } from './catalog';
-import { CATALOG } from './catalog';
+import { CATALOG, isClosureDescriptor } from './catalog';
 import type { DownloadProgress } from './download';
 import type { GcReport } from './gc';
 import { collectGarbage } from './gc';
@@ -23,18 +23,14 @@ export interface AssetManagerOptions extends InstallOptions {
   pinFrom?: string;
 }
 
-// Install lifecycle events (`AssetInstallEvent`, defined in @linkcode/schema) fan out to every
-// subscriber regardless of which caller triggered the install. Per-call `onProgress` is
-// unreliable for observers: the in-flight dedupe in install.ts keeps only the first caller's
-// callback, so anything that must see every install (the engine's wire broadcasts) subscribes.
+// Install events fan out to every subscriber. Per-call `onProgress` is unreliable (install.ts's
+// in-flight dedupe keeps only the first caller's callback) — observers must subscribe instead.
 export type { AssetInstallEvent } from '@linkcode/schema';
 
 /**
- * The daemon-facing facade: one instance per daemon owns pin → GC → ensure orchestration and
- * answers the prober's synchronous managed-binary lookups. Wanted versions are resolved once
- * at construction — SDK pins cannot change while this daemon runs. `ensure()` is async and
- * meant for background warm-up or on-demand installs; boot stays fast because availability
- * comes from the synchronous already-on-disk scan.
+ * Daemon-facing facade (one per daemon): pin → GC → ensure orchestration plus the prober's
+ * synchronous managed-binary lookups. Wanted versions resolve once at construction — SDK pins
+ * cannot change while the daemon runs; availability is a synchronous on-disk scan, `ensure()` async.
  */
 export class AssetManager {
   private readonly descriptors: ReadonlyMap<ManagedAssetId, AssetDescriptor>;
@@ -45,7 +41,15 @@ export class AssetManager {
     const catalog = options.catalog ?? Object.values(CATALOG);
     this.descriptors = new Map(catalog.map((descriptor) => [descriptor.id, descriptor]));
     for (const descriptor of this.descriptors.values()) {
-      this.wanted.set(descriptor.id, wantedVersion(descriptor.version, options.pinFrom));
+      const wanted = wantedVersion(descriptor.version, options.pinFrom);
+      // A closure manifest is generated from the same lockfile the pin comes from; a mismatch
+      // means a stale manifest after an SDK bump — treat as unpinnable (no install, GC hands
+      // off) rather than install bytes that disagree with the adapter's compiled-against types.
+      const stale =
+        isClosureDescriptor(descriptor) &&
+        wanted !== undefined &&
+        wanted !== descriptor.closure.version;
+      this.wanted.set(descriptor.id, stale ? undefined : wanted);
     }
   }
 
@@ -93,7 +97,17 @@ export class AssetManager {
   managedBinary(id: ManagedAssetId): string | undefined {
     const descriptor = this.descriptors.get(id);
     const version = this.wanted.get(id);
-    return descriptor && version ? installedPath(descriptor, version) : undefined;
+    // A closure installs an importable module tree, not a spawnable binary (see managedEntry).
+    if (!descriptor || isClosureDescriptor(descriptor)) return undefined;
+    return version ? installedPath(descriptor, version) : undefined;
+  }
+
+  /** Synchronous: the entry module of an installed closure asset (in-process import target). */
+  managedEntry(id: ManagedAssetId): string | undefined {
+    const descriptor = this.descriptors.get(id);
+    const version = this.wanted.get(id);
+    if (!descriptor || !isClosureDescriptor(descriptor)) return undefined;
+    return version ? installedPath(descriptor, version) : undefined;
   }
 
   /**
@@ -110,9 +124,8 @@ export class AssetManager {
   }
 
   /**
-   * Ensure the wanted version is installed, downloading on miss (deduped per id+version).
-   * `undefined` when the asset cannot be pinned or is unknown — callers fall back to
-   * detected/SDK resolution.
+   * Ensure the wanted version is installed, downloading on miss (deduped per id+version);
+   * `undefined` when unpinnable or unknown — callers fall back to detected/SDK resolution.
    */
   async ensure(
     id: ManagedAssetId,

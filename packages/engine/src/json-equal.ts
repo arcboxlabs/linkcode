@@ -1,9 +1,5 @@
-/**
- * Structural equality over JSON-shaped values (the wire snapshots the engine caches). Key order
- * is insignificant — collectors assemble records from concurrently-resolving probes, so two equal
- * snapshots routinely differ in insertion order and a stringify comparison would false-diff.
- * An `undefined`-valued key equals an absent key, matching JSON serialization.
- */
+/** Structural equality over JSON-shaped values: key order is insignificant (a stringify compare
+ * would false-diff), and an `undefined`-valued key equals an absent key, matching JSON. */
 export function jsonValueEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (Array.isArray(a) || Array.isArray(b)) {

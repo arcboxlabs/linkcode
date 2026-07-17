@@ -16,8 +16,6 @@
 
   languages.javascript = {
     enable = true;
-    # nixpkgs nodejs_24 24.15/24.16 crashes worker_threads workloads on Darwin
-    # (NixOS/nixpkgs#536039); Node 26 ships the upstream V8 fix.
     package = pkgs.nodejs_26;
     corepack.enable = false;
     pnpm = {
@@ -70,12 +68,6 @@
     fi
   '';
 
-  # The dev daemon and desktop run under a `dev` profile so they fork their own universe
-  # (~/.linkcode-dev) instead of sharing the default `~/.linkcode`:19523 with an installed release:
-  # sharing it lets whichever daemon binds first win, and the loser's client then dials a peer on a
-  # different WIRE_PROTOCOL_VERSION — every frame is silently dropped and surfaces as "Unable to
-  # connect to the daemon". The env is scoped to these dev commands (not the whole shell) so it never
-  # leaks into `pnpm test` / E2E / packaging.
   scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && LINKCODE_PROFILE=dev pnpm run --filter @linkcode/daemon dev";
   scripts.desktop.exec = "LINKCODE_PROFILE=dev pnpm run --filter @linkcode/desktop dev";
   scripts.mobile.exec = "pnpm run --filter @linkcode/mobile ios";

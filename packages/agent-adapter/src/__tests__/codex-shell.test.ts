@@ -115,8 +115,7 @@ describe('CodexAdapter shell-command passthrough', () => {
       return acc;
     }, []);
     // Two 'running's: dispatch announces the turn synchronously (the shellCommand ack precedes
-    // turn/started, and the engine's input gate reads status at send()-resolve), then turn/started
-    // re-emits — the same double-emit the prompt path's startTurn + turn/started produces.
+    // turn/started; the engine's input gate reads status at send()-resolve), then turn/started re-emits.
     expect(statuses).toEqual(['running', 'running', 'idle']);
 
     const toolEvents = events.filter((e) => e.type === 'tool-call');

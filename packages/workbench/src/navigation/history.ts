@@ -1,10 +1,13 @@
 import type { SessionId, WorkspaceId } from '@linkcode/schema';
 
+/** Full-page surfaces that overlay the workbench and participate in navigation history. */
+export type WorkbenchOverlaySurface = 'settings' | 'automations';
+
 /** A place the workbench main surface can navigate back/forward to. */
 export type NavLocation =
   | { surface: 'thread'; sessionId: SessionId }
   | { surface: 'new-thread'; workspaceId: WorkspaceId | null }
-  | { surface: 'settings' };
+  | { surface: WorkbenchOverlaySurface };
 
 export interface NavHistoryStacks {
   back: NavLocation[];
@@ -25,9 +28,8 @@ export function locationsEqual(a: NavLocation, b: NavLocation): boolean {
 }
 
 /**
- * Records an explicit navigation. Two-stack model: the current location lives outside the stacks
- * (it IS the app state), so `from` is what gets pushed. Any new navigation branches the timeline —
- * the forward stack clears, browser-style.
+ * Records an explicit navigation. The current location lives outside the stacks (it IS the app
+ * state), so `from` is what gets pushed; a new navigation clears the forward stack, browser-style.
  */
 export function recordTransition(
   stacks: NavHistoryStacks,
@@ -42,10 +44,9 @@ export function recordTransition(
 }
 
 /**
- * Pops `dir` until a reachable location surfaces, dropping unreachable entries (e.g. closed
- * sessions) on the way so they never block traversal. On a hit the current location moves onto
- * the opposite stack; when the stack exhausts, the dropped entries stay dropped (keeping
- * "can go back/forward" honest) and there is no target.
+ * Pops `dir` until a reachable location surfaces, dropping unreachable entries (closed sessions)
+ * so they never block traversal; on a hit the current location moves onto the opposite stack.
+ * When the stack exhausts, dropped entries stay dropped ("can go back" stays honest) — no target.
  */
 export function travel(
   stacks: NavHistoryStacks,

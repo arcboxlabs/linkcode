@@ -7,20 +7,15 @@ import type { WorkspaceStore } from './workspace-store';
 import { InMemoryWorkspaceStore } from './workspace-store';
 
 /**
- * WorkspaceRegistry: the Engine's in-memory index of registered directories, keyed by a
- * {@link normalizeCwdKey}'d `cwd` so the same directory always resolves to one record regardless
- * of a trailing separator. Session lifecycle (`session.start` / `history.resume`) calls
- * {@link touch} so opening a session in a directory registers or freshens that workspace without
- * the client having to register explicitly first; `register` is the explicit, client-driven path.
+ * The Engine's in-memory index of registered directories, keyed by a {@link normalizeCwdKey}'d
+ * `cwd` so the same directory always resolves to one record. Session start/resume calls
+ * {@link touch} to auto-register; `register` is the explicit, client-driven path.
  */
 export class WorkspaceRegistry {
   private readonly byId = new Map<WorkspaceId, WorkspaceRecord>();
   private readonly byCwdKey = new Map<string, WorkspaceId>();
-  /**
-   * `normalizeCwdKey`'d cwd of the daemon-owned chat root, set by {@link ensureChatWorkspace}. A
-   * cwd auto-registered via {@link touch} that matches this key becomes a `chat` workspace instead
-   * of the default `project`; `null` until `ensureChatWorkspace` has run.
-   */
+  /** `normalizeCwdKey`'d cwd of the daemon-owned chat root (null until {@link ensureChatWorkspace}
+   * runs); a cwd auto-registered via {@link touch} that matches becomes `chat`, not `project`. */
   private chatRootKey: string | null = null;
   private seq = 0;
 
@@ -43,12 +38,9 @@ export class WorkspaceRegistry {
     return id === undefined ? undefined : this.byId.get(id);
   }
 
-  /**
-   * Explicitly register a directory. Idempotent: an already-known directory just gets its
-   * `lastUsedAt` freshened, returning the existing record (its `kind` is never changed by this
-   * path — see {@link upsert}). Rejects a `cwd` that isn't an existing directory — unlike
-   * {@link touch}, this is a client-driven call with no session to fall back on.
-   */
+  /** Explicitly register a directory. Idempotent: an already-known directory just gets its
+   * `lastUsedAt` freshened and keeps its `kind` (see {@link upsert}). Rejects a `cwd` that isn't
+   * an existing directory — unlike {@link touch}, there is no session to fall back on. */
   async register(opts: {
     cwd: string;
     name?: string;
@@ -59,11 +51,8 @@ export class WorkspaceRegistry {
     return this.upsert(cwd, opts.name, opts.kind ?? 'project');
   }
 
-  /**
-   * Ensure a directory a session just ran in is registered: freshen `lastUsedAt` if known, else
-   * create a new record — `chat` if `cwd` is the daemon-owned chat root (see
-   * {@link ensureChatWorkspace}), `project` otherwise.
-   */
+  /** Ensure a directory a session just ran in is registered: freshen `lastUsedAt` if known, else
+   * create a record — `chat` if `cwd` is the daemon-owned chat root, `project` otherwise. */
   touch(cwd: string, name?: string): WorkspaceRecord {
     const resolved = resolve(cwd);
     const kind =
@@ -73,13 +62,9 @@ export class WorkspaceRegistry {
     return this.upsert(resolved, name, kind);
   }
 
-  /**
-   * Ensure the daemon-owned chat root exists and is registered as the `chat` workspace: creates
-   * the directory if missing, registers a fresh `chat` record if `cwd` is unknown, or upgrades an
-   * existing `project` record to `chat` in place (keeping its `workspaceId`). Called once at
-   * daemon startup, before any client can connect — {@link touch} then recognizes the same
-   * directory as `chat` on every subsequent auto-registration.
-   */
+  /** Ensure the daemon-owned chat root exists and is registered as the `chat` workspace,
+   * upgrading an existing `project` record in place (keeping its `workspaceId`). Called once at
+   * daemon startup, before any client can connect; {@link touch} then recognizes the directory. */
   async ensureChatWorkspace(cwd: string): Promise<WorkspaceRecord> {
     const resolved = resolve(cwd);
     await mkdir(resolved, { recursive: true });
@@ -123,12 +108,9 @@ export class WorkspaceRegistry {
     });
   }
 
-  /**
-   * Resolves `cwd` to an absolute path first — the wire boundary, since it may arrive as whatever
-   * the user typed, a client-relative path, or an already-resolved session cwd — so `register` and
-   * `touch` always dedupe against the same key for a given real directory. `kind` only applies when
-   * minting a brand-new record; an already-known directory keeps its persisted `kind` untouched.
-   */
+  /** Resolves `cwd` to an absolute path first (the wire boundary) so `register` and `touch`
+   * always dedupe against the same key; `kind` only applies when minting a brand-new record —
+   * an already-known directory keeps its persisted `kind` untouched. */
   private upsert(rawCwd: string, name: string | undefined, kind: WorkspaceKind): WorkspaceRecord {
     const cwd = resolve(rawCwd);
     const key = normalizeCwdKey(cwd);

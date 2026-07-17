@@ -4,12 +4,9 @@ import { syncBuiltinESMExports } from 'node:module';
 import path from 'node:path';
 
 /**
- * When the daemon runs inside Electron (bundled into the desktop app's asar), agent SDKs resolve
- * their vendored CLI binaries to paths inside `app.asar` and launch them with
- * `child_process.spawn`. Electron rewrites asar paths to their `app.asar.unpacked` copies for
- * `execFile`/`fork` only — a raw `spawn` hands the OS a path that traverses `app.asar` (a file)
- * as a directory and fails with ENOTDIR. electron-builder's smartUnpack already ships every such
- * binary unpacked, so extending Electron's substitution to `spawn` is all that's missing.
+ * Electron rewrites `app.asar` paths to `app.asar.unpacked` for `execFile`/`fork` but not raw
+ * `spawn`, so agent SDKs spawning vendored binaries from inside the asar fail with ENOTDIR.
+ * Extend the substitution to `spawn` (smartUnpack already ships the binaries unpacked).
  */
 
 const ASAR_SEGMENT = `${path.sep}app.asar${path.sep}`;

@@ -1,0 +1,1 @@
+ALTER TABLE `schedules` ADD `misfire_policy` text;

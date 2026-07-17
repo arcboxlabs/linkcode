@@ -2,9 +2,8 @@ import type { FieldErrors } from 'react-hook-form';
 import { z } from 'zod';
 import { createErrorMap } from 'zod-validation-error';
 
-// Activates human-readable zod validation messages globally as a module side
-// effect — any file importing from this module turns it on, so forms get
-// friendly messages without per-schema overrides.
+// Activates human-readable zod validation messages globally as a module side effect — any import
+// of this module turns it on.
 z.config({ customError: createErrorMap() });
 
 // Only flattens top-level field errors. Nested fields (e.g. "address.street")

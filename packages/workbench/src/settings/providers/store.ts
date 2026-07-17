@@ -1,10 +1,9 @@
 import { create } from 'zustand';
 
 /**
- * View state of the Providers settings page (master/detail + the add flow that takes over the
- * detail pane). A module-scope store, not component state: the Agents tab jumps here with a
- * pre-selected account, and on desktop the Settings surface lives inside the daemon-URL-keyed
- * connection subtree, where component state would reset when a new URL is saved. Not persisted.
+ * View state of the Providers settings page (master/detail + add flow). Module-scope, not
+ * component state: the Agents tab jumps here with a pre-selected account, and desktop's Settings
+ * sits in the daemon-URL-keyed subtree where component state resets on URL save. Not persisted.
  */
 export type ProvidersSettingsView =
   | { kind: 'browse' }

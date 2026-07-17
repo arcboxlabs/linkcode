@@ -1,11 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Managed assets (CODE-111): platform binaries the daemon provisions for the user — agent
- * CLI pairs (claude-code / codex / opencode) and standalone toolchains (tectonic). The
- * daemon downloads, integrity-verifies, and installs them into a per-user store; this
- * module is the data contract shared by that store, the engine, and eventually the signed
- * compat manifest (CODE-77), which will carry these artifact shapes with a signature.
+ * Managed assets (CODE-111): platform binaries the daemon downloads, integrity-verifies, and
+ * installs into a per-user store. The data contract shared by that store, the engine, and
+ * eventually the signed compat manifest (CODE-77), which will carry these shapes with a signature.
  */
 
 /** First-batch managed assets. `agent:` ids pair a CLI with its in-repo SDK; `tool:` ids stand alone. */
@@ -21,12 +19,9 @@ export type ManagedAssetId = z.infer<typeof ManagedAssetIdSchema>;
 export const ManagedAssetFormatSchema = z.enum(['tgz', 'zip', 'raw']);
 export type ManagedAssetFormat = z.infer<typeof ManagedAssetFormatSchema>;
 
-/**
- * A fully resolved downloadable artifact: one asset version on one platform. `urls` is an
- * ordered source list — `integrity` pins the exact bytes, so every source is equivalent and
- * the downloader just walks the list until one delivers verified content (mirror/fallback
- * semantics with no trust implications).
- */
+/** A fully resolved downloadable artifact: one asset version on one platform. `urls` is an
+ * ordered source list; `integrity` pins the exact bytes, so the downloader walks the list until
+ * one delivers verified content (mirror/fallback with no trust implications). */
 export const ManagedAssetArtifactSchema = z.object({
   urls: z.array(z.string().min(1)).min(1),
   /** SRI string (e.g. `sha512-<base64>`; whitespace-separated multi-hash allowed). */
@@ -63,11 +58,8 @@ export const ManagedAssetStatusSchema = z.object({
 });
 export type ManagedAssetStatus = z.infer<typeof ManagedAssetStatusSchema>;
 
-/**
- * Install lifecycle the asset store fans out to observers (AssetManager.subscribe → the engine,
- * which forwards it as the `asset.progress` / `asset.settled` broadcasts). In-process contract,
- * not a wire shape — plain types, nothing to validate at a boundary.
- */
+/** Install lifecycle the asset store fans out to observers (forwarded by the engine as the
+ * `asset.progress` / `asset.settled` broadcasts). In-process contract, not a wire shape. */
 export type AssetInstallEvent =
   | { kind: 'progress'; id: ManagedAssetId; receivedBytes: number; totalBytes?: number }
   | { kind: 'installed'; id: ManagedAssetId; installed: InstalledAsset }

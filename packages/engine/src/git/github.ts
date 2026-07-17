@@ -17,10 +17,8 @@ const GH_TIMEOUT_MS = 20000;
 const GH_PR_JSON_FIELDS =
   'number,title,url,state,isDraft,baseRefName,headRefName,reviewDecision,statusCheckRollup';
 
-/**
- * One entry of `statusCheckRollup`: classic status contexts carry `state`; check runs carry
- * `status` + `conclusion` (conclusion is null until the run completes).
- */
+/** One entry of `statusCheckRollup`: classic status contexts carry `state`; check runs carry
+ * `status` + `conclusion` (null until the run completes). */
 const GhCheckSchema = z.object({
   state: z.string().optional(),
   status: z.string().optional(),
@@ -94,11 +92,9 @@ function firstLine(text: string): string {
   return text.split('\n', 1)[0]?.trim() ?? '';
 }
 
-/**
- * GitHub via the user's local `gh` CLI — authentication is fully delegated to `gh auth login`; the
- * daemon never sees or stores a token. A token-backed API client (LinkCode GitHub App) can later
- * implement the same {@link GitProviderClient} seam without touching the wire contract.
- */
+/** GitHub via the user's local `gh` CLI — auth is fully delegated to `gh auth login`; the daemon
+ * never sees or stores a token. A token-backed client (LinkCode GitHub App) can later implement
+ * the same {@link GitProviderClient} seam without touching the wire contract. */
 export class GhCliGitHubClient implements GitProviderClient {
   readonly kind = 'github' as const;
 

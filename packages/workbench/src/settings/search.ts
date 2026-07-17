@@ -3,9 +3,8 @@ import { useTranslations } from 'use-intl';
 import { matchPaletteCommands } from '../palette/match';
 
 /**
- * Filter grouped settings nav items by a search query. Matching reuses the palette scorer
- * (label, then `keywords`) but display keeps declaration order — ranking is meaningless across
- * sidebar groups. Groups left with no items are dropped by the nav (header included).
+ * Filter grouped settings nav items by query, reusing the palette scorer; display keeps
+ * declaration order (ranking is meaningless across groups). Emptied groups are dropped by the nav.
  */
 export function filterSettingsNavGroups(
   groups: readonly SettingsSidebarNavGroup[],
@@ -44,9 +43,8 @@ const PROVIDER_SERVICES = [
 ] as const;
 
 /**
- * Per-tab field-level search terms, resolved from the active locale's `settings.*` labels —
- * "dark" or "主题" hits Appearance, "telegram" hits Messaging. Apps attach these to their nav
- * items; tabs an app doesn't have are simply never read.
+ * Per-tab field-level search terms, resolved from the active locale's `settings.*` labels. Apps
+ * attach these to their nav items; tabs an app doesn't have are simply never read.
  */
 export function useSettingsSearchKeywords(): SettingsSearchKeywords {
   const t = useTranslations('settings');
@@ -74,7 +72,12 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
     ],
     connection: [t('connection.title'), t('connection.url')],
     about: [t('about.version'), t('about.checkForUpdates')],
-    agents: [t('agents.title'), t('agents.enabled')],
+    agents: [
+      t('agents.title'),
+      t('agents.enabled'),
+      t('agents.runtimeMissing'),
+      t('agents.loggedOut'),
+    ],
     providers: [
       t('providers.title'),
       t('providers.addAccount'),

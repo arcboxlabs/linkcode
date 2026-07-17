@@ -10,11 +10,8 @@ const PANEL_ONLY_CAPABILITIES = {
   interactive: false,
 } as const;
 
-/** In-process renderable kinds shipped with the registry. Inline `markdown`/`code`
- * fences are not artifact kinds — they stay on Streamdown's default rendering; the
- * `markdown`/`pdf`/`image`/`text` kinds here are the *file* artifacts the right-panel
- * viewer renders (see `artifactKindForPath`). Sandboxed kinds (html, react) arrive
- * with CODE-62/CODE-64. */
+/** Inline `markdown`/`code` fences stay on Streamdown (not artifact kinds); the file kinds here
+ * feed the panel viewer (`artifactKindForPath`). Sandboxed kinds arrive with CODE-62/CODE-64. */
 export const BUILTIN_ARTIFACT_KINDS: readonly ArtifactKindDefinition[] = [
   { id: 'markdown', capabilities: PANEL_ONLY_CAPABILITIES, fenceLanguages: [] },
   { id: 'pdf', capabilities: PANEL_ONLY_CAPABILITIES, fenceLanguages: [] },

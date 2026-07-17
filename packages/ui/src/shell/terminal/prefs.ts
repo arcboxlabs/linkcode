@@ -1,10 +1,8 @@
 import type { ResttyBuiltinThemeName } from 'restty';
 
-/**
- * Monospace family the terminal renders in — a free-form family name, or empty for the bundled IBM
- * Plex Mono chain. A named family is prepended to that chain (`local: 'prefer'`) so a machine that
- * lacks it falls back cleanly. The list seeds the field's suggestions; any other name is accepted.
- */
+/** Terminal monospace family: free-form, or empty for the bundled IBM Plex Mono chain. A named
+ * family is prepended with `local: 'prefer'` so a machine lacking it falls back cleanly; the
+ * list only seeds the field's suggestions — any other name is accepted. */
 export const TERMINAL_FONT_SUGGESTIONS = [
   'SF Mono',
   'Menlo',

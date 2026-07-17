@@ -17,6 +17,19 @@ const mocks = vi.hoisted(() => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+  /** When true, pretend `out/daemon/instrument.mjs` is on disk (Sentry preload path). */
+  instrumentPresent: false,
+  existsSync: vi.fn((path: unknown) => {
+    const s = String(path);
+    if (s.endsWith('instrument.mjs')) return mocks.instrumentPresent;
+    // Sidecar absence is fine in these tests (supervisor only warns).
+    if (s.includes('linkcode-pty')) return false;
+    return false;
+  }),
+}));
+
+vi.mock('node:fs', () => ({
+  existsSync: (path: unknown) => mocks.existsSync(path),
 }));
 
 vi.mock('electron', () => ({
@@ -82,6 +95,7 @@ describe('daemon supervisor recovery', () => {
     daemonUrl = null;
     runtimeChanged = null;
     children = [];
+    mocks.instrumentPresent = false;
     mocks.getSettings.mockImplementation(() => ({ daemonUrl }));
     mocks.watchRuntime.mockImplementation((listener: () => void) => {
       runtimeChanged = listener;
@@ -137,5 +151,30 @@ describe('daemon supervisor recovery', () => {
     vi.advanceTimersByTime(1000);
 
     expect(children).toHaveLength(1);
+  });
+
+  it('preloads instrument.mjs when present and leaves DSN unset without a signed-build inject', async () => {
+    mocks.instrumentPresent = true;
+    await startSupervisor();
+
+    expect(mocks.fork).toHaveBeenCalledTimes(1);
+    const forkArgs = mocks.fork.mock.calls[0] as [
+      string,
+      string[],
+      { env?: Record<string, string | undefined>; execArgv?: string[] },
+    ];
+    const options = forkArgs[2];
+    expect(options.execArgv?.[0]).toBe('--import');
+    expect(options.execArgv?.[1]?.endsWith('instrument.mjs')).toBe(true);
+    // MAIN_VITE_SENTRY_DSN is empty in unit tests (no signed-build inject).
+    expect(options.env?.LINKCODE_SENTRY_DSN).toBeUndefined();
+  });
+
+  it('skips --import when instrument.mjs is missing', async () => {
+    mocks.instrumentPresent = false;
+    await startSupervisor();
+
+    const forkArgs = mocks.fork.mock.calls[0] as [string, string[], { execArgv?: string[] }];
+    expect(forkArgs[2].execArgv).toEqual([]);
   });
 });

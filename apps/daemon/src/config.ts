@@ -14,10 +14,9 @@ import {
 import type { TransportServerOptions } from '@linkcode/transport/server';
 
 /**
- * Daemon configuration, loaded from `config.json` in the profile's state dir (optional) with env
- * overrides. Per-provider settings (API keys / default model) are typed by `ProvidersConfigSchema`
- * (data plane) and applied to a session's StartOptions by the Engine; the daemon reads/writes them
- * here.
+ * Daemon configuration: `config.json` in the profile's state dir (optional) with env overrides.
+ * Per-provider settings are typed by `ProvidersConfigSchema` and applied to a session's
+ * StartOptions by the Engine; the daemon only reads/writes them here.
  */
 export type DaemonListenerConfig = TransportServerOptions;
 
@@ -41,10 +40,9 @@ interface ConfigFile {
 }
 
 /**
- * The daemon's profile, from `LINKCODE_PROFILE`; `undefined` is the default profile. Each profile
- * is a fully isolated state universe — every path below (and therefore the device identity HQ
- * sees) forks with it. Resolved per call so tests can vary the env like they vary `$HOME`; an
- * invalid name throws and aborts boot rather than silently landing in the default universe.
+ * Profile from `LINKCODE_PROFILE` (`undefined` = default): every path below — and the device
+ * identity HQ sees — forks with it. Resolved per call so tests can vary the env; an invalid name
+ * throws and aborts boot rather than silently landing in the default universe.
  */
 export function daemonProfile(): string | undefined {
   return parseProfileName(process.env.LINKCODE_PROFILE);
@@ -85,11 +83,9 @@ export function deviceKeysDir(): string {
 }
 
 /**
- * The daemon-owned chat root: a fixed directory the daemon ensures exists and registers as the
- * `chat`-kind workspace (see `WorkspaceRegistry.ensureChatWorkspace`) backing the sidebar's
- * "Chats" section. Coincides in value with desktop's picker default folder
- * (`ensureDefaultPickerDirectory`) but is owned independently — this is a system-plane invariant
- * the daemon enforces regardless of which client, if any, is connected.
+ * Daemon-owned chat root, registered as the `chat`-kind workspace backing the sidebar's "Chats".
+ * Coincides in value with desktop's picker default (`ensureDefaultPickerDirectory`) but is owned
+ * independently — a system-plane invariant enforced regardless of which client is connected.
  */
 export function chatWorkspaceRoot(): string {
   return join(homedir(), 'LinkCode');
@@ -120,10 +116,8 @@ export function loadConfig(): DaemonConfig {
 }
 
 /**
- * Parse `file.accounts` element by element: an invalid account (bad shape, unknown agent kind for
- * an oauth credential, …) is dropped and logged rather than discarding the whole pool — one bad
- * entry must not blank out the rest, and `saveAccounts` would otherwise persist that loss on the
- * next write. Mirrors {@link parseProviders}.
+ * Parse element by element: an invalid account is dropped and logged, never blanking the pool —
+ * `saveAccounts` would persist that loss on the next write. Mirrors {@link parseProviders}.
  */
 function parseAccounts(raw: unknown): Accounts {
   if (raw === undefined) return [];
@@ -144,10 +138,8 @@ function parseAccounts(raw: unknown): Accounts {
 }
 
 /**
- * Parse `file.providers` field by field: an invalid entry (unknown agent kind, or a value that
- * fails `ProviderConfigSchema`) is dropped and logged rather than discarding every other,
- * otherwise-valid entry — a single typo must not blank out the rest of the user's config, and
- * `saveProviders` would otherwise persist that loss back to disk on the next write.
+ * Parse field by field: an invalid entry is dropped and logged, never blanking the other entries —
+ * `saveProviders` would persist that loss on the next write.
  */
 function parseProviders(raw: unknown): ProvidersConfig {
   if (raw === undefined) return {};
@@ -172,18 +164,12 @@ function parseProviders(raw: unknown): ProvidersConfig {
   return providers;
 }
 
-/**
- * Persist provider config back to `~/.linkcode/config.json`, preserving the file's other fields
- * (listeners / port / host / accounts). Written `0600` since it may hold API keys.
- */
+/** Persist providers to config.json, preserving its other fields; `0600` (may hold API keys). */
 export function saveProviders(providers: ProvidersConfig): void {
   writeConfigField('providers', providers);
 }
 
-/**
- * Persist the account pool back to `~/.linkcode/config.json`, preserving the file's other fields.
- * Written `0600` since accounts hold API keys / tokens.
- */
+/** Persist the account pool to config.json, preserving its other fields; `0600` (holds API keys / tokens). */
 export function saveAccounts(accounts: Accounts): void {
   writeConfigField('accounts', accounts);
 }

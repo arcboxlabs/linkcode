@@ -7,14 +7,20 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development"
+      "channel": "development",
+      "environment": "development"
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "environment": "preview",
+      "env": {
+        "SENTRY_ALLOW_FAILURE": "true"
+      }
     },
     "production": {
-      "channel": "production"
+      "channel": "production",
+      "environment": "production"
     }
   },
   "submit": {

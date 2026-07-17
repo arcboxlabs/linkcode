@@ -8,10 +8,8 @@ function getGlobalErrorMessage(
 }
 
 /**
- * Renders global `root` / `form` errors (API failures via `setError('root', …)`,
- * RHF `validate` rejections) from the surrounding `FormProvider` context. Place
- * it outside any `<Field>` — `<FieldError>` crashes without a parent `<Field>`,
- * which is why this standalone component exists.
+ * Renders global `root` / `form` errors from the surrounding `FormProvider`. Exists
+ * because `<FieldError>` crashes without a parent `<Field>`; place it outside any `<Field>`.
  */
 export function FormRootError({ errors: errorsProp }: { errors?: FieldErrors }) {
   const ctx = useFormContext();

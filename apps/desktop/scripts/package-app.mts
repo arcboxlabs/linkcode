@@ -1,33 +1,19 @@
 #!/usr/bin/env node
 /**
- * Package the desktop app from a materialized, single-importer staging directory.
+ * Package the desktop app from a materialized, single-importer staging directory (CODE-107):
+ * `node scripts/package-app.mts [mac|win|linux] [--devshell] [-- <extra electron-builder args>]`.
  *
- *   node scripts/package-app.mts [mac|win|linux] [--devshell] [-- <extra electron-builder args>]
+ * Packing apps/desktop in place fails silently twice under pnpm's hoisted layout: on Windows the
+ * @electron/rebuild workspace-root detection misses the repo root, so better-sqlite3 is never
+ * rebuilt to Electron's ABI and the daemon dies on `require` — "Unable to connect to the daemon"
+ * (shipped 0.1.0–0.2.1); and the pnpm module collector enumerates every workspace importer, which
+ * EMFILEs on Windows and lets cross-importer dedup drop a transitive dep out of the asar
+ * (js-yaml → electron-updater crash on boot).
  *
- * Why staging instead of packing apps/desktop in place: electron-builder resolves BOTH the native
- * rebuild root and the asar module collection from the workspace, and pnpm's hoisted layout puts
- * the app's runtime deps (better-sqlite3, js-yaml, …) in the repo-root node_modules, not under
- * apps/desktop. Two failures follow, and neither errors loudly:
- *
- *  - Native rebuild (@electron/rebuild) walks up from `appDir` to the detected workspace root
- *    looking for native modules. On Windows electron-builder detects that root by running
- *    `pnpm --workspace-root exec pwd` — there is no `pwd`, so it falls back to a package.json
- *    `workspaces` field (which pnpm workspaces do not have) and lands on apps/desktop. better-sqlite3
- *    is not there, so it is never rebuilt to Electron's ABI and the shipped .node keeps the
- *    plain-Node ABI — the daemon dies on `require('better-sqlite3')` and every client shows
- *    "Unable to connect to the daemon". (Windows shipped this from 0.1.0 through 0.2.1.)
- *  - The pnpm module collector enumerates every workspace importer, which both EMFILEs on Windows
- *    and lets pnpm's cross-importer dedup drop a uniquely-placed copy of a transitive dep out of
- *    the asar entirely (js-yaml → electron-updater crash on boot).
- *
- * `pnpm --prod deploy` materializes a self-contained dir with the app's production closure flat in
- * its own node_modules. Pointing electron-builder's `--projectDir` at it (OUTSIDE the workspace,
- * so no `pnpm --workspace-root` detection kicks in) makes appDir === projectDir === workspaceRoot:
- * the rebuild walker finds better-sqlite3 on step one regardless of platform, and the module
- * collector sees exactly one importer (pnpm reports it has no lockfile there and electron-builder
- * falls through to its filesystem-traversal collector). This retired the former app-builder-lib
- * collector patch; the .pnpmfile.cjs drizzle-orm↔expo-sqlite sever stays — it keeps the expo tree
- * out of this deploy closure, which is orthogonal to the collector.
+ * `pnpm --prod deploy` materializes the production closure flat, and `--projectDir` pointed there
+ * (OUTSIDE the workspace) makes appDir === projectDir === workspaceRoot: the rebuild finds
+ * better-sqlite3 and the collector sees exactly one importer. The .pnpmfile.cjs
+ * drizzle-orm↔expo-sqlite sever stays — it keeps the expo tree out of this deploy closure.
  */
 import { cpSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -49,18 +35,15 @@ const assetsDir = join(repoRoot, 'assets');
 /** Kept where CI's upload + verify-artifacts.mts already look (electron-builder.yml directories.output). */
 const releaseDir = join(desktopDir, 'release');
 /**
- * OUTSIDE the workspace on purpose: a staging dir under the repo would be discovered as a workspace
- * member (or resolve `pnpm --workspace-root` back to the repo), reintroducing the multi-importer
- * collection this whole flow avoids.
+ * OUTSIDE the workspace on purpose: a staging dir under the repo would be rediscovered as a
+ * workspace member, reintroducing the multi-importer collection this flow exists to avoid.
  */
 const stagingDir = join(tmpdir(), 'linkcode-desktop-staging');
 
 /**
- * Run a command, inheriting stdio, throwing on failure. cross-spawn handles what plain
- * `execFileSync` cannot on Windows: resolving `pnpm` to its `.cmd` shim via PATHEXT and executing
- * it through the shell wrapper — a bare `execFileSync('pnpm', …)` is `spawnSync pnpm ENOENT`, and
- * even a resolved `pnpm.cmd` path is not a directly-spawnable image. `spawn.sync` reports failures
- * on its result rather than throwing, so surface them here.
+ * Run a command, inheriting stdio, throwing on failure. cross-spawn is required on Windows: a bare
+ * `execFileSync('pnpm', …)` is ENOENT and even a resolved `pnpm.cmd` is not directly spawnable.
+ * `spawn.sync` reports failures on its result rather than throwing, so surface them here.
  */
 function run(command: string, commandArgs: string[], cwd: string): void {
   const result = crossSpawn.sync(command, commandArgs, { cwd, stdio: 'inherit' });
@@ -131,11 +114,9 @@ function pruneStaging(): void {
 }
 
 /**
- * Build only the arches whose PTY sidecar was staged. electron-builder.yml targets both x64 and
- * arm64, but `extraResources: sidecar/${arch}` can only resolve an arch that was staged — CI stages
- * both (`stage-sidecar --all`), a local `stage:host-runtime` stages just the host. Deriving the
- * arch set from `sidecar/` keeps both paths correct without a bare invocation trying to pack an
- * arch whose sidecar is missing.
+ * Build only the arches whose PTY sidecar was staged: `extraResources: sidecar/${arch}` cannot
+ * resolve an arch that wasn't (CI stages both via `stage-sidecar --all`; a local
+ * `stage:host-runtime` stages just the host).
  */
 const KNOWN_ARCHES = new Set(['x64', 'arm64']);
 
@@ -158,9 +139,8 @@ function build(): void {
     stagingDir,
     '--config',
     join(desktopDir, config),
-    // projectDir is the staging dir, so config-relative paths (output, icons) would resolve under
-    // it; redirect them back to the real tree. output stays where CI/verify-artifacts expect it,
-    // icons point at the shared repo-root assets the committed config references as ../../assets.
+    // projectDir is the staging dir, so config-relative paths would resolve under it; redirect
+    // output back to where CI/verify-artifacts expect it and icons to the shared repo-root assets.
     `-c.directories.output=${releaseDir}`,
     `-c.mac.icon=${join(assetsDir, 'linkcode.icon')}`,
     `-c.win.icon=${join(assetsDir, 'icon.png')}`,

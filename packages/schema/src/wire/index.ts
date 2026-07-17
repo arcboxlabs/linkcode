@@ -9,7 +9,9 @@ import { fileWireVariants } from './file';
 import { gitWireVariants } from './git';
 import { historyWireVariants } from './history';
 import { keepAliveWireVariants } from './keep-alive';
+import { loopWireVariants } from './loop';
 import { managedAssetWireVariants } from './managed-asset';
+import { scheduleWireVariants } from './schedule';
 import { scriptWireVariants } from './script';
 import { sessionWireVariants } from './session';
 import { terminalWireVariants } from './terminal';
@@ -23,22 +25,15 @@ export {
 } from './history';
 
 /**
- * Wire protocol: the envelope actually transmitted by the transport layer. Local direct
- * connection (LocalTransport) and remote tunnel (WsTransport) share the same format. Validate
- * with zod at the trust boundary both before sending and after receiving. See
- * docs/ARCHITECTURE.md's Transport & wire protocol section.
- *
- * The payload union is assembled here from one variant array per resource (session / history /
- * config / workspace / git / file / terminal / keep-alive, each in its own file in this directory);
- * `agent.input` / `agent.event` stay inline since they're a thin pass-through of agent.ts's own
- * contract, with no wire-specific shape of their own.
- *
- * v2: the daemon serves multiple clients, so `agent.event` is broadcast to all attached clients of a
- * session. Request/response control messages carry a correlation id (`clientReqId` → `replyTo`) so the
- * originating client can pair the reply despite the broadcast.
+ * Wire protocol: the envelope the transport layer transmits; local (LocalTransport) and tunnel
+ * (WsTransport) share the same format. Validate with zod at the trust boundary both before
+ * sending and after receiving (docs/ARCHITECTURE.md, Transport & wire protocol). The payload
+ * union assembles one variant array per resource; `agent.input` / `agent.event` stay inline as a
+ * thin pass-through of agent.ts. `agent.event` is broadcast to all attached clients of a session,
+ * so request/response control messages correlate via `clientReqId` → `replyTo`.
  */
 
-export const WIRE_PROTOCOL_VERSION = 32 as const;
+export const WIRE_PROTOCOL_VERSION = 36 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
@@ -52,6 +47,8 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...gitWireVariants,
   ...fileWireVariants,
   ...scriptWireVariants,
+  ...scheduleWireVariants,
+  ...loopWireVariants,
   ...artifactWireVariants,
 
   // ── Data plane ──

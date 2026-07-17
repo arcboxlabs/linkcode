@@ -1,9 +1,6 @@
-/**
- * Host-routed preview namespace shared by the reverse proxy (transport) and the script
- * runner (engine). Preview hostnames are `<label>--<label>.localhost`; the `--` and the
- * `.localhost` suffix mark the namespace, so an unrouted preview-looking Host can 404
- * without ever reaching the daemon API (the auth-exemption boundary decided in CODE-58).
- */
+/** Host-routed preview namespace shared by the reverse proxy (transport) and the script runner
+ * (engine). Hostnames are `<label>--<label>.localhost`; the `--` and `.localhost` suffix mark the
+ * namespace, so an unrouted preview-looking Host 404s without reaching the daemon API (CODE-58). */
 
 /** Either an upstream dev server to proxy to, or daemon-held content served directly
  * (ephemeral artifact hosting — CODE-62). */

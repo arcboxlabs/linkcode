@@ -45,9 +45,8 @@ export function toolStateContent(state: ToolPartState): ToolCallContent[] {
   return [];
 }
 
-/** A tool part as the full ToolCall snapshot. Both the live stream (`emitTool`) and history replay
- * go through this one mapping, keyed by the part id, so a cold replay produces the same tool card
- * ids and shapes the live turn emitted and the conversation fold converges by id. */
+/** A tool part as the full ToolCall snapshot. Live stream (`emitTool`) and history replay share
+ * this one mapping, keyed by the part id, so cold and live tool cards converge by id. */
 export function toolCallFromPart(part: ToolPart): ToolCall {
   return {
     toolCallId: part.id,
@@ -80,11 +79,9 @@ export function opencodeSessionToHistorySession(session: Session): AgentHistoryS
 }
 
 /**
- * Drop reverted messages from a replay. OpenCode's revert marker means "the `messageID` message
- * and everything after it has been undone" — replaying it would show conversation the user rolled
- * back. A revert with `partID` is a partial revert inside a message; there is no per-part
- * granularity in the replay, so the whole transcript is kept rather than over-cutting (paseo's
- * `filterOpenCodeRevertedMessages` semantics).
+ * Drop reverted messages from a replay: OpenCode's revert marker means the `messageID` message and
+ * everything after it was undone. A revert with `partID` is partial inside a message; the replay
+ * has no per-part granularity, so everything is kept rather than over-cut (paseo's semantics).
  */
 export function filterRevertedMessages(
   messages: OpencodeMessageWithParts[],
@@ -97,10 +94,9 @@ export function filterRevertedMessages(
 }
 
 /**
- * Replay a session's stored messages as the event stream the live turn emitted: whole user
- * messages, one full-text `agent-message-chunk`/`agent-thought-chunk` per assistant part (part
- * ids are the live stream's message keys — `streamDelta(part.id, …)` — so ids converge), and
- * full tool-call snapshots. `step-start`/`step-finish` and other bookkeeping parts don't replay.
+ * Replay stored messages as the event stream the live turn emitted: whole user messages, one
+ * full-text chunk per assistant part (part ids are the live stream's message keys, so ids
+ * converge), and full tool-call snapshots. `step-start`/`step-finish` bookkeeping doesn't replay.
  */
 export function mapOpencodeHistoryEvents(
   historyId: AgentHistoryId,

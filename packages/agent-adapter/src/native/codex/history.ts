@@ -26,10 +26,9 @@ import { codexToolAnnounce, codexToolSettle } from './history-tools';
 
 const WHITESPACE_RUN_RE = /\s+/g;
 
-/** Codex persists machine-injected context into the rollout as ordinary user-role messages,
- * recognizable only by their wrapper tag. They are not conversation and must not replay as user
- * bubbles (or become a session's title preview). A real user message could begin with `<` too,
- * so match the known tags exactly rather than anything XML-ish. */
+/** Codex persists machine-injected context as ordinary user-role messages recognizable only by
+ * their wrapper tag; they must not replay as user bubbles or become a title preview. Match the
+ * known tags exactly — a real user message could begin with `<` too. */
 const SYNTHETIC_USER_TAGS = ['<environment_context>', '<user_instructions>', '<turn_aborted>'];
 
 export function isSyntheticCodexUserText(text: string): boolean {
@@ -271,9 +270,8 @@ export function codexIndexEntryToSession(entry: CodexIndexEntry): AgentHistorySe
 }
 
 /** Rollout tool rows come in announce/settle pairs linked by `call_id`: `function_call` (JSON
- * `arguments`) and `custom_tool_call` (raw string `input`, e.g. apply_patch) announce, their
- * `*_output` rows settle. `local_shell_call` is the older shell announce shape (an `action`
- * object), kept for pre-0.140 transcripts. */
+ * `arguments`) and `custom_tool_call` (raw string `input`) announce; `*_output` rows settle.
+ * `local_shell_call` is the older shell announce shape, kept for pre-0.140 transcripts. */
 const CODEX_TOOL_ANNOUNCE_TYPES = new Set([
   'function_call',
   'custom_tool_call',
@@ -286,15 +284,12 @@ const CODEX_TOOL_OUTPUT_TYPES = new Set([
 ]);
 
 /**
- * Replays the rollout as the event stream the live turn emitted: text messages plus tool-call
- * announce/settle pairs correlated by `call_id` (mirrors the claude/amp history mappers), mapped
- * to the live adapter's presentation shapes by `history-tools.ts` (command titles, unwrapped
- * outputs, apply_patch diffs, update_plan as a plan event). History ids are NOT converged with
- * the live app-server item ids — the rollout persists only `call_id` and message rows carry no
- * id at all — so the seed relies on the `uptoSeq` cut, same as text always has for codex. Known
- * lossiness, documented on CODE-97: reasoning stays unreplayable (`encrypted_content` only), and
- * replayed edit diffs are reconstructed from codex's `*** Begin Patch` envelope rather than the
- * app-server's richer live unified diff.
+ * Replays the rollout as the event stream the live turn emitted: text plus tool announce/settle
+ * pairs correlated by `call_id`, mapped to the live presentation shapes by `history-tools.ts`.
+ * History ids are NOT converged with the live app-server item ids (the rollout persists only
+ * `call_id`; message rows carry no id) — the seed relies on the `uptoSeq` cut. Known lossiness
+ * (CODE-97): reasoning stays unreplayable (`encrypted_content` only), and replayed edit diffs are
+ * reconstructed from the `*** Begin Patch` envelope, not the app-server's richer live unified diff.
  */
 export function mapCodexHistoryEvents(
   historyId: AgentHistoryId,

@@ -7,10 +7,7 @@ import { useCopyButton } from './use-copy-button';
 
 const COPY_FEEDBACK_MS = 2000;
 
-/**
- * End-of-turn actions for an agent reply. The buttons are always visible; the provenance meta
- * (provider, model, time) reveals on hovering the row.
- */
+/** End-of-turn actions for an agent reply; buttons always visible, provenance meta on row hover. */
 export function AgentTurnActions({
   copyText,
   receivedAt,
@@ -18,10 +15,10 @@ export function AgentTurnActions({
   modelName,
 }: {
   copyText: string;
-  /** Client receive time of the turn's last event (see ConversationItem.receivedAt). */
+  /** Best-known time of the turn's last event (see ConversationItem.receivedAt). */
   receivedAt?: number;
   agentKind?: AgentKind;
-  /** TODO(backend): no session state reflects the active model yet; hidden until one does. */
+  /** The model that served this turn (message stamp, else the session's reported model). */
   modelName?: string;
 }): React.ReactNode {
   const t = useTranslations('workbench.message');
