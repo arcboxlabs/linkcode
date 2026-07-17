@@ -68,6 +68,7 @@ import {
   numberField,
   stringField,
   textHistoryEvent,
+  thoughtHistoryEvent,
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
@@ -1507,6 +1508,20 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
+      // Thinking replays as thought chunks under `${uuid}:think` — the id the live subagent path
+      // already emits, so live-forwarded and cold-replayed thinking converge. Pre-CODE-273
+      // transcripts store empty thinking text; the helper's empty-drop rule skips those.
+      for (const block of blocks) {
+        if (!isThinkingBlock(block)) continue;
+        const thought = thoughtHistoryEvent(
+          historyId,
+          `${message.uuid}:think`,
+          block.thinking,
+          ts,
+          parent,
+        );
+        if (thought) events.push(thought);
+      }
       const text = textHistoryEvent(
         historyId,
         'assistant',
@@ -1579,6 +1594,11 @@ interface ClaudeToolResultBlock {
   content?: unknown;
 }
 
+interface ClaudeThinkingBlock {
+  type: 'thinking';
+  thinking: string;
+}
+
 function messageContentBlocks(message: unknown): unknown[] {
   if (!isRecord(message)) return [];
   const content = message.content;
@@ -1603,4 +1623,8 @@ function isToolResultBlock(block: unknown): block is ClaudeToolResultBlock {
     typeof block.tool_use_id === 'string' &&
     block.tool_use_id.length > 0
   );
+}
+
+function isThinkingBlock(block: unknown): block is ClaudeThinkingBlock {
+  return isRecord(block) && block.type === 'thinking' && typeof block.thinking === 'string';
 }
