@@ -740,6 +740,25 @@ describe('CodexAdapter history', () => {
             },
           },
           {
+            // The codex 0.144 injection shape: AGENTS.md prose part + env part in one row.
+            timestamp: '2026-06-17T01:00:31.000Z',
+            type: 'response_item',
+            payload: {
+              id: 'synthetic-2',
+              role: 'user',
+              content: [
+                {
+                  type: 'input_text',
+                  text: '# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>',
+                },
+                {
+                  type: 'input_text',
+                  text: '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>',
+                },
+              ],
+            },
+          },
+          {
             timestamp: '2026-06-17T01:01:00.000Z',
             type: 'response_item',
             payload: {

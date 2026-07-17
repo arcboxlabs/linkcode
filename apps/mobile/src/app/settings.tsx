@@ -37,6 +37,12 @@ export default function SettingsScreen(): React.ReactNode {
           </ListGroup.ItemContent>
           <ListGroup.ItemSuffix />
         </ListGroup.Item>
+        <ListGroup.Item onPress={() => router.push('/terminal-appearance')}>
+          <ListGroup.ItemContent>
+            <ListGroup.ItemTitle>{t('terminalAppearance')}</ListGroup.ItemTitle>
+          </ListGroup.ItemContent>
+          <ListGroup.ItemSuffix />
+        </ListGroup.Item>
       </ListGroup>
 
       <Card>

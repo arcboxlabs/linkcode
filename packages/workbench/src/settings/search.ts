@@ -22,7 +22,7 @@ export interface SettingsSearchKeywords {
   appearance: readonly string[];
   terminal: readonly string[];
   notifications: readonly string[];
-  connection: readonly string[];
+  developer: readonly string[];
   about: readonly string[];
   agents: readonly string[];
   providers: readonly string[];
@@ -70,7 +70,7 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('notifications.awaitingApproval'),
       t('notifications.error'),
     ],
-    connection: [t('connection.title'), t('connection.url')],
+    developer: [t('connection.title'), t('connection.url')],
     about: [t('about.version'), t('about.checkForUpdates')],
     agents: [
       t('agents.title'),

@@ -18,6 +18,8 @@ import { SettingsCard, SettingsRow, SettingsSection } from './settings-page';
 export type ThemePreference = 'system' | 'light' | 'dark';
 /** Display-layer text-size union — mirrors the workbench appearance store's `TextSize`. */
 export type TextSize = 'small' | 'default' | 'large';
+/** Display-layer Files-tree dock side — mirrors the appearance store's `FilesTreeSide`. */
+export type FilesTreeSide = 'left' | 'right';
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
 
@@ -33,6 +35,13 @@ const TEXT_SIZE_LABEL_KEYS = {
   small: 'textSizeSmall',
   default: 'textSizeDefault',
   large: 'textSizeLarge',
+} as const;
+
+const FILES_TREE_SIDES: readonly FilesTreeSide[] = ['right', 'left'];
+
+const FILES_TREE_SIDE_LABEL_KEYS = {
+  left: 'filesTreeSideLeft',
+  right: 'filesTreeSideRight',
 } as const;
 
 // Seed suggestions for the free-text font fields; any other family name is still accepted.
@@ -75,6 +84,9 @@ export interface AppearanceSettingsPanelProps {
   /** Monospace font family override for code; empty follows the bundled mono stack. */
   codeFont: string;
   onCodeFontChange: (codeFont: string) => void;
+  /** Which side of the Files panel the workspace tree docks to. */
+  filesTreeSide: FilesTreeSide;
+  onFilesTreeSideChange: (filesTreeSide: FilesTreeSide) => void;
 }
 
 export function AppearanceSettingsPanel({
@@ -92,6 +104,8 @@ export function AppearanceSettingsPanel({
   onUiFontChange,
   codeFont,
   onCodeFontChange,
+  filesTreeSide,
+  onFilesTreeSideChange,
 }: AppearanceSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.appearance');
   const uiFontListId = useId();
@@ -99,6 +113,10 @@ export function AppearanceSettingsPanel({
   const textSizeItems = TEXT_SIZES.map((value) => ({
     value,
     label: t(TEXT_SIZE_LABEL_KEYS[value]),
+  }));
+  const filesTreeSideItems = FILES_TREE_SIDES.map((value) => ({
+    value,
+    label: t(FILES_TREE_SIDE_LABEL_KEYS[value]),
   }));
   const codeThemeLightItems = CODE_THEME_LIGHT_IDS.map((value) => ({
     value,
@@ -149,6 +167,27 @@ export function AppearanceSettingsPanel({
         </SettingsRow>
         <SettingsRow title={t('reduceMotion')} description={t('reduceMotionHint')}>
           <Switch checked={reduceMotion} onCheckedChange={onReduceMotionChange} />
+        </SettingsRow>
+        <SettingsRow title={t('filesTreeSide')} description={t('filesTreeSideHint')}>
+          <Select
+            items={filesTreeSideItems}
+            value={filesTreeSide}
+            onValueChange={(value) => {
+              const next = FILES_TREE_SIDES.find((side) => side === value);
+              if (next) onFilesTreeSideChange(next);
+            }}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {filesTreeSideItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
         </SettingsRow>
         <SettingsRow title={t('uiFont')} description={t('uiFontHint')}>
           <Input

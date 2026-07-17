@@ -16,6 +16,7 @@ import { noop } from 'foxact/noop';
 import {
   BellIcon,
   BotIcon,
+  CodeXmlIcon,
   HistoryIcon,
   InfoIcon,
   KeyRoundIcon,
@@ -23,7 +24,6 @@ import {
   SettingsIcon,
   SunMoonIcon,
   TerminalIcon,
-  WifiIcon,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -35,7 +35,7 @@ import { DEFAULT_LAYOUT } from '../shell/store/model';
 import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { AppearanceTab } from './appearance-tab';
-import { ConnectionTab } from './connection-tab';
+import { DeveloperTab } from './developer-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
 import { ImChannelTab } from './im-channel-tab';
@@ -187,12 +187,12 @@ export function SettingsView(): React.ReactNode {
       label: t('groups.system'),
       items: [
         {
-          key: 'connection',
-          icon: <WifiIcon className="size-4" />,
-          label: t('tabs.connection'),
-          keywords: searchKeywords.connection,
-          active: category === 'connection',
-          onClick: () => setCategory('connection'),
+          key: 'developer',
+          icon: <CodeXmlIcon className="size-4" />,
+          label: t('tabs.developer'),
+          keywords: searchKeywords.developer,
+          active: category === 'developer',
+          onClick: () => setCategory('developer'),
         },
         {
           key: 'about',
@@ -297,8 +297,8 @@ function renderSettingsPanel(
       return <AppearanceTab />;
     case 'terminal':
       return <TerminalTab />;
-    case 'connection':
-      return <ConnectionTab />;
+    case 'developer':
+      return <DeveloperTab />;
     case 'notifications':
       return <NotificationsTab />;
     case 'about':

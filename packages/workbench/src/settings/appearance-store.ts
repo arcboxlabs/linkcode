@@ -7,6 +7,9 @@ import { create } from 'zustand';
 export const TextSizeSchema = z.enum(['small', 'default', 'large']);
 export type TextSize = z.infer<typeof TextSizeSchema>;
 
+export const FilesTreeSideSchema = z.enum(['left', 'right']);
+export type FilesTreeSide = z.infer<typeof FilesTreeSideSchema>;
+
 /** Persisted subset — every field optional so partial/stale storage merges over the defaults. */
 const PersistedAppearanceSchema = z
   .object({
@@ -16,6 +19,7 @@ const PersistedAppearanceSchema = z
     codeThemeDark: z.enum(CODE_THEME_DARK_IDS),
     uiFont: z.string(),
     codeFont: z.string(),
+    filesTreeSide: FilesTreeSideSchema,
   })
   .partial();
 type PersistedAppearance = z.infer<typeof PersistedAppearanceSchema>;
@@ -38,12 +42,15 @@ export interface AppearancePrefsState {
   uiFont: string;
   /** Monospace font family override (`--font-mono`, code blocks + inline code); empty = bundled. */
   codeFont: string;
+  /** Which side of the Files panel the workspace tree docks to. */
+  filesTreeSide: FilesTreeSide;
   setTextSize: (textSize: TextSize) => void;
   setReduceMotion: (reduceMotion: boolean) => void;
   setCodeThemeLight: (codeThemeLight: CodeThemeLightId) => void;
   setCodeThemeDark: (codeThemeDark: CodeThemeDarkId) => void;
   setUiFont: (uiFont: string) => void;
   setCodeFont: (codeFont: string) => void;
+  setFilesTreeSide: (filesTreeSide: FilesTreeSide) => void;
 }
 
 export const useAppearancePrefsStore = create<AppearancePrefsState>()(
@@ -55,12 +62,14 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
       codeThemeDark: 'github-dark',
       uiFont: '',
       codeFont: '',
+      filesTreeSide: 'right',
       setTextSize: (textSize) => set({ textSize }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
       setCodeThemeLight: (codeThemeLight) => set({ codeThemeLight }),
       setCodeThemeDark: (codeThemeDark) => set({ codeThemeDark }),
       setUiFont: (uiFont) => set({ uiFont }),
       setCodeFont: (codeFont) => set({ codeFont }),
+      setFilesTreeSide: (filesTreeSide) => set({ filesTreeSide }),
     }),
     {
       name: 'linkcode.workbench.appearance:v1',
@@ -72,6 +81,7 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
         codeThemeDark: state.codeThemeDark,
         uiFont: state.uiFont,
         codeFont: state.codeFont,
+        filesTreeSide: state.filesTreeSide,
       }),
     },
   ),

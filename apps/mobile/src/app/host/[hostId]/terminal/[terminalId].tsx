@@ -11,6 +11,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 import TerminalRenderer from '../../../../components/terminal-renderer';
 import type { TerminalRendererRef } from '../../../../components/terminal-renderer.types';
+import {
+  resolveTerminalTheme,
+  useTerminalPrefsStore,
+} from '../../../../stores/terminal-prefs-store';
 
 type AttachStatus = 'attaching' | 'ready' | 'error';
 
@@ -24,6 +28,8 @@ export default function TerminalScreen(): React.ReactNode {
   const parsed = TerminalIdSchema.safeParse(params.terminalId);
   const terminalId = parsed.success ? parsed.data : null;
   const autoTakeControl = params.takeover === '1';
+  const fontSize = useTerminalPrefsStore((state) => state.fontSize);
+  const theme = resolveTerminalTheme(useTerminalPrefsStore((state) => state.colorScheme));
   const rendererRef = useRef<TerminalRendererRef>(null);
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<AttachStatus>(terminalId ? 'attaching' : 'error');
@@ -234,6 +240,8 @@ export default function TerminalScreen(): React.ReactNode {
         <TerminalRenderer
           ref={rendererRef}
           canControl={canControl && exit === null}
+          fontSize={fontSize}
+          theme={theme}
           onInput={onInput}
           onResize={onResize}
           onReady={onRendererReady}
