@@ -628,6 +628,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
         // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
         forwardSubagentText: true,
+        // Opus 4.6+ models default `thinking.display` to 'omitted' at the API — thinking blocks
+        // arrive with EMPTY text (signature only), so no thought event would ever carry content
+        // (CODE-273). The TUI shows thinking because interactive mode requests summaries; SDK mode
+        // must ask explicitly. Ride the raw `--thinking-display` flag rather than the typed
+        // `options.thinking`, which would also pin `--thinking adaptive` and override the CLI's
+        // per-model thinking resolution (verified live on the 0.3.206 × 2.1.212 pair).
+        extraArgs: { 'thinking-display': 'summarized' },
         // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
         hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
         canUseTool: this.canUseTool,
