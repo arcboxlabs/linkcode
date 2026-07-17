@@ -2,8 +2,11 @@ import type {
   AgentSession,
   AgentSessionEvent,
   CreateAgentSessionOptions,
+  ExtensionAPI,
   PromptOptions,
   SessionManager,
+  ToolCallEvent,
+  ToolCallEventResult,
 } from '@earendil-works/pi-coding-agent';
 import type {
   AgentHistoryCapabilities,
@@ -13,9 +16,12 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  ApprovalPolicy,
+  ApprovalPolicyState,
   ContentBlock,
   StartOptions,
   StopReason,
+  ToolKind,
 } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
@@ -32,11 +38,52 @@ import {
   importPiSdk,
   lastPiModelChange,
   listPiHistory,
+  piAgentDir,
   readPiHistory,
 } from './history';
 import { createPiUiContext } from './ui-bridge';
 
 type PiModel = NonNullable<CreateAgentSessionOptions['model']>;
+
+/**
+ * The approval-policy axis pi advertises — the shared tier ids mapped onto an adapter-local
+ * `tool_call` gate (pi itself has no approval concept: its vendor behavior runs every tool,
+ * unsandboxed, without asking). Advertising `default` as the initial tier is a DELIBERATE
+ * behavior change from that vendor posture: pi is the only agent of the four that would
+ * otherwise mutate the host with zero gates.
+ */
+const APPROVAL_POLICIES = [
+  {
+    policyId: 'default',
+    name: 'Ask permissions',
+    description: 'Ask before edits, commands, and unrecognized tools.',
+  },
+  {
+    policyId: 'acceptEdits',
+    name: 'Accept edits',
+    description: 'Apply file edits without asking; still ask for commands and unrecognized tools.',
+  },
+  {
+    policyId: 'bypassPermissions',
+    name: 'Bypass',
+    description: "Run every tool without asking (pi's own default behavior).",
+  },
+] as const satisfies readonly ApprovalPolicy[];
+
+type PiPolicyId = (typeof APPROVAL_POLICIES)[number]['policyId'];
+const INITIAL_POLICY_ID: PiPolicyId = 'default';
+
+/** Tool kinds that run WITHOUT asking under each tier ('bypassPermissions' short-circuits before
+ * the lookup). Unknown tools classify as 'other' and therefore always ask below bypass — an
+ * extension-registered tool is exactly the thing the user has never seen before. */
+const AUTO_KINDS: Record<Exclude<PiPolicyId, 'bypassPermissions'>, ReadonlySet<ToolKind>> = {
+  default: new Set<ToolKind>(['read', 'search', 'think']),
+  acceptEdits: new Set<ToolKind>(['read', 'search', 'think', 'edit', 'delete', 'move']),
+};
+
+function isPiPolicyId(id: string): id is PiPolicyId {
+  return APPROVAL_POLICIES.some((policy) => policy.policyId === id);
+}
 
 /**
  * Pi adapter — drives `@earendil-works/pi-coding-agent` via `createAgentSession()`. Events arrive through
@@ -59,6 +106,10 @@ export class PiAdapter extends BaseAgentAdapter {
   private unsub: (() => void) | null = null;
   /** Set by `resumeHistory` before `start()`; tells `onStart` to continue this session natively. */
   private resumeFrom: AgentHistoryId | null = null;
+  /** Current approval tier; the `tool_call` gate reads it per call, so a switch is immediate. */
+  private policyId: PiPolicyId = INITIAL_POLICY_ID;
+  /** Tool names granted "always allow" for this session (an `allow_always` permission reply). */
+  private readonly sessionAllowedTools = new Set<string>();
 
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     return listPiHistory(await importPiSdk(), opts);
@@ -124,16 +175,31 @@ export class PiAdapter extends BaseAgentAdapter {
       }
     }
 
+    // A resumed session runs in its own recorded cwd, not the caller's.
+    const cwd = sessionManager?.getCwd() ?? opts.cwd;
+
+    // Supplying our own loader (for the approval-gate inline extension) takes over what
+    // createAgentSession would otherwise do itself: default discovery of the user's extensions
+    // plus the reload() call — a caller-supplied loader is used as-is, never reloaded (verified
+    // in sdk.js).
+    const resourceLoader = new pi.DefaultResourceLoader({
+      cwd,
+      agentDir: piAgentDir(),
+      extensionFactories: [(ext) => this.registerApprovalGate(ext)],
+    });
+    await resourceLoader.reload();
+
     const { session, modelFallbackMessage } = await pi.createAgentSession({
-      // A resumed session runs in its own recorded cwd, not the caller's.
-      cwd: sessionManager?.getCwd() ?? opts.cwd,
+      cwd,
       authStorage,
       modelRegistry,
+      resourceLoader,
       ...(model && { model }),
       ...(sessionManager && { sessionManager }),
       tools: this.tools(),
     });
     this.session = session;
+    this.emitApprovalPolicy(this.approvalPolicyState());
     if (modelFallbackMessage) this.emitError(`pi: ${modelFallbackMessage}`);
     // A resumed transcript is real, so announcing immediately is safe; fresh sessions defer the
     // announce to the first agent_start (see handleEvent) so a client seed never reads an empty
@@ -183,6 +249,15 @@ export class PiAdapter extends BaseAgentAdapter {
     }
   }
 
+  protected override onSetApprovalPolicy(policyId: string): Promise<void> {
+    if (!isPiPolicyId(policyId)) {
+      return Promise.reject(new Error(`pi: unknown approval policy '${policyId}'`));
+    }
+    this.policyId = policyId;
+    this.emitApprovalPolicy(this.approvalPolicyState());
+    return Promise.resolve();
+  }
+
   protected override async onCancel(): Promise<void> {
     await this.session?.abort();
   }
@@ -196,6 +271,51 @@ export class PiAdapter extends BaseAgentAdapter {
   private tools(): string[] | undefined {
     const t = this.opts?.config?.tools;
     return Array.isArray(t) ? t.filter((x): x is string => typeof x === 'string') : undefined;
+  }
+
+  private approvalPolicyState(): ApprovalPolicyState {
+    return { availablePolicies: [...APPROVAL_POLICIES], currentPolicyId: this.policyId };
+  }
+
+  private registerApprovalGate(ext: ExtensionAPI): void {
+    // `beforeToolCall` fires this for every tool before it executes; `{block: true}` turns the
+    // call into an error tool-result (`reason` is the text the model sees) without running it.
+    ext.on('tool_call', (event) => this.gateToolCall(event));
+  }
+
+  private async gateToolCall(event: ToolCallEvent): Promise<ToolCallEventResult | undefined> {
+    if (this.policyId === 'bypassPermissions') return undefined;
+    const kind = toolKindFromName(event.toolName);
+    if (AUTO_KINDS[this.policyId].has(kind)) return undefined;
+    if (this.sessionAllowedTools.has(event.toolName)) return undefined;
+
+    // Announce the card before asking so the permission prompt has a tool to point at; on allow,
+    // the SDK's own tool_execution_start re-emits the same id and merges into this snapshot.
+    const card = {
+      toolCallId: event.toolCallId,
+      title: event.toolName,
+      kind,
+      rawInput: event.input,
+      locations: locationsFromToolInput(event.input),
+    };
+    this.emitTool({ ...card, status: 'in_progress' });
+    const outcome = await this.requestPermission(card, [
+      { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+      { optionId: 'allow-session', name: 'Always allow this session', kind: 'allow_always' },
+      { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+    ]);
+
+    // A cancelled ask means the turn is being torn down — teardown already failed the card.
+    if (outcome.outcome === 'cancelled') {
+      return { block: true, reason: 'Tool call cancelled by the user' };
+    }
+    if (outcome.optionId === 'allow-session') {
+      this.sessionAllowedTools.add(event.toolName);
+      return undefined;
+    }
+    if (outcome.optionId === 'allow') return undefined;
+    this.emitTool({ toolCallId: event.toolCallId, status: 'failed' });
+    return { block: true, reason: 'The user declined this tool call' };
   }
 
   protected handleEvent(ev: AgentSessionEvent): void {

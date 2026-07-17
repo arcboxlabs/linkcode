@@ -72,6 +72,11 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
       },
     },
     buildContextEntries: (entries: unknown[]) => entries,
+    DefaultResourceLoader: class {
+      reload() {
+        return Promise.resolve();
+      }
+    },
   };
 });
 

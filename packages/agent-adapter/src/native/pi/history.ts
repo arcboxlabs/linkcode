@@ -114,9 +114,13 @@ export async function findPiSessionFile(
   return match ? join(sessionsDir, match) : null;
 }
 
+/** Mirrors the SDK's unexported `getAgentDir()` resolution. */
+export function piAgentDir(): string {
+  return process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent');
+}
+
 export function piSessionsDir(): string {
-  const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent');
-  return join(agentDir, 'sessions');
+  return join(piAgentDir(), 'sessions');
 }
 
 function piSessionInfoToHistorySession(info: SessionInfo): AgentHistorySession {

@@ -23,6 +23,11 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
       registerProvider: vi.fn(),
     }),
   },
+  DefaultResourceLoader: class {
+    reload() {
+      return Promise.resolve();
+    }
+  },
 }));
 
 interface FakeBindings {
