@@ -10,6 +10,7 @@ import {
   ClaudeCodeAdapter,
   createClaudeHistoryEventMapper,
   mapClaudeStop,
+  toolUseResultEnvelope,
 } from '../native/claude-code';
 import {
   CodexAdapter,
@@ -50,6 +51,7 @@ function row(
   uuid: string,
   content: string | unknown[],
   parentToolUseId: string | null = null,
+  extra?: { timestamp?: string; model?: string },
 ): SessionMessage {
   return {
     type,
@@ -57,7 +59,8 @@ function row(
     session_id: 'h1',
     parent_tool_use_id: parentToolUseId,
     parent_agent_id: null,
-    message: { content },
+    message: { content, ...(extra?.model && { model: extra.model }) },
+    ...(extra?.timestamp && { timestamp: extra.timestamp }),
   };
 }
 
@@ -142,6 +145,96 @@ describe('createClaudeHistoryEventMapper', () => {
     }
   });
 
+  it('flattens a ToolSearch tool_reference settle into a name-per-line text block', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    map(
+      row('assistant', 'u1', [
+        {
+          type: 'tool_use',
+          id: 'toolu_1',
+          name: 'ToolSearch',
+          input: { query: 'select:WebFetch' },
+        },
+      ]),
+    );
+    const settle = map(
+      row('user', 'u2', [
+        {
+          type: 'tool_result',
+          tool_use_id: 'toolu_1',
+          content: [
+            { type: 'tool_reference', tool_name: 'WebFetch' },
+            { type: 'tool_reference', tool_name: 'mcp__linear__get_issue' },
+          ],
+        },
+      ]),
+    );
+    expect(settle).toHaveLength(1);
+    if (settle[0].event.type === 'tool-call') {
+      expect(settle[0].event.toolCall.content).toEqual([
+        {
+          type: 'content',
+          content: { type: 'text', text: 'WebFetch\nmcp__linear__get_issue' },
+        },
+      ]);
+    }
+  });
+
+  it('stamps ts from the row timestamp and replays the served model as model-update', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const at = '2026-07-16T12:00:00.000Z';
+    const first = map(
+      row('assistant', 'u1', [{ type: 'text', text: 'hello' }], null, {
+        timestamp: at,
+        model: 'claude-opus-4-8',
+      }),
+    );
+    expect(first.map((e) => `${e.event.type}@${e.ts ?? ''}`)).toEqual([
+      `model-update@${Date.parse(at)}`,
+      `agent-message-chunk@${Date.parse(at)}`,
+    ]);
+    if (first[0].event.type === 'model-update') {
+      expect(first[0].event.model).toBe('claude-opus-4-8');
+    }
+
+    // Same model on the next row: no repeat announcement.
+    const second = map(
+      row('assistant', 'u2', [{ type: 'text', text: 'more' }], null, {
+        model: 'claude-opus-4-8',
+      }),
+    );
+    expect(second.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+
+    // A switch re-announces; a subagent row's model never does.
+    const switched = map(
+      row('assistant', 'u3', [{ type: 'text', text: 'switched' }], null, {
+        model: 'claude-sonnet-5',
+      }),
+    );
+    expect(switched.map((e) => e.event.type)).toEqual(['model-update', 'agent-message-chunk']);
+    const subagent = map(
+      row('assistant', 'u4', [{ type: 'text', text: 'sub' }], 'toolu_task', {
+        model: 'claude-haiku-4-5',
+      }),
+    );
+    expect(subagent.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+  });
+
+  it('stamps ts on user prompts and tool settles', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const at = '2026-07-16T12:34:56.000Z';
+    const prompt = map(row('user', 'u1', 'fix the bug', null, { timestamp: at }));
+    expect(prompt[0].ts).toBe(Date.parse(at));
+
+    map(row('assistant', 'u2', [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }]));
+    const settle = map(
+      row('user', 'u3', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'body' }], null, {
+        timestamp: at,
+      }),
+    );
+    expect(settle[0].ts).toBe(Date.parse(at));
+  });
+
   it('keeps plain user prompts and assistant text as message events', () => {
     const map = createClaudeHistoryEventMapper(historyId);
     const prompt = map(row('user', 'u1', 'fix the bug'));
@@ -218,6 +311,39 @@ function toolSnapshots(events: AgentEvent[]) {
   );
 }
 
+describe('toolUseResultEnvelope', () => {
+  it('keeps small scalars and drops payload fields', () => {
+    expect(
+      toolUseResultEnvelope({
+        bytes: 192511,
+        code: 200,
+        codeText: 'OK',
+        durationMs: 5404,
+        url: 'https://en.wikipedia.org/wiki/Arknights',
+        result: 'fetched page text — '.repeat(20),
+        file: { content: 'whole file' },
+        matches: ['a', 'b'],
+        interrupted: false,
+      }),
+    ).toEqual({
+      bytes: 192511,
+      code: 200,
+      codeText: 'OK',
+      durationMs: 5404,
+      url: 'https://en.wikipedia.org/wiki/Arknights',
+      interrupted: false,
+    });
+  });
+
+  it('returns undefined for strings, arrays, and all-payload records', () => {
+    expect(toolUseResultEnvelope('String to replace not found')).toBeUndefined();
+    expect(toolUseResultEnvelope(['a'])).toBeUndefined();
+    expect(
+      toolUseResultEnvelope({ file: { content: 'x' }, stdout: 'y'.repeat(300) }),
+    ).toBeUndefined();
+  });
+});
+
 describe('ClaudeCodeAdapter Edit diff normalization', () => {
   it('announces the Edit diff and keeps it through the settle', () => {
     const adapter = new TestClaude();
@@ -250,6 +376,45 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
     expect(tools[1].toolCall.content).toEqual([
       diff,
       { type: 'content', content: { type: 'text', text: 'updated' } },
+    ]);
+  });
+
+  it('projects the live tool_use_result envelope onto the settle rawOutput', () => {
+    const adapter = new TestClaude();
+    const seen: AgentEvent[] = [];
+    adapter.onEvent((e) => seen.push(e));
+
+    adapter.feed({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 't1', name: 'WebFetch', input: { url: 'https://a.test' } },
+        ],
+      },
+    });
+    adapter.feed({
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: '# Page' }] },
+      tool_use_result: {
+        bytes: 9,
+        code: 200,
+        codeText: 'OK',
+        durationMs: 12,
+        result: 'fetched page text — '.repeat(20),
+        url: 'https://a.test',
+      },
+    });
+
+    const tools = toolSnapshots(seen);
+    expect(tools[1].toolCall.rawOutput).toEqual({
+      bytes: 9,
+      code: 200,
+      codeText: 'OK',
+      durationMs: 12,
+      url: 'https://a.test',
+    });
+    expect(tools[1].toolCall.content).toEqual([
+      { type: 'content', content: { type: 'text', text: '# Page' } },
     ]);
   });
 

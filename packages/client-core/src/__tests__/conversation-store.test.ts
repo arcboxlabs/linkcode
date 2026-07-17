@@ -46,13 +46,15 @@ describe('createConversationStore', () => {
     await tick();
 
     const store = createConversationStore(client, sessionId, {
-      events: [userText('from transcript')],
+      events: [{ event: userText('from transcript'), ts: 1_700_000_000_000 }],
       uptoSeq: 2,
     });
     const seeded = store.getSnapshot();
     expect(seeded.items.map((i) => (i.kind === 'message' ? i.blocks : null))).toEqual([
       [{ type: 'text', text: 'from transcript' }],
     ]);
+    // The provider timestamp stands in for the receive time live events get.
+    expect(seeded.items[0].receivedAt).toBe(1_700_000_000_000);
     // Identity is stable until the next event — the useSyncExternalStore contract.
     expect(store.getSnapshot()).toBe(seeded);
 
@@ -94,7 +96,7 @@ describe('createConversationStore', () => {
 
     // The snapshot (read mid-turn) already covers the prompt and the announce, never the ask.
     const store = createConversationStore(client, sessionId, {
-      events: [userText('run echo'), announce],
+      events: [{ event: userText('run echo') }, { event: announce }],
       uptoSeq: 4,
     });
     const conversation = store.getSnapshot();

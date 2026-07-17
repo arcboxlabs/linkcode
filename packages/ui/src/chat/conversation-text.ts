@@ -21,7 +21,16 @@ export function assistantTurnText(items: readonly ConversationItem[]): string {
   return parts.join('\n\n');
 }
 
-/** Client receive time of the latest-stamped item — the turn's approximate end time. */
+/** The model that served the turn: its last assistant message's stamp. */
+export function turnModel(items: readonly ConversationItem[]): string | undefined {
+  let model: string | undefined;
+  for (const item of items) {
+    if (item.kind === 'message' && item.role === 'assistant' && item.model) model = item.model;
+  }
+  return model;
+}
+
+/** Best-known time of the latest-stamped item — the turn's approximate end time. */
 export function latestReceivedAt(items: readonly ConversationItem[]): number | undefined {
   let latest: number | undefined;
   for (const item of items) {

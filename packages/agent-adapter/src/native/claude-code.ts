@@ -66,6 +66,7 @@ import {
   firstText,
   isRecord,
   numberField,
+  stringField,
   textHistoryEvent,
   timestampMs,
 } from '../history-util';
@@ -365,7 +366,11 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
   } satisfies UsageReport);
 }
 
-const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
+const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
+  records: new Map(),
+  droppedRows: [],
+  toolUseResults: new Map(),
+};
 
 /**
  * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` via `query()` in **streaming input
@@ -498,20 +503,24 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
-    const [info, messages, subagentEvents, compactions] = await Promise.all([
+    const [info, messages, subagentEvents, supplement] = await Promise.all([
       mod.getSessionInfo(opts.historyId),
       mod.getSessionMessages(opts.historyId, {
         limit: limit + 1,
         offset,
       }),
       readSubagentTranscripts(mod, opts.historyId),
-      // The supplement only affects the first page — the swapped-in summary is the SDK chain's
-      // head row and the dropped rows are prepended before it — so later pages skip the
-      // whole-transcript read.
-      offset === 0 ? this.readCompactionSupplement(opts.historyId) : EMPTY_SUPPLEMENT,
+      // Every page needs the raw transcript: getSessionMessages strips each result row's
+      // structured toolUseResult, so the mapper re-attaches envelopes from here. The compaction
+      // splice below stays first-page-only (the swapped-in summary is the SDK chain's head row).
+      this.readTranscriptSupplement(opts.historyId),
     ]);
     const historyId = opts.historyId;
-    const mapper = createClaudeHistoryEventMapper(historyId, compactions.records);
+    const mapper = createClaudeHistoryEventMapper(
+      historyId,
+      supplement.records,
+      supplement.toolUseResults,
+    );
     const events: AgentHistoryEvent[] = [];
     // Splice each subagent's transcript in right after its spawn announce, so the seeded order
     // matches the live stream and the children land inside the parent's turn (the UI's per-segment
@@ -540,7 +549,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // relinked into the post-compaction chain) are deduped by uuid. The dedup window is this page
     // only — safe because the preserved segment sits right after the summary head, well inside it.
     const returned = new Set(page.map((message) => message.uuid));
-    const dropped = compactions.droppedRows.filter((row) => !returned.has(row.uuid));
+    const dropped =
+      offset === 0 ? supplement.droppedRows.filter((row) => !returned.has(row.uuid)) : [];
     for (const message of [...dropped, ...page]) {
       for (const event of mapper(message)) pushWithSubagents(event);
     }
@@ -553,9 +563,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     };
   }
 
-  /** Test seam over the raw transcript probe (see `readClaudeCompactionSupplement`). */
-  protected readCompactionSupplement(sessionId: string): Promise<ClaudeCompactionSupplement> {
-    return readClaudeCompactionSupplement(sessionId);
+  /** Test seam over the raw transcript probe (see `readClaudeTranscriptSupplement`). */
+  protected readTranscriptSupplement(sessionId: string): Promise<ClaudeTranscriptSupplement> {
+    return readClaudeTranscriptSupplement(sessionId);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -1139,6 +1149,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private handleUser(msg: UserSDKMessage): void {
     const content = msg.message.content;
     if (typeof content === 'string') return;
+    // tool_use_result is message-level; only an unambiguous single-result frame can claim it.
+    const results = content.filter((block) => block.type === 'tool_result');
+    const envelope = results.length === 1 ? toolUseResultEnvelope(msg.tool_use_result) : undefined;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
       const diff = this.pendingEditDiffs.get(block.tool_use_id) ?? [];
@@ -1150,7 +1163,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         parentToolCallId: msg.parent_tool_use_id ?? undefined,
         status: block.is_error === true ? 'failed' : 'completed',
         content: [...diff, ...toolResultContent(block.content)],
-        rawOutput: block.content,
+        rawOutput: envelope ?? block.content,
       });
     }
   }
@@ -1219,24 +1232,59 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
   return undefined;
 }
 
+const TOOL_USE_RESULT_SCALAR_MAX = 256;
+
+/**
+ * Claude pairs every tool_result with a structured `tool_use_result` (live SDK user frames and raw
+ * transcript rows both carry it; `getSessionMessages` strips it). It mixes small envelope fields
+ * the UI wants (WebFetch `code`/`codeText`/`durationMs`/`bytes`, ToolSearch counts) with bulk
+ * payloads duplicating the result content (`originalFile`, `file.content`, `stdout`). Project only
+ * the scalars onto `rawOutput`: badges need them, and re-shipping whole files in every settle frame
+ * is pure bloat. Strings above the cap are payload, not envelope.
+ */
+export function toolUseResultEnvelope(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  const envelope: Record<string, unknown> = {};
+  let fields = 0;
+  for (const [key, field] of Object.entries(value)) {
+    const scalar =
+      typeof field === 'string'
+        ? field.length > 0 && field.length <= TOOL_USE_RESULT_SCALAR_MAX
+        : typeof field === 'number' || typeof field === 'boolean';
+    if (!scalar) continue;
+    envelope[key] = field;
+    fields += 1;
+  }
+  return fields > 0 ? envelope : undefined;
+}
+
 /** Normalize a tool_result's payload (string or content blocks) into tool-call content. Accepts
- * `unknown` because it also runs over untyped transcript rows, not only live SDK messages. */
+ * `unknown` because it also runs over untyped transcript rows, not only live SDK messages.
+ * ToolSearch settles with `tool_reference` blocks and no text at all; flatten those to one
+ * name-per-line text block so the call doesn't render as an empty result. */
 function toolResultContent(content: unknown): ToolCallContent[] {
   if (typeof content === 'string') {
     return content.length > 0 ? [{ type: 'content', content: textBlock(content) }] : [];
   }
   if (!Array.isArray(content)) return [];
-  return content.reduce<ToolCallContent[]>((items, block) => {
-    if (
-      isRecord(block) &&
-      block.type === 'text' &&
-      typeof block.text === 'string' &&
-      block.text.length > 0
-    ) {
+  const toolReferences: string[] = [];
+  const items = content.reduce<ToolCallContent[]>((items, block) => {
+    if (!isRecord(block)) return items;
+    if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 0) {
       items.push({ type: 'content', content: textBlock(block.text) });
+    } else if (
+      block.type === 'tool_reference' &&
+      typeof block.tool_name === 'string' &&
+      block.tool_name.length > 0
+    ) {
+      toolReferences.push(block.tool_name);
     }
     return items;
   }, []);
+  if (toolReferences.length > 0) {
+    items.push({ type: 'content', content: textBlock(toolReferences.join('\n')) });
+  }
+  return items;
 }
 
 /** Flatten a user message's payload (string or API content blocks) into plain text — the shape a
@@ -1263,8 +1311,8 @@ export interface ClaudeCompactionRecord {
   postTokens?: number;
 }
 
-/** What the raw transcript knows about compactions that the SDK read API loses. */
-export interface ClaudeCompactionSupplement {
+/** What the raw transcript knows that the SDK read API loses. */
+export interface ClaudeTranscriptSupplement {
   /** Swapped-in-summary row uuid → its boundary's record, for the mapper to turn the summary row
    * into a compaction marker instead of a fake user prompt. */
   records: Map<string, ClaudeCompactionRecord>;
@@ -1273,23 +1321,28 @@ export interface ClaudeCompactionSupplement {
    * before the last compaction vanishes from the read. In file (= chronological) order; rows the
    * SDK does still return (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
+  /** tool_use_id → projected `toolUseResult` envelope (`toolUseResultEnvelope`), another field
+   * `getSessionMessages` strips per row. Keyed only for unambiguous single-result rows. */
+  toolUseResults: Map<string, Record<string, unknown>>;
 }
 
 /**
- * Recover, from raw transcript lines, what the SDK read API strips about compactions (verified
- * against SDK 0.3.179). On disk a compaction is a `system/compact_boundary` row (camelCase
- * `compactMetadata`) followed by an `isCompactSummary:true` user row carrying the swapped-in
- * summary; a boundary claims the next summary row. `getSessionMessages` keeps only
- * type/uuid/session_id/message/parent_tool_use_id/timestamp per row — the boundary's metadata and
- * the summary flag never survive — and its chain reconstruction drops every row logically before
- * the newest summary, so both the marker and the pre-compaction timeline must come from here.
+ * Recover, from raw transcript lines, what the SDK read API strips (verified against SDK 0.3.179;
+ * `toolUseResult` re-verified on 0.3.206). On disk a compaction is a `system/compact_boundary` row
+ * (camelCase `compactMetadata`) followed by an `isCompactSummary:true` user row carrying the
+ * swapped-in summary; a boundary claims the next summary row. `getSessionMessages` keeps only
+ * type/uuid/session_id/message/parent_tool_use_id/timestamp per row — the boundary's metadata, the
+ * summary flag, and each result row's structured `toolUseResult` never survive — and its chain
+ * reconstruction drops every row logically before the newest summary, so the marker, the
+ * pre-compaction timeline, and the result envelopes must all come from here.
  */
-export function buildClaudeCompactionSupplement(
+export function buildClaudeTranscriptSupplement(
   lines: Iterable<string>,
-): ClaudeCompactionSupplement {
+): ClaudeTranscriptSupplement {
   const records = new Map<string, ClaudeCompactionRecord>();
+  const toolUseResults = new Map<string, Record<string, unknown>>();
   /** Conversation rows in file order, with the index of the last boundary seen before each. */
-  const rows: Array<{ row: SessionMessage; boundariesBefore: number }> = [];
+  const rows: Array<{ row: TimestampedSessionMessage; boundariesBefore: number }> = [];
   let boundaries = 0;
   let pending: ClaudeCompactionRecord | null = null;
   for (const line of lines) {
@@ -1321,6 +1374,9 @@ export function buildClaudeCompactionSupplement(
       records.set(uuid, pending ?? { compactionId: uuid });
       pending = null;
     } else if (row.type !== 'user' && row.type !== 'assistant') continue;
+    // Harvested before the exclusions: tool_use ids are globally unique, so keying a row the
+    // timeline itself skips is harmless.
+    if (row.type === 'user') harvestToolUseResult(toolUseResults, row);
     // Same exclusions as the SDK's own reader: meta rows, sidechains, and teammate rows.
     if (row.isMeta === true || row.isSidechain === true || row.teamName) continue;
     rows.push({
@@ -1331,6 +1387,7 @@ export function buildClaudeCompactionSupplement(
         message: row.message,
         parent_tool_use_id: null,
         parent_agent_id: null,
+        ...(typeof row.timestamp === 'string' && { timestamp: row.timestamp }),
       },
       boundariesBefore: boundaries,
     });
@@ -1343,18 +1400,39 @@ export function buildClaudeCompactionSupplement(
       if (r.boundariesBefore < boundaries) dropped.push(r.row);
       return dropped;
     }, []),
+    toolUseResults,
   };
 }
 
+/** Key a raw result row's `toolUseResult` envelope by its tool_use id. The field is row-level, so
+ * only a row with exactly one tool_result block pairs unambiguously. */
+function harvestToolUseResult(
+  map: Map<string, Record<string, unknown>>,
+  row: Record<string, unknown>,
+): void {
+  const envelope = toolUseResultEnvelope(row.toolUseResult);
+  if (!envelope) return;
+  const message = isRecord(row.message) ? row.message : undefined;
+  const content = message?.content;
+  if (!Array.isArray(content)) return;
+  const ids = content.reduce<string[]>((ids, block) => {
+    if (isRecord(block) && block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+      ids.push(block.tool_use_id);
+    }
+    return ids;
+  }, []);
+  if (ids.length === 1) map.set(ids[0], envelope);
+}
+
 /**
- * Locate the session's transcript and build its compaction supplement. `readHistory` carries no
- * cwd, so — mirroring `getSessionMessages` without `dir` — every project dir is probed for
+ * Locate the session's transcript and build its supplement. `readHistory` carries no cwd, so —
+ * mirroring `getSessionMessages` without `dir` — every project dir is probed for
  * `<sessionId>.jsonl` (the id is unique, so at most one probe succeeds). Any failure degrades to
- * an empty supplement: history still reads, just without compaction markers.
+ * an empty supplement: history still reads, just without compaction markers or result envelopes.
  */
-async function readClaudeCompactionSupplement(
+async function readClaudeTranscriptSupplement(
   sessionId: string,
-): Promise<ClaudeCompactionSupplement> {
+): Promise<ClaudeTranscriptSupplement> {
   // The id becomes a filename — refuse anything that could traverse out of the projects dir.
   if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
   const projectsDir = path.join(homedir(), '.claude', 'projects');
@@ -1370,7 +1448,7 @@ async function readClaudeCompactionSupplement(
     ),
   );
   const text = texts.find((t) => t !== null);
-  return text ? buildClaudeCompactionSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
+  return text ? buildClaudeTranscriptSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
 }
 
 function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
@@ -1419,19 +1497,28 @@ async function readSubagentTranscripts(
  * the provider's `toolu_` ids, so a seeded timeline and live re-emits of the same call converge
  * by id (`buildConversation` replaces tool calls by id) instead of duplicating.
  */
+/** `getSessionMessages` rows (and the supplement's raw rows) carry an ISO `timestamp` at runtime
+ * that the SDK's `SessionMessage` type omits — verified live on 0.3.206. */
+type TimestampedSessionMessage = SessionMessage & { timestamp?: string };
+
 export function createClaudeHistoryEventMapper(
   historyId: AgentHistoryId,
   compactions?: ReadonlyMap<string, ClaudeCompactionRecord>,
+  /** Result envelopes recovered from the raw transcript (`ClaudeTranscriptSupplement`) —
+   * getSessionMessages strips them, so replayed settles read theirs from here. */
+  toolUseResults?: ReadonlyMap<string, Record<string, unknown>>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
-
-  const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
-    announced.set(toolCall.toolCallId, toolCall);
-    return { historyId, itemId: toolCall.toolCallId, event: { type: 'tool-call', toolCall } };
-  };
+  /** Last model announced to the timeline; assistant rows re-announce only on change. */
+  let lastModel: string | undefined;
 
   return (message) => {
     if (message.type !== 'user' && message.type !== 'assistant') return [];
+    const ts = timestampMs((message as TimestampedSessionMessage).timestamp);
+    const toolEvent = (toolCall: ToolCall): AgentHistoryEvent => {
+      announced.set(toolCall.toolCallId, toolCall);
+      return { historyId, itemId: toolCall.toolCallId, ts, event: { type: 'tool-call', toolCall } };
+    };
     // A compaction's swapped-in summary is stored as a user row; replaying it as a user prompt
     // would fake a giant user turn (the reported CODE-141 symptom). It becomes the compaction
     // marker instead, placed exactly where the summary sits in the timeline.
@@ -1444,6 +1531,7 @@ export function createClaudeHistoryEventMapper(
         {
           historyId,
           itemId: compaction.compactionId,
+          ts,
           event: { type: 'compaction', ...compaction, ...(summary && { summary }) },
         },
       ];
@@ -1454,12 +1542,21 @@ export function createClaudeHistoryEventMapper(
     const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
+      // Every assistant row records the model that served it; replay it as the same model-update
+      // the live stream emits so seeded messages get their per-turn model stamp. Subagent rows
+      // are skipped — their model must not masquerade as the session's.
+      const model =
+        !parent && isRecord(message.message) ? stringField(message.message, 'model') : undefined;
+      if (model && model !== lastModel) {
+        lastModel = model;
+        events.push({ historyId, ts, event: { type: 'model-update', model } });
+      }
       const text = textHistoryEvent(
         historyId,
         'assistant',
         message.uuid,
         message.message,
-        undefined,
+        ts,
         parent,
       );
       if (text) events.push(text);
@@ -1495,7 +1592,7 @@ export function createClaudeHistoryEventMapper(
           // Announce-time content is the Edit diff (or empty); keep it ahead of the result text.
           content: [...(existing?.content ?? []), ...toolResultContent(block.content)],
           rawInput: existing?.rawInput,
-          rawOutput: block.content,
+          rawOutput: toolUseResults?.get(block.tool_use_id) ?? block.content,
         }),
       );
     }
@@ -1506,7 +1603,7 @@ export function createClaudeHistoryEventMapper(
     // tool_results is a prompt the user actually typed.
     const promptValue =
       results.length === 0 ? message.message : blocks.filter((block) => !isToolResultBlock(block));
-    const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue);
+    const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue, ts);
     if (text) events.push(text);
     return events;
   };

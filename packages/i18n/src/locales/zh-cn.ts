@@ -84,6 +84,8 @@ export const zhCN = {
       status: '状态',
       matches: '匹配',
       files: '文件',
+      duration: '耗时',
+      size: '大小',
       kindRead: '读取',
       kindEdit: '编辑',
       kindDelete: '删除',
