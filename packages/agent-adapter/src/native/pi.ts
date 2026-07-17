@@ -2,9 +2,13 @@ import type {
   AgentSession,
   AgentSessionEvent,
   PromptOptions,
+  ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import type { ContentBlock, StartOptions } from '@linkcode/schema';
+import { Type } from '@sinclair/typebox';
 import { invariant } from 'foxts/guard';
+import type { BrowserToolsetFactory } from '../adapter';
+import { renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { readAgentCredential } from '../credential';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
@@ -19,6 +23,49 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
+  /** Browser code-mode toolset factory (CODE-267); pi has no MCP, so the execute tool rides
+   * `customTools`. NOTE: pi has no per-call approval seam — the default-off feature gate is
+   * the only guard (known limitation, recorded on the issue). */
+  private browserTools: BrowserToolsetFactory | undefined;
+
+  attachBrowserTools(createToolset: BrowserToolsetFactory): void {
+    this.browserTools = createToolset;
+  }
+
+  private buildBrowserTool(): ToolDefinition {
+    const factory = this.browserTools;
+    invariant(factory, 'pi: browser tools not attached');
+    const toolset = factory();
+    return {
+      name: 'browser_execute',
+      label: 'Browser',
+      description: toolset.documentation,
+      parameters: Type.Object({
+        code: Type.String({ description: 'JavaScript for the persistent browser REPL' }),
+      }),
+      async execute(_toolCallId, params) {
+        // Untyped seam: bare ToolDefinition erases Static<TParams>; the TypeBox schema above
+        // guarantees the validated shape.
+        const { code } = params as { code: string };
+        const rendered = renderBrowserToolResult(await toolset.execute(code));
+        return {
+          content: [
+            { type: 'text', text: rendered.text },
+            ...(rendered.image
+              ? [
+                  {
+                    type: 'image' as const,
+                    data: rendered.image.base64,
+                    mimeType: rendered.image.mimeType,
+                  },
+                ]
+              : []),
+          ],
+          details: undefined,
+        };
+      },
+    };
+  }
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const pi = await this.loadSdk(
@@ -55,6 +102,7 @@ export class PiAdapter extends BaseAgentAdapter {
       modelRegistry,
       model,
       tools: this.tools(),
+      ...(this.browserTools && { customTools: [this.buildBrowserTool()] }),
     });
     this.session = session;
     this.unsub = session.subscribe((ev) => this.handleEvent(ev));
