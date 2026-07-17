@@ -27,6 +27,8 @@
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/noto-emoji": "^5.2.11",
+    "@lexical/react": "^0.47.0",
+    "@lexical/utils": "^0.47.0",
     "@linkcode/schema": "workspace:*",
     "@pierre/diffs": "^1.2.12",
     "@pierre/trees": "1.0.0-beta.5",
@@ -40,6 +42,7 @@
     "dompurify": "^3.4.11",
     "foxact": "^0.3.8",
     "foxts": "^5.8.0",
+    "lexical": "^0.47.0",
     "lucide-react": "^1.23.0",
     "mermaid": "^11.16.0",
     "motion": "^12.42.2",
@@ -50,9 +53,11 @@
     "tailwind-merge": "^3.6.0",
     "use-intl": "catalog:",
     "use-stick-to-bottom": "^1.1.6",
-    "virtua": "^0.49.3"
+    "virtua": "^0.49.3",
+    "zustand": "catalog:"
   },
   "devDependencies": {
+    "@lexical/headless": "^0.47.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "react": "catalog:",
