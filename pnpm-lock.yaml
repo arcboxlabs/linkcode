@@ -896,8 +896,8 @@ importers:
         specifier: ^5.8.0
         version: 5.8.0
       restty:
-        specifier: ^0.2.3
-        version: 0.2.3
+        specifier: ^0.2.5
+        version: 0.2.5
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -1088,8 +1088,8 @@ importers:
         specifier: '>=5.0.0'
         version: 5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       restty:
-        specifier: ^0.2.3
-        version: 0.2.3
+        specifier: ^0.2.5
+        version: 0.2.5
       streamdown:
         specifier: ^2.5.0
         version: 2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -9400,8 +9400,8 @@ packages:
     resolution: {integrity: sha512-6IzJLuGi4+R14vwagDHX+JrXmPVtPpn4mffDJ1UdR7/Edm87fl6yi8mMBIVvFtJaNTUvjughmW4hwLhRG7gC1Q==}
     engines: {node: '>=4'}
 
-  restty@0.2.3:
-    resolution: {integrity: sha512-7jaRmthX3Og5xgdgq5f3Di7egy/+BEj8FeKFBdbBQPdagT/UKqghbCX3v1uiC5Y/T/e83a4lwIUr+5qTrv1k7Q==}
+  restty@0.2.5:
+    resolution: {integrity: sha512-2VABUX7p4/5J+hbCOjEaBKjBCAj7SyJNMt98XleePeUe4hH24kmmhBPAhGlg7ZbybFvKC7nwIppITePm5lAMKA==}
     engines: {bun: '>=1.2.0'}
 
   retry@0.12.0:
@@ -9896,8 +9896,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  text-shaper@0.1.26:
-    resolution: {integrity: sha512-tTLEZskIQYadTw7pNQpGstZGLZX/TPbMreexrxtJzTQCQe9upWYfEcJxDW3yN+m3NhO1kI2v/BUor+qyCpOm+Q==}
+  text-shaper@0.1.27:
+    resolution: {integrity: sha512-kfuOgxNHEHGfYaMJ5uaMbNfnmS5adMG3qPjLAgwwEy9pBsqAj4F0oSkOl8QoOdnQ8+wyIkX7M+hBYA4btWB4sw==}
 
   thenify-all@1.6.0:
     resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
@@ -19731,9 +19731,9 @@ snapshots:
       onetime: 2.0.1
       signal-exit: 3.0.7
 
-  restty@0.2.3:
+  restty@0.2.5:
     dependencies:
-      text-shaper: 0.1.26
+      text-shaper: 0.1.27
 
   retry@0.12.0: {}
 
@@ -20342,7 +20342,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  text-shaper@0.1.26: {}
+  text-shaper@0.1.27: {}
 
   thenify-all@1.6.0:
     dependencies:
