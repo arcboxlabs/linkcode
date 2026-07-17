@@ -32,6 +32,8 @@ export const en = {
       status: 'Status',
       matches: 'Matches',
       files: 'Files',
+      duration: 'Duration',
+      size: 'Size',
       kindRead: 'Read',
       kindEdit: 'Edit',
       kindDelete: 'Delete',

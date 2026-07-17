@@ -10,6 +10,7 @@ import {
   ClaudeCodeAdapter,
   createClaudeHistoryEventMapper,
   mapClaudeStop,
+  toolUseResultEnvelope,
 } from '../native/claude-code';
 import {
   CodexAdapter,
@@ -142,6 +143,41 @@ describe('createClaudeHistoryEventMapper', () => {
     }
   });
 
+  it('flattens a ToolSearch tool_reference settle into a name-per-line text block', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    map(
+      row('assistant', 'u1', [
+        {
+          type: 'tool_use',
+          id: 'toolu_1',
+          name: 'ToolSearch',
+          input: { query: 'select:WebFetch' },
+        },
+      ]),
+    );
+    const settle = map(
+      row('user', 'u2', [
+        {
+          type: 'tool_result',
+          tool_use_id: 'toolu_1',
+          content: [
+            { type: 'tool_reference', tool_name: 'WebFetch' },
+            { type: 'tool_reference', tool_name: 'mcp__linear__get_issue' },
+          ],
+        },
+      ]),
+    );
+    expect(settle).toHaveLength(1);
+    if (settle[0].event.type === 'tool-call') {
+      expect(settle[0].event.toolCall.content).toEqual([
+        {
+          type: 'content',
+          content: { type: 'text', text: 'WebFetch\nmcp__linear__get_issue' },
+        },
+      ]);
+    }
+  });
+
   it('keeps plain user prompts and assistant text as message events', () => {
     const map = createClaudeHistoryEventMapper(historyId);
     const prompt = map(row('user', 'u1', 'fix the bug'));
@@ -218,6 +254,39 @@ function toolSnapshots(events: AgentEvent[]) {
   );
 }
 
+describe('toolUseResultEnvelope', () => {
+  it('keeps small scalars and drops payload fields', () => {
+    expect(
+      toolUseResultEnvelope({
+        bytes: 192511,
+        code: 200,
+        codeText: 'OK',
+        durationMs: 5404,
+        url: 'https://en.wikipedia.org/wiki/Arknights',
+        result: 'fetched page text — '.repeat(20),
+        file: { content: 'whole file' },
+        matches: ['a', 'b'],
+        interrupted: false,
+      }),
+    ).toEqual({
+      bytes: 192511,
+      code: 200,
+      codeText: 'OK',
+      durationMs: 5404,
+      url: 'https://en.wikipedia.org/wiki/Arknights',
+      interrupted: false,
+    });
+  });
+
+  it('returns undefined for strings, arrays, and all-payload records', () => {
+    expect(toolUseResultEnvelope('String to replace not found')).toBeUndefined();
+    expect(toolUseResultEnvelope(['a'])).toBeUndefined();
+    expect(
+      toolUseResultEnvelope({ file: { content: 'x' }, stdout: 'y'.repeat(300) }),
+    ).toBeUndefined();
+  });
+});
+
 describe('ClaudeCodeAdapter Edit diff normalization', () => {
   it('announces the Edit diff and keeps it through the settle', () => {
     const adapter = new TestClaude();
@@ -250,6 +319,45 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
     expect(tools[1].toolCall.content).toEqual([
       diff,
       { type: 'content', content: { type: 'text', text: 'updated' } },
+    ]);
+  });
+
+  it('projects the live tool_use_result envelope onto the settle rawOutput', () => {
+    const adapter = new TestClaude();
+    const seen: AgentEvent[] = [];
+    adapter.onEvent((e) => seen.push(e));
+
+    adapter.feed({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 't1', name: 'WebFetch', input: { url: 'https://a.test' } },
+        ],
+      },
+    });
+    adapter.feed({
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: '# Page' }] },
+      tool_use_result: {
+        bytes: 9,
+        code: 200,
+        codeText: 'OK',
+        durationMs: 12,
+        result: 'fetched page text — '.repeat(20),
+        url: 'https://a.test',
+      },
+    });
+
+    const tools = toolSnapshots(seen);
+    expect(tools[1].toolCall.rawOutput).toEqual({
+      bytes: 9,
+      code: 200,
+      codeText: 'OK',
+      durationMs: 12,
+      url: 'https://a.test',
+    });
+    expect(tools[1].toolCall.content).toEqual([
+      { type: 'content', content: { type: 'text', text: '# Page' } },
     ]);
   });
 
