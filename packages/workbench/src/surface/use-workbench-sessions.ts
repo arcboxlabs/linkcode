@@ -77,8 +77,10 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   // The page is also the landing state once the list has loaded empty — there is nothing to
   // select, so the auto-select-recent fallback below would render a dead conversation column. An
-  // all-automation list counts as empty for landing (those sessions never surface here).
-  const listLoadedEmpty = !isLoading && remoteSessions != null && visibleSessions.length === 0;
+  // all-automation list counts as empty for landing unless one was explicitly selected from its
+  // run detail; explicit selections resolve against the full session list below.
+  const listLoadedEmpty =
+    !isLoading && remoteSessions != null && visibleSessions.length === 0 && selectedId === null;
   const draft = explicitDraft ?? (listLoadedEmpty ? EMPTY_LIST_DRAFT : null);
 
   const active = useMemo(() => {

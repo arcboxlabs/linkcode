@@ -7,9 +7,9 @@
  *   node scripts/package-daemon.mts <outDir> # explicit destination (CI)
  *
  * `pnpm --prod deploy` materializes the daemon's production closure — the tsup bundle's runtime
- * externals (better-sqlite3 + its native binding, drizzle-orm, ws, socket.io, @sentry, the agent
- * SDKs, the @linkcode/assets fetch stack) flat in the dir's own node_modules — so the result runs
- * as `node --import ./dist/instrument.js dist/index.js` with nothing else on disk.
+ * externals (better-sqlite3 + its native binding, ws, socket.io, @sentry, the agent SDKs, the
+ * @linkcode/assets fetch stack) flat in the dir's own node_modules — so the result runs as
+ * `node --import ./dist/instrument.js dist/index.js` with nothing else on disk.
  *
  * Unlike the desktop bundle (Electron `utilityProcess`, native modules rebuilt to Electron's ABI),
  * this targets plain Node: better-sqlite3 keeps the prebuild-install binary for the build host's

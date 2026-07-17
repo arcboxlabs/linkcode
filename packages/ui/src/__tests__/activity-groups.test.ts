@@ -44,6 +44,7 @@ function approvalFor(toolCallId: string): ConversationItem {
     requestId: `req-${seq}`,
     toolCall: { toolCallId },
     options: [],
+    responding: false,
   };
 }
 

@@ -18,6 +18,7 @@
     "@linkcode/transport": "workspace:*",
     "croner": "^10.0.1",
     "foxts": "^5.8.0",
+    "restty": "^0.2.5",
     "zod": "catalog:"
   },
   "devDependencies": {

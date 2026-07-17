@@ -25,9 +25,7 @@ export function useSchedules() {
 /** A schedule's run history, newest first. Pass null to pause (no schedule selected). */
 export function useScheduleRuns(scheduleId: ScheduleId | null) {
   const client = useLinkCodeClient();
-  const result = useData(listScheduleRuns, scheduleId === null ? null : { scheduleId }, {
-    keepPreviousData: true,
-  });
+  const result = useData(listScheduleRuns, scheduleId === null ? null : { scheduleId });
   const { mutate } = result;
   useAbortableEffect(
     (signal) =>

@@ -2,14 +2,16 @@ import { useSortable } from '@dnd-kit/react/sortable';
 import type { SessionInfo } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from 'coss-ui/components/menu';
+import { PreviewCard, PreviewCardTrigger } from 'coss-ui/components/preview-card';
 import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
-import { EllipsisIcon, PinIcon, XIcon } from 'lucide-react';
+import { ClockIcon, EllipsisIcon, FolderIcon, GitBranchIcon, PinIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
-import { WithTooltip } from '../../chat/with-tooltip';
 import { cn } from '../../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
+import type { BranchStatusComponentType } from './branch-status';
+import { SidebarPreviewCardPopup } from './preview-card';
 import {
   ROW_ACTION_CLASS,
   ROW_HOVER_PE_CLASS,
@@ -33,9 +35,12 @@ export interface ThreadRowProps {
   onTogglePin: () => void;
   /** Runtime-backed IM menu items; the ellipsis menu only renders when this is provided. */
   ImMenuComponent?: ThreadImMenuComponentType;
+  /** Runtime-backed branch badge for the preview card; the branch row hides without it. */
+  BranchStatusComponent?: BranchStatusComponentType;
 }
 
-/** One thread row: ghost agent icon, single-line title, status dot. The relative time lives in a tooltip. */
+/** One thread row: ghost agent icon, single-line title, status dot. Full title, relative time,
+ * project, and branch live in a hover preview card. */
 export function ThreadRow({
   session,
   active,
@@ -46,6 +51,7 @@ export function ThreadRow({
   onClose,
   onTogglePin,
   ImMenuComponent,
+  BranchStatusComponent,
 }: ThreadRowProps): React.ReactNode {
   const t = useTranslations('workbench.sidebar');
   const agent = AGENT_LABELS[session.kind];
@@ -63,16 +69,20 @@ export function ThreadRow({
 
   return (
     <SidebarMenuItem ref={sortableRef}>
-      <WithTooltip tooltip={createdAtLabel}>
-        <SidebarMenuButton
-          isActive={active}
-          onClick={onSelect}
-          className={cn(
-            // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
-            // PingFang Medium and mixed-script titles read artificially bold.
-            'data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
-            ImMenuComponent ? ROW_HOVER_PE_WIDE_CLASS : ROW_HOVER_PE_CLASS,
-          )}
+      <PreviewCard>
+        <PreviewCardTrigger
+          render={
+            <SidebarMenuButton
+              isActive={active}
+              onClick={onSelect}
+              className={cn(
+                // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
+                // PingFang Medium and mixed-script titles read artificially bold.
+                'data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
+                ImMenuComponent ? ROW_HOVER_PE_WIDE_CLASS : ROW_HOVER_PE_CLASS,
+              )}
+            />
+          }
         >
           <span className="relative shrink-0">
             <AgentIcon kind={session.kind} variant="ghost" className="text-muted-foreground" />
@@ -85,8 +95,30 @@ export function ThreadRow({
             />
           </span>
           <span className="min-w-0 flex-1 truncate">{title}</span>
-        </SidebarMenuButton>
-      </WithTooltip>
+        </PreviewCardTrigger>
+        <SidebarPreviewCardPopup>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <span>{title}</span>
+            <div className="flex flex-col gap-1.5 text-muted-foreground text-xs">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <FolderIcon className="size-3.5 shrink-0" />
+                <span className="truncate">{repositoryLabel(session.cwd)}</span>
+              </span>
+              {BranchStatusComponent && (
+                <BranchStatusComponent
+                  cwd={session.cwd}
+                  className="gap-1.5"
+                  icon={<GitBranchIcon className="size-3.5 shrink-0" />}
+                />
+              )}
+              <span className="flex items-center gap-1.5">
+                <ClockIcon className="size-3.5 shrink-0" />
+                <span>{createdAtLabel}</span>
+              </span>
+            </div>
+          </div>
+        </SidebarPreviewCardPopup>
+      </PreviewCard>
       <RowActionsCluster>
         {ImMenuComponent && (
           <DropdownMenu>

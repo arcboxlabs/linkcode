@@ -1,6 +1,6 @@
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { OPENED } from '../codec';
+import { EXIT, encodeDataFrame, OPENED, OUTPUT } from '../codec';
 
 const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
@@ -144,6 +144,31 @@ describe('SidecarPtyBackend', () => {
 
     backend.shutdown();
     await expect(pending).rejects.toThrow('pty backend shutdown');
+  });
+
+  it('buffers output and exit frames received before open subscribers attach', async () => {
+    const { SidecarPtyBackend } = await import('../sidecar');
+    const child = fakeChild();
+    mocks.spawn.mockReturnValueOnce(child);
+    const backend = new SidecarPtyBackend('/bin/linkcode-pty');
+
+    const opened = backend.open('term-1', { cols: 80, rows: 24 });
+    child.stdout.write(
+      Buffer.concat([
+        frame(OPENED, Buffer.from(JSON.stringify({ terminalId: 'term-1' }))),
+        frame(OUTPUT, encodeDataFrame('term-1', Buffer.from('ready\r\n'))),
+        frame(EXIT, Buffer.from(JSON.stringify({ terminalId: 'term-1', exitCode: 7 }))),
+      ]),
+    );
+    const terminal = await opened;
+    const output: string[] = [];
+    const exits: Array<number | null> = [];
+
+    terminal.onData((data) => output.push(data));
+    terminal.onExit((exitCode) => exits.push(exitCode));
+
+    expect(output).toEqual(['ready\r\n']);
+    expect(exits).toEqual([7]);
   });
 
   it('kills the sidecar and exits live terminals after a malformed frame', async () => {

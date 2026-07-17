@@ -9,6 +9,7 @@ import type {
   PermissionResult,
   Query,
   SDKCompactBoundaryMessage,
+  SDKControlGetUsageResponse,
   SDKMessage,
   SDKPermissionDeniedMessage,
   SDKSessionInfo,
@@ -39,8 +40,16 @@ import type {
   SupportedAttachmentImageMimeType,
   ToolCall,
   ToolCallContent,
+  UsageRateLimitWindow,
+  UsageReport,
 } from '@linkcode/schema';
-import { EffortLevelSchema, isSupportedAttachmentImageMimeType, textBlock } from '@linkcode/schema';
+import {
+  agentCommandMatches,
+  EffortLevelSchema,
+  isSupportedAttachmentImageMimeType,
+  textBlock,
+  UsageReportSchema,
+} from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { z } from 'zod';
@@ -255,6 +264,107 @@ function mapClaudeCommand(command: SlashCommand): AgentCommand {
   };
 }
 
+/** Flatten the SDK's named rate-limit windows into the schema's self-describing `windows` table.
+ * Claude carries each window's length in its field NAME, not its payload, so the mapper supplies
+ * the explicit `durationMins` (5-hour = 300; the seven_day* fields and the per-model buckets are
+ * weekly = 10080 per the SDK's own doc comments). A window the server reported as null
+ * ("not available") or omitted is simply absent from the table. */
+function usageWindows(
+  limits: NonNullable<SDKControlGetUsageResponse['rate_limits']>,
+): UsageRateLimitWindow[] {
+  const windows: UsageRateLimitWindow[] = [];
+  const push = (
+    id: string,
+    durationMins: number,
+    window: { utilization: number | null; resets_at: string | null } | null | undefined,
+  ): void => {
+    if (!window) return;
+    windows.push({ id, utilization: window.utilization, resetsAt: window.resets_at, durationMins });
+  };
+  push('five_hour', 300, limits.five_hour);
+  push('seven_day', 10_080, limits.seven_day);
+  push('seven_day_oauth_apps', 10_080, limits.seven_day_oauth_apps);
+  push('seven_day_opus', 10_080, limits.seven_day_opus);
+  push('seven_day_sonnet', 10_080, limits.seven_day_sonnet);
+  for (const bucket of limits.model_scoped ?? []) {
+    windows.push({
+      label: bucket.display_name,
+      utilization: bucket.utilization,
+      resetsAt: bucket.resets_at,
+      durationMins: 10_080,
+    });
+  }
+  return windows;
+}
+
+type SdkBehaviorWindow = NonNullable<SDKControlGetUsageResponse['behaviors']>['day'];
+
+function usageBehaviorWindow(
+  window: SdkBehaviorWindow,
+): NonNullable<NonNullable<UsageReport['behaviors']>['day']> {
+  return {
+    requestCount: window.request_count,
+    sessionCount: window.session_count,
+    behaviors: window.behaviors.map((b) => ({ key: b.key, pct: b.pct, count: b.count })),
+    agents: window.agents,
+    skills: window.skills,
+    plugins: window.plugins,
+    mcpServers: window.mcp_servers,
+  };
+}
+
+/**
+ * Map the SDK's experimental get-usage response onto the Link Code `UsageReport` contract, then
+ * validate at this trust boundary: a drifted CLI reply fails the parse (surfacing as the command's
+ * error) instead of shipping malformed data downstream. This mapper and `reportUsage` are the only
+ * places the experimental SDK surface is allowed to appear. Verified against SDK 0.3.206.
+ */
+export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageReport {
+  const limits = raw.rate_limits;
+  return UsageReportSchema.parse({
+    session: {
+      totalCostUsd: raw.session.total_cost_usd,
+      totalApiDurationMs: raw.session.total_api_duration_ms,
+      totalDurationMs: raw.session.total_duration_ms,
+      totalLinesAdded: raw.session.total_lines_added,
+      totalLinesRemoved: raw.session.total_lines_removed,
+      modelUsage: Object.fromEntries(
+        Object.entries(raw.session.model_usage).map(([model, usage]) => [
+          model,
+          {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadInputTokens,
+            cacheCreationTokens: usage.cacheCreationInputTokens,
+            totalCostUsd: usage.costUSD,
+          },
+        ]),
+      ),
+    },
+    subscriptionType: raw.subscription_type,
+    rateLimits: limits
+      ? {
+          windows: usageWindows(limits),
+          extraUsage: limits.extra_usage
+            ? {
+                isEnabled: limits.extra_usage.is_enabled,
+                monthlyLimit: limits.extra_usage.monthly_limit,
+                usedCredits: limits.extra_usage.used_credits,
+                utilization: limits.extra_usage.utilization,
+                currency: limits.extra_usage.currency,
+              }
+            : limits.extra_usage,
+        }
+      : limits,
+    behaviors: raw.behaviors
+      ? {
+          day: usageBehaviorWindow(raw.behaviors.day),
+          week: usageBehaviorWindow(raw.behaviors.week),
+        }
+      : raw.behaviors,
+  } satisfies UsageReport);
+}
+
 const EMPTY_SUPPLEMENT: ClaudeCompactionSupplement = { records: new Map(), droppedRows: [] };
 
 /**
@@ -302,6 +412,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     event: Extract<AgentEvent, { type: 'compaction' }>;
     anchorUuid: string | undefined;
   } | null = null;
+  /** The last published slash-command catalog — the alias authority for command interception
+   * (`/cost` resolves to `/usage` via the provider's own aliases, not a hardcoded list). */
+  private commandCatalog: AgentCommand[] = [];
 
   protected async onStart(opts: StartOptions): Promise<void> {
     await this.loadSdk(
@@ -589,11 +702,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * no command menu until (if ever) a `commands_changed` push arrives. */
   private async publishCommands(q: Query): Promise<void> {
     try {
-      const commands = await q.supportedCommands();
-      this.emitCommands(commands.map(mapClaudeCommand));
+      this.publishCatalog(await q.supportedCommands());
     } catch {
       // Dropped on purpose — see above.
     }
+  }
+
+  /** Normalize, cache (the alias authority for `isUsageCommand`), and broadcast the catalog. */
+  private publishCatalog(commands: SlashCommand[]): void {
+    this.commandCatalog = commands.map(mapClaudeCommand);
+    this.emitCommands(this.commandCatalog);
   }
 
   protected override async onCancel(): Promise<void> {
@@ -685,10 +803,56 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Invoking a command is pushing a plain user message through the existing prompt path: the
    * vendored CLI parses a leading "/" on every user message even in streaming-input mode (verified
    * against the vendored binary), so there is no separate "run this command" control request — a
-   * command's status/settle rides the normal turn lifecycle exactly like a typed prompt. */
+   * command's status/settle rides the normal turn lifecycle exactly like a typed prompt.
+   *
+   * `/usage` (provider alias `/cost`) is the one exception: like Claude Code's own TUI — where it
+   * opens a dialog and never writes to the transcript — it is intercepted into a structured
+   * `usage-report` event instead of a turn. No `result` frame will follow, so `reportUsage`
+   * brackets itself with status `running`→`idle` per the base.ts turn contract — the busy window
+   * (the control request is network-bound and can span a process respawn) stays visible to the
+   * composer, and the engine's input gate releases at send()-resolve because status is already
+   * back to idle. */
   protected override onCommand(name: string, args?: string): Promise<void> {
+    if (this.isUsageCommand(name)) return this.reportUsage();
     const text = `/${name}${args ? ` ${args}` : ''}`;
     return this.onPrompt([textBlock(text)]);
+  }
+
+  /** True when `name` invokes the provider's `usage` command — canonical name or alias, resolved
+   * against the advertised catalog. Catalog discovery is async and may still be pending on an
+   * early invocation; until it lands only the literal name matches. */
+  private isUsageCommand(name: string): boolean {
+    const usage = this.commandCatalog.find((command) => command.name === 'usage');
+    return usage ? agentCommandMatches(usage, name) : name === 'usage';
+  }
+
+  /** Serve `/usage` from the SDK's get-usage control request (the structured data behind the CLI's
+   * own usage dialog). The SDK marks the method EXPERIMENTAL — its very name says it will be
+   * renamed on stabilization — so the call is feature-detected and isolated here plus
+   * `mapClaudeUsageReport`; an SDK/CLI pair that dropped or renamed it degrades to a session
+   * error, never a silent no-op. No text fallback by design: the invocation must never surface as
+   * transcript text. Verified against SDK 0.3.206 × CLI 2.1.206. */
+  private async reportUsage(): Promise<void> {
+    // Announce the busy window synchronously (base.ts turn contract): the engine's input gate and
+    // the composer both read status, and without this the session looks idle while a concurrent
+    // input gets rejected with "Session is busy". No result frame follows an intercepted command,
+    // so the matching 'idle' is also emitted here (finally) — success and failure alike.
+    this.emitStatus('running');
+    try {
+      // Same lazy recovery as onPrompt: a crashed or deliberately rebuilt process (an effort
+      // transition into/out of max) is recreated on demand, so /usage works right after either.
+      if (!this.q) await this.createQuery();
+      const q = nullthrow(this.q, 'claude-code: session not started');
+      if (typeof q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET !== 'function') {
+        throw new TypeError('the get-usage control request is unavailable on this SDK');
+      }
+      const raw = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
+      this.emitUsageReport(mapClaudeUsageReport(raw));
+    } catch (err) {
+      this.emitError(`claude-code: /usage failed (${extractErrorMessage(err) ?? 'unknown error'})`);
+    } finally {
+      this.emitStatus('idle');
+    }
   }
 
   /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs.
@@ -821,14 +985,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         } else if (msg.subtype === 'commands_changed') {
           // Fire-and-forget full-replace push (`supportedCommands()` is captured once at init and
           // never reflects mid-session changes) — swap the cached catalog wholesale.
-          this.emitCommands(msg.commands.map(mapClaudeCommand));
+          this.publishCatalog(msg.commands);
         } else if (msg.subtype === 'local_command_output') {
-          // A local command (e.g. /usage) produces no assistant frame of its own; the SDK's own doc
+          // A local command (e.g. /voice) produces no assistant frame of its own; the SDK's own doc
           // comment says to display it "as assistant-style text in the transcript". Bracket it in
           // its own segment so it never merges with narration on either side of it — the command
           // invocation itself (`onCommand`) rides the normal prompt path and its status/settle
           // comes from the matching `result` frame like any other turn (verified live: a local
           // command still ends in a normal zero-token `result`, not a distinct settle shape).
+          // `/usage` no longer reaches this path — it is intercepted in `onCommand` (`reportUsage`).
           this.freshSegment();
           this.emitAssistantText(msg.content, this.messageId);
           this.freshSegment();

@@ -41,11 +41,7 @@ export function DesktopApp(): React.ReactNode {
             // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
             // URL), yet its history-import panel can still use the data plane once connected.
             ungated={settingsOpen ? <SettingsView /> : null}
-            fallback={
-              <OverlayUnderlay>
-                <DesktopConnectionFallback />
-              </OverlayUnderlay>
-            }
+            fallback={<DesktopConnectionFallback />}
           >
             <SessionNotifier present={presentDesktopNotification} />
             <OverlayUnderlay>

@@ -29,7 +29,7 @@
  * collector patch; the .pnpmfile.cjs drizzle-orm↔expo-sqlite sever stays — it keeps the expo tree
  * out of this deploy closure, which is orthogonal to the collector.
  */
-import { cpSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -97,6 +97,39 @@ function materializeStaging(): void {
   }
 }
 
+/** Doc files that must survive the prune: license/attribution texts we redistribute. */
+const KEEP_DOC = /^(?:licen[cs]e|notice|copying)/i;
+
+/**
+ * Drop build-time-only file classes from the staged node_modules before electron-builder collects
+ * the asar (CODE-215): sourcemaps, TypeScript sources and declarations, and markdown docs — ~50 MB
+ * of the deploy closure that Node never loads at runtime. Whole-package dead weight is excluded via
+ * `files` globs in electron-builder.yml instead; notably better-sqlite3/deps must stay HERE in
+ * staging because @electron/rebuild compiles from it before collection.
+ */
+function pruneStaging(): void {
+  let files = 0;
+  let bytes = 0;
+  for (const entry of readdirSync(join(stagingDir, 'node_modules'), {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (!entry.isFile()) continue;
+    const prunable =
+      entry.name.endsWith('.map') ||
+      /\.[mc]?ts$/.test(entry.name) ||
+      (/\.(?:md|markdown)$/i.test(entry.name) && !KEEP_DOC.test(entry.name));
+    if (!prunable) continue;
+    const path = join(entry.parentPath, entry.name);
+    bytes += statSync(path).size;
+    files += 1;
+    rmSync(path);
+  }
+  console.log(
+    `pruned ${files} runtime-dead files (${Math.round(bytes / 1048576)} MB) from staging`,
+  );
+}
+
 /**
  * Build only the arches whose PTY sidecar was staged. electron-builder.yml targets both x64 and
  * arm64, but `extraResources: sidecar/${arch}` can only resolve an arch that was staged — CI stages
@@ -141,4 +174,5 @@ function build(): void {
 }
 
 materializeStaging();
+pruneStaging();
 build();

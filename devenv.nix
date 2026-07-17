@@ -70,8 +70,14 @@
     fi
   '';
 
-  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm run --filter @linkcode/daemon dev";
-  scripts.desktop.exec = "pnpm run --filter @linkcode/desktop dev";
+  # The dev daemon and desktop run under a `dev` profile so they fork their own universe
+  # (~/.linkcode-dev) instead of sharing the default `~/.linkcode`:19523 with an installed release:
+  # sharing it lets whichever daemon binds first win, and the loser's client then dials a peer on a
+  # different WIRE_PROTOCOL_VERSION — every frame is silently dropped and surfaces as "Unable to
+  # connect to the daemon". The env is scoped to these dev commands (not the whole shell) so it never
+  # leaks into `pnpm test` / E2E / packaging.
+  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && LINKCODE_PROFILE=dev pnpm run --filter @linkcode/daemon dev";
+  scripts.desktop.exec = "LINKCODE_PROFILE=dev pnpm run --filter @linkcode/desktop dev";
   scripts.mobile.exec = "pnpm run --filter @linkcode/mobile ios";
-  scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
+  scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && LINKCODE_PROFILE=dev pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
 }

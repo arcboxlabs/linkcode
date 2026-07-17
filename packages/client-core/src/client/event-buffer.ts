@@ -33,12 +33,24 @@ export class EventBuffer {
    * stop→resume in the same connection must keep seq monotone, or a seed's `uptoSeq` sampled
    * before the stop would swallow the resumed session's fresh events. */
   private readonly seqs = new Map<SessionId, number>();
+  /** Terminal prompt outcomes are immutable by request ID. Attach may replay them, but retaining
+   * the same outcome repeatedly would grow the live buffer without changing the projection. */
+  private readonly resolvedRequestIds = new Map<SessionId, Set<string>>();
 
   /** Record an incoming event, assigning it the session's next receive sequence number. */
   ingest(sessionId: SessionId, event: AgentEvent): SequencedAgentEvent {
     const seq = (this.seqs.get(sessionId) ?? 0) + 1;
     this.seqs.set(sessionId, seq);
     const sequenced: SequencedAgentEvent = { event, seq, receivedAt: Date.now() };
+    if (event.type === 'permission-resolved' || event.type === 'question-resolved') {
+      let resolved = this.resolvedRequestIds.get(sessionId);
+      if (!resolved) {
+        resolved = new Set();
+        this.resolvedRequestIds.set(sessionId, resolved);
+      }
+      if (resolved.has(event.requestId)) return sequenced;
+      resolved.add(event.requestId);
+    }
     const buf = this.events.get(sessionId);
     if (buf) buf.push(sequenced);
     else this.events.set(sessionId, [sequenced]);
@@ -90,6 +102,7 @@ export class EventBuffer {
     this.subscribers.delete(sessionId);
     this.events.delete(sessionId);
     this.snapshots.delete(sessionId);
+    this.resolvedRequestIds.delete(sessionId);
   }
 
   clearAll(): void {
@@ -97,5 +110,6 @@ export class EventBuffer {
     this.events.clear();
     this.snapshots.clear();
     this.seqs.clear();
+    this.resolvedRequestIds.clear();
   }
 }

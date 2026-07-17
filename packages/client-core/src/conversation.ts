@@ -2,6 +2,7 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
+  AgentModelOption,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -14,6 +15,7 @@ import type {
   ToolCall,
   ToolCallContent,
   ToolCallUpdate,
+  UsageReport,
 } from '@linkcode/schema';
 
 /**
@@ -24,6 +26,14 @@ import type {
  */
 
 export type ConversationTurnId = string | null;
+export type PermissionResolution = Pick<
+  Extract<AgentEvent, { type: 'permission-resolved' }>,
+  'outcome' | 'source'
+>;
+export type QuestionResolution = Pick<
+  Extract<AgentEvent, { type: 'question-resolved' }>,
+  'outcome' | 'source'
+>;
 
 /** A single semantic item in the conversation timeline. `receivedAt` is the client receive time of
  * the item's latest event (see {@link SequencedAgentEvent}); it drives relative timestamps in the
@@ -66,6 +76,8 @@ export type ConversationItem = (
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
+      responding: boolean;
+      resolution?: PermissionResolution;
     }
   | {
       kind: 'question';
@@ -74,6 +86,8 @@ export type ConversationItem = (
       requestId: string;
       toolCall: ToolCallUpdate;
       questions: Question[];
+      responding: boolean;
+      resolution?: QuestionResolution;
     }
   | {
       kind: 'error';
@@ -92,6 +106,10 @@ export interface ConversationViewModel {
   status: SessionStatus | null;
   /** Latest cumulative token usage. */
   usage: TokenUsage | null;
+  /** Latest structured usage snapshot, from `usage-report` (the whole reply of a provider usage
+   * command such as claude-code's `/usage` — the invocation produces no transcript text). Replaced
+   * wholesale per report; `null` until the session serves one. */
+  usageReport: UsageReport | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;
@@ -107,13 +125,15 @@ export interface ConversationViewModel {
   /** Slash-command catalog from `available-commands-update` (full-replace). `null` means the agent
    * advertised none — the composer then offers no command menu. */
   availableCommands: AgentCommand[] | null;
+  /** Model catalog from `available-models-update` (full-replace). `null` means the agent
+   * advertised none — the composer then falls back to its static per-kind table. */
+  availableModels: AgentModelOption[] | null;
   /** Adapter input features from `capabilities-update`; null until the live session advertises. */
   capabilities: AgentCapabilities | null;
   /** Why the last turn ended (if it did). */
   stopReason: StopReason | null;
   /**
-   * requestIds of permission asks that are still open — i.e. their referenced tool call hasn't reached a
-   * terminal status. The UI additionally hides ones the user already answered in this client.
+   * requestIds of permission asks that have no authoritative resolution event yet.
    */
   pendingPermissionIds: string[];
   /** requestIds of question asks that are still open, tracked the same way as permission asks. */
@@ -161,20 +181,27 @@ export function createConversationBuilder(): ConversationBuilder {
   // compactionId → item index, so partial compaction re-emits merge into one marker.
   const compactionIndex = new Map<string, number>();
   const planIndexByTurn = new Map<ConversationTurnId, number>();
-  /** Asks in arrival order; each stays "pending" until its tool call reaches a terminal status. */
-  const approvals: Array<{ requestId: string; toolCallId: string }> = [];
-  const questionAsks: Array<{ requestId: string; toolCallId: string }> = [];
+  /** Asks in arrival order; explicit resolution events are their only settlement authority. */
+  const approvals: string[] = [];
+  const questionAsks: string[] = [];
+  const approvalIndex = new Map<string, number>();
+  const questionIndex = new Map<string, number>();
+  const permissionResolutions = new Map<string, PermissionResolution>();
+  const questionResolutions = new Map<string, QuestionResolution>();
+  const promptResponseStatuses = new Map<string, 'open' | 'responding'>();
   /** Every ask requestId ever folded — attach-replayed duplicates are dropped. */
   const seenAskIds = new Set<string>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   let status: SessionStatus | null = null;
   let usage: TokenUsage | null = null;
+  let usageReport: UsageReport | null = null;
   let currentModeId: string | null = null;
   let approvalPolicy: ApprovalPolicyState | null = null;
   let currentModel: string | null = null;
   let currentEffort: EffortLevel | null = null;
   let availableCommands: AgentCommand[] | null = null;
+  let availableModels: AgentModelOption[] | null = null;
   let capabilities: AgentCapabilities | null = null;
   let stopReason: StopReason | null = null;
   let cached: Conversation | null = null;
@@ -359,6 +386,9 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'available-commands-update':
         availableCommands = event.commands;
         break;
+      case 'available-models-update':
+        availableModels = event.models;
+        break;
       case 'capabilities-update':
         capabilities = event.capabilities;
         break;
@@ -367,6 +397,9 @@ export function createConversationBuilder(): ConversationBuilder {
         break;
       case 'token-usage':
         usage = event.usage;
+        break;
+      case 'usage-report':
+        usageReport = event.report;
         break;
       case 'stop':
         stopReason = event.stopReason;
@@ -395,9 +428,14 @@ export function createConversationBuilder(): ConversationBuilder {
           requestId: event.requestId,
           toolCall: event.toolCall,
           options: event.options,
+          responding:
+            !permissionResolutions.has(event.requestId) &&
+            promptResponseStatuses.get(event.requestId) === 'responding',
+          resolution: permissionResolutions.get(event.requestId),
           receivedAt,
         });
-        approvals.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
+        approvalIndex.set(event.requestId, items.length - 1);
+        approvals.push(event.requestId);
         break;
       case 'question-request':
         if (seenAskIds.has(event.requestId)) break;
@@ -409,10 +447,72 @@ export function createConversationBuilder(): ConversationBuilder {
           requestId: event.requestId,
           toolCall: event.toolCall,
           questions: event.questions,
+          responding:
+            !questionResolutions.has(event.requestId) &&
+            promptResponseStatuses.get(event.requestId) === 'responding',
+          resolution: questionResolutions.get(event.requestId),
           receivedAt,
         });
-        questionAsks.push({ requestId: event.requestId, toolCallId: event.toolCall.toolCallId });
+        questionIndex.set(event.requestId, items.length - 1);
+        questionAsks.push(event.requestId);
         break;
+      case 'prompt-response-status': {
+        if (
+          permissionResolutions.has(event.requestId) ||
+          questionResolutions.has(event.requestId)
+        ) {
+          break;
+        }
+        promptResponseStatuses.set(event.requestId, event.status);
+        const index = approvalIndex.get(event.requestId) ?? questionIndex.get(event.requestId);
+        if (index !== undefined) {
+          const item = items[index];
+          if (item.kind === 'approval' || item.kind === 'question') {
+            items[index] = {
+              ...item,
+              responding: event.status === 'responding',
+              receivedAt: receivedAt ?? item.receivedAt,
+            };
+          }
+        }
+        break;
+      }
+      case 'permission-resolved': {
+        if (permissionResolutions.has(event.requestId)) break;
+        const resolution = { outcome: event.outcome, source: event.source };
+        permissionResolutions.set(event.requestId, resolution);
+        const index = approvalIndex.get(event.requestId);
+        if (index !== undefined) {
+          const item = items[index];
+          if (item.kind === 'approval') {
+            items[index] = {
+              ...item,
+              responding: false,
+              resolution,
+              receivedAt: receivedAt ?? item.receivedAt,
+            };
+          }
+        }
+        break;
+      }
+      case 'question-resolved': {
+        if (questionResolutions.has(event.requestId)) break;
+        const resolution = { outcome: event.outcome, source: event.source };
+        questionResolutions.set(event.requestId, resolution);
+        const index = questionIndex.get(event.requestId);
+        if (index !== undefined) {
+          const item = items[index];
+          if (item.kind === 'question') {
+            items[index] = {
+              ...item,
+              responding: false,
+              resolution,
+              receivedAt: receivedAt ?? item.receivedAt,
+            };
+          }
+        }
+        break;
+      }
       default:
         break;
     }
@@ -430,35 +530,21 @@ export function createConversationBuilder(): ConversationBuilder {
       }
     }
 
-    // An ask (permission or question) is "pending" until its tool call reaches a terminal status.
-    const pendingIds = (
-      asks: ReadonlyArray<{ requestId: string; toolCallId: string }>,
-    ): string[] => {
-      const pending: string[] = [];
-      for (const ask of asks) {
-        const toolItemIndex = toolIndex.get(ask.toolCallId);
-        const toolItem = toolItemIndex === undefined ? undefined : items[toolItemIndex];
-        const settled =
-          toolItem?.kind === 'tool' &&
-          (toolItem.toolCall.status === 'completed' || toolItem.toolCall.status === 'failed');
-        if (!settled) pending.push(ask.requestId);
-      }
-      return pending;
-    };
-
     cached = {
       items: out,
       status,
       usage,
+      usageReport,
       currentModeId,
       approvalPolicy,
       currentModel,
       currentEffort,
       availableCommands,
+      availableModels,
       capabilities,
       stopReason,
-      pendingPermissionIds: pendingIds(approvals),
-      pendingQuestionIds: pendingIds(questionAsks),
+      pendingPermissionIds: approvals.filter((requestId) => !permissionResolutions.has(requestId)),
+      pendingQuestionIds: questionAsks.filter((requestId) => !questionResolutions.has(requestId)),
     };
     return cached;
   };

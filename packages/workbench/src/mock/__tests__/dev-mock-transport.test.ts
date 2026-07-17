@@ -1,5 +1,12 @@
 import { LinkCodeClient } from '@linkcode/client-core';
-import type { Accounts, AgentEvent, ProvidersConfig, SessionId, ToolCall } from '@linkcode/schema';
+import type {
+  Accounts,
+  AgentEvent,
+  ProvidersConfig,
+  SessionId,
+  TerminalReplayEvent,
+  ToolCall,
+} from '@linkcode/schema';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../dev-mock-transport';
@@ -189,6 +196,20 @@ describe('dev mock transport', () => {
     const client = await connectedClient();
 
     const terminalId = await client.openTerminal({ cols: 80, rows: 24, cwd: '/mock/linkcode' });
+    client.resizeTerminal(terminalId, 100, 40);
+    client.detachTerminal(terminalId);
+
+    const attached = await client.attachTerminal(terminalId);
+    const replay: TerminalReplayEvent[] = [];
+    client.subscribeTerminalEvents(terminalId, (event) => replay.push(event));
+    expect(attached.terminal).toMatchObject({ cols: 100, rows: 40 });
+    expect(replay).toMatchObject([
+      { type: 'resize', seq: 1, cols: 80, rows: 24 },
+      { type: 'write', seq: 2 },
+      { type: 'resize', seq: 3, cols: 100, rows: 40 },
+    ]);
+    await client.takeTerminalControl(terminalId);
+
     let output = '';
     client.subscribeTerminalOutput(terminalId, (data) => {
       output += data;
@@ -226,11 +247,20 @@ describe('dev mock transport', () => {
     });
 
     let terminalOutput = '';
+    await client.attachTerminal(terminalId);
     client.subscribeTerminalOutput(terminalId, (data) => {
       terminalOutput += data;
     });
 
-    // The turn stays in flight until every permission ask is answered, mirroring a live agent.
+    // The turn stays in flight until every question and permission ask is answered, mirroring a live agent.
+    const questionRequest = await eventually(
+      () =>
+        events.find(
+          (event): event is Extract<AgentEvent, { type: 'question-request' }> =>
+            event.type === 'question-request',
+        ),
+      15000,
+    );
     await eventually(
       () => events.filter((event) => event.type === 'permission-request').length >= 2,
       15000,
@@ -243,6 +273,29 @@ describe('dev mock transport', () => {
       'edit',
       'execute',
     ]);
+    await expect(
+      client.respondQuestion(showcase.sessionId, questionRequest.requestId, {
+        outcome: 'answered',
+        answers: [
+          { questionId: 'scope', selectedOptionIds: ['focused'] },
+          { questionId: 'checks', selectedOptionIds: ['targeted'] },
+          { questionId: 'handoff', selectedOptionIds: ['details'] },
+        ],
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(events).toContainEqual({
+      type: 'question-resolved',
+      requestId: questionRequest.requestId,
+      outcome: {
+        outcome: 'answered',
+        answers: [
+          { questionId: 'scope', selectedOptionIds: ['focused'] },
+          { questionId: 'checks', selectedOptionIds: ['targeted'] },
+          { questionId: 'handoff', selectedOptionIds: ['details'] },
+        ],
+      },
+      source: 'user',
+    });
     for (const request of permissionRequests) {
       // eslint-disable-next-line no-await-in-loop -- answer the asks in order, like a user would.
       await expect(
@@ -256,6 +309,12 @@ describe('dev mock transport', () => {
           (tool) => tool.toolCallId === request.toolCall.toolCallId && tool.status === 'completed',
         ),
       ).toBe(true);
+      expect(events).toContainEqual({
+        type: 'permission-resolved',
+        requestId: request.requestId,
+        outcome: { outcome: 'selected', optionId: 'allow_once' },
+        source: 'user',
+      });
     }
 
     await eventually(
@@ -266,6 +325,7 @@ describe('dev mock transport', () => {
     expect(events.some((event) => event.type === 'user-message')).toBe(true);
     expect(events.some((event) => event.type === 'agent-thought-chunk')).toBe(true);
     expect(events.some((event) => event.type === 'plan')).toBe(true);
+    expect(events.some((event) => event.type === 'question-request')).toBe(true);
     expect(events.some((event) => event.type === 'permission-request')).toBe(true);
     expect(events.some((event) => event.type === 'error')).toBe(true);
     expect(events.some((event) => event.type === 'token-usage')).toBe(true);
@@ -291,6 +351,7 @@ describe('dev mock transport', () => {
     expect(streamChunks.length).toBeGreaterThan(1);
     expect(new Set(streamChunks.map((chunk) => chunk.messageId)).size).toBe(1);
 
+    client.detachTerminal(terminalId);
     client.dispose();
   }, 20000);
 
@@ -318,13 +379,21 @@ describe('dev mock transport', () => {
     client.dispose();
   }, 10000);
 
-  it('cancels pending showcase permissions when the turn is stopped', async () => {
+  it('cancels pending showcase prompts when the turn is stopped', async () => {
     const client = await connectedClient();
     const sessions = await client.listSessions();
     const showcase = sessions.find((session) => session.title === 'Mocked streaming showcase');
     if (!showcase) throw new Error('showcase session not found');
 
     const events = collectEvents(client, showcase.sessionId);
+    const questionRequest = await eventually(
+      () =>
+        events.find(
+          (event): event is Extract<AgentEvent, { type: 'question-request' }> =>
+            event.type === 'question-request',
+        ),
+      15000,
+    );
     await eventually(
       () => events.filter((event) => event.type === 'permission-request').length >= 2,
       15000,
@@ -336,6 +405,18 @@ describe('dev mock transport', () => {
 
     await client.cancel(showcase.sessionId);
 
+    expect(events).toContainEqual({
+      type: 'question-resolved',
+      requestId: questionRequest.requestId,
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    });
+    await expect(
+      client.respondQuestion(showcase.sessionId, questionRequest.requestId, {
+        outcome: 'cancelled',
+      }),
+    ).rejects.toThrow('Unknown question request');
+
     for (const request of permissionRequests) {
       // eslint-disable-next-line no-await-in-loop -- assert each cancelled ask reaches its own tool snapshot.
       const cancelledTool = await eventually(() =>
@@ -344,6 +425,12 @@ describe('dev mock transport', () => {
         ),
       );
       expect(cancelledTool.rawOutput).toEqual({ outcome: { outcome: 'cancelled' } });
+      expect(events).toContainEqual({
+        type: 'permission-resolved',
+        requestId: request.requestId,
+        outcome: { outcome: 'cancelled' },
+        source: 'session',
+      });
       // eslint-disable-next-line no-await-in-loop -- the cancelled ask must be gone from the mock permission map.
       await expect(
         client.respondPermission(showcase.sessionId, request.requestId, {

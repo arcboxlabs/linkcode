@@ -194,11 +194,18 @@ readiness: `LinkCodeClient.connect()` resolves only after a versioned `ping` / `
 round trip, so a wire-incompatible peer cannot become falsely ready.
 
 The daemon serves many clients at once through a **`Hub`**, which composes every client
-connection into the single `Transport` the host consumes. Outbound messages are
-**broadcast** to all attached clients, so every device sees the same event stream (the
-multi-device view); inbound messages from any client are merged into one stream for the
-host. The Hub itself stays connection-agnostic — per-client reply routing is handled by
-correlation ids in the schema (`clientReqId` → `replyTo`), not by the Hub.
+connection into the single `Transport` the host consumes. Inbound messages from every
+client are merged into one host stream, while the Hub retains the originating connection
+for each correlation id (`clientReqId` → `replyTo`) and returns the reply only there.
+`agent.event` keeps its broadcast/attached-session behavior; live `terminal.*` frames go
+only to connections attached to that terminal. Removing a physical or relay-virtual
+connection detaches all of its terminal capabilities before the connection disappears.
+
+The Cloud tunnel adds a relay-attested peer envelope outside `WireMessage`. The daemon's one
+host uplink exposes each remote peer as a separate virtual `Transport`, so Hub reply and
+terminal routing has the same connection boundary locally and remotely. Host frames are
+directed to one peer; the relay never broadcasts one client's opaque wire replies to the
+other clients of that host.
 
 Every message is a **versioned envelope** (version, id, timestamp) wrapping a payload.
 The payload is a discriminated union keyed by `kind` (`session.start` / `session.started`,
@@ -208,6 +215,15 @@ ends validate with zod at the trust boundary — before sending and after receiv
 Any change to the payload union bumps `WIRE_PROTOCOL_VERSION`; the version is a validated
 literal, so a stale peer rejects every message — after a bump, restart the daemon and all
 clients together.
+
+Interactive permission and question requests have a host-authoritative lifecycle. The Engine
+records each advertised request as open, validates responses against that exact request, emits a
+responding status while the adapter call is in flight, and emits one terminal resolved outcome.
+Adapter rejection restores the request; tool completion, turn end, stop, and delete cancel any
+remaining request explicitly. `session.attach` replays open/responding requests and terminal
+outcomes from the current or most recently completed turn so reconnecting clients converge; the
+next turn drops those resolved tombstones. Clients render pending requests in arrival-order FIFO,
+keep drafts local, and submit a multi-question request as one ordered response.
 
 ## Key contracts
 
@@ -278,11 +294,12 @@ interface SystemBridge {
 
 1. **Local direct** — desktop or webview ↔ daemon, over the transport with zod messages
    on the local machine.
-2. **Multi-client broadcast** — several local clients attach to the daemon's `Hub`; agent
-   events broadcast to all of them, while each client's request is paired to its reply by
-   correlation id.
-3. **Host uplink** — daemon ↔ Server, RPC over WebSocket, carrying the same normalized
-   zod messages.
+2. **Multi-client routing** — several clients attach to the daemon's `Hub`; agent events
+   broadcast according to the session subscription, correlated replies return to their
+   origin, and terminal streams reach only attached connections.
+3. **Host uplink** — daemon ↔ Server, RPC over WebSocket. A relay-attested outer peer
+   envelope multiplexes virtual client connections while its payload remains the same
+   normalized zod message.
 4. **Remote access** — mobile ↔ Server tunnel ↔ daemon, over WebSocket. The phone renders
    and controls the same host as any local client.
 

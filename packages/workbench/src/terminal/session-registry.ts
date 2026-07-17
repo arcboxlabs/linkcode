@@ -6,7 +6,10 @@ import { createTransportTerminalSession } from './transport-session';
 
 /** The slice of `LinkCodeClient` the registry needs: transport frames plus open/close. */
 export type TerminalSessionClient = TerminalTransportClient &
-  Pick<LinkCodeClient, 'openTerminal' | 'closeTerminal'>;
+  Pick<
+    LinkCodeClient,
+    'openTerminal' | 'detachTerminal' | 'closeTerminal' | 'subscribeTerminalController'
+  >;
 
 /** What the panel renders: the live session plus where the open/exit lifecycle stands. */
 export interface TerminalSnapshot {
@@ -14,14 +17,16 @@ export interface TerminalSnapshot {
   terminalId: string | null;
   /** The open request failed or timed out; `restart()` retries. */
   failed: boolean;
-  /** Set once the shell process exited; the session stays around for the dead buffer. */
-  exitCode: number | null;
+  /** Set once the shell process exited; a null code means it was terminated by a signal. */
+  exit: { code: number | null } | null;
+  /** This attachment is the terminal's current input/resize controller. */
+  canControl: boolean;
 }
 
 export interface TerminalSessionLease {
   getSnapshot: () => TerminalSnapshot;
   subscribe: (listener: () => void) => () => void;
-  /** Re-open after `failed`/`exitCode`, replacing the entry's terminal in place. */
+  /** Re-open after `failed`/`exit`, replacing the entry's terminal in place. */
   restart: () => void;
   release: () => void;
 }
@@ -35,6 +40,7 @@ interface RegistryEntry {
   attempt: number;
   terminalId: string | null;
   unsubExit: (() => void) | null;
+  unsubController: (() => void) | null;
   snapshot: TerminalSnapshot;
   listeners: Set<() => void>;
 }
@@ -44,7 +50,8 @@ interface RegistryEntry {
  * mount: the docked and maximized panel instances hand the same PTY off between them, so
  * maximizing never spawns a second host terminal. The deferred close bridges the
  * unmount→mount gap of that handoff (cleanup and setup run in the same React commit);
- * when a tab actually closes, nothing re-acquires and the host terminal is released.
+ * when a tab actually closes, nothing re-acquires and this client detaches. The daemon owns the
+ * PTY lifetime so another device can keep using it.
  */
 const CLOSE_DELAY_MS = 50;
 /** Past this the open is surfaced as failed; a late success is closed, not adopted. */
@@ -55,7 +62,8 @@ const OPENING_SNAPSHOT: TerminalSnapshot = {
   session: null,
   terminalId: null,
   failed: false,
-  exitCode: null,
+  exit: null,
+  canControl: false,
 };
 
 const registries = new WeakMap<TerminalSessionClient, Map<string, RegistryEntry>>();
@@ -86,7 +94,13 @@ function startOpen(
 
   const timeout = setTimeout(() => {
     if (!isCurrent()) return;
-    entry.snapshot = { session: null, terminalId: null, failed: true, exitCode: null };
+    entry.snapshot = {
+      session: null,
+      terminalId: null,
+      failed: true,
+      exit: null,
+      canControl: false,
+    };
     notify(entry);
   }, OPEN_TIMEOUT_MS);
 
@@ -94,34 +108,69 @@ function startOpen(
     .openTerminal(opts)
     .then((terminalId) => {
       clearTimeout(timeout);
-      // Abandoned while pending (timed out, restarted, or released) — close instead of leaking
-      // the host terminal; adopting a stale open would race a retry already in flight.
+      // Abandoned while pending (timed out, restarted, or released) — detach so another device
+      // that already discovered the terminal keeps it; the daemon reaps an unattached host PTY.
       if (!isCurrent() || entry.snapshot.failed) {
-        client.closeTerminal(terminalId);
+        client.detachTerminal(terminalId);
         return;
       }
       const session = createTransportTerminalSession(client, terminalId);
       entry.terminalId = terminalId;
-      entry.unsubExit = client.subscribeTerminalExit(terminalId, (exitCode) => {
-        entry.snapshot = { session, terminalId, failed: false, exitCode: exitCode ?? 0 };
+      entry.snapshot = {
+        session,
+        terminalId,
+        failed: false,
+        exit: null,
+        canControl: client.terminalCanControl(terminalId),
+      };
+      entry.unsubController = client.subscribeTerminalController(terminalId, (canControl) => {
+        entry.snapshot = {
+          ...entry.snapshot,
+          canControl: entry.snapshot.exit === null && canControl,
+        };
         notify(entry);
       });
-      entry.snapshot = { session, terminalId, failed: false, exitCode: null };
+      entry.unsubExit = client.subscribeTerminalExit(terminalId, (exitCode) => {
+        entry.snapshot = {
+          session,
+          terminalId,
+          failed: false,
+          exit: { code: exitCode },
+          canControl: false,
+        };
+        notify(entry);
+      });
       notify(entry);
     })
     .catch(() => {
       clearTimeout(timeout);
       if (!isCurrent()) return;
-      entry.snapshot = { session: null, terminalId: null, failed: true, exitCode: null };
+      entry.snapshot = {
+        session: null,
+        terminalId: null,
+        failed: true,
+        exit: null,
+        canControl: false,
+      };
       notify(entry);
     });
 }
 
-function disposeTerminal(client: TerminalSessionClient, entry: RegistryEntry): void {
+function disposeTerminal(
+  client: TerminalSessionClient,
+  entry: RegistryEntry,
+  action: 'close' | 'detach',
+): void {
   entry.unsubExit?.();
   entry.unsubExit = null;
+  entry.unsubController?.();
+  entry.unsubController = null;
   if (entry.terminalId !== null) {
-    client.closeTerminal(entry.terminalId);
+    if (action === 'close' && client.terminalCanControl(entry.terminalId)) {
+      client.closeTerminal(entry.terminalId);
+    } else {
+      client.detachTerminal(entry.terminalId);
+    }
     entry.terminalId = null;
   }
 }
@@ -147,6 +196,7 @@ export function acquireTerminalSession(
       attempt: 0,
       terminalId: null,
       unsubExit: null,
+      unsubController: null,
       snapshot: OPENING_SNAPSHOT,
       listeners: new Set(),
     };
@@ -166,7 +216,7 @@ export function acquireTerminalSession(
     },
     restart() {
       if (registry.get(key) !== leased) return;
-      disposeTerminal(client, leased);
+      disposeTerminal(client, leased, 'close');
       leased.snapshot = OPENING_SNAPSHOT;
       notify(leased);
       startOpen(client, registry, key, leased, opts);
@@ -179,8 +229,8 @@ export function acquireTerminalSession(
       leased.closeTimer = setTimeout(() => {
         if (registry.get(key) !== leased || leased.refCount > 0) return;
         registry.delete(key);
-        disposeTerminal(client, leased);
-        // Still opening: the open callback above sees the entry is gone and closes it.
+        disposeTerminal(client, leased, 'detach');
+        // Still opening: the open callback above sees the entry is gone and detaches it.
       }, CLOSE_DELAY_MS);
     },
   };
