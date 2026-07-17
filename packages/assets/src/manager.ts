@@ -60,19 +60,20 @@ export class AssetManager {
   }
 
   /**
-   * Any non-`.tmp-*` version on disk, regardless of the wanted pin: a prior install = standing
-   * consent to auto-refresh (CODE-221). GC keeps superseded versions until their replacement
-   * lands, so a failed refresh never erases this.
+   * Any completed (non-`.tmp-*`) version directory on disk, regardless of the wanted pin: a prior
+   * install = standing consent to auto-refresh (CODE-221). GC keeps superseded versions until
+   * their replacement lands, so a failed refresh never erases this. Directories only — a stray
+   * file (Finder's `.DS_Store`) must not read as consent.
    */
   hasInstallOnDisk(id: ManagedAssetId): boolean {
     if (!this.descriptors.has(id)) return false;
-    let entries: string[];
     try {
-      entries = readdirSync(assetDir(id));
+      return readdirSync(assetDir(id), { withFileTypes: true }).some(
+        (entry) => entry.isDirectory() && !entry.name.startsWith('.tmp-'),
+      );
     } catch {
       return false;
     }
-    return entries.some((entry) => !entry.startsWith('.tmp-'));
   }
 
   /** Live snapshot for the `asset.list` wire resource. */

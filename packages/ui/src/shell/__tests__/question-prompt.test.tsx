@@ -16,11 +16,38 @@ function translateKey(namespace: string, key: string, values?: Record<string, un
   if (key === 'queued') return `${String(values?.count)} queued`;
   if (namespace === 'workbench.question' && key === 'previous') return 'previous question';
   if (namespace === 'workbench.question' && key === 'next') return 'next question';
-  if (namespace === 'workbench.prompt' && key === 'previous') return 'previous prompt';
-  if (namespace === 'workbench.prompt' && key === 'next') return 'next prompt';
+  if (namespace === 'workbench.question' && key === 'nextAction') return 'Next';
+  if (namespace === 'workbench.question' && key === 'navigation') return 'Question navigation';
+  if (namespace === 'workbench.question' && key === 'instructionSingle') return 'Choose one';
+  if (namespace === 'workbench.question' && key === 'instructionMultiple') {
+    return 'Select all that apply';
+  }
+  if (namespace === 'workbench.question' && key === 'other') return 'Other';
+  if (namespace === 'workbench.question' && key === 'dismiss') return 'Dismiss request';
+  if (namespace === 'workbench.question' && key === 'dismissConfirmTitle') {
+    return 'Dismiss this request?';
+  }
+  if (namespace === 'workbench.question' && key === 'dismissConfirmDescription') {
+    return 'Your draft answers will be discarded.';
+  }
+  if (namespace === 'workbench.question' && key === 'dismissConfirmCancel') {
+    return 'Keep answering';
+  }
+  if (namespace === 'workbench.question' && key === 'dismissConfirmAction') {
+    return 'Dismiss anyway';
+  }
+  if (namespace === 'workbench.prompt' && key === 'retry') return 'Retry';
   if (namespace === 'workbench.permission' && key === 'question') {
     return `Allow ${String(values?.action)}?`;
   }
+  if (namespace === 'workbench.permission' && key === 'reviewRequired') {
+    return 'Permission required';
+  }
+  if (namespace === 'workbench.permission' && key === 'reviewDescription') {
+    return 'Review the details before allowing it.';
+  }
+  if (namespace === 'workbench.permission' && key === 'responding') return 'Submitting…';
+  if (namespace === 'workbench.prompt' && key === 'responding') return 'Submitting…';
   return key;
 }
 
@@ -40,6 +67,7 @@ const ITEM: QuestionConversationItem = {
   turnId: 'turn-1',
   requestId: 'request-1',
   toolCall: { toolCallId: 'tool-1', title: 'AskUserQuestion' },
+  responding: false,
   questions: [
     {
       questionId: 'q1',
@@ -47,7 +75,11 @@ const ITEM: QuestionConversationItem = {
       header: 'Features',
       multiSelect: true,
       options: [
-        { optionId: 'cache', label: 'Cache' },
+        {
+          optionId: 'cache',
+          label: 'Cache',
+          description: 'Reuse fetched results across the whole workspace without truncation.',
+        },
         { optionId: 'retry', label: 'Retry' },
       ],
     },
@@ -75,23 +107,24 @@ const ITEM: QuestionConversationItem = {
 };
 
 const ALLOW_OPTION = { optionId: 'allow', name: 'Allow', kind: 'allow_once' as const };
+const ALWAYS_ALLOW_OPTION = {
+  optionId: 'allow-always',
+  name: 'Always allow',
+  kind: 'allow_always' as const,
+};
 const PERMISSION_ITEM: PermissionConversationItem = {
   kind: 'approval',
   id: 'permission-1',
   turnId: 'turn-1',
   requestId: 'permission-1',
   toolCall: { toolCallId: 'command-1', title: 'Run command' },
-  options: [ALLOW_OPTION, { optionId: 'reject', name: 'Reject', kind: 'reject_once' }],
+  options: [
+    ALLOW_OPTION,
+    ALWAYS_ALLOW_OPTION,
+    { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+  ],
+  responding: false,
 };
-
-function permission(requestId: string, title: string): PermissionConversationItem {
-  return {
-    ...PERMISSION_ITEM,
-    id: requestId,
-    requestId,
-    toolCall: { toolCallId: `command-${requestId}`, title },
-  };
-}
 
 function conversation(
   items: ConversationViewModel['items'],
@@ -114,62 +147,69 @@ function conversation(
   };
 }
 
-const CACHE_CHOICE_NAME = /Cache$/;
-const BUN_CHOICE_NAME = /Bun$/;
-const NODE_CHOICE_NAME = /Node$/;
-const STABLE_CHOICE_NAME = /Stable$/;
-const ALLOW_CHOICE_NAME = /Allow$/;
-const PICK_RUNTIME_GROUP_NAME = /^Pick a runtime/;
-const FOCUSED_CHOICE_NAME = /Focused/;
-const PERMISSION_ASKS_CHOICE_NAME = /Permission asks/;
-const BRIEF_CHOICE_NAME = /Brief/;
-const SUMMARY_CHOICE_NAME = /Summary$/;
+const CACHE_CHOICE_NAME = /Cache/;
+const CACHE_DESCRIPTION_TEXT =
+  'Reuse fetched results across the whole workspace without truncation.';
+const CACHE_DESCRIPTION = /Reuse fetched results/;
+const NODE_CHOICE_NAME = /Node/;
+const STABLE_CHOICE_NAME = /Stable/;
+const ALLOW_CHOICE_NAME = /^Allow$/;
+const SUBMIT_BUTTON_NAME = /submit/i;
+const SKIP_BUTTON_NAME = /skip/i;
 
 afterEach(cleanup);
 
 describe('QuestionPrompt', () => {
-  it('pages bidirectionally, preserves edits, and submits one ordered batch', async () => {
+  it('shows an authoritative busy state without a local action snapshot', () => {
+    render(<QuestionPrompt item={ITEM} responding onRespond={vi.fn()} />);
+
+    expect(screen.getByRole('status', { name: 'Submitting…' })).toBeDefined();
+    expect(
+      screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+
+  it('uses native choice semantics, explicit navigation, and one ordered batch submission', async () => {
     const user = userEvent.setup();
     const onRespond = vi.fn();
     render(<QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />);
 
     expect(screen.getByText('1 of 3')).toBeDefined();
-    expect(document.querySelectorAll('form')).toHaveLength(1);
-    expect(
-      screen.getByRole('link', { name: 'previous question' }).getAttribute('aria-disabled'),
-    ).toBe('true');
-    expect(screen.getByRole('button', { name: 'submit' }).hasAttribute('disabled')).toBe(true);
-    const cache = screen.getByRole('button', { name: CACHE_CHOICE_NAME });
+    const cache = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
+    expect(screen.getByText('Select all that apply')).toBeDefined();
+    const cacheDescription = screen.getByText(CACHE_DESCRIPTION);
+    expect(cacheDescription.classList.contains('truncate')).toBe(true);
+    expect(cacheDescription.closest('label')?.classList.contains('flex')).toBe(true);
+
     await user.click(cache);
-    await user.click(screen.getByRole('link', { name: 'next question' }));
 
-    expect(screen.getByText('2 of 3')).toBeDefined();
-    expect(onRespond).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: NODE_CHOICE_NAME }));
-    expect(
-      screen.getByRole('group', { name: PICK_RUNTIME_GROUP_NAME }).contains(document.activeElement),
-    ).toBe(true);
-    await user.click(screen.getByRole('link', { name: 'previous question' }));
+    // Multi-select stays put; the always-present footer action advances.
     expect(screen.getByText('1 of 3')).toBeDefined();
-    expect(
-      screen.getByRole('button', { name: CACHE_CHOICE_NAME }).getAttribute('aria-pressed'),
-    ).toBe('true');
-    await user.click(screen.getByRole('link', { name: 'next question' }));
+    expect(cache.getAttribute('aria-checked')).toBe('true');
+    expect(onRespond).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: NODE_CHOICE_NAME }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('2 of 3')).toBeDefined();
 
+    // A structured single-select pick advances automatically.
+    await user.click(screen.getByRole('radio', { name: NODE_CHOICE_NAME }));
     expect(screen.getByText('3 of 3')).toBeDefined();
     expect(onRespond).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: STABLE_CHOICE_NAME }));
-    await user.click(screen.getByRole('link', { name: 'previous question' }));
-    expect(
-      screen.getByRole('button', { name: NODE_CHOICE_NAME }).getAttribute('aria-pressed'),
-    ).toBe('true');
-    await user.click(screen.getByRole('button', { name: BUN_CHOICE_NAME }));
 
-    await user.click(screen.getByRole('button', { name: STABLE_CHOICE_NAME }));
+    await user.click(screen.getByRole('button', { name: 'previous question' }));
+    expect(screen.getByRole('radio', { name: NODE_CHOICE_NAME }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: 'previous question' }));
+    expect(
+      screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
+    ).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'next question' }));
+    await user.click(screen.getByRole('button', { name: 'next question' }));
+    await user.click(screen.getByRole('radio', { name: STABLE_CHOICE_NAME }));
+    expect(screen.getByText('3 of 3')).toBeDefined();
     expect(onRespond).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'submit' }).hasAttribute('disabled')).toBe(false);
+
     await user.click(screen.getByRole('button', { name: 'submit' }));
 
     expect(onRespond).toHaveBeenCalledOnce();
@@ -177,31 +217,402 @@ describe('QuestionPrompt', () => {
       outcome: 'answered',
       answers: [
         { questionId: 'q1', selectedOptionIds: ['cache'], customText: undefined },
-        { questionId: 'q2', selectedOptionIds: ['bun'], customText: undefined },
+        { questionId: 'q2', selectedOptionIds: ['node'], customText: undefined },
         { questionId: 'q3', selectedOptionIds: ['stable'], customText: undefined },
       ],
     });
   });
 
-  it('cancels once after every question is skipped', async () => {
+  it('lets the pager skip questions and submits unanswered ones as explicit skips', async () => {
     const user = userEvent.setup();
     const onRespond = vi.fn();
     render(<QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />);
 
-    await user.click(screen.getByRole('button', { name: 'skip' }));
-    await user.click(screen.getByRole('button', { name: 'skip' }));
-    expect(onRespond).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'skip' }));
-    expect(onRespond).not.toHaveBeenCalled();
+    const next = screen.getByRole('button', { name: 'next question' });
+    expect(next.hasAttribute('disabled')).toBe(false);
+    await user.click(next);
+    expect(screen.getByText('2 of 3')).toBeDefined();
+    await user.click(screen.getByRole('radio', { name: NODE_CHOICE_NAME }));
+    expect(screen.getByText('3 of 3')).toBeDefined();
     await user.click(screen.getByRole('button', { name: 'submit' }));
 
     expect(onRespond).toHaveBeenCalledOnce();
+    expect(onRespond).toHaveBeenCalledWith('request-1', {
+      outcome: 'answered',
+      answers: [
+        { questionId: 'q1', selectedOptionIds: [] },
+        { questionId: 'q2', selectedOptionIds: ['node'], customText: undefined },
+        { questionId: 'q3', selectedOptionIds: [] },
+      ],
+    });
+  });
+
+  it('treats Other as an exclusive choice and restores its draft', async () => {
+    const user = userEvent.setup();
+    const onRespond = vi.fn();
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />);
+
+    await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
+    let input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
+    await user.type(input, 'Run smoke tests');
+
+    await user.click(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }));
+    expect(screen.queryByRole('textbox', { name: 'customPlaceholder' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'customPlaceholder' }).textContent).toContain(
+      'Run smoke tests',
+    );
+    expect(
+      screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
+    ).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
+    input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
+    expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' }).value).toBe(
+      'Run smoke tests',
+    );
+    expect(
+      screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
+    ).toBe('false');
+
+    await user.click(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }));
+    await user.click(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }));
+    await user.click(screen.getByRole('button', { name: 'Dismiss request' }));
+    expect(onRespond).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alertdialog')).toBeDefined();
+  });
+
+  it('supports numbered shortcuts without stealing digits from the custom answer', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+
+    expect(screen.getByText('1', { selector: 'kbd' })).toBeDefined();
+    await user.keyboard('1');
+    expect(
+      screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
+    ).toBe('true');
+    await user.keyboard('2');
+    expect(screen.getByRole('checkbox', { name: /Retry/ }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
+    const input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
+    await user.type(input, '123');
+    expect(input.value).toBe('123');
+    expect(
+      screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
+    ).toBe('false');
+  });
+
+  it('anchors the truncated description tooltip to the keyboard-focusable choice row', () => {
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    const choice = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
+    const row = choice.closest('label');
+    const description = row?.querySelector('.truncate');
+    expect(description?.textContent).toBe(CACHE_DESCRIPTION_TEXT);
+    expect(row?.getAttribute('data-slot')).toBe('tooltip-trigger');
+    expect(row?.contains(choice)).toBe(true);
+    expect(document.activeElement).toBe(choice);
+  });
+
+  it('does not replace a structured answer when keyboard focus reaches the custom choice', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    const cache = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
+    await user.click(cache);
+    await user.tab();
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'customPlaceholder' }));
+    expect(cache.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('ignores modified numbered shortcuts and shortcuts while responding', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    const cache = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
+    await user.keyboard('{Shift>}1{/Shift}');
+    expect(cache.getAttribute('aria-checked')).toBe('false');
+
+    rerender(<QuestionPrompt autoFocusFirstChoice item={ITEM} responding onRespond={vi.fn()} />);
+    await user.keyboard('1');
+    expect(cache.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('dismisses the whole request and confirms before discarding drafts', async () => {
+    const user = userEvent.setup();
+    const onRespond = vi.fn();
+    const firstRender = render(
+      <QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss request' }));
     expect(onRespond).toHaveBeenCalledWith('request-1', { outcome: 'cancelled' });
+
+    firstRender.unmount();
+    onRespond.mockClear();
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />);
+    await user.click(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }));
+    await user.click(screen.getByRole('button', { name: 'Dismiss request' }));
+    expect(onRespond).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alertdialog')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'Keep answering' }));
+    expect(onRespond).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Dismiss request' }));
+    await user.click(screen.getByRole('button', { name: 'Dismiss anyway' }));
+    expect(onRespond).toHaveBeenCalledWith('request-1', { outcome: 'cancelled' });
+  });
+
+  it('dismisses without confirmation when the custom answer was cleared', async () => {
+    const user = userEvent.setup();
+    const onRespond = vi.fn();
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />);
+
+    await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
+    const input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
+    await user.type(input, 'draft');
+    await user.clear(input);
+    await user.click(screen.getByRole('button', { name: 'Dismiss request' }));
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(onRespond).toHaveBeenCalledWith('request-1', { outcome: 'cancelled' });
+  });
+
+  it('moves focus to the next question, not the outgoing control, on a single-select shortcut', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'next question' }));
+    const bun = screen.getByRole('radio', { name: /Bun/ });
+    const focusTargets: EventTarget[] = [];
+    const record = (event: FocusEvent): void => {
+      if (event.target) focusTargets.push(event.target);
+    };
+    document.addEventListener('focusin', record);
+    await user.keyboard('2');
+    document.removeEventListener('focusin', record);
+
+    expect(screen.getByText('3 of 3')).toBeDefined();
+    expect(focusTargets).not.toContain(bun);
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: STABLE_CHOICE_NAME }));
+
+    // The last question has no page to advance to, so the shortcut focuses the pressed choice.
+    await user.keyboard('2');
+    expect(screen.getByText('3 of 3')).toBeDefined();
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: /Canary/ }));
+  });
+
+  it('moves focus through choices and the custom row with arrow keys without selecting', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    const cache = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
+    const retry = screen.getByRole('checkbox', { name: /Retry/ });
+
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(retry);
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'customPlaceholder' }));
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(cache);
+    await user.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'customPlaceholder' }));
+    expect(cache.getAttribute('aria-checked')).toBe('false');
+    expect(retry.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('keeps arrow navigation focus-only on single-select pages', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'next question' }));
+
+    await user.keyboard('{ArrowDown}');
+    const bun = screen.getByRole('radio', { name: /Bun/ });
+    expect(document.activeElement).toBe(bun);
+    expect(bun.getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByText('2 of 3')).toBeDefined();
+  });
+
+  it('arrows from the custom input back into the option list', async () => {
+    const user = userEvent.setup();
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
+    expect(document.activeElement).toBe(
+      screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' }),
+    );
+
+    await user.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: /Retry/ }));
+    // Navigating away only moves focus; the custom answer stays selected.
+    expect(screen.getByRole('textbox', { name: 'customPlaceholder' })).toBeDefined();
+  });
+
+  it('keeps the draft visible after a failed submission and retries the same answers', async () => {
+    const user = userEvent.setup();
+    const onRespond = vi.fn();
+    const { rerender } = render(
+      <QuestionPrompt item={ITEM} responding={false} onRespond={onRespond} />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }));
+    await user.click(screen.getByRole('button', { name: 'next question' }));
+    await user.click(screen.getByRole('radio', { name: NODE_CHOICE_NAME }));
+    await user.click(screen.getByRole('radio', { name: STABLE_CHOICE_NAME }));
+    await user.click(screen.getByRole('button', { name: 'submit' }));
+    expect(onRespond).toHaveBeenCalledOnce();
+
+    rerender(<QuestionPrompt item={ITEM} responding onRespond={onRespond} />);
+    expect(screen.getByRole('button', { name: SUBMIT_BUTTON_NAME }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(screen.getByRole('button', { name: 'Dismiss request' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+
+    rerender(
+      <QuestionPrompt
+        error="Could not send response"
+        item={ITEM}
+        responding={false}
+        onRespond={onRespond}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toContain('Could not send response');
+    expect(screen.getByText('3 of 3')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRespond).toHaveBeenCalledTimes(2);
+    expect(onRespond.mock.calls[1]).toEqual(onRespond.mock.calls[0]);
   });
 });
 
 describe('ConversationPromptDock', () => {
-  it('shows complete custom-tool arguments on the approval surface', () => {
+  it('places the current plan step before the actionable prompt', () => {
+    const userMessage: ConversationViewModel['items'][number] = {
+      kind: 'message',
+      id: 'turn-1',
+      turnId: 'turn-1',
+      role: 'user',
+      blocks: [],
+      isStreaming: false,
+    };
+    const currentPlan: ConversationViewModel['items'][number] = {
+      kind: 'plan',
+      id: 'plan-1',
+      turnId: 'turn-1',
+      plan: {
+        entries: [
+          { content: 'Done', priority: 'high', status: 'completed' },
+          { content: 'Review prompt', priority: 'high', status: 'in_progress' },
+        ],
+      },
+    };
+
+    render(
+      <ConversationPromptDock
+        conversation={conversation([userMessage, currentPlan, ITEM], {
+          pendingQuestionIds: [ITEM.requestId],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    const step = screen.getByText('Review prompt');
+    const prompt = screen.getByText('Pick features').closest('[data-slot="frame"]');
+    if (!prompt) throw new Error('prompt card not found');
+    expect(step.compareDocumentPosition(prompt)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('shows an authoritative busy state without a local response snapshot', () => {
+    render(
+      <ConversationPromptDock
+        conversation={conversation([{ ...PERMISSION_ITEM, responding: true }], {
+          pendingPermissionIds: [PERMISSION_ITEM.requestId],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: 'Submitting…' })).toBeDefined();
+    expect(screen.getByRole('button', { name: ALLOW_CHOICE_NAME }).hasAttribute('disabled')).toBe(
+      true,
+    );
+  });
+
+  it('shows one FIFO request, separates backlog, and waits for authoritative resolution', async () => {
+    const user = userEvent.setup();
+    const onRespondPermission = vi.fn();
+    const permissionThenQuestion = conversation([PERMISSION_ITEM, ITEM], {
+      pendingPermissionIds: ['permission-1'],
+      pendingQuestionIds: ['request-1'],
+    });
+    const { rerender } = render(
+      <ConversationPromptDock
+        conversation={permissionThenQuestion}
+        respondingRequestIds={new Set()}
+        onRespondPermission={onRespondPermission}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: ALLOW_CHOICE_NAME })).toBeDefined();
+    expect(screen.getByText('Permission required')).toBeDefined();
+    expect(screen.getByText('Review the details before allowing it.')).toBeDefined();
+    expect(screen.queryByRole('checkbox', { name: CACHE_CHOICE_NAME })).toBeNull();
+    expect(screen.getByText('1 queued')).toBeDefined();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: SKIP_BUTTON_NAME })).toBeNull();
+    const allow = screen.getByRole('button', { name: ALLOW_CHOICE_NAME });
+    const footerLabels = [
+      ...(allow.closest('[data-slot="frame-panel-footer"]')?.querySelectorAll('button') ?? []),
+    ].map((button) => button.textContent);
+    expect(footerLabels).toEqual(['Always allow', 'Reject', 'Allow']);
+
+    await user.click(allow);
+    expect(onRespondPermission).toHaveBeenCalledWith('permission-1', {
+      outcome: 'selected',
+      option: ALLOW_OPTION,
+    });
+    expect(screen.getByText('Allow Run command?')).toBeDefined();
+
+    const resolvedPermission: PermissionConversationItem = {
+      ...PERMISSION_ITEM,
+      resolution: {
+        outcome: { outcome: 'selected', optionId: ALLOW_OPTION.optionId },
+        source: 'user',
+      },
+    };
+    rerender(
+      <ConversationPromptDock
+        conversation={conversation([resolvedPermission, ITEM], {
+          pendingQuestionIds: ['request-1'],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={onRespondPermission}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: ALLOW_CHOICE_NAME })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME })).toBeDefined();
+  });
+
+  it('renders complete approval details and retries an inline response failure', async () => {
+    const user = userEvent.setup();
+    const onRespondPermission = vi.fn();
     const rawInput = {
       issueId: 'CODE-173',
       options: { includeComments: true, labels: ['frontend', 'review'] },
@@ -218,15 +629,11 @@ describe('ConversationPromptDock', () => {
     const customConversation = conversation([customPermission], {
       pendingPermissionIds: [customPermission.requestId],
     });
-
-    render(
+    const { rerender } = render(
       <ConversationPromptDock
-        answeredQuestionIds={new Set()}
         conversation={customConversation}
-        permissionDecisions={new Map()}
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={vi.fn()}
+        respondingRequestIds={new Set()}
+        onRespondPermission={onRespondPermission}
         onRespondQuestion={vi.fn()}
       />,
     );
@@ -235,264 +642,70 @@ describe('ConversationPromptDock', () => {
     expect(argumentsValue?.textContent).toBe(JSON.stringify(rawInput, null, 2));
     expect(argumentsValue?.classList.contains('truncate')).toBe(false);
     expect(argumentsValue?.classList.contains('whitespace-pre-wrap')).toBe(true);
+    await user.click(screen.getByRole('button', { name: ALLOW_CHOICE_NAME }));
+
+    rerender(
+      <ConversationPromptDock
+        conversation={customConversation}
+        responseErrors={new Map([[customPermission.requestId, 'Response rejected']])}
+        respondingRequestIds={new Set()}
+        onRespondPermission={onRespondPermission}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toContain('Response rejected');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRespondPermission).toHaveBeenCalledTimes(2);
+    expect(onRespondPermission.mock.calls[1]).toEqual(onRespondPermission.mock.calls[0]);
   });
 
-  it('exercises the frontend-only batch API stub without calling the backend', async () => {
-    const user = userEvent.setup();
-    const onRespondQuestion = vi.fn();
-    const showcase = conversation([], {
-      currentModeId: 'mock-showcase',
-    });
-
+  it('shows only the raw arguments for unrecognized tools instead of duplicating fields', () => {
+    const rawInput = { command: 'pnpm dlx tool', url: 'https://example.com', path: '/tmp/x' };
+    const otherPermission: PermissionConversationItem = {
+      ...PERMISSION_ITEM,
+      toolCall: { toolCallId: 'mcp-2', title: 'mcp.run', kind: 'other', rawInput },
+    };
     render(
       <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={showcase}
-        permissionDecisions={new Map()}
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
+        conversation={conversation([otherPermission], {
+          pendingPermissionIds: [otherPermission.requestId],
+        })}
+        respondingRequestIds={new Set()}
         onRespondPermission={vi.fn()}
-        onRespondQuestion={onRespondQuestion}
-      />,
-    );
-
-    expect(screen.getByText('1 of 3')).toBeDefined();
-    expect(screen.getByText('2 queued')).toBeDefined();
-    expect(document.querySelectorAll('form')).toHaveLength(1);
-    await user.click(screen.getByRole('button', { name: FOCUSED_CHOICE_NAME }));
-    expect(screen.getByText('2 of 3')).toBeDefined();
-    await user.click(screen.getByRole('button', { name: 'skip' }));
-    expect(screen.getByText('3 of 3')).toBeDefined();
-    await user.click(screen.getByRole('button', { name: SUMMARY_CHOICE_NAME }));
-    expect(screen.getByText('3 of 3')).toBeDefined();
-    await user.click(screen.getByRole('button', { name: 'submit' }));
-
-    expect(screen.queryByText('3 of 3')).toBeNull();
-    expect(screen.getByText('Pick the mock summary style')).toBeDefined();
-    expect(screen.getByText('1 of 2')).toBeDefined();
-    expect(document.querySelectorAll('form')).toHaveLength(1);
-    await user.click(screen.getByRole('link', { name: 'next prompt' }));
-    await user.click(screen.getByRole('button', { name: PERMISSION_ASKS_CHOICE_NAME }));
-    expect(
-      screen
-        .getByRole('button', { name: PERMISSION_ASKS_CHOICE_NAME })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
-    await user.click(screen.getByRole('link', { name: 'previous prompt' }));
-    expect(screen.getByText('Pick the mock summary style')).toBeDefined();
-    await user.click(screen.getByRole('link', { name: 'next prompt' }));
-    expect(
-      screen
-        .getByRole('button', { name: PERMISSION_ASKS_CHOICE_NAME })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
-    await user.click(screen.getByRole('button', { name: 'submit' }));
-    expect(screen.getByText('Pick the mock summary style')).toBeDefined();
-    await user.click(screen.getByRole('button', { name: BRIEF_CHOICE_NAME }));
-
-    expect(document.querySelectorAll('form')).toHaveLength(0);
-    expect(onRespondQuestion).not.toHaveBeenCalled();
-  });
-
-  it('keeps a question group behind the leading standalone prompt', async () => {
-    const user = userEvent.setup();
-    const onRespondPermission = vi.fn();
-    const onRespondQuestion = vi.fn();
-    const permissionThenQuestion = conversation([PERMISSION_ITEM, ITEM], {
-      pendingPermissionIds: ['permission-1'],
-      pendingQuestionIds: ['request-1'],
-    });
-
-    const { rerender } = render(
-      <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={permissionThenQuestion}
-        permissionDecisions={new Map()}
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
-        onRespondQuestion={onRespondQuestion}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: ALLOW_CHOICE_NAME })).toBeDefined();
-    expect(screen.queryByRole('button', { name: CACHE_CHOICE_NAME })).toBeNull();
-    expect(screen.getByText('1 queued')).toBeDefined();
-    expect(document.querySelectorAll('form')).toHaveLength(1);
-
-    await user.click(screen.getByRole('button', { name: ALLOW_CHOICE_NAME }));
-
-    expect(onRespondPermission).toHaveBeenCalledOnce();
-    expect(onRespondQuestion).not.toHaveBeenCalled();
-
-    rerender(
-      <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={permissionThenQuestion}
-        permissionDecisions={
-          new Map([['permission-1', { outcome: 'selected' as const, option: ALLOW_OPTION }]])
-        }
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
-        onRespondQuestion={onRespondQuestion}
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: ALLOW_CHOICE_NAME })).toBeNull();
-    const cache = screen.getByRole('button', { name: CACHE_CHOICE_NAME });
-    expect(cache).toBeDefined();
-    expect(document.activeElement).toBe(cache);
-    expect(screen.getByText('1 of 3')).toBeDefined();
-    expect(document.querySelectorAll('form')).toHaveLength(1);
-  });
-
-  it('pages standalone prompts out of order and keeps the cursor after one resolves', async () => {
-    const user = userEvent.setup();
-    const onRespondPermission = vi.fn();
-    const first = permission('permission-a', 'Run A');
-    const second = permission('permission-b', 'Run B');
-    const third = permission('permission-c', 'Run C');
-    const fourth = permission('permission-d', 'Run D');
-    const standalone = conversation([first, second, third], {
-      pendingPermissionIds: [first.requestId, second.requestId, third.requestId],
-    });
-    const expandedStandalone = conversation([first, second, third, fourth], {
-      pendingPermissionIds: [first.requestId, second.requestId, third.requestId, fourth.requestId],
-    });
-
-    const { rerender } = render(
-      <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={standalone}
-        permissionDecisions={new Map()}
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
         onRespondQuestion={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('Allow Run A?')).toBeDefined();
-    expect(screen.getByText('1 of 3')).toBeDefined();
-    await user.click(screen.getByRole('link', { name: 'next prompt' }));
-    expect(screen.getByText('Allow Run B?')).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'submit' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: ALLOW_CHOICE_NAME }));
-    expect(onRespondPermission).toHaveBeenCalledWith('permission-b', {
-      outcome: 'selected',
-      option: ALLOW_OPTION,
-    });
-
-    rerender(
-      <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={standalone}
-        permissionDecisions={
-          new Map([['permission-b', { outcome: 'selected' as const, option: ALLOW_OPTION }]])
-        }
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
-        onRespondQuestion={vi.fn()}
-      />,
+    expect(screen.getByText('arguments').nextElementSibling?.textContent).toBe(
+      JSON.stringify(rawInput, null, 2),
     );
-
-    expect(screen.getByText('Allow Run C?')).toBeDefined();
-    expect(screen.getByText('2 of 2')).toBeDefined();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: ALLOW_CHOICE_NAME }));
-
-    rerender(
-      <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={expandedStandalone}
-        permissionDecisions={
-          new Map([['permission-b', { outcome: 'selected' as const, option: ALLOW_OPTION }]])
-        }
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
-        onRespondQuestion={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Allow Run C?')).toBeDefined();
-    expect(screen.getByText('2 of 3')).toBeDefined();
-    await user.click(screen.getByRole('link', { name: 'previous prompt' }));
-    expect(screen.getByText('Allow Run A?')).toBeDefined();
-    expect(document.querySelectorAll('form')).toHaveLength(1);
+    expect(screen.queryByText('command')).toBeNull();
+    expect(screen.queryByText('url')).toBeNull();
+    expect(screen.queryByText('file')).toBeNull();
   });
 
-  it('does not preempt or reset a question group when another group arrives', async () => {
-    const user = userEvent.setup();
-    const onRespondPermission = vi.fn();
-    const onRespondQuestion = vi.fn();
-    const questionOnly = conversation([ITEM], { pendingQuestionIds: ['request-1'] });
-    const questionThenPermission = conversation([ITEM, PERMISSION_ITEM], {
-      pendingPermissionIds: ['permission-1'],
-      pendingQuestionIds: ['request-1'],
-    });
-
-    const { rerender } = render(
+  it('keeps dedicated detail rows for recognized tool kinds', () => {
+    const execPermission: PermissionConversationItem = {
+      ...PERMISSION_ITEM,
+      toolCall: {
+        toolCallId: 'exec-1',
+        title: 'Run migration',
+        kind: 'execute',
+        rawInput: { command: 'pnpm migrate' },
+      },
+    };
+    render(
       <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={questionOnly}
-        permissionDecisions={new Map()}
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
-        onRespondQuestion={onRespondQuestion}
+        conversation={conversation([execPermission], {
+          pendingPermissionIds: [execPermission.requestId],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: CACHE_CHOICE_NAME }));
-
-    rerender(
-      <ConversationPromptDock
-        answeredQuestionIds={new Set()}
-        conversation={questionThenPermission}
-        permissionDecisions={new Map()}
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
-        onRespondQuestion={onRespondQuestion}
-      />,
-    );
-
-    expect(
-      screen.getByRole('button', { name: CACHE_CHOICE_NAME }).getAttribute('aria-pressed'),
-    ).toBe('true');
-    expect(screen.queryByRole('button', { name: ALLOW_CHOICE_NAME })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'next prompt' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'next question' })).toBeDefined();
-    expect(screen.getByText('1 queued')).toBeDefined();
-    expect(document.querySelectorAll('form')).toHaveLength(1);
-
-    await user.click(screen.getByRole('link', { name: 'next question' }));
-    await user.click(screen.getByRole('button', { name: NODE_CHOICE_NAME }));
-    await user.click(screen.getByRole('button', { name: STABLE_CHOICE_NAME }));
-    expect(onRespondQuestion).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'submit' }));
-
-    expect(onRespondQuestion).toHaveBeenCalledOnce();
-    expect(onRespondPermission).not.toHaveBeenCalled();
-
-    rerender(
-      <ConversationPromptDock
-        answeredQuestionIds={new Set(['request-1'])}
-        conversation={questionThenPermission}
-        permissionDecisions={new Map()}
-        respondingPermissions={new Set()}
-        respondingQuestions={new Set()}
-        onRespondPermission={onRespondPermission}
-        onRespondQuestion={onRespondQuestion}
-      />,
-    );
-
-    const allow = screen.getByRole('button', { name: ALLOW_CHOICE_NAME });
-    expect(document.activeElement).toBe(allow);
-    expect(document.querySelectorAll('form')).toHaveLength(1);
-    await user.click(allow);
-    expect(onRespondPermission).toHaveBeenCalledOnce();
+    expect(screen.getByText('command').nextElementSibling?.textContent).toBe('pnpm migrate');
+    expect(screen.queryByText('arguments')).toBeNull();
   });
 });

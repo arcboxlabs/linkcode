@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'coss-ui/components/menu';
+import { PreviewCard, PreviewCardTrigger } from 'coss-ui/components/preview-card';
 import { SidebarMenuButton } from 'coss-ui/components/sidebar';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
@@ -25,6 +26,7 @@ import {
   EllipsisIcon,
   FolderIcon,
   FolderOpenIcon,
+  MessagesSquareIcon,
   PencilIcon,
   PlusIcon,
 } from 'lucide-react';
@@ -33,12 +35,14 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import type { BranchStatusComponentType } from './branch-status';
+import { SidebarPreviewCardPopup } from './preview-card';
 import { ROW_ACTION_CLASS, ROW_HOVER_PE_CLASS, RowActionsCluster } from './row-actions';
 
 export interface ThreadGroupHeaderProps {
   title: string;
   workspace: WorkspaceRecord | null;
-  sessionCount: number;
+  /** The group's full session count, shown in the header's preview card. */
+  threadCount: number;
   /** Mirrors the surrounding accordion item's open state (the trigger owns toggling). */
   collapsed: boolean;
   /** Opens the new-session page preselecting this group's workspace. Undefined for the
@@ -85,7 +89,7 @@ function FolderToggleIcon({ open }: { open: boolean }): React.ReactNode {
 export function ThreadGroupHeader({
   title,
   workspace,
-  sessionCount,
+  threadCount,
   collapsed,
   onNewThread,
   onRename,
@@ -139,41 +143,72 @@ export function ThreadGroupHeader({
       render={<div ref={dragHandleRef} className="group/menu-item relative flex" />}
     >
       {renaming ? (
-        <Input
-          // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
-          autoFocus
-          aria-label={t('renameWorkspace')}
-          value={draftName}
-          onChange={(event) => setDraftName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              commitRename();
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              cancelRename();
-            }
-          }}
-          onBlur={commitRename}
-        />
+        <div className="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-sidebar-foreground text-sm transition-[background-color,box-shadow] focus-within:bg-sidebar-accent focus-within:ring-1 focus-within:ring-inset focus-within:ring-sidebar-ring">
+          <FolderToggleIcon open={!collapsed} />
+          <Input
+            unstyled
+            size="sm"
+            // biome-ignore lint/a11y/noAutofocus: opening the rename field is itself the user's action.
+            autoFocus
+            aria-label={t('renameWorkspace')}
+            value={draftName}
+            className="min-w-0 flex-1 [&>[data-slot=input]]:px-0"
+            onChange={(event) => setDraftName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitRename();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelRename();
+              }
+            }}
+            onBlur={commitRename}
+          />
+        </div>
       ) : (
-        <AccordionPrimitive.Trigger
-          render={
-            <SidebarMenuButton
-              title={workspace?.cwd}
-              aria-label={collapsed ? t('expandGroup') : t('collapseGroup')}
-              className={cn(
-                'hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset',
-                hasActions && ROW_HOVER_PE_CLASS,
-              )}
-            >
-              <FolderToggleIcon open={!collapsed} />
-              <span className="min-w-0 truncate">{title}</span>
-              {workspace && BranchStatusComponent && <BranchStatusComponent cwd={workspace.cwd} />}
-              <span className="ml-auto shrink-0 tabular-nums">{sessionCount}</span>
-            </SidebarMenuButton>
-          }
-        />
+        <PreviewCard>
+          <AccordionPrimitive.Trigger
+            render={
+              <PreviewCardTrigger
+                render={
+                  <SidebarMenuButton
+                    aria-label={collapsed ? t('expandGroup') : t('collapseGroup')}
+                    className={cn(
+                      'hover:bg-transparent focus-visible:ring-1 focus-visible:ring-inset',
+                      hasActions && ROW_HOVER_PE_CLASS,
+                    )}
+                  />
+                }
+              >
+                <FolderToggleIcon open={!collapsed} />
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="max-w-full shrink-0 truncate">{title}</span>
+                  {workspace && BranchStatusComponent && (
+                    <BranchStatusComponent cwd={workspace.cwd} />
+                  )}
+                </span>
+              </PreviewCardTrigger>
+            }
+          />
+          {workspace && (
+            <SidebarPreviewCardPopup>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <span>{title}</span>
+                <div className="flex flex-col gap-1.5 text-muted-foreground text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <MessagesSquareIcon className="size-3.5 shrink-0" />
+                    <span>{t('threadCount', { count: threadCount })}</span>
+                  </span>
+                  <span className="flex gap-1.5">
+                    <FolderIcon className="mt-px size-3.5 shrink-0" />
+                    <span className="break-all">{workspace.cwd}</span>
+                  </span>
+                </div>
+              </div>
+            </SidebarPreviewCardPopup>
+          )}
+        </PreviewCard>
       )}
       {renameError != null && (
         <div className="-bottom-5 absolute left-0 z-10 px-1 text-destructive text-xs">

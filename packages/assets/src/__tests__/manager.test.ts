@@ -70,6 +70,10 @@ describe('AssetManager', () => {
     mkdirSync(join(assetDir('tool:tectonic'), '.tmp-orphan'), { recursive: true });
     expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(false);
 
+    // Neither is a stray file (Finder's .DS_Store) — consent needs a version directory.
+    writeFileSync(join(assetDir('tool:tectonic'), '.DS_Store'), '');
+    expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(false);
+
     await manager.ensure('tool:tectonic');
     expect(manager.hasInstallOnDisk('tool:tectonic')).toBe(true);
 

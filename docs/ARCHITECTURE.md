@@ -216,6 +216,15 @@ Any change to the payload union bumps `WIRE_PROTOCOL_VERSION`; the version is a 
 literal, so a stale peer rejects every message — after a bump, restart the daemon and all
 clients together.
 
+Interactive permission and question requests have a host-authoritative lifecycle. The Engine
+records each advertised request as open, validates responses against that exact request, emits a
+responding status while the adapter call is in flight, and emits one terminal resolved outcome.
+Adapter rejection restores the request; tool completion, turn end, stop, and delete cancel any
+remaining request explicitly. `session.attach` replays open/responding requests and terminal
+outcomes from the current or most recently completed turn so reconnecting clients converge; the
+next turn drops those resolved tombstones. Clients render pending requests in arrival-order FIFO,
+keep drafts local, and submit a multi-question request as one ordered response.
+
 ## Key contracts
 
 All of the types below derive from `@linkcode/schema`; the signatures are the current

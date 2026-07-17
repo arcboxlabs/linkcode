@@ -29,10 +29,9 @@ const EMPTY_CONVERSATION: Conversation = {
 
 /**
  * Event types a provider-transcript read can reproduce — the only ones the `uptoSeq` cut may drop
- * as "already in the snapshot". Everything else (permission asks, status, stop, errors, usage …)
- * is ephemeral: it never appears in `history.read`, so cutting it would erase it outright — a
- * pending permission-request would vanish from the timeline and strand the turn un-answerable
- * (CODE-35).
+ * as "already in the snapshot". Everything else (interactive requests and resolutions, status,
+ * stop, errors, usage …) is ephemeral: it never appears in `history.read`, so cutting it would erase
+ * it outright — a pending permission-request would vanish and strand the turn (CODE-35).
  */
 const SEEDABLE_EVENT_TYPES = new Set<AgentEvent['type']>([
   'user-message',

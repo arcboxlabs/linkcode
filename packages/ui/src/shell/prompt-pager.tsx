@@ -1,18 +1,14 @@
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-} from 'coss-ui/components/pagination';
+import { Button } from 'coss-ui/components/button';
+import { Pagination, PaginationContent, PaginationItem } from 'coss-ui/components/pagination';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { cn } from '../lib/cn';
 
 export function PromptPager({
   current,
   total,
   queued = 0,
   disabled = false,
+  label,
   previousLabel,
   nextLabel,
   onPrevious,
@@ -22,6 +18,7 @@ export function PromptPager({
   total: number;
   queued?: number;
   disabled?: boolean;
+  label?: string;
   previousLabel?: string;
   nextLabel?: string;
   onPrevious: () => void;
@@ -33,27 +30,22 @@ export function PromptPager({
   if (!hasPages && !hasQueue) return null;
 
   const previousDisabled = disabled || current <= 1;
-  const nextDisabled = disabled || current >= total;
+  const isNextDisabled = disabled || current >= total;
 
   return (
-    <Pagination className="w-auto justify-end">
+    <Pagination aria-label={label} className="w-auto justify-end">
       <PaginationContent>
         {hasPages ? (
           <PaginationItem>
-            <PaginationLink
+            <Button
               aria-label={previousLabel ?? t('previous')}
-              aria-disabled={previousDisabled}
-              className={cn(previousDisabled && 'pointer-events-none opacity-50')}
-              href="#"
+              disabled={previousDisabled}
               size="icon-xs"
-              tabIndex={previousDisabled ? -1 : 0}
-              onClick={(event) => {
-                event.preventDefault();
-                if (!previousDisabled) onPrevious();
-              }}
+              variant="ghost"
+              onClick={onPrevious}
             >
               <ChevronLeftIcon />
-            </PaginationLink>
+            </Button>
           </PaginationItem>
         ) : null}
         <PaginationItem>
@@ -69,20 +61,15 @@ export function PromptPager({
         </PaginationItem>
         {hasPages ? (
           <PaginationItem>
-            <PaginationLink
+            <Button
               aria-label={nextLabel ?? t('next')}
-              aria-disabled={nextDisabled}
-              className={cn(nextDisabled && 'pointer-events-none opacity-50')}
-              href="#"
+              disabled={isNextDisabled}
               size="icon-xs"
-              tabIndex={nextDisabled ? -1 : 0}
-              onClick={(event) => {
-                event.preventDefault();
-                if (!nextDisabled) onNext();
-              }}
+              variant="ghost"
+              onClick={onNext}
             >
               <ChevronRightIcon />
-            </PaginationLink>
+            </Button>
           </PaginationItem>
         ) : null}
       </PaginationContent>

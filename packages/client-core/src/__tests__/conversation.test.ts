@@ -239,7 +239,7 @@ describe('buildConversation', () => {
     expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
   });
 
-  it('tracks a permission as pending until its tool call settles', () => {
+  it('tracks a permission until its authoritative resolution', () => {
     const base: AgentEvent[] = [
       userText('run'),
       {
@@ -262,7 +262,7 @@ describe('buildConversation', () => {
     expect(buildConversation(base).pendingPermissionIds).toEqual(['p1']);
     expect(buildConversation(base).items.some((i) => i.kind === 'approval')).toBe(true);
 
-    const settled = buildConversation([
+    const toolSettled = buildConversation([
       ...base,
       {
         type: 'tool-call',
@@ -275,10 +275,27 @@ describe('buildConversation', () => {
         },
       },
     ]);
+    expect(toolSettled.pendingPermissionIds).toEqual(['p1']);
+
+    const settled = buildConversation([
+      ...base,
+      {
+        type: 'permission-resolved',
+        requestId: 'p1',
+        outcome: { outcome: 'selected', optionId: 'ok' },
+        source: 'user',
+      },
+    ]);
     expect(settled.pendingPermissionIds).toEqual([]);
+    expect(settled.items.find((item) => item.kind === 'approval')).toMatchObject({
+      resolution: {
+        outcome: { outcome: 'selected', optionId: 'ok' },
+        source: 'user',
+      },
+    });
   });
 
-  it('tracks a question as pending until its tool call settles', () => {
+  it('tracks a question until its authoritative resolution', () => {
     const question = {
       questionId: 'q0',
       prompt: 'Which one?',
@@ -302,7 +319,7 @@ describe('buildConversation', () => {
     const item = open.items.find((i) => i.kind === 'question');
     expect(item).toMatchObject({ requestId: 'ask1', questions: [question] });
 
-    const settled = buildConversation([
+    const toolSettled = buildConversation([
       ...base,
       {
         type: 'tool-call',
@@ -315,10 +332,73 @@ describe('buildConversation', () => {
         },
       },
     ]);
+    expect(toolSettled.pendingQuestionIds).toEqual(['ask1']);
+
+    const outcome = {
+      outcome: 'answered' as const,
+      answers: [{ questionId: 'q0', selectedOptionIds: ['o0'] }],
+    };
+    const settled = buildConversation([
+      ...base,
+      { type: 'question-resolved', requestId: 'ask1', outcome, source: 'user' },
+    ]);
     expect(settled.pendingQuestionIds).toEqual([]);
+    expect(settled.items.find((i) => i.kind === 'question')).toMatchObject({
+      resolution: { outcome, source: 'user' },
+    });
   });
 
-  it('folds an attach-replayed duplicate ask only once, by requestId', () => {
+  it('folds cross-client response status and clears it on resolution', () => {
+    const ask: AgentEvent = {
+      type: 'question-request',
+      requestId: 'ask1',
+      toolCall: { toolCallId: 't1', title: 'AskUserQuestion' },
+      questions: [
+        {
+          questionId: 'q0',
+          prompt: 'Which one?',
+          multiSelect: false,
+          options: [{ optionId: 'o0', label: 'A' }],
+        },
+      ],
+    };
+    const responding: AgentEvent = {
+      type: 'prompt-response-status',
+      requestId: 'ask1',
+      status: 'responding',
+    };
+    const active = buildConversation([ask, responding]);
+    expect(active.items.find((item) => item.kind === 'question')).toMatchObject({
+      responding: true,
+    });
+
+    const restored = buildConversation([
+      ask,
+      responding,
+      { type: 'prompt-response-status', requestId: 'ask1', status: 'open' },
+    ]);
+    expect(restored.items.find((item) => item.kind === 'question')).toMatchObject({
+      responding: false,
+    });
+
+    const resolved = buildConversation([
+      ask,
+      responding,
+      {
+        type: 'question-resolved',
+        requestId: 'ask1',
+        outcome: { outcome: 'cancelled' },
+        source: 'session',
+      },
+      { type: 'prompt-response-status', requestId: 'ask1', status: 'open' },
+    ]);
+    expect(resolved.items.find((item) => item.kind === 'question')).toMatchObject({
+      responding: false,
+      resolution: { outcome: { outcome: 'cancelled' }, source: 'session' },
+    });
+  });
+
+  it('dedupes attach-replayed request and resolution pairs by requestId', () => {
     const ask: AgentEvent = {
       type: 'question-request',
       requestId: 'ask1',
@@ -341,11 +421,54 @@ describe('buildConversation', () => {
       toolCall: { toolCallId: 't2', title: 'Run' },
       options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
     };
-    const c = buildConversation([userText('go'), ask, perm, ask, perm]);
+    const questionResolved: AgentEvent = {
+      type: 'question-resolved',
+      requestId: 'ask1',
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    };
+    const permissionResolved: AgentEvent = {
+      type: 'permission-resolved',
+      requestId: 'p1',
+      outcome: { outcome: 'selected', optionId: 'ok' },
+      source: 'user',
+    };
+    const c = buildConversation([
+      userText('go'),
+      ask,
+      perm,
+      questionResolved,
+      permissionResolved,
+      ask,
+      questionResolved,
+      perm,
+      permissionResolved,
+    ]);
     expect(c.items.filter((i) => i.kind === 'question')).toHaveLength(1);
     expect(c.items.filter((i) => i.kind === 'approval')).toHaveLength(1);
-    expect(c.pendingQuestionIds).toEqual(['ask1']);
-    expect(c.pendingPermissionIds).toEqual(['p1']);
+    expect(c.pendingQuestionIds).toEqual([]);
+    expect(c.pendingPermissionIds).toEqual([]);
+  });
+
+  it('joins a resolution that arrives before its replayed request', () => {
+    const c = buildConversation([
+      {
+        type: 'permission-resolved',
+        requestId: 'p1',
+        outcome: { outcome: 'cancelled' },
+        source: 'session',
+      },
+      {
+        type: 'permission-request',
+        requestId: 'p1',
+        toolCall: { toolCallId: 't1', title: 'Run' },
+        options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+      },
+    ]);
+    expect(c.pendingPermissionIds).toEqual([]);
+    expect(c.items.find((item) => item.kind === 'approval')).toMatchObject({
+      resolution: { outcome: { outcome: 'cancelled' }, source: 'session' },
+    });
   });
 
   it('captures lifecycle state (status / usage / mode / stop / error)', () => {

@@ -17,7 +17,7 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "foxts": "^5.8.0",
-    "restty": "^0.2.0",
+    "restty": "^0.2.5",
     "zod": "catalog:"
   },
   "devDependencies": {

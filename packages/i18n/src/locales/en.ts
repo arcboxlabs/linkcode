@@ -83,6 +83,9 @@ export const en = {
     },
     permission: {
       title: 'Permission request',
+      reviewRequired: 'Permission required',
+      reviewDescription:
+        'The agent is waiting to perform this action. Review the details before allowing it.',
       responding: 'Submitting…',
       declined: 'Declined',
       file: 'File',
@@ -95,6 +98,9 @@ export const en = {
     prompt: {
       submit: 'Submit',
       skip: 'Skip',
+      retry: 'Retry',
+      responding: 'Submitting…',
+      responseError: 'Could not submit the response. Try again.',
       progress: '{current} of {total}',
       queued: '{count, plural, one {# queued} other {# queued}}',
       previous: 'Previous prompt',
@@ -103,11 +109,22 @@ export const en = {
     },
     question: {
       badge: 'Question',
+      navigation: 'Question navigation',
       previous: 'Previous question',
       next: 'Next question',
+      nextAction: 'Next',
       submit: 'Submit answers',
       skipped: 'Skipped',
       customPlaceholder: 'Type a custom answer',
+      instructionSingle: 'Choose one',
+      instructionMultiple: 'Select all that apply',
+      other: 'Other',
+      dismiss: 'Dismiss request',
+      dismissConfirmTitle: 'Dismiss this request?',
+      dismissConfirmDescription:
+        'Your draft answers will be discarded and the agent will receive a cancellation.',
+      dismissConfirmCancel: 'Keep answering',
+      dismissConfirmAction: 'Dismiss request',
     },
     agentRuntime: {
       missingTitle: '{agent} is not ready yet',
@@ -283,6 +300,7 @@ export const en = {
       pinThread: 'Pin thread',
       unpinThread: 'Unpin thread',
       closeThread: 'Close thread',
+      threadCount: '{count, plural, one {# thread} other {# threads}}',
       chooseDirectory: 'Choose directory…',
       registerWorkspaceError: 'Failed to add workspace: {message}',
       organization: 'Organization',

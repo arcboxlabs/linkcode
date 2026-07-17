@@ -13,7 +13,6 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from './conversation';
-import type { PermissionDecision } from './conversation-prompts';
 import {
   conversationFlowItems,
   declinedToolCall,
@@ -40,8 +39,6 @@ export interface ConversationViewProps {
   cwd?: string;
   /** TODO(backend): shown in the per-turn meta once session state reflects the active model. */
   modelName?: string;
-  /** requestIds answered in this client, including cancelled skips. */
-  permissionDecisions: ReadonlyMap<string, PermissionDecision>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Opens this turn's workspace changes in the host review surface. */
   onReviewChanges?: () => void;
@@ -53,7 +50,6 @@ export function ConversationView({
   agentKind,
   cwd,
   modelName,
-  permissionDecisions,
   TerminalBlockComponent,
   onReviewChanges,
 }: ConversationViewProps): React.ReactNode {
@@ -78,17 +74,15 @@ export function ConversationView({
   }
 
   const isThinking = conversation.status === 'running' || conversation.status === 'starting';
-  // Permission asks live above the composer; the flow only marks declines, on the gated tool row.
-  const declined = declinedToolCallIds(items, permissionDecisions);
+  // Permission asks live above the composer; authoritative declines render on the gated tool row.
+  const declined = declinedToolCallIds(items);
   const snapshottedToolIds = new Set(
     items.flatMap((item) => (item.kind === 'tool' ? [item.toolCall.toolCallId] : [])),
   );
-  // Gated calls whose ask is still open (not answered in this client) carry the shield glyph.
+  // Gated calls whose ask is still open carry the shield glyph.
   const awaitingApproval = new Set(
     selectPendingPromptItems(conversation).flatMap((item) =>
-      item.kind === 'approval' && !permissionDecisions.has(item.requestId)
-        ? [item.toolCall.toolCallId]
-        : [],
+      item.kind === 'approval' ? [item.toolCall.toolCallId] : [],
     ),
   );
   const segments = splitTurnSegments(conversationFlowItems(items));
