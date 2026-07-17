@@ -84,6 +84,13 @@ publish:
 # would send x64 clients whatever happens to be listed first.
 artifactName: ${productName}-${version}-${arch}.${ext}
 
+# Archive compression for zip / NSIS / etc. Default `normal` packs zip at 7z -mx=7; `maximum`
+# bumps zip to -mx=9 -mfb=258 -mpass=15 (other formats already use -mx=9). A few MB smaller
+# download at the cost of slower packaging. Blockmap generation keeps its own fixed settings —
+# delta-update math is unaffected. On the default FUSE2 AppImage toolset this also maps to xz
+# squashfs unless `appImage.compression` overrides it.
+compression: maximum
+
 mac:
   # Apple Icon Composer source. Single shared copy at the repo-root assets/ dir (also consumed
   # by the mobile app via ios.icon); referenced here to avoid duplicating the bundle. electron-builder
@@ -153,3 +160,11 @@ linux:
       arch: [x64, arm64]
   # rpm/snap need extra host tooling (rpm/fakeroot, snapcraft); add install steps to
   # build-desktop.yml's Linux job before enabling them here.
+
+# AppImage squashfs codec. Explicit `xz` (not only root `compression: maximum` fallthrough): on
+# the default FUSE2 toolset (`toolsets.appimage` unset / `0.0.0`) mksquashfs gets
+# `-comp xz -Xdict-size 100% -b 1048576` — smaller than gzip, slightly slower first mount. Static
+# runtime toolsets (`>= 1.0.0`) map xz → zstd; stay on FUSE2 unless that path is deliberately
+# upgraded.
+appImage:
+  compression: xz
