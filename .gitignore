@@ -70,4 +70,7 @@ devenv.local.yaml
 
 # Claude Code local state (plans, worktrees) — never tracked or linted
 .claude/worktrees/
-packages/ui/src/shell/terminal/vendor/noto-emoji-regular.ttf
+
+# Vendored Effect source for the effect-ts skill's research prerequisite (see root AGENTS.md).
+# Bootstrap: git clone https://github.com/Effect-TS/effect-smol .repos/effect
+.repos/

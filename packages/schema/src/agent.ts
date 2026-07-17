@@ -20,7 +20,7 @@ import {
   StopReasonSchema,
 } from './session';
 import { ToolCallSchema } from './tool-call';
-import { TokenUsageSchema } from './usage';
+import { TokenUsageSchema, UsageReportSchema } from './usage';
 
 /**
  * Agent data-plane contract. The abstraction layer normalizes each vendor's native agent events into the
@@ -77,6 +77,16 @@ export function agentCommandMatches(command: AgentCommand, name: string): boolea
   return command.name === name || (command.aliases?.includes(name) ?? false);
 }
 
+/** A model a live session accepts via `AgentInput.set-model`, advertised by adapters whose model
+ * set is install-dependent (opencode: whatever providers the user's local install has connected)
+ * rather than a fixed vendor list. `id` is the exact value to send back on `set-model`. */
+export const AgentModelOptionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().optional(),
+});
+export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
+
 /** Input features a live adapter session accepts. Kept separate from command catalogs: catalogs
  * change provider-side, while these booleans describe the adapter's stable input surface. */
 export const AgentCapabilitiesSchema = z.object({
@@ -128,12 +138,18 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
 ]);
 export type AgentInput = z.infer<typeof AgentInputSchema>;
 
+/** Who settled an interactive request: an explicit client reply, or session lifecycle teardown. */
+export const PromptResolutionSourceSchema = z.enum(['user', 'session']);
+export type PromptResolutionSource = z.infer<typeof PromptResolutionSourceSchema>;
+export const PromptResponseStatusSchema = z.enum(['open', 'responding']);
+export type PromptResponseStatus = z.infer<typeof PromptResponseStatusSchema>;
+
 // ── Downstream: agent → abstraction layer (normalized) → client ──────────────
 
 /**
  * Normalized agent event: the single downstream vocabulary every adapter emits and the front-end folds
- * into a conversation. The `permission-request` variant expects a matching reply via `AgentInput`,
- * correlated by `requestId`.
+ * into a conversation. Permission/question requests expect a matching reply via `AgentInput`; the
+ * host confirms settlement with the corresponding `*-resolved` event, correlated by `requestId`.
  */
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // ── User message: a complete, atomic message (not streamed) ──
@@ -187,10 +203,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   /** Full approval-policy state (advertised list + current), at session start and after switches. */
   z.object({ type: z.literal('approval-policy-update'), state: ApprovalPolicyStateSchema }),
   /** The model the session is actually running on, so clients reflect the true value instead of a
-   * placeholder. The available list is the static UI catalog (not adapter-advertised, unlike
-   * approval policies), so only the current id travels. Emitted once the adapter learns the served
-   * model (claude-code's init/assistant frames report it even when no model was requested) and on
-   * every switch. Adapters that can't observe their model never emit it. */
+   * placeholder. Only the current id travels here — the available list is either the static UI
+   * catalog (claude-code/codex) or the adapter-advertised `available-models-update` catalog.
+   * Emitted once the adapter learns the served model (claude-code's init/assistant frames report
+   * it even when no model was requested) and on every switch. Adapters that can't observe their
+   * model never emit it. */
   z.object({ type: z.literal('model-update'), model: z.string().min(1) }),
   /** The reasoning-effort level the session is actually running at. Same rationale as `model-update`.
    * Emitted on every switch and, for adapters that can observe the resolved default (claude-code via
@@ -207,6 +224,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
    * adapter learns it and again on every provider-side change, full-replace semantics (consumers
    * swap their cached list wholesale). */
   z.object({ type: z.literal('available-commands-update'), commands: z.array(AgentCommandSchema) }),
+  /** The model catalog the session accepts via `AgentInput.set-model` — same full-replace contract
+   * as the command catalog. Only adapters whose model set is install-dependent emit it (opencode);
+   * agents with a curated static catalog (claude-code/codex) never do, and clients fall back to
+   * their static tables. */
+  z.object({ type: z.literal('available-models-update'), models: z.array(AgentModelOptionSchema) }),
 
   // ── Lifecycle ──
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),
@@ -215,6 +237,10 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
    * never emit it. */
   z.object({ type: z.literal('session-ref'), historyId: AgentHistoryIdSchema }),
   z.object({ type: z.literal('token-usage'), usage: TokenUsageSchema }),
+  /** Structured usage snapshot produced by a provider usage command (claude-code `/usage`, alias
+   * `/cost`). The invocation is intercepted adapter-side — it produces no transcript text and no
+   * turn; this event is the whole reply, and the trigger a client uses to present usage. */
+  z.object({ type: z.literal('usage-report'), report: UsageReportSchema }),
   z.object({ type: z.literal('stop'), stopReason: StopReasonSchema }),
   z.object({
     type: z.literal('error'),
@@ -231,6 +257,23 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   QuestionRequestSchema.extend({
     type: z.literal('question-request'),
     requestId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('prompt-response-status'),
+    requestId: z.string().min(1),
+    status: PromptResponseStatusSchema,
+  }),
+  z.object({
+    type: z.literal('permission-resolved'),
+    requestId: z.string().min(1),
+    outcome: PermissionOutcomeSchema,
+    source: PromptResolutionSourceSchema,
+  }),
+  z.object({
+    type: z.literal('question-resolved'),
+    requestId: z.string().min(1),
+    outcome: QuestionOutcomeSchema,
+    source: PromptResolutionSourceSchema,
   }),
 ]);
 export type AgentEvent = z.infer<typeof AgentEventSchema>;

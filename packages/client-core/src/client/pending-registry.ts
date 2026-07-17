@@ -17,6 +17,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  TerminalMetadata,
   WirePayload,
   WorkspaceFile,
   WorkspaceRecord,
@@ -25,6 +26,7 @@ import type {
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { nullthrow } from 'foxts/guard';
 
 interface Pending<T> {
   resolve(value: T): void;
@@ -33,6 +35,19 @@ interface Pending<T> {
 
 export interface RequestAck {
   ok: true;
+}
+
+export type RandomUUID = () => string;
+
+export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
+  if (provider) return provider;
+  const cryptoProvider = Reflect.get(globalThis, 'crypto') as
+    | { randomUUID?: RandomUUID }
+    | undefined;
+  return nullthrow(
+    cryptoProvider?.randomUUID?.bind(cryptoProvider),
+    'LinkCodeClient: secure randomUUID provider unavailable',
+  );
 }
 
 /**
@@ -69,16 +84,12 @@ export interface PendingValueMap {
   loopInspect: LoopInspection;
   ack: RequestAck;
   terminalOpen: string;
+  terminalList: TerminalMetadata[];
+  terminalAttach: { terminal: TerminalMetadata; truncated: boolean };
   agentLoginStart: string;
 }
 
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };
-
-let __reqSeq = 0;
-export function nextClientReqId(): string {
-  __reqSeq += 1;
-  return `creq-${Date.now().toString(36)}-${__reqSeq.toString(36)}`;
-}
 
 /**
  * One map per correlated request kind (see {@link PendingValueMap}), so each kind keeps its own
@@ -115,8 +126,20 @@ export class PendingRegistry {
     loopInspect: new Map(),
     ack: new Map(),
     terminalOpen: new Map(),
+    terminalList: new Map(),
+    terminalAttach: new Map(),
     agentLoginStart: new Map(),
   };
+
+  private readonly randomUUID: RandomUUID;
+
+  constructor(randomUUID?: RandomUUID) {
+    this.randomUUID = resolveRandomUUID(randomUUID);
+  }
+
+  nextClientReqId(): string {
+    return `creq-${this.randomUUID()}`;
+  }
 
   /** Register a new in-flight request and return the promise its eventual `resolve`/`reject` settles. */
   register<K extends keyof PendingValueMap>(kind: K, id: string): Promise<PendingValueMap[K]> {
@@ -178,7 +201,7 @@ export function sendCorrelated<K extends keyof PendingValueMap>(
   kind: K,
   makePayload: (clientReqId: string) => WirePayload,
 ): Promise<PendingValueMap[K]> {
-  const clientReqId = nextClientReqId();
+  const clientReqId = pending.nextClientReqId();
   const promise = pending.register(kind, clientReqId);
   try {
     const sent = transport.send(createWireMessage(makePayload(clientReqId)));

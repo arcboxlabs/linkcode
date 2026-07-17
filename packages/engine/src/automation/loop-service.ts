@@ -138,32 +138,57 @@ export class LoopService {
   private async runLoop(loop: LoopRecord, signal: AbortSignal): Promise<void> {
     const spec = loop.spec;
     let lastFailure: string | undefined;
+    const budgetController = new AbortController();
+    const budgetRemaining =
+      spec.maxTimeMs === undefined
+        ? undefined
+        : Math.max(0, spec.maxTimeMs - (this.now() - loop.startedAt));
+    const budgetTimer =
+      budgetRemaining === undefined
+        ? undefined
+        : setTimeout(() => budgetController.abort(), budgetRemaining);
+    budgetTimer?.unref();
+    const runSignal =
+      budgetTimer === undefined ? signal : AbortSignal.any([signal, budgetController.signal]);
+    const budgetExceeded = (): boolean =>
+      budgetController.signal.aborted ||
+      (spec.maxTimeMs !== undefined && this.now() - loop.startedAt >= spec.maxTimeMs);
     try {
       for (let index = 0; index < spec.maxIterations; index += 1) {
         if (signal.aborted) return await this.finish(loop, 'stopped', 'stopped by user');
-        if (spec.maxTimeMs !== undefined && this.now() - loop.startedAt > spec.maxTimeMs) {
+        if (budgetExceeded()) {
           return await this.finish(loop, 'failed', 'time budget exceeded');
         }
 
-        const { iteration, workerText } = await this.runIteration(loop, index, lastFailure, signal);
+        const { iteration, workerText } = await this.runIteration(
+          loop,
+          index,
+          lastFailure,
+          runSignal,
+        );
         loop.iterationCount = index + 1;
         loop.updatedAt = this.now();
         await this.store.save(loop);
         this.broadcastLoop(loop);
 
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- `signal.aborted` is a mutable getter; the loop-top narrowing doesn't survive the awaited iteration, and catching an abort here (vs. next loop turn) settles the final iteration as stopped rather than mislabeling it failed.
+        if (signal.aborted) return await this.finish(loop, 'stopped', 'stopped by user');
+        if (budgetExceeded()) return await this.finish(loop, 'failed', 'time budget exceeded');
         if (iteration.status === 'passed') {
           return await this.finish(loop, 'succeeded', undefined, this.summarize(workerText));
         }
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- `signal.aborted` is a mutable getter; the loop-top narrowing doesn't survive the awaited iteration, and catching an abort here (vs. next loop turn) settles the final iteration as stopped rather than mislabeling it failed.
-        if (signal.aborted) return await this.finish(loop, 'stopped', 'stopped by user');
 
         lastFailure = this.failureFeedback(iteration);
-        if (spec.sleepMs > 0) await sleep(spec.sleepMs, signal);
+        if (spec.sleepMs > 0) await sleep(spec.sleepMs, runSignal);
       }
       await this.finish(loop, 'failed', 'max iterations reached without passing verification');
     } catch (err) {
       const message = extractErrorMessage(err, false) ?? 'loop failed';
-      await this.finish(loop, signal.aborted ? 'stopped' : 'failed', message);
+      if (signal.aborted) await this.finish(loop, 'stopped', 'stopped by user');
+      else if (budgetExceeded()) await this.finish(loop, 'failed', 'time budget exceeded');
+      else await this.finish(loop, 'failed', message);
+    } finally {
+      if (budgetTimer) clearTimeout(budgetTimer);
     }
   }
 
@@ -293,8 +318,11 @@ export class LoopService {
     const onAbort = (): void => {
       void this.driver.stopSession(sessionId).catch(noop);
     };
-    if (signal.aborted) onAbort();
-    else signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) {
+      await this.driver.stopSession(sessionId);
+      throw new Error('loop aborted');
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
     try {
       return await fn();
     } finally {

@@ -25,13 +25,13 @@ export interface ShellCheckOptions {
 }
 
 /**
- * Run one verify-check as `/bin/sh -c <command>` in `cwd`, capturing the tail of its combined
- * output. Never rejects — a spawn error or non-zero exit is a normal check result. The shell choice
- * mirrors ScriptService; `/bin/sh` paths outside the asar so the packaged-spawn rewrite doesn't apply.
+ * Run one verify-check with Node's platform shell (`COMSPEC` on Windows, `/bin/sh` elsewhere) in
+ * `cwd`, capturing the tail of its combined output. Never rejects — a spawn error or non-zero exit
+ * is a normal check result.
  */
 export function runShellCheck(command: string, opts: ShellCheckOptions): Promise<ShellCheckResult> {
   return new Promise<ShellCheckResult>((resolve) => {
-    const child = spawn('/bin/sh', ['-c', command], { cwd: opts.cwd, env: process.env });
+    const child = spawn(command, { cwd: opts.cwd, env: process.env, shell: true });
 
     let output = '';
     let timedOut = false;

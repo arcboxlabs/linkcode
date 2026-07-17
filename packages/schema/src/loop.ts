@@ -39,7 +39,7 @@ export const LoopSpecSchema = z
     verifier: LoopVerifierSchema.optional(),
     /** Hard cap on iterations. */
     maxIterations: z.number().int().min(1).max(100).default(10),
-    /** Optional wall-clock budget; the loop stops (failed) once exceeded between iterations. */
+    /** Optional hard wall-clock budget, enforced during turns, checks, and iteration sleeps. */
     maxTimeMs: z.number().int().min(1000).optional(),
     /** Pause between iterations, in ms. */
     sleepMs: z.number().int().nonnegative().default(0),

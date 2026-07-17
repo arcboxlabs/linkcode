@@ -37,6 +37,8 @@ import type {
   SessionNotification,
   SessionRecord,
   StartOptions,
+  TerminalMetadata,
+  TerminalReplayEvent,
   WireMessage,
   WorkspaceFile,
   WorkspaceId,
@@ -55,8 +57,8 @@ import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
-import type { RequestAck } from './client/pending-registry';
-import { PendingRegistry } from './client/pending-registry';
+import type { RandomUUID, RequestAck } from './client/pending-registry';
+import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
 export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
@@ -65,10 +67,22 @@ export type { SequencedAgentEvent } from './client/event-buffer';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
+type TerminalEventCb = (event: TerminalReplayEvent) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type SessionNotificationCb = (notification: SessionNotification) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
+type TerminalControllerCb = (canControl: boolean) => void;
+type TerminalReplayTruncatedCb = (truncated: boolean) => void;
+
+export interface LinkCodeClientOptions {
+  randomUUID?: RandomUUID;
+}
+
+export interface TerminalAttachResult {
+  terminal: TerminalMetadata;
+  truncated: boolean;
+}
 
 /** One `asset.progress` broadcast: bytes received so far for an in-flight managed install. */
 export interface AssetProgressEvent {
@@ -120,7 +134,7 @@ const HANDSHAKE_TIMEOUT_MS = 5000;
  * for per-session agent events, and a {@link TerminalChannel} for PTY sessions.
  */
 export class LinkCodeClient {
-  private readonly pending = new PendingRegistry();
+  private readonly pending: PendingRegistry;
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
@@ -141,9 +155,14 @@ export class LinkCodeClient {
   private resolveHandshake: (() => void) | null = null;
   private rejectHandshake: ((error: Error) => void) | null = null;
 
-  constructor(private readonly transport: Transport) {
+  constructor(
+    private readonly transport: Transport,
+    options: LinkCodeClientOptions = {},
+  ) {
+    const randomUUID = resolveRandomUUID(options.randomUUID);
+    this.pending = new PendingRegistry(randomUUID);
     this.control = new ControlChannel(transport, this.pending);
-    this.terminals = new TerminalChannel(transport, this.pending);
+    this.terminals = new TerminalChannel(transport, this.pending, randomUUID);
     this.agentLogin = new AgentLoginChannel(transport, this.pending);
   }
 
@@ -398,8 +417,12 @@ export class LinkCodeClient {
       case 'agent.event':
         this.events.ingest(p.sessionId, p.event);
         break;
+      case 'terminal.listed':
       case 'terminal.opened':
+      case 'terminal.attached':
       case 'terminal.output':
+      case 'terminal.resized':
+      case 'terminal.controller.changed':
       case 'terminal.exit':
         this.terminals.handleMessage(p);
         break;
@@ -740,9 +763,26 @@ export class LinkCodeClient {
     rows: number;
     cwd?: string;
     shell?: string;
-    sessionId?: SessionId;
   }): Promise<string> {
     return this.terminals.open(opts);
+  }
+
+  listTerminals(): Promise<TerminalMetadata[]> {
+    return this.terminals.list();
+  }
+
+  /** Retain a shared, read-only attachment to an existing terminal. */
+  attachTerminal(terminalId: string): Promise<TerminalAttachResult> {
+    return this.terminals.attach(terminalId);
+  }
+
+  /** Upgrade this connection's existing attachment to the terminal controller. */
+  takeTerminalControl(terminalId: string): Promise<TerminalAttachResult> {
+    return this.terminals.takeControl(terminalId);
+  }
+
+  detachTerminal(terminalId: string): void {
+    this.terminals.detach(terminalId);
   }
 
   terminalInput(terminalId: string, data: string): void {
@@ -761,6 +801,10 @@ export class LinkCodeClient {
     return this.terminals.subscribeOutput(terminalId, cb);
   }
 
+  subscribeTerminalEvents(terminalId: string, cb: TerminalEventCb): Unsubscribe {
+    return this.terminals.subscribeEvents(terminalId, cb);
+  }
+
   subscribeTerminalExit(terminalId: string, cb: TerminalExitCb): Unsubscribe {
     return this.terminals.subscribeExit(terminalId, cb);
   }
@@ -768,6 +812,22 @@ export class LinkCodeClient {
   /** Observe transport-send failures for a terminal's fire-and-forget frames (input/resize/close). */
   subscribeTerminalError(terminalId: string, cb: TerminalErrorCb): Unsubscribe {
     return this.terminals.subscribeError(terminalId, cb);
+  }
+
+  terminalCanControl(terminalId: string): boolean {
+    return this.terminals.canControl(terminalId);
+  }
+
+  subscribeTerminalController(terminalId: string, cb: TerminalControllerCb): Unsubscribe {
+    return this.terminals.subscribeController(terminalId, cb);
+  }
+
+  terminalReplayWasTruncated(terminalId: string): boolean {
+    return this.terminals.replayWasTruncated(terminalId);
+  }
+
+  subscribeTerminalReplayTruncated(terminalId: string, cb: TerminalReplayTruncatedCb): Unsubscribe {
+    return this.terminals.subscribeReplayTruncated(terminalId, cb);
   }
 
   /** See {@link TerminalChannel.outputSnapshot}. */

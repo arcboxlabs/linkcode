@@ -4,6 +4,7 @@ import { Button } from 'coss-ui/components/button';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
+import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
 import type { TerminalSessionLease } from './session-registry';
 import { acquireTerminalSession, peekTerminalSnapshot } from './session-registry';
 
@@ -30,6 +31,10 @@ export function TerminalPanel({
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
   const leaseRef = useRef<TerminalSessionLease | null>(null);
+  const inputLostTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fontFamily = useTerminalPrefsStore((state) => state.fontFamily);
+  const fontSize = useTerminalPrefsStore((state) => state.fontSize);
+  const colorScheme = useTerminalPrefsStore((state) => state.colorScheme);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
@@ -52,14 +57,14 @@ export function TerminalPanel({
   const { terminalId } = snapshot;
   useAbortableEffect(() => {
     if (terminalId === null) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = client.subscribeTerminalError(terminalId, () => {
       setInputLost(true);
-      clearTimeout(timer);
-      timer = setTimeout(() => setInputLost(false), INPUT_LOST_BANNER_MS);
+      clearTimeout(inputLostTimerRef.current);
+      inputLostTimerRef.current = setTimeout(() => setInputLost(false), INPUT_LOST_BANNER_MS);
     });
     return () => {
-      clearTimeout(timer);
+      clearTimeout(inputLostTimerRef.current);
+      inputLostTimerRef.current = undefined;
       unsubscribe();
     };
   }, [client, terminalId]);
@@ -83,14 +88,31 @@ export function TerminalPanel({
       </div>
     );
   }
+  const takeControl = (): void => {
+    if (terminalId === null) return;
+    void client.takeTerminalControl(terminalId).catch(() => {
+      setInputLost(true);
+      clearTimeout(inputLostTimerRef.current);
+      inputLostTimerRef.current = setTimeout(() => setInputLost(false), INPUT_LOST_BANNER_MS);
+    });
+  };
   return (
     <div className="relative h-full w-full">
-      <LiveTerminal session={snapshot.session} suspended={suspended} className="h-full w-full" />
-      {snapshot.exitCode !== null && (
+      <LiveTerminal
+        session={snapshot.session}
+        suspended={suspended}
+        fontFamily={fontFamily}
+        fontSize={fontSize}
+        colorScheme={colorScheme}
+        className="h-full w-full"
+      />
+      {snapshot.exit !== null && (
         <div className="absolute inset-x-0 bottom-3 flex justify-center">
           <div className="flex items-center gap-3 rounded-md border border-border bg-background/95 px-3 py-2 shadow-sm">
             <span className="text-muted-foreground text-sm">
-              {t('terminalExited', { code: snapshot.exitCode })}
+              {snapshot.exit.code === null
+                ? t('terminalExitedSignal')
+                : t('terminalExited', { code: snapshot.exit.code })}
             </span>
             <Button variant="outline" size="sm" onClick={restart}>
               {t('terminalRestart')}
@@ -98,8 +120,18 @@ export function TerminalPanel({
           </div>
         </div>
       )}
-      {inputLost && snapshot.exitCode === null && (
+      {!snapshot.canControl && snapshot.exit === null && (
         <div className="absolute inset-x-0 top-3 flex justify-center">
+          <div className="flex items-center gap-3 rounded-md border border-border bg-background/95 px-3 py-2 shadow-sm">
+            <span className="text-muted-foreground text-sm">{t('terminalViewOnly')}</span>
+            <Button variant="outline" size="sm" onClick={takeControl}>
+              {t('terminalTakeControl')}
+            </Button>
+          </div>
+        </div>
+      )}
+      {inputLost && snapshot.exit === null && (
+        <div className="absolute inset-x-0 bottom-3 flex justify-center">
           <div className="rounded-md border border-border bg-background/95 px-3 py-1.5 text-muted-foreground text-xs shadow-sm">
             {t('terminalInputLost')}
           </div>

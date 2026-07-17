@@ -127,6 +127,7 @@ export class ScheduleService {
       ...(patch.cadence !== undefined && { cadence: patch.cadence }),
       ...(patch.maxRuns !== undefined && { maxRuns: patch.maxRuns }),
       ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt }),
+      ...(patch.misfirePolicy !== undefined && { misfirePolicy: patch.misfirePolicy }),
     };
     // A cadence change re-bases the next fire from now; other edits leave the schedule armed as-is.
     if (schedule.status === 'active' && patch.cadence !== undefined) {

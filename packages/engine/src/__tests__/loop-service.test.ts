@@ -10,7 +10,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoopService } from '../automation/loop-service';
 import { InMemoryLoopStore } from '../automation/loop-store';
 import type { SessionDriver, TurnResult } from '../automation/session-driver';
@@ -94,6 +94,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   rmSync(workdir, { recursive: true, force: true });
 });
 
@@ -221,6 +222,40 @@ describe('LoopService', () => {
     await service.settleAll();
 
     expect(service.list().find((l) => l.loopId === loop.loopId)?.status).toBe('stopped');
+  });
+
+  it('fails when the wall-clock budget expires during a worker turn', async () => {
+    vi.useFakeTimers();
+    const { transport } = recordingTransport();
+    const store = new InMemoryLoopStore();
+    const driver = new FakeSessionDriver();
+    let markPromptStarted!: () => void;
+    const promptStarted = new Promise<void>((resolve) => {
+      markPromptStarted = resolve;
+    });
+    let settlePrompt: (() => void) | undefined;
+    driver.prompt = (sessionId: SessionId) => {
+      driver.calls.push({ op: 'prompt', sessionId });
+      markPromptStarted();
+      return new Promise<TurnResult>((resolve) => {
+        settlePrompt = () => resolve({ stopReason: 'cancelled', text: '' });
+      });
+    };
+    const stopSession = driver.stopSession.bind(driver);
+    driver.stopSession = async (sessionId: SessionId) => {
+      await stopSession(sessionId);
+      settlePrompt?.();
+    };
+    const service = new LoopService(transport, store, driver);
+
+    const loop = await service.startLoop(baseSpec({ maxTimeMs: 1000 }));
+    await promptStarted;
+    await vi.advanceTimersByTimeAsync(1000);
+    await service.settleAll();
+
+    const final = service.list().find((item) => item.loopId === loop.loopId);
+    expect(final?.status).toBe('failed');
+    expect(final?.error).toBe('time budget exceeded');
   });
 
   it('rejects a spec with no verification mechanism when nothing verifies (guarded upstream)', async () => {

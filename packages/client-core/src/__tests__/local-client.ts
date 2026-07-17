@@ -1,8 +1,9 @@
 import type { LocalTransport } from '@linkcode/transport';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
+import type { LinkCodeClientOptions } from '../client';
 import { LinkCodeClient } from '../client';
 
-export async function createConnectedLocalClient(): Promise<{
+export async function createConnectedLocalClient(options?: LinkCodeClientOptions): Promise<{
   client: LinkCodeClient;
   serverTransport: LocalTransport;
 }> {
@@ -13,7 +14,7 @@ export async function createConnectedLocalClient(): Promise<{
       serverTransport.send(createWireMessage({ kind: 'pong' }));
     }
   });
-  const client = new LinkCodeClient(clientTransport);
+  const client = new LinkCodeClient(clientTransport, options);
   await client.connect();
   return { client, serverTransport };
 }

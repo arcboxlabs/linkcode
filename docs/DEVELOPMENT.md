@@ -70,7 +70,7 @@ pnpm -F @linkcode/webview run dev   # vite
 ### Mobile (Expo, iOS)
 
 ```bash
-devenv run mobile
+devenv shell -- mobile
 # without devenv:
 pnpm -F @linkcode/mobile run ios    # expo start --ios
 ```
@@ -124,6 +124,20 @@ pnpm test
 ```
 
 CI never builds the binary inside the TypeScript job, so this cross-language test no-ops in CI — you must run it locally. `cargo test --locked` runs `smoke.rs` self-contained.
+
+The multi-device terminal contract has a separate in-process integration check. It opens from a
+desktop peer, attaches a late mobile controller through the Hub, verifies replay plus live output,
+rejects stale desktop input, and keeps the PTY alive after the desktop peer disconnects:
+
+```bash
+pnpm test packages/engine/src/__tests__/terminal-takeover.test.ts
+```
+
+For the manual flow, open a terminal in desktop and produce recognizable output, then open the same
+terminal from mobile and take control. The old output must appear before new live bytes; input and
+resize must come only from mobile after takeover. Closing the desktop tab detaches its view and must
+not terminate the mobile-controlled PTY. Use the explicit terminate action when process death is the
+intended operation.
 
 ## Desktop E2E procedures
 
@@ -217,7 +231,7 @@ git apply --3way "$(ls -t .devenv/state/prek/patches/*.patch | head -1)"
 The desktop identity is two orthogonal axes (`apps/desktop/src/main/constants.ts`), and app name, `userData` dir, single-instance lock, and OS keychain (safeStorage) all derive from them; `src/main/identity.ts` applies the identity as main's **first import**, and boot logs a `userData: <path>` line as self-evidence.
 
 - **channel** — `CHANNEL === 'development'` for any build that is not the released app: `MODE !== 'production' || !app.isPackaged` (a production bundle run by the dev Electron binary is still a dev shell). `APP_NAME` is `'LinkCode Development'` for dev, `'LinkCode'` for release. Skipping any isolation axis clobbers release settings, steals its instance lock (the second instance exits 0 silently), or writes a safeStorage key under the dev binary's code signature — after which the release app prompts for the keychain password on first launch (macOS keychain ACLs pin the creator cdhash).
-- **profile** — an optional isolated universe: `--profile=<name>` (or `LINKCODE_PROFILE`; `[a-z0-9-]`, ≤32 chars, invalid aborts boot). It suffixes the app name (`LinkCode Development (alpha)`) — forking the same four axes again — and is injected as `LINKCODE_PROFILE` into the supervised daemon, which forks its state dir to `~/.linkcode-<name>` and its HQ device identity with it. Two profiles therefore run side by side: daemons hunt past each other's ports, and each desktop follows its own `runtime.json`. In dev, start the daemon with the matching `LINKCODE_PROFILE` yourself.
+- **profile** — an optional isolated universe: `--profile=<name>` (or `LINKCODE_PROFILE`; `[a-z0-9-]`, ≤32 chars, invalid aborts boot). It suffixes the app name (`LinkCode Development (alpha)`) — forking the same four axes again — and is injected as `LINKCODE_PROFILE` into the supervised daemon, which forks its state dir to `~/.linkcode-<name>` and its HQ device identity with it. Two profiles therefore run side by side: daemons hunt past each other's ports, and each desktop follows its own `runtime.json`. The devenv `daemon`/`desktop`/`app` scripts set `LINKCODE_PROFILE=dev` on their dev commands, so the daemon and the desktop share the profile and agree on its `runtime.json`; for another profile, invoke `pnpm -F … dev` directly with the value you want.
 
 Clean a polluted machine (also after the `LinkCode Dev` → `LinkCode Development` rename, which orphaned the old dir and keychain entry by design — a rename migration would carry ciphertext the new keychain entry cannot decrypt):
 
@@ -227,7 +241,7 @@ security delete-generic-password -s "LinkCode Dev Safe Storage"   # pre-rename l
 rm -rf "$HOME/Library/Application Support/LinkCode Dev"           # pre-rename leftover
 ```
 
-Every channel and the default profile deliberately **share** `~/.linkcode` (daemon) and `~/LinkCode` (workspaces); only an explicit `--profile` forks the daemon state, and `~/LinkCode` plus the managed asset store stay shared even then. `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
+Every channel and the default profile deliberately **share** `~/.linkcode` (daemon) and `~/LinkCode` (workspaces); only an explicit `--profile` forks the daemon state, and `~/LinkCode` plus the managed asset store stay shared even then. This sharing is why the devenv dev scripts default to the `dev` profile: a dev daemon on the default profile would contend for `~/.linkcode`/`19523` with an installed release, and whichever binds first wins — the loser's client then dials a peer on a different `WIRE_PROTOCOL_VERSION`, every frame is silently dropped, and it surfaces as "Unable to connect to the daemon". `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
 
 ## Formatting and linting
 

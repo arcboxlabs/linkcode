@@ -22,3 +22,5 @@ export * from './shell-control';
 export * from './shell-frame';
 export * from './shell-sidebar';
 export * from './sidebar';
+export * from './terminal/prefs';
+export * from './terminal-settings-panel';

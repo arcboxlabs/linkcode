@@ -1,9 +1,7 @@
 import ibmPlexMono400 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2?inline';
 import ibmPlexMono700 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-700-normal.woff2?inline';
+import notoEmoji from '@fontsource/noto-emoji/files/noto-emoji-emoji-400-normal.woff2?inline';
 import type { ResttyFontInput } from 'restty';
-// Not in git: fetched (pinned tag + sha256) by scripts/fetch-noto-emoji.mjs on install. If the
-// import fails to resolve, run `pnpm -F @linkcode/ui postinstall`.
-import notoEmojiTtf from './vendor/noto-emoji-regular.ttf?inline';
 
 function decodeDataUri(uri: string): ArrayBuffer {
   const binary = atob(uri.slice(uri.indexOf(',') + 1));
@@ -40,19 +38,17 @@ const SYMBOLS_FAMILIES = [
   'powerline',
 ];
 
-// CJK priority. Arial Unicode MS leads deliberately: it ships with every macOS, covers common
-// CJK, and its tall metrics dodge restty's wide-glyph upscale, keeping mixed CJK/latin lines on
-// one baseline (CODE-138). PingFang is deliberately absent: it parses (variable TTC) but
-// rasterizes every glyph blank in restty's text shaper. A bare 'hiragino sans' matcher is equally
-// hazardous: the Japanese Hiragino Sans lacks simplified-Chinese glyphs — only the GB variant is
-// safe.
+// CJK priority, best quality first — needs restty ≥0.2.3 (wide fallbacks keep natural scale on
+// the primary baseline; restty#24). PingFang stays out: it claims glyphs but rasterizes them
+// blank — restty ≥0.2.1 skips such faces (restty#25) but has never rendered it. A bare
+// 'hiragino sans' matcher is unsafe: the Japanese variant lacks simplified-Chinese glyphs.
 const CJK_FAMILIES = [
-  'arial unicode',
   'hiragino sans gb',
   'heiti sc',
   'microsoft yahei',
   'noto sans cjk',
   'source han sans',
+  'arial unicode',
 ];
 
 // Color emoji: only Apple Color Emoji (sbix) is verified to render in restty 0.2.0. Segoe UI
@@ -84,19 +80,25 @@ async function queryLocalFontsSafe(): Promise<readonly LocalFontData[]> {
   }
 }
 
-let terminalFontsPromise: Promise<ResttyFontInput[]> | null = null;
+const terminalFontsCache = new Map<string, Promise<ResttyFontInput[]>>();
 
-async function buildTerminalFonts(): Promise<ResttyFontInput[]> {
+async function buildTerminalFonts(preferredFamily: string): Promise<ResttyFontInput[]> {
   const local = await queryLocalFontsSafe();
   // An empty probe usually means a transient failure (Electron grants Local Font Access without
   // a gesture, but a denial or a flaky first call shouldn't pin the degraded bundled-only list
   // for the whole session) — serve the fallback now, retry on the next terminal open.
-  if (local.length === 0) terminalFontsPromise = null;
+  if (local.length === 0) terminalFontsCache.delete(preferredFamily);
   const symbols = pickLocalFamily(local, SYMBOLS_FAMILIES);
   const cjk = pickLocalFamily(local, CJK_FAMILIES);
   const colorEmoji = pickLocalFamily(local, COLOR_EMOJI_FAMILIES);
   const mono = pickLocalFamily(local, MONO_FAMILIES);
+  // A user-chosen family leads the chain (`local: 'prefer'` falls back to the bundled fonts when
+  // the machine lacks it); empty keeps the bundled IBM Plex Mono as the primary face.
+  const trimmed = preferredFamily.trim();
+  const preferred: ResttyFontInput[] =
+    trimmed === '' || trimmed === 'default' ? [] : [{ family: trimmed, local: 'prefer' }];
   return [
+    ...preferred,
     // restty renders on a GPU canvas with its own text shaper and needs raw font bytes; its
     // default font chain fetches from cdn.jsdelivr.net, which the renderer CSP blocks — always
     // pass fonts explicitly. Both Plex weights ship inline so bold is a real face, not the
@@ -105,16 +107,19 @@ async function buildTerminalFonts(): Promise<ResttyFontInput[]> {
     { data: decodeDataUri(ibmPlexMono700), name: 'IBM Plex Mono Bold', weight: 700 },
     ...(symbols ? [{ family: symbols }] : []),
     ...(cjk ? [{ family: cjk }] : []),
-    // Bundled monochrome emoji (vendored Noto Emoji, Unicode 11 / Apache 2.0 — the last static
-    // release; newer Google Fonts builds fail to parse in restty's shaper) backstops machines
-    // without a renderable color emoji font.
-    colorEmoji ? { family: colorEmoji } : { data: decodeDataUri(notoEmojiTtf), name: 'Noto Emoji' },
+    // Bundled monochrome emoji backstops machines without a renderable color emoji font
+    // (current Noto Emoji builds parse since text-shaper 0.1.26; text-shaper#3).
+    colorEmoji ? { family: colorEmoji } : { data: decodeDataUri(notoEmoji), name: 'Noto Emoji' },
     ...(mono ? [{ family: mono }] : []),
   ];
 }
 
-/** Resolve the terminal font list once per renderer session (installed fonts don't change mid-run). */
-export function resolveTerminalFonts(): Promise<ResttyFontInput[]> {
-  terminalFontsPromise ??= buildTerminalFonts();
-  return terminalFontsPromise;
+/** Resolve the terminal font list for a chosen family (cached — installed fonts don't change mid-run). */
+export function resolveTerminalFonts(preferredFamily = 'default'): Promise<ResttyFontInput[]> {
+  let fonts = terminalFontsCache.get(preferredFamily);
+  if (!fonts) {
+    fonts = buildTerminalFonts(preferredFamily);
+    terminalFontsCache.set(preferredFamily, fonts);
+  }
+  return fonts;
 }

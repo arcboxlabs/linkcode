@@ -13,6 +13,7 @@ import { ScriptService } from '../scripts/script-service';
 import { TerminalService } from '../terminal-service';
 
 const roots: string[] = [];
+const RE_TERMINAL_ID = /^term-/;
 
 function makeWorkspace(config?: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), 'linkcode-script-test-'));
@@ -31,7 +32,7 @@ class FakePtyProcess implements PtyProcess {
   killed = false;
   private readonly exitCbs: Array<(c: number | null) => void> = [];
 
-  onData(): Unsubscribe {
+  onData(_cb: (data: string) => void): Unsubscribe {
     return noop;
   }
   onExit(cb: (c: number | null) => void): Unsubscribe {
@@ -53,6 +54,18 @@ class FakePtyProcess implements PtyProcess {
   }
 }
 
+class SyncExitPtyProcess extends FakePtyProcess {
+  override onData(cb: (data: string) => void): Unsubscribe {
+    cb('done\r\n');
+    return noop;
+  }
+
+  override onExit(cb: (code: number | null) => void): Unsubscribe {
+    cb(7);
+    return noop;
+  }
+}
+
 class FakePtyBackend implements PtyBackend {
   readonly opens: Array<{ opts: PtyOpenOptions; process: FakePtyProcess }> = [];
 
@@ -63,6 +76,14 @@ class FakePtyBackend implements PtyBackend {
   }
   shutdown(): void {
     /* nothing to release */
+  }
+}
+
+class SyncExitPtyBackend extends FakePtyBackend {
+  override open(_terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
+    const process = new SyncExitPtyProcess();
+    this.opens.push({ opts, process });
+    return Promise.resolve(process);
   }
 }
 
@@ -80,19 +101,19 @@ function recordingTransport(): { transport: Transport; sent: WirePayload[] } {
   return { transport, sent };
 }
 
-function makeService(): {
+function makeService(backend = new FakePtyBackend()): {
   service: ScriptService;
+  terminals: TerminalService;
   backend: FakePtyBackend;
   routes: PreviewRouteRegistry;
   sent: WirePayload[];
 } {
   const { transport, sent } = recordingTransport();
-  const backend = new FakePtyBackend();
   const terminals = new TerminalService(backend, transport);
   const routes = new PreviewRouteRegistry();
   routes.proxyPort = 19523;
   const service = new ScriptService(transport, terminals, routes, () => 'app');
-  return { service, backend, routes, sent };
+  return { service, terminals, backend, routes, sent };
 }
 
 describe('readWorkspaceScripts', () => {
@@ -178,6 +199,49 @@ describe('ScriptService', () => {
 
     const listed = await service.list(cwd);
     expect(listed[0].lifecycle).toBe('stopped');
+    expect(listed[0].terminalId).toBe(
+      last?.kind === 'script.status' ? last.script.terminalId : null,
+    );
+  });
+
+  it('records a synchronous exit as stopped and keeps its terminal replay attachable', async () => {
+    const cwd = makeWorkspace({ scripts: { build: { command: 'printf done' } } });
+    const { service, terminals, sent } = makeService(new SyncExitPtyBackend());
+
+    await service.start(cwd, 'build');
+
+    const [script] = await service.list(cwd);
+    expect(script).toMatchObject({
+      lifecycle: 'stopped',
+      health: 'unknown',
+      exitCode: 7,
+      terminalId: expect.stringMatching(RE_TERMINAL_ID),
+    });
+    expect(() => service.stop(cwd, 'build')).toThrow('not running');
+    const status = sent.findLast((payload) => payload.kind === 'script.status');
+    expect(status).toMatchObject({
+      kind: 'script.status',
+      script: { lifecycle: 'stopped', terminalId: script.terminalId, exitCode: 7 },
+    });
+
+    const attachIndex = sent.length;
+    terminals.attach(
+      'req-replay',
+      script.terminalId!,
+      { attachmentId: 'viewer', attachmentSecret: 'v'.repeat(32) },
+      'view',
+    );
+    expect(sent.slice(attachIndex)).toMatchObject([
+      {
+        kind: 'terminal.attached',
+        replay: [
+          { type: 'resize', seq: 1, cols: 160, rows: 48 },
+          { type: 'write', seq: 2, data: 'done\r\n' },
+        ],
+      },
+      { kind: 'terminal.exit', terminalId: script.terminalId, exitCode: 7 },
+    ]);
+    terminals.closeAll();
   });
 
   it('rejects starting an unknown or already-running script', async () => {

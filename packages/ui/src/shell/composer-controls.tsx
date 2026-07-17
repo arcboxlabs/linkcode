@@ -260,7 +260,14 @@ export function ModelSelectorMenu({
                 >
                   {modelOptions?.map((option) => (
                     <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                      {option.label}
+                      <span className="flex min-w-0 flex-col">
+                        <span>{option.label}</span>
+                        {option.description ? (
+                          <span className="text-muted-foreground text-xs">
+                            {option.description}
+                          </span>
+                        ) : null}
+                      </span>
                     </MenuRadioItem>
                   ))}
                 </MenuRadioGroup>

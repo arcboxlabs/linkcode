@@ -130,6 +130,17 @@ describe('ScheduleService', () => {
     ).rejects.toThrow();
   });
 
+  it('persists and broadcasts an updated misfire policy', async () => {
+    const { service, store, sent } = makeService();
+    const schedule = await service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' });
+
+    const updated = await service.update(schedule.scheduleId, { misfirePolicy: 'catch-up' });
+
+    expect(updated.spec.misfirePolicy).toBe('catch-up');
+    expect((await store.load())[0]?.spec.misfirePolicy).toBe('catch-up');
+    expect(schedulesIn(sent).at(-1)?.spec.misfirePolicy).toBe('catch-up');
+  });
+
   it('computes the next cron run in the given timezone', async () => {
     const { service } = makeService();
     clock = Date.parse('2026-07-16T00:00:00Z');

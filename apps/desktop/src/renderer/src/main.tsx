@@ -1,4 +1,5 @@
 import { setKeyboardShortcutPlatform } from '@linkcode/ui';
+import { installAppearancePrefs } from '@linkcode/workbench';
 import { init as sentryInit } from '@sentry/electron/renderer';
 import { init as reactInit } from '@sentry/react';
 import { createRoot } from 'react-dom/client';
@@ -20,6 +21,9 @@ if (!el) throw new Error('#root not found');
 
 const uninstallAdaptiveTheme = installAdaptiveTheme();
 if (import.meta.hot) import.meta.hot.dispose(uninstallAdaptiveTheme);
+
+const uninstallAppearancePrefs = installAppearancePrefs();
+if (import.meta.hot) import.meta.hot.dispose(uninstallAppearancePrefs);
 
 // Menubar / Cmd+, opens Settings even while the daemon is unreachable.
 const unsubscribeOpenSettings = systemBridge.app.onOpenSettings(() => {

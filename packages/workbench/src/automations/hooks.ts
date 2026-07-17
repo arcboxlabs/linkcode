@@ -27,9 +27,7 @@ export function useSchedules() {
 /** A schedule's run history, newest first. Pass null to pause (no schedule selected). */
 export function useScheduleRuns(scheduleId: ScheduleId | null) {
   const client = useLinkCodeClient();
-  const result = useData(listScheduleRuns, scheduleId === null ? null : { scheduleId }, {
-    keepPreviousData: true,
-  });
+  const result = useData(listScheduleRuns, scheduleId === null ? null : { scheduleId });
   const { mutate } = result;
   useAbortableEffect(
     (signal) =>
@@ -65,9 +63,7 @@ export function useLoops() {
  */
 export function useLoopInspection(loopId: LoopId | null) {
   const client = useLinkCodeClient();
-  const result = useData(inspectLoop, loopId === null ? null : { loopId }, {
-    keepPreviousData: true,
-  });
+  const result = useData(inspectLoop, loopId === null ? null : { loopId });
   const { mutate } = result;
   useAbortableEffect(
     (signal) =>

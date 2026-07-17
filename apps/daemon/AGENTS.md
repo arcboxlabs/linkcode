@@ -53,9 +53,16 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   `~/Library/Application Support/LinkCode/assets`, `LINKCODE_ASSETS_DIR` override for tests/E2E;
   SDK-pinned exact pair, SRI-verified, GC'd at boot) → detected user install at known locations
   (brew, `~/.local/bin`; version-verified) → SDK self-resolution from node_modules
-  (dev/standalone). Boot never waits on a download: missing agent pairs warm in the background
-  and win resolution as soon as they land. The engine must be constructed **before** that warm
-  loop kicks off — it subscribes to the AssetManager and forwards install progress to clients
+  (dev/standalone). **The first managed download is always user-prompted** (CODE-221): boot
+  auto-refreshes only agents with a prior install in the asset store (standing consent — GC
+  retains superseded versions until the replacement lands, so an offline refresh failure keeps
+  retrying on later boots); an agent never installed there waits for the client's explicit
+  `asset.ensure` (the onboarding Download card). Boot never waits on a download either way — nor
+  on the probe itself (CODE-225): listeners bind while `collect()` is still spawning CLIs, and
+  the engine seeds from the pending promise, holding `agent-runtime.list` replies and live
+  session starts until it lands. The engine must be constructed **before** that refresh loop
+  kicks off —
+  it subscribes to the AssetManager and forwards install progress to clients
   (`asset.progress`/`asset.settled`), re-probing and pushing `agent-runtime.changed` when an
   agent install completes (CODE-112). opencode self-spawns the `opencode` command via PATH
   (CODE-76); pi runs in-process and spawns nothing.
@@ -97,9 +104,17 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   `[linkcode/daemon] unhandled rejection:` and keeps running — a rejection reaching it is a missed
   `.catch` to fix. **No fire-and-forget on data-plane paths**: await inside try/catch and log, and move
   user-visible side effects after the awaited op succeeds. Full bug catalog → `docs/DEVELOPMENT.md`.
-- **Lifecycle:** at boot the daemon `ensureChatWorkspace(~/LinkCode)` **before** any listener binds, so
-  `workspace.list` always includes the "Chats" workspace. Host (panel) terminals are reaped 60s after
-  the last client disconnects (`hub.size === 0`); a reconnect within the window cancels the reap.
+- **Lifecycle:** boot/shutdown is an Effect v4 layer graph in `src/index.ts` (CODE-244; Effect is
+  beta-pinned and bundled — root `AGENTS.md` "Never Guess" applies before touching it): layers
+  acquire in order Shared (config, double-start gate, hub) → Engine → Listeners → lifecycle
+  (runtime file, then uplink) and release LIFO, so `ensureChatWorkspace(~/LinkCode)` still runs
+  **before** any listener binds and `workspace.list` always includes the "Chats" workspace. SIGINT/SIGTERM interrupt the
+  root fiber at any boot phase and unwind exactly the layers acquired; exit codes: graceful drain
+  `0`, already-running `3` (`DAEMON_EXIT_ALREADY_RUNNING`), anything else `1`. A hung drain
+  force-exits after 10s, as does a second signal. A host terminal survives while any local
+  or relay-virtual connection retains an attachment; the Hub turns connection loss into detach, and
+  the terminal is reaped 60s after its last attachment leaves. Reattaching within the window cancels
+  the reap. Session/managed terminals keep their owner's lifecycle instead.
 
 ## Pointers
 
