@@ -1,4 +1,4 @@
-import type { WireMessage } from '@linkcode/schema';
+import type { ValidatedWireMessage } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage, Listeners } from '@linkcode/transport';
 import { Hub } from '@linkcode/transport/server';
@@ -8,18 +8,18 @@ import { Engine } from '../engine';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../pty-backend';
 
 class PeerTransport implements Transport {
-  readonly sent: WireMessage[] = [];
-  private readonly inbound = new Listeners<WireMessage>();
+  readonly sent: ValidatedWireMessage[] = [];
+  private readonly inbound = new Listeners<ValidatedWireMessage>();
 
   connect(): Promise<void> {
     return Promise.resolve();
   }
 
-  send(message: WireMessage): void {
+  send(message: ValidatedWireMessage): void {
     this.sent.push(message);
   }
 
-  onMessage(cb: (message: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (message: ValidatedWireMessage) => void): Unsubscribe {
     return this.inbound.add(cb);
   }
 
@@ -29,7 +29,7 @@ class PeerTransport implements Transport {
 
   close = noop;
 
-  emit(message: WireMessage): void {
+  emit(message: ValidatedWireMessage): void {
     this.inbound.emit(message);
   }
 }

@@ -77,7 +77,16 @@ export const WireMessageSchema = z.object({
 });
 export type WireMessage = z.infer<typeof WireMessageSchema>;
 
-/** Parse + validate an inbound message; on failure returns the zod SafeParse result. */
-export function parseWireMessage(input: unknown): ReturnType<typeof WireMessageSchema.safeParse> {
-  return WireMessageSchema.safeParse(input);
+declare const wireMessageValidated: unique symbol;
+/**
+ * A WireMessage a transport accepts for send. Minted in exactly two places: here by
+ * {@link parseWireMessage} (zod at the receive trust boundary) and by the transport package's
+ * `createWireMessage` (typed local construction). The brand keeps raw, unvalidated objects out
+ * of the send path without paying a per-frame parse there.
+ */
+export type ValidatedWireMessage = WireMessage & { readonly [wireMessageValidated]: true };
+
+/** Parse + validate an inbound message; success mints the {@link ValidatedWireMessage} brand. */
+export function parseWireMessage(input: unknown): z.ZodSafeParseResult<ValidatedWireMessage> {
+  return WireMessageSchema.safeParse(input) as z.ZodSafeParseResult<ValidatedWireMessage>;
 }

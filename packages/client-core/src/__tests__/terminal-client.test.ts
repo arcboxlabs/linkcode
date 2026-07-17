@@ -1,7 +1,7 @@
 import type {
   TerminalMetadata,
   TerminalReplayEvent,
-  WireMessage,
+  ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -13,7 +13,7 @@ import { createConnectedLocalClient } from './local-client';
 
 /** A transport whose every `send` rejects, so terminal frames always fail to leave. */
 function terminalFrameFailingTransport(err: Error): Transport {
-  let onMessage: (message: WireMessage) => void = noop;
+  let onMessage: (message: ValidatedWireMessage) => void = noop;
   return {
     connect() {
       return Promise.resolve();
