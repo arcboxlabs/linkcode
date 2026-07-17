@@ -17,6 +17,21 @@ export const fileWireVariants = [
     file: WorkspaceFileSchema,
   }),
   z.object({
+    kind: z.literal('file.list'),
+    clientReqId: z.string().min(1),
+    /** Workspace root to enumerate; must be a registered workspace
+     * (the engine rejects unknown roots — see WorkspaceRegistry). */
+    cwd: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('file.list.result'),
+    replyTo: z.string().min(1),
+    /** Every workspace file as a cwd-relative forward-slash path (tracked + untracked-but-not-
+     * ignored; enumeration bounds live in the engine's FileSuggestService). Directories are
+     * implied by the paths — empty directories are absent, matching git semantics. */
+    files: z.array(z.string().min(1)),
+  }),
+  z.object({
     kind: z.literal('file.suggest'),
     clientReqId: z.string().min(1),
     /** Workspace root the search runs under; must be a registered workspace

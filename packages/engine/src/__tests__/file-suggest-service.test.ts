@@ -105,4 +105,18 @@ describe('FileSuggestService', () => {
     const paths = (await suggest(dir, '')).map((s) => s.path);
     expect(paths).toEqual(['top.ts', 'sub/deep.ts']);
   });
+
+  it('list returns the full enumeration, unranked and beyond the suggest limit', async () => {
+    const dir = makeTempDir();
+    writeFileSync(join(dir, '.gitignore'), 'ignored.log\n');
+    git(dir, 'init', '-b', 'main');
+    writeFileSync(join(dir, 'ignored.log'), '');
+    for (let i = 0; i < 60; i++) {
+      writeFileSync(join(dir, `file-${String(i).padStart(2, '0')}.txt`), '');
+    }
+
+    const files = await new FileSuggestService().list(dir);
+    expect(files).toHaveLength(61); // 60 files + .gitignore; no DEFAULT_SUGGEST_LIMIT cap.
+    expect(files).not.toContain('ignored.log');
+  });
 });

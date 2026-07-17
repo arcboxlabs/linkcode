@@ -24,13 +24,19 @@ const WALK_IGNORED_DIRECTORY_NAMES = new Set([
 ]);
 
 /**
- * Workspace file search backing `file.suggest` (the composer's @-mention source). The TTL cache's
- * in-flight dedup converges concurrent keystroke queries onto one enumeration. Matching is
- * substring-tiered — deliberately consistent with the composer's client-side substring re-filter,
- * so nothing the daemon returns gets dropped client-side.
+ * Workspace file enumeration backing `file.suggest` (the composer's @-mention source) and
+ * `file.list` (the Files panel's tree). Both share one TTL cache whose in-flight dedup converges
+ * concurrent requests onto one enumeration. Suggest matching is substring-tiered — deliberately
+ * consistent with the composer's client-side substring re-filter, so nothing the daemon returns
+ * gets dropped client-side.
  */
 export class FileSuggestService {
   private readonly listCache = new TtlCache<string[]>(LIST_CACHE_TTL_MS);
+
+  /** Every workspace file under `cwd`, cwd-relative. Unranked, in enumeration order. */
+  list(cwd: string): Promise<string[]> {
+    return this.listCache.read(cwd, async () => (await listGitFiles(cwd)) ?? walkFiles(cwd));
+  }
 
   /** Search the workspace under `cwd` for files matching `query` (empty = browse mode:
    * everything matches, shallow files first). Returned paths are cwd-relative. */
@@ -39,10 +45,7 @@ export class FileSuggestService {
     query: string,
     limit = DEFAULT_SUGGEST_LIMIT,
   ): Promise<FileSuggestion[]> {
-    const files = await this.listCache.read(
-      cwd,
-      async () => (await listGitFiles(cwd)) ?? walkFiles(cwd),
-    );
+    const files = await this.list(cwd);
     return rankFiles(files, query)
       .slice(0, limit)
       .map((file) => ({ path: file }));

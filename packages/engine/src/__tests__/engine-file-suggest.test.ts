@@ -52,6 +52,7 @@ function harness(store: SessionStore = new InMemorySessionStore()) {
   };
   const fileSuggest = new FileSuggestService();
   const suggest = vi.spyOn(fileSuggest, 'suggest').mockResolvedValue([{ path: 'src/index.ts' }]);
+  const list = vi.spyOn(fileSuggest, 'list').mockResolvedValue(['src/index.ts', 'README.md']);
   const engine = new Engine(transport, { factory: fakeAdapter, fileSuggest, sessionStore: store });
 
   // handle() is fire-and-forget, so a fixed tick races the reply under parallel-suite load;
@@ -61,7 +62,7 @@ function harness(store: SessionStore = new InMemorySessionStore()) {
     await waitFor(() => sent.some((p) => 'replyTo' in p && p.replyTo === payload.clientReqId), 5);
   }
 
-  return { engine, sent, inject, suggest };
+  return { engine, sent, inject, suggest, list };
 }
 
 function suggestions(sent: WirePayload[], replyTo: string) {
@@ -143,5 +144,36 @@ describe('engine file.suggest', () => {
     await second.inject({ kind: 'file.suggest', clientReqId: 'r3', cwd: '/repo', query: '' });
 
     expect(suggestions(second.sent, 'r3')).toEqual([{ path: 'src/index.ts' }]);
+  });
+});
+
+describe('engine file.list', () => {
+  it('rejects a cwd that is not a registered workspace, without touching the service', async () => {
+    const { engine, sent, inject, list } = harness();
+    await engine.start();
+
+    await inject({ kind: 'file.list', clientReqId: 'r1', cwd: '/etc' });
+
+    const failed = sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r1');
+    if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r1');
+    expect(failed.message).toContain('Unknown workspace');
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('serves a session-touched workspace under its canonical registered root', async () => {
+    const { engine, sent, inject, list } = harness();
+    await engine.start();
+    await inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+
+    await inject({ kind: 'file.list', clientReqId: 'r2', cwd: '/repo/' });
+
+    const result = sent.find((p) => p.kind === 'file.list.result' && p.replyTo === 'r2');
+    if (result?.kind !== 'file.list.result') throw new Error('no file.list.result for r2');
+    expect(result.files).toEqual(['src/index.ts', 'README.md']);
+    expect(list).toHaveBeenCalledWith('/repo');
   });
 });
