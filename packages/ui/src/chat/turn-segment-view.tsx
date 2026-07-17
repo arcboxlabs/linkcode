@@ -131,6 +131,7 @@ export function TurnSegmentView({
         return (
           <CompactionMarker
             key={item.id}
+            inProgress={item.status === 'in_progress'}
             preTokens={item.preTokens}
             postTokens={item.postTokens}
             summary={item.summary}

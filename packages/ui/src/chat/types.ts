@@ -52,6 +52,8 @@ export type ConversationItem =
   | (ConversationItemBase & { kind: 'tool'; toolCall: ToolCall })
   | (ConversationItemBase & {
       kind: 'compaction';
+      /** Absent means completed; `in_progress` renders as a live "compacting…" row. */
+      status?: 'in_progress' | 'completed';
       trigger?: 'manual' | 'auto';
       preTokens?: number;
       postTokens?: number;

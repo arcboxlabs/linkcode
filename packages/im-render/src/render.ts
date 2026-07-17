@@ -141,8 +141,9 @@ export function renderItem(item: ConversationItem, opts: RenderOptions = {}): st
     case 'question':
       return questionMarkdown(item.questions);
     case 'compaction':
-      // Context compaction is a host-side bookkeeping moment; over IM a marker line suffices.
-      return '♻\u{FE0F} *context compacted*';
+      // Context compaction is a host-side bookkeeping moment; over IM a marker line suffices,
+      // and only once completed (an in_progress snapshot would post a premature marker).
+      return item.status === 'in_progress' ? '' : '♻\u{FE0F} *context compacted*';
     case 'error':
       return `⚠\u{FE0F} **Error:** ${item.message}${item.code === undefined ? '' : ` (${item.code})`}`;
     default:
