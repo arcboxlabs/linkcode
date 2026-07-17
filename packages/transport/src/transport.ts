@@ -1,5 +1,5 @@
 import type { WireMessage, WirePayload } from '@linkcode/schema';
-import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { once } from 'foxts/once';
 
@@ -13,9 +13,9 @@ export type Unsubscribe = () => void;
  */
 export interface Transport {
   connect(): Promise<void>;
-  /** Send a wire message (implementations should run zod validation before sending). */
+  /** Send a wire message. Outbound frames are trusted from typed construction; the receiving peer validates at its own trust boundary. */
   send(msg: WireMessage): void | Promise<void>;
-  /** Subscribe to inbound messages (implementations should run zod validation before delivery). */
+  /** Subscribe to inbound messages (implementations must run zod validation before delivery). */
   onMessage(cb: (msg: WireMessage) => void): Unsubscribe;
   /** Subscribe to connection close. */
   onClose(cb: () => void): Unsubscribe;
@@ -64,8 +64,8 @@ export class Listeners<T> {
 
 /**
  * Base for the four wire-carried `Transport` implementations (ws / ws-server / socket-io /
- * socket-io-server): factors out the listener bookkeeping, the deferred `emitClosed` arming, and
- * the parse-or-throw `send()` gate they all repeat. Binding timing is the load-bearing difference:
+ * socket-io-server): factors out the listener bookkeeping and the deferred `emitClosed` arming
+ * they all repeat. Binding timing is the load-bearing difference:
  * client transports create their socket in an overridden `connect()` and arm `emitClosed` there;
  * server-side connections already hold a live socket at construction, so they arm it in their
  * constructor and keep the inherited default `connect()`.
@@ -76,11 +76,6 @@ export abstract class WireConnection implements Transport {
   /** No-op until `armClosedListener()` runs; closing before that point is a safe no-op. */
   protected emitClosed: () => void = noop;
 
-  protected constructor(
-    /** Used to prefix thrown/error messages, e.g. `WsTransport: invalid WireMessage: ...`. */
-    private readonly label: string,
-  ) {}
-
   /** Default: the socket is already open when handed to us. Client transports override this. */
   connect(): Promise<void> {
     return Promise.resolve();
@@ -88,15 +83,14 @@ export abstract class WireConnection implements Transport {
 
   abstract close(): void | Promise<void>;
 
-  /** Push already-validated bytes onto the underlying socket (or drop them if it isn't ready). */
+  /** Push the message onto the underlying socket (or drop it if it isn't ready). */
   protected abstract sendBytes(msg: WireMessage): void;
 
+  // No zod parse on send: outbound frames come from typed local construction and every receiving
+  // end validates at its own trust boundary, so the per-frame parse only added hot-path cost
+  // (CODE-231). LocalTransport keeps its send-side parse to catch schema drift in tests.
   send(msg: WireMessage): void {
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`${this.label}: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.sendBytes(parsed.data);
+    this.sendBytes(msg);
   }
 
   onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
