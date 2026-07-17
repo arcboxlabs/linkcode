@@ -151,6 +151,41 @@ describe('mapPiHistoryEvents', () => {
     ]);
     expect(events).toHaveLength(0);
   });
+
+  it('keeps the full branch around a compaction and renders its summary marker', () => {
+    const events = mapPiHistoryEvents(HISTORY_ID, [
+      messageEntry('u-old', { role: 'user', content: 'before compaction' }),
+      {
+        type: 'compaction',
+        id: 'compact-1',
+        parentId: 'u-old',
+        timestamp: '2026-07-17T02:36:00.000Z',
+        summary: 'Earlier work was summarized.',
+        firstKeptEntryId: 'u-old',
+        tokensBefore: 12345,
+      },
+      messageEntry('a-new', {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'after compaction' }],
+      }),
+    ]);
+
+    expect(events.map((event) => event.event.type)).toEqual([
+      'user-message',
+      'compaction',
+      'agent-message-chunk',
+    ]);
+    expect(events[1]).toMatchObject({
+      historyId: HISTORY_ID,
+      itemId: 'compact-1',
+      event: {
+        type: 'compaction',
+        compactionId: 'compact-1',
+        preTokens: 12345,
+        summary: 'Earlier work was summarized.',
+      },
+    });
+  });
 });
 
 describe('findPiSessionFile', () => {
@@ -164,12 +199,26 @@ describe('findPiSessionFile', () => {
     await expect(findPiSessionFile('missing', root)).resolves.toBeNull();
     await expect(findPiSessionFile('abc123', join(root, 'nope'))).resolves.toBeNull();
   });
+
+  it('never matches an id that is an underscore-bounded suffix of another id', async () => {
+    // pi allows '_' inside session ids; 'suffix-id' must not resolve to '<x>_suffix-id'.
+    const root = mkdtempSync(join(tmpdir(), 'pi-sessions-'));
+    mkdirSync(join(root, '--slug--'), { recursive: true });
+    const longer = join(root, '--slug--', '2026-07-17T00-00-00-000Z_abc_123.jsonl');
+    writeFileSync(longer, '');
+
+    await expect(findPiSessionFile('123', root)).resolves.toBeNull();
+    await expect(findPiSessionFile('abc_123', root)).resolves.toBe(longer);
+  });
 });
 
-function fakeSdk(overrides: Partial<Record<keyof PiSdk['SessionManager'], unknown>>): PiSdk {
+function fakeSdk(
+  overrides: Partial<Record<keyof PiSdk['SessionManager'], unknown>>,
+  buildContextEntries: PiSdk['buildContextEntries'] = (entries) => entries,
+): PiSdk {
   return {
     SessionManager: overrides,
-    buildContextEntries: (entries: SessionEntry[]) => entries,
+    buildContextEntries,
   } as unknown as PiSdk;
 }
 
@@ -241,6 +290,7 @@ describe('readPiHistory', () => {
     const open = vi.fn(() => ({
       getEntries: () => entries,
       getLeafId: () => 'a1',
+      getBranch: () => entries,
       getHeader: () => ({
         type: 'session',
         id: 'id-1',
@@ -249,7 +299,7 @@ describe('readPiHistory', () => {
       }),
       getSessionName: noop as () => string | undefined,
     }));
-    const sdk = fakeSdk({ open });
+    const sdk = fakeSdk({ open }, () => [entries[1]]);
 
     const result = await readPiHistory(sdk, { historyId: asHistoryId('id-1') });
     expect(open).toHaveBeenCalledWith(join(agentDir, 'sessions', '--x--', '2026_id-1.jsonl'));

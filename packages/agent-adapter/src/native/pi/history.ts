@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { SessionEntry, SessionInfo } from '@earendil-works/pi-coding-agent';
 import type {
   AgentHistoryEvent,
@@ -71,9 +71,9 @@ export async function readPiHistory(
   if (!file) throw new Error(`pi: history '${opts.historyId}' was not found`);
 
   const manager = pi.SessionManager.open(file);
-  // pi sessions are trees (branch/fork/rewind keep every node); buildContextEntries follows the
-  // current leaf path and is compaction-aware, which is exactly the linear transcript we replay.
-  const entries = pi.buildContextEntries(manager.getEntries(), manager.getLeafId());
+  // pi sessions are trees (branch/fork/rewind keep every node). History is the complete selected
+  // branch; buildContextEntries is only the compacted LLM context and deliberately drops old turns.
+  const entries = manager.getBranch();
   const events = mapPiHistoryEvents(opts.historyId, entries);
   const header = manager.getHeader();
 
@@ -103,14 +103,21 @@ export async function findPiSessionFile(
   sessionId: string,
   sessionsDir = piSessionsDir(),
 ): Promise<string | null> {
-  const suffix = `_${sessionId}.jsonl`;
   let files: string[];
   try {
     files = await readdir(sessionsDir, { recursive: true });
   } catch {
     return null;
   }
-  const match = files.find((file) => file.endsWith(suffix));
+  // Exact-match the id segment rather than a bare endsWith: pi allows '_' inside session ids, so
+  // one id can be an underscore-bounded suffix of another. The timestamp prefix never contains an
+  // underscore, so the first one always separates prefix from id.
+  const match = files.find((file) => {
+    if (!file.endsWith('.jsonl')) return false;
+    const name = basename(file);
+    const sep = name.indexOf('_');
+    return sep !== -1 && name.slice(sep + 1, -'.jsonl'.length) === sessionId;
+  });
   return match ? join(sessionsDir, match) : null;
 }
 
@@ -160,10 +167,23 @@ export function mapPiHistoryEvents(
   };
 
   for (const entry of entries) {
-    // model_change / thinking_level_change / compaction / labels have no timeline representation;
-    // custom extension entries are state, not conversation.
-    if (entry.type !== 'message') continue;
     const ts = timestampMs(entry.timestamp);
+    if (entry.type === 'compaction') {
+      events.push({
+        historyId,
+        itemId: entry.id,
+        ts,
+        event: {
+          type: 'compaction',
+          compactionId: entry.id,
+          preTokens: entry.tokensBefore,
+          summary: entry.summary,
+        },
+      });
+      continue;
+    }
+    // model/thinking changes, labels, and custom extension entries are state, not conversation.
+    if (entry.type !== 'message') continue;
     const message: unknown = entry.message;
     if (!isRecord(message)) continue;
 
