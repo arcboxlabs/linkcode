@@ -1,4 +1,4 @@
-import { useConversation, useSessions } from '@linkcode/client-core';
+import { useSessions } from '@linkcode/client-core';
 import { SessionIdSchema } from '@linkcode/schema';
 import { AGENT_LABELS, EmptyState, repositoryLabel } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams } from 'expo-router';
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 import { TimelineItem } from '../../../../components/conversation-timeline';
 import { SessionStatusChip } from '../../../../components/session-status-chip';
+import { useSeededConversation } from '../../../../runtime/use-seeded-conversation';
 
 /** Read-only conversation view of one session running on the host. The inverted list pins
  * to the newest item and leaves the user's scroll position alone while output streams. */
@@ -15,10 +16,10 @@ export default function SessionScreen(): React.ReactNode {
   const insets = useSafeAreaInsets();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const parsed = SessionIdSchema.safeParse(sessionId);
-  const conversation = useConversation(parsed.success ? parsed.data : null);
   const { sessions } = useSessions();
 
   const session = sessions.find((entry) => entry.sessionId === sessionId);
+  const conversation = useSeededConversation(parsed.success ? (session ?? null) : null);
   const title = session
     ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
     : '';
