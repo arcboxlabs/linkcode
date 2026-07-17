@@ -35,6 +35,6 @@ export type LoopId = z.infer<typeof LoopIdSchema>;
 export const TimestampSchema = z.number().int().nonnegative();
 export type Timestamp = z.infer<typeof TimestampSchema>;
 
-/** Supported agent kinds — the four vendors in docs/ARCHITECTURE.md#packages--repo-layout. */
-export const AgentKindSchema = z.enum(['claude-code', 'codex', 'opencode', 'pi']);
+/** Supported agent kinds — the vendors in docs/ARCHITECTURE.md#packages--repo-layout. */
+export const AgentKindSchema = z.enum(['claude-code', 'codex', 'opencode', 'pi', 'grok-build']);
 export type AgentKind = z.infer<typeof AgentKindSchema>;

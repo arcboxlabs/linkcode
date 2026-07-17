@@ -10,14 +10,16 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   codex: 'Codex',
   opencode: 'OpenCode',
   pi: 'Pi',
+  'grok-build': 'Grok Build',
 };
 
-// Fallback for kinds without a brand glyph (e.g. `pi`).
+// Fallback for kinds without a brand glyph (e.g. `pi`, `grok-build`).
 const AGENT_INITIALS: Record<AgentKind, string> = {
   'claude-code': 'CC',
   codex: 'CX',
   opencode: 'OC',
   pi: 'PI',
+  'grok-build': 'GB',
 };
 
 const AGENT_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeGlyph>> = {

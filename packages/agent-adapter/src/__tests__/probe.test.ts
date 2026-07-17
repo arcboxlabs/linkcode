@@ -6,6 +6,7 @@ import {
   AgentRuntimeProber,
   ClaudeCodeProbe,
   CodexProbe,
+  GrokBuildProbe,
   parseClaudeAuthStatus,
   parseCodexLoginStatus,
 } from '../probe';
@@ -32,6 +33,7 @@ function proberAt(dir: string): AgentRuntimeProber {
   return new AgentRuntimeProber([
     new ClaudeCodeProbe([join(dir, 'claude')]),
     new CodexProbe([join(dir, 'codex')]),
+    new GrokBuildProbe([join(dir, 'grok')]),
   ]);
 }
 
@@ -39,11 +41,14 @@ describe('version parsers', () => {
   it('accepts real CLI output and rejects impostors', () => {
     const claude = new ClaudeCodeProbe();
     const codex = new CodexProbe();
+    const grok = new GrokBuildProbe();
     expect(claude.parseVersion('2.1.202 (Claude Code)\n')).toBe('2.1.202');
     expect(claude.parseVersion('2.1.202')).toBeUndefined();
     expect(claude.parseVersion('not a version')).toBeUndefined();
     expect(codex.parseVersion('codex-cli 0.142.4\n')).toBe('0.142.4');
     expect(codex.parseVersion('0.142.4')).toBeUndefined();
+    expect(grok.parseVersion('grok 0.2.102 (ab5ebf69acec)\n')).toBe('0.2.102');
+    expect(grok.parseVersion('0.2.102')).toBeUndefined();
   });
 });
 
@@ -196,6 +201,16 @@ describe('AgentCliProbe.knownLocations', () => {
     await expect(new ClaudeCodeProbe().detect()).resolves.toEqual({
       path: real,
       version: '9.9.9',
+    });
+  });
+
+  it('detects Grok Build through PATH before its vendor-specific fallbacks', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const real = fakeCli(dir, 'grok', 'grok 0.2.102 (test)');
+    vi.stubEnv('PATH', dir);
+    await expect(new GrokBuildProbe().detect()).resolves.toEqual({
+      path: real,
+      version: '0.2.102',
     });
   });
 });

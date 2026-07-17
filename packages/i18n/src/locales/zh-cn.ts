@@ -499,6 +499,7 @@ export const zhCN = {
       codex: 'Codex',
       opencode: 'OpenCode',
       pi: 'Pi',
+      'grok-build': 'Grok Build',
     },
     notifications: {
       turnCompleted: '回复完成',

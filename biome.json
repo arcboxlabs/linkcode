@@ -19,6 +19,7 @@
       "!**/node_modules",
       "!**/expo-export",
       "!packages/coss-ui",
+      "!**/.repos",
       "!**/pnpm-lock.yaml"
     ]
   },

@@ -68,6 +68,7 @@ const ATTACHMENT_SUPPORT: AttachmentSupportByAgent = {
   codex: true,
   opencode: true,
   pi: true,
+  // Headless streaming-json has no image prompt path verified yet.
 };
 
 export interface WorkbenchProps {

@@ -11,6 +11,7 @@ export { asHistoryId, boundedLimit, cursorOffset } from './history-util';
 export * from './login';
 export { ClaudeCodeAdapter } from './native/claude-code';
 export { CodexAdapter } from './native/codex';
+export { GrokBuildAdapter } from './native/grok-build';
 export { OpenCodeAdapter } from './native/opencode';
 export { PiAdapter } from './native/pi';
 export * from './probe';

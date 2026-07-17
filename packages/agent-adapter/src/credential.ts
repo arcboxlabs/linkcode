@@ -68,6 +68,19 @@ export function codexEnv(cred: AgentCredential): Record<string, string> | undefi
   return isObjectEmpty(env) ? undefined : env;
 }
 
+/**
+ * Extra env for the Grok Build headless CLI. The runner merges this over the inherited env so
+ * OAuth/login still reads `~/.grok/auth.json` when no key is present. An account key becomes
+ * `XAI_API_KEY` (Grok's API-key auth path).
+ */
+export function grokEnv(cred: AgentCredential): Record<string, string> | undefined {
+  const env: Record<string, string> = {};
+  const key = cred.apiKey ?? cred.authToken;
+  if (key) env.XAI_API_KEY = key;
+  if (cred.extraEnv) Object.assign(env, cred.extraEnv);
+  return isObjectEmpty(env) ? undefined : env;
+}
+
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

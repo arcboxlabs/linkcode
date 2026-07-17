@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Content blocks shared by all four supported agents. The discriminator is `type`; values stay
+/** Content blocks shared by all five supported agents. The discriminator is `type`; values stay
  * in MCP snake_case form (`resource_link`) so MCP results map across with no renaming. */
 
 /** Optional MCP-style annotations attached to a content block. */
