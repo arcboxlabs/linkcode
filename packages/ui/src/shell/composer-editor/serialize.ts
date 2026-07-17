@@ -106,6 +106,18 @@ export function $replaceTriggerWith(trigger: EditorTrigger, node: LexicalNode): 
   selection.insertNodes(needsSpace ? [node, $createTextNode(' ')] : [node]);
 }
 
+/** The structural leading directive chip, if any — status-free so render code can derive
+ * validity from live props without an editor read. */
+export type LeadingDirective = { kind: 'command'; name: string } | { kind: 'shell' };
+
+export function $leadingDirective(): LeadingDirective | null {
+  const firstBlock = $getRoot().getFirstChild();
+  const first = $isElementNode(firstBlock) ? firstBlock.getFirstChild() : null;
+  if ($isCommandNode(first)) return { kind: 'command', name: first.getName() };
+  if ($isShellNode(first)) return { kind: 'shell' };
+  return null;
+}
+
 export type DraftDirective =
   | { kind: 'command'; name: string; args: string; status: DirectiveStatus }
   | { kind: 'shell'; command: string; status: DirectiveStatus }
@@ -121,18 +133,17 @@ export function $draftDirective(
 ): DraftDirective {
   const root = $getRoot();
   const text = root.getTextContent();
-  const firstBlock = root.getFirstChild();
-  const first = $isElementNode(firstBlock) ? firstBlock.getFirstChild() : null;
-  if ($isCommandNode(first)) {
-    const name = first.getName();
+  const leading = $leadingDirective();
+  if (leading?.kind === 'command') {
     return {
-      args: text.slice(first.getTextContent().length).trim(),
+      // The chip serializes as `/name` at flat offset 0; everything after it is argument text.
+      args: text.slice(leading.name.length + 1).trim(),
       kind: 'command',
-      name,
-      status: commandStatus(name, state),
+      name: leading.name,
+      status: commandStatus(leading.name, state),
     };
   }
-  if ($isShellNode(first)) {
+  if (leading?.kind === 'shell') {
     return { command: text.slice(1).trim(), kind: 'shell', status: shellStatus(state) };
   }
   return { kind: 'text', text: text.trim() };
