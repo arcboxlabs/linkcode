@@ -47,6 +47,19 @@ startxref
 %%EOF
 `;
 
+/** Paths answering `file.list` — nested dirs, a flattenable single-child chain, and
+ * suffixes `mockFileFixture` serves so tree clicks open real viewers. */
+export const MOCK_WORKSPACE_FILES: readonly string[] = [
+  'README.md',
+  'PLAN.md',
+  'assets/logo.png',
+  'docs/reports/quarterly.pdf',
+  'docs/notes.md',
+  'src/app/main.md',
+  'src/app/routes/dashboard.md',
+  'src/lib/helpers.md',
+];
+
 export function mockFileFixture(cwd: string, requestPath: string): WorkspaceFile | null {
   const absolute = requestPath[0] === '/' ? requestPath : `${cwd}/${requestPath}`;
   const base = { path: absolute, mtimeMs: Date.now() };
