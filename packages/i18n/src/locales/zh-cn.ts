@@ -867,7 +867,6 @@ export const zhCN = {
     },
     terminals: {
       title: '终端',
-      back: '返回',
       emptyTitle: '暂无终端',
       emptyHint: '可在下方新建终端，或打开 host 上正在运行的终端。',
       error: '无法载入终端：{error}',
@@ -923,7 +922,6 @@ export const zhCN = {
       manageHosts: '管理 host',
       terminalAppearance: '终端外观',
       about: '关于',
-      back: '返回',
     },
     terminalAppearance: {
       title: '终端外观',

@@ -888,7 +888,6 @@ export const en = {
     },
     terminals: {
       title: 'Terminals',
-      back: 'Back',
       emptyTitle: 'No terminals',
       emptyHint: 'Start a terminal below, or open one already running on the host.',
       error: 'Unable to load terminals: {error}',
@@ -944,7 +943,6 @@ export const en = {
       manageHosts: 'Manage hosts',
       terminalAppearance: 'Terminal appearance',
       about: 'About',
-      back: 'Back',
     },
     terminalAppearance: {
       title: 'Terminal appearance',

@@ -36,14 +36,12 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
             return (
               <Card key={item.id} className={isUser ? 'ml-8' : 'mr-8'}>
                 <Card.Body className="gap-1">
-                  <Text className="text-[11px] text-muted" style={{ fontWeight: '600' }}>
+                  <Text className="font-semibold text-caption text-muted">
                     {isUser ? t('you') : t('agent')}
                   </Text>
-                  <Text className="text-[15px] text-foreground" style={{ lineHeight: 21 }}>
-                    {blocksToText(item.blocks)}
-                  </Text>
+                  <Text className="text-body text-foreground">{blocksToText(item.blocks)}</Text>
                   {item.isStreaming ? (
-                    <Text className="text-[12px] text-muted">{t('streaming')}</Text>
+                    <Text className="text-footnote text-muted">{t('streaming')}</Text>
                   ) : null}
                 </Card.Body>
               </Card>
@@ -52,12 +50,8 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
           case 'reasoning':
             return (
               <View key={item.id} className="px-2">
-                <Text className="text-[11px] text-muted" style={{ fontWeight: '600' }}>
-                  {t('reasoning')}
-                </Text>
-                <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
-                  {blocksToText(item.blocks)}
-                </Text>
+                <Text className="font-semibold text-caption text-muted">{t('reasoning')}</Text>
+                <Text className="text-muted text-subhead">{blocksToText(item.blocks)}</Text>
               </View>
             );
           case 'tool':
@@ -67,10 +61,10 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
                   <Chip variant="soft" size="sm" color="default">
                     <Chip.Label>{t('tool')}</Chip.Label>
                   </Chip>
-                  <Text className="flex-1 text-[13px] text-foreground" numberOfLines={2}>
+                  <Text className="flex-1 text-foreground text-subhead" numberOfLines={2}>
                     {item.toolCall.title}
                   </Text>
-                  <Text className="text-[12px] text-muted">{item.toolCall.status}</Text>
+                  <Text className="text-footnote text-muted">{item.toolCall.status}</Text>
                 </Card.Body>
               </Card>
             );
@@ -85,8 +79,7 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
                     <Text
                       // eslint-disable-next-line @eslint-react/no-array-index-key -- plan entries carry no id; index is stable because plans are replaced wholesale
                       key={index}
-                      className="text-[13px] text-foreground"
-                      style={{ lineHeight: 18 }}
+                      className="text-foreground text-subhead"
                     >
                       {PLAN_STATUS_MARK[entry.status]} {entry.content}
                     </Text>
@@ -98,10 +91,8 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
             return (
               <Card key={item.id} className="mr-8">
                 <Card.Body className="gap-1">
-                  <Text className="text-[11px] text-warning" style={{ fontWeight: '600' }}>
-                    {t('approval')}
-                  </Text>
-                  <Text className="text-[13px] text-foreground">{item.toolCall.title ?? ''}</Text>
+                  <Text className="font-semibold text-caption text-warning">{t('approval')}</Text>
+                  <Text className="text-foreground text-subhead">{item.toolCall.title ?? ''}</Text>
                 </Card.Body>
               </Card>
             );
@@ -109,21 +100,17 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
             return (
               <Card key={item.id}>
                 <Card.Body className="gap-1">
-                  <Text className="text-[11px] text-danger" style={{ fontWeight: '600' }}>
-                    {t('error')}
-                  </Text>
-                  <Text className="text-[13px] text-foreground">{item.message}</Text>
+                  <Text className="font-semibold text-caption text-danger">{t('error')}</Text>
+                  <Text className="text-foreground text-subhead">{item.message}</Text>
                 </Card.Body>
               </Card>
             );
           case 'compaction':
             return (
               <View key={item.id} className="flex-row items-center justify-center gap-2 px-2">
-                <Text className="text-[12px] text-muted" style={{ fontWeight: '600' }}>
-                  {t('compacted')}
-                </Text>
+                <Text className="font-semibold text-footnote text-muted">{t('compacted')}</Text>
                 {item.preTokens !== undefined && item.postTokens !== undefined ? (
-                  <Text className="text-[12px] text-muted">
+                  <Text className="text-footnote text-muted">
                     {t('compactedTokens', {
                       pre: formatTokens(item.preTokens),
                       post: formatTokens(item.postTokens),
