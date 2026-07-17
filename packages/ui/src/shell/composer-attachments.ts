@@ -45,9 +45,8 @@ function attachmentKindForFile(name: string, mimeType?: string): ChatAttachmentK
  * decoding succeeds. `block` is absent while `status` is `pending`/`failed`. */
 export type ComposerAttachment = ChatAttachment & { block?: ContentBlock };
 
-/** Tray-local identity (React keys + pending→settled reconciliation); never crosses the wire.
- * Random on purpose: the same file staged twice must stay independently addressable, so the id
- * cannot derive from file stats. */
+/** Tray-local identity; never crosses the wire. Random on purpose: the same file staged twice
+ * must stay independently addressable, so the id cannot derive from file stats. */
 function newAttachmentId(): string {
   return crypto.randomUUID();
 }
@@ -65,9 +64,8 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Decodes a validated dropped/pasted image `File` into the ready form of `pending` (same id, so
- * the staging tray swaps it in place). Throws with a message suitable for a toast when the file
- * cannot be read. */
+/** Decodes a dropped/pasted image `File` into the ready form of `pending` (same id, so the tray
+ * swaps it in place). Throws a toast-suitable message when the file cannot be read. */
 export async function readImageFileAsComposerAttachment(
   file: File,
   pending: ComposerAttachment,
@@ -112,9 +110,8 @@ export function failedComposerAttachment(
   };
 }
 
-/** The shape of a daemon `file.read` result relevant here — a structural subset of
- * `@linkcode/schema`'s `WorkspaceFile`, kept local so this stays a plain data shape rather than
- * pulling in the whole schema type for four fields. */
+/** Structural subset of `@linkcode/schema`'s `WorkspaceFile`, kept local so this stays a plain
+ * data shape rather than pulling in the whole schema type for four fields. */
 export interface ReadAttachmentFileResult {
   path: string;
   content: string;
@@ -129,10 +126,8 @@ function fileNameFromPath(path: string): string {
   return path.split(PATH_SEPARATOR_RE).pop() ?? path;
 }
 
-/** Converts a natively-picked file's daemon-read bytes into a staged attachment ready to send —
- * the counterpart to `readImageFileAsComposerAttachment` for files acquired via the "Attach"
- * picker (a path) rather than drag-and-drop/paste (a `File`). Synchronous: the bytes are already
- * in hand, no `FileReader` round trip needed. */
+/** "Attach"-picker (path) counterpart to `readImageFileAsComposerAttachment`: the daemon-read
+ * bytes are already in hand, so this is synchronous — no `FileReader` round trip. */
 export function attachmentFromReadFile(
   file: ReadAttachmentFileResult,
   errors: { unsupportedType: string; tooLarge: string },

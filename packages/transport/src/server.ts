@@ -1,7 +1,5 @@
-/**
- * @linkcode/transport/server — Node-only server entry for the host daemon.
- * Kept separate from the main entry so the Node `ws` dependency never reaches browser / RN bundles.
- */
+/** @linkcode/transport/server — Node-only server entry for the host daemon, kept separate from
+ * the main entry so the Node `ws` dependency never reaches browser / RN bundles. */
 
 import { never } from 'foxts/guard';
 import type { SocketIoServerOptions } from './socket-io-server';

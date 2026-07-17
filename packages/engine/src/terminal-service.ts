@@ -52,10 +52,9 @@ const HOST_TERMINAL_REAP_DELAY_MS = 60000;
 const EXITED_TERMINAL_RETENTION_MS = 60000;
 
 /**
- * TerminalService: owns the host's live terminals and short-lived exited replay tombstones, and
- * bridges a {@link PtyBackend} to the `terminal.*` wire messages. Sits beside `HistoryService` in
- * the {@link Engine}. Output is coalesced per microtask so a full-speed PTY doesn't emit one
- * Zod-validated wire message per tiny write.
+ * Owns the host's live terminals and short-lived exited replay tombstones, bridging a
+ * {@link PtyBackend} to the `terminal.*` wire. Output is coalesced per microtask so a full-speed
+ * PTY doesn't emit one Zod-validated wire message per tiny write.
  */
 export class TerminalService {
   private readonly terminals = new Map<string, TerminalEntry>();
@@ -151,10 +150,8 @@ export class TerminalService {
     this.scheduleReap(entry);
   }
 
-  /**
-   * Spawn an engine-owned terminal (e.g. a workspace script): no `terminal.opened` reply, exempt
-   * from detached host-terminal reaping. Its output/exit use the normal attachment-routed stream.
-   */
+  /** Spawn an engine-owned terminal (e.g. a workspace script): no `terminal.opened` reply, exempt
+   * from detached host-terminal reaping; output/exit use the normal attachment-routed stream. */
   async openManaged(
     opts: PtyOpenOptions,
     onExit?: (exitCode: number | null) => void,

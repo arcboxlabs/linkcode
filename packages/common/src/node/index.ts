@@ -6,9 +6,8 @@ import { join } from 'node:path';
 import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime-constants';
 
 /**
- * Node-only utilities, exposed via the `@linkcode/common/node` subpath so they never
- * reach browser or React Native bundles. The tsconfig base sets `types: []`, so the
- * reference above opts this one module into the Node globals.
+ * Node-only utilities on the `@linkcode/common/node` subpath so they never reach browser/RN
+ * bundles. The tsconfig base sets `types: []` — the reference above opts in the Node globals.
  */
 
 /** Parse a JSON file, or `null` when it is missing, unreadable, or malformed. */
@@ -36,9 +35,8 @@ export function daemonRuntimeFilePath(profile?: string): string {
   return join(homedir(), ...daemonRuntimeFileSegments(profile));
 }
 
-/** Ask the OS for a free loopback port: bind 0, read it back, close. Check-then-use — the port
- * can be taken between this probe and the consumer's own bind; callers that hand it to another
- * process must treat a bind failure as retryable. */
+/** Ask the OS for a free loopback port (bind 0, read, close). Check-then-use — the port can be
+ * taken before the consumer's own bind, so callers must treat a bind failure as retryable. */
 export function allocatePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();

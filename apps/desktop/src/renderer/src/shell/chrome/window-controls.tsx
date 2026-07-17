@@ -11,12 +11,10 @@ import { DESKTOP_CHROME_METRICS_STYLE } from './metrics';
 const WINDOW_CONTROLS_LAYER_STYLE: DesktopChromeMetricsStyle = DESKTOP_CHROME_METRICS_STYLE;
 
 /**
- * Persistent minimize / maximize-restore / close controls for platforms without native traffic
- * lights (Windows, Linux). `titleBarStyle: 'hidden'` strips the OS caption buttons there, so the
- * renderer draws them. Mounted at the app root ABOVE the connection gate and the settings overlay,
- * so they stay reachable while the daemon is connecting/unreachable and never shift as the app moves
- * between the connection fallback, the shell, and settings. macOS keeps its native traffic lights;
- * the preload-backed platform constant prevents renderer heuristics and macOS control flashes.
+ * Minimize / maximize-restore / close controls for Windows/Linux, where `titleBarStyle: 'hidden'`
+ * strips the OS caption buttons. Mounted at the app root ABOVE the connection gate and settings
+ * overlay, so they stay reachable while the daemon is down and never shift between surfaces.
+ * macOS keeps native traffic lights; the preload-backed platform constant avoids renderer heuristics.
  */
 export function DesktopWindowControls(): React.ReactNode {
   if (systemBridge.app.platform === 'darwin') return null;

@@ -34,9 +34,8 @@ export function AppI18nProvider({
 }
 
 /**
- * Global, app-agnostic providers shared by browser and desktop renderers.
- * Apps initialize their authoritative keyboard platform before mounting; `locale` is a raw
- * override (e.g. from a settings store), and unset follows the runtime.
+ * Global, app-agnostic providers shared by browser and desktop renderers. Apps initialize their
+ * keyboard platform before mounting; `locale` is a raw override, unset follows the runtime.
  */
 export function WorkbenchAppProviders({
   children,

@@ -12,10 +12,8 @@ import { fetchOnlineHosts } from '../runtime/cloud/hosts';
 import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 
 /**
- * Machine list & host registry. Signed in, the account's online machines are
- * the main body and manual URL entry collapses into an advanced fallback;
- * signed out, a sign-in card leads and the manual form stays open as the
- * primary path.
+ * Machine list & host registry. Signed in, online machines lead and manual URL entry
+ * collapses into a fallback; signed out, a sign-in card leads and the form stays open.
  */
 export default function ConnectScreen() {
   const t = useTranslations('mobile.connect');
@@ -84,10 +82,7 @@ function SectionLabel({ children }: React.PropsWithChildren) {
   );
 }
 
-/**
- * The account's online machines (daemons connected to the relay) — tapping
- * one saves it as a tunnel host and opens it.
- */
+/** Online machines (daemons connected to the relay) — tapping one saves it as a tunnel host and opens it. */
 function MyMachinesSection({ userId }: { userId: string }) {
   const t = useTranslations('mobile.connect.cloud');
   const router = useRouter();

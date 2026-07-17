@@ -1,12 +1,6 @@
-import type { Conversation, ConversationSeed } from '@linkcode/client-core';
+import type { Conversation, ConversationSeed, ConversationSeedEvent } from '@linkcode/client-core';
 import { useConversation } from '@linkcode/client-core';
-import type {
-  AgentEvent,
-  AgentHistoryId,
-  AgentKind,
-  SessionId,
-  SessionInfo,
-} from '@linkcode/schema';
+import type { AgentHistoryId, AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import type { Options, RequestResult } from '@linkcode/sdk';
 import { resolveClient } from '@linkcode/sdk';
 import { useData } from '../runtime/tayori';
@@ -16,16 +10,15 @@ import { loadPersistedSeed, persistSeed } from './seed-cache';
 const MAX_SEED_PAGES = 20;
 
 /**
- * Read a session's full provider transcript as a point-in-time snapshot. Pages are walked to the
- * end; the first page bypasses the daemon's history cache so the snapshot is current as of this
- * walk — `uptoSeq` (the live receive counter sampled at resolve) then marks the ordered cut: live
- * events at or before it are already in the snapshot.
+ * Read a session's full provider transcript as a point-in-time snapshot: pages walked to the end,
+ * the first page bypassing the daemon's history cache so the snapshot is current. `uptoSeq` (the
+ * live receive counter sampled at resolve) marks the cut: live events ≤ it are in the snapshot.
  */
 async function readConversationSeed(
   options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId; sessionId: SessionId }>,
 ): RequestResult<ConversationSeed> {
   const client = resolveClient(options);
-  const events: AgentEvent[] = [];
+  const events: ConversationSeedEvent[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAX_SEED_PAGES; page += 1) {
     // eslint-disable-next-line no-await-in-loop -- cursor pagination: each page's cursor comes from the previous reply
@@ -34,7 +27,7 @@ async function readConversationSeed(
       cursor,
       forceRefresh: page === 0,
     });
-    for (const entry of data.events) events.push(entry.event);
+    for (const entry of data.events) events.push({ event: entry.event, ts: entry.ts });
     cursor = data.cursor;
     if (cursor === undefined) break;
   }
@@ -46,11 +39,10 @@ async function readConversationSeed(
 }
 
 /**
- * The active session's conversation view-model, seeded from persisted provider history. The live
- * `agent.event` subscription only covers this connection, so a cold-resumed (or re-attached)
- * session replays its past from `history.read`; new live events append behind the snapshot.
- * The last persisted snapshot serves as `fallbackData`, so reopening the app paints history
- * immediately while the fresh read revalidates behind it.
+ * The active session's conversation view-model, seeded from provider history: the live
+ * `agent.event` subscription only covers this connection, so a cold-resumed session replays its
+ * past from `history.read`. The last persisted snapshot serves as `fallbackData` — reopening the
+ * app paints history immediately while the fresh read revalidates behind it.
  */
 export function useSeededConversation(
   active: SessionInfo | null,
@@ -66,9 +58,8 @@ export function useSeededConversation(
       fallbackData: active?.historyId
         ? loadPersistedSeed(active.kind, active.historyId)
         : undefined,
-      // Opt out of the provider-wide keepPreviousData: on a session switch it would keep serving
-      // the previous session's transcript — forever, when the new session has no historyId yet
-      // (null key = no fetch to replace it). A conversation must never bleed across sessions.
+      // Opt out of keepPreviousData: a conversation must never bleed across sessions, and on a
+      // switch it would serve the previous transcript — forever, when there's no historyId yet.
       keepPreviousData: false,
     },
   );

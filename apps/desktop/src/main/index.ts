@@ -19,9 +19,8 @@ Sentry.init({
   dsn: import.meta.env.MAIN_VITE_SENTRY_DSN,
 });
 
-// settings.ts caches settings in memory and rewrites the whole file on save, so two instances
-// would last-write-wins clobber each other. Only one instance may run; a second launch just
-// focuses the existing window instead.
+// settings.ts caches in memory and rewrites the whole file on save, so two instances would
+// last-write-wins clobber each other; a second launch just focuses the existing window.
 if (app.requestSingleInstanceLock()) {
   app.on('second-instance', () => {
     const win = BrowserWindow.getAllWindows().at(0);
@@ -32,9 +31,8 @@ if (app.requestSingleInstanceLock()) {
     }
   });
 
-  // Wire the LinkCode Cloud auth protocol + IPC bridges. Must run BEFORE app is ready:
-  // the better-auth electron plugin registers a privileged scheme via
-  // protocol.registerSchemesAsPrivileged, which throws once the app is ready.
+  // Wire the LinkCode Cloud auth protocol + IPC bridges. Must run BEFORE app is ready: the plugin
+  // registers a privileged scheme via protocol.registerSchemesAsPrivileged, which throws once ready.
   setupCloudAuth();
   // Cloud data bridges (online hosts, IM Channel). Not scheme-related, but registered here
   // alongside the rest of the cloud wiring; ipcMain.handle is safe before the app is ready.
@@ -44,10 +42,9 @@ if (app.requestSingleInstanceLock()) {
   app
     .whenReady()
     .then(() => {
-      // Dev only: brand the macOS Dock (the stock Electron binary has no icon). Use a static,
-      // macOS-grid-margined glass render of the .icon — a full-bleed raster looks oversized in the
-      // Dock. Loaded by path so this dev-only image isn't bundled into prod; packaged builds render
-      // live Liquid Glass from the .icon.
+      // Dev only: brand the macOS Dock (stock Electron has no icon) with a static grid-margined
+      // glass render — a full-bleed raster looks oversized. Loaded by path so it isn't bundled
+      // into prod; packaged builds render live Liquid Glass from the .icon.
       if (process.platform === 'darwin' && !app.isPackaged) {
         app.dock?.setIcon(join(__dirname, '../../../../assets/icon-dock.png'));
       }

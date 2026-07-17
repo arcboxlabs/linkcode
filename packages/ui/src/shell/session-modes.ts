@@ -1,20 +1,13 @@
 import type { SessionMode } from '@linkcode/schema';
 
 /**
- * Workflow modes — provider-specific behaviors the agent advertises as `SessionMode`s (claude-code
- * has plan, codex has plan and goal, …) with at most one active at a time (`currentModeId`). They
- * ride the existing wire: switching sends the `set-mode` input and the active mode reflects back
- * via the `current-mode-update` event.
- *
- * This axis is about HOW the agent works (propose a plan first / drive toward a goal); it is NOT
- * the approval policy, which is the separate permission/safety axis — see `ApprovalPolicyState`
- * in @linkcode/schema (advertised via `approval-policy-update`, switched via `set-approval-policy`).
- *
- * TODO(backend): the advertised mode list (`SessionModeState.availableModes`) is not emitted to
- * clients yet — only `current-mode-update` is. Until then, the composer command menu shows the
- * frontend-only stub rows below. Once agents provide real names/descriptions, delete
- * `STUB_SESSION_MODES` and keep approval-policy ids (default / acceptEdits / auto /
- * bypassPermissions) off this channel; they live on the approval-policy axis.
+ * Workflow modes — provider-advertised `SessionMode`s, at most one active (`currentModeId`);
+ * switching sends `set-mode` and the active mode reflects back via `current-mode-update`.
+ * This axis is HOW the agent works, NOT the approval policy (the separate permission/safety axis
+ * — `ApprovalPolicyState` in @linkcode/schema). Approval-policy ids (default / acceptEdits /
+ * auto / bypassPermissions) stay off this channel even once real modes are advertised.
+ * TODO(backend): `SessionModeState.availableModes` is not emitted yet — until then the composer
+ * menu shows the stub rows below; delete `STUB_SESSION_MODES` once agents advertise real modes.
  */
 
 // TODO(backend): replace with the agent-advertised mode list from `SessionModeState`.

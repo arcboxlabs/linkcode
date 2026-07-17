@@ -3,9 +3,8 @@ import { Button } from 'coss-ui/components/button';
 import { useTranslations } from 'use-intl';
 
 /**
- * Uncommitted-diff stat chip beside the main chrome title. Shares the `useGitDiff(cwd,
- * 'uncommitted')` SWR key with the right panel's Diff section, so opening the panel never
- * re-fetches what the chip already has cached. Renders nothing once there's no diff to show.
+ * Uncommitted-diff stat chip beside the chrome title; renders nothing when there is no diff. Shares
+ * the `useGitDiff(cwd, 'uncommitted')` SWR key with the Diff panel, so opening it never re-fetches.
  */
 export function DiffStatChip({
   cwd,

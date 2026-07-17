@@ -10,9 +10,8 @@ import type {
 } from './im';
 
 /**
- * Browser-side CloudImSource for shells whose credential is the ambient session cookie
- * (webview on an api-adjacent subdomain, with CORS credentials). Desktop does NOT use this —
- * its keychain session lives in the Electron main process behind the preload bridge.
+ * Browser-side CloudImSource whose credential is the ambient session cookie. Desktop does NOT use
+ * this — its keychain session lives in the Electron main process behind the preload bridge.
  */
 
 const overviewSchema = z.object({

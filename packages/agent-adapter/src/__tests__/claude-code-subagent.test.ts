@@ -5,12 +5,11 @@ import { asHistoryId } from '../history-util';
 import { ClaudeCodeAdapter } from '../native/claude-code';
 
 /**
- * Subagent (Task tool) routing: every frame a subagent produces arrives with `parent_tool_use_id`
- * set to the spawning Task's tool_use id. The adapter must (a) stamp that id onto the emitted tool
- * calls / narration so the client can nest them, (b) render subagent text message-level from the
- * forwarded assistant frames while dropping their stream deltas (no double render), and (c) keep
- * the main agent's messageId cursor untouched so a subagent running mid-turn cannot break the main
- * streaming bubble.
+ * Subagent (Task tool) routing: every subagent frame carries `parent_tool_use_id`. The adapter
+ * must (a) stamp that id onto emitted tool calls / narration for nesting, (b) render subagent text
+ * message-level from the forwarded assistant frames while dropping their stream deltas (no double
+ * render), and (c) keep the main messageId cursor untouched so a mid-turn subagent cannot break
+ * the main streaming bubble.
  */
 
 type AgentMessageChunk = Extract<AgentEvent, { type: 'agent-message-chunk' }>;

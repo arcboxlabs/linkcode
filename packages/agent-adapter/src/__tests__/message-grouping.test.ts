@@ -6,12 +6,11 @@ import { ClaudeCodeAdapter } from '../native/claude-code';
 import { PiAdapter } from '../native/pi';
 
 /**
- * Regression guard for the messageId grouping contract: `agent-message-chunk` events are bucketed by
- * `messageId` downstream (buildConversation), so an adapter MUST open a fresh id for narration emitted
- * after a tool call. Reusing one id for the whole turn merges pre- and post-tool text into a single
- * bubble and reorders the post-tool narration ahead of the tool — these tests fail under that bug.
- *
- * The streaming handlers only run inside the SDK loop (onStart/onPrompt), so test subclasses expose them.
+ * Regression guard for the messageId grouping contract: `agent-message-chunk` events are bucketed
+ * by `messageId` downstream (buildConversation), so an adapter MUST open a fresh id for narration
+ * emitted after a tool call — reusing one id merges pre- and post-tool text into a single bubble
+ * and reorders the post-tool narration ahead of the tool. The streaming handlers only run inside
+ * the SDK loop, so test subclasses expose them.
  */
 
 type AgentMessageChunk = Extract<AgentEvent, { type: 'agent-message-chunk' }>;
@@ -47,8 +46,8 @@ function claudeTextDelta(text: string): object {
 }
 
 /** Drives an adapter's narration/tool events through equivalent scenarios so the shared
- * fresh-segment-after-a-tool-call contract (`BaseAgentAdapter#freshSegment`) can be exercised once
- * against every adapter that implements it, instead of duplicating the scenario per adapter. */
+ * fresh-segment-after-a-tool-call contract (`BaseAgentAdapter#freshSegment`) is exercised once
+ * against every adapter. */
 interface AdapterDriver {
   seen: AgentEvent[];
   text(delta: string): void;

@@ -3,18 +3,13 @@ import { accountProtocol } from './catalog';
 
 /**
  * Which accounts each agent can bind, derived from the adapters' real injection seams — the UI
- * consumes this module and hardcodes nothing. Facts as of 2026-07 (packages/agent-adapter
- * `credential.ts` + native adapters, packages/engine `translator.ts`):
- *
- * - claude-code speaks Anthropic natively (`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` /
- *   `ANTHROPIC_API_KEY`); an `openai-chat` endpoint is reachable through the local aigateway
- *   translator, which needs both a base URL and a key (`translationUpstream`).
+ * hardcodes nothing. Facts as of 2026-07 (packages/agent-adapter `credential.ts` + native
+ * adapters, packages/engine `translator.ts`):
+ * - claude-code speaks Anthropic natively (`ANTHROPIC_*` env); an `openai-chat` endpoint is
+ *   reachable through the local aigateway translator, which needs a base URL AND a key.
  * - codex reaches any OpenAI-shaped endpoint via `OPENAI_BASE_URL` + `CODEX_API_KEY`.
- * - opencode nests `options.{apiKey,baseURL}` under the provider prefixed in the session's model id;
- *   openai-chat endpoints are the verified path. An Anthropic endpoint plausibly works with an
- *   `anthropic/…` model but is unverified against the SDK — flip it here once verified live.
- * - pi registers the key per model provider (`setRuntimeApiKey`) and overrides the provider's base
- *   URL via `modelRegistry.registerProvider`; same openai-chat-verified / anthropic-unverified split.
+ * - opencode and pi: openai-chat is the verified path; an Anthropic endpoint plausibly works but
+ *   is unverified against the SDK — flip it here once verified live.
  */
 const AGENT_NATIVE_PROTOCOLS: Record<AgentKind, AccountProtocol[]> = {
   'claude-code': ['anthropic'],

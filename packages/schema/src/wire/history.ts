@@ -18,10 +18,8 @@ export const AgentHistoryReadWireOptionsSchema = AgentHistoryReadOptionsSchema.e
 });
 export type AgentHistoryReadWireOptions = z.infer<typeof AgentHistoryReadWireOptionsSchema>;
 
-/**
- * Historical-session wire variants, plus the generic correlated-request reply pair
- * (`request.failed` / `request.succeeded`) every request/reply `kind` can resolve to.
- */
+/** Historical-session wire variants, plus the generic correlated-request reply pair
+ * (`request.failed` / `request.succeeded`) every request/reply `kind` can resolve to. */
 export const historyWireVariants = [
   z.object({
     kind: z.literal('history.list'),

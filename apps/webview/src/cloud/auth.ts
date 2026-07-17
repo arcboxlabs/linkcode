@@ -1,10 +1,9 @@
 import { createAuthClient } from 'better-auth/react';
 
 /**
- * LinkCode Cloud auth for the browser shell. The session cookie is shared with the API via
- * `.linkcode.ai` (the webview deploys on an api-adjacent subdomain; see COOKIE_DOMAIN in hq).
- * Dev against a local cloud stack overrides the URL; localhost against production will not
- * receive the cross-site cookie and stays signed out.
+ * Cloud auth for the browser shell: the session cookie is shared with the API via
+ * `.linkcode.ai` (see COOKIE_DOMAIN in hq); localhost against production never
+ * receives it and stays signed out.
  */
 export const CLOUD_API_URL =
   (import.meta.env.VITE_LINKCODE_CLOUD_API_URL as string | undefined) ?? 'https://api.linkcode.ai';

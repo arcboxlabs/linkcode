@@ -5,11 +5,8 @@ import type { ThreadImMenuComponentType } from './thread-im-menu';
 /** The sidebar's top-level collapsible sections. Mirrored by the workbench collapse store. */
 export type SidebarSectionKey = 'pinned' | 'projects' | 'chats';
 
-/**
- * Session/group interaction callbacks shared verbatim by `SessionSidebar`, `ThreadsView`, and the
- * per-group section they both render. `ShellFrame` renames a few of these at its public boundary
- * (`onSelect` → `onSelectSession`, etc.) and reassembles them with `Pick` instead of extending.
- */
+/** Session/group callbacks shared verbatim by `SessionSidebar`, `ThreadsView`, and the per-group
+ * section; `ShellFrame` renames a few at its public boundary and reassembles them with `Pick`. */
 export interface ThreadGroupActions {
   onSelect: (id: SessionId) => void;
   /** Stop the session if live and remove it from the list; re-importable from provider history. */

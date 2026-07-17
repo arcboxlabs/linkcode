@@ -20,10 +20,9 @@ export const SessionModeStateSchema = z.object({
 export type SessionModeState = z.infer<typeof SessionModeStateSchema>;
 
 /**
- * Approval policies — the permission/safety axis: when the agent asks before acting. Orthogonal to
- * the workflow SessionMode axis above (see packages/ui approval-policy.ts for the rationale).
- * Adapters advertise their own policy list and translate ids per agent (claude-code → its
- * permission modes, codex → approval_policy/sandbox).
+ * Approval policies — the permission/safety axis: when the agent asks before acting. Orthogonal
+ * to the workflow SessionMode axis above (see packages/ui approval-policy.ts for the rationale).
+ * Adapters advertise their own policy list and translate ids per agent.
  */
 export const ApprovalPolicyIdSchema = z.string().min(1);
 export type ApprovalPolicyId = z.infer<typeof ApprovalPolicyIdSchema>;
@@ -36,8 +35,7 @@ export const ApprovalPolicySchema = z.object({
 export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>;
 
 /** Full policy state, emitted whole (at session start and after every switch) so clients never
- * have to join a separate list request against a current-id event. Empty `availablePolicies`
- * means the agent has no switchable policy axis and clients hide the selector. */
+ * join a separate list against a current-id event; empty `availablePolicies` hides the selector. */
 export const ApprovalPolicyStateSchema = z.object({
   availablePolicies: z.array(ApprovalPolicySchema),
   currentPolicyId: ApprovalPolicyIdSchema,
@@ -65,8 +63,7 @@ export const SessionStatusSchema = z.enum([
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 
 /** Why a session moment is notification-worthy. `turn-completed` keeps the stop reason so clients
- * can skip user-initiated cancels; `awaiting-approval` maps the `permission-request` event (no
- * adapter ever emits an `awaiting-input` status). */
+ * can skip user-initiated cancels; `awaiting-approval` maps the `permission-request` event. */
 export const SessionNotificationReasonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('turn-completed'), stopReason: StopReasonSchema }),
   z.object({ type: z.literal('awaiting-approval'), toolTitle: z.string().optional() }),
@@ -74,12 +71,9 @@ export const SessionNotificationReasonSchema = z.discriminatedUnion('type', [
 ]);
 export type SessionNotificationReason = z.infer<typeof SessionNotificationReasonSchema>;
 
-/**
- * A notification-worthy session moment, classified daemon-side so clients don't fold every
- * session's event stream just to notice it. Carries its own display fields (kind/cwd/title)
- * because the session may be absent from a client's list snapshot. Whether and how to surface
- * it — focus suppression, user preferences — is presentation policy and stays client-side.
- */
+/** A notification-worthy session moment, classified daemon-side so clients don't fold every
+ * session's event stream. Carries its own display fields because the session may be absent from
+ * a client's list snapshot; whether/how to surface it stays client-side presentation policy. */
 export const SessionNotificationSchema = z.object({
   sessionId: SessionIdSchema,
   kind: AgentKindSchema,
@@ -107,6 +101,17 @@ export const McpServerSchema = z.discriminatedUnion('type', [
 ]);
 export type McpServer = z.infer<typeof McpServerSchema>;
 
+/**
+ * Set when an automation (a loop or schedule) created this session. Clients hide tagged sessions
+ * from the Threads list; the owning automation's detail view links back to them. `id` is the
+ * loop/schedule id — a plain string to avoid a cross-brand union on the record.
+ */
+export const SessionAutomationSchema = z.object({
+  kind: z.enum(['loop', 'schedule']),
+  id: z.string().min(1),
+});
+export type SessionAutomation = z.infer<typeof SessionAutomationSchema>;
+
 /** How a persisted session came to exist in Link Code. */
 export const SessionOriginSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('created') }),
@@ -119,10 +124,8 @@ export const SessionOriginSchema = z.discriminatedUnion('type', [
 ]);
 export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
 
-/**
- * One live start/resume of a session. Providers usually mint a new native id per resume, so a
- * session accumulates runs; `historyId` is backfilled once the adapter reports it (session-ref).
- */
+/** One live start/resume of a session. Providers usually mint a new native id per resume, so a
+ * session accumulates runs; `historyId` is backfilled once the adapter reports it (session-ref). */
 export const SessionRunSchema = z.object({
   historyId: AgentHistoryIdSchema.optional(),
   startedAt: TimestampSchema,
@@ -140,6 +143,8 @@ export const SessionRecordSchema = z.object({
   origin: SessionOriginSchema,
   /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
   createdVia: ImPlatformSchema.optional(),
+  /** Set when an automation created this session; clients hide tagged sessions from Threads. */
+  automation: SessionAutomationSchema.optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   runs: z.array(SessionRunSchema),
@@ -159,6 +164,8 @@ export const SessionInfoSchema = z.object({
   origin: SessionOriginSchema.optional(),
   /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
   createdVia: ImPlatformSchema.optional(),
+  /** Set when an automation created this session; clients hide tagged sessions from Threads. */
+  automation: SessionAutomationSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */
   historyId: AgentHistoryIdSchema.optional(),
 });

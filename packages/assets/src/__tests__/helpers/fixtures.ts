@@ -26,3 +26,21 @@ export function makeTgz(member: string, content: string): TgzFixture {
     integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
   };
 }
+
+/** Build an npm-shaped tgz: every file under the standard `package/` root. */
+export function makePackageTgz(files: Record<string, string>): TgzFixture {
+  const root = mkdtempSync(join(tmpdir(), 'pkg-fixture-'));
+  for (const [name, content] of Object.entries(files)) {
+    const file = join(root, 'package', name);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, content, { mode: 0o644 });
+  }
+  const archive = join(root, 'fixture.tgz');
+  execFileSync('tar', ['-czf', archive, '-C', root, 'package']);
+  const bytes = readFileSync(archive);
+  return {
+    archive,
+    bytes,
+    integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
+  };
+}

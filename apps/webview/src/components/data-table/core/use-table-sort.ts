@@ -16,46 +16,33 @@ export type TableSortsState = Record<string, SortDirection | undefined>;
 export type TableSortMode = 'single' | 'multiple';
 
 /**
- * One hook for both sorting modes: after the per-column record refactor, the
- * only behavioral difference left is what activating a new column does —
- * 'single' replaces the current sort, 'multiple' appends a tiebreaker — so the
- * mode is an option, not a separate hook, and the UI wires up identically.
- *
- * Directions and precedence are deliberately separate state: the record gives
- * per-column dependency tracking (flipping one column's direction never
- * re-renders readers of another column), while the array carries ONLY the
- * precedence order.
+ * One hook for both sorting modes; the only difference is activating a new column —
+ * 'single' replaces the current sort, 'multiple' appends a tiebreaker. Directions
+ * (record, per-column dependency tracking) and precedence (array) are deliberately
+ * separate state.
  */
 export interface TableSort {
   /**
-   * Dependency-tracked snapshot of per-column sort directions: reading
-   * `sorts[columnId]` during render subscribes the component to that column
-   * only. Never spread or copy it into a new object, that snapshots current
-   * values and breaks the tracking.
+   * Dependency-tracked snapshot of per-column sort directions — reading subscribes per
+   * column. Never spread or copy it; that snapshots current values and breaks tracking.
    */
   readonly sorts: Readonly<TableSortsState>;
   /**
-   * Active column ids in precedence order (click recency: first sorted =
-   * primary) — at most one entry in 'single' mode. Serialize by mapping it
-   * over `sorts`: `order.map((id) => ({ id, direction: sorts[id]! }))`.
+   * Active column ids in precedence order (first sorted = primary); at most one
+   * entry in 'single' mode. Serialize by mapping it over `sorts`.
    */
   readonly order: readonly string[];
   /**
-   * Per-column preview of the direction toggling THAT column would apply —
-   * `nextSorts[columnId]` (`undefined` = the sort would be removed). Read it
-   * directly (like `sorts`) to derive a header's `title` / aria label; the
-   * getters read the tracked sort state, so accessing during render keeps the
-   * label live. Only keys for the definition's columns exist.
+   * Per-column preview of the direction toggling that column would apply (`undefined` =
+   * removed). Read directly like `sorts` (live getters); only definition columns are keyed.
    */
   readonly nextSorts: Readonly<TableSortsState>;
   /** Set one column's direction verbatim (`undefined` removes it from the order). */
   setSort: (columnId: string, direction: SortDirection | undefined) => void;
   toggleSort: (columnId: string) => void;
   /**
-   * Toggle a column's sort from an event — handles BOTH click and keyboard
-   * (Enter/Space, with preventDefault). Pass the column id and the event.
-   * `createTableRender` pre-binds the column id into a per-column
-   * `ToggleSortingHandler` so most callers never call this directly.
+   * Toggle a column's sort from an event — handles both click and keyboard (Enter/Space).
+   * `createTableRender` pre-binds it per column, so most callers never call this directly.
    */
   toggleSortingHandler: (
     columnId: string,
@@ -64,26 +51,15 @@ export interface TableSort {
 }
 
 interface UseTableSortOptions<TData> {
-  /**
-   * The table definition — hand it over to honor per-column `sortingCycle`
-   * declarations. Without it every column uses DEFAULT_SORTING_CYCLE.
-   */
+  /** Honors per-column `sortingCycle` declarations; without it every column uses DEFAULT_SORTING_CYCLE. */
   table?: TableDefinition<TData>;
-  /**
-   * 'single' (default): sorting a new column replaces the active sort.
-   * 'multiple': it appends as the last tiebreaker.
-   */
+  /** 'single' (default): sorting a new column replaces the active sort; 'multiple': it appends a tiebreaker. */
   mode?: TableSortMode;
-  /**
-   * The backend's default ordering — restored when toggling removes the last
-   * sort. Key insertion order is the default precedence.
-   */
+  /** The backend's default ordering, restored when toggling removes the last sort; key insertion order = precedence. */
   defaultSorts?: Record<string, SortDirection>;
   /**
-   * Hand over the pagination state instance and every sort change automatically
-   * resets to the first page (sorting reorders the result set, so the current
-   * page position is meaningless). Type-only coupling — composing the two
-   * features costs no extra wiring code.
+   * Hand over the pagination state and every sort change resets to the first page
+   * (sorting reorders the result set, invalidating the current page position).
    */
   pagination?: Pick<TablePaginationState, 'firstPage'>;
   /** Fired after every sort change, for reactions `pagination` doesn't cover. */
@@ -137,9 +113,8 @@ export function useTableSort<TData = unknown>({
     [sorts, orderState, mode, setSortsState, setOrderState, onAfterSortChange],
   );
 
-  // Advance the column's sorting cycle (default: unsorted → asc → desc → removed).
-  // Private: the live value reaches the UI through the `nextSorts` field, not a
-  // method call.
+  // Advance the column's sorting cycle. Private: the UI reads the live value
+  // through the `nextSorts` getters, not a method call.
   const computeNextSort = useCallback(
     (columnId: string): SortDirection | undefined => {
       const cycle =
@@ -156,9 +131,8 @@ export function useTableSort<TData = unknown>({
     [table, sorts],
   );
 
-  // A per-column record of getters so the UI reads `nextSorts[columnId]` directly
-  // (matching how it reads `sorts`); each getter reads the tracked `sorts` at
-  // access time, so the preview stays live without exposing a method.
+  // Per-column getters so the UI reads `nextSorts[columnId]` like `sorts`; each
+  // getter reads the tracked `sorts` at access time, keeping the preview live.
   const nextSorts = useMemo(() => {
     const result: TableSortsState = {};
     for (const column of table?.columns ?? []) {
@@ -210,10 +184,8 @@ export function useTableSort<TData = unknown>({
     [toggleSort],
   );
 
-  // The instance is created once and stays referentially stable — passing it as
-  // a prop never invalidates memoized children by itself. `sorts` IS a tracked
-  // snapshot and `order` delegates to one, so reads stay live AND register
-  // render dependencies (per column id for directions).
+  // Referentially stable instance; `sorts` IS a tracked snapshot and `order`
+  // delegates to one, so reads stay live and register render dependencies.
   return useMemo(
     () => ({
       sorts,

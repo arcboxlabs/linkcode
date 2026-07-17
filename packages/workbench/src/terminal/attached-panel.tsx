@@ -9,9 +9,9 @@ import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
 import { createTransportTerminalSession } from './transport-session';
 
 /**
- * Read/write view onto a terminal that already exists on the daemon (e.g. a workspace
- * script's log PTY). Unlike {@link TerminalPanel} there is no open/restart lifecycle —
- * the owner (the script service) controls the process; closing the tab just detaches.
+ * Read/write view onto a terminal that already exists on the daemon (e.g. a script's log PTY).
+ * Unlike {@link TerminalPanel} there is no open/restart lifecycle — the owner controls the
+ * process; closing the tab just detaches.
  */
 export function AttachedTerminalPanel({
   terminalId,

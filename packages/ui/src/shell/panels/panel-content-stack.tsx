@@ -8,12 +8,9 @@ export interface PanelTabContentItem {
   node: React.ReactNode;
 }
 
-/**
- * Mounts every item's content and toggles visibility instead of resolving a single active node: two
- * tabs of the same kind (e.g. two terminals) each keep their own mounted instance and live session,
- * so switching actually swaps what's shown instead of remounting. Callers render each tab's node
- * themselves (e.g. via `.map`) rather than passing a render callback down.
- */
+/** Mounts every item's content and toggles visibility rather than resolving one active node, so
+ * each tab keeps its own mounted instance and live session instead of remounting on switch.
+ * Callers render each tab's node themselves rather than passing a render callback down. */
 export function PanelTabContentStack({
   items,
   style,

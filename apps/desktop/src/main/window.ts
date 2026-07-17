@@ -49,10 +49,9 @@ function createWindow(): BrowserWindow {
     icon,
     title: APP_NAME,
     titleBarStyle: 'hidden',
-    // macOS 26 Tahoe (Darwin ≥ 25) shrank the traffic-light frame height used for
-    // vertical centering from 16pt to 14pt (same fix as microsoft/vscode#279769).
-    // y = floor((48 − frameHeight) / 2) centers the buttons on the midline of the
-    // 48px chrome bar (renderer DESKTOP_CHROME_METRICS.height).
+    // macOS 26 Tahoe (Darwin ≥ 25) shrank the traffic-light frame height 16pt → 14pt (same fix as
+    // microsoft/vscode#279769); y = floor((48 − frameHeight) / 2) centers the buttons on the 48px
+    // chrome bar (renderer DESKTOP_CHROME_METRICS.height).
     ...(process.platform === 'darwin' && {
       trafficLightPosition: { x: 16, y: Number.parseFloat(release()) >= 25 ? 17 : 16 },
     }),
@@ -91,9 +90,8 @@ function createWindow(): BrowserWindow {
     });
   });
 
-  // Agent-authored content (e.g. markdown links in chat) can render `<a target="_blank">` to
-  // untrusted URLs. Without a handler Electron opens a new window that inherits the preload —
-  // deny every popup and hand http(s) targets to the OS browser instead.
+  // Agent-authored links can target untrusted URLs; an unhandled popup would open a new window
+  // that inherits the preload — deny every popup and hand http(s) targets to the OS browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isHttpUrl(url)) void shell.openExternal(url);
     return { action: 'deny' };

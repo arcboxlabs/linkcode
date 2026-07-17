@@ -2,13 +2,10 @@ import { z } from 'zod';
 import { SessionIdSchema, TimestampSchema } from './common';
 
 /**
- * IM Channel contract: bridging agent sessions (UI "Threads") to messaging platforms.
- * Product name "IM Channel"; a single platform integration is a "bridge" (`TelegramBridge`).
- *
- * Deliberately NOT part of the wire union: the cloud router owns bindings and routing, and it
- * speaks the existing wire operations to the daemon as an ordinary client. The daemon's wire
- * protocol stays IM-agnostic; these types are the shared vocabulary between the cloud router,
- * the bridges, and the management UI.
+ * IM Channel contract: bridging agent sessions (UI "Threads") to messaging platforms; one
+ * platform integration is a "bridge". Deliberately NOT part of the wire union: the cloud router
+ * owns bindings/routing and speaks the existing wire operations to the daemon as an ordinary
+ * client, so the daemon's wire protocol stays IM-agnostic.
  */
 
 export const ImPlatformSchema = z.enum(['telegram']);
@@ -41,14 +38,10 @@ export type ImBindingState = z.infer<typeof ImBindingStateSchema>;
 export const ImBindingOriginSchema = z.enum(['im', 'client']);
 export type ImBindingOrigin = z.infer<typeof ImBindingOriginSchema>;
 
-/**
- * A topic ↔ session binding — the first-class object the cloud router owns and persists.
- * Topic existence equals subscription: creating the topic creates the binding, `muted` pauses
- * push without unbinding, and only an explicit unlink removes it.
- *
- * v1 semantics: `state === 'muted'` mirrors `pushOut === false` (pausing only flips push-out);
- * `acceptIn` stays true for the binding's lifetime and is not yet surfaced in any UI.
- */
+/** A topic ↔ session binding — the first-class object the cloud router owns and persists. Topic
+ * existence equals subscription: `muted` pauses push without unbinding; only an explicit unlink
+ * removes it. v1: `muted` mirrors `pushOut === false`, and `acceptIn` stays true for the
+ * binding's lifetime (not yet surfaced in any UI). */
 export const ImBindingSchema = z.object({
   sessionId: SessionIdSchema,
   platform: ImPlatformSchema,
@@ -60,11 +53,9 @@ export const ImBindingSchema = z.object({
   /** Accept platform messages as prompts. Permission replies bypass this (they answer an agent ask). */
   acceptIn: z.boolean(),
   createdFrom: ImBindingOriginSchema,
-  /**
-   * The last event sequence number delivered to the platform, in the router's per-session receive
-   * order (the same monotone counting as `client-core`'s receive seq). `currentSeq > lastDeliveredSeq`
-   * on a muted binding is what arms the stale guard ("N unseen updates").
-   */
+  /** Last event sequence delivered to the platform, in the router's per-session receive order
+   * (the same monotone counting as `client-core`'s receive seq); `currentSeq > lastDeliveredSeq`
+   * on a muted binding arms the stale guard. */
   lastDeliveredSeq: z.number().int().nonnegative(),
   updatedAt: TimestampSchema,
 });

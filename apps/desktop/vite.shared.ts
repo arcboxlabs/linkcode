@@ -10,12 +10,10 @@ import { dependencies } from './package.json';
 export const NODE_TARGET = 'node24.16';
 export const CHROME_TARGET = 'chrome148';
 
-// Workspace packages are exported as TS source, so they must be bundled into main/preload (they
-// can't be runtime externals): a require left in the bundle resolves to .ts under
-// app.asar/node_modules and crashes on launch (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING).
-// Derive the list from package.json instead of naming packages so a new workspace import into
-// main can never be missed again. Everything else in `dependencies` stays external and resolves
-// from asar node_modules at runtime, exactly like electron-vite's externalizeDepsPlugin did.
+// Workspace packages export raw TS, so they must be bundled into main/preload: a require left in
+// the bundle resolves to .ts under app.asar/node_modules and crashes on launch
+// (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Derived from package.json so a new workspace
+// import can never be missed; everything else in `dependencies` stays external.
 export function nodeExternals(alsoBundle: readonly string[] = []): Array<string | RegExp> {
   const external = Object.entries(dependencies).flatMap(([name, version]) =>
     version.startsWith('workspace:') || alsoBundle.includes(name) ? [] : [name],
@@ -39,10 +37,9 @@ export const processEnvDefine = {
 
 const ASSET_RE = /__LINKCODE_ASSET__([\w$]+)__/g;
 
-// `import file from './x.png?asset'` in the main process resolves to an absolute path of the
-// asset emitted next to the bundle (out/main/chunks/…). Minimal replacement for electron-vite's
-// asset plugin; the ?asset&asarUnpack / .node / .wasm variants were never used and are not
-// supported.
+// `?asset` imports in main resolve to the absolute path of the asset emitted next to the bundle.
+// Minimal replacement for electron-vite's asset plugin; the ?asset&asarUnpack / .node / .wasm
+// variants are not supported.
 export function assetPlugin(): Plugin {
   return {
     name: 'linkcode:asset',

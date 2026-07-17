@@ -3,12 +3,9 @@ import { relativeTimeLabel } from './relative-time';
 
 const TICK_MS = 60000;
 
-/**
- * Shared clock, ticked once a minute by a single `setInterval` while at least one component is
- * subscribed. Never read `Date.now()` in `getSnapshot` — the compiler-memoized render call must
- * see only this stored value change; the interval callback (and subscribe-time arming) are the
- * only writers.
- */
+/** Shared clock: one `setInterval` per minute while any component is subscribed. Never read
+ * `Date.now()` in `getSnapshot` — the compiler-memoized render must see only this stored value;
+ * the interval callback and subscribe-time arming are the only writers. */
 let now = Date.now();
 let timer: ReturnType<typeof setInterval> | null = null;
 const listeners = new Set<() => void>();

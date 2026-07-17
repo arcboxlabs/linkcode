@@ -22,8 +22,7 @@ export default defineConfig({
   resolve: {
     alias: { '@webview': resolve(import.meta.dirname, 'src') },
     // pnpm's hoisted layout can nest a second react under a dep whose peer resolved to another
-    // version (e.g. use-intl(react@19.2.3) via Expo) — pin every import to the root copy, like
-    // the desktop renderer's vite.renderer.config already does.
+    // version — pin every import to the root copy (same as desktop's vite.renderer.config).
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
   },
   server: { port: 5173 },

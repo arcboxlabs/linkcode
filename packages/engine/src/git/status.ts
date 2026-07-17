@@ -2,10 +2,8 @@ import type { GitRemote, GitStatus } from '@linkcode/schema';
 import { runCommand } from './exec';
 import { parseRemoteIdentity } from './remote';
 
-/**
- * Read-only git env: never prompt for credentials, never take optional locks — an agent may be
- * running git in the same repo, and a status probe must not contend for `index.lock`.
- */
+/** Read-only git env: never prompt for credentials, never take optional locks — a status probe
+ * must not contend with a concurrently running agent's git for `index.lock`. */
 const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' } as const;
 
 /** Output of `rev-list --left-right --count`: "<ahead>\t<behind>". */

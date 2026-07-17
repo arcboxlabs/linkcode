@@ -18,11 +18,9 @@ export interface AgentLoginHandlers {
 }
 
 /**
- * Client side of the interactive `agent-login.*` flow. `start` is request/reply (→ loginId); the
- * host then pushes the browser `url` and the terminal `settled` outcome, consumed by a single
- * subscriber (the login card) per loginId. `submitCode` / `cancel` are fire-and-forget. A `url` or
- * `settled` that arrives before the subscriber attaches is buffered and replayed, so the
- * start→subscribe gap never drops the browser URL.
+ * Client side of the `agent-login.*` flow: one subscriber per loginId; a `url`/`settled` arriving
+ * before the subscriber attaches is buffered and replayed, so the start→subscribe gap never drops
+ * the browser URL.
  */
 export class AgentLoginChannel {
   private readonly handlers = new Map<string, AgentLoginHandlers>();

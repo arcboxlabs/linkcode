@@ -9,16 +9,11 @@ export type TunnelTransportOptions = TunnelClientOptions & { role: 'client' };
 export type TunnelTransportServerOptions = Omit<TunnelClientOptions, 'role'>;
 
 /**
- * TunnelTransport: a {@link Transport} carried through the HQ tunnel relay.
- * Remote clients (mobile, eventually desktop) dial this transport. The daemon
- * uses {@link TunnelTransportServer}, which exposes every relay-attested peer
- * as a distinct Hub connection.
- *
- * This layer is only the WireMessage seam (zod at the trust boundary, JSON
- * serialization); connection mechanics — handshake, liveness pings, sub-1MiB
- * chunking, reconnection with fresh tokens, host socket rotation — live in
- * {@link TunnelClient}. Note that `onClose` fires on *permanent* closure
- * only; transient drops reconnect internally.
+ * A {@link Transport} carried through the HQ tunnel relay: remote clients dial this; the daemon
+ * uses {@link TunnelTransportServer}, which exposes every relay-attested peer as a distinct Hub
+ * connection. Only the WireMessage seam lives here (zod at the trust boundary, JSON); connection
+ * mechanics live in {@link TunnelClient}. `onClose` fires on *permanent* closure only — transient
+ * drops reconnect internally.
  */
 export class TunnelTransport implements Transport {
   private readonly client: TunnelClient;

@@ -1,9 +1,8 @@
 import type { Event } from '@opencode-ai/sdk/v2';
 
-/** Stands in for the SSE `ServerSentEventsResult['stream']` `event.subscribe()` resolves to: an
- * async-iterable queue tests push events into, mirroring the real for-await the adapter drains.
- * Shared by every opencode test file so the one stream double models the one production stream —
- * a failure mode added here (e.g. a new terminal frame kind) is exercised by all of them. */
+/** Stands in for the SSE stream `event.subscribe()` resolves to: an async-iterable queue tests
+ * push events into. Shared by every opencode test file so the one stream double models the one
+ * production stream — a failure mode added here is exercised by all of them. */
 export class FakeEventStream {
   private readonly queued: Array<{ event: unknown } | { done: true } | { failed: unknown }> = [];
   private waiting: (() => void) | null = null;

@@ -5,11 +5,9 @@ import { z } from 'zod';
 import { CLOUD_URL, cloudAuthClient } from './client';
 
 /**
- * Device enrollment and registry access. Mobile enrollment is keyless (no
- * device keypair yet), so every POST inserts a fresh registry row — the
- * SecureStore enrollment record both prevents duplicates and pins which row
- * is this phone. It remembers the enrolling user so a different account
- * signing in re-enrolls under itself.
+ * Device enrollment. Enrollment is keyless, so every POST inserts a fresh registry
+ * row — the SecureStore record dedupes, pins which row is this phone, and remembers
+ * the enrolling user so a different account re-enrolls under itself.
  */
 
 const ENROLLMENT_KEY = 'linkcode.cloud.device:v2';
@@ -31,10 +29,8 @@ async function readEnrollment(): Promise<z.infer<typeof EnrollmentSchema> | null
 }
 
 /**
- * Register this phone in the cloud device registry once per (install, account).
- * Registration is what lists the phone under the account's devices (and lets
- * it be revoked); connecting to hosts works either way, so callers treat
- * failures as best-effort until the next attempt.
+ * Register this phone once per (install, account). Registration only affects the device
+ * list / revocation — connecting works without it, so callers treat failures as best-effort.
  */
 export async function ensureDeviceRegistered(userId: string): Promise<void> {
   const enrollment = await readEnrollment();

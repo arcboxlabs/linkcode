@@ -33,12 +33,8 @@ export interface AddProjectMenuProps {
   onImportHistory?: () => void;
 }
 
-/**
- * The Projects header "+": a menu for starting a thread, registering a folder as a workspace,
- * and (desktop) jumping to chat-history import. "Use an existing folder" goes straight to the
- * native picker when one exists; the path dialog is the webview fallback and the error surface
- * for a failed registration.
- */
+/** The Projects header "+" menu. "Use an existing folder" prefers the native picker; the path
+ * dialog is the webview fallback and the error surface for a failed registration. */
 export function AddProjectMenu({
   onStartDraft,
   onPickDirectory,

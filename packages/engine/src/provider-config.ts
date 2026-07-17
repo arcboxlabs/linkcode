@@ -7,11 +7,9 @@ import type {
 } from '@linkcode/schema';
 
 /**
- * Daemon-owned data-plane config store (docs/ARCHITECTURE.md#packages--repo-layout): the per-agent
- * provider settings plus the global account pool. The host reads it to inject per-agent defaults at
- * session start and services `config.get` / `config.set` over the wire. The daemon supplies a
- * persistent implementation; the in-memory default keeps the Engine usable standalone (tests / no
- * daemon).
+ * Daemon-owned data-plane config store: per-agent provider settings plus the global account pool,
+ * read for defaults at session start and serviced over `config.get` / `config.set`. The daemon
+ * supplies a persistent implementation; the in-memory default keeps the Engine usable standalone.
  */
 export interface ProviderConfigStore {
   get(): ProvidersConfig;
@@ -43,11 +41,9 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
 }
 
 /**
- * Resolve the account a session should use, by precedence:
- *   1. `opts.config.accountId` — an explicit per-session pick.
- *   2. `providers[kind].activeAccountId` — the agent's default account.
- * Returns undefined when neither resolves, or when the resolved id is stale (the account was
- * deleted from the pool) — the caller then falls back to the legacy `providers[kind].apiKey`.
+ * Resolve the session's account: explicit `opts.config.accountId`, else the agent's
+ * `activeAccountId`. Undefined when neither resolves or the id is stale (account deleted) —
+ * the caller then falls back to the legacy `providers[kind].apiKey`.
  */
 function resolveAccount(
   opts: StartOptions,
@@ -61,12 +57,9 @@ function resolveAccount(
   return accounts.find((account) => account.id === id);
 }
 
-/**
- * The adapter-facing bundle an account contributes to `StartOptions.config`. Credential keys follow
- * the existing `apiKey` convention; `authToken` / `baseUrl` / `protocol` / `extraEnv` are consumed by
- * the per-agent injection seams (each adapter maps them to its own env / options). An `oauth` account
- * injects no secret — it delegates to the agent CLI's own login store.
- */
+/** The adapter-facing bundle an account contributes to `StartOptions.config`; each adapter maps
+ * the keys to its own env/options. An `oauth` account injects no secret — it delegates to the
+ * agent CLI's own login store. */
 function accountConfigBundle(account: Account): Record<string, unknown> {
   const bundle: Record<string, unknown> = {};
   const { credential, endpoint, extraEnv } = account;
@@ -80,12 +73,9 @@ function accountConfigBundle(account: Account): Record<string, unknown> {
   return bundle;
 }
 
-/**
- * Apply the stored data-plane config to a session's StartOptions: resolve the bound account (or the
- * legacy per-agent api key), fall back to the configured default model, and inject the resolved
- * credential/endpoint bundle into `config` (each adapter consumes it its own way). A resolved
- * account's own `model` outranks the provider default. Returns a new object; never mutates the input.
- */
+/** Apply the stored config to a session's StartOptions: resolve the bound account (or legacy
+ * per-agent api key) and inject the credential/endpoint bundle into `config`; a resolved account's
+ * `model` outranks the provider default. Returns a new object; never mutates the input. */
 export function applyProviderDefaults(
   opts: StartOptions,
   providers: ProvidersConfig,

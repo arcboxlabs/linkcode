@@ -15,10 +15,9 @@ import type { Transport, TransportServer } from './transport';
 import { Listeners, WireConnection } from './transport';
 
 /**
- * Node-side WebSocket **server** for the host daemon. This module imports the Node-only `ws` package and is
- * therefore exposed via the `@linkcode/transport/server` subpath only — never from the main entry, so it is
- * never pulled into the browser (web) or React Native (mobile) bundles, which use the isomorphic
- * `WsTransport` client instead.
+ * Node-side WebSocket **server** for the host daemon. Imports the Node-only `ws` package, so it
+ * is exposed via the `@linkcode/transport/server` subpath only — never from the main entry, which
+ * would pull it into browser / React Native bundles.
  */
 
 export interface WsServerOptions {
@@ -82,9 +81,8 @@ export async function createWsServer(opts: WsServerOptions): Promise<WsServer> {
   await listenHttp(httpServer, opts.port, opts.host);
 
   // Attach only after a successful bind: `ws` re-emits the http server's 'error' events on the
-  // wss, which would turn a handled bind failure into an unhandled-'error' crash. `noServer` +
-  // our own upgrade dispatcher lets preview-host upgrades (dev-server HMR) route to the proxy
-  // instead of the transport WS.
+  // wss, turning a handled bind failure into an unhandled-'error' crash. `noServer` + our own
+  // upgrade dispatcher routes preview-host upgrades (HMR) to the proxy, not the transport WS.
   const wss = new WebSocketServer({ noServer: true });
   httpServer.on('upgrade', (req, socket, head) => {
     if (previewRoutes && handlePreviewUpgrade(previewRoutes, req, socket, head)) return;

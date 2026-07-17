@@ -10,9 +10,8 @@ const kinds = new Map<string, ArtifactKindDefinition>(
   BUILTIN_ARTIFACT_KINDS.map((definition) => [definition.id, definition]),
 );
 
-/** The baseline detector maps fence languages to registered kinds. Every agent's
- * natural output (Claude Code, Codex, …) is already covered by markdown fences, so
- * this is the only detector until vendor syntaxes (CODE-64) register enhanced ones. */
+/** Baseline detector: fence language → registered kind. Markdown fences already cover every
+ * agent's natural output, so it's the only detector until vendor syntaxes (CODE-64) register. */
 const BASELINE_DETECTOR_ID = 'fenced-block';
 
 const baselineDetector: ArtifactSyntaxDetector = {

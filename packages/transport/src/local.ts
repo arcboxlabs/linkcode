@@ -4,12 +4,8 @@ import { invariant } from 'foxts/guard';
 import type { Transport, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 
-/**
- * LocalTransport: local direct-connection (in-process / over IPC) implementation
- * (docs/ARCHITECTURE.md#packages--repo-layout).
- * Used when PC / Web connect locally to a host in the same process or on the same machine.
- * Use `createLocalTransportPair()` to obtain a pair of endpoints that loop back to each other.
- */
+/** Local direct-connection (in-process / over IPC) Transport. Use `createLocalTransportPair()`
+ * to obtain a pair of endpoints that loop back to each other. */
 export class LocalTransport implements Transport {
   private readonly inbound = new Listeners<WireMessage>();
   private readonly closed = new Listeners<void>();

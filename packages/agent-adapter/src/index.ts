@@ -1,10 +1,8 @@
 /**
- * @linkcode/agent-adapter — the agent adapter layer + abstraction layer
- * (docs/ARCHITECTURE.md#packages--repo-layout, #key-contracts).
- *
- * Native adapters drive each agent (claude-code / codex / opencode / pi / grok-build) and normalize their
- * events into the zod `AgentEvent` contract. Driven by `@linkcode/engine` but standalone so the adapter
- * set can evolve and be tested independently.
+ * @linkcode/agent-adapter — the agent adapter + abstraction layer
+ * (docs/ARCHITECTURE.md#packages--repo-layout, #key-contracts). Native adapters drive each agent's
+ * real SDK and normalize events into the zod `AgentEvent` contract; standalone from
+ * `@linkcode/engine` so the adapter set evolves and is tested independently.
  */
 
 export * from './adapter';

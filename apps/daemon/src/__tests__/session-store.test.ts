@@ -71,9 +71,8 @@ describe('daemon sqlite session store', () => {
     const record = makeRecord({ runs: [{ startedAt: 1 }] });
     await first.save(record);
 
-    // Simulate a dev DB migrated under an older journal: the newest migration is applied, but its
-    // recorded created_at predates the current journal's `when`, which without reconciliation makes
-    // the migrator re-run it and crash on the duplicate column.
+    // Simulate a dev DB migrated under an older journal: the newest migration's created_at predates
+    // the journal's `when`, which without reconciliation re-runs it and crashes on the duplicate column.
     const raw = new Sqlite(dbPath);
     raw
       .prepare(

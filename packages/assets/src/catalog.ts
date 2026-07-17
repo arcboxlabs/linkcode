@@ -1,12 +1,12 @@
 import type { ManagedAssetFormat, ManagedAssetId } from '@linkcode/schema';
+import type { NpmClosure } from './closure';
 import type { PlatformKey } from './platform';
 
 /**
- * The first-batch asset declarations. Everything empirically pinned 2026-07-08: codex vendor
- * triples and opencode's `windows` (not `win32`) naming were read off the real registry
- * tarballs; tectonic URLs/digests come from the GitHub release API (`digest` field verified
- * against a downloaded asset). Assets differ only in version policy, per-platform source, and
- * archive layout — the machinery downstream is shared.
+ * Asset declarations, empirically pinned 2026-07-08: npm member paths and platform naming were
+ * read off real registry tarballs, tectonic URLs/digests off the GitHub release API. Assets
+ * differ only in version policy, per-platform source, and archive layout — downstream machinery
+ * is shared.
  */
 
 /** How an asset's wanted version is decided. */
@@ -36,13 +36,31 @@ export type ArtifactSource =
       format: ManagedAssetFormat;
     };
 
-export interface AssetDescriptor {
+export interface BinaryAssetDescriptor {
   id: ManagedAssetId;
   /** Executable base name inside the installed version dir (`.exe` appended on win32). */
   binaryBase: string;
   version: VersionPolicy;
   /** Per-platform source; an absent key means the asset does not support that platform. */
   artifacts: Partial<Record<PlatformKey, ArtifactSource>>;
+}
+
+/**
+ * An in-process npm tree (pi, CODE-219): installed as a whole `node_modules` layout the daemon
+ * imports, never spawns. The closure manifest is generated from pnpm-lock.yaml at build time.
+ */
+export interface NpmClosureAssetDescriptor {
+  id: ManagedAssetId;
+  version: VersionPolicy;
+  closure: NpmClosure;
+}
+
+export type AssetDescriptor = BinaryAssetDescriptor | NpmClosureAssetDescriptor;
+
+export function isClosureDescriptor(
+  descriptor: AssetDescriptor,
+): descriptor is NpmClosureAssetDescriptor {
+  return 'closure' in descriptor;
 }
 
 const PLATFORM_KEYS: PlatformKey[] = [
@@ -117,14 +135,13 @@ function aigatewayArtifact(
   };
 }
 
-export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
+export const CATALOG: Record<ManagedAssetId, BinaryAssetDescriptor> = {
   'agent:claude-code': {
     id: 'agent:claude-code',
     binaryBase: 'claude',
     version: { kind: 'sdk-version', package: '@anthropic-ai/claude-agent-sdk' },
-    // The SDK also publishes -musl linux variants; like the SDK's own resolution we default
-    // to the glibc builds. Proprietary license: these URLs must always point at the npm
-    // registry, never a mirror.
+    // Defaults to the glibc builds (matching the SDK's own resolution over -musl variants).
+    // Proprietary license: these URLs must always point at the npm registry, never a mirror.
     artifacts: forAllPlatforms((key) => ({
       kind: 'npm',
       packageName: `@anthropic-ai/claude-agent-sdk-${key}`,

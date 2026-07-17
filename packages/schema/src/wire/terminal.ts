@@ -10,11 +10,9 @@ import {
   TerminalWinsizeSchema,
 } from '../terminal';
 
-/**
- * Terminal wire variants (data plane). Interactive PTYs the host owns; bytes travel as UTF-8
- * strings (host-side streaming decode keeps the JSON wire base64-free). Attachment secrets are
- * capabilities: they only travel client → host and are never echoed in replies or broadcasts.
- */
+/** Terminal wire variants (data plane): interactive PTYs the host owns; bytes travel as UTF-8
+ * strings (host-side decode keeps the JSON wire base64-free). Attachment secrets are capabilities:
+ * they only travel client → host and are never echoed in replies or broadcasts. */
 export const terminalWireVariants = [
   z.object({ kind: z.literal('terminal.list'), clientReqId: z.string().min(1) }),
   z.object({

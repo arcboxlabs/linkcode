@@ -76,10 +76,9 @@ type ChromeBackgroundGridStyle = React.CSSProperties & {
 const ChromePortalTargetContext = createContext<ChromePortalTargetMap | null>(null);
 const ChromePortalRegisterContext = createContext<RegisterChromePortalUse | null>(null);
 
-// The columns read the window-clamped track variables (index.css) — the same ones the
-// workspace grid uses — so the titlebar dividers stay glued to the real pane edges even
-// when a small window forces the clamps to engage. Sash drags override this template
-// with resolved inline values per frame (sash-drag-style.ts) and restore it on release.
+// The columns read the same window-clamped track variables (index.css) as the workspace grid, so
+// the titlebar dividers stay glued to the real pane edges even under clamping. Sash drags override
+// this template with resolved inline values per frame (sash-drag-style.ts) and restore on release.
 const CHROME_BACKGROUND_GRID_STYLE = {
   gridTemplateColumns: 'var(--lc-sidebar-col) minmax(0, 1fr) var(--lc-right-col)',
   '--lc-chrome-right-segment-w': 'var(--lc-right-col)',
@@ -291,10 +290,8 @@ function ChromeSegmentGrid({
       <ChromeSegment
         segment="sidebar"
         divider="sidebar-main"
-        // The sidebar owns the native-backdrop tint across its full height; keep
-        // this overlay transparent so the title area does not get double-tinted.
-        // The opaque divider color paints over the pane's identical full-height border-r,
-        // so stacking the two is harmless.
+        // The sidebar owns the native-backdrop tint; keep this overlay transparent so the title
+        // area isn't double-tinted. The opaque divider paints over the pane's identical border-r.
         className={
           hasNativeBackdrop
             ? 'col-start-1 border-(--lc-shell-sidebar-divider) border-r bg-transparent backdrop-blur-none'

@@ -3,8 +3,14 @@
 import type { ToolCall } from '@linkcode/schema';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ToolCallBody } from '../tool-call-item';
-import { hasToolBody, toolCallHeaderSummary, toolCallMetadata } from '../tool-utils';
+import { ToolCallBody, ToolCallItem } from '../tool-call-item';
+import {
+  hasToolBody,
+  mcpToolName,
+  toolCallContextSummary,
+  toolCallHeaderSummary,
+  toolCallMetadata,
+} from '../tool-utils';
 
 function translateKey(key: string): string {
   return key;
@@ -87,13 +93,18 @@ describe('tool metadata policy', () => {
     expect(container.textContent).not.toContain('responseBody');
   });
 
-  it('previews standardized custom-tool output without exposing arbitrary fields', () => {
+  it('shows scalar input params for custom tools while keeping the output envelope curated', () => {
     const toolCall: ToolCall = {
       toolCallId: 'other-1',
       title: 'workspace.inspect',
       kind: 'other',
       status: 'completed',
-      rawInput: { workspaceId: 'internal-42', includeDebug: true },
+      rawInput: {
+        workspaceId: 'internal-42',
+        includeDebug: true,
+        options: { nested: 'hidden' },
+        tags: ['also-hidden'],
+      },
       rawOutput: { requestId: 'request-42', structuredContent: { ok: true } },
       content: [],
     };
@@ -101,8 +112,13 @@ describe('tool metadata policy', () => {
     const { container } = render(<ToolCallBody toolCall={toolCall} />);
 
     expect(container.querySelector('pre')?.textContent).toContain('"ok": true');
+    // Scalar inputs are the call's headline details; nested envelopes stay hidden.
+    expect(screen.getByText('workspaceId')).toBeDefined();
+    expect(screen.getByText('internal-42')).toBeDefined();
+    expect(screen.getByText('includeDebug')).toBeDefined();
+    expect(container.textContent).not.toContain('nested');
+    expect(container.textContent).not.toContain('also-hidden');
     expect(container.textContent).not.toContain('request-42');
-    expect(container.textContent).not.toContain('workspaceId');
     expect(hasToolBody(toolCall)).toBe(true);
   });
 
@@ -143,7 +159,7 @@ describe('tool metadata policy', () => {
     expect(container.textContent).not.toContain('internalPath');
   });
 
-  it('projects live Codex MCP result content without exposing its raw envelopes', () => {
+  it('projects live Codex MCP result content without exposing its raw output envelope', () => {
     const toolCall: ToolCall = {
       toolCallId: 'codex-mcp-1',
       title: 'linear.get_issue',
@@ -161,7 +177,7 @@ describe('tool metadata policy', () => {
 
     expect(hasToolBody(toolCall)).toBe(true);
     expect(screen.getByText('CODE-173 is in progress')).toBeDefined();
-    expect(container.textContent).not.toContain('issueId');
+    expect(screen.getByText('issueId')).toBeDefined();
     expect(container.textContent).not.toContain('structuredContent');
     expect(container.textContent).not.toContain('opaque-173');
   });
@@ -200,6 +216,73 @@ describe('tool metadata policy', () => {
     expect(hasToolBody(toolCall)).toBe(true);
     expect(container.querySelector('pre')?.textContent).toBe('command unavailable');
     expect(container.textContent).not.toContain('exitCode');
+  });
+
+  it('badges a Claude WebFetch envelope as status, duration, and size', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'fetch-envelope',
+      title: 'WebFetch',
+      kind: 'fetch',
+      status: 'completed',
+      rawInput: { url: 'https://en.wikipedia.org/wiki/Arknights' },
+      rawOutput: {
+        bytes: 192511,
+        code: 200,
+        codeText: 'OK',
+        durationMs: 5404,
+        url: 'https://en.wikipedia.org/wiki/Arknights',
+      },
+      content: [],
+    };
+
+    expect(toolCallMetadata(toolCall)).toEqual([
+      { key: 'url', value: 'https://en.wikipedia.org/wiki/Arknights' },
+      { key: 'status', value: '200 OK', tone: undefined },
+      { key: 'duration', value: '5.4s' },
+      { key: 'size', value: '193 kB' },
+    ]);
+  });
+
+  it('splits Claude MCP slugs into server and tool, leaving other titles alone', () => {
+    expect(mcpToolName('mcp__linear__get_issue')).toEqual({ server: 'linear', tool: 'get_issue' });
+    expect(mcpToolName('mcp__ccd_session__spawn_task')).toEqual({
+      server: 'ccd_session',
+      tool: 'spawn_task',
+    });
+    expect(mcpToolName('mcp__f5fcc7d5-d616__list_issue_labels')).toEqual({
+      server: 'f5fcc7d5-d616',
+      tool: 'list_issue_labels',
+    });
+    expect(mcpToolName('WebFetch')).toBeUndefined();
+    expect(mcpToolName('mcp__broken')).toBeUndefined();
+    expect(mcpToolName('mcp__server__')).toBeUndefined();
+    expect(mcpToolName('linear_get_issue')).toBeUndefined();
+  });
+
+  it('headlines an MCP call with its tool name, server context, and an MCP badge', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'mcp-1',
+      title: 'mcp__linear__get_issue',
+      kind: 'other',
+      status: 'completed',
+      rawInput: { id: 'CODE-228' },
+      content: [],
+    };
+
+    // The server context sits beside a visible tool name only; a collapsed group join (which
+    // shows summaries INSTEAD of names) must fall through to the tool name itself.
+    expect(toolCallHeaderSummary(toolCall)).toBeUndefined();
+    expect(toolCallContextSummary(toolCall)).toEqual({
+      label: 'linear',
+      tooltip: 'mcp__linear__get_issue',
+    });
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+    expect(screen.getByText('get_issue')).toBeDefined();
+    expect(screen.getByText('MCP')).toBeDefined();
+    expect(screen.getByText('· linear')).toBeDefined();
+    expect(container.textContent).not.toContain('mcp__linear__get_issue');
+    expect(container.textContent).not.toContain('kindOther');
   });
 
   it('provides curated context for singleton headers and activity groups', () => {

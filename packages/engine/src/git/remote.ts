@@ -1,20 +1,14 @@
 import type { GitRemoteIdentity } from '@linkcode/schema';
 
-/**
- * Hosts that resolve to a hosting provider. Only github.com is served today; adding GitLab/Bitbucket
- * (or self-hosted instances via config) starts by extending this map — the schema vocabulary and the
- * provider seam ({@link import('./provider').GitProviderClient}) are already in place.
- */
+/** Hosts that resolve to a hosting provider. Adding GitLab/Bitbucket (or self-hosted instances)
+ * starts by extending this map — the schema vocabulary and provider seam are already in place. */
 const PROVIDER_BY_HOST: Record<string, GitRemoteIdentity['provider']> = {
   'github.com': 'github',
   'ssh.github.com': 'github',
 };
 
-/**
- * Parse a git remote URL — scp-like (`git@host:owner/repo.git`), `ssh://`, `git://`, or `http(s)://`
- * — into a provider identity. Returns null when the host is not a supported provider or the path is
- * not exactly `owner/repo`.
- */
+/** Parse a git remote URL (scp-like, `ssh://`, `git://`, or `http(s)://`) into a provider identity;
+ * null when the host is not a supported provider or the path is not exactly `owner/repo`. */
 export function parseRemoteIdentity(url: string): GitRemoteIdentity | null {
   const location = parseRemoteLocation(url.trim());
   if (!location) return null;

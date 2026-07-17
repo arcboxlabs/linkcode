@@ -2,13 +2,9 @@ import { createContext, useContext } from 'react';
 import type { CodeThemePair } from './code-themes';
 import { DEFAULT_CODE_THEME } from './code-themes';
 
-/**
- * Renderer preferences that presentation components read directly, sourced from the shared
- * appearance store by the host (workbench). CSS-driven motion is handled globally by the
- * `.reduce-motion` root class, but values that a component must branch on — JS-driven motion (the
- * framer `Shimmer`) and the code-block theme (`Markdown`) — flow through this context. The default
- * keeps standalone UI working.
- */
+/** Renderer preferences the host (workbench) sources from the appearance store. CSS-driven motion
+ * is handled globally via the `.reduce-motion` root class; only values a component must branch on
+ * flow through this context. The default keeps standalone UI working. */
 export interface RenderPrefs {
   /** When true, skip non-essential JS-driven motion. */
   reduceMotion: boolean;

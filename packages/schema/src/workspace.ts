@@ -1,19 +1,14 @@
 import { z } from 'zod';
 import { TimestampSchema, WorkspaceIdSchema } from './common';
 
-/**
- * `project`: a directory the user explicitly registered (Add-workspace form / picker).
- * `chat`: the single daemon-owned chat root (`~/LinkCode`) backing the sidebar's "Chats" section —
- * a fixed system entry, not something the user manages (see {@link WorkspaceRecordSchema}).
- */
+/** `project`: a directory the user explicitly registered. `chat`: the single daemon-owned chat
+ * root (`~/LinkCode`) backing the sidebar's "Chats" section — a fixed system entry the user
+ * doesn't manage. */
 export const WorkspaceKindSchema = z.enum(['project', 'chat']);
 export type WorkspaceKind = z.infer<typeof WorkspaceKindSchema>;
 
-/**
- * A workspace is a registered directory: the persisted identity behind "recent directories", kept
- * independent of any particular session (a directory can outlive every session started in it, and
- * a session's `cwd` is still the source of truth for where it actually runs).
- */
+/** A workspace is a registered directory: the persisted identity behind "recent directories",
+ * independent of any session — a session's `cwd` remains the source of truth for where it runs. */
 export const WorkspaceRecordSchema = z.object({
   workspaceId: WorkspaceIdSchema,
   cwd: z.string().min(1),
@@ -34,13 +29,9 @@ export function workspaceKind(record: Pick<WorkspaceRecord, 'kind'>): WorkspaceK
 const TRAILING_SEPARATORS_RE = /[/\\]+$/;
 const DRIVE_ROOT_RE = /^[a-z]:$/i;
 
-/**
- * Normalize a `cwd` into the key workspaces are deduped/looked-up by. This only strips trailing
- * path separators (`/repo/` and `/repo` collapse to the same key) while keeping a bare root
- * (`/`, `C:\`) intact — stripping its only separator would turn it into an empty or drive-relative
- * path, a different location. Nothing else is normalized (no case-folding, no symlink resolution):
- * `cwd` is user-chosen filesystem input and its display value must stay verbatim.
- */
+/** Normalize a `cwd` into the dedupe/lookup key: only strips trailing separators, keeping a bare
+ * root (`/`, `C:\`) intact — stripping its only separator would name a different location. No
+ * case-folding or symlink resolution: `cwd` is user-chosen input and must stay verbatim. */
 export function normalizeCwdKey(cwd: string): string {
   if (cwd.length === 0) return cwd;
   const stripped = cwd.replace(TRAILING_SEPARATORS_RE, '');

@@ -6,11 +6,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SidecarPtyBackend } from '../sidecar';
 
 /**
- * Cross-boundary test: the frame protocol is implemented twice — Rust `proto.rs` and TS `codec.ts` —
- * and every other test exercises one side against frames authored by that same side. This one runs
- * the real `SidecarPtyBackend` against the real compiled `linkcode-pty` binary, so the two
- * implementations must actually agree on the wire (frame layout, endianness, type bytes, id prefix).
- * It only runs when the binary has been built (`cargo build -p linkcode-pty`); otherwise it skips.
+ * Cross-boundary test: the frame protocol is implemented twice (Rust `proto.rs`, TS `codec.ts`);
+ * this runs the real `SidecarPtyBackend` against the real compiled `linkcode-pty` binary so the two
+ * must agree on the wire. Skips unless the binary is built (`cargo build -p linkcode-pty`).
  */
 const binaryName = process.platform === 'win32' ? 'linkcode-pty.exe' : 'linkcode-pty';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');

@@ -65,10 +65,7 @@ interface DataTableProps<TData> {
   pageCount: number;
   /** Total row count across all pages, from the server response. */
   rowCount: number;
-  /**
-   * Rendered below the header row, outside the table element, when the resolved
-   * data is empty. A plain React.ReactNode slot.
-   */
+  /** Rendered below the header row, outside the table element, when the resolved data is empty. */
   empty?: React.ReactNode;
   /** Noun for the footer count, e.g. "of 47 machines". */
   rowNoun?: string;

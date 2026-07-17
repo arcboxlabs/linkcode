@@ -20,7 +20,7 @@ import {
   toolCallReadPreviewText,
   toolCallSearchQuery,
 } from './tool-result-content';
-import { TOOL_KIND_ICONS, toolCallCommand } from './tool-utils';
+import { TOOL_KIND_ICONS, toolCallCommand, toolCallDisplayTitle } from './tool-utils';
 
 interface ToolResultPreviewProps {
   toolCall: ToolCall;
@@ -68,7 +68,7 @@ function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): R
     <ToolPreviewCard
       badge={String(resultCount)}
       icon={SearchIcon}
-      title={toolCallSearchQuery(toolCall) ?? toolCall.title}
+      title={toolCallSearchQuery(toolCall) ?? toolCallDisplayTitle(toolCall)}
     >
       <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
         <code>{text}</code>
@@ -194,10 +194,11 @@ function MixedFilePreview({
 }
 
 function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
+  const displayTitle = toolCallDisplayTitle(toolCall);
   switch (toolCall.kind) {
     case 'read': {
       return (
-        <ToolPreviewCard icon={FileTextIcon} title={toolCall.title}>
+        <ToolPreviewCard icon={FileTextIcon} title={displayTitle}>
           <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
             <code>{text}</code>
           </pre>
@@ -209,7 +210,7 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
     case 'move': {
       const Icon = TOOL_KIND_ICONS[toolCall.kind];
       return (
-        <ToolPreviewCard icon={Icon} title={toolCall.title}>
+        <ToolPreviewCard icon={Icon} title={displayTitle}>
           <Markdown>{text}</Markdown>
         </ToolPreviewCard>
       );
@@ -217,7 +218,7 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
     case 'search':
       return <SearchRows text={text} toolCall={toolCall} />;
     case 'fetch': {
-      const title = toolCallFetchUrl(toolCall) ?? toolCall.title;
+      const title = toolCallFetchUrl(toolCall) ?? displayTitle;
       const json = formattedJson(text);
       if (json) return <CodeBlock code={json} language="json" title={title} />;
       const markup = markupLanguage(text);
@@ -231,9 +232,9 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
     case 'other': {
       const json = formattedJson(text);
       return json ? (
-        <CodeBlock code={json} language="json" title={toolCall.title} />
+        <CodeBlock code={json} language="json" title={displayTitle} />
       ) : (
-        <ToolPreviewCard icon={WrenchIcon} title={toolCall.title}>
+        <ToolPreviewCard icon={WrenchIcon} title={displayTitle}>
           <Markdown>{text}</Markdown>
         </ToolPreviewCard>
       );
@@ -290,7 +291,10 @@ function ExecutePreview({
         />
       ))}
       {terminalContent.length === 0 || output ? (
-        <Terminal title={toolCallCommand(toolCall) ?? toolCall.title} output={output} />
+        <Terminal
+          title={toolCallCommand(toolCall) ?? toolCallDisplayTitle(toolCall)}
+          output={output}
+        />
       ) : null}
       <ContentList
         content={otherContent}

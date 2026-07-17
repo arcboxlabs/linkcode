@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, isAbsolute, join } from 'node:path';
 import process from 'node:process';
 import { promisify } from 'node:util';
 import type { AgentAuthStatus } from '@linkcode/schema';
@@ -19,13 +19,32 @@ export interface DetectedAgentRuntime {
 export type ProbeableKind = 'claude-code' | 'codex' | 'grok-build';
 
 /**
- * Absolute install locations probed in order. PATH is deliberately not searched: a probe both
- * locates and *executes* the candidate, so only well-known installer targets qualify (npm-global
- * prefixes vary per machine and are skipped for the same reason). Windows locations are
- * unverified — detection degrades to "nothing detected" there (bundled/SDK resolution still
- * applies) until CODE-113's win runner pins them down.
+ * Candidate paths from the daemon's own PATH, searched ahead of the fallback locations
+ * (CODE-220): PATH is the user's declared resolution order, and its order decides which of
+ * several installs wins. Deriving candidates executes nothing — verification stays in
+ * `probeAt`'s `--version` vendor marker — so only entries that don't denote a fixed location
+ * are dropped: relative and empty segments (both resolve against the daemon's incidental cwd).
+ * npm's Windows `.cmd` shims are skipped implicitly (only `<dir>/<binary>` with the platform
+ * suffix is probed; `execFile` can't run a shim anyway) — those installs ride the managed tier.
  */
-function defaultInstallLocations(binary: string): string[] {
+function pathInstallLocations(binary: string): string[] {
+  const locations: string[] = [];
+  for (const entry of (process.env.PATH ?? '').split(delimiter)) {
+    // Windows PATH entries with spaces are conventionally double-quoted.
+    const dir = entry.replaceAll('"', '');
+    if (dir.length > 0 && isAbsolute(dir)) locations.push(join(dir, binary));
+  }
+  return locations;
+}
+
+/**
+ * Fallback absolute install locations, probed after the PATH scan for daemons whose PATH was
+ * stripped by a GUI launch (macOS launchd passes only `/usr/bin:/bin:/usr/sbin:/sbin`).
+ * win32 has no entries: Windows GUI processes inherit the registry-composed user PATH, which
+ * installers (winget Links, claude's `%USERPROFILE%\.local\bin`, scoop shims) join by design,
+ * so the PATH scan already covers them.
+ */
+function fallbackInstallLocations(binary: string): string[] {
   const home = homedir();
   switch (process.platform) {
     case 'darwin':
@@ -36,10 +55,12 @@ function defaultInstallLocations(binary: string): string[] {
         join('/usr/local/bin', binary),
       ];
     case 'linux':
+      // /usr/bin is where distro packages land (e.g. Arch's codex).
       return [
         join(home, '.local', 'bin', binary),
         join('/home/linuxbrew/.linuxbrew/bin', binary),
         join('/usr/local/bin', binary),
+        join('/usr/bin', binary),
       ];
     default:
       return [];
@@ -47,9 +68,8 @@ function defaultInstallLocations(binary: string): string[] {
 }
 
 /**
- * One agent's CLI probe: where its user-installed binary may live and how to verify a candidate
- * is the real vendor CLI. Subclasses declare only what differs per agent — the binary's base name
- * and the `--version` signature.
+ * One agent's CLI probe: where its user-installed binary may live and how to verify a candidate is
+ * the real vendor CLI. Subclasses declare only the binary's base name and `--version` signature.
  */
 export abstract class AgentCliProbe {
   abstract readonly kind: ProbeableKind;
@@ -57,7 +77,7 @@ export abstract class AgentCliProbe {
   /** The SDK JS package; its platform CLI package installs as a same-scope sibling. */
   protected abstract readonly sdkPackage: string;
 
-  /** @param locations test seam — overrides the per-platform known install locations. */
+  /** @param locations test seam — overrides the PATH scan and the per-platform fallback locations. */
   constructor(private readonly locations?: string[]) {}
 
   /** Extract the CLI version from `--version` output; `undefined` rejects an impostor binary. */
@@ -67,10 +87,9 @@ export abstract class AgentCliProbe {
   protected abstract platformPackageBase(): string;
 
   /**
-   * Whether the SDK's own resolution would find a CLI in node_modules — true in dev and
-   * standalone daemons, false in packaged apps where the platform packages are excluded
-   * (CODE-114). Checks directory presence along the module's node_modules chain instead of
-   * `require.resolve` — the SDKs' `exports` maps reject bare CJS resolution outright.
+   * Whether the SDK's own resolution would find a CLI in node_modules — false in packaged apps
+   * (platform packages excluded, CODE-114). Checks directory presence instead of `require.resolve`
+   * because the SDKs' `exports` maps reject bare CJS resolution outright.
    */
   sdkPlatformPackagePresent(): boolean {
     const scope = this.sdkPackage.split('/', 1)[0];
@@ -79,10 +98,9 @@ export abstract class AgentCliProbe {
   }
 
   /**
-   * Absolute path to the CLI binary at the SDK's platform-package root — claude's layout
-   * (`…/claude-agent-sdk-<plat>-<arch>/claude`). Present in dev / standalone daemons; `undefined`
-   * in packaged apps (platform packages excluded, CODE-114) and for CLIs whose binary is nested
-   * elsewhere (codex vendors its binary under `vendor/` and resolves its own path).
+   * Absolute path to the CLI binary at the SDK's platform-package root (claude's layout).
+   * `undefined` in packaged apps (platform packages excluded, CODE-114) and for CLIs whose binary
+   * is nested elsewhere (codex vendors under `vendor/` and resolves its own path).
    */
   sdkPlatformBinaryPath(): string | undefined {
     const scope = this.sdkPackage.split('/', 1)[0];
@@ -94,11 +112,8 @@ export abstract class AgentCliProbe {
     return undefined;
   }
 
-  /**
-   * Provider login status for this CLI, if it exposes one (claude-code overrides via
-   * `auth status`). Default: the CLI has no login concept — `undefined` reads as "unknown" and
-   * never blocks the UI.
-   */
+  /** Provider login status, if the CLI exposes one (claude-code overrides via `auth status`).
+   * Default: no login concept — `undefined` reads as "unknown" and never blocks the UI. */
   probeAuth(_file: string): Promise<AgentAuthStatus | undefined> {
     return Promise.resolve(undefined);
   }
@@ -108,18 +123,18 @@ export abstract class AgentCliProbe {
   }
 
   knownLocations(): string[] {
-    return this.locations ?? defaultInstallLocations(this.binaryName());
+    if (this.locations) return this.locations;
+    const binary = this.binaryName();
+    return [...new Set([...pathInstallLocations(binary), ...fallbackInstallLocations(binary)])];
   }
 
-  /**
-   * Version-probe one candidate binary. `undefined` means "not this one" — absent, not
-   * executable, hung past the timeout, or `--version` output missing the vendor marker; a failed
-   * candidate is a normal probe outcome, not an error to surface.
-   */
+  /** Version-probe one candidate binary. `undefined` means "not this one" (absent, not executable,
+   * hung, or missing the vendor marker) — a failed candidate is a normal outcome, not an error. */
   async probeAt(file: string): Promise<DetectedAgentRuntime | undefined> {
     if (!existsSync(file)) return undefined;
     try {
-      const { stdout } = await execFileAsync(file, ['--version'], { timeout: 5000 });
+      // 10s: Windows Defender's first-touch scan can stall a binary's first exec past 5s.
+      const { stdout } = await execFileAsync(file, ['--version'], { timeout: 10_000 });
       const version = this.parseVersion(stdout);
       return version ? { path: file, version } : undefined;
     } catch {

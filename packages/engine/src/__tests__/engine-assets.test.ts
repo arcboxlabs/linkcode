@@ -212,9 +212,8 @@ describe('asset install broadcasts', () => {
   });
 
   it('pushes agent-runtime.changed for an agent install even when the snapshot is unchanged', async () => {
-    // Clients treat the push as the install's settle signal (the 'installed' activity bridge), so
-    // an event-triggered re-probe must broadcast even a byte-identical result — unlike the
-    // diff-gated read-triggered revalidation.
+    // Clients treat the push as the install's settle signal, so an event-triggered re-probe must
+    // broadcast even a byte-identical result — unlike the diff-gated read-triggered revalidation.
     const runtimes: AgentRuntimes = {
       codex: { status: 'available', source: 'managed', path: INSTALLED_CODEX.path },
     };

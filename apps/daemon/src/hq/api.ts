@@ -1,10 +1,8 @@
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /**
- * The daemon's REST surface of LinkCode HQ (the linkcodehq backend): the
- * RFC 8628 device flow it signs in with, the device registry, and the
- * tunnel-JWT exchange. Responses are validated at this boundary; callers
- * downstream trust the returned shapes.
+ * The daemon's REST surface of LinkCode HQ (the linkcodehq backend): RFC 8628 device flow, device
+ * registry, tunnel-JWT exchange. Responses are validated at this boundary; callers trust the shapes.
  */
 
 /** Default HQ origin; `LINKCODE_HQ_URL` overrides it at login time. */
@@ -125,11 +123,9 @@ export async function fetchTunnelToken(baseUrl: string, sessionToken: string): P
 }
 
 /**
- * Enroll this installation as a device. Enrollment is enroll-or-rebind on
- * the device key: the same key always resolves to the same device id (kept
- * across re-logins and account switches), and HQ binds the session to it,
- * stamping the `device_id` claim into subsequent tunnel JWTs. The returned
- * id is the daemon's tunnel host id.
+ * Enroll this installation as a device — enroll-or-rebind on the device key: the same key always
+ * resolves to the same device id (kept across re-logins and account switches), and HQ stamps that
+ * `device_id` claim into subsequent tunnel JWTs. The returned id is the daemon's tunnel host id.
  */
 export async function registerDevice(
   baseUrl: string,
