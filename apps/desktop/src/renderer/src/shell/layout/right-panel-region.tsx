@@ -27,6 +27,7 @@ export function DesktopRightPanelRegion({
   onAddTerminalTab,
   onSelectFileTab,
   onCloseFileTab,
+  onOpenFileTab,
   onToggleMax,
 }: {
   panel: RightPanelState;
@@ -43,6 +44,7 @@ export function DesktopRightPanelRegion({
   onAddTerminalTab: () => void;
   onSelectFileTab: (id: string) => void;
   onCloseFileTab: (id: string) => void;
+  onOpenFileTab: (path: string) => void;
   onToggleMax: () => void;
 }): React.ReactNode {
   return (
@@ -65,6 +67,7 @@ export function DesktopRightPanelRegion({
             activeTabId={panel.files.activeTabId}
             onSelectTab={onSelectFileTab}
             onCloseTab={onCloseFileTab}
+            onOpenFile={onOpenFileTab}
           />
         ),
       }}

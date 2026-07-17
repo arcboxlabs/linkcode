@@ -1,4 +1,4 @@
-import { readWorkspaceFile } from '@linkcode/sdk';
+import { listWorkspaceFiles, readWorkspaceFile } from '@linkcode/sdk';
 import { useData } from '../runtime/tayori';
 
 /**
@@ -9,4 +9,12 @@ export function useWorkspaceFile(cwd: string | undefined, path: string | null) {
   return useData(readWorkspaceFile, cwd === undefined || path === null ? null : { cwd, path }, {
     keepPreviousData: true,
   });
+}
+
+/**
+ * Every workspace file path for the Files tree, keyed by cwd. No polling and no
+ * keepPreviousData — a cwd switch must not paint the previous workspace's tree.
+ */
+export function useWorkspaceFileList(cwd: string | undefined) {
+  return useData(listWorkspaceFiles, cwd === undefined ? null : { cwd });
 }

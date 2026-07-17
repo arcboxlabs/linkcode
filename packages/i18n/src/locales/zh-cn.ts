@@ -471,9 +471,10 @@ export const zhCN = {
       hostFailed: '预览托管失败',
     },
     files: {
-      empty: '从对话中打开文件后在此查看',
+      empty: '从左侧文件树或对话中打开文件后在此查看',
       unsupported: '暂不支持预览此类型的文件',
       loadFailed: '读取文件失败',
+      treeUnavailable: '选择一个会话后浏览其工作区文件',
     },
     preview: {
       services: '服务',
