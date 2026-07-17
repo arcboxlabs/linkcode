@@ -10,8 +10,6 @@ export const en = {
       title: 'Automations',
       pageTitle: 'Automations',
       back: 'Back',
-      empty: 'No automations yet',
-      emptyDescription: 'Create a schedule to run an agent on a recurring cadence.',
       notFound: 'Automation not found',
       nameLabel: 'Name',
       namePlaceholder: 'Optional',
@@ -41,6 +39,9 @@ export const en = {
       },
       schedule: {
         new: 'New schedule',
+        empty: 'No schedules yet',
+        emptyDescription: 'Create a schedule to run an agent on a recurring cadence.',
+        createDescription: 'Run a prompt on an agent at a fixed interval or on a cron cadence.',
         createSubmit: 'Create',
         cadenceLabel: 'Cadence',
         interval: 'Interval',
@@ -75,6 +76,9 @@ export const en = {
         createSubmit: 'Create',
         empty: 'No loops yet',
         emptyDescription: 'Create a loop to have an agent retry until verification passes.',
+        createDescription:
+          'Each round runs the goal in a fresh worker session until verification passes or the iteration cap is reached.',
+        iterationProgress: '{count}/{max} iterations',
         goalLabel: 'Goal',
         verifyChecksLabel: 'Verify checks',
         verifyChecksHint: 'Run in order after each iteration; all must exit 0 to pass.',

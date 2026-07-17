@@ -15,6 +15,7 @@ import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { rhfErrorsToFormErrors } from '../lib/form';
 import { useMutation } from '../runtime/tayori';
+import { CwdField } from './cwd-field';
 import { useAutomationsViewStore } from './store';
 
 const loopFormSchema = z
@@ -55,7 +56,7 @@ function toSpec(draft: LoopFormDraft): LoopSpec {
 }
 
 /** Create-loop form. A non-empty verifier prompt configures the structured verifier. */
-export function LoopForm({ defaultCwd }: { defaultCwd?: string }): React.ReactNode {
+export function LoopForm(): React.ReactNode {
   const t = useTranslations('workbench.automations');
   const tAgent = useTranslations('workbench.agentKind');
   const selectLoop = useAutomationsViewStore((state) => state.selectLoop);
@@ -73,7 +74,7 @@ export function LoopForm({ defaultCwd }: { defaultCwd?: string }): React.ReactNo
     defaultValues: {
       prompt: '',
       kind: 'claude-code',
-      cwd: defaultCwd ?? '',
+      cwd: '',
       checks: [{ command: '' }],
       verifierPrompt: '',
       maxIterations: 10,
@@ -93,7 +94,7 @@ export function LoopForm({ defaultCwd }: { defaultCwd?: string }): React.ReactNo
 
   return (
     <Form
-      className="flex max-w-xl flex-col gap-4"
+      className="flex flex-col gap-4"
       errors={rhfErrorsToFormErrors(errors)}
       onSubmit={onSubmit}
     >
@@ -138,16 +139,7 @@ export function LoopForm({ defaultCwd }: { defaultCwd?: string }): React.ReactNo
         />
       </Field>
 
-      <Field name="cwd">
-        <FieldLabel>{t('cwdLabel')}</FieldLabel>
-        <Input
-          className="w-full"
-          autoComplete="off"
-          placeholder="/path/to/repo"
-          {...register('cwd')}
-        />
-        <FieldError />
-      </Field>
+      <CwdField inputProps={register('cwd')} />
 
       <Field name="checks">
         <FieldLabel>{t('loop.verifyChecksLabel')}</FieldLabel>

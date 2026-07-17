@@ -7,6 +7,13 @@ import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Form } from 'coss-ui/components/form';
 import { Input } from 'coss-ui/components/input';
 import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from 'coss-ui/components/select';
 import { Tabs, TabsList, TabsPanel, TabsTab } from 'coss-ui/components/tabs';
 import { Textarea } from 'coss-ui/components/textarea';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -15,6 +22,7 @@ import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { rhfErrorsToFormErrors } from '../lib/form';
 import { useMutation } from '../runtime/tayori';
+import { CwdField } from './cwd-field';
 import { useAutomationsViewStore } from './store';
 
 const INTERVAL_PRESETS = [5, 15, 60, 360, 1440] as const;
@@ -53,7 +61,7 @@ function toSpec(draft: ScheduleFormDraft): ScheduleSpec {
 }
 
 /** Create-schedule form (new-session target). Existing-session targets are a later addition. */
-export function ScheduleForm({ defaultCwd }: { defaultCwd?: string }): React.ReactNode {
+export function ScheduleForm(): React.ReactNode {
   const t = useTranslations('workbench.automations');
   const tAgent = useTranslations('workbench.agentKind');
   const select = useAutomationsViewStore((state) => state.select);
@@ -71,7 +79,7 @@ export function ScheduleForm({ defaultCwd }: { defaultCwd?: string }): React.Rea
     defaultValues: {
       prompt: '',
       kind: 'claude-code',
-      cwd: defaultCwd ?? '',
+      cwd: '',
       cadenceKind: 'interval',
       intervalMinutes: 60,
       cronExpression: '',
@@ -92,7 +100,7 @@ export function ScheduleForm({ defaultCwd }: { defaultCwd?: string }): React.Rea
 
   return (
     <Form
-      className="flex max-w-xl flex-col gap-4"
+      className="flex flex-col gap-4"
       errors={rhfErrorsToFormErrors(errors)}
       onSubmit={onSubmit}
     >
@@ -137,16 +145,7 @@ export function ScheduleForm({ defaultCwd }: { defaultCwd?: string }): React.Rea
         />
       </Field>
 
-      <Field name="cwd">
-        <FieldLabel>{t('cwdLabel')}</FieldLabel>
-        <Input
-          className="w-full"
-          autoComplete="off"
-          placeholder="/path/to/repo"
-          {...register('cwd')}
-        />
-        <FieldError />
-      </Field>
+      <CwdField inputProps={register('cwd')} />
 
       <Field name="cadenceKind">
         <FieldLabel>{t('schedule.cadenceLabel')}</FieldLabel>
@@ -160,16 +159,33 @@ export function ScheduleForm({ defaultCwd }: { defaultCwd?: string }): React.Rea
                 <TabsTab value="cron">{t('schedule.cron')}</TabsTab>
               </TabsList>
               <TabsPanel value="interval" className="pt-3">
-                <select
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  {...register('intervalMinutes', { valueAsNumber: true })}
-                >
-                  {INTERVAL_PRESETS.map((minutes) => (
-                    <option key={minutes} value={minutes}>
-                      {t('schedule.everyMinutes', { minutes })}
-                    </option>
-                  ))}
-                </select>
+                <Controller
+                  control={control}
+                  name="intervalMinutes"
+                  render={({ field: intervalField }) => (
+                    <Select
+                      items={INTERVAL_PRESETS.map((minutes) => ({
+                        value: minutes,
+                        label: t('schedule.everyMinutes', { minutes }),
+                      }))}
+                      value={intervalField.value}
+                      onValueChange={(minutes) => {
+                        if (minutes !== null) intervalField.onChange(minutes);
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {INTERVAL_PRESETS.map((minutes) => (
+                          <SelectItem key={minutes} value={minutes}>
+                            {t('schedule.everyMinutes', { minutes })}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  )}
+                />
               </TabsPanel>
               <TabsPanel value="cron" className="flex flex-col gap-3 pt-3">
                 <Input
