@@ -70,9 +70,14 @@ describe('Composer directive chips', () => {
 
     typeInComposer('/typo ');
     const chip = screen.getByRole('button', { name: '/typo' });
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('commandUnknown')).toBeDefined();
     await user.hover(chip);
 
-    expect(await screen.findByText('commandUnknown')).toBeDefined();
+    await waitFor(() => {
+      const tooltip = document.querySelector('[data-slot="tooltip-popup"]');
+      expect(tooltip?.textContent).toBe('commandUnknown');
+    });
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
     await pressInComposer('Enter');
     expect(onInvokeCommand).not.toHaveBeenCalled();
@@ -92,12 +97,15 @@ describe('Composer directive chips', () => {
     expect(within(menu).getByRole('menuitem', { name: 'removeDirective' })).toBeDefined();
     await user.click(within(menu).getByRole('menuitem', { name: 'convertToText' }));
 
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
     expect(screen.queryByRole('button', { name: '/typo' })).toBeNull();
-    expect(composerText()).toBe('/typo ');
+    typeInComposer('more');
+    expect(composerText()).toBe('/typo more');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false);
     await pressInComposer('Enter');
+    expect(composerText()).toBe('');
     expect(onInvokeCommand).not.toHaveBeenCalled();
-    expect(onSend).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: '/typo' }]);
+    expect(onSend).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: '/typo more' }]);
     expect(composerText()).toBe('');
   });
 
@@ -126,9 +134,15 @@ describe('Composer directive chips', () => {
     render(composer({ onRunShellCommand, onSend }));
 
     typeInComposer('$ ls -la');
-    await user.hover(screen.getByRole('button', { name: '$' }));
+    const shellChip = screen.getByRole('button', { name: '$' });
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('shellUnsupported')).toBeDefined();
+    await user.hover(shellChip);
 
-    expect(await screen.findByText('shellUnsupported')).toBeDefined();
+    await waitFor(() => {
+      const tooltip = document.querySelector('[data-slot="tooltip-popup"]');
+      expect(tooltip?.textContent).toBe('shellUnsupported');
+    });
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
     await pressInComposer('Enter');
     expect(onRunShellCommand).not.toHaveBeenCalled();

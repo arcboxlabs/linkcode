@@ -320,18 +320,6 @@ export function $moveDirectiveToStart(nodeKey: NodeKey): void {
   separator.selectEnd();
 }
 
-/** The structural leading directive chip, if any — status-free so render code can derive
- * validity from live props without an editor read. */
-export type LeadingDirective = { kind: 'command'; name: string } | { kind: 'shell' };
-
-export function $leadingDirective(): LeadingDirective | null {
-  const firstBlock = $getRoot().getFirstChild();
-  const first = $isElementNode(firstBlock) ? firstBlock.getFirstChild() : null;
-  if ($isCommandNode(first)) return { kind: 'command', name: first.getName() };
-  if ($isShellNode(first)) return { kind: 'shell' };
-  return null;
-}
-
 export type DraftDirective =
   | { kind: 'command'; name: string; args: string; status: DirectiveStatus }
   | { kind: 'shell'; command: string; status: DirectiveStatus }

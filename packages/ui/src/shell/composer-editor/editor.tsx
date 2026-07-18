@@ -18,14 +18,15 @@ import {
 } from 'lexical';
 import { useEffect } from 'react';
 import { cn } from '../../lib/cn';
+import type { DirectivePlacementIssue } from './directive-state';
 import { directiveStateFor } from './directive-state';
 import { COMPOSER_EDITOR_NODES } from './nodes';
-import type { EditorTrigger, LeadingDirective } from './serialize';
+import type { DirectiveComposition, EditorDirective, EditorTrigger } from './serialize';
 import {
+  $analyzeDirectives,
   $caretFlatOffset,
   $computeEditorTrigger,
   $draftText,
-  $leadingDirective,
 } from './serialize';
 import { $normalizeDirectiveTokens, registerDirectiveTokenizer } from './tokenize';
 
@@ -33,16 +34,19 @@ import { $normalizeDirectiveTokens, registerDirectiveTokenizer } from './tokeniz
 export interface ComposerDraftSnapshot {
   /** Flat draft text — chips contribute their canonical literals. */
   text: string;
-  /** Collapsed-caret offset in the flat text; null while a chip is node-selected. */
+  /** Collapsed-caret offset in the flat text; null for non-caret selections. */
   caretOffset: number | null;
   /** The `@`/`/` token at the caret, with its node-local replacement range. */
   trigger: EditorTrigger | null;
-  /** The leading directive chip (status derived live by the consumer). */
-  directive: LeadingDirective | null;
+  /** Structural directive composition; catalog validity is derived live by the consumer. */
+  composition: DirectiveComposition;
+  /** The document-leading directive, including in an invalid multi-directive composition. */
+  directive: EditorDirective | null;
 }
 
 export const EMPTY_DRAFT_SNAPSHOT: ComposerDraftSnapshot = {
   caretOffset: 0,
+  composition: { kind: 'none' },
   directive: null,
   text: '',
   trigger: null,
@@ -72,17 +76,21 @@ export interface ComposerEditorProps {
 function DirectiveStatePlugin({
   commands,
   commandsSupported,
+  disabled,
   shellEnabled,
-}: Pick<ComposerEditorProps, 'commands' | 'commandsSupported' | 'shellEnabled'>): null {
+}: Pick<
+  ComposerEditorProps,
+  'commands' | 'commandsSupported' | 'disabled' | 'shellEnabled'
+>): null {
   const [editor] = useLexicalComposerContext();
   // Prop → external-store sync for the chip portals (they can't receive props through Lexical's
   // decorator boundary); not a state watcher.
   useEffect(() => {
     const store = directiveStateFor(editor);
-    store.setState({ commands, commandsSupported, shellEnabled });
+    store.setState({ commands, commandsSupported, disabled, shellEnabled });
     // A late catalog can prove that already-typed mid-line `/name` text is a real command.
     editor.update(() => $normalizeDirectiveTokens(store.getState()), { discrete: true });
-  }, [editor, commands, commandsSupported, shellEnabled]);
+  }, [editor, commands, commandsSupported, disabled, shellEnabled]);
   return null;
 }
 
@@ -131,6 +139,9 @@ function KeyboardPlugin({
         (event) => {
           // A null event is Lexical's own composition-cleanup dispatch — not a user Enter.
           if (event === null) return false;
+          // Decorator chips are real buttons. Let their native keyboard activation open the
+          // action menu instead of bubbling Enter into composer submit.
+          if (event.target !== editor.getRootElement()) return false;
           // IME candidate confirm (CJK) is never submit/select.
           if (event.isComposing || event.key === 'Process') return true;
           if (event.shiftKey) return false;
@@ -214,14 +225,23 @@ export function ComposerEditor({
     // Mid-composition states are transient; the compositionend commit reports the final draft.
     if (editor.isComposing()) return;
     const store = directiveStateFor(editor);
-    onDraftChange(
-      editorState.read(() => ({
+    const next = editorState.read(() => {
+      const analysis = $analyzeDirectives();
+      const placementIssues: Partial<Record<string, DirectivePlacementIssue>> = {};
+      if (analysis.composition.kind === 'blocked') {
+        for (const key of analysis.blockedKeys) placementIssues[key] = analysis.composition.issue;
+      }
+      return {
         caretOffset: $caretFlatOffset(),
-        directive: $leadingDirective(),
+        composition: analysis.composition,
+        directive: analysis.leading,
+        placementIssues,
         text: $draftText(),
         trigger: $computeEditorTrigger(store.getState().suppressed),
-      })),
-    );
+      };
+    });
+    store.setState({ placementIssues: next.placementIssues });
+    onDraftChange(next);
   }
 
   return (
@@ -266,6 +286,7 @@ export function ComposerEditor({
       <DirectiveStatePlugin
         commands={commands}
         commandsSupported={commandsSupported}
+        disabled={disabled}
         shellEnabled={shellEnabled}
       />
       <TokenizerPlugin />

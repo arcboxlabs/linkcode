@@ -18,6 +18,10 @@ export interface ComposerDirectiveState {
   commandsSupported: boolean;
   /** Whether shell passthrough is currently available (capability + handler present). */
   shellEnabled: boolean;
+  /** Mirrors the editor's disabled state for interactive decorator buttons. */
+  disabled: boolean;
+  /** Placement issues keyed by chip node, mirrored from the current editor analysis. */
+  placementIssues: Readonly<Partial<Record<NodeKey, DirectivePlacementIssue>>>;
   /** Replacement TextNodes explicitly converted back to prose. Node keys keep each opt-out local. */
   suppressed: ReadonlySet<NodeKey>;
 }
@@ -34,6 +38,8 @@ export function directiveStateFor(editor: LexicalEditor): DirectiveStateStore {
     store = createStore<ComposerDirectiveState>(() => ({
       commands: [],
       commandsSupported: false,
+      disabled: false,
+      placementIssues: {},
       shellEnabled: false,
       suppressed: new Set(),
     }));

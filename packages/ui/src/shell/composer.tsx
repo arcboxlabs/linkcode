@@ -58,14 +58,21 @@ import {
   ModelSelectorMenu,
   SessionModeChip,
 } from './composer-controls';
+import type { ComposerDirectiveIssue } from './composer-editor/directive-hint';
+import { ComposerDirectiveHint } from './composer-editor/directive-hint';
+import type { DirectiveStatus } from './composer-editor/directive-state';
 import { commandStatus, directiveStateFor, shellStatus } from './composer-editor/directive-state';
 import type { ComposerDraftSnapshot } from './composer-editor/editor';
 import { ComposerEditor, EMPTY_DRAFT_SNAPSHOT } from './composer-editor/editor';
 import { $createCommandNode, $createMentionNode } from './composer-editor/nodes';
+import type { EditorDirective } from './composer-editor/serialize';
 import {
   $clearDraft,
+  $convertDirectiveToText,
   $draftDirective,
   $insertSeparatedDraftText,
+  $moveDirectiveToStart,
+  $removeDirective,
   $replaceTriggerWith,
 } from './composer-editor/serialize';
 import { $normalizeDirectiveTokens } from './composer-editor/tokenize';
@@ -73,6 +80,17 @@ import { movePlusCommandStart } from './composer-plus-search';
 import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
 export type { MentionItem } from './composer-command';
+
+function liveDirectiveStatus(
+  directive: EditorDirective,
+  commands: readonly AgentCommand[],
+  commandsSupported: boolean,
+  shellEnabled: boolean,
+): DirectiveStatus {
+  return directive.kind === 'command'
+    ? commandStatus(directive.name, { commands, commandsSupported })
+    : shellStatus({ shellEnabled });
+}
 
 /** Imperative surface for callers outside the composer tree (e.g. artifact
  * click-to-reference); the draft itself stays composer-local state. */
@@ -221,22 +239,24 @@ export function Composer({
   const catalog = agentCapabilities?.slashCommands
     ? (agentCommands ?? EMPTY_AGENT_COMMANDS)
     : EMPTY_AGENT_COMMANDS;
-  const commandsSupported = Boolean(
-    agentCapabilities?.slashCommands && onInvokeCommand && !disabled,
-  );
-  const shellEnabled = Boolean(agentCapabilities?.shellCommand && onRunShellCommand && !disabled);
+  const commandsSupported = Boolean(agentCapabilities?.slashCommands && onInvokeCommand);
+  const shellEnabled = Boolean(agentCapabilities?.shellCommand && onRunShellCommand);
   // A draft led by the shell chip is one shell command; slash/mention menus must stay out of
   // the way (a path like /tmp inside the command must not pop the command menu).
   const shellActive = snapshot.directive?.kind === 'shell';
-  // Live validity of the leading directive chip — recomputed as the catalog/capabilities arrive,
-  // so a chip typed before the session advertised them gates (or ungates) sending correctly.
-  const directiveStatus =
-    snapshot.directive === null
-      ? null
-      : snapshot.directive.kind === 'command'
-        ? commandStatus(snapshot.directive.name, { commands: catalog, commandsSupported })
-        : shellStatus({ shellEnabled });
-  const directiveBlocked = directiveStatus !== null && directiveStatus !== 'supported';
+  const blockedDirective: {
+    directive: NonNullable<ComposerDraftSnapshot['directive']>;
+    issue: ComposerDirectiveIssue;
+  } | null = (() => {
+    if (snapshot.composition.kind === 'none') return null;
+    const directive = snapshot.composition.directive;
+    const status = liveDirectiveStatus(directive, catalog, commandsSupported, shellEnabled);
+    if (status !== 'supported') return { directive, issue: status };
+    return snapshot.composition.kind === 'blocked'
+      ? { directive, issue: snapshot.composition.issue }
+      : null;
+  })();
+  const directiveBlocked = blockedDirective !== null;
 
   const textTrigger = useMemo(() => {
     const trigger = snapshot.trigger;
@@ -609,6 +629,37 @@ export function Composer({
     if (textTrigger?.kind === 'mention') onMentionQueryChange?.(null);
   }
 
+  // Persistent-alert twins of the chip menu's recovery actions.
+  function convertBlockedDirectiveToText(): void {
+    if (disabled) return;
+    const key = blockedDirective?.directive.nodeKey;
+    if (!key) return;
+    withEditor((editor) => {
+      const suppressedNodeKey = $convertDirectiveToText(key);
+      if (suppressedNodeKey) {
+        directiveStateFor(editor).setState((state) => ({
+          suppressed: new Set(state.suppressed).add(suppressedNodeKey),
+        }));
+      }
+    });
+  }
+
+  function removeBlockedDirective(): void {
+    if (disabled) return;
+    const key = blockedDirective?.directive.nodeKey;
+    if (!key) return;
+    withEditor(() => {
+      $removeDirective(key);
+    });
+  }
+
+  function moveBlockedDirectiveToStart(): void {
+    if (disabled) return;
+    const key = blockedDirective?.directive.nodeKey;
+    if (!key) return;
+    withEditor(() => $moveDirectiveToStart(key));
+  }
+
   function focusEditorFromFooter(e: React.MouseEvent<HTMLDivElement>): void {
     const target = e.target;
     if (
@@ -800,6 +851,20 @@ export function Composer({
                   onPasteFiles={ingestFiles}
                   onSubmit={submit}
                 />
+                {blockedDirective ? (
+                  <ComposerDirectiveHint
+                    directive={blockedDirective.directive}
+                    disabled={disabled}
+                    issue={blockedDirective.issue}
+                    onConvertToText={convertBlockedDirectiveToText}
+                    onMoveToStart={
+                      blockedDirective.issue === 'misplaced'
+                        ? moveBlockedDirectiveToStart
+                        : undefined
+                    }
+                    onRemove={removeBlockedDirective}
+                  />
+                ) : null}
                 <PromptInputFooter onMouseDown={focusEditorFromFooter}>
                   <PromptInputTools>
                     <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />

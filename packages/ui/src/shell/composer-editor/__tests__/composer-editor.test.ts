@@ -20,10 +20,14 @@ import {
   COMPOSER_EDITOR_NODES,
 } from '../nodes';
 import {
+  $analyzeDirectives,
   $caretFlatOffset,
   $computeEditorTrigger,
+  $convertDirectiveToText,
   $draftDirective,
   $draftText,
+  $moveDirectiveToStart,
+  $removeDirective,
   $replaceTriggerWith,
 } from '../serialize';
 import { $normalizeDirectiveTokens, registerDirectiveTokenizer } from '../tokenize';
@@ -155,6 +159,10 @@ describe('directive tokenizer', () => {
     const editor = createEditor();
     setDraft(editor, 'run /usage now');
     expect(draftShape(editor)).toEqual(['text', 'composer-command', 'text']);
+    expect(editor.read($analyzeDirectives).composition).toMatchObject({
+      issue: 'misplaced',
+      kind: 'blocked',
+    });
 
     setDraft(editor, 'run $ now');
     expect(draftShape(editor)).toEqual(['text']);
@@ -164,6 +172,101 @@ describe('directive tokenizer', () => {
       expect(draftShape(editor)).toEqual(['text']);
       expect(draftText(editor)).toBe(draft);
     }
+  });
+
+  it('keeps converted directive occurrences editable without suppressing later tokens', () => {
+    const suppressed = new Set<NodeKey>();
+    const editor = createEditor(() => ({ commands: COMMANDS, suppressed }));
+    setDraft(editor, '/typo');
+    editor.update(
+      () => $normalizeDirectiveTokens({ commands: COMMANDS, suppressed }, { force: true }),
+      { discrete: true },
+    );
+    editor.update(
+      () => {
+        const first = $getRoot().getFirstChild();
+        if (!$isElementNode(first)) throw new Error('expected paragraph');
+        const converted = $convertDirectiveToText(first.getFirstChildOrThrow().getKey());
+        if (converted) suppressed.add(converted);
+      },
+      { discrete: true },
+    );
+    expect(draftShape(editor)).toEqual(['text']);
+    expect(draftText(editor)).toBe('/typo');
+    expect(editor.read(() => $computeEditorTrigger(suppressed))).toBeNull();
+
+    editor.update(
+      () => {
+        const first = $getRoot().getFirstChild();
+        if (!$isElementNode(first)) throw new Error('expected paragraph');
+        const converted = first.getFirstChildOrThrow();
+        if (!$isTextNode(converted)) throw new Error('expected converted text');
+        converted.setTextContent('/review edited');
+      },
+      { discrete: true },
+    );
+    expect(draftShape(editor)).toEqual(['text']);
+    expect(draftText(editor)).toBe('/review edited');
+
+    editor.update(
+      () => {
+        const first = $getRoot().getFirstChild();
+        if (!$isElementNode(first)) throw new Error('expected paragraph');
+        first.append($createTextNode(' /usage '));
+      },
+      { discrete: true },
+    );
+    expect(draftShape(editor)).toEqual(['text', 'text', 'composer-command', 'text']);
+  });
+
+  it('keeps more than one converted occurrence as prose', () => {
+    const suppressed = new Set<NodeKey>();
+    const editor = createEditor(() => ({ commands: COMMANDS, suppressed }));
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        paragraph.append(
+          $createCommandNode('review'),
+          $createTextNode(' '),
+          $createCommandNode('usage'),
+        );
+        $getRoot().clear().append(paragraph);
+      },
+      { discrete: true, tag: HISTORIC_TAG },
+    );
+    editor.update(
+      () => {
+        const paragraph = $getRoot().getFirstChild();
+        if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
+        for (const child of paragraph.getChildren()) {
+          if (child.getType() !== 'composer-command') continue;
+          const converted = $convertDirectiveToText(child.getKey());
+          if (converted) suppressed.add(converted);
+        }
+        $normalizeDirectiveTokens({ commands: COMMANDS, suppressed }, { force: true });
+      },
+      { discrete: true },
+    );
+    expect(draftShape(editor)).toEqual(['text', 'text', 'text']);
+    expect(draftText(editor)).toBe('/review /usage');
+  });
+
+  it('treats text after a leading directive as its payload', () => {
+    const editor = createEditor();
+    setDraft(editor, '/review compare /usage ');
+    expect(draftShape(editor)).toEqual(['composer-command', 'text']);
+    expect(editor.read(() => $draftDirective(directiveState()))).toMatchObject({
+      args: 'compare /usage',
+      kind: 'command',
+      name: 'review',
+    });
+
+    setDraft(editor, '$ echo /review ');
+    expect(draftShape(editor)).toEqual(['composer-shell', 'text']);
+    expect(editor.read(() => $draftDirective(directiveState()))).toMatchObject({
+      command: 'echo /review',
+      kind: 'shell',
+    });
   });
 
   it('does not tokenize during history replays', () => {
@@ -179,7 +282,7 @@ describe('directive tokenizer', () => {
     expect(draftShape(editor)).toEqual(['text']);
   });
 
-  it('keeps a chip displaced from position 0', () => {
+  it('keeps a displaced chip and reports invalid placement', () => {
     const editor = createEditor();
     setDraft(editor, '/usage rest');
     expect(draftShape(editor)).toEqual(['composer-command', 'text']);
@@ -194,6 +297,10 @@ describe('directive tokenizer', () => {
     );
     expect(draftShape(editor)).toEqual(['text', 'composer-command', 'text']);
     expect(draftText(editor)).toBe('hi /usage rest');
+    expect(editor.read($analyzeDirectives).composition).toMatchObject({
+      issue: 'misplaced',
+      kind: 'blocked',
+    });
   });
 
   it('keeps a chip displaced by structural nodes', () => {
@@ -312,12 +419,86 @@ describe('$draftDirective', () => {
     });
   });
 
+  it('blocks a supported command outside offset zero', () => {
+    const editor = createEditor();
+    setDraft(editor, 'please /review now');
+    expect(editor.read(() => $draftDirective(directiveState()))).toMatchObject({
+      directive: { kind: 'command', name: 'review' },
+      issue: 'misplaced',
+      kind: 'invalid',
+    });
+  });
+
+  it('moves a lone misplaced directive to the start without doubling separator whitespace', () => {
+    const editor = createEditor();
+    for (const [draft, expected] of [
+      ['please /review now', '/review please now'],
+      [' /review now', '/review now'],
+    ]) {
+      setDraft(editor, draft);
+      editor.update(
+        () => {
+          const analysis = $analyzeDirectives();
+          if (analysis.composition.kind !== 'blocked') {
+            throw new Error('expected blocked directive');
+          }
+          $moveDirectiveToStart(analysis.composition.directive.nodeKey);
+        },
+        { discrete: true },
+      );
+      expect(draftText(editor)).toBe(expected);
+      expect(editor.read($analyzeDirectives).composition.kind).toBe('ready');
+    }
+  });
+
+  it('normalizes boundary whitespace when removing a directive', () => {
+    const editor = createEditor();
+    for (const [draft, expected] of [
+      ['please /review now', 'please now'],
+      ['/review now', 'now'],
+      ['please /review ', 'please'],
+      ['/review ', ''],
+    ]) {
+      setDraft(editor, draft);
+      editor.update(
+        () => {
+          const analysis = $analyzeDirectives();
+          if (analysis.composition.kind === 'none') throw new Error('expected directive');
+          $removeDirective(analysis.composition.directive.nodeKey);
+        },
+        { discrete: true },
+      );
+      expect(draftText(editor)).toBe(expected);
+    }
+  });
+
+  it('blocks multiple structured directives instead of flattening them to prose', () => {
+    const editor = createEditor();
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        paragraph.append(
+          $createCommandNode('review'),
+          $createTextNode(' '),
+          $createCommandNode('usage'),
+        );
+        $getRoot().clear().append(paragraph);
+      },
+      { discrete: true },
+    );
+    expect(editor.read(() => $draftDirective(directiveState()))).toMatchObject({
+      directive: { kind: 'command', name: 'usage' },
+      issue: 'multiple',
+      kind: 'invalid',
+    });
+  });
+
   it('classifies everything else as text — prose containing / stays prose', () => {
     const editor = createEditor();
-    setDraft(editor, 'hello /path');
+    setDraft(editor, 'hello /usage');
     expect(editor.read(() => $draftDirective(directiveState()))).toEqual({
       kind: 'text',
-      text: 'hello /path',
+      text: 'hello /usage',
     });
   });
 });
@@ -475,7 +656,7 @@ describe('$replaceTriggerWith', () => {
     expect(draftText(editor)).toBe('see "src/app.ts"\nnext');
   });
 
-  it('keeps command-menu chips at leading and mid-text positions', () => {
+  it('keeps command-menu chips at both leading and mid-text positions', () => {
     const editor = createEditor();
     triggerAtEnd(editor, '/rev');
     editor.update(
@@ -501,6 +682,10 @@ describe('$replaceTriggerWith', () => {
     );
     expect(draftShape(editor2)).toEqual(['text', 'composer-command', 'text']);
     expect(draftText(editor2)).toBe('hi /review ');
+    expect(editor2.read($analyzeDirectives).composition).toMatchObject({
+      issue: 'misplaced',
+      kind: 'blocked',
+    });
   });
 
   it('keeps a range caret while moving across every atomic chip', () => {
