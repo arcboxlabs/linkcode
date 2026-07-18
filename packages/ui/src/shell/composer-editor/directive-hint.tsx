@@ -44,8 +44,8 @@ export function ComposerDirectiveHint({
       data-slot="composer-directive-hint"
       role="status"
     >
-      <div className="flex min-h-7 min-w-64 flex-1 items-center gap-1 px-2 text-muted-foreground text-sm">
-        <TriangleAlertIcon aria-hidden className="size-4 shrink-0 text-warning" />
+      <div className="flex min-h-7 min-w-64 flex-1 items-center gap-2 px-2 text-warning text-sm">
+        <TriangleAlertIcon aria-hidden className="size-4 shrink-0" />
         <span className="min-w-0 break-words">{reason}</span>
       </div>
       <div className="ms-auto flex items-center gap-1">
