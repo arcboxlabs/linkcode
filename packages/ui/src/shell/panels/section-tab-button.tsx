@@ -2,6 +2,13 @@ import { XIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { cn } from '../../lib/cn';
 
+/** Fixed end cap for a sub-tab strip, placed outside its scroller: keeps clipped tabs from
+ * touching the strip edge (pane dividers sit right there) and carries its segment of the
+ * band's bottom border. */
+export function StripEndGutter(): React.ReactNode {
+  return <div aria-hidden className="w-1.5 shrink-0 border-border border-b" />;
+}
+
 /** One closable sub-tab inside a panel section (terminal PTYs, file viewers): a square
  * editor-style tab filling the strip height. The strip's bottom border is drawn per tab so
  * the active tab can break it and merge with the content below. */

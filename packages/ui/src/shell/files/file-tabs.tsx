@@ -1,7 +1,7 @@
 import { useTranslations } from 'use-intl';
 import { fileBasename } from '../../chat/artifacts';
 import { cn } from '../../lib/cn';
-import { SectionTabButton } from '../panels/section-tab-button';
+import { SectionTabButton, StripEndGutter } from '../panels/section-tab-button';
 import { PANEL_WINDOW_ICONS } from '../panels/vocabulary';
 
 export interface FileTab {
@@ -26,31 +26,35 @@ export function FileTabStrip({
   const t = useTranslations('workbench.panel');
 
   return (
-    <div
-      className={cn(
+    <div className={cn('flex h-8 shrink-0 items-stretch bg-muted', className)}>
+      {/* End gutters sit outside the scroller so a clipped tab always cuts off short of the
+          strip edge instead of colliding with the adjacent pane divider; each carries its
+          segment of the band's bottom border. */}
+      <StripEndGutter />
+      <div
         // Scrollbar hidden: an overlay bar covers the tabs' bottom border on macOS, and a
         // classic bar would eat into the fixed strip height; trackpad scrolling still works.
-        'flex h-8 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-        className,
-      )}
-    >
-      {tabs.map((tab) => {
-        const label = fileBasename(tab.path);
-        return (
-          <SectionTabButton
-            key={tab.id}
-            label={label}
-            title={tab.path}
-            icon={PANEL_WINDOW_ICONS.files}
-            active={tab.id === activeTabId}
-            closeLabel={t('closeTab', { label })}
-            onSelect={() => onSelectTab(tab.id)}
-            onClose={() => onCloseTab(tab.id)}
-          />
-        );
-      })}
-      {/* Continues the strip's bottom border across the empty trailing area. */}
-      <div aria-hidden className="flex-1 border-border border-b" />
+        className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {tabs.map((tab) => {
+          const label = fileBasename(tab.path);
+          return (
+            <SectionTabButton
+              key={tab.id}
+              label={label}
+              title={tab.path}
+              icon={PANEL_WINDOW_ICONS.files}
+              active={tab.id === activeTabId}
+              closeLabel={t('closeTab', { label })}
+              onSelect={() => onSelectTab(tab.id)}
+              onClose={() => onCloseTab(tab.id)}
+            />
+          );
+        })}
+        {/* Continues the strip's bottom border across the empty trailing area. */}
+        <div aria-hidden className="flex-1 border-border border-b" />
+      </div>
+      <StripEndGutter />
     </div>
   );
 }
