@@ -68,7 +68,7 @@ import {
   $insertSeparatedDraftText,
   $replaceTriggerWith,
 } from './composer-editor/serialize';
-import { $normalizeLeadingDirectives } from './composer-editor/tokenize';
+import { $normalizeDirectiveTokens } from './composer-editor/tokenize';
 import { movePlusCommandStart } from './composer-plus-search';
 import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
@@ -347,33 +347,46 @@ export function Composer({
     const store = directiveStateFor(editor);
     // Materialize a boundary-less leading `/name` so Enter right after typing the name still
     // routes through the directive path (and its validity gate) instead of slipping out as text.
-    editor.update(() => $normalizeLeadingDirectives(store.getState().suppressed, { force: true }), {
+    editor.update(() => $normalizeDirectiveTokens(store.getState(), { force: true }), {
       discrete: true,
     });
     const directive = editor.read(() =>
       $draftDirective({ commands: catalog, commandsSupported, shellEnabled }),
     );
-    if (directive.kind === 'command') {
-      // Unknown/unsupported chips visibly error and block here — never silently model chat.
-      if (directive.status !== 'supported' || !onInvokeCommand) return;
-      onInvokeCommand(directive.name, directive.args || undefined);
-    } else if (directive.kind === 'shell') {
-      if (directive.status !== 'supported' || !directive.command || !onRunShellCommand) return;
-      onRunShellCommand(directive.command);
-    } else {
-      if (!directive.text && readyAttachments.length === 0) return;
-      const content: ContentBlock[] = [
-        ...(directive.text ? [textBlock(directive.text)] : []),
-        ...readyAttachments.map((attachment) => attachment.block),
-      ];
-      onSend(content);
-      // Attachments travel only with plain prompts — a command/shell directive can't carry them,
-      // so they stay staged in the tray instead of being silently dropped unsent.
-      setAttachments([]);
+    switch (directive.kind) {
+      case 'command': {
+        // Unknown/unsupported chips visibly error and block here — never silently model chat.
+        if (directive.status !== 'supported' || !onInvokeCommand) return;
+        onInvokeCommand(directive.name, directive.args || undefined);
+        break;
+      }
+      case 'shell': {
+        if (directive.status !== 'supported' || !directive.command || !onRunShellCommand) return;
+        onRunShellCommand(directive.command);
+        break;
+      }
+      case 'invalid': {
+        return;
+      }
+      case 'text': {
+        if (!directive.text && readyAttachments.length === 0) return;
+        const content: ContentBlock[] = [
+          ...(directive.text ? [textBlock(directive.text)] : []),
+          ...readyAttachments.map((attachment) => attachment.block),
+        ];
+        onSend(content);
+        // Attachments travel only with plain prompts — a command/shell directive can't carry them,
+        // so they stay staged in the tray instead of being silently dropped unsent.
+        setAttachments([]);
+        break;
+      }
+      default: {
+        return directive satisfies never;
+      }
     }
     editor.update(() => $clearDraft(), { discrete: true });
     editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
-    store.setState({ suppressed: null });
+    store.setState({ suppressed: new Set() });
     resetDraftBookkeeping();
   }
 

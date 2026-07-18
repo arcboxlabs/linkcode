@@ -20,6 +20,7 @@ import { $isCommandNode, $isShellNode } from './nodes';
 
 const WHITESPACE_RE = /\s/;
 const BLOCK_SEPARATOR_SIZE = 2;
+const EMPTY_NODE_KEYS: ReadonlySet<NodeKey> = new Set();
 
 function flatTextContribution(node: LexicalNode, hasFollowingSibling: boolean): number {
   const separator =
@@ -86,7 +87,9 @@ export interface EditorTrigger {
  * a node boundary (typically a chip) counts as a token boundary, so a token can never span a
  * chip — which also means typing directly after a chip can open a fresh trigger.
  */
-export function $computeEditorTrigger(): EditorTrigger | null {
+export function $computeEditorTrigger(
+  suppressed: ReadonlySet<NodeKey> = EMPTY_NODE_KEYS,
+): EditorTrigger | null {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null;
   const { anchor } = selection;
@@ -110,6 +113,9 @@ export function $computeEditorTrigger(): EditorTrigger | null {
   const token = content.slice(start, caret);
   const kind = token[0] === '@' ? 'mention' : token[0] === '/' ? 'slash' : null;
   if (!kind) return null;
+  if (kind === 'slash' && start === 0 && suppressed.has(node.getKey())) {
+    return null;
+  }
   return {
     end: caret,
     flatStart: $flatOffsetOfNode(node) + start,
@@ -329,6 +335,7 @@ export function $leadingDirective(): LeadingDirective | null {
 export type DraftDirective =
   | { kind: 'command'; name: string; args: string; status: DirectiveStatus }
   | { kind: 'shell'; command: string; status: DirectiveStatus }
+  | { kind: 'invalid'; issue: DirectivePlacementIssue; directive: EditorDirective }
   | { kind: 'text'; text: string };
 
 /**
@@ -341,7 +348,15 @@ export function $draftDirective(
 ): DraftDirective {
   const root = $getRoot();
   const text = root.getTextContent();
-  const leading = $leadingDirective();
+  const analysis = $analyzeDirectives();
+  if (analysis.composition.kind === 'blocked') {
+    return {
+      directive: analysis.composition.directive,
+      issue: analysis.composition.issue,
+      kind: 'invalid',
+    };
+  }
+  const leading = analysis.composition.kind === 'ready' ? analysis.composition.directive : null;
   if (leading?.kind === 'command') {
     return {
       // The chip serializes as `/name` at flat offset 0; everything after it is argument text.

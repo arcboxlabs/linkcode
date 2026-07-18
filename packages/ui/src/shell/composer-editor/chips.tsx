@@ -3,13 +3,13 @@ import { Badge } from 'coss-ui/components/badge';
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from 'coss-ui/components/menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import type { NodeKey } from 'lexical';
-import { $createTextNode, $getNodeByKey, $getRoot } from 'lexical';
 import { BookTextIcon, TerminalIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { FileIdentityIcon } from '../../chat/file-identity-icon';
 import type { ComposerDirectiveState, DirectiveStatus } from './directive-state';
 import { commandStatus, directiveStateFor, shellStatus } from './directive-state';
+import { $convertDirectiveToText, $removeDirective } from './serialize';
 
 function useDirectiveState<T>(selector: (state: ComposerDirectiveState) => T): T {
   const [editor] = useLexicalComposerContext();
@@ -32,7 +32,6 @@ interface RecoverableDirectiveChipProps {
 
 function RecoverableDirectiveChip({
   children,
-  literal,
   nodeKey,
   reason,
   variant,
@@ -41,16 +40,14 @@ function RecoverableDirectiveChip({
   const t = useTranslations('workbench.composer');
 
   function convertToText(): void {
-    directiveStateFor(editor).setState({ suppressed: literal });
     editor.update(
       () => {
-        const node = $getNodeByKey(nodeKey);
-        if (!node) return;
-        const text = $createTextNode(literal);
-        node.replace(text);
-        // The directive's existing separator/arguments follow in sibling text. Select the draft
-        // end so conversion cannot immediately reopen the `/` menu at the old token boundary.
-        $getRoot().selectEnd();
+        const suppressedNodeKey = $convertDirectiveToText(nodeKey);
+        if (suppressedNodeKey) {
+          directiveStateFor(editor).setState((state) => ({
+            suppressed: new Set(state.suppressed).add(suppressedNodeKey),
+          }));
+        }
       },
       { discrete: true },
     );
@@ -58,15 +55,7 @@ function RecoverableDirectiveChip({
   }
 
   function removeDirective(): void {
-    editor.update(
-      () => {
-        const node = $getNodeByKey(nodeKey);
-        if (!node) return;
-        node.selectNext(0, 0);
-        node.remove(true);
-      },
-      { discrete: true },
-    );
+    editor.update(() => $removeDirective(nodeKey), { discrete: true });
     editor.focus();
   }
 

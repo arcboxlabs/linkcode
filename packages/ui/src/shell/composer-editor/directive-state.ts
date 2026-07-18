@@ -1,6 +1,6 @@
 import type { AgentCommand } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
-import type { LexicalEditor } from 'lexical';
+import type { LexicalEditor, NodeKey } from 'lexical';
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
@@ -18,10 +18,8 @@ export interface ComposerDirectiveState {
   commandsSupported: boolean;
   /** Whether shell passthrough is currently available (capability + handler present). */
   shellEnabled: boolean;
-  /** Leading directive literal (`/typo`, `$`) the user explicitly converted to text. The
-   * tokenizer skips exactly this literal so the conversion sticks; cleared when the draft is
-   * cleared, so the same draft never re-chips what the user opted out of. */
-  suppressed: string | null;
+  /** Replacement TextNodes explicitly converted back to prose. Node keys keep each opt-out local. */
+  suppressed: ReadonlySet<NodeKey>;
 }
 
 export type DirectiveStateStore = StoreApi<ComposerDirectiveState>;
@@ -37,7 +35,7 @@ export function directiveStateFor(editor: LexicalEditor): DirectiveStateStore {
       commands: [],
       commandsSupported: false,
       shellEnabled: false,
-      suppressed: null,
+      suppressed: new Set(),
     }));
     stores.set(editor, store);
   }

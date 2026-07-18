@@ -26,9 +26,16 @@ import {
   $draftText,
   $replaceTriggerWith,
 } from '../serialize';
-import { $normalizeLeadingDirectives, registerDirectiveTokenizer } from '../tokenize';
+import { $normalizeDirectiveTokens, registerDirectiveTokenizer } from '../tokenize';
 
-function createEditor(getSuppressed: () => string | null = () => null): LexicalEditor {
+const COMMANDS = [{ aliases: ['cost'], name: 'usage' }, { name: 'review' }];
+
+function createEditor(
+  getState: () => Pick<ComposerDirectiveState, 'commands' | 'suppressed'> = () => ({
+    commands: COMMANDS,
+    suppressed: new Set(),
+  }),
+): LexicalEditor {
   const editor = createHeadlessEditor({
     namespace: 'composer-editor-test',
     nodes: COMPOSER_EDITOR_NODES,
@@ -36,7 +43,7 @@ function createEditor(getSuppressed: () => string | null = () => null): LexicalE
       throw error;
     },
   });
-  registerDirectiveTokenizer(editor, getSuppressed);
+  registerDirectiveTokenizer(editor, getState);
   return editor;
 }
 
@@ -84,7 +91,7 @@ function directiveState(
   over: Partial<ComposerDirectiveState> = {},
 ): Pick<ComposerDirectiveState, 'commands' | 'commandsSupported' | 'shellEnabled'> {
   return {
-    commands: [{ aliases: ['cost'], name: 'usage' }, { name: 'review' }],
+    commands: COMMANDS,
     commandsSupported: true,
     shellEnabled: true,
     ...over,
@@ -108,7 +115,11 @@ describe('directive tokenizer', () => {
     setDraft(editor, '/usage');
     expect(draftShape(editor)).toEqual(['text']);
 
-    editor.update(() => $normalizeLeadingDirectives(null, { force: true }), { discrete: true });
+    editor.update(
+      () =>
+        $normalizeDirectiveTokens({ commands: COMMANDS, suppressed: new Set() }, { force: true }),
+      { discrete: true },
+    );
     expect(draftShape(editor)).toEqual(['composer-command']);
     expect(draftText(editor)).toBe('/usage');
   });
@@ -140,27 +151,19 @@ describe('directive tokenizer', () => {
     expect(draftText(editor)).toBe('/usage\nargs');
   });
 
-  it('keeps mid-text and whitespace-prefixed directives as prose', () => {
+  it('chips known commands mid-line without misreading dollar-sign prose as shell', () => {
     const editor = createEditor();
-    for (const draft of ['run /usage now', 'pay $5', ' /usage ', ' $ls']) {
+    setDraft(editor, 'run /usage now');
+    expect(draftShape(editor)).toEqual(['text', 'composer-command', 'text']);
+
+    setDraft(editor, 'run $ now');
+    expect(draftShape(editor)).toEqual(['text']);
+
+    for (const draft of ['pay $5', 'echo $HOME', 'run /typo now', ' $ls']) {
       setDraft(editor, draft);
       expect(draftShape(editor)).toEqual(['text']);
       expect(draftText(editor)).toBe(draft);
     }
-  });
-
-  it('skips exactly the suppressed literal and re-chips once it changes', () => {
-    let suppressed: string | null = '/typo';
-    const editor = createEditor(() => suppressed);
-    setDraft(editor, '/typo x');
-    expect(draftShape(editor)).toEqual(['text']);
-
-    setDraft(editor, '/typos x');
-    expect(draftShape(editor)).toEqual(['composer-command', 'text']);
-
-    suppressed = '$';
-    setDraft(editor, '$ls');
-    expect(draftShape(editor)).toEqual(['text']);
   });
 
   it('does not tokenize during history replays', () => {
@@ -176,7 +179,7 @@ describe('directive tokenizer', () => {
     expect(draftShape(editor)).toEqual(['text']);
   });
 
-  it('demotes a chip displaced from position 0 back to its literal text', () => {
+  it('keeps a chip displaced from position 0', () => {
     const editor = createEditor();
     setDraft(editor, '/usage rest');
     expect(draftShape(editor)).toEqual(['composer-command', 'text']);
@@ -189,11 +192,11 @@ describe('directive tokenizer', () => {
       },
       { discrete: true },
     );
-    expect(draftShape(editor)).toEqual(['text']);
+    expect(draftShape(editor)).toEqual(['text', 'composer-command', 'text']);
     expect(draftText(editor)).toBe('hi /usage rest');
   });
 
-  it('demotes a chip displaced by structural nodes', () => {
+  it('keeps a chip displaced by structural nodes', () => {
     const editor = createEditor();
     setDraft(editor, '/usage rest');
 
@@ -205,7 +208,7 @@ describe('directive tokenizer', () => {
       },
       { discrete: true },
     );
-    expect(draftShape(editor)).not.toContain('composer-command');
+    expect(draftShape(editor)).toContain('composer-command');
     expect(draftText(editor)).toBe('\n/usage rest');
   });
 });
@@ -311,10 +314,10 @@ describe('$draftDirective', () => {
 
   it('classifies everything else as text — prose containing / stays prose', () => {
     const editor = createEditor();
-    setDraft(editor, 'hello /usage');
+    setDraft(editor, 'hello /path');
     expect(editor.read(() => $draftDirective(directiveState()))).toEqual({
       kind: 'text',
-      text: 'hello /usage',
+      text: 'hello /path',
     });
   });
 });
@@ -472,7 +475,7 @@ describe('$replaceTriggerWith', () => {
     expect(draftText(editor)).toBe('see "src/app.ts"\nnext');
   });
 
-  it('inserts a command chip that the tokenizer keeps only at position 0', () => {
+  it('keeps command-menu chips at leading and mid-text positions', () => {
     const editor = createEditor();
     triggerAtEnd(editor, '/rev');
     editor.update(
@@ -486,8 +489,6 @@ describe('$replaceTriggerWith', () => {
     expect(draftShape(editor)).toEqual(['composer-command', 'text']);
     expect(draftText(editor)).toBe('/review ');
 
-    // Mid-text command selection demotes instantly — parity with the old composer, where a
-    // mid-text /name insert stayed literal text.
     const editor2 = createEditor();
     triggerAtEnd(editor2, 'hi /rev');
     editor2.update(
@@ -498,7 +499,7 @@ describe('$replaceTriggerWith', () => {
       },
       { discrete: true },
     );
-    expect(draftShape(editor2)).toEqual(['text']);
+    expect(draftShape(editor2)).toEqual(['text', 'composer-command', 'text']);
     expect(draftText(editor2)).toBe('hi /review ');
   });
 

@@ -1,7 +1,7 @@
 import { mergeRegister } from '@lexical/utils';
+import { agentCommandMatches } from '@linkcode/schema';
 import type { LexicalEditor } from 'lexical';
 import {
-  $createTextNode,
   $getRoot,
   $hasUpdateTag,
   $isElementNode,
@@ -11,76 +11,132 @@ import {
   LineBreakNode,
   TextNode,
 } from 'lexical';
-import { $createCommandNode, $createShellNode, CommandNode, ShellNode } from './nodes';
+import type { ComposerDirectiveState } from './directive-state';
+import { $createCommandNode, $createShellNode, $isCommandNode, $isShellNode } from './nodes';
 
-/** `/name` followed by a boundary the user already typed. */
-const LEADING_COMMAND_RE = /^\/(\S+)\s/;
-/** `/name` at draft end — only materialized on submit (`force`), so Enter right after the name
- * still routes through the directive path instead of slipping out as text. */
-const LEADING_COMMAND_AT_END_RE = /^\/(\S+)$/;
+const WHITESPACE_RE = /\s/;
 
-/**
- * Keep directive chips and the document-leading position in sync, in both directions:
- *
- * - Promote: a first-child TextNode starting with `/name<ws>` or `$` becomes a chip — eagerly,
- *   even when the name is unknown (the chip then visibly errors instead of the draft silently
- *   becoming model chat). Strictly position 0: mid-text `/` and `$` are prose, and a
- *   whitespace-prefixed draft stays prose by construction.
- * - Demote: a chip that is no longer the document-leading child (text typed/pasted before it)
- *   melts back into its literal text — a directive is only meaningful at position 0.
- *
- * Both directions run in the same transform pass and are mutually exclusive per node, so the
- * pass is stable (no promote/demote cycles). `suppressed` skips exactly the literal the user
- * converted to text via the chip affordance.
- */
-export function $normalizeLeadingDirectives(
-  suppressed: string | null,
-  opts: { force?: boolean } = {},
-): void {
-  const root = $getRoot();
-  const firstBlock = root.getFirstChild();
-  if (!$isElementNode(firstBlock)) return;
+type TokenizerState = Pick<ComposerDirectiveState, 'commands' | 'suppressed'>;
 
-  for (const chip of [...$nodesOfType(CommandNode), ...$nodesOfType(ShellNode)]) {
-    if (chip.getParent() === firstBlock && chip.getPreviousSibling() === null) continue;
-    chip.replace($createTextNode(chip.getTextContent()));
-  }
+type DirectiveCandidate =
+  | { end: number; kind: 'command'; name: string; start: number }
+  | { end: number; kind: 'shell'; start: number };
 
-  const first = firstBlock.getFirstChild();
-  if (!$isTextNode(first)) return;
-  const text = root.getTextContent();
-
-  if (text[0] === '$') {
-    if (suppressed === '$') return;
-    const token = text.length > 1 ? first.splitText(1)[0] : first;
-    token.replace($createShellNode());
-    return;
-  }
-
-  const match =
-    LEADING_COMMAND_RE.exec(text) ?? (opts.force ? LEADING_COMMAND_AT_END_RE.exec(text) : null);
-  if (!match) return;
-  const name = match[1];
-  if (suppressed === `/${name}`) return;
-  const tokenLength = name.length + 1;
-  const token = tokenLength < text.length ? first.splitText(tokenLength)[0] : first;
-  token.replace($createCommandNode(name));
+function $isDocumentStart(node: TextNode, offset: number): boolean {
+  if (offset !== 0 || node.getPreviousSibling() !== null) return false;
+  const block = node.getParent();
+  return block !== null && block === $getRoot().getFirstChild();
 }
 
-/** Register the directive tokenizer as node transforms (text edits promote, displaced chips
- * demote). Skips IME composition and history replays so undo is never immediately re-tokenized. */
+function $hasBoundaryBefore(node: TextNode, offset: number): boolean {
+  const content = node.getTextContent();
+  if (offset > 0) return WHITESPACE_RE.test(content[offset - 1]);
+  const previous = node.getPreviousSibling();
+  return (
+    previous === null ||
+    !$isTextNode(previous) ||
+    WHITESPACE_RE.test(previous.getTextContent().slice(-1))
+  );
+}
+
+/** A command waits for a boundary the user actually typed, unless submit forces the final token. */
+function $hasBoundaryAfter(node: TextNode, offset: number): boolean {
+  const content = node.getTextContent();
+  if (offset < content.length) return WHITESPACE_RE.test(content[offset]);
+  const next = node.getNextSibling();
+  if (next instanceof LineBreakNode) return true;
+  if ($isTextNode(next)) return WHITESPACE_RE.test(next.getTextContent().slice(0, 1));
+  const parent = node.getParent();
+  return next === null && parent?.getNextSibling() !== null;
+}
+
+function $findDirectiveCandidate(
+  node: TextNode,
+  state: TokenizerState,
+  force: boolean,
+): DirectiveCandidate | null {
+  const content = node.getTextContent();
+  const suppressInitialToken = state.suppressed.has(node.getKey());
+
+  for (let start = 0; start < content.length; start++) {
+    if (!$hasBoundaryBefore(node, start)) continue;
+    const leading = $isDocumentStart(node, start);
+    if (content[start] === '$') {
+      // A mid-line `$` is ordinary prose too often to infer shell intent. Shell execution is
+      // unambiguous only at document start, matching the wire input it becomes.
+      if (leading && !suppressInitialToken) return { end: start + 1, kind: 'shell', start };
+      continue;
+    }
+    if (content[start] !== '/') continue;
+    let end = start + 1;
+    while (end < content.length && !WHITESPACE_RE.test(content[end])) end++;
+    const name = content.slice(start + 1, end);
+    if (!name) continue;
+    if (start === 0 && suppressInitialToken) continue;
+    const known = state.commands.some((command) => agentCommandMatches(command, name));
+    if ((!leading && !known) || (!$hasBoundaryAfter(node, end) && !force)) continue;
+    return { end, kind: 'command', name, start };
+  }
+  return null;
+}
+
+function $hasLeadingDirective(): boolean {
+  const firstBlock = $getRoot().getFirstChild();
+  if (!$isElementNode(firstBlock)) return false;
+  const first = firstBlock.getFirstChild();
+  return $isCommandNode(first) || $isShellNode(first);
+}
+
+function $replaceCandidate(node: TextNode, candidate: DirectiveCandidate): void {
+  const length = node.getTextContentSize();
+  let token: TextNode;
+  if (candidate.start === 0 && candidate.end === length) token = node;
+  else if (candidate.start === 0) [token] = node.splitText(candidate.end);
+  else if (candidate.end === length) [, token] = node.splitText(candidate.start);
+  else [, token] = node.splitText(candidate.start, candidate.end);
+  token.replace(
+    candidate.kind === 'command' ? $createCommandNode(candidate.name) : $createShellNode(),
+  );
+}
+
+/**
+ * Materialize directive-looking text without lying about execution. A leading command is chipped
+ * even when unknown so it cannot silently fall through as model prose. Mid-line commands require
+ * an exact live catalog match; shell intent remains leading-only because a mid-line `$` is
+ * ambiguous prose. Placement validity is classified separately by `$analyzeDirectives`.
+ */
+export function $normalizeDirectiveTokens(
+  state: TokenizerState,
+  opts: { force?: boolean } = {},
+): void {
+  let changed = true;
+  while (changed) {
+    // Everything after a leading directive is its raw argument/payload text. Do not reinterpret
+    // `/name` inside command arguments or shell syntax as a second action.
+    if ($hasLeadingDirective()) return;
+    changed = false;
+    for (const node of $nodesOfType(TextNode)) {
+      const candidate = $findDirectiveCandidate(node, state, opts.force ?? false);
+      if (!candidate) continue;
+      $replaceCandidate(node, candidate);
+      changed = true;
+      break;
+    }
+  }
+}
+
+/** Register the tokenizer as node transforms. Skips IME composition and history replays so undo
+ * is never immediately re-tokenized. */
 export function registerDirectiveTokenizer(
   editor: LexicalEditor,
-  getSuppressed: () => string | null,
+  getState: () => TokenizerState,
 ): () => void {
   const run = (): void => {
     if (editor.isComposing() || $hasUpdateTag(HISTORIC_TAG)) return;
-    $normalizeLeadingDirectives(getSuppressed());
+    $normalizeDirectiveTokens(getState());
   };
   return mergeRegister(
     editor.registerNodeTransform(TextNode, run),
     editor.registerNodeTransform(LineBreakNode, run),
-    editor.registerNodeTransform(CommandNode, run),
-    editor.registerNodeTransform(ShellNode, run),
   );
 }

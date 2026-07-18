@@ -27,7 +27,7 @@ import {
   $draftText,
   $leadingDirective,
 } from './serialize';
-import { registerDirectiveTokenizer } from './tokenize';
+import { $normalizeDirectiveTokens, registerDirectiveTokenizer } from './tokenize';
 
 /** What the composer mirrors out of the editor after every committed update. */
 export interface ComposerDraftSnapshot {
@@ -78,7 +78,10 @@ function DirectiveStatePlugin({
   // Prop → external-store sync for the chip portals (they can't receive props through Lexical's
   // decorator boundary); not a state watcher.
   useEffect(() => {
-    directiveStateFor(editor).setState({ commands, commandsSupported, shellEnabled });
+    const store = directiveStateFor(editor);
+    store.setState({ commands, commandsSupported, shellEnabled });
+    // A late catalog can prove that already-typed mid-line `/name` text is a real command.
+    editor.update(() => $normalizeDirectiveTokens(store.getState()), { discrete: true });
   }, [editor, commands, commandsSupported, shellEnabled]);
   return null;
 }
@@ -86,7 +89,7 @@ function DirectiveStatePlugin({
 function TokenizerPlugin(): null {
   const [editor] = useLexicalComposerContext();
   useEffect(
-    () => registerDirectiveTokenizer(editor, () => directiveStateFor(editor).getState().suppressed),
+    () => registerDirectiveTokenizer(editor, () => directiveStateFor(editor).getState()),
     [editor],
   );
   return null;
@@ -210,12 +213,13 @@ export function ComposerEditor({
   function handleChange(editorState: EditorState, editor: LexicalEditor): void {
     // Mid-composition states are transient; the compositionend commit reports the final draft.
     if (editor.isComposing()) return;
+    const store = directiveStateFor(editor);
     onDraftChange(
       editorState.read(() => ({
         caretOffset: $caretFlatOffset(),
         directive: $leadingDirective(),
         text: $draftText(),
-        trigger: $computeEditorTrigger(),
+        trigger: $computeEditorTrigger(store.getState().suppressed),
       })),
     );
   }
