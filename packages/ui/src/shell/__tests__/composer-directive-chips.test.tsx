@@ -73,8 +73,12 @@ describe('Composer directive chips', () => {
 
     typeInComposer('/typo ');
     const chip = screen.getByRole('button', { name: '/typo' });
-    const alert = screen.getByRole('alert');
-    expect(within(alert).getByText('commandUnknown')).toBeDefined();
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('commandUnknown')).toBeDefined();
+    const footer = status.closest('[data-slot="frame-panel-footer"]');
+    const frame = status.closest('[data-slot="frame"]');
+    expect(footer?.parentElement).toBe(frame);
+    expect(status.closest('form')).toBeNull();
     await user.hover(chip);
 
     await waitFor(() => {
@@ -122,7 +126,7 @@ describe('Composer directive chips', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
     rerender(composer({ agentCommands: COMMANDS, onInvokeCommand, onSend }));
 
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
     expect(screen.getByRole('button', { name: '/review' })).toBeDefined();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false);
     await pressInComposer('Enter');
@@ -156,12 +160,12 @@ describe('Composer directive chips', () => {
     expect(document.getElementById(chip.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
       'commandMisplaced',
     );
-    const alert = screen.getByRole('alert');
-    expect(within(alert).getByText('commandMisplaced')).toBeDefined();
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('commandMisplaced')).toBeDefined();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
 
-    await user.click(within(alert).getByRole('button', { name: 'moveDirectiveToStart' }));
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    await user.click(within(status).getByRole('button', { name: 'moveDirectiveToStart' }));
+    expect(screen.queryByRole('status')).toBeNull();
     expect(composerText()).toBe('/review please now');
     await pressInComposer('Enter');
     expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', 'please now');
@@ -174,13 +178,13 @@ describe('Composer directive chips', () => {
     typeInComposer('/review /');
     await user.click(screen.getByRole('option', { name: RE_COMPACT_COMMAND }));
 
-    const alert = screen.getByRole('alert');
-    expect(within(alert).getByText('multipleDirectives')).toBeDefined();
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('multipleDirectives')).toBeDefined();
     await pressInComposer('Enter');
     expect(onInvokeCommand).not.toHaveBeenCalled();
 
-    await user.click(within(alert).getByRole('button', { name: 'convertToText' }));
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    await user.click(within(status).getByRole('button', { name: 'convertToText' }));
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
     expect(composerText()).toBe('/review /compact ');
     await pressInComposer('Enter');
     expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', '/compact');
@@ -194,7 +198,7 @@ describe('Composer directive chips', () => {
     rerender(composer({ agentCommands: COMMANDS }));
 
     expect(await screen.findByRole('button', { name: '/review' })).toBeDefined();
-    expect(within(screen.getByRole('alert')).getByText('commandMisplaced')).toBeDefined();
+    expect(within(screen.getByRole('status')).getByText('commandMisplaced')).toBeDefined();
   });
 
   it('explains an unavailable shell directive and blocks submit', async () => {
@@ -205,8 +209,8 @@ describe('Composer directive chips', () => {
 
     typeInComposer('$ ls -la');
     const shellChip = screen.getByRole('button', { name: '$' });
-    const alert = screen.getByRole('alert');
-    expect(within(alert).getByText('shellUnsupported')).toBeDefined();
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('shellUnsupported')).toBeDefined();
     await user.hover(shellChip);
 
     await waitFor(() => {
@@ -227,7 +231,7 @@ describe('Composer directive chips', () => {
     rerender(composer({ disabled: true }));
 
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '/typo' }).disabled).toBe(true);
-    for (const action of within(screen.getByRole('alert')).getAllByRole<HTMLButtonElement>(
+    for (const action of within(screen.getByRole('status')).getAllByRole<HTMLButtonElement>(
       'button',
     )) {
       expect(action.disabled).toBe(true);

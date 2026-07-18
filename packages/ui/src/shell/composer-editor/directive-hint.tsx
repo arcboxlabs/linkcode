@@ -1,4 +1,3 @@
-import { Alert, AlertAction, AlertDescription } from 'coss-ui/components/alert';
 import { Button } from 'coss-ui/components/button';
 import { TriangleAlertIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
@@ -9,11 +8,7 @@ export type ComposerDirectiveIssue =
   | DirectivePlacementIssue
   | Exclude<DirectiveStatus, 'supported'>;
 
-/**
- * Always-visible explanation for a blocked directive draft — the chip's tint alone is too
- * subtle, and its tooltip only surfaces on hover. Renders the reason plus the same recovery
- * actions the chip menu offers, so the user never has to discover them by hovering.
- */
+/** Compact persistent explanation for a blocked directive draft and its recovery actions. */
 export function ComposerDirectiveHint({
   directive,
   disabled,
@@ -43,49 +38,29 @@ export function ComposerDirectiveHint({
           : issue === 'unknown'
             ? t('commandUnknown', { command: directive.name })
             : t('commandUnsupported');
-  const variant =
-    issue === 'unknown' || (directive.kind === 'shell' && issue === 'unsupported')
-      ? 'error'
-      : 'warning';
   return (
-    <Alert
-      className="mx-1 mb-1.5 w-auto rounded-md px-1 py-1.5 text-xs has-[>svg]:has-data-[slot=alert-action]:grid-cols-[calc(var(--spacing)*4)_1fr] sm:mx-3.5 sm:px-2"
+    <div
+      className="flex w-full flex-wrap items-center gap-x-1 gap-y-1 px-2 pt-2 pb-1"
       data-slot="composer-directive-hint"
-      variant={variant}
+      role="status"
     >
-      <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
-      <AlertDescription className="min-w-0 break-words text-xs">{reason}</AlertDescription>
-      <AlertAction className="mt-1.5 flex-wrap justify-end gap-y-1 ![grid-column:1/-1] ![grid-row:2] max-sm:flex-col">
+      <div className="flex min-h-7 min-w-64 flex-1 items-center gap-1 px-2 text-muted-foreground text-sm">
+        <TriangleAlertIcon aria-hidden className="size-4 shrink-0 text-warning" />
+        <span className="min-w-0 break-words">{reason}</span>
+      </div>
+      <div className="ms-auto flex items-center gap-1">
         {onMoveToStart ? (
-          <Button
-            className="h-6 px-2 text-xs max-sm:w-full"
-            disabled={disabled}
-            size="sm"
-            variant="ghost"
-            onClick={onMoveToStart}
-          >
+          <Button disabled={disabled} size="sm" variant="ghost" onClick={onMoveToStart}>
             {t('moveDirectiveToStart')}
           </Button>
         ) : null}
-        <Button
-          className="h-6 px-2 text-xs max-sm:w-full"
-          disabled={disabled}
-          size="sm"
-          variant="ghost"
-          onClick={onConvertToText}
-        >
+        <Button disabled={disabled} size="sm" variant="ghost" onClick={onConvertToText}>
           {t('convertToText')}
         </Button>
-        <Button
-          className="h-6 px-2 text-xs max-sm:w-full"
-          disabled={disabled}
-          size="sm"
-          variant="ghost"
-          onClick={onRemove}
-        >
+        <Button disabled={disabled} size="sm" variant="ghost" onClick={onRemove}>
           {t('removeDirective')}
         </Button>
-      </AlertAction>
-    </Alert>
+      </div>
+    </div>
   );
 }

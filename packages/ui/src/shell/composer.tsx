@@ -322,7 +322,7 @@ export function Composer({
 
   const hasCommandItems = commandGroups.some((group) => group.items.length > 0);
   const commandOpen = !disabled && Boolean(commandSource);
-  const frameVisible = commandOpen || contextBar != null;
+  const frameVisible = commandOpen || blockedDirective !== null || contextBar != null;
   const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
   const [exitCommandGroups, setExitCommandGroups] = useState(() => commandGroups);
   const [exitCommandEmptyLabel, setExitCommandEmptyLabel] = useState(emptyCommandLabel);
@@ -629,7 +629,7 @@ export function Composer({
     if (textTrigger?.kind === 'mention') onMentionQueryChange?.(null);
   }
 
-  // Persistent-alert twins of the chip menu's recovery actions.
+  // Persistent footer twins of the chip menu's recovery actions.
   function convertBlockedDirectiveToText(): void {
     if (disabled) return;
     const key = blockedDirective?.directive.nodeKey;
@@ -851,20 +851,6 @@ export function Composer({
                   onPasteFiles={ingestFiles}
                   onSubmit={submit}
                 />
-                {blockedDirective ? (
-                  <ComposerDirectiveHint
-                    directive={blockedDirective.directive}
-                    disabled={disabled}
-                    issue={blockedDirective.issue}
-                    onConvertToText={convertBlockedDirectiveToText}
-                    onMoveToStart={
-                      blockedDirective.issue === 'misplaced'
-                        ? moveBlockedDirectiveToStart
-                        : undefined
-                    }
-                    onRemove={removeBlockedDirective}
-                  />
-                ) : null}
                 <PromptInputFooter onMouseDown={focusEditorFromFooter}>
                   <PromptInputTools>
                     <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
@@ -921,7 +907,53 @@ export function Composer({
                   />
                 </PromptInputFooter>
               </PromptInput>
-              {contextBar ? <FrameFooter className="p-0">{contextBar}</FrameFooter> : null}
+              <FrameFooter className="p-0">
+                <div aria-hidden={!blockedDirective} inert={!blockedDirective} className="min-h-0">
+                  <AnimatePresence initial={false}>
+                    {blockedDirective ? (
+                      <motion.div
+                        key="composer-directive-hint"
+                        className="min-h-0 overflow-hidden"
+                        initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+                        animate={{
+                          height: 'auto',
+                          opacity: 1,
+                          transition: reducedMotion
+                            ? { duration: 0 }
+                            : {
+                                height: { duration: 0.22, ease: [0.2, 0, 0, 1] },
+                                opacity: { duration: 0.18, ease: [0.2, 0, 0, 1] },
+                              },
+                        }}
+                        exit={{
+                          height: 0,
+                          opacity: 0,
+                          transition: reducedMotion
+                            ? { duration: 0 }
+                            : {
+                                height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                                opacity: { duration: 0.22, ease: [0.4, 0, 0.2, 1] },
+                              },
+                        }}
+                      >
+                        <ComposerDirectiveHint
+                          directive={blockedDirective.directive}
+                          disabled={disabled}
+                          issue={blockedDirective.issue}
+                          onConvertToText={convertBlockedDirectiveToText}
+                          onMoveToStart={
+                            blockedDirective.issue === 'misplaced'
+                              ? moveBlockedDirectiveToStart
+                              : undefined
+                          }
+                          onRemove={removeBlockedDirective}
+                        />
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+                {contextBar}
+              </FrameFooter>
             </Frame>
           </Command>
         </div>

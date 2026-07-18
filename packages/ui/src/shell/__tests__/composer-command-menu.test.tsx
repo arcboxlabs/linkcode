@@ -368,15 +368,20 @@ describe('Composer command menu', () => {
     expect(await screen.findByRole('img', { name: 'valid.png' })).toBeDefined();
   });
 
-  it('renders new-session context as a separate frame footer outside the form', () => {
+  it('shares one frame footer between directive status and new-session context', () => {
     render(composer({ contextBar: <button type="button">Workspace context</button> }));
+    typeInComposer('/typo ');
 
     const context = screen.getByRole('button', { name: 'Workspace context' });
+    const status = screen.getByRole('status');
     const footer = context.closest('[data-slot="frame-panel-footer"]');
     const frame = context.closest('[data-slot="frame"]');
     expect(footer).not.toBeNull();
     expect(footer?.parentElement).toBe(frame);
+    expect(status.closest('[data-slot="frame-panel-footer"]')).toBe(footer);
+    expect(frame?.querySelectorAll('[data-slot="frame-panel-footer"]')).toHaveLength(1);
     expect(context.closest('form')).toBeNull();
+    expect(status.closest('form')).toBeNull();
     expect(frame?.querySelector('form')).not.toBeNull();
   });
 });
