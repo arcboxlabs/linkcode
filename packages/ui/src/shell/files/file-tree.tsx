@@ -81,10 +81,12 @@ export function WorkspaceFileTree({
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      {/* h-9 matches the viewer pane's tab strip so the band's bottom border lines up
+      {/* Height matches the viewer pane's tab strip so the band's bottom border lines up
           across the tree divider. */}
-      <div className="flex h-9 shrink-0 items-center border-border border-b bg-muted px-1">
-        <InputGroup className="h-7 rounded-md border-0 bg-transparent shadow-none">
+      <div className="flex h-8 shrink-0 items-center border-border border-b bg-muted px-1">
+        {/* ring-0!: important beats the group's has-[input:focus-visible]:ring-[3px] — this
+            embedded field draws no chrome of its own inside the band. */}
+        <InputGroup className="h-7 rounded-md border-0 bg-transparent shadow-none ring-0!">
           <InputGroupAddon>
             <SearchIcon className="text-muted-foreground" />
           </InputGroupAddon>

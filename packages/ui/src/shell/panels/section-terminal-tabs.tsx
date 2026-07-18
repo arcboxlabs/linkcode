@@ -30,7 +30,7 @@ export function SectionTerminalTabStrip({
       className={cn(
         // Same scrollbar treatment as FileTabStrip: overlay bars cover the border, classic
         // bars steal strip height.
-        'flex h-9 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        'flex h-8 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
     >
