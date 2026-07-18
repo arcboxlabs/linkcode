@@ -28,9 +28,9 @@ export function SectionTerminalTabStrip({
   return (
     <div
       className={cn(
-        // Same hidden-scrollbar treatment as FileTabStrip: overlay bars cover the border,
-        // classic bars steal strip height.
-        'flex h-8 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        // Same hidden-scrollbar + snap treatment as FileTabStrip: scrollbars would cover the
+        // border or steal height, and mandatory snap keeps rest positions on tab edges.
+        'flex h-8 shrink-0 snap-x snap-mandatory items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
     >
@@ -48,8 +48,9 @@ export function SectionTerminalTabStrip({
           />
         );
       })}
-      {/* Trailing area carries the + button and continues the strip's bottom border. */}
-      <div className="flex flex-1 items-center border-border border-b px-1">
+      {/* Trailing area carries the + button and continues the strip's bottom border;
+          snap-end makes the fully-scrolled position (+ visible) a valid snap rest. */}
+      <div className="flex flex-1 snap-end items-center border-border border-b px-1">
         <ShellIconButton label={t('newTerminalTab')} onClick={onAddTab}>
           <PlusIcon />
         </ShellIconButton>

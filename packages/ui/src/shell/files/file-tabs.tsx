@@ -30,7 +30,9 @@ export function FileTabStrip({
       className={cn(
         // Scrollbar hidden: an overlay bar covers the tabs' bottom border on macOS, and a
         // classic bar would eat into the fixed strip height; trackpad scrolling still works.
-        'flex h-8 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        // Mandatory snap: a scroll can only REST with a tab edge on the divider-side strip
+        // edge, so a half-clipped tab never sits against the adjacent pane.
+        'flex h-8 shrink-0 snap-x snap-mandatory items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
     >

@@ -27,16 +27,24 @@ export function SectionTabButton({
 }): React.ReactNode {
   const rootRef = useRef<HTMLDivElement>(null);
   // The strip scrolls with a hidden scrollbar, so an activated tab (e.g. a file just opened
-  // from the tree, appended past the overflow edge) must bring itself into view.
+  // from the tree, appended past the overflow edge) must bring itself into view. inline:
+  // 'end' (not 'nearest') so the landing position is one of the strip's snap-end rest
+  // positions; guarded so activating an already-visible tab never shifts the strip.
   useEffect(() => {
-    if (active) rootRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const el = rootRef.current;
+    const scroller = el?.parentElement;
+    if (!active || !el || !scroller) return;
+    const clipped =
+      el.offsetLeft < scroller.scrollLeft ||
+      el.offsetLeft + el.offsetWidth > scroller.scrollLeft + scroller.clientWidth;
+    if (clipped) el.scrollIntoView({ block: 'nearest', inline: 'end' });
   }, [active]);
 
   return (
     <div
       ref={rootRef}
       className={cn(
-        'group flex max-w-40 shrink-0 grow items-center overflow-hidden border-border border-r text-xs [-webkit-app-region:no-drag]',
+        'group flex max-w-40 shrink-0 grow snap-end items-center overflow-hidden border-border border-r text-xs [-webkit-app-region:no-drag]',
         active
           ? 'bg-background font-semibold text-foreground'
           : 'border-b text-muted-foreground hover:bg-accent hover:text-foreground',
