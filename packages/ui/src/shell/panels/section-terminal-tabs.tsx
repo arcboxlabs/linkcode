@@ -27,10 +27,9 @@ export function SectionTerminalTabStrip({
 
   return (
     <div className={cn('flex h-8 shrink-0 items-stretch bg-muted', className)}>
-      {/* Same end-gutter + hidden-scrollbar treatment as FileTabStrip: clipped tabs cut off
-          at the gutters instead of the strip edge, and scrollbars would cover the border or
-          steal strip height. */}
-      <StripEndGutter />
+      {/* Same trailing-gutter + hidden-scrollbar treatment as FileTabStrip: clipped tabs cut
+          off at the gutter instead of the strip edge, and scrollbars would cover the border
+          or steal strip height. */}
       <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab, index) => {
           const label = `${terminalLabel} ${index + 1}`;

@@ -27,10 +27,6 @@ export function FileTabStrip({
 
   return (
     <div className={cn('flex h-8 shrink-0 items-stretch bg-muted', className)}>
-      {/* End gutters sit outside the scroller so a clipped tab always cuts off short of the
-          strip edge instead of colliding with the adjacent pane divider; each carries its
-          segment of the band's bottom border. */}
-      <StripEndGutter />
       <div
         // Scrollbar hidden: an overlay bar covers the tabs' bottom border on macOS, and a
         // classic bar would eat into the fixed strip height; trackpad scrolling still works.
@@ -54,6 +50,8 @@ export function FileTabStrip({
         {/* Continues the strip's bottom border across the empty trailing area. */}
         <div aria-hidden className="flex-1 border-border border-b" />
       </div>
+      {/* Trailing side only: it blends into the filler when nothing is clipped, while the
+          leading edge stays flush so the first tab sits on the strip edge. */}
       <StripEndGutter />
     </div>
   );
