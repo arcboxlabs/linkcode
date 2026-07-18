@@ -10,7 +10,11 @@ import {
   $isRootNode,
   $isTextNode,
 } from 'lexical';
-import type { ComposerDirectiveState, DirectiveStatus } from './directive-state';
+import type {
+  ComposerDirectiveState,
+  DirectivePlacementIssue,
+  DirectiveStatus,
+} from './directive-state';
 import { commandStatus, shellStatus } from './directive-state';
 import { $isCommandNode, $isShellNode } from './nodes';
 
@@ -173,6 +177,142 @@ export function $insertSeparatedDraftText(text: string, trailing: boolean): void
 export type EditorDirective =
   | { kind: 'command'; name: string; nodeKey: NodeKey }
   | { kind: 'shell'; nodeKey: NodeKey };
+
+export type DirectiveComposition =
+  | { kind: 'none' }
+  | { directive: EditorDirective; kind: 'ready' }
+  | { directive: EditorDirective; issue: DirectivePlacementIssue; kind: 'blocked' };
+
+export interface DirectiveAnalysis {
+  blockedKeys: readonly NodeKey[];
+  composition: DirectiveComposition;
+  leading: EditorDirective | null;
+}
+
+function $asEditorDirective(node: LexicalNode): EditorDirective | null {
+  if ($isCommandNode(node)) {
+    return { kind: 'command', name: node.getName(), nodeKey: node.getKey() };
+  }
+  if ($isShellNode(node)) return { kind: 'shell', nodeKey: node.getKey() };
+  return null;
+}
+
+function $collectDirectives(node: LexicalNode, output: EditorDirective[]): void {
+  const directive = $asEditorDirective(node);
+  if (directive) {
+    output.push(directive);
+    return;
+  }
+  if (!$isElementNode(node)) return;
+  for (const child of node.getChildren()) $collectDirectives(child, output);
+}
+
+/** Classify directive placement independently from catalog validity. AgentInput can represent
+ * exactly one command or shell action, and that action owns the entire draft from offset zero. */
+export function $analyzeDirectives(): DirectiveAnalysis {
+  const root = $getRoot();
+  const directives: EditorDirective[] = [];
+  for (const child of root.getChildren()) $collectDirectives(child, directives);
+
+  const firstBlock = root.getFirstChild();
+  const first = $isElementNode(firstBlock) ? firstBlock.getFirstChild() : null;
+  const leading = first ? $asEditorDirective(first) : null;
+  if (directives.length === 0) {
+    return { blockedKeys: [], composition: { kind: 'none' }, leading: null };
+  }
+  if (directives.length === 1 && leading) {
+    return {
+      blockedKeys: [],
+      composition: { directive: leading, kind: 'ready' },
+      leading,
+    };
+  }
+  if (directives.length === 1) {
+    return {
+      blockedKeys: [directives[0].nodeKey],
+      composition: { directive: directives[0], issue: 'misplaced', kind: 'blocked' },
+      leading: null,
+    };
+  }
+  const target = leading ? directives[1] : directives[0];
+  return {
+    blockedKeys: directives.map((directive) => directive.nodeKey),
+    composition: { directive: target, issue: 'multiple', kind: 'blocked' },
+    leading,
+  };
+}
+
+/** Melt a directive chip back into its literal text (the explicit user opt-out) and return the
+ * replacement node key, or null when the node is already gone. The caret moves to that token's
+ * end so conversion cannot immediately reopen the `/` menu at the old boundary. */
+export function $convertDirectiveToText(nodeKey: NodeKey): NodeKey | null {
+  const node = $getNodeByKey(nodeKey);
+  if (!node) return null;
+  const literal = node.getTextContent();
+  const text = $createTextNode(literal).toggleUnmergeable();
+  node.replace(text);
+  text.selectEnd();
+  return text.getKey();
+}
+
+function $removeComposerChip(node: LexicalNode): void {
+  const previous = node.getPreviousSibling();
+  const next = node.getNextSibling();
+  const previousEndsInWhitespace =
+    $isTextNode(previous) && WHITESPACE_RE.test(previous.getTextContent().at(-1) ?? '');
+  const nextStartsWithWhitespace =
+    $isTextNode(next) && WHITESPACE_RE.test(next.getTextContent()[0] ?? '');
+
+  if (nextStartsWithWhitespace && (!previous || previousEndsInWhitespace)) {
+    next.setTextContent(next.getTextContent().slice(1));
+    if (next.getTextContentSize() === 0 && !next.getNextSibling() && previousEndsInWhitespace) {
+      previous.setTextContent(previous.getTextContent().slice(0, -1));
+    }
+  } else if (!next && previousEndsInWhitespace) {
+    previous.setTextContent(previous.getTextContent().slice(0, -1));
+  }
+
+  if ($isTextNode(next)) next.select(0, 0);
+  else if ($isTextNode(previous)) previous.selectEnd();
+  else node.selectNext(0, 0);
+  node.remove(true);
+}
+
+/** Remove a directive chip and its redundant boundary separator. */
+export function $removeDirective(nodeKey: NodeKey): void {
+  const node = $getNodeByKey(nodeKey);
+  if (!$isCommandNode(node) && !$isShellNode(node)) return;
+  $removeComposerChip(node);
+}
+
+/** Move a lone misplaced directive to offset zero, preserving the preceding prose as arguments. */
+export function $moveDirectiveToStart(nodeKey: NodeKey): void {
+  const node = $getNodeByKey(nodeKey);
+  const firstBlock = $getRoot().getFirstChild();
+  if (!node || !$isElementNode(firstBlock)) return;
+  const first = firstBlock.getFirstChild();
+  if (first === node) return;
+  const previous = node.getPreviousSibling();
+  const next = node.getNextSibling();
+  if (
+    $isTextNode(previous) &&
+    $isTextNode(next) &&
+    WHITESPACE_RE.test(previous.getTextContent().at(-1) ?? '') &&
+    WHITESPACE_RE.test(next.getTextContent()[0] ?? '')
+  ) {
+    next.setTextContent(next.getTextContent().slice(1));
+  }
+  if (first) first.insertBefore(node);
+  else firstBlock.append(node);
+  const following = node.getNextSibling();
+  if ($isTextNode(following) && WHITESPACE_RE.test(following.getTextContent()[0] ?? '')) {
+    following.select(1, 1);
+    return;
+  }
+  const separator = $createTextNode(' ');
+  node.insertAfter(separator);
+  separator.selectEnd();
+}
 
 /** The structural leading directive chip, if any — status-free so render code can derive
  * validity from live props without an editor read. */
