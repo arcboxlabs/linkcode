@@ -81,6 +81,13 @@ describe('readWindowState', () => {
     writeState({ ...VALID_STATE, bounds: { ...VALID_STATE.bounds, x: 4000 } });
     expect(readWindowState()).toBeNull();
   });
+
+  it('discards bounds when only the bottom of the window remains visible', async () => {
+    const { readWindowState } = await import('../window-state');
+    mocks.displays = [{ workArea: { x: 0, y: 0, width: 1728, height: 1079 } }];
+    writeState({ ...VALID_STATE, bounds: { ...VALID_STATE.bounds, y: -752 } });
+    expect(readWindowState()).toBeNull();
+  });
 });
 
 describe('persistWindowStateOnClose', () => {

@@ -19,8 +19,8 @@ export const MIN_WINDOW_SIZE = { width: 940, height: 600 } as const;
 const MAX_DEFAULT_SIZE = { width: 1560, height: 980 } as const;
 const WORK_AREA_FRACTION = { width: 0.9, height: 0.92 } as const;
 
-/** Smallest saved-bounds sliver that still counts as on-display: enough chrome bar to grab. */
-const VISIBLE_MIN = { width: 100, height: 48 } as const;
+/** Smallest top-chrome area that must remain on-display so the window can be dragged. */
+const GRABBABLE_CHROME = { width: 100, height: 48 } as const;
 
 const WindowStateSchema = z.object({
   bounds: z.object({
@@ -56,7 +56,7 @@ export function deriveDefaultWindowSize(): { width: number; height: number } {
   };
 }
 
-/** Null unless a valid state exists AND its bounds still land on a connected display. */
+/** Null unless a valid state exists AND its top chrome remains grabbable on a display. */
 export function readWindowState(): PersistedWindowState | null {
   let state: PersistedWindowState;
   try {
@@ -72,10 +72,10 @@ function boundsOnSomeDisplay(bounds: Rectangle): boolean {
     const visibleWidth =
       Math.min(bounds.x + bounds.width, workArea.x + workArea.width) -
       Math.max(bounds.x, workArea.x);
-    const visibleHeight =
-      Math.min(bounds.y + bounds.height, workArea.y + workArea.height) -
+    const visibleChromeHeight =
+      Math.min(bounds.y + GRABBABLE_CHROME.height, workArea.y + workArea.height) -
       Math.max(bounds.y, workArea.y);
-    return visibleWidth >= VISIBLE_MIN.width && visibleHeight >= VISIBLE_MIN.height;
+    return visibleWidth >= GRABBABLE_CHROME.width && visibleChromeHeight >= GRABBABLE_CHROME.height;
   });
 }
 
