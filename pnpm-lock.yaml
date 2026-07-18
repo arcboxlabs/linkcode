@@ -1063,6 +1063,9 @@ importers:
       '@lexical/react':
         specifier: ^0.47.0
         version: 0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.31)
+      '@lexical/selection':
+        specifier: ^0.47.0
+        version: 0.47.0(@typescript/typescript6@6.0.2)
       '@lexical/utils':
         specifier: ^0.47.0
         version: 0.47.0(@typescript/typescript6@6.0.2)

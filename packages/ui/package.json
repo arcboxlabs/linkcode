@@ -28,6 +28,7 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/noto-emoji": "^5.2.11",
     "@lexical/react": "^0.47.0",
+    "@lexical/selection": "^0.47.0",
     "@lexical/utils": "^0.47.0",
     "@linkcode/schema": "workspace:*",
     "@pierre/diffs": "^1.2.12",

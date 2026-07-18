@@ -70,10 +70,6 @@ export class CommandNode extends DecoratorNode<React.ReactNode> {
     return true;
   }
 
-  override isKeyboardSelectable(): boolean {
-    return false;
-  }
-
   override decorate(): React.ReactNode {
     return <CommandChip name={this.__name} nodeKey={this.getKey()} />;
   }
@@ -119,10 +115,6 @@ export class ShellNode extends DecoratorNode<React.ReactNode> {
 
   override isInline(): true {
     return true;
-  }
-
-  override isKeyboardSelectable(): boolean {
-    return false;
   }
 
   override decorate(): React.ReactNode {
@@ -186,12 +178,8 @@ export class MentionNode extends DecoratorNode<React.ReactNode> {
     return true;
   }
 
-  override isKeyboardSelectable(): boolean {
-    return false;
-  }
-
   override decorate(): React.ReactNode {
-    return <MentionChip path={this.__path} />;
+    return <MentionChip nodeKey={this.getKey()} path={this.__path} />;
   }
 }
 

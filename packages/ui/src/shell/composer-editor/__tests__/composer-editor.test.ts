@@ -5,9 +5,7 @@ import {
   $createParagraphNode,
   $createTextNode,
   $getRoot,
-  $getSelection,
   $isElementNode,
-  $isRangeSelection,
   $isTextNode,
   HISTORIC_TAG,
 } from 'lexical';
@@ -686,45 +684,6 @@ describe('$replaceTriggerWith', () => {
       issue: 'misplaced',
       kind: 'blocked',
     });
-  });
-
-  it('keeps a range caret while moving across every atomic chip', () => {
-    for (const createChip of [
-      () => $createCommandNode('usage'),
-      () => $createShellNode(),
-      () => $createMentionNode('src/app.ts'),
-    ]) {
-      const editor = createEditor();
-      let leftKey: NodeKey = '';
-      let rightKey: NodeKey = '';
-      editor.update(
-        () => {
-          const left = $createTextNode('a');
-          const right = $createTextNode('b');
-          leftKey = left.getKey();
-          rightKey = right.getKey();
-          $getRoot()
-            .clear()
-            .append($createParagraphNode().append(left, createChip(), right));
-          left.selectEnd();
-        },
-        { discrete: true, tag: HISTORIC_TAG },
-      );
-      editor.update(
-        () => {
-          const selection = $getSelection();
-          if (!$isRangeSelection(selection)) throw new Error('expected range selection');
-          selection.modify('move', false, 'character');
-          expect(selection.anchor.key).toBe(rightKey);
-          expect(selection.anchor.offset).toBe(0);
-
-          selection.modify('move', true, 'character');
-          expect(selection.anchor.key).toBe(leftKey);
-          expect(selection.anchor.offset).toBe(1);
-        },
-        { discrete: true },
-      );
-    }
   });
 });
 

@@ -6,13 +6,20 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
+import { $isParentRTL } from '@lexical/selection';
 import { mergeRegister } from '@lexical/utils';
 import type { AgentCommand } from '@linkcode/schema';
 import type { EditorState, LexicalEditor } from 'lexical';
 import {
+  $getSelection,
+  $isNodeSelection,
   COMMAND_PRIORITY_CRITICAL,
   KEY_ARROW_DOWN_COMMAND,
+  KEY_ARROW_LEFT_COMMAND,
+  KEY_ARROW_RIGHT_COMMAND,
   KEY_ARROW_UP_COMMAND,
+  KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
   KEY_ENTER_COMMAND,
   PASTE_COMMAND,
 } from 'lexical';
@@ -111,6 +118,29 @@ function EditablePlugin({ disabled }: { disabled: boolean }): null {
   return null;
 }
 
+/** PlainTextPlugin enters a keyboard-selectable decorator but, unlike RichTextPlugin, does not
+ * leave its NodeSelection on the next arrow. Mirror that missing half of the traversal here. */
+function $exitNodeSelection(isLeft: boolean): boolean {
+  const selection = $getSelection();
+  if (!$isNodeSelection(selection)) return false;
+  const nodes = selection.getNodes();
+  if (nodes.length === 0) return false;
+  const node = nodes[0];
+
+  const towardPrevious = isLeft !== $isParentRTL(node);
+  if (towardPrevious) node.selectPrevious();
+  else node.selectNext(0, 0);
+  return true;
+}
+
+/** PlainTextPlugin only deletes RangeSelections; give selected atomic chips the standard behavior. */
+function $deleteNodeSelection(): boolean {
+  const selection = $getSelection();
+  if (!$isNodeSelection(selection)) return false;
+  selection.deleteNodes();
+  return true;
+}
+
 function KeyboardPlugin({
   menuOpen,
   menuHasItems,
@@ -155,6 +185,42 @@ function KeyboardPlugin({
             return true;
           }
           queueMicrotask(onSubmit);
+          return true;
+        },
+        COMMAND_PRIORITY_CRITICAL,
+      ),
+      editor.registerCommand(
+        KEY_ARROW_LEFT_COMMAND,
+        (event) => {
+          if (!$exitNodeSelection(true)) return false;
+          event.preventDefault();
+          return true;
+        },
+        COMMAND_PRIORITY_CRITICAL,
+      ),
+      editor.registerCommand(
+        KEY_ARROW_RIGHT_COMMAND,
+        (event) => {
+          if (!$exitNodeSelection(false)) return false;
+          event.preventDefault();
+          return true;
+        },
+        COMMAND_PRIORITY_CRITICAL,
+      ),
+      editor.registerCommand(
+        KEY_BACKSPACE_COMMAND,
+        (event) => {
+          if (!$deleteNodeSelection()) return false;
+          event.preventDefault();
+          return true;
+        },
+        COMMAND_PRIORITY_CRITICAL,
+      ),
+      editor.registerCommand(
+        KEY_DELETE_COMMAND,
+        (event) => {
+          if (!$deleteNodeSelection()) return false;
+          event.preventDefault();
           return true;
         },
         COMMAND_PRIORITY_CRITICAL,

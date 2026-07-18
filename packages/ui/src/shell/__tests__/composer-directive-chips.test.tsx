@@ -1,11 +1,23 @@
 // @vitest-environment jsdom
 
 import type { AgentCapabilities, AgentCommand } from '@linkcode/schema';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { LexicalEditor, NodeKey } from 'lexical';
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $getSelection,
+  $isNodeSelection,
+  $isRangeSelection,
+  HISTORIC_TAG,
+} from 'lexical';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Composer } from '../composer';
+import { $createCommandNode, $createMentionNode, $createShellNode } from '../composer-editor/nodes';
 import {
+  composerLexicalEditor,
   composerText,
   composerTextbox,
   pressInComposer,
@@ -30,6 +42,30 @@ const COMMANDS: AgentCommand[] = [
 ];
 const RE_COMPACT_COMMAND = /\/compact/;
 const SLASH_CAPABILITIES: AgentCapabilities = { shellCommand: false, slashCommands: true };
+const CHIP_CASES = [
+  ['command', () => $createCommandNode('review')],
+  ['shell', () => $createShellNode()],
+  ['mention', () => $createMentionNode('src/app.ts')],
+] as const;
+const CHIP_DELETION_CASES = CHIP_CASES.flatMap(([kind, createChip]) =>
+  (['Backspace', 'Delete'] as const).map((key) => [kind, key, createChip] as const),
+);
+
+function hasNodeSelection(editor: LexicalEditor, nodeKey: NodeKey): boolean {
+  return editor.read(() => {
+    const selection = $getSelection();
+    return $isNodeSelection(selection) && selection.has(nodeKey);
+  });
+}
+
+function expectCaret(editor: LexicalEditor, nodeKey: NodeKey, offset: number): void {
+  editor.read(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) throw new Error('expected range selection');
+    expect(selection.anchor.key).toBe(nodeKey);
+    expect(selection.anchor.offset).toBe(offset);
+  });
+}
 
 interface ComposerFixtureProps {
   agentCapabilities?: AgentCapabilities;
@@ -147,6 +183,84 @@ describe('Composer directive chips', () => {
     expect(await screen.findByRole('menu')).toBeDefined();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+
+  it.each(
+    CHIP_CASES,
+  )('selects the %s chip as an arrow stop and exits on the next arrow', async (_kind, createChip) => {
+    render(composer());
+    const editor = composerLexicalEditor();
+
+    let chipKey: NodeKey = '';
+    let leftKey: NodeKey = '';
+    let rightKey: NodeKey = '';
+    act(() => {
+      editor.update(
+        () => {
+          const left = $createTextNode('a');
+          const chip = createChip();
+          const right = $createTextNode('b');
+          chipKey = chip.getKey();
+          leftKey = left.getKey();
+          rightKey = right.getKey();
+          $getRoot()
+            .clear()
+            .append($createParagraphNode().append(left, chip, right));
+          left.selectEnd();
+        },
+        { discrete: true, tag: HISTORIC_TAG },
+      );
+    });
+    const chip = editor.getElementByKey(chipKey)?.firstElementChild;
+    if (!(chip instanceof HTMLElement)) throw new Error('expected rendered chip');
+
+    await pressInComposer('ArrowRight');
+    expect(hasNodeSelection(editor, chipKey)).toBe(true);
+    await waitFor(() => expect(chip.dataset.selected).toBe('true'));
+
+    await pressInComposer('ArrowRight');
+    expectCaret(editor, rightKey, 0);
+    await waitFor(() => expect(chip.dataset.selected).toBeUndefined());
+
+    await pressInComposer('ArrowLeft');
+    expect(hasNodeSelection(editor, chipKey)).toBe(true);
+
+    await pressInComposer('ArrowLeft');
+    expectCaret(editor, leftKey, 1);
+  });
+
+  it.each(
+    CHIP_DELETION_CASES,
+  )('deletes the selected %s chip with %s and preserves the caret', async (_kind, key, createChip) => {
+    render(composer());
+    const editor = composerLexicalEditor();
+
+    let chipKey: NodeKey = '';
+    let leftKey: NodeKey = '';
+    act(() => {
+      editor.update(
+        () => {
+          const left = $createTextNode('a');
+          const chip = createChip();
+          const right = $createTextNode('b');
+          chipKey = chip.getKey();
+          leftKey = left.getKey();
+          $getRoot()
+            .clear()
+            .append($createParagraphNode().append(left, chip, right));
+          left.selectEnd();
+        },
+        { discrete: true, tag: HISTORIC_TAG },
+      );
+    });
+
+    await pressInComposer('ArrowRight');
+    expect(hasNodeSelection(editor, chipKey)).toBe(true);
+    await pressInComposer(key);
+
+    expect(editor.getElementByKey(chipKey)).toBeNull();
+    expect(composerText()).toBe('ab');
+    expectCaret(editor, leftKey, 1);
   });
 
   it('recognizes a supported mid-line command and offers to move it to the start', async () => {

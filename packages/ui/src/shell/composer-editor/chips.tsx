@@ -1,4 +1,5 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection';
 import { Badge } from 'coss-ui/components/badge';
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from 'coss-ui/components/menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
@@ -8,6 +9,7 @@ import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { FileIdentityIcon } from '../../chat/file-identity-icon';
+import { cn } from '../../lib/cn';
 import type { ComposerDirectiveState, DirectivePlacementIssue } from './directive-state';
 import { commandStatus, directiveStateFor, shellStatus } from './directive-state';
 import { $convertDirectiveToText, $removeDirective } from './serialize';
@@ -19,6 +21,12 @@ function useDirectiveState<T>(selector: (state: ComposerDirectiveState) => T): T
 
 /** Match the editor's 14px text metrics and center within its full line box. */
 const CHIP_CLASS_NAME = 'mx-0.5 h-5 align-bottom text-sm sm:h-5 sm:text-sm';
+const SELECTED_RING_CLASS = {
+  error: 'ring-2 ring-destructive/48',
+  info: 'ring-2 ring-info/48',
+  secondary: 'ring-2 ring-secondary-foreground/48',
+  warning: 'ring-2 ring-warning/48',
+} as const;
 
 function keepEnterActivationLocal(event: React.KeyboardEvent<HTMLButtonElement>): void {
   if (event.key === 'Enter') event.stopPropagation();
@@ -28,7 +36,7 @@ interface DirectiveChipProps {
   children: React.ReactNode;
   nodeKey: NodeKey;
   reason?: string;
-  variant: 'error' | 'info' | 'secondary' | 'warning';
+  variant: keyof typeof SELECTED_RING_CLASS;
 }
 
 /** Every directive is an atomic token with an explicit edit escape hatch. Placement and support
@@ -40,6 +48,7 @@ function DirectiveChip({
   variant,
 }: DirectiveChipProps): React.ReactNode {
   const [editor] = useLexicalComposerContext();
+  const [selected] = useLexicalNodeSelection(nodeKey);
   const disabled = useDirectiveState((state) => state.disabled);
   const t = useTranslations('workbench.composer');
   const generatedReasonId = useId();
@@ -71,7 +80,8 @@ function DirectiveChip({
     <Badge
       aria-describedby={reasonId}
       aria-invalid={reason ? true : undefined}
-      className={CHIP_CLASS_NAME}
+      className={cn(CHIP_CLASS_NAME, selected && SELECTED_RING_CLASS[variant])}
+      data-selected={selected || undefined}
       render={<button disabled={disabled} type="button" />}
       size="sm"
       variant={variant}
@@ -192,9 +202,22 @@ function basename(path: string): string {
   return path.split(PATH_SEPARATOR_RE).pop() || path;
 }
 
-export function MentionChip({ path }: { path: string }): React.ReactNode {
+export function MentionChip({
+  nodeKey,
+  path,
+}: {
+  nodeKey: NodeKey;
+  path: string;
+}): React.ReactNode {
+  const [selected] = useLexicalNodeSelection(nodeKey);
   return (
-    <Badge className={CHIP_CLASS_NAME} size="sm" title={path} variant="secondary">
+    <Badge
+      className={cn(CHIP_CLASS_NAME, selected && SELECTED_RING_CLASS.secondary)}
+      data-selected={selected || undefined}
+      size="sm"
+      title={path}
+      variant="secondary"
+    >
       <FileIdentityIcon path={path} />
       {basename(path)}
     </Badge>
