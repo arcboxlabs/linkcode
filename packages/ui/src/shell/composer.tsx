@@ -536,8 +536,7 @@ export function Composer({
     ingestFiles(files);
   }
 
-  /** Run an editor mutation and put the caret back in the editor — the equivalent of the old
-   * textarea's pending-caret restore, owned by Lexical's selection now. */
+  /** Run an editor mutation and restore focus while preserving Lexical's selection. */
   function withEditor(mutate: (editor: LexicalEditor) => void): void {
     const editor = editorRef.current;
     if (!editor) return;

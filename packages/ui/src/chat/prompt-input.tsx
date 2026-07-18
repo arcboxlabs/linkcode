@@ -3,14 +3,8 @@ import { InputGroup, InputGroupAddon } from 'coss-ui/components/input-group';
 import { ArrowUpIcon, SquareIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
-export interface PromptInputMessage {
-  text: string;
-}
-
-type PromptInputSubmitEvent = React.SyntheticEvent<HTMLFormElement, SubmitEvent>;
-
 export type PromptInputProps = Omit<React.ComponentProps<'form'>, 'onSubmit'> & {
-  onSubmit: (message: PromptInputMessage, event: PromptInputSubmitEvent) => void;
+  onSubmit: React.SubmitEventHandler<HTMLFormElement>;
 };
 
 export function PromptInput({
@@ -19,11 +13,9 @@ export function PromptInput({
   onSubmit,
   ...props
 }: PromptInputProps): React.ReactNode {
-  function handleSubmit(event: PromptInputSubmitEvent): void {
+  function handleSubmit(event: React.SubmitEvent<HTMLFormElement>): void {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const raw = formData.get('message');
-    onSubmit({ text: typeof raw === 'string' ? raw : '' }, event);
+    onSubmit(event);
   }
 
   return (

@@ -29,12 +29,6 @@ export interface MentionItem {
   hint?: string;
 }
 
-export interface TextTriggerState {
-  kind: 'mention' | 'slash';
-  query: string;
-  start: number;
-}
-
 export type ComposerCommandSource = 'mention' | 'plus' | 'slash';
 
 interface BaseCommandEntry {
@@ -86,25 +80,9 @@ const MODE_COMMAND_ICONS: Record<string, LucideIcon> = {
   goal: TargetIcon,
   plan: ListTodoIcon,
 };
-const WHITESPACE_RE = /\s/;
 
 export function commandEntryToString(item: unknown): string {
   return (item as ComposerCommandEntry).label;
-}
-
-export function computeTextTrigger(value: string, caret: number): TextTriggerState | null {
-  let start = caret;
-  while (start > 0 && !WHITESPACE_RE.test(value[start - 1])) start--;
-  const token = value.slice(start, caret);
-  if (token[0] === '@') return { kind: 'mention', query: token.slice(1), start };
-  if (token[0] === '/') return { kind: 'slash', query: token.slice(1), start };
-  return null;
-}
-
-export function textControlFromEvent(event: Event): HTMLInputElement | HTMLTextAreaElement | null {
-  return event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
-    ? event.target
-    : null;
 }
 
 function matchesQuery(
@@ -149,7 +127,7 @@ export function buildComposerCommandGroups({
   mentionItems: MentionItem[];
   modesEnabled: boolean;
   plusQuery: string;
-  textTrigger: TextTriggerState | null;
+  textTrigger: { query: string } | null;
 }): ComposerCommandGroup[] {
   if (!commandSource) return [];
 

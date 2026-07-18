@@ -52,7 +52,7 @@ export const EMPTY_DRAFT_SNAPSHOT: ComposerDraftSnapshot = {
   trigger: null,
 };
 
-export interface ComposerEditorProps {
+interface ComposerEditorProps {
   className?: string;
   placeholder: string;
   disabled: boolean;
@@ -150,7 +150,7 @@ function KeyboardPlugin({
           // submit force-tokenizes then clears); defer them out of this command dispatch —
           // a nested discrete update inside it is illegal.
           if (menuOpen) {
-            // Empty menu swallows Enter (parity with the textarea composer).
+            // An open menu owns Enter even when filtering leaves it empty.
             if (menuHasItems) queueMicrotask(() => forwardToRelay(event));
             return true;
           }

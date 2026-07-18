@@ -1,7 +1,7 @@
 import type { AgentCommand } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
 
-export interface MockCommandFixture {
+interface MockCommandFixture {
   command: AgentCommand;
   reply?: string;
 }

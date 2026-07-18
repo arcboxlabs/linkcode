@@ -274,8 +274,7 @@ describe('Composer command menu', () => {
 
     await pressInComposer('Escape');
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
-    // The editor survives the dismiss (jsdom cannot focus a contenteditable, so the old
-    // activeElement assertion is not reproducible here).
+    // jsdom does not reflect contenteditable focus through document.activeElement.
     expect(screen.getByRole('textbox')).toBe(input);
 
     backspaceInComposer();

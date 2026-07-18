@@ -32,8 +32,8 @@ interface DirectiveChipProps {
   variant: 'error' | 'info' | 'secondary' | 'warning';
 }
 
-/** Every directive is an atomic token with an explicit edit escape hatch. Invalid placement or
- * support adds a visible alert glyph and tooltip; the persistent composer alert repeats it. */
+/** Every directive is an atomic token with an explicit edit escape hatch. Placement and support
+ * issues stay visible on the chip and are explained by its tooltip. */
 function DirectiveChip({
   children,
   nodeKey,

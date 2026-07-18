@@ -3,10 +3,9 @@ import { $applyNodeReplacement, DecoratorNode } from 'lexical';
 import { CommandChip, MentionChip, ShellChip } from './chips';
 
 /**
- * Inline atomic tokens for the composer draft. The invariant every node keeps: the editor's flat
- * text (concatenated `getTextContent()`) is byte-identical to what the plain-textarea composer
- * held — `/name` for a command, `$` for shell, a quoted relative path for a mention — so the
- * submit payloads and clipboard text stay agent-agnostic.
+ * Inline atomic tokens for the composer draft. Every node preserves its canonical flat-text
+ * representation — `/name` for a command, `$` for shell, a quoted relative path for a mention —
+ * so submit payloads and clipboard text stay agent-agnostic.
  */
 
 function chipDOM(): HTMLElement {
@@ -20,7 +19,7 @@ function exportCanonicalText(text: string): DOMExportOutput {
   return { element: document.createTextNode(text) };
 }
 
-export type SerializedCommandNode = Spread<{ name: string }, SerializedLexicalNode>;
+type SerializedCommandNode = Spread<{ name: string }, SerializedLexicalNode>;
 
 /** A `/command` directive. Stores only the name — validity is derived live in the chip. */
 export class CommandNode extends DecoratorNode<React.ReactNode> {
@@ -139,7 +138,7 @@ export function $isShellNode(node: LexicalNode | null | undefined): node is Shel
   return node instanceof ShellNode;
 }
 
-export type SerializedMentionNode = Spread<{ path: string }, SerializedLexicalNode>;
+type SerializedMentionNode = Spread<{ path: string }, SerializedLexicalNode>;
 
 /** A file mention. Serializes as a quoted relative path: every agent understands that in prose
  * (its own fs tools read it), whereas `@path` is Claude-specific syntax. */
@@ -183,10 +182,6 @@ export class MentionNode extends DecoratorNode<React.ReactNode> {
     return `"${this.__path.replaceAll('"', String.raw`\"`)}"`;
   }
 
-  getPath(): string {
-    return this.getLatest().__path;
-  }
-
   override isInline(): true {
     return true;
   }
@@ -202,10 +197,6 @@ export class MentionNode extends DecoratorNode<React.ReactNode> {
 
 export function $createMentionNode(path: string): MentionNode {
   return $applyNodeReplacement(new MentionNode(path));
-}
-
-export function $isMentionNode(node: LexicalNode | null | undefined): node is MentionNode {
-  return node instanceof MentionNode;
 }
 
 /** Every custom node the composer editor registers. */

@@ -7,6 +7,7 @@ import type {
   AgentKind,
   AgentRuntimes,
   ContentBlock,
+  EffortLevel,
   ManagedAssetId,
   ManagedAssetStatus,
   MessageId,
@@ -76,8 +77,9 @@ import {
 const ASSET_PROGRESS_LATENCY_MS = 400;
 
 interface MockSession extends SessionInfo {
-  /** Host-only state: keep it off `session.list` so the mock still crosses the schema boundary cleanly. */
+  /** Host-only replay state: keep it off `session.list` so the mock crosses the schema boundary. */
   model?: string;
+  effort?: EffortLevel;
   /** Bumped by cancel/stop so an in-flight prompt turn knows to bail out. */
   epoch: number;
   showcase?: boolean;
@@ -265,13 +267,11 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           sessions: [...this.sessions.values()].map((session) => toSessionInfo(session)),
         });
-        // Seeded live sessions never pass through start/resume. Advertise after the list reply so
-        // the client can buffer these attach-time frames before a surface subscribes.
-        for (const session of this.sessions.values()) {
-          if (session.status !== 'stopped') this.emitDirectiveAdvertisement(session.sessionId);
-        }
         // Start after the list reply so the UI can subscribe before scripted frames arrive.
         this.startShowcase();
+        break;
+      case 'session.attach':
+        this.attachSession(p.sessionId);
         break;
       case 'session.start':
         await wait(CONTROL_LATENCY_MS);
@@ -520,6 +520,11 @@ export class DevMockHost {
     const { origin, ...rest } = init;
     const session: MockSession = {
       ...rest,
+      model:
+        rest.model ??
+        SEED_MODEL_CATALOGS[rest.kind]?.[0]?.id ??
+        (rest.kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
+      effort: rest.effort ?? 'high',
       sessionId: this.nextSessionId(),
       origin: origin ?? { type: 'created' },
       epoch: 0,
@@ -590,11 +595,8 @@ export class DevMockHost {
       this.emit(sessionId, { type: 'available-models-update', models: catalog });
     }
     // Reflect a concrete model/effort like a real adapter, so the composer shows them not placeholders.
-    this.emit(sessionId, {
-      type: 'model-update',
-      model: model ?? catalog?.[0]?.id ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
-    });
-    this.emit(sessionId, { type: 'effort-update', effort: 'high' });
+    if (session.model) this.emit(sessionId, { type: 'model-update', model: session.model });
+    if (session.effort) this.emit(sessionId, { type: 'effort-update', effort: session.effort });
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
@@ -758,15 +760,20 @@ export class DevMockHost {
       return;
     }
     session.status = 'idle';
-    // Parity with the engine's replay-on-attach: a resumed session re-advertises its catalogs
-    // and capabilities.
+    this.attachSession(sessionId);
+    this.send({ kind: 'session.started', replyTo, sessionId });
+  }
+
+  /** Replay the live state a late subscriber cannot recover from session history. */
+  private attachSession(sessionId: SessionId): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this.emit(sessionId, { type: 'status', status: session.status });
+    if (session.model) this.emit(sessionId, { type: 'model-update', model: session.model });
+    if (session.effort) this.emit(sessionId, { type: 'effort-update', effort: session.effort });
     this.emitDirectiveAdvertisement(sessionId);
     const catalog = SEED_MODEL_CATALOGS[session.kind];
-    if (catalog) {
-      this.emit(sessionId, { type: 'available-models-update', models: catalog });
-    }
-    this.emit(sessionId, { type: 'status', status: 'idle' });
-    this.send({ kind: 'session.started', replyTo, sessionId });
+    if (catalog) this.emit(sessionId, { type: 'available-models-update', models: catalog });
   }
 
   /** The composer's directive inputs: what the session accepts (`/` + `$`) and its `/` catalog. */
@@ -825,6 +832,7 @@ export class DevMockHost {
         this.sendSuccess(replyTo);
         break;
       case 'set-effort':
+        session.effort = input.effort;
         this.emit(sessionId, { type: 'effort-update', effort: input.effort });
         this.sendSuccess(replyTo);
         break;

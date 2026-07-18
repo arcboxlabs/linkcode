@@ -26,7 +26,7 @@ export interface ComposerDirectiveState {
   suppressed: ReadonlySet<NodeKey>;
 }
 
-export type DirectiveStateStore = StoreApi<ComposerDirectiveState>;
+type DirectiveStateStore = StoreApi<ComposerDirectiveState>;
 
 const stores = new WeakMap<LexicalEditor, DirectiveStateStore>();
 

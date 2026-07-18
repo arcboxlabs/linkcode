@@ -28,8 +28,7 @@ function flatTextContribution(node: LexicalNode, hasFollowingSibling: boolean): 
   return node.getTextContentSize() + separator;
 }
 
-/** The draft as flat text. Chips contribute their canonical literals (`/name`, `$`, `"path"`),
- * so this equals what the plain-textarea composer would have held. */
+/** The draft as flat text. Chips contribute their canonical literals (`/name`, `$`, `"path"`). */
 export function $draftText(): string {
   return $getRoot().getTextContent();
 }
@@ -189,7 +188,7 @@ export type DirectiveComposition =
   | { directive: EditorDirective; kind: 'ready' }
   | { directive: EditorDirective; issue: DirectivePlacementIssue; kind: 'blocked' };
 
-export interface DirectiveAnalysis {
+interface DirectiveAnalysis {
   blockedKeys: readonly NodeKey[];
   composition: DirectiveComposition;
   leading: EditorDirective | null;
@@ -320,7 +319,7 @@ export function $moveDirectiveToStart(nodeKey: NodeKey): void {
   separator.selectEnd();
 }
 
-export type DraftDirective =
+type DraftDirective =
   | { kind: 'command'; name: string; args: string; status: DirectiveStatus }
   | { kind: 'shell'; command: string; status: DirectiveStatus }
   | { kind: 'invalid'; issue: DirectivePlacementIssue; directive: EditorDirective }
