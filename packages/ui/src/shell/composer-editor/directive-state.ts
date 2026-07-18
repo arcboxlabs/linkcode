@@ -7,6 +7,9 @@ import { createStore } from 'zustand/vanilla';
 /** Validity of a directive chip against the live session's catalog/capabilities. */
 export type DirectiveStatus = 'supported' | 'unknown' | 'unsupported';
 
+/** Why structurally valid directive tokens cannot form one executable agent input. */
+export type DirectivePlacementIssue = 'misplaced' | 'multiple';
+
 export interface ComposerDirectiveState {
   /** Capability-gated slash-command catalog (empty when the agent advertises none). */
   commands: readonly AgentCommand[];

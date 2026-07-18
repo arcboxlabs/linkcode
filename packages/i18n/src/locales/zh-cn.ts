@@ -277,7 +277,12 @@ export const zhCN = {
       commandUnknown: '无法识别命令「/{command}」',
       commandUnsupported: '当前代理不支持斜杠命令',
       shellUnsupported: '当前代理不支持 Shell 命令',
+      commandMisplaced: '斜杠命令只能在消息开头运行',
+      shellMisplaced: 'Shell 命令只能在消息开头运行',
+      multipleDirectives:
+        '每条消息只能运行一个斜杠命令或 Shell 命令。请选择如何处理「{directive}」。',
       convertToText: '转换为文本',
+      moveDirectiveToStart: '移到开头',
       removeDirective: '移除指令',
       modelDefault: '默认',
       effortDefault: '推理强度',

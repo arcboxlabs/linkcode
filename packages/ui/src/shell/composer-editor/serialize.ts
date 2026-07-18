@@ -168,6 +168,12 @@ export function $insertSeparatedDraftText(text: string, trailing: boolean): void
   $insertDraftText(`${lead}${text}${trail}`);
 }
 
+/** Status-free directive identity mirrored out of the editor; catalog/capability validity stays
+ * live in React rather than being frozen into a Lexical node. */
+export type EditorDirective =
+  | { kind: 'command'; name: string; nodeKey: NodeKey }
+  | { kind: 'shell'; nodeKey: NodeKey };
+
 /** The structural leading directive chip, if any — status-free so render code can derive
  * validity from live props without an editor read. */
 export type LeadingDirective = { kind: 'command'; name: string } | { kind: 'shell' };

@@ -286,7 +286,12 @@ export const en = {
       commandUnknown: 'Unknown command: /{command}',
       commandUnsupported: 'This agent does not support slash commands',
       shellUnsupported: 'This agent does not support shell commands',
+      commandMisplaced: 'Slash commands can run only at the start of a message',
+      shellMisplaced: 'Shell commands can run only at the start of a message',
+      multipleDirectives:
+        'Only one slash or shell command can run per message. Choose how to handle {directive}.',
       convertToText: 'Convert to text',
+      moveDirectiveToStart: 'Move to start',
       removeDirective: 'Remove directive',
       modelDefault: 'Default',
       effortDefault: 'Effort',
