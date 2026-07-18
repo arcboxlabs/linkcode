@@ -6,11 +6,24 @@ import { ScrollView, Text, useColorScheme, View } from 'react-native';
 
 const CODE_FONT = { fontFamily: 'Menlo', fontSize: 12, lineHeight: 18 } as const;
 
+interface HighlightedCode {
+  code: string;
+  lang: string;
+  colorScheme: 'light' | 'dark';
+  tokens: ThemedToken[][];
+}
+
 /** Fenced code block: mono, horizontally scrollable, shiki-highlighted once the lazily
  * imported highlighter resolves (plain text until then / for unknown languages). */
 export function CodeBlock({ code, lang }: { code: string; lang?: string }): React.ReactNode {
   const colorScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
-  const [tokens, setTokens] = useState<ThemedToken[][] | null>(null);
+  const [highlighted, setHighlighted] = useState<HighlightedCode | null>(null);
+  const tokens =
+    highlighted?.code === code &&
+    highlighted.lang === lang &&
+    highlighted.colorScheme === colorScheme
+      ? highlighted.tokens
+      : null;
 
   useAbortableEffect(
     (signal) => {
@@ -18,7 +31,9 @@ export function CodeBlock({ code, lang }: { code: string; lang?: string }): Reac
       void import('./highlight')
         .then(({ highlightCode }) => highlightCode(code, lang, colorScheme))
         .then((next) => {
-          if (!signal.aborted && next) setTokens(next);
+          if (!signal.aborted) {
+            setHighlighted(next ? { code, lang, colorScheme, tokens: next } : null);
+          }
         })
         // A crashed highlighter must never take down the message; the plain block stands.
         .catch(noop);
