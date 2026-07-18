@@ -245,6 +245,48 @@ describe('createClaudeHistoryEventMapper', () => {
     expect(reply.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
   });
 
+  it('replays thinking as a thought chunk under the uuid:think id, never inside the message text', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const events = map(
+      row('assistant', 'u1', [
+        { type: 'thinking', thinking: 'let me reason', signature: 'sig' },
+        { type: 'text', text: 'the answer' },
+      ]),
+    );
+    expect(events.map((e) => e.event.type)).toEqual(['agent-thought-chunk', 'agent-message-chunk']);
+    expect(events[0].event).toMatchObject({
+      messageId: 'u1:think',
+      content: { type: 'text', text: 'let me reason' },
+    });
+    expect(events[1].event).toMatchObject({
+      messageId: 'u1',
+      content: { type: 'text', text: 'the answer' },
+    });
+  });
+
+  it('drops empty thinking blocks (pre-CODE-273 transcripts store empty text)', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const events = map(
+      row('assistant', 'u1', [
+        { type: 'thinking', thinking: '', signature: 'sig' },
+        { type: 'text', text: 'done' },
+      ]),
+    );
+    expect(events.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+  });
+
+  it('stamps parentToolCallId on subagent thinking so it renders inside the subagent card', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const events = map(
+      row('assistant', 'u1', [{ type: 'thinking', thinking: 'child reasoning' }], 'toolu_task'),
+    );
+    expect(events.map((e) => e.event.type)).toEqual(['agent-thought-chunk']);
+    expect(events[0].event).toMatchObject({
+      messageId: 'u1:think',
+      parentToolCallId: 'toolu_task',
+    });
+  });
+
   it('stamps parentToolCallId on subagent rows and classifies Task as task-kind', () => {
     const map = createClaudeHistoryEventMapper(historyId);
     const announce = map(

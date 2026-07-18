@@ -8,7 +8,7 @@ import type {
   AgentInput,
   MessageId,
   Schedule,
-  WireMessage,
+  ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
@@ -86,10 +86,10 @@ function pick<K extends WirePayload['kind']>(
 
 function harness() {
   const sent: WirePayload[] = [];
-  let handler: ((msg: WireMessage) => void) | null = null;
+  let handler: ((msg: ValidatedWireMessage) => void) | null = null;
   const transport: Transport = {
     connect: () => Promise.resolve(),
-    send(msg: WireMessage) {
+    send(msg: ValidatedWireMessage) {
       sent.push(msg.payload);
     },
     onMessage(cb) {

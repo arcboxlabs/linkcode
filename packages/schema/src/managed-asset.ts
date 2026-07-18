@@ -6,11 +6,13 @@ import { z } from 'zod';
  * eventually the signed compat manifest (CODE-77), which will carry these shapes with a signature.
  */
 
-/** First-batch managed assets. `agent:` ids pair a CLI with its in-repo SDK; `tool:` ids stand alone. */
+/** First-batch managed assets. `agent:` ids pair a CLI with its in-repo SDK (`agent:pi` is an
+ * npm closure the daemon imports in-process, CODE-219); `tool:` ids stand alone. */
 export const ManagedAssetIdSchema = z.enum([
   'agent:claude-code',
   'agent:codex',
   'agent:opencode',
+  'agent:pi',
   'tool:tectonic',
   'tool:aigateway',
 ]);

@@ -14,6 +14,12 @@ import { APP_NAME } from './constants';
 import { watchDaemonRuntime } from './daemon-discovery';
 import { systemContextFor } from './system-context';
 import { onUpdaterStatus } from './updater';
+import {
+  deriveDefaultWindowSize,
+  MIN_WINDOW_SIZE,
+  persistWindowStateOnClose,
+  readWindowState,
+} from './window-state';
 
 export function createDesktopWindow(): BrowserWindow {
   const win = createWindow();
@@ -39,12 +45,11 @@ export function createDesktopWindow(): BrowserWindow {
 }
 
 function createWindow(): BrowserWindow {
+  const restored = readWindowState();
   const win = new BrowserWindow({
-    width: 1180,
-    height: 760,
-    minWidth: 940,
-    minHeight: 600,
-    center: true,
+    ...(restored ? restored.bounds : { ...deriveDefaultWindowSize(), center: true }),
+    minWidth: MIN_WINDOW_SIZE.width,
+    minHeight: MIN_WINDOW_SIZE.height,
     show: false,
     icon,
     title: APP_NAME,
@@ -76,10 +81,18 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' };
   });
 
+  persistWindowStateOnClose(win);
+
   const updateBackgroundColor = (): void => {
     win.setBackgroundColor(desktopBackgroundColor());
   };
-  win.on('ready-to-show', () => win.show());
+  win.on('ready-to-show', () => {
+    // Display-state restore waits for first show: maximize() on a hidden window shows it early
+    // on Windows, and setFullScreen must not race the initial paint.
+    if (restored?.maximized) win.maximize();
+    if (restored?.fullScreen) win.setFullScreen(true);
+    win.show();
+  });
   nativeTheme.on('updated', updateBackgroundColor);
   win.on('closed', () => nativeTheme.off('updated', updateBackgroundColor));
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {

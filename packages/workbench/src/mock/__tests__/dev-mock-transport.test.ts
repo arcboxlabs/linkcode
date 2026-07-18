@@ -325,6 +325,16 @@ describe('dev mock transport', () => {
     expect(events.some((event) => event.type === 'user-message')).toBe(true);
     expect(events.some((event) => event.type === 'agent-thought-chunk')).toBe(true);
     expect(events.some((event) => event.type === 'plan')).toBe(true);
+    // The compaction demo runs its whole lifecycle: in_progress first, completed merges over it.
+    const compactionEvents = events.filter(
+      (event): event is Extract<AgentEvent, { type: 'compaction' }> => event.type === 'compaction',
+    );
+    expect(compactionEvents.map((event) => event.status)).toEqual(['in_progress', 'completed']);
+    expect(compactionEvents[1]).toMatchObject({
+      compactionId: compactionEvents[0].compactionId,
+      preTokens: expect.any(Number),
+      summary: expect.any(String),
+    });
     expect(events.some((event) => event.type === 'question-request')).toBe(true);
     expect(events.some((event) => event.type === 'permission-request')).toBe(true);
     expect(events.some((event) => event.type === 'error')).toBe(true);

@@ -8,6 +8,36 @@ export interface ModelOption {
   description?: string;
 }
 
+export interface ModelProviderGroups {
+  /** Options without a provider subtitle, rendered flat before the provider submenus. */
+  ungrouped: ModelOption[];
+  groups: { label: string; options: ModelOption[] }[];
+}
+
+/** Group a catalog by its provider subtitle (`description`, per the adapter convention above),
+ * preserving catalog order within groups and first-appearance order across them. Returns null
+ * below two distinct providers — a single-provider list reads better flat. */
+export function groupModelsByProvider(
+  options: readonly ModelOption[] | undefined,
+): ModelProviderGroups | null {
+  const ungrouped: ModelOption[] = [];
+  const byProvider = new Map<string, ModelOption[]>();
+  for (const option of options ?? []) {
+    if (option.description === undefined) {
+      ungrouped.push(option);
+      continue;
+    }
+    const group = byProvider.get(option.description);
+    if (group) group.push(option);
+    else byProvider.set(option.description, [option]);
+  }
+  if (byProvider.size < 2) return null;
+  return {
+    ungrouped,
+    groups: [...byProvider.entries()].map(([label, grouped]) => ({ label, options: grouped })),
+  };
+}
+
 /** Resolve a reflected model id (from `model-update`) to its catalog entry. The daemon emits the
  * *served* id, which may be a pinned snapshot of an alias (e.g. `claude-haiku-4-5-20251001`);
  * prefix-match only after an exact match fails so `gpt-5.4-mini` never mis-resolves to `gpt-5.4`. */

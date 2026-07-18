@@ -84,6 +84,20 @@ describe('boot managed-agent refresh (CODE-221)', () => {
     expect(agentsToRefresh(consented, available, assets)).toEqual(['codex']);
   });
 
+  it('pi consents and refreshes like the CLI pairs (CODE-219): store install = consent', () => {
+    const store = freshStore();
+    seedInstall(store, 'pi', '0.80.0');
+    const assets = new AssetManager();
+    const consented = consentedManagedAgents(assets);
+    expect(consented).toEqual(['pi']);
+
+    // Packaged host after a daemon upgrade: no SDK fallback, old closure superseded → refresh.
+    expect(agentsToRefresh(consented, { pi: { status: 'missing' } }, assets)).toEqual(['pi']);
+    // Dev host: the SDK self-resolves, nothing to refresh.
+    const sdk: AgentRuntimes = { pi: { status: 'available', source: 'sdk' } };
+    expect(agentsToRefresh(consented, sdk, assets)).toEqual([]);
+  });
+
   it('consent survives gcAtBoot while the replacement is not installed (offline refresh failure)', () => {
     const store = freshStore();
     seedInstall(store, 'codex', '0.0.1');

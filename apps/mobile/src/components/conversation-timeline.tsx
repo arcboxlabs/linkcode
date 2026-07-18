@@ -106,6 +106,15 @@ export function ConversationTimeline({ items }: { items: ConversationItem[] }): 
               </Card>
             );
           case 'compaction':
+            if (item.status === 'in_progress') {
+              return (
+                <View key={item.id} className="flex-row items-center justify-center gap-2 px-2">
+                  <Text className="text-[12px] text-muted" style={{ fontWeight: '600' }}>
+                    {t('compacting')}
+                  </Text>
+                </View>
+              );
+            }
             return (
               <View key={item.id} className="flex-row items-center justify-center gap-2 px-2">
                 <Text className="font-semibold text-footnote text-muted">{t('compacted')}</Text>

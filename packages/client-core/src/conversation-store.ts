@@ -30,22 +30,39 @@ const EMPTY_CONVERSATION: Conversation = {
 };
 
 /**
- * Event types a provider-transcript read can reproduce — the only ones the `uptoSeq` cut may drop
- * as "already in the snapshot". Everything else (interactive requests and resolutions, status,
- * stop, errors, usage …) is ephemeral: it never appears in `history.read`, so cutting it would erase
- * it outright — a pending permission-request would vanish and strand the turn (CODE-35).
+ * Whether the seed's transcript snapshot can be assumed to contain this event — the only license
+ * the `uptoSeq` cut has to drop it as "already in the snapshot". Providers flush transcripts by
+ * whole item, so coverage is checked per identity: a chunk of a message the snapshot never saw
+ * (the in-flight reply — claude-code writes the row only when the message completes) must survive
+ * a mid-turn reseed, or the streamed text vanishes at a chunk boundary (CODE-272). Everything
+ * outside the switch (interactive requests and resolutions, status, stop, errors, usage …) is
+ * ephemeral: it never appears in `history.read`, so cutting it would erase it outright — a pending
+ * permission-request would vanish and strand the turn (CODE-35).
  */
-const SEEDABLE_EVENT_TYPES = new Set<AgentEvent['type']>([
-  'user-message',
-  'agent-message-chunk',
-  'agent-thought-chunk',
-  'tool-call',
-]);
+function coveredBySeed(
+  event: AgentEvent,
+  seedMessageIds: ReadonlySet<string>,
+  seedToolIds: ReadonlySet<string>,
+): boolean {
+  switch (event.type) {
+    case 'agent-message-chunk':
+    case 'agent-thought-chunk':
+      return seedMessageIds.has(event.messageId);
+    case 'tool-call':
+      return seedToolIds.has(event.toolCall.toolCallId);
+    case 'user-message':
+      // No reliable cross-source id; providers flush the prompt row at accept, and the
+      // fresh-session race is handled by the adapters' session-ref deferral.
+      return true;
+    default:
+      return false;
+  }
+}
 
 /**
  * Project a session's conversation from a transcript seed plus the live event buffer: the seed
- * folds once, then `getSnapshot` lazily advances by unconsumed events, skipping seedable events
- * inside the `uptoSeq` cut. The sync is idempotent and monotone with a stable snapshot identity
+ * folds once, then `getSnapshot` lazily advances by unconsumed events, skipping events inside the
+ * `uptoSeq` cut that the snapshot verifiably covers (see {@link coveredBySeed}). The sync is idempotent and monotone with a stable snapshot identity
  * between events — the `useSyncExternalStore` getSnapshot contract. A store is bound to one
  * (session, seed) pair; create a fresh one when either changes.
  */
@@ -60,8 +77,20 @@ export function createConversationStore(
 
   const builder = createConversationBuilder();
   const uptoSeq = seed?.uptoSeq ?? 0;
+  // Identities the snapshot actually holds, for the per-event coverage check of the cut.
+  const seedMessageIds = new Set<string>();
+  const seedToolIds = new Set<string>();
+  if (seed) {
+    for (const { event } of seed.events) {
+      if (event.type === 'agent-message-chunk' || event.type === 'agent-thought-chunk') {
+        seedMessageIds.add(event.messageId);
+      } else if (event.type === 'tool-call') {
+        seedToolIds.add(event.toolCall.toolCallId);
+      }
+    }
+  }
   let seeded = false;
-  /** Highest receive seq already examined (not necessarily folded — seedable ones may be cut). */
+  /** Highest receive seq already examined (not necessarily folded — covered ones may be cut). */
   let consumedSeq = 0;
 
   const sync = (): void => {
@@ -73,7 +102,7 @@ export function createConversationStore(
     const events = client.eventsSnapshot(sessionId);
     for (let i = firstIndexAfter(events, consumedSeq); i < events.length; i += 1) {
       const { event, seq, receivedAt } = events[i];
-      if (seq > uptoSeq || !SEEDABLE_EVENT_TYPES.has(event.type)) {
+      if (seq > uptoSeq || !coveredBySeed(event, seedMessageIds, seedToolIds)) {
         builder.advance(event, receivedAt);
       }
     }

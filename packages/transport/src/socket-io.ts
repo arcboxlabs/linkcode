@@ -27,7 +27,7 @@ export class SocketIoTransport extends WireConnection {
   private rejectConnecting: ((error: Error) => void) | null = null;
 
   constructor(private readonly opts: SocketIoTransportOptions) {
-    super('SocketIoTransport');
+    super();
   }
 
   override connect(): Promise<void> {

@@ -121,7 +121,8 @@ export function SectionPanelRegion({
         </>
       )}
       {chromeSpacerClassName && <div aria-hidden className={`${chromeSpacerClassName} shrink-0`} />}
-      <div className="min-h-0 flex-1 overflow-hidden">{content}</div>
+      {/* border-t: the divider between the window chrome above and every section's content. */}
+      <div className="min-h-0 flex-1 overflow-hidden border-border border-t">{content}</div>
     </section>
   );
 }

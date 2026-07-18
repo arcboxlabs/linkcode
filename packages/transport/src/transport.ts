@@ -1,5 +1,5 @@
-import type { WireMessage, WirePayload } from '@linkcode/schema';
-import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import type { ValidatedWireMessage, WireMessage, WirePayload } from '@linkcode/schema';
+import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { once } from 'foxts/once';
 
@@ -13,10 +13,10 @@ export type Unsubscribe = () => void;
  */
 export interface Transport {
   connect(): Promise<void>;
-  /** Send a wire message (implementations should run zod validation before sending). */
-  send(msg: WireMessage): void | Promise<void>;
-  /** Subscribe to inbound messages (implementations should run zod validation before delivery). */
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe;
+  /** Send a wire message. The {@link ValidatedWireMessage} brand is the proof of validity; no parse runs on the send path. */
+  send(msg: ValidatedWireMessage): void | Promise<void>;
+  /** Subscribe to inbound messages (implementations must run zod validation before delivery). */
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe;
   /** Subscribe to connection close. */
   onClose(cb: () => void): Unsubscribe;
   close(): void | Promise<void>;
@@ -31,15 +31,15 @@ export interface TransportServer {
 
 let __seq = 0;
 
-/** Build a wire message with a version / id / timestamp envelope. */
-export function createWireMessage(payload: WirePayload): WireMessage {
+/** Build a wire message with a version / id / timestamp envelope. Typed construction is the second mint of the {@link ValidatedWireMessage} brand (the first is `parseWireMessage`). */
+export function createWireMessage(payload: WirePayload): ValidatedWireMessage {
   __seq += 1;
   return {
     v: WIRE_PROTOCOL_VERSION,
     id: `${Date.now().toString(36)}-${__seq.toString(36)}` as WireMessage['id'],
     ts: Date.now(),
     payload,
-  };
+  } as ValidatedWireMessage;
 }
 
 /** A simple set of listeners, reused across transport implementations. */
@@ -64,22 +64,17 @@ export class Listeners<T> {
 
 /**
  * Base for the four wire-carried `Transport` implementations (ws / ws-server / socket-io /
- * socket-io-server): factors out the listener bookkeeping, the deferred `emitClosed` arming, and
- * the parse-or-throw `send()` gate they all repeat. Binding timing is the load-bearing difference:
+ * socket-io-server): factors out the listener bookkeeping and the deferred `emitClosed` arming
+ * they all repeat. Binding timing is the load-bearing difference:
  * client transports create their socket in an overridden `connect()` and arm `emitClosed` there;
  * server-side connections already hold a live socket at construction, so they arm it in their
  * constructor and keep the inherited default `connect()`.
  */
 export abstract class WireConnection implements Transport {
-  protected readonly inbound = new Listeners<WireMessage>();
+  protected readonly inbound = new Listeners<ValidatedWireMessage>();
   protected readonly closed = new Listeners<void>();
   /** No-op until `armClosedListener()` runs; closing before that point is a safe no-op. */
   protected emitClosed: () => void = noop;
-
-  protected constructor(
-    /** Used to prefix thrown/error messages, e.g. `WsTransport: invalid WireMessage: ...`. */
-    private readonly label: string,
-  ) {}
 
   /** Default: the socket is already open when handed to us. Client transports override this. */
   connect(): Promise<void> {
@@ -88,18 +83,17 @@ export abstract class WireConnection implements Transport {
 
   abstract close(): void | Promise<void>;
 
-  /** Push already-validated bytes onto the underlying socket (or drop them if it isn't ready). */
-  protected abstract sendBytes(msg: WireMessage): void;
+  /** Push the message onto the underlying socket (or drop it if it isn't ready). */
+  protected abstract sendBytes(msg: ValidatedWireMessage): void;
 
-  send(msg: WireMessage): void {
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`${this.label}: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.sendBytes(parsed.data);
+  // No zod parse on send: the ValidatedWireMessage brand is the proof (minted only by
+  // createWireMessage / parseWireMessage), so a per-frame parse here would only re-check it
+  // (CODE-231). LocalTransport keeps its send-side parse to catch schema drift in tests.
+  send(msg: ValidatedWireMessage): void {
+    this.sendBytes(msg);
   }
 
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe {
     return this.inbound.add(cb);
   }
 

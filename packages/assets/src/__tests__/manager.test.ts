@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { BinaryAssetDescriptor } from '../catalog';
+import type { BinaryAssetDescriptor, NpmClosureAssetDescriptor } from '../catalog';
 import type { AssetInstallEvent } from '../manager';
 import { AssetManager } from '../manager';
 import { assetDir } from '../paths';
@@ -47,6 +47,73 @@ async function servedDescriptor(version: string): Promise<BinaryAssetDescriptor>
     },
   };
 }
+
+function closureDescriptor(sdkPackage = 'fake-pi-sdk'): NpmClosureAssetDescriptor {
+  return {
+    id: 'agent:pi',
+    version: { kind: 'sdk-version', package: sdkPackage },
+    closure: { version: '1.0.0', entry: 'node_modules/fake-pi-sdk/index.js', packages: [] },
+  };
+}
+
+/** A pinFrom anchor whose node_modules holds the given packages. */
+function anchorWith(packages: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), 'closure-pin-'));
+  for (const [name, version] of Object.entries(packages)) {
+    const dir = join(root, 'node_modules', name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version }));
+  }
+  const anchor = join(root, 'anchor.js');
+  writeFileSync(anchor, '');
+  return anchor;
+}
+
+describe('AssetManager closure pins (CODE-219)', () => {
+  it('falls back to the manifest version when the SDK is not resolvable (packaged hosts)', () => {
+    freshStore();
+    const manager = new AssetManager({
+      catalog: [closureDescriptor()],
+      pinFrom: anchorWith({}),
+    });
+    expect(manager.wantedVersionOf('agent:pi')).toBe('1.0.0');
+  });
+
+  it('agrees with a resolvable SDK pin that matches the manifest (dev hosts)', () => {
+    freshStore();
+    const manager = new AssetManager({
+      catalog: [closureDescriptor()],
+      pinFrom: anchorWith({ 'fake-pi-sdk': '1.0.0' }),
+    });
+    expect(manager.wantedVersionOf('agent:pi')).toBe('1.0.0');
+  });
+
+  it('reads a mismatching SDK pin as a stale manifest: unpinnable, GC hands off', () => {
+    freshStore();
+    const manager = new AssetManager({
+      catalog: [closureDescriptor()],
+      pinFrom: anchorWith({ 'fake-pi-sdk': '2.0.0' }),
+    });
+    expect(manager.wantedVersionOf('agent:pi')).toBeUndefined();
+    const stale = join(assetDir('agent:pi'), '0.9.0');
+    mkdirSync(stale, { recursive: true });
+    expect(manager.gcAtBoot()).toEqual({ removed: [], skipped: [] });
+    expect(existsSync(stale)).toBe(true);
+  });
+
+  it('managedEntry answers for installed closures; managedBinary never does', () => {
+    freshStore();
+    const manager = new AssetManager({ catalog: [closureDescriptor()], pinFrom: anchorWith({}) });
+    expect(manager.managedBinary('agent:pi')).toBeUndefined();
+    expect(manager.managedEntry('agent:pi')).toBeUndefined();
+
+    const entry = join(assetDir('agent:pi'), '1.0.0', 'node_modules', 'fake-pi-sdk', 'index.js');
+    mkdirSync(dirname(entry), { recursive: true });
+    writeFileSync(entry, '');
+    expect(manager.managedEntry('agent:pi')).toBe(entry);
+    expect(manager.managedBinary('agent:pi')).toBeUndefined();
+  });
+});
 
 describe('AssetManager', () => {
   it('answers managed lookups synchronously once ensure() has installed', async () => {

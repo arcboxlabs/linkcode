@@ -18,11 +18,13 @@ import { useData, useMutation } from '../runtime/tayori';
 import { useAgentRuntimes } from './hooks';
 import { useUnverifiedRuntimesStore } from './unverified-store';
 
-/** The managed asset backing each downloadable agent kind; pi is builtin and has none. */
+/** The managed asset backing each downloadable agent kind; pi's is the in-process npm closure
+ * (CODE-219). grok-build has none (detect-only). */
 const AGENT_ASSET_IDS: Partial<Record<AgentKind, ManagedAssetId>> = {
   'claude-code': 'agent:claude-code',
   codex: 'agent:codex',
   opencode: 'agent:opencode',
+  pi: 'agent:pi',
 };
 
 /**

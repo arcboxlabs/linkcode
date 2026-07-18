@@ -731,9 +731,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.110.0
         version: 0.110.0(zod@4.4.3)
-      '@earendil-works/pi-coding-agent':
-        specifier: ^0.80.6
-        version: 0.80.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@linkcode/common':
         specifier: workspace:*
         version: link:../common
@@ -762,6 +759,9 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.6
+        version: 0.80.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@types/cross-spawn':
         specifier: ^6.0.6
         version: 6.0.6

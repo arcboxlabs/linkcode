@@ -983,6 +983,14 @@ export class Engine {
         );
         break;
       }
+      case 'terminal.ack': {
+        this.terminals?.ack(
+          p.terminalId,
+          { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
+          p.acked,
+        );
+        break;
+      }
       case 'terminal.resize': {
         this.terminals?.resize(
           p.terminalId,

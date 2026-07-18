@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { executableSearchLocations } from '@linkcode/common/node';
 import type {
   GitChecksState,
   GitPullRequestStatus,
@@ -92,6 +94,16 @@ function firstLine(text: string): string {
   return text.split('\n', 1)[0]?.trim() ?? '';
 }
 
+/** Absolute path of the user's `gh`, resolved like the agent runtime probe (PATH scan, then
+ * per-platform fallback install dirs — CODE-271): a GUI-launched daemon inherits launchd's bare
+ * PATH, where a bare `spawn('gh')` misses a Homebrew install. Falls back to the bare name so an
+ * absent gh still reports through the ENOENT → `cli_not_installed` path. Re-resolved per call —
+ * a handful of stats against a 20s API call — so a gh installed mid-session is picked up. */
+function resolveGhBinary(): string {
+  const binary = process.platform === 'win32' ? 'gh.exe' : 'gh';
+  return executableSearchLocations(binary).find((path) => existsSync(path)) ?? 'gh';
+}
+
 /** GitHub via the user's local `gh` CLI — auth is fully delegated to `gh auth login`; the daemon
  * never sees or stores a token. A token-backed client (LinkCode GitHub App) can later implement
  * the same {@link GitProviderClient} seam without touching the wire contract. */
@@ -102,7 +114,7 @@ export class GhCliGitHubClient implements GitProviderClient {
     let result;
     try {
       // `gh pr view` resolves the PR for the checked-out branch (cwd-derived), open or merged.
-      result = await runCommand('gh', ['pr', 'view', '--json', GH_PR_JSON_FIELDS], {
+      result = await runCommand(resolveGhBinary(), ['pr', 'view', '--json', GH_PR_JSON_FIELDS], {
         cwd: query.cwd,
         env: GH_ENV,
         timeoutMs: GH_TIMEOUT_MS,
