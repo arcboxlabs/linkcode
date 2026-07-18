@@ -3,7 +3,7 @@ import type {
   TerminalAttachmentCredentials,
   TerminalAttachmentId,
   TerminalId,
-  WireMessage,
+  ValidatedWireMessage,
 } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import type { Transport, Unsubscribe } from './transport';
@@ -38,7 +38,7 @@ export class Hub implements Transport {
   /** Kept through origin disconnect so a late host reply cannot collide with a reused request id. */
   private readonly pendingReplies = new Map<string, Transport>();
   private readonly pendingTerminals = new Map<string, PendingTerminalRequest>();
-  private readonly inbound = new Listeners<WireMessage>();
+  private readonly inbound = new Listeners<ValidatedWireMessage>();
   private readonly closed = new Listeners<void>();
 
   /** Register a client connection; its inbound messages are forwarded to the Host. */
@@ -83,7 +83,7 @@ export class Hub implements Transport {
     return Promise.resolve();
   }
 
-  private route(conn: Transport, msg: WireMessage): void {
+  private route(conn: Transport, msg: ValidatedWireMessage): void {
     const p = msg.payload;
     const subscription = this.subscriptions.get(conn);
     if ('clientReqId' in p && this.pendingReplies.has(p.clientReqId)) {
@@ -134,7 +134,7 @@ export class Hub implements Transport {
   }
 
   /** Route one host frame; one failing connection never blocks the others. */
-  send(msg: WireMessage): void {
+  send(msg: ValidatedWireMessage): void {
     const p = msg.payload;
     if ('replyTo' in p) {
       const conn = this.pendingReplies.get(p.replyTo);
@@ -203,7 +203,7 @@ export class Hub implements Transport {
     attachments.set(attachment.attachmentId, attachment.attachmentSecret);
   }
 
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe {
     return this.inbound.add(cb);
   }
 

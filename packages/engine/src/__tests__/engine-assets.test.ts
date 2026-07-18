@@ -3,7 +3,7 @@ import type {
   AssetInstallEvent,
   InstalledAsset,
   ManagedAssetStatus,
-  WireMessage,
+  ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -40,10 +40,10 @@ function fakeAssets(overrides: Partial<AssetService> = {}) {
 
 function harness(deps: EngineDeps = {}) {
   const sent: WirePayload[] = [];
-  let handler: ((msg: WireMessage) => void) | null = null;
+  let handler: ((msg: ValidatedWireMessage) => void) | null = null;
   const transport: Transport = {
     connect: () => Promise.resolve(),
-    send(msg: WireMessage) {
+    send(msg: ValidatedWireMessage) {
       sent.push(msg.payload);
     },
     onMessage(cb) {

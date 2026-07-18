@@ -37,7 +37,7 @@ const textDecoder = new TextDecoder();
 
 class WsServerConnection extends WireConnection {
   constructor(private readonly ws: WebSocket) {
-    super('WsServer');
+    super();
     // The socket is already live when handed to us, so emitClosed is armed up front.
     this.armClosedListener();
 

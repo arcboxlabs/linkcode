@@ -351,6 +351,22 @@ export function mapCodexHistoryEvents(
   };
 
   rows.forEach((row, index) => {
+    // A `compacted` row is the persisted compaction boundary; `message` carries the swapped-in
+    // summary. `window_id` is optional on the wire format — fall back to a positional id.
+    if (stringField(row, 'type') === 'compacted') {
+      const payload = recordField(row, 'payload');
+      const summary = payload ? stringField(payload, 'message') : undefined;
+      const compactionId =
+        (payload ? stringField(payload, 'window_id') : undefined) ??
+        `compacted-${index.toString(36)}`;
+      events.push({
+        historyId,
+        itemId: compactionId,
+        ts: timestampMs(row.timestamp),
+        event: { type: 'compaction', compactionId, ...(summary && { summary }) },
+      });
+      return;
+    }
     if (stringField(row, 'type') !== 'response_item') return;
     const payload = recordField(row, 'payload');
     if (!payload) return;

@@ -1,4 +1,4 @@
-import type { SessionId, WireMessage } from '@linkcode/schema';
+import type { SessionId, ValidatedWireMessage } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { Hub } from '../hub';
@@ -6,18 +6,18 @@ import type { Transport, Unsubscribe } from '../transport';
 import { createWireMessage, Listeners } from '../transport';
 
 class FakeConn implements Transport {
-  readonly sent: WireMessage[] = [];
-  private readonly inbound = new Listeners<WireMessage>();
+  readonly sent: ValidatedWireMessage[] = [];
+  private readonly inbound = new Listeners<ValidatedWireMessage>();
 
   connect(): Promise<void> {
     return Promise.resolve();
   }
 
-  send(msg: WireMessage): void {
+  send(msg: ValidatedWireMessage): void {
     this.sent.push(msg);
   }
 
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe {
     return this.inbound.add(cb);
   }
 
@@ -28,7 +28,7 @@ class FakeConn implements Transport {
   close = noop;
 
   /** Simulate the client sending a message into the hub. */
-  emit(msg: WireMessage): void {
+  emit(msg: ValidatedWireMessage): void {
     this.inbound.emit(msg);
   }
 }
@@ -36,7 +36,7 @@ class FakeConn implements Transport {
 const S1 = 's1' as SessionId;
 const S2 = 's2' as SessionId;
 
-function agentEvent(sessionId: SessionId): WireMessage {
+function agentEvent(sessionId: SessionId): ValidatedWireMessage {
   return createWireMessage({
     kind: 'agent.event',
     sessionId,
@@ -97,7 +97,7 @@ describe('Hub subscriptions', () => {
     const hub = new Hub();
     const conn = new FakeConn();
     hub.addConnection(conn);
-    const forwarded: WireMessage[] = [];
+    const forwarded: ValidatedWireMessage[] = [];
     hub.onMessage((msg) => forwarded.push(msg));
 
     conn.emit(createWireMessage({ kind: 'subscription.set', clientReqId: 'r9', mode: 'all' }));
@@ -127,7 +127,7 @@ describe('Hub subscriptions', () => {
   it('answers ping on its connection without forwarding it to the host', () => {
     const hub = new Hub();
     const conn = new FakeConn();
-    const forwarded: WireMessage[] = [];
+    const forwarded: ValidatedWireMessage[] = [];
     hub.addConnection(conn);
     hub.onMessage((msg) => forwarded.push(msg));
 
@@ -226,7 +226,7 @@ describe('Hub terminal routing', () => {
   it('detaches every attachment when its connection closes', () => {
     const hub = new Hub();
     const conn = new FakeConn();
-    const forwarded: WireMessage[] = [];
+    const forwarded: ValidatedWireMessage[] = [];
     hub.addConnection(conn);
     hub.onMessage((msg) => forwarded.push(msg));
     conn.emit(
@@ -264,7 +264,7 @@ describe('Hub terminal routing', () => {
     const hub = new Hub();
     const conn = new FakeConn();
     const replacement = new FakeConn();
-    const forwarded: WireMessage[] = [];
+    const forwarded: ValidatedWireMessage[] = [];
     hub.addConnection(conn);
     hub.onMessage((msg) => forwarded.push(msg));
     conn.emit(

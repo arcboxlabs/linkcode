@@ -144,6 +144,13 @@ export function TimelineItem({ item }: { item: ConversationItem }): React.ReactN
         </View>
       );
     case 'compaction':
+      if (item.status === 'in_progress') {
+        return (
+          <View className="flex-row items-center justify-center gap-2 px-2">
+            <Text className="font-semibold text-footnote text-muted">{t('compacting')}</Text>
+          </View>
+        );
+      }
       return (
         <View className="flex-row items-center justify-center gap-2 px-2">
           <Text className="font-semibold text-footnote text-muted">{t('compacted')}</Text>

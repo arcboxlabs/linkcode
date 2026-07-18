@@ -74,4 +74,43 @@ describe.skipIf(!BINARY)('SidecarPtyBackend against the real linkcode-pty binary
     proc.write('exit 7\n');
     await expect(code).resolves.toBe(7);
   });
+
+  it('parks a credited terminal at its budget and resumes on grantRead', async () => {
+    backend = new SidecarPtyBackend(BINARY);
+    const proc = await backend.open('term-1', {
+      cols: 80,
+      rows: 24,
+      shell: '/bin/sh',
+      args: ['-c', 'while :; do echo linkcode-flood-line; done'],
+      credit: 8192,
+    });
+
+    let received = 0;
+    proc.onData((data) => {
+      received += Buffer.byteLength(data);
+    });
+    // The flood must stall at (or before) the budget: wait for half a second of silence.
+    const settled = await new Promise<number>((resolve) => {
+      let last = -1;
+      const timer = setInterval(() => {
+        if (received === last) {
+          clearInterval(timer);
+          resolve(received);
+        }
+        last = received;
+      }, 500);
+    });
+    expect(settled).toBeGreaterThan(0);
+    expect(settled).toBeLessThanOrEqual(8192);
+
+    // Granting more budget resumes the flow.
+    proc.grantRead(8192);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no output after grantRead')), TIMEOUT_MS);
+      proc.onData(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }, 15000);
 });

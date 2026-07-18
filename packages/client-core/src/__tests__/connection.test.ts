@@ -1,4 +1,4 @@
-import type { WireMessage, WirePayload } from '@linkcode/schema';
+import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,7 +8,7 @@ class ControlledTransport implements Transport {
   readonly sent: WirePayload[] = [];
   readonly connectError?: Error;
   closeCalls = 0;
-  private readonly messages = new Set<(message: WireMessage) => void>();
+  private readonly messages = new Set<(message: ValidatedWireMessage) => void>();
   private readonly closes = new Set<() => void>();
 
   constructor(options: { connectError?: Error } = {}) {
@@ -19,11 +19,11 @@ class ControlledTransport implements Transport {
     return this.connectError ? Promise.reject(this.connectError) : Promise.resolve();
   }
 
-  send(message: WireMessage): void {
+  send(message: ValidatedWireMessage): void {
     this.sent.push(message.payload);
   }
 
-  onMessage(cb: (message: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (message: ValidatedWireMessage) => void): Unsubscribe {
     this.messages.add(cb);
     return () => this.messages.delete(cb);
   }

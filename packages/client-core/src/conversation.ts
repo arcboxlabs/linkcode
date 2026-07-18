@@ -64,6 +64,9 @@ export type ConversationItem = (
       /** The provider's compaction boundary id — partial re-emits merge into one marker by it. */
       id: string;
       turnId: ConversationTurnId;
+      /** Absent means completed; `in_progress` renders as a live "compacting…" row until the
+       * provider's completed re-emit merges over it. */
+      status?: 'in_progress' | 'completed';
       trigger?: 'manual' | 'auto';
       preTokens?: number;
       postTokens?: number;
@@ -326,6 +329,7 @@ export function createConversationBuilder(): ConversationBuilder {
             kind: 'compaction',
             id: event.compactionId,
             turnId: currentTurnId,
+            status: event.status,
             trigger: event.trigger,
             preTokens: event.preTokens,
             postTokens: event.postTokens,
@@ -339,6 +343,7 @@ export function createConversationBuilder(): ConversationBuilder {
         if (item.kind === 'compaction') {
           items[existing] = {
             ...item,
+            status: event.status ?? item.status,
             trigger: event.trigger ?? item.trigger,
             preTokens: event.preTokens ?? item.preTokens,
             postTokens: event.postTokens ?? item.postTokens,
@@ -570,7 +575,9 @@ export interface ConversationSeedEvent {
 
 /** A point-in-time transcript snapshot: past events read from provider history, plus the live
  * stream's receive counter sampled when the read resolved (see `LinkCodeClient.eventSeq`). The
- * conversation store folds the seed first, then only the live events past the `uptoSeq` cut. */
+ * conversation store folds the seed first, then the live events past the `uptoSeq` cut — and,
+ * because a mid-turn transcript lags the stream, pre-cut events whose identity the snapshot
+ * doesn't cover (an in-flight message's chunks, an unflushed tool call; CODE-272). */
 export interface ConversationSeed {
   events: ConversationSeedEvent[];
   /** The snapshot covers every live event with seq ≤ this; 0 = supersedes nothing. */

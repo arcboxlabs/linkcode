@@ -10,6 +10,7 @@ use std::time::Duration;
 use portable_pty::{Child, MasterPty, PtySize};
 use serde_json::json;
 
+use crate::credit::Credit;
 use crate::proto::{ERROR, EXIT, OPENED, OUTPUT, encode_data, write_frame};
 use crate::pty::{OpenParams, SpawnedPty, spawn};
 
@@ -19,6 +20,8 @@ struct Terminal {
     /// `None` once the reader thread has reaped the child; guards `signal_group` from ever
     /// targeting a pid the OS may have recycled.
     child: Mutex<Option<Box<dyn Child + Send + Sync>>>,
+    /// Read-credit gate shared with this terminal's reader thread.
+    credit: Arc<Credit>,
 }
 
 /// How hard to tear a terminal's process group down.
@@ -140,17 +143,19 @@ impl Mux {
             }
         };
 
+        let credit = Arc::new(Credit::new(params.credit));
         self.lock_terminals().insert(
             terminal_id.clone(),
             Arc::new(Terminal {
                 master: Mutex::new(master),
                 writer: Mutex::new(writer),
                 child: Mutex::new(Some(child)),
+                credit: Arc::clone(&credit),
             }),
         );
         // Reply OPENED before starting the reader so it always precedes this terminal's output.
         self.send_json(OPENED, &json!({ "terminalId": terminal_id, "pid": pid }));
-        Arc::clone(self).spawn_reader(terminal_id, reader);
+        Arc::clone(self).spawn_reader(terminal_id, reader, credit);
     }
 
     /// Reply `ERROR` for a single terminal that could not be opened (e.g. a malformed OPEN frame),
@@ -190,10 +195,21 @@ impl Mux {
         }
     }
 
+    /// Grant additional read credit to a terminal. Best effort: an unknown id (already exited) is
+    /// ignored, matching the other per-terminal control frames.
+    pub fn credit(&self, terminal_id: &str, bytes: u64) {
+        if let Some(terminal) = self.terminal(terminal_id) {
+            terminal.credit.grant(bytes);
+        }
+    }
+
     /// Request termination; the `EXIT` frame and map removal follow from the reader hitting EOF.
     /// A terminal still alive after [`CLOSE_GRACE_PERIOD`] is escalated to `SIGKILL` on its group.
     pub fn close(self: &Arc<Self>, terminal_id: &str) {
         if let Some(terminal) = self.terminal(terminal_id) {
+            // Lift throttling first: a credit-parked reader would otherwise never see the EOF this
+            // teardown produces. The dying process drains unthrottled from here on.
+            terminal.credit.release();
             terminal.signal_group(Teardown::Hangup);
         } else {
             return;
@@ -215,6 +231,8 @@ impl Mux {
     pub fn shutdown(&self) {
         for terminal in self.lock_terminals().values() {
             terminal.signal_group(Teardown::Kill);
+            // Wake any credit-parked reader so it can drain to EOF; the joins below depend on it.
+            terminal.credit.release();
         }
         let readers = std::mem::take(&mut *self.readers.lock().expect("readers mutex poisoned"));
         for reader in readers {
@@ -226,18 +244,29 @@ impl Mux {
         }
     }
 
-    fn spawn_reader(self: Arc<Self>, terminal_id: String, mut reader: Box<dyn Read + Send>) {
+    fn spawn_reader(
+        self: Arc<Self>,
+        terminal_id: String,
+        mut reader: Box<dyn Read + Send>,
+        credit: Arc<Credit>,
+    ) {
         let handle = thread::spawn({
             let mux = Arc::clone(&self);
             move || {
                 let mut buf = [0u8; 4096];
                 loop {
-                    match reader.read(&mut buf) {
+                    // Parks while the budget is exhausted — the kernel PTY buffer then fills and
+                    // the child's writes block, which is the whole point of the credit gate.
+                    let allowance = credit.acquire(buf.len());
+                    match reader.read(&mut buf[..allowance]) {
                         Ok(0) | Err(_) => break,
-                        Ok(n) => match encode_data(&terminal_id, &buf[..n]) {
-                            Ok(body) => mux.send(OUTPUT, body),
-                            Err(_) => break,
-                        },
+                        Ok(n) => {
+                            credit.consume(n);
+                            match encode_data(&terminal_id, &buf[..n]) {
+                                Ok(body) => mux.send(OUTPUT, body),
+                                Err(_) => break,
+                            }
+                        }
                     }
                 }
                 let exit_code = mux.reap(&terminal_id);

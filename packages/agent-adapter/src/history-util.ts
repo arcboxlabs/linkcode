@@ -61,6 +61,29 @@ export function textHistoryEvent(
   };
 }
 
+/** The thought counterpart of `textHistoryEvent` (same empty-drop rule): replayed reasoning must
+ * emit as `agent-thought-chunk`, never fold into message text — the wire keeps them distinct. */
+export function thoughtHistoryEvent(
+  historyId: AgentHistoryId,
+  messageId: string,
+  text: string,
+  ts?: Timestamp,
+  parentToolCallId?: string,
+): AgentHistoryEvent | undefined {
+  if (text.trim().length === 0) return undefined;
+  return {
+    historyId,
+    itemId: messageId,
+    ts,
+    event: {
+      type: 'agent-thought-chunk',
+      messageId: asMessageId(messageId),
+      parentToolCallId,
+      content: textBlock(text),
+    },
+  };
+}
+
 export function textFromUnknown(value: unknown): string {
   let current = value;
   while (true) {
@@ -78,9 +101,6 @@ export function textFromUnknown(value: unknown): string {
 
     const text = current.text;
     if (typeof text === 'string') return text;
-
-    const thinking = current.thinking;
-    if (typeof thinking === 'string') return thinking;
 
     const content = current.content;
     if (content !== undefined) {

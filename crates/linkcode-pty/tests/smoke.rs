@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 const OPEN: u8 = 0x01;
 const INPUT: u8 = 0x02;
 const CLOSE: u8 = 0x04;
+const CREDIT: u8 = 0x05;
 const OPENED: u8 = 0x81;
 const OUTPUT: u8 = 0x82;
 const EXIT: u8 = 0x83;
@@ -354,6 +355,134 @@ fn rejects_open_with_a_nonexistent_cwd() {
     assert!(
         rejected,
         "an OPEN with a nonexistent cwd should be rejected"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Run frame reads on a helper thread so tests can assert *silence* (a throttled reader) with
+/// `recv_timeout` instead of blocking forever on the pipe.
+fn spawn_frame_reader(mut stdout: ChildStdout) -> std::sync::mpsc::Receiver<(u8, Vec<u8>)> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        while let Some(frame) = read_frame(&mut stdout) {
+            if tx.send(frame).is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
+/// Drain OUTPUT bytes for `id` until the stream stays silent for `quiet`; returns the byte count.
+fn drain_output_until_quiet(
+    rx: &std::sync::mpsc::Receiver<(u8, Vec<u8>)>,
+    id: &str,
+    quiet: Duration,
+) -> usize {
+    let mut total = 0;
+    while let Ok((type_byte, body)) = rx.recv_timeout(quiet) {
+        if type_byte == OUTPUT {
+            let (frame_id, _) = split_data(&body);
+            if frame_id == id {
+                total += body.len() - 2 - id.len();
+            }
+        }
+    }
+    total
+}
+
+#[test]
+fn credited_open_throttles_output_until_more_credit_arrives() {
+    let (mut child, mut stdin, stdout) = spawn_sidecar();
+    let rx = spawn_frame_reader(stdout);
+
+    // A flooding shell with an 8 KiB initial budget: output must stop at (or before) the budget.
+    let id = "t-credit";
+    write_frame(
+        &mut stdin,
+        OPEN,
+        format!(
+            r#"{{"terminalId":"{id}","cols":80,"rows":24,"cmd":"/bin/sh","args":["-c","while :; do echo linkcode-flood-line; done"],"credit":8192}}"#
+        )
+        .as_bytes(),
+    );
+    let opened = rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("opened frame");
+    assert_eq!(opened.0, OPENED);
+
+    let first_burst = drain_output_until_quiet(&rx, id, Duration::from_secs(1));
+    assert!(
+        first_burst > 0,
+        "some output should arrive before the budget runs out"
+    );
+    assert!(
+        first_burst <= 8192,
+        "output must stop at the credited budget, got {first_burst} bytes"
+    );
+
+    // Granting more credit resumes the flow — and stops again at the enlarged budget.
+    write_frame(
+        &mut stdin,
+        CREDIT,
+        format!(r#"{{"terminalId":"{id}","bytes":8192}}"#).as_bytes(),
+    );
+    let second_burst = drain_output_until_quiet(&rx, id, Duration::from_secs(1));
+    assert!(second_burst > 0, "granted credit should resume output");
+    assert!(
+        second_burst <= 8192,
+        "resumed output must stop at the granted budget, got {second_burst} bytes"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn close_drains_a_credit_parked_terminal_to_exit() {
+    let (mut child, mut stdin, stdout) = spawn_sidecar();
+    let rx = spawn_frame_reader(stdout);
+
+    // A tiny budget guarantees the reader is parked mid-flood when CLOSE arrives.
+    let id = "t-parked";
+    write_frame(
+        &mut stdin,
+        OPEN,
+        format!(
+            r#"{{"terminalId":"{id}","cols":80,"rows":24,"cmd":"/bin/sh","args":["-c","while :; do echo linkcode-flood-line; done"],"credit":512}}"#
+        )
+        .as_bytes(),
+    );
+    let opened = rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("opened frame");
+    assert_eq!(opened.0, OPENED);
+    drain_output_until_quiet(&rx, id, Duration::from_secs(1));
+
+    // CLOSE must lift the credit gate: a parked reader would otherwise never reach EOF or EXIT.
+    write_frame(
+        &mut stdin,
+        CLOSE,
+        format!(r#"{{"terminalId":"{id}"}}"#).as_bytes(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut exited = false;
+    while Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_secs(1)) {
+            Ok((EXIT, body)) => {
+                assert!(String::from_utf8_lossy(&body).contains(id));
+                exited = true;
+                break;
+            }
+            Ok(_) => {}
+            Err(_) => {}
+        }
+    }
+    assert!(
+        exited,
+        "close should drain a credit-parked terminal to EXIT"
     );
 
     let _ = child.kill();

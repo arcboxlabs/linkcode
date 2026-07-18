@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -7,6 +8,7 @@ import type { ContentBlock, StartOptions } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../base';
 import { readAgentCredential } from '../credential';
+import { agentRuntimeProber } from '../probe';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 /**
@@ -21,9 +23,18 @@ export class PiAdapter extends BaseAgentAdapter {
   private unsub: (() => void) | null = null;
 
   protected async onStart(opts: StartOptions): Promise<void> {
+    // Managed closure entry first (the packaged source, CODE-219), then node_modules
+    // self-resolution (dev/standalone). The entry import is type-erased by the dynamic path;
+    // the closure manifest is lockfile-generated, so its bytes match the compiled-against types.
+    const managed = agentRuntimeProber.resolveEntry('pi');
     const pi = await this.loadSdk(
       '@earendil-works/pi-coding-agent',
-      () => import('@earendil-works/pi-coding-agent'),
+      () =>
+        (managed
+          ? import(pathToFileURL(managed.path).href)
+          : import('@earendil-works/pi-coding-agent')) as Promise<
+          typeof import('@earendil-works/pi-coding-agent')
+        >,
     );
     const authStorage = pi.AuthStorage.create();
     const modelRegistry = pi.ModelRegistry.create(authStorage);

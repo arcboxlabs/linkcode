@@ -32,6 +32,7 @@ import { wait } from 'foxts/wait';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
+import { SEED_MODEL_CATALOGS } from './data/models';
 import {
   CHUNK_LATENCY_MS,
   CONTROL_LATENCY_MS,
@@ -47,6 +48,11 @@ import {
   SHOWCASE_ARCHITECTURE_LINK,
   SHOWCASE_ARTIFACTS_CONTENT,
   SHOWCASE_COMMANDS_NARRATION,
+  SHOWCASE_COMPACTION_HOLD_MS,
+  SHOWCASE_COMPACTION_ID,
+  SHOWCASE_COMPACTION_POST_TOKENS,
+  SHOWCASE_COMPACTION_PRE_TOKENS,
+  SHOWCASE_COMPACTION_SUMMARY,
   SHOWCASE_EMBEDDED_RESOURCE,
   SHOWCASE_ERROR_EVENT,
   SHOWCASE_EXPLORE_NARRATION,
@@ -577,10 +583,14 @@ export class DevMockHost {
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
+    const catalog = SEED_MODEL_CATALOGS[kind];
+    if (catalog) {
+      this.emit(sessionId, { type: 'available-models-update', models: catalog });
+    }
     // Reflect a concrete model/effort like a real adapter, so the composer shows them not placeholders.
     this.emit(sessionId, {
       type: 'model-update',
-      model: model ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
+      model: model ?? catalog?.[0]?.id ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
     });
     this.emit(sessionId, { type: 'effort-update', effort: 'high' });
     this.emit(sessionId, { type: 'status', status: 'idle' });
@@ -746,6 +756,11 @@ export class DevMockHost {
       return;
     }
     session.status = 'idle';
+    // Parity with the engine's replay-on-attach: a resumed session re-advertises its catalog.
+    const catalog = SEED_MODEL_CATALOGS[session.kind];
+    if (catalog) {
+      this.emit(sessionId, { type: 'available-models-update', models: catalog });
+    }
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
@@ -1031,6 +1046,27 @@ export class DevMockHost {
     const messageId = this.nextMessageId('mock-showcase-stream');
     await wait(SHOWCASE_STREAM_START_DELAY_MS);
     if (!isRunningTurn(session, epoch)) return;
+
+    // One compaction across its whole lifecycle: the live "compacting…" row holds briefly, then
+    // the completed re-emit merges over it (same compactionId) as the tokens+summary divider.
+    this.emit(session.sessionId, {
+      type: 'compaction',
+      compactionId: SHOWCASE_COMPACTION_ID,
+      status: 'in_progress',
+      trigger: 'auto',
+    });
+    await wait(SHOWCASE_COMPACTION_HOLD_MS);
+    if (!isRunningTurn(session, epoch)) return;
+    this.emit(session.sessionId, {
+      type: 'compaction',
+      compactionId: SHOWCASE_COMPACTION_ID,
+      status: 'completed',
+      trigger: 'auto',
+      preTokens: SHOWCASE_COMPACTION_PRE_TOKENS,
+      postTokens: SHOWCASE_COMPACTION_POST_TOKENS,
+      summary: SHOWCASE_COMPACTION_SUMMARY,
+    });
+
     this.emit(session.sessionId, {
       type: 'agent-thought-chunk',
       messageId: thoughtId,

@@ -1,5 +1,6 @@
 import type { ManagedAssetFormat, ManagedAssetId } from '@linkcode/schema';
 import type { NpmClosure } from './closure';
+import { PI_CLOSURE } from './pi-closure.gen';
 import type { PlatformKey } from './platform';
 
 /**
@@ -139,7 +140,7 @@ function aigatewayArtifact(
   };
 }
 
-export const CATALOG: Record<ManagedAssetId, BinaryAssetDescriptor> = {
+export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
   'agent:claude-code': {
     id: 'agent:claude-code',
     binaryBase: 'claude',
@@ -179,6 +180,13 @@ export const CATALOG: Record<ManagedAssetId, BinaryAssetDescriptor> = {
       }),
       format: 'tgz',
     })),
+  },
+  'agent:pi': {
+    id: 'agent:pi',
+    // Resolvable only in dev/standalone hosts (packaged apps exclude the closure from
+    // node_modules); the manager falls back to the manifest's own version there.
+    version: { kind: 'sdk-version', package: '@earendil-works/pi-coding-agent' },
+    closure: PI_CLOSURE,
   },
   'agent:opencode': {
     id: 'agent:opencode',
@@ -268,7 +276,7 @@ export const CATALOG: Record<ManagedAssetId, BinaryAssetDescriptor> = {
       ),
     },
   },
-};
+} satisfies Record<ManagedAssetId, AssetDescriptor>;
 
 export function descriptorFor(id: ManagedAssetId): AssetDescriptor {
   return CATALOG[id];

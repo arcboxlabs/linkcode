@@ -185,6 +185,10 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('compaction'),
     compactionId: z.string().min(1),
+    /** Absent means completed — providers that only report the finished boundary (claude-code)
+     * never emit a status; codex emits `in_progress` at item/started so clients can show a live
+     * "compacting…" row until the completed re-emit merges over it. */
+    status: z.enum(['in_progress', 'completed']).optional(),
     trigger: z.enum(['manual', 'auto']).optional(),
     /** Context tokens before / after the compaction, when the provider reports them. */
     preTokens: z.number().int().nonnegative().optional(),

@@ -1,5 +1,5 @@
 import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
-import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import type { AgentKind, WorkspaceRecord } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
 import { AGENT_LABELS, AgentIcon, repositoryLabel, SectionLabel } from '@linkcode/ui/native';
@@ -53,7 +53,7 @@ export function NewThreadSheet({
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
     >
-      <BottomSheetView>
+      <BottomSheetScrollView>
         <View className="gap-5 px-5 pt-2" style={{ paddingBottom: insets.bottom + 16 }}>
           <View className="gap-2">
             <SectionLabel>{t('kindLabel')}</SectionLabel>
@@ -127,7 +127,7 @@ export function NewThreadSheet({
             <Button.Label>{t('create')}</Button.Label>
           </Button>
         </View>
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheetModal>
   );
 }
