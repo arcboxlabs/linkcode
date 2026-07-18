@@ -3,6 +3,7 @@
 //! One long-lived process the daemon spawns; it multiplexes many terminals over a framed stdio
 //! protocol (see [`proto`]). Control frames arrive on stdin; output and lifecycle frames go to stdout.
 
+mod credit;
 mod mux;
 mod proto;
 mod pty;
@@ -12,7 +13,7 @@ use std::io::{self, BufReader};
 use serde::Deserialize;
 
 use crate::mux::Mux;
-use crate::proto::{CLOSE, INPUT, OPEN, RESIZE, decode_data, read_frame};
+use crate::proto::{CLOSE, CREDIT, INPUT, OPEN, RESIZE, decode_data, read_frame};
 use crate::pty::OpenParams;
 
 #[derive(Deserialize)]
@@ -21,6 +22,13 @@ struct ResizeParams {
     terminal_id: String,
     cols: u16,
     rows: u16,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreditParams {
+    terminal_id: String,
+    bytes: u64,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +89,11 @@ fn main() {
             CLOSE => {
                 if let Ok(params) = serde_json::from_slice::<CloseParams>(&body) {
                     mux.close(&params.terminal_id);
+                }
+            }
+            CREDIT => {
+                if let Ok(params) = serde_json::from_slice::<CreditParams>(&body) {
+                    mux.credit(&params.terminal_id, params.bytes);
                 }
             }
             _ => {}

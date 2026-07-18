@@ -70,6 +70,7 @@ import {
   numberField,
   stringField,
   textHistoryEvent,
+  thoughtHistoryEvent,
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
@@ -628,6 +629,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
         // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
         forwardSubagentText: true,
+        // Opus 4.6+ models default `thinking.display` to 'omitted' at the API — thinking blocks
+        // arrive with EMPTY text (signature only), so no thought event would ever carry content
+        // (CODE-273). The TUI shows thinking because interactive mode requests summaries; SDK mode
+        // must ask explicitly. Ride the raw `--thinking-display` flag rather than the typed
+        // `options.thinking`, which would also pin `--thinking adaptive` and override the CLI's
+        // per-model thinking resolution (verified live on the 0.3.206 × 2.1.212 pair).
+        extraArgs: { 'thinking-display': 'summarized' },
         // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
         hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
         canUseTool: this.canUseTool,
@@ -1513,6 +1521,20 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
+      // Thinking replays as thought chunks under `${uuid}:think` — the id the live subagent path
+      // already emits, so live-forwarded and cold-replayed thinking converge. Pre-CODE-273
+      // transcripts store empty thinking text; the helper's empty-drop rule skips those.
+      for (const block of blocks) {
+        if (!isThinkingBlock(block)) continue;
+        const thought = thoughtHistoryEvent(
+          historyId,
+          `${message.uuid}:think`,
+          block.thinking,
+          ts,
+          parent,
+        );
+        if (thought) events.push(thought);
+      }
       const text = textHistoryEvent(
         historyId,
         'assistant',
@@ -1585,6 +1607,11 @@ interface ClaudeToolResultBlock {
   content?: unknown;
 }
 
+interface ClaudeThinkingBlock {
+  type: 'thinking';
+  thinking: string;
+}
+
 function messageContentBlocks(message: unknown): unknown[] {
   if (!isRecord(message)) return [];
   const content = message.content;
@@ -1609,4 +1636,8 @@ function isToolResultBlock(block: unknown): block is ClaudeToolResultBlock {
     typeof block.tool_use_id === 'string' &&
     block.tool_use_id.length > 0
   );
+}
+
+function isThinkingBlock(block: unknown): block is ClaudeThinkingBlock {
+  return isRecord(block) && block.type === 'thinking' && typeof block.thinking === 'string';
 }

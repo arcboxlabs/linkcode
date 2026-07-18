@@ -36,9 +36,17 @@ describe('deriveAgentRuntimeCues', () => {
   });
 
   it('is not downloadable for a kind with no backing asset', () => {
-    const runtimes: AgentRuntimes = { pi: { status: 'missing' } };
+    const runtimes: AgentRuntimes = { 'grok-build': { status: 'missing' } };
     expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {})).toEqual({
-      pi: { state: 'missing', downloadable: false },
+      'grok-build': { state: 'missing', downloadable: false },
+    });
+  });
+
+  it('marks a missing pi downloadable through its closure asset (CODE-219)', () => {
+    const runtimes: AgentRuntimes = { pi: { status: 'missing' } };
+    const assets: ManagedAssetStatus[] = [...ASSETS, { id: 'agent:pi', wantedVersion: '0.80.6' }];
+    expect(deriveAgentRuntimeCues(runtimes, assets, {}, {})).toEqual({
+      pi: { state: 'missing', downloadable: true },
     });
   });
 

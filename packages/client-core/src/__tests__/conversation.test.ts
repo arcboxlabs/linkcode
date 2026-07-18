@@ -622,6 +622,20 @@ describe('buildConversation', () => {
     ]);
     expect(c.items).toHaveLength(2);
   });
+
+  it('tracks a live compaction from in_progress to completed on the same marker', () => {
+    const started = buildConversation([
+      { type: 'compaction', compactionId: 'cc1', status: 'in_progress' },
+    ]);
+    expect(started.items[0]).toMatchObject({ kind: 'compaction', status: 'in_progress' });
+
+    const settled = buildConversation([
+      { type: 'compaction', compactionId: 'cc1', status: 'in_progress' },
+      { type: 'compaction', compactionId: 'cc1', status: 'completed' },
+    ]);
+    expect(settled.items).toHaveLength(1);
+    expect(settled.items[0]).toMatchObject({ kind: 'compaction', status: 'completed' });
+  });
 });
 
 describe('createConversationBuilder', () => {

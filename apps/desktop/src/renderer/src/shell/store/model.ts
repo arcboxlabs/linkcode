@@ -100,10 +100,12 @@ export const BOTTOM_PANEL_MIN_SIZE = 150;
 export const BOTTOM_PANEL_MAX_SIZE = 560;
 export const MIN_MAIN_SIZE = 360;
 
+/* 8px grid; sidebarW + the 824px chat column (max-w-3xl + px-7) + rightW is the first-launch
+ * window width cap (1560) in main/window-state.ts. */
 export const DEFAULT_LAYOUT: LayoutState = {
-  sidebarW: 286,
+  sidebarW: 288,
   rightW: 440,
-  bottomH: 230,
+  bottomH: 240,
 };
 
 export const PANEL_EXPANSION_TARGET: Record<PanelSide, PanelExpansionTarget> = {

@@ -42,14 +42,18 @@ export class AssetManager {
     this.descriptors = new Map(catalog.map((descriptor) => [descriptor.id, descriptor]));
     for (const descriptor of this.descriptors.values()) {
       const wanted = wantedVersion(descriptor.version, options.pinFrom);
-      // A closure manifest is generated from the same lockfile the pin comes from; a mismatch
-      // means a stale manifest after an SDK bump — treat as unpinnable (no install, GC hands
-      // off) rather than install bytes that disagree with the adapter's compiled-against types.
-      const stale =
-        isClosureDescriptor(descriptor) &&
-        wanted !== undefined &&
-        wanted !== descriptor.closure.version;
-      this.wanted.set(descriptor.id, stale ? undefined : wanted);
+      if (!isClosureDescriptor(descriptor)) {
+        this.wanted.set(descriptor.id, wanted);
+        continue;
+      }
+      // A closure manifest is generated from the same lockfile the SDK pin comes from. When the
+      // SDK is resolvable (dev/standalone), a disagreement means a stale manifest after an SDK
+      // bump — treat as unpinnable (no install, GC hands off) rather than install bytes that
+      // disagree with the adapter's compiled-against types. When it is not (packaged hosts
+      // exclude the closure from node_modules), the manifest itself is the pin: it was compiled
+      // into this daemon alongside the adapter, so the pair agrees by construction.
+      const stale = wanted !== undefined && wanted !== descriptor.closure.version;
+      this.wanted.set(descriptor.id, stale ? undefined : descriptor.closure.version);
     }
   }
 

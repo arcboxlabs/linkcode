@@ -2,6 +2,7 @@ import { LinkCodeProvider } from '@linkcode/client-core';
 import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { HostConnectionState } from '../../../components/host-connection-state';
+import { useStackScreenOptions } from '../../../components/use-stack-screen-options';
 import { useHostClient } from '../../../runtime/use-host-client';
 import type { HostProfile } from '../../../stores/host-store';
 import { useHostRegistryStore } from '../../../stores/host-store';
@@ -19,6 +20,7 @@ export default function HostLayout(): React.ReactNode {
 
 function HostConnection({ host }: { host: HostProfile }): React.ReactNode {
   const { client, status, retry } = useHostClient(host);
+  const screenOptions = useStackScreenOptions();
   const setLastActiveHostId = useHostRegistryStore((state) => state.setLastActiveHostId);
 
   useEffect(() => {
@@ -37,7 +39,7 @@ function HostConnection({ host }: { host: HostProfile }): React.ReactNode {
 
   return (
     <LinkCodeProvider client={client}>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={screenOptions} />
     </LinkCodeProvider>
   );
 }

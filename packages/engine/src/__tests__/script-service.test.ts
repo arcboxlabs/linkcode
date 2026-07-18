@@ -45,6 +45,9 @@ class FakePtyProcess implements PtyProcess {
   resize(): void {
     /* no observable effect */
   }
+  grantRead(): void {
+    /* unthrottled fake */
+  }
   kill(): void {
     this.killed = true;
     this.exit(0);

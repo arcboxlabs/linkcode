@@ -37,7 +37,7 @@ import type { ThreadGroupActions, ThreadGroupState } from './sidebar';
 import type { ThreadGroupViewModel } from './threads-view';
 import { ThreadsView } from './threads-view';
 
-export { repositoryLabel } from './repository-label';
+export { repositoryLabel } from '../repository-label';
 export type { ThreadGroupViewModel } from './threads-view';
 
 export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupState {

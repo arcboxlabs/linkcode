@@ -33,7 +33,10 @@ export {
  * so request/response control messages correlate via `clientReqId` → `replyTo`.
  */
 
-export const WIRE_PROTOCOL_VERSION = 37 as const;
+// 39 disambiguates a parallel double-bump: #186 (CODE-142) and #189 (CODE-219) both shipped as
+// "38" with different schemas, so a build from between their merges shares a number with a
+// schema it does not speak.
+export const WIRE_PROTOCOL_VERSION = 40 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [
@@ -74,7 +77,16 @@ export const WireMessageSchema = z.object({
 });
 export type WireMessage = z.infer<typeof WireMessageSchema>;
 
-/** Parse + validate an inbound message; on failure returns the zod SafeParse result. */
-export function parseWireMessage(input: unknown): ReturnType<typeof WireMessageSchema.safeParse> {
-  return WireMessageSchema.safeParse(input);
+declare const wireMessageValidated: unique symbol;
+/**
+ * A WireMessage a transport accepts for send. Minted in exactly two places: here by
+ * {@link parseWireMessage} (zod at the receive trust boundary) and by the transport package's
+ * `createWireMessage` (typed local construction). The brand keeps raw, unvalidated objects out
+ * of the send path without paying a per-frame parse there.
+ */
+export type ValidatedWireMessage = WireMessage & { readonly [wireMessageValidated]: true };
+
+/** Parse + validate an inbound message; success mints the {@link ValidatedWireMessage} brand. */
+export function parseWireMessage(input: unknown): z.ZodSafeParseResult<ValidatedWireMessage> {
+  return WireMessageSchema.safeParse(input) as z.ZodSafeParseResult<ValidatedWireMessage>;
 }

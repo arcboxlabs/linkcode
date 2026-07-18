@@ -211,8 +211,13 @@ other clients of that host.
 Every message is a **versioned envelope** (version, id, timestamp) wrapping a payload.
 The payload is a discriminated union keyed by `kind` (`session.start` / `session.started`,
 `session.list` / `session.listed`, `history.list` / `history.listed`, `agent.event`, and
-so on). Local direct connections and remote tunnels share the identical format, and both
-ends validate with zod at the trust boundary — before sending and after receiving.
+so on). Local direct connections and remote tunnels share the identical format, and every
+receiving end validates with zod at its trust boundary before delivery. Senders do not
+re-validate (the per-frame send parse was hot on the terminal wire, CODE-231): `send()` takes
+the branded `ValidatedWireMessage`, minted only by `createWireMessage` (typed construction)
+and `parseWireMessage` (boundary validation), so an unchecked object cannot reach a send path
+without an explicit cast. `LocalTransport` alone keeps a send-side parse so tests and the
+dev-mock host catch schema drift behind the brand.
 Any change to the payload union bumps `WIRE_PROTOCOL_VERSION`; the version is a validated
 literal, so a stale peer rejects every message — after a bump, restart the daemon and all
 clients together.
@@ -250,8 +255,8 @@ interface AgentAdapter {
 // @linkcode/transport — the carrier-agnostic message pipe + its listener
 interface Transport {
   connect(): Promise<void>;
-  send(msg: WireMessage): void | Promise<void>;              // zod-validated before send
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe;    // zod-validated on receive
+  send(msg: ValidatedWireMessage): void | Promise<void>;     // brand minted by createWireMessage / parseWireMessage
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe; // zod-validated on receive
   onClose(cb: () => void): Unsubscribe;
   close(): void | Promise<void>;
 }

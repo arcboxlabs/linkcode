@@ -1,4 +1,4 @@
-import type { WireMessage } from '@linkcode/schema';
+import type { ValidatedWireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import type { Transport, Unsubscribe } from './transport';
@@ -7,7 +7,7 @@ import { Listeners } from './transport';
 /** Local direct-connection (in-process / over IPC) Transport. Use `createLocalTransportPair()`
  * to obtain a pair of endpoints that loop back to each other. */
 export class LocalTransport implements Transport {
-  private readonly inbound = new Listeners<WireMessage>();
+  private readonly inbound = new Listeners<ValidatedWireMessage>();
   private readonly closed = new Listeners<void>();
   private peer: LocalTransport | null = null;
   private connected = false;
@@ -22,10 +22,11 @@ export class LocalTransport implements Transport {
     return Promise.resolve();
   }
 
-  send(msg: WireMessage): void {
+  send(msg: ValidatedWireMessage): void {
     if (!this.connected) throw new Error('LocalTransport: send before connect()');
     invariant(this.peer, 'LocalTransport: not linked to a peer');
-    // Trust-boundary validation: validate against the contract even for local direct connections, to catch schema drift in the implementation layer.
+    // The one transport that still parses on send: tests and the dev-mock host run on
+    // LocalTransport, so schema drift behind the ValidatedWireMessage brand fails loudly here.
     const parsed = parseWireMessage(msg);
     if (!parsed.success) {
       throw new Error(`LocalTransport: invalid WireMessage: ${parsed.error.message}`);
@@ -35,7 +36,7 @@ export class LocalTransport implements Transport {
     queueMicrotask(() => this.peer?.inbound.emit(data));
   }
 
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe {
     return this.inbound.add(cb);
   }
 

@@ -10,6 +10,7 @@ import { noop } from 'foxts/noop';
 import type { Frame } from './codec';
 import {
   CLOSE,
+  CREDIT,
   decodeDataFrame,
   ERROR,
   EXIT,
@@ -91,6 +92,7 @@ export class SidecarPtyBackend implements PtyBackend {
         // an unspecified shell belongs in the user's home, like a fresh terminal app tab.
         cwd: opts.cwd ?? homedir(),
         env: opts.env ?? {},
+        credit: opts.credit,
       }),
     );
     return new Promise<PtyProcess>((resolve, reject) => {
@@ -220,6 +222,7 @@ export class SidecarPtyBackend implements PtyBackend {
       write: (data) => this.send(INPUT, encodeDataFrame(terminalId, Buffer.from(data, 'utf8'))),
       resize: (cols, rows) =>
         this.send(RESIZE, Buffer.from(JSON.stringify({ terminalId, cols, rows }))),
+      grantRead: (bytes) => this.send(CREDIT, Buffer.from(JSON.stringify({ terminalId, bytes }))),
       kill: () => this.send(CLOSE, Buffer.from(JSON.stringify({ terminalId }))),
     };
   }

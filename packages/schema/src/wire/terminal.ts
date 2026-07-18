@@ -77,6 +77,15 @@ export const terminalWireVariants = [
     seq: z.number().int().positive(),
     data: z.string(),
   }),
+  // Flow control: cumulative UTF-16 length of live output this attachment has consumed since its
+  // attach baseline (replayed events don't count). The host clamps delivery to the slowest
+  // attachment's unacknowledged window and propagates the freed budget to the PTY as read credit.
+  z.object({
+    kind: z.literal('terminal.ack'),
+    terminalId: TerminalIdSchema,
+    acked: z.number().int().nonnegative(),
+    ...TerminalAttachmentCredentialsSchema.shape,
+  }),
   z.object({
     kind: z.literal('terminal.resized'),
     terminalId: TerminalIdSchema,

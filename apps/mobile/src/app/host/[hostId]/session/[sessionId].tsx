@@ -1,55 +1,55 @@
-import { useConversation } from '@linkcode/client-core';
+import { useSessions } from '@linkcode/client-core';
 import { SessionIdSchema } from '@linkcode/schema';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Button } from 'heroui-native';
-import { useRef } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { AGENT_LABELS, EmptyState, repositoryLabel } from '@linkcode/ui/native';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { FlatList, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { ConversationTimeline } from '../../../../components/conversation-timeline';
+import { TimelineItem } from '../../../../components/conversation-timeline';
 import { SessionStatusChip } from '../../../../components/session-status-chip';
+import { useSeededConversation } from '../../../../runtime/use-seeded-conversation';
 
-/** Read-only conversation view of one session running on the host. */
+/** Read-only conversation view of one session running on the host. The inverted list pins
+ * to the newest item and leaves the user's scroll position alone while output streams. */
 export default function SessionScreen(): React.ReactNode {
   const t = useTranslations('mobile.conversation');
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const parsed = SessionIdSchema.safeParse(sessionId);
-  const conversation = useConversation(parsed.success ? parsed.data : null);
-  const scrollRef = useRef<ScrollView>(null);
+  const { sessions } = useSessions();
+
+  const session = sessions.find((entry) => entry.sessionId === sessionId);
+  const conversation = useSeededConversation(parsed.success ? (session ?? null) : null);
+  const title = session
+    ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
+    : '';
+  // Inverted list: index 0 renders at the visual bottom, so newest items pin there.
+  const reversed = [...conversation.items].reverse();
 
   return (
-    <View
-      className="flex-1 bg-background"
-      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
-    >
-      <View className="flex-row items-center justify-between px-4 py-2">
-        <Button variant="ghost" size="sm" onPress={() => router.back()}>
-          <Button.Label>‹</Button.Label>
-        </Button>
-        {conversation.status ? <SessionStatusChip status={conversation.status} /> : null}
-      </View>
-
-      <ScrollView
-        ref={scrollRef}
-        className="flex-1"
-        contentContainerStyle={{ padding: 16, gap: 12 }}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-      >
-        {conversation.items.length === 0 ? (
-          <View className="gap-1 py-12">
-            <Text className="text-center text-[15px] text-foreground" style={{ fontWeight: '500' }}>
-              {t('emptyTitle')}
-            </Text>
-            <Text className="text-center text-[13px] text-muted" style={{ lineHeight: 18 }}>
-              {t('emptyHint')}
-            </Text>
-          </View>
-        ) : (
-          <ConversationTimeline items={conversation.items} />
-        )}
-      </ScrollView>
+    <View className="flex-1 bg-background" style={{ paddingBottom: insets.bottom }}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title,
+          headerRight: () =>
+            conversation.status ? <SessionStatusChip status={conversation.status} /> : null,
+        }}
+      />
+      {conversation.items.length === 0 ? (
+        <View className="flex-1 justify-center">
+          <EmptyState title={t('emptyTitle')} hint={t('emptyHint')} />
+        </View>
+      ) : (
+        <FlatList
+          inverted
+          data={reversed}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <TimelineItem item={item} />}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}
+          className="flex-1"
+        />
+      )}
     </View>
   );
 }

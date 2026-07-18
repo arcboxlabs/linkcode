@@ -24,6 +24,9 @@ pub struct OpenParams {
     pub cwd: Option<String>,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// Initial read-credit budget in bytes. Absent means unthrottled (a pre-credit daemon).
+    #[serde(default)]
+    pub credit: Option<u64>,
 }
 
 impl OpenParams {

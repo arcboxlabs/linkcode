@@ -24,6 +24,11 @@ interface AttachmentState {
   credentials: TerminalAttachmentCredentials;
   retainCount: number;
   result: { terminal: TerminalMetadata; truncated: boolean } | null;
+  /** Cumulative live write chars ingested (`terminal.ack` payload); spans control upgrades. */
+  ackedChars: number;
+  /** Counted-but-unsent chars; flushed at the chunk threshold or by the trailing timer. */
+  unackedChars: number;
+  ackTimer?: ReturnType<typeof setTimeout>;
 }
 
 /** Client-side remount replay is only a cache; the daemon remains the authoritative replay source. */
@@ -42,6 +47,12 @@ function replayEventBytes(event: TerminalReplayEvent): number {
  * agent output would grow memory and per-chunk re-render cost without limit. */
 const TERMINAL_OUTPUT_CAP = 200000;
 
+/** Flow control (CODE-231): cumulative `terminal.ack`s tell the host what this client has actually
+ * ingested, and the host clamps delivery (ultimately the PTY read itself) to that pace. Acks are
+ * batched: one per this many chars, with a trailing timer so a quiet stream still settles. */
+const TERMINAL_ACK_CHUNK_CHARS = 64 * 1024;
+const TERMINAL_ACK_TRAILING_MS = 100;
+
 /** Trim buffered output to the cap on a line boundary — a raw slice can start mid-ANSI-escape and
  * render the tail as literal garbage. */
 function capOutput(text: string, cap: number): string {
@@ -53,6 +64,12 @@ function capOutput(text: string, cap: number): string {
 
 function toError(err: unknown): Error {
   return new Error(extractErrorMessage(err) ?? 'Unknown error');
+}
+
+function clearAckTimer(state: AttachmentState): void {
+  if (!state.ackTimer) return;
+  clearTimeout(state.ackTimer);
+  state.ackTimer = undefined;
 }
 
 /**
@@ -125,8 +142,16 @@ export class TerminalChannel {
         return true;
       }
       case 'terminal.output': {
-        if (this.attachments.get(p.terminalId)?.result) {
-          this.ingestEvent(p.terminalId, { type: 'write', seq: p.seq, data: p.data });
+        const state = this.attachments.get(p.terminalId);
+        if (state?.result) {
+          // Only accepted live frames count toward acks — replayed events were part of the attach
+          // snapshot and are not in the host's delivery accounting for this attachment.
+          const accepted = this.ingestEvent(p.terminalId, {
+            type: 'write',
+            seq: p.seq,
+            data: p.data,
+          });
+          if (accepted) this.recordAck(p.terminalId, state, p.data.length);
         }
         return true;
       }
@@ -169,6 +194,8 @@ export class TerminalChannel {
       credentials: this.newCredentials(),
       retainCount: 1,
       result: null,
+      ackedChars: 0,
+      unackedChars: 0,
     };
     let requestId = '';
     return sendCorrelated(this.transport, this.pending, 'terminalOpen', (clientReqId) => {
@@ -194,7 +221,13 @@ export class TerminalChannel {
       if (existing.result) return Promise.resolve(existing.result);
     }
 
-    const state = existing ?? { credentials: this.newCredentials(), retainCount: 1, result: null };
+    const state = existing ?? {
+      credentials: this.newCredentials(),
+      retainCount: 1,
+      result: null,
+      ackedChars: 0,
+      unackedChars: 0,
+    };
     this.attachments.set(terminalId, state);
     const promise = this.requestAttach(terminalId, state, 'view');
     this.viewAttachPromises.set(terminalId, promise);
@@ -370,6 +403,7 @@ export class TerminalChannel {
   }
 
   disposeAll(): void {
+    for (const state of this.attachments.values()) clearAckTimer(state);
     this.outputSubs.clear();
     this.eventSubs.clear();
     this.exitSubs.clear();
@@ -443,6 +477,7 @@ export class TerminalChannel {
   private releaseAttachment(terminalId: string): void {
     const state = this.attachments.get(terminalId);
     if (!state) return;
+    clearAckTimer(state);
     this.sendFrame(terminalId, {
       kind: 'terminal.detach',
       terminalId,
@@ -475,37 +510,67 @@ export class TerminalChannel {
     if (subs) for (const cb of subs) cb(canControl);
   }
 
-  private ingestEvent(terminalId: string, event: TerminalReplayEvent): void {
-    if (event.seq <= (this.lastSeq.get(terminalId) ?? 0)) return;
+  /** Returns whether the event was accepted (seq-deduped events return false). */
+  private ingestEvent(terminalId: string, event: TerminalReplayEvent): boolean {
+    if (event.seq <= (this.lastSeq.get(terminalId) ?? 0)) return false;
     this.lastSeq.set(terminalId, event.seq);
     this.appendReplayEvent(terminalId, event);
 
     const eventSubs = this.eventSubs.get(terminalId);
     if (eventSubs) for (const cb of eventSubs) cb(event);
-    if (event.type !== 'write') return;
+    if (event.type !== 'write') return true;
 
     const outputSubs = this.outputSubs.get(terminalId);
     if (outputSubs) for (const cb of outputSubs) cb(event.data);
     const previous = this.output.get(terminalId) ?? '';
     this.output.set(terminalId, capOutput(previous + event.data, TERMINAL_OUTPUT_CAP));
     this.notifySnapshotChange(terminalId);
+    return true;
+  }
+
+  /** Count an accepted live write toward this attachment's cumulative ack and flush at the chunk
+   * threshold — or by the trailing timer, so the last sub-chunk of a burst still gets acked. */
+  private recordAck(terminalId: string, state: AttachmentState, chars: number): void {
+    state.ackedChars += chars;
+    state.unackedChars += chars;
+    if (state.unackedChars >= TERMINAL_ACK_CHUNK_CHARS) {
+      this.flushAck(terminalId, state);
+    } else if (!state.ackTimer) {
+      state.ackTimer = setTimeout(() => {
+        state.ackTimer = undefined;
+        this.flushAck(terminalId, state);
+      }, TERMINAL_ACK_TRAILING_MS);
+    }
+  }
+
+  private flushAck(terminalId: string, state: AttachmentState): void {
+    clearAckTimer(state);
+    if (state.unackedChars === 0) return;
+    state.unackedChars = 0;
+    this.sendFrame(terminalId, {
+      kind: 'terminal.ack',
+      terminalId,
+      acked: state.ackedChars,
+      ...state.credentials,
+    });
   }
 
   private appendReplayEvent(terminalId: string, event: TerminalReplayEvent): void {
-    const replay = [...(this.replay.get(terminalId) ?? []), event];
+    let replay = this.replay.get(terminalId);
+    if (!replay) {
+      replay = [];
+      this.replay.set(terminalId, replay);
+    }
+    replay.push(event);
     let dataSize = (this.replayDataSize.get(terminalId) ?? 0) + replayEventBytes(event);
 
     let truncated = false;
-    while (
-      replay.length > 0 &&
-      (replay.length > TERMINAL_REPLAY_EVENT_CAP || dataSize > TERMINAL_REPLAY_DATA_CAP)
-    ) {
+    while (replay.length > TERMINAL_REPLAY_EVENT_CAP || dataSize > TERMINAL_REPLAY_DATA_CAP) {
       const removed = replay.shift();
       if (!removed) break;
       dataSize -= replayEventBytes(removed);
       truncated = true;
     }
-    this.replay.set(terminalId, replay);
     this.replayDataSize.set(terminalId, dataSize);
     if (truncated) this.markReplayTruncated(terminalId);
   }

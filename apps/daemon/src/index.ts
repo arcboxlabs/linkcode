@@ -174,6 +174,14 @@ async function main(): Promise<void> {
         const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
         return id.success ? assets.managedBinary(id.data) : undefined;
       });
+      // In-process agents (pi) import a managed closure entry instead of spawning (CODE-219).
+      agentRuntimeProber.setManagedEntryResolver((kind) => {
+        const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
+        if (!id.success) return;
+        const path = assets.managedEntry(id.data);
+        const version = assets.wantedVersionOf(id.data);
+        return path && version ? { path, version } : undefined;
+      });
       // Probed once per boot (user-installed CLIs self-update, so results must not outlive a
       // boot); fills the adapters' spawn-path resolution and is served on `agent-runtime.list`.
       // Deliberately not awaited (CODE-225): collect() spawns agent CLIs (`--version`, `auth

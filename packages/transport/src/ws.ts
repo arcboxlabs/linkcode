@@ -56,7 +56,7 @@ export class WsTransport extends WireConnection {
   private readonly reconnectOpts: Required<WsReconnectOptions> | null;
 
   constructor(private readonly opts: WsTransportOptions) {
-    super('WsTransport');
+    super();
     const overrides = opts.reconnect === true ? {} : opts.reconnect;
     this.reconnectOpts = overrides ? { ...RECONNECT_DEFAULTS, ...overrides } : null;
     this.armClosedListener();

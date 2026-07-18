@@ -20,7 +20,10 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   agent SDK's version, codex = the `@openai/codex` meta package's version (no JS SDK since the
   app-server rewrite), opencode = its SDK version; tectonic is a catalog constant. "Cannot pin"
   (`undefined`) means hands off: no install, and GC skips that asset entirely rather than risk
-  deleting a working install.
+  deleting a working install. Closure assets (pi) pin to their committed manifest's version:
+  when the SDK also resolves (dev/standalone) a disagreement reads as a stale manifest —
+  unpinnable — and when it does not (packaged hosts exclude the closure) the manifest alone is
+  the pin, compiled into the daemon alongside the adapter it must match.
 - **Store layout** `<root>/<namespace>/<name>/<version>/<binary>` under the platform data dir
   (darwin `~/Library/Application Support/LinkCode/assets`; `LINKCODE_ASSETS_DIR` overrides —
   tests and E2E must set it). An artifact's `extraMembers` land as siblings of the binary under

@@ -5,3 +5,19 @@
 /* Workspace sources are outside Tailwind's automatic content detection root. */
 @source "../../../packages/ui/src/native/**/*.{ts,tsx}";
 @source "../../../node_modules/heroui-native/lib";
+
+/* Semantic type scale (Apple HIG-ish); use these instead of raw text-[NNpx]. */
+@theme {
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-footnote: 12px;
+  --text-footnote--line-height: 16px;
+  --text-subhead: 13px;
+  --text-subhead--line-height: 18px;
+  --text-body: 15px;
+  --text-body--line-height: 21px;
+  --text-headline: 17px;
+  --text-headline--line-height: 22px;
+  --text-title: 20px;
+  --text-title--line-height: 25px;
+}
