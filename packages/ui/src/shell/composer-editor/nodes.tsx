@@ -22,7 +22,7 @@ function exportCanonicalText(text: string): DOMExportOutput {
 
 export type SerializedCommandNode = Spread<{ name: string }, SerializedLexicalNode>;
 
-/** A leading `/command` directive. Stores only the name — validity is derived live in the chip. */
+/** A `/command` directive. Stores only the name — validity is derived live in the chip. */
 export class CommandNode extends DecoratorNode<React.ReactNode> {
   __name: string;
 
@@ -88,7 +88,7 @@ export function $isCommandNode(node: LexicalNode | null | undefined): node is Co
   return node instanceof CommandNode;
 }
 
-/** The leading `$` of a shell passthrough draft; the command itself stays editable text after it. */
+/** A `$` shell marker; the command itself stays editable text after it. */
 export class ShellNode extends DecoratorNode<React.ReactNode> {
   static override getType(this: void): string {
     return 'composer-shell';

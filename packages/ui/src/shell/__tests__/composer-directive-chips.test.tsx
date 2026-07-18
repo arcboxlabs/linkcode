@@ -28,11 +28,13 @@ const COMMANDS: AgentCommand[] = [
   { name: 'compact', description: 'Compact the context' },
   { name: 'review', description: 'Review the changes' },
 ];
+const RE_COMPACT_COMMAND = /\/compact/;
 const SLASH_CAPABILITIES: AgentCapabilities = { shellCommand: false, slashCommands: true };
 
 interface ComposerFixtureProps {
   agentCapabilities?: AgentCapabilities;
   agentCommands?: AgentCommand[];
+  disabled?: boolean;
   onInvokeCommand?: (name: string, args?: string) => void;
   onRunShellCommand?: (command: string) => void;
   onSend?: React.ComponentProps<typeof Composer>['onSend'];
@@ -41,6 +43,7 @@ interface ComposerFixtureProps {
 function composer({
   agentCapabilities = SLASH_CAPABILITIES,
   agentCommands = COMMANDS,
+  disabled = false,
   onInvokeCommand = vi.fn(),
   onRunShellCommand,
   onSend = vi.fn(),
@@ -51,7 +54,7 @@ function composer({
       agentCommands={agentCommands}
       attachmentsSupported={false}
       currentModeId={null}
-      disabled={false}
+      disabled={disabled}
       isRunning={false}
       onInvokeCommand={onInvokeCommand}
       onRunShellCommand={onRunShellCommand}
@@ -119,12 +122,79 @@ describe('Composer directive chips', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
     rerender(composer({ agentCommands: COMMANDS, onInvokeCommand, onSend }));
 
-    await waitFor(() => expect(screen.queryByRole('button', { name: '/review' })).toBeNull());
-    expect(screen.getByText('/review')).toBeDefined();
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(screen.getByRole('button', { name: '/review' })).toBeDefined();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false);
     await pressInComposer('Enter');
     expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', undefined);
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('keeps chip Enter out of submit and opens its action menu', async () => {
+    const user = userEvent.setup();
+    const onInvokeCommand = vi.fn();
+    render(composer({ onInvokeCommand }));
+    typeInComposer('/review ');
+    const chip = screen.getByRole('button', { name: '/review' });
+
+    chip.focus();
+    await user.keyboard('{Enter}');
+    expect(onInvokeCommand).not.toHaveBeenCalled();
+    expect(await screen.findByRole('menu')).toBeDefined();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+
+  it('recognizes a supported mid-line command and offers to move it to the start', async () => {
+    const user = userEvent.setup();
+    const onInvokeCommand = vi.fn();
+    render(composer({ onInvokeCommand }));
+    typeInComposer('please /review now');
+
+    const chip = screen.getByRole('button', { name: '/review' });
+    expect(chip.getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById(chip.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+      'commandMisplaced',
+    );
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('commandMisplaced')).toBeDefined();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
+
+    await user.click(within(alert).getByRole('button', { name: 'moveDirectiveToStart' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(composerText()).toBe('/review please now');
+    await pressInComposer('Enter');
+    expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', 'please now');
+  });
+
+  it('blocks multiple directives until the extra chip is explicitly converted', async () => {
+    const user = userEvent.setup();
+    const onInvokeCommand = vi.fn();
+    render(composer({ onInvokeCommand }));
+    typeInComposer('/review /');
+    await user.click(screen.getByRole('option', { name: RE_COMPACT_COMMAND }));
+
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('multipleDirectives')).toBeDefined();
+    await pressInComposer('Enter');
+    expect(onInvokeCommand).not.toHaveBeenCalled();
+
+    await user.click(within(alert).getByRole('button', { name: 'convertToText' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(composerText()).toBe('/review /compact ');
+    await pressInComposer('Enter');
+    expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', '/compact');
+  });
+
+  it('materializes a typed mid-line command when its live catalog arrives', async () => {
+    const { rerender } = render(composer({ agentCommands: [] }));
+    typeInComposer('please /review ');
+    expect(screen.queryByRole('button', { name: '/review' })).toBeNull();
+
+    rerender(composer({ agentCommands: COMMANDS }));
+
+    expect(await screen.findByRole('button', { name: '/review' })).toBeDefined();
+    expect(within(screen.getByRole('alert')).getByText('commandMisplaced')).toBeDefined();
   });
 
   it('explains an unavailable shell directive and blocks submit', async () => {
@@ -150,6 +220,20 @@ describe('Composer directive chips', () => {
     expect(composerText()).toBe('$ ls -la');
   });
 
+  it('disables chip and recovery actions with the composer', () => {
+    const { rerender } = render(composer());
+    typeInComposer('/typo ');
+
+    rerender(composer({ disabled: true }));
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '/typo' }).disabled).toBe(true);
+    for (const action of within(screen.getByRole('alert')).getAllByRole<HTMLButtonElement>(
+      'button',
+    )) {
+      expect(action.disabled).toBe(true);
+    }
+  });
+
   it('relays command-menu navigation from the editor', async () => {
     render(composer());
     typeInComposer('/');
@@ -159,7 +243,7 @@ describe('Composer directive chips', () => {
     await pressInComposer('Enter');
 
     expect(composerText()).toBe('/review ');
-    expect(screen.getByText('/review', { selector: '[data-slot="badge"]' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '/review' })).toBeDefined();
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
     expect(composerTextbox()).toBeDefined();
   });
