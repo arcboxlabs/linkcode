@@ -2,16 +2,11 @@ import { XIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { cn } from '../../lib/cn';
 
-/** Fixed end cap for a sub-tab strip, placed outside its scroller: keeps clipped tabs from
- * touching the strip edge (pane dividers sit right there) and carries its segment of the
- * band's bottom border. */
-export function StripEndGutter(): React.ReactNode {
-  return <div aria-hidden className="w-1.5 shrink-0 border-border border-b" />;
-}
-
 /** One closable sub-tab inside a panel section (terminal PTYs, file viewers): a square
  * editor-style tab filling the strip height. The strip's bottom border is drawn per tab so
- * the active tab can break it and merge with the content below. */
+ * the active tab can break it and merge with the content below. Tabs grow (capped at
+ * max-w-40) so a nearly-full strip fills exactly instead of leaving a sliver of band
+ * between the last tab and the pane divider. */
 export function SectionTabButton({
   label,
   icon,
@@ -41,7 +36,7 @@ export function SectionTabButton({
     <div
       ref={rootRef}
       className={cn(
-        'group flex max-w-40 shrink-0 items-center overflow-hidden border-border border-r text-xs [-webkit-app-region:no-drag]',
+        'group flex max-w-40 shrink-0 grow items-center overflow-hidden border-border border-r text-xs [-webkit-app-region:no-drag]',
         active
           ? 'bg-background font-semibold text-foreground'
           : 'border-b text-muted-foreground hover:bg-accent hover:text-foreground',

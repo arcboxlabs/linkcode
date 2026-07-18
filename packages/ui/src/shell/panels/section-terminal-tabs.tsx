@@ -2,7 +2,7 @@ import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { ShellIconButton } from '../shell-control';
-import { SectionTabButton, StripEndGutter } from './section-tab-button';
+import { SectionTabButton } from './section-tab-button';
 import type { PanelSectionTab } from './vocabulary';
 import { PANEL_WINDOW_ICONS } from './vocabulary';
 
@@ -26,33 +26,34 @@ export function SectionTerminalTabStrip({
   const terminalLabel = useTranslations('workbench.panel.window')('terminal');
 
   return (
-    <div className={cn('flex h-8 shrink-0 items-stretch bg-muted', className)}>
-      {/* Same trailing-gutter + hidden-scrollbar treatment as FileTabStrip: clipped tabs cut
-          off at the gutter instead of the strip edge, and scrollbars would cover the border
-          or steal strip height. */}
-      <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {tabs.map((tab, index) => {
-          const label = `${terminalLabel} ${index + 1}`;
-          return (
-            <SectionTabButton
-              key={tab.id}
-              label={label}
-              icon={PANEL_WINDOW_ICONS.terminal}
-              active={tab.id === activeTabId}
-              closeLabel={t('closeTab', { label })}
-              onSelect={() => onSelectTab(tab.id)}
-              onClose={() => onCloseTab(tab.id)}
-            />
-          );
-        })}
-        {/* Trailing area carries the + button and continues the strip's bottom border. */}
-        <div className="flex flex-1 items-center border-border border-b px-1">
-          <ShellIconButton label={t('newTerminalTab')} onClick={onAddTab}>
-            <PlusIcon />
-          </ShellIconButton>
-        </div>
+    <div
+      className={cn(
+        // Same hidden-scrollbar treatment as FileTabStrip: overlay bars cover the border,
+        // classic bars steal strip height.
+        'flex h-8 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        className,
+      )}
+    >
+      {tabs.map((tab, index) => {
+        const label = `${terminalLabel} ${index + 1}`;
+        return (
+          <SectionTabButton
+            key={tab.id}
+            label={label}
+            icon={PANEL_WINDOW_ICONS.terminal}
+            active={tab.id === activeTabId}
+            closeLabel={t('closeTab', { label })}
+            onSelect={() => onSelectTab(tab.id)}
+            onClose={() => onCloseTab(tab.id)}
+          />
+        );
+      })}
+      {/* Trailing area carries the + button and continues the strip's bottom border. */}
+      <div className="flex flex-1 items-center border-border border-b px-1">
+        <ShellIconButton label={t('newTerminalTab')} onClick={onAddTab}>
+          <PlusIcon />
+        </ShellIconButton>
       </div>
-      <StripEndGutter />
     </div>
   );
 }
