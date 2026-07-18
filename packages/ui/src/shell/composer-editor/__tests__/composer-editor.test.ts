@@ -1,11 +1,13 @@
 import { createHeadlessEditor } from '@lexical/headless';
-import type { LexicalEditor } from 'lexical';
+import type { LexicalEditor, NodeKey } from 'lexical';
 import {
   $createLineBreakNode,
   $createParagraphNode,
   $createTextNode,
   $getRoot,
+  $getSelection,
   $isElementNode,
+  $isRangeSelection,
   $isTextNode,
   HISTORIC_TAG,
 } from 'lexical';
@@ -15,7 +17,6 @@ import {
   $createCommandNode,
   $createMentionNode,
   $createShellNode,
-  $isCommandNode,
   COMPOSER_EDITOR_NODES,
 } from '../nodes';
 import {
@@ -501,17 +502,43 @@ describe('$replaceTriggerWith', () => {
     expect(draftText(editor2)).toBe('hi /review ');
   });
 
-  it('node-selects a chip via keyboard-selectable metadata', () => {
-    const editor = createEditor();
-    setDraft(editor, '/usage x');
-    editor.read(() => {
-      const paragraph = $getRoot().getFirstChild();
-      if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
-      const chip = paragraph.getFirstChildOrThrow();
-      if (!$isCommandNode(chip)) throw new Error('expected command chip');
-      expect(chip.isKeyboardSelectable()).toBe(true);
-      expect(chip.isInline()).toBe(true);
-    });
+  it('keeps a range caret while moving across every atomic chip', () => {
+    for (const createChip of [
+      () => $createCommandNode('usage'),
+      () => $createShellNode(),
+      () => $createMentionNode('src/app.ts'),
+    ]) {
+      const editor = createEditor();
+      let leftKey: NodeKey = '';
+      let rightKey: NodeKey = '';
+      editor.update(
+        () => {
+          const left = $createTextNode('a');
+          const right = $createTextNode('b');
+          leftKey = left.getKey();
+          rightKey = right.getKey();
+          $getRoot()
+            .clear()
+            .append($createParagraphNode().append(left, createChip(), right));
+          left.selectEnd();
+        },
+        { discrete: true, tag: HISTORIC_TAG },
+      );
+      editor.update(
+        () => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection)) throw new Error('expected range selection');
+          selection.modify('move', false, 'character');
+          expect(selection.anchor.key).toBe(rightKey);
+          expect(selection.anchor.offset).toBe(0);
+
+          selection.modify('move', true, 'character');
+          expect(selection.anchor.key).toBe(leftKey);
+          expect(selection.anchor.offset).toBe(1);
+        },
+        { discrete: true },
+      );
+    }
   });
 });
 

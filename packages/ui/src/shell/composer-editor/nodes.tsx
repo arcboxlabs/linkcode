@@ -72,7 +72,7 @@ export class CommandNode extends DecoratorNode<React.ReactNode> {
   }
 
   override isKeyboardSelectable(): boolean {
-    return true;
+    return false;
   }
 
   override decorate(): React.ReactNode {
@@ -123,7 +123,7 @@ export class ShellNode extends DecoratorNode<React.ReactNode> {
   }
 
   override isKeyboardSelectable(): boolean {
-    return true;
+    return false;
   }
 
   override decorate(): React.ReactNode {
@@ -192,7 +192,7 @@ export class MentionNode extends DecoratorNode<React.ReactNode> {
   }
 
   override isKeyboardSelectable(): boolean {
-    return true;
+    return false;
   }
 
   override decorate(): React.ReactNode {
