@@ -26,13 +26,10 @@ export function SectionTerminalTabStrip({
   const terminalLabel = useTranslations('workbench.panel.window')('terminal');
 
   return (
+    // Same no-scroll fill model as FileTabStrip; the + button keeps its natural width and
+    // the tabs split the rest.
     <div
-      className={cn(
-        // Same hidden-scrollbar + snap treatment as FileTabStrip: scrollbars would cover the
-        // border or steal height, and mandatory snap keeps rest positions on tab edges.
-        'flex h-8 shrink-0 snap-x snap-mandatory items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-        className,
-      )}
+      className={cn('flex h-8 shrink-0 items-stretch border-border border-b bg-muted', className)}
     >
       {tabs.map((tab, index) => {
         const label = `${terminalLabel} ${index + 1}`;
@@ -48,9 +45,7 @@ export function SectionTerminalTabStrip({
           />
         );
       })}
-      {/* Trailing area carries the + button and continues the strip's bottom border;
-          snap-end makes the fully-scrolled position (+ visible) a valid snap rest. */}
-      <div className="flex flex-1 snap-end items-center border-border border-b px-1">
+      <div className="flex shrink-0 items-center px-1">
         <ShellIconButton label={t('newTerminalTab')} onClick={onAddTab}>
           <PlusIcon />
         </ShellIconButton>

@@ -26,15 +26,10 @@ export function FileTabStrip({
   const t = useTranslations('workbench.panel');
 
   return (
+    // No scrolling: tabs divide the width equally and shrink together, so none can end up
+    // clipped against the tree divider (the strip's own border-b is the band's line).
     <div
-      className={cn(
-        // Scrollbar hidden: an overlay bar covers the tabs' bottom border on macOS, and a
-        // classic bar would eat into the fixed strip height; trackpad scrolling still works.
-        // Mandatory snap: a scroll can only REST with a tab edge on the divider-side strip
-        // edge, so a half-clipped tab never sits against the adjacent pane.
-        'flex h-8 shrink-0 snap-x snap-mandatory items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-        className,
-      )}
+      className={cn('flex h-8 shrink-0 items-stretch border-border border-b bg-muted', className)}
     >
       {tabs.map((tab) => {
         const label = fileBasename(tab.path);
@@ -51,8 +46,6 @@ export function FileTabStrip({
           />
         );
       })}
-      {/* Continues the strip's bottom border across the empty trailing area. */}
-      <div aria-hidden className="flex-1 border-border border-b" />
     </div>
   );
 }
