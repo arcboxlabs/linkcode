@@ -48,6 +48,16 @@ describe('dev mock transport', () => {
     const seeded = await client.listSessions();
     expect(seeded.length).toBeGreaterThan(0);
     expect(seeded.some((session) => session.status === 'stopped')).toBe(true);
+    const seededLive = seeded.find(
+      (session) => session.title === 'Wire the workbench to the daemon',
+    );
+    if (!seededLive) throw new Error('seeded live session not found');
+    const seededEvents = collectEvents(client, seededLive.sessionId);
+    expect(seededEvents).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    expect(seededEvents.some((event) => event.type === 'available-commands-update')).toBe(true);
 
     const sessionId = await client.startSession({
       kind: 'codex',
@@ -321,6 +331,11 @@ describe('dev mock transport', () => {
     if (!showcase) throw new Error('showcase session not found');
 
     const events = collectEvents(client, showcase.sessionId);
+    expect(events).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    expect(events.some((event) => event.type === 'available-commands-update')).toBe(true);
     const terminalId = await eventually(() => {
       const terminalTool = toolCalls(events).find((tool) =>
         tool.content.some((content) => content.type === 'terminal'),
@@ -572,7 +587,14 @@ describe('dev mock transport', () => {
     await client.stopSession(sessionId);
     await expect(client.promptText(sessionId, 'hi')).rejects.toThrow('stopped');
 
+    // stopSession intentionally clears event subscribers; a resumed surface reattaches first.
+    const events = collectEvents(client, sessionId);
     expect(await client.resumeSession(sessionId)).toBe(sessionId);
+    expect(events).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    expect(events.some((event) => event.type === 'available-commands-update')).toBe(true);
     await expect(client.promptText(sessionId, 'hi again')).resolves.toEqual({ ok: true });
 
     client.dispose();

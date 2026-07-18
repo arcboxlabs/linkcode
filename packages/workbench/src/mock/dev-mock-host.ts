@@ -265,6 +265,11 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           sessions: [...this.sessions.values()].map((session) => toSessionInfo(session)),
         });
+        // Seeded live sessions never pass through start/resume. Advertise after the list reply so
+        // the client can buffer these attach-time frames before a surface subscribes.
+        for (const session of this.sessions.values()) {
+          if (session.status !== 'stopped') this.emitDirectiveAdvertisement(session.sessionId);
+        }
         // Start after the list reply so the UI can subscribe before scripted frames arrive.
         this.startShowcase();
         break;
@@ -579,11 +584,7 @@ export class DevMockHost {
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
-    this.emit(sessionId, {
-      type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: true },
-    });
-    this.emit(sessionId, { type: 'available-commands-update', commands: MOCK_COMMAND_CATALOG });
+    this.emitDirectiveAdvertisement(sessionId);
     const catalog = SEED_MODEL_CATALOGS[kind];
     if (catalog) {
       this.emit(sessionId, { type: 'available-models-update', models: catalog });
@@ -757,13 +758,24 @@ export class DevMockHost {
       return;
     }
     session.status = 'idle';
-    // Parity with the engine's replay-on-attach: a resumed session re-advertises its catalog.
+    // Parity with the engine's replay-on-attach: a resumed session re-advertises its catalogs
+    // and capabilities.
+    this.emitDirectiveAdvertisement(sessionId);
     const catalog = SEED_MODEL_CATALOGS[session.kind];
     if (catalog) {
       this.emit(sessionId, { type: 'available-models-update', models: catalog });
     }
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
+  }
+
+  /** The composer's directive inputs: what the session accepts (`/` + `$`) and its `/` catalog. */
+  private emitDirectiveAdvertisement(sessionId: SessionId): void {
+    this.emit(sessionId, {
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    this.emit(sessionId, { type: 'available-commands-update', commands: MOCK_COMMAND_CATALOG });
   }
 
   private stopSession(replyTo: string, sessionId: SessionId): void {
