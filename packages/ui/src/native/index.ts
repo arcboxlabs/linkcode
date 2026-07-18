@@ -3,6 +3,8 @@ export { repositoryLabel } from '../repository-label';
 export * from '../thread-groups';
 export * from './agent-icon';
 export * from './empty-state';
+export { CodeBlock } from './markdown/code-block';
+export { NativeMarkdown } from './markdown/markdown';
 export * from './mobile-home';
 export * from './screen-scroll';
 export * from './section-label';
