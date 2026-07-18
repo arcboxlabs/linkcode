@@ -55,18 +55,25 @@
   "devDependencies": {
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "heroui-native": "^1.0.5",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-native-svg": "^15.15.4",
     "typescript": "catalog:",
     "unplugin-icons": "catalog:"
   },
   "peerDependencies": {
+    "heroui-native": ">=1.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-native": ">=0.80",
-    "react-native-safe-area-context": ">=5.0.0"
+    "react-native-safe-area-context": ">=5.0.0",
+    "react-native-svg": ">=15.0.0"
   },
   "peerDependenciesMeta": {
+    "heroui-native": {
+      "optional": true
+    },
     "react-dom": {
       "optional": true
     },
@@ -74,6 +81,9 @@
       "optional": true
     },
     "react-native-safe-area-context": {
+      "optional": true
+    },
+    "react-native-svg": {
       "optional": true
     }
   }

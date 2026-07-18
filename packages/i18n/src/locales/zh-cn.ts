@@ -848,10 +848,13 @@ export const zhCN = {
       revokeError: '撤销设备失败。',
     },
     sessions: {
-      title: '会话',
-      emptyTitle: '暂无会话',
-      emptyHint: '在下方新建会话——它运行在 host 上，而不是这台设备。',
-      newSession: '新建会话',
+      title: '线程',
+      emptyTitle: '暂无线程',
+      emptyHint: '新建一个线程——它运行在 host 上，而不是这台设备。',
+      newThread: '新建线程',
+      chats: '聊天',
+      otherThreads: '其他线程',
+      projectLabel: '项目',
       kindLabel: '智能体',
       cwdLabel: '工作目录',
       cwdPlaceholder: '/host 上的绝对路径',
@@ -868,7 +871,6 @@ export const zhCN = {
     },
     terminals: {
       title: '终端',
-      back: '返回',
       emptyTitle: '暂无终端',
       emptyHint: '可在下方新建终端，或打开 host 上正在运行的终端。',
       error: '无法载入终端：{error}',
@@ -925,7 +927,6 @@ export const zhCN = {
       manageHosts: '管理 host',
       terminalAppearance: '终端外观',
       about: '关于',
-      back: '返回',
     },
     terminalAppearance: {
       title: '终端外观',

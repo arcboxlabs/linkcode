@@ -200,7 +200,7 @@ export default function TerminalScreen(): React.ReactNode {
           <Button.Label>{t('detach')}</Button.Label>
         </Button>
         <View className="min-w-0 flex-1">
-          <Text className="text-[15px] text-foreground" numberOfLines={1}>
+          <Text className="text-body text-foreground" numberOfLines={1}>
             {terminal?.cwd ?? t('title')}
           </Text>
         </View>
@@ -212,15 +212,15 @@ export default function TerminalScreen(): React.ReactNode {
       </View>
 
       {truncated ? (
-        <Text className="bg-warning/10 px-4 py-2 text-[12px] text-warning">{t('truncated')}</Text>
+        <Text className="bg-warning/10 px-4 py-2 text-footnote text-warning">{t('truncated')}</Text>
       ) : null}
       {error ? (
-        <Text className="bg-danger/10 px-4 py-2 text-[12px] text-danger">
+        <Text className="bg-danger/10 px-4 py-2 text-danger text-footnote">
           {t('error', { error })}
         </Text>
       ) : null}
       {exit ? (
-        <Text className="bg-default/10 px-4 py-2 text-[12px] text-muted">
+        <Text className="bg-default/10 px-4 py-2 text-footnote text-muted">
           {exit.code === null ? t('exitedSignal') : t('exited', { code: exit.code })}
         </Text>
       ) : null}
@@ -228,7 +228,7 @@ export default function TerminalScreen(): React.ReactNode {
       {status === 'attaching' ? (
         <View className="flex-1 items-center justify-center gap-3">
           <Spinner />
-          <Text className="text-[13px] text-muted">{t('attaching')}</Text>
+          <Text className="text-muted text-subhead">{t('attaching')}</Text>
         </View>
       ) : status === 'error' ? (
         <View className="flex-1 items-center justify-center">
@@ -256,7 +256,7 @@ export default function TerminalScreen(): React.ReactNode {
               <Button.Label>{t('close')}</Button.Label>
             </Button>
           ) : terminal?.managed ? (
-            <Text className="flex-1 py-2 text-center text-[13px] text-muted">
+            <Text className="flex-1 py-2 text-center text-muted text-subhead">
               {t('managedReadOnly')}
             </Text>
           ) : (

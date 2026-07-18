@@ -57,18 +57,13 @@ export default function SignInScreen() {
     >
       <View className="flex-1 items-center justify-center gap-4">
         <BrandMark />
-        <Text className="text-[34px] text-foreground" style={{ fontWeight: '700' }}>
-          LinkCode
-        </Text>
-        <Text
-          className="text-center text-[15px] text-muted"
-          style={{ lineHeight: 22, maxWidth: 300 }}
-        >
+        <Text className="font-bold text-[34px] text-foreground">LinkCode</Text>
+        <Text className="text-center text-body text-muted" style={{ maxWidth: 300 }}>
           {t('tagline')}
         </Text>
       </View>
       <View className="gap-3">
-        {failed ? <Text className="text-center text-[13px] text-danger">{t('error')}</Text> : null}
+        {failed ? <Text className="text-center text-danger text-subhead">{t('error')}</Text> : null}
         {appleAvailable ? (
           <AppleAuthentication.AppleAuthenticationButton
             buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}

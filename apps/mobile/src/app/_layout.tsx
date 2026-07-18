@@ -1,13 +1,14 @@
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import * as Sentry from '@sentry/react-native';
-import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import { useSingleton } from 'foxact/use-singleton';
-import { HeroUINativeProvider } from 'heroui-native';
 import { useMemo } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { IntlProvider } from 'use-intl';
+import { AppIntlProvider, AppThemeProvider } from '../components/app-providers';
+import { RootNavigator } from '../components/navigation';
 import '../global.css';
 
 // The DSN is a publishable identifier (not a secret); Expo inlines EXPO_PUBLIC_* env vars at build time.
@@ -28,14 +29,17 @@ function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <HeroUINativeProvider>
-          <IntlProvider locale={locale} messages={messages}>
-            <StatusBar style="auto" />
-            <Stack screenOptions={{ headerShown: false }} />
-          </IntlProvider>
-        </HeroUINativeProvider>
-      </SafeAreaProvider>
+      <ComposeContextProvider
+        contexts={[
+          <SafeAreaProvider key="safe-area" />,
+          <AppThemeProvider key="theme" />,
+          <AppIntlProvider key="intl" locale={locale} messages={messages} />,
+          <BottomSheetModalProvider key="bottom-sheet" />,
+        ]}
+      >
+        <StatusBar style="auto" />
+        <RootNavigator />
+      </ComposeContextProvider>
     </GestureHandlerRootView>
   );
 }

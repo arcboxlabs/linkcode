@@ -869,10 +869,13 @@ export const en = {
       revokeError: 'Could not revoke the device.',
     },
     sessions: {
-      title: 'Sessions',
-      emptyTitle: 'No sessions',
-      emptyHint: 'Start a session below — it runs on the host, not on this device.',
-      newSession: 'New session',
+      title: 'Threads',
+      emptyTitle: 'No threads yet',
+      emptyHint: 'Start a thread — it runs on the host, not on this device.',
+      newThread: 'New thread',
+      chats: 'Chats',
+      otherThreads: 'Other threads',
+      projectLabel: 'Project',
       kindLabel: 'Agent',
       cwdLabel: 'Working directory',
       cwdPlaceholder: '/absolute/path/on/the/host',
@@ -889,7 +892,6 @@ export const en = {
     },
     terminals: {
       title: 'Terminals',
-      back: 'Back',
       emptyTitle: 'No terminals',
       emptyHint: 'Start a terminal below, or open one already running on the host.',
       error: 'Unable to load terminals: {error}',
@@ -946,7 +948,6 @@ export const en = {
       manageHosts: 'Manage hosts',
       terminalAppearance: 'Terminal appearance',
       about: 'About',
-      back: 'Back',
     },
     terminalAppearance: {
       title: 'Terminal appearance',

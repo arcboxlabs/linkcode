@@ -11,7 +11,7 @@ import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
 import { CheckIcon, FolderIcon, HistoryIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { repositoryLabel } from '../repository-label';
+import { repositoryLabel } from '../../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
 import { groupHistoryBrowserEntries } from './sort';
 
