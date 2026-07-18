@@ -28,25 +28,28 @@ export function SectionTerminalTabStrip({
   return (
     <div
       className={cn(
-        'flex h-9 shrink-0 items-center gap-1 border-border border-b bg-background/60 px-1',
+        // Same scrollbar treatment as FileTabStrip: overlay bars cover the border, classic
+        // bars steal strip height.
+        'flex h-9 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {tabs.map((tab, index) => {
-          const label = `${terminalLabel} ${index + 1}`;
-          return (
-            <SectionTabButton
-              key={tab.id}
-              label={label}
-              icon={PANEL_WINDOW_ICONS.terminal}
-              active={tab.id === activeTabId}
-              closeLabel={t('closeTab', { label })}
-              onSelect={() => onSelectTab(tab.id)}
-              onClose={() => onCloseTab(tab.id)}
-            />
-          );
-        })}
+      {tabs.map((tab, index) => {
+        const label = `${terminalLabel} ${index + 1}`;
+        return (
+          <SectionTabButton
+            key={tab.id}
+            label={label}
+            icon={PANEL_WINDOW_ICONS.terminal}
+            active={tab.id === activeTabId}
+            closeLabel={t('closeTab', { label })}
+            onSelect={() => onSelectTab(tab.id)}
+            onClose={() => onCloseTab(tab.id)}
+          />
+        );
+      })}
+      {/* Trailing area carries the + button and continues the strip's bottom border. */}
+      <div className="flex flex-1 items-center border-border border-b px-1">
         <ShellIconButton label={t('newTerminalTab')} onClick={onAddTab}>
           <PlusIcon />
         </ShellIconButton>

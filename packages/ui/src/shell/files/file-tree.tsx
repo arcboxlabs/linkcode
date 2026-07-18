@@ -81,7 +81,9 @@ export function WorkspaceFileTree({
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      <div className="flex h-8 shrink-0 items-center border-border border-b bg-background/60 px-1">
+      {/* h-9 matches the viewer pane's tab strip so the band's bottom border lines up
+          across the tree divider. */}
+      <div className="flex h-9 shrink-0 items-center border-border border-b bg-muted px-1">
         <InputGroup className="h-7 rounded-md border-0 bg-transparent shadow-none">
           <InputGroupAddon>
             <SearchIcon className="text-muted-foreground" />

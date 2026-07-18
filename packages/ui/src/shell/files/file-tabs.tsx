@@ -28,27 +28,29 @@ export function FileTabStrip({
   return (
     <div
       className={cn(
-        'flex h-9 shrink-0 items-center gap-1 border-border border-b bg-background/60 px-1',
+        // Scrollbar hidden: an overlay bar covers the tabs' bottom border on macOS, and a
+        // classic bar would eat into the fixed strip height; trackpad scrolling still works.
+        'flex h-9 shrink-0 items-stretch overflow-x-auto bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {tabs.map((tab) => {
-          const label = fileBasename(tab.path);
-          return (
-            <SectionTabButton
-              key={tab.id}
-              label={label}
-              title={tab.path}
-              icon={PANEL_WINDOW_ICONS.files}
-              active={tab.id === activeTabId}
-              closeLabel={t('closeTab', { label })}
-              onSelect={() => onSelectTab(tab.id)}
-              onClose={() => onCloseTab(tab.id)}
-            />
-          );
-        })}
-      </div>
+      {tabs.map((tab) => {
+        const label = fileBasename(tab.path);
+        return (
+          <SectionTabButton
+            key={tab.id}
+            label={label}
+            title={tab.path}
+            icon={PANEL_WINDOW_ICONS.files}
+            active={tab.id === activeTabId}
+            closeLabel={t('closeTab', { label })}
+            onSelect={() => onSelectTab(tab.id)}
+            onClose={() => onCloseTab(tab.id)}
+          />
+        );
+      })}
+      {/* Continues the strip's bottom border across the empty trailing area. */}
+      <div aria-hidden className="flex-1 border-border border-b" />
     </div>
   );
 }
