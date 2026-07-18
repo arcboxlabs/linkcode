@@ -62,6 +62,7 @@ export default function ThreadsScreen(): React.ReactNode {
     setCreating(true);
     try {
       const sessionId = await create({ kind, cwd });
+      await refreshWorkspaces();
       sheetRef.current?.dismiss();
       router.push(`/host/${hostId}/session/${sessionId}`);
     } finally {
