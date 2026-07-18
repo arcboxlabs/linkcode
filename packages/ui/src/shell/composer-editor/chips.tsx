@@ -17,9 +17,8 @@ function useDirectiveState<T>(selector: (state: ComposerDirectiveState) => T): T
   return useStore(directiveStateFor(editor), selector);
 }
 
-/** Match the editor's 14px text metrics and sit on its text bottom rather than centering around
- * the baseline (which made mixed chip/text lines visibly bounce). */
-const CHIP_CLASS_NAME = 'mx-0.5 h-5 align-text-bottom text-sm sm:h-5 sm:text-sm';
+/** Match the editor's 14px text metrics and center within its full line box. */
+const CHIP_CLASS_NAME = 'mx-0.5 h-5 align-bottom text-sm sm:h-5 sm:text-sm';
 
 function keepEnterActivationLocal(event: React.KeyboardEvent<HTMLButtonElement>): void {
   if (event.key === 'Enter') event.stopPropagation();
