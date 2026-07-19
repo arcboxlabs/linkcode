@@ -52,8 +52,8 @@ export class SessionLifecycleService {
       updatedAt: now,
       runs: [{ startedAt: now }],
     };
+    if (resolved.cwd) await this.workspaces.touch(resolved.cwd);
     await this.sessions.startLive(replyTo, record, (adapter) => adapter.start(resolved));
-    if (resolved.cwd) this.workspaces.touch(resolved.cwd);
   }
 
   async importSession(kind: AgentKind, historyId: AgentHistoryId): Promise<SessionRecord> {
@@ -91,10 +91,10 @@ export class SessionLifecycleService {
       updatedAt: now,
       runs: [{ historyId, startedAt: now }],
     };
+    if (startOptions.cwd) await this.workspaces.touch(startOptions.cwd);
     await this.sessions.startLive(replyTo, record, (adapter) =>
       this.history.resume(adapter, historyId, startOptions),
     );
-    if (startOptions.cwd) this.workspaces.touch(startOptions.cwd);
   }
 
   /** Wake a cold session in place under the same LinkCode id. */
@@ -107,15 +107,15 @@ export class SessionLifecycleService {
     // on the first prompt); waking it is a fresh start under the same LinkCode id.
     const historyId = this.records.historyId(sessionId);
     const startOptions = await this.startOptions.resolve({ kind: record.kind, cwd: record.cwd });
+    // Register before starting so a persistence failure cannot follow a successful
+    // `session.started` reply with a contradictory request failure.
+    if (record.cwd) await this.workspaces.touch(record.cwd);
     record.runs.push({ historyId, startedAt: Date.now() });
     await this.sessions.startLive(replyTo, record, (adapter) =>
       historyId === undefined
         ? adapter.start(startOptions)
         : this.history.resume(adapter, historyId, startOptions),
     );
-    // Waking a session (re)registers its directory so imported records and archived roots pass the
-    // file.suggest workspace check once their session is live again.
-    if (record.cwd) this.workspaces.touch(record.cwd);
   }
 
   private async createAutomationSession(options: {
@@ -142,8 +142,8 @@ export class SessionLifecycleService {
       updatedAt: now,
       runs: [{ startedAt: now }],
     };
+    if (startOptions.cwd) await this.workspaces.touch(startOptions.cwd);
     await this.sessions.startLive(undefined, record, (adapter) => adapter.start(startOptions));
-    if (startOptions.cwd) this.workspaces.touch(startOptions.cwd);
     return record.sessionId;
   }
 

@@ -4,8 +4,8 @@ import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
  * backed implementation; the in-memory default keeps bare engines and tests dependency-free. */
 export interface WorkspaceStore {
   load(): Promise<WorkspaceRecord[]>;
-  save(record: WorkspaceRecord): void | Promise<void>;
-  delete(workspaceId: WorkspaceId): void | Promise<void>;
+  save(record: WorkspaceRecord): Promise<void>;
+  delete(workspaceId: WorkspaceId): Promise<void>;
 }
 
 export class InMemoryWorkspaceStore implements WorkspaceStore {

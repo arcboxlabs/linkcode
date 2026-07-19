@@ -1,5 +1,6 @@
 import type { WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { RequestError } from '../failure';
@@ -55,5 +56,14 @@ describe('wire responder', () => {
         message: 'Internal engine error',
       },
     ]);
+  });
+
+  it('does not reply when an Effect request is interrupted', async () => {
+    const { transport, sent } = recordingTransport();
+    const responder = new WireResponder(transport);
+
+    await Effect.runPromiseExit(responder.reply('request-1', Effect.interrupt));
+
+    expect(sent).toEqual([]);
   });
 });

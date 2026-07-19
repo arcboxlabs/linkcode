@@ -1,5 +1,6 @@
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Cause, Effect } from 'effect';
 import { toRequestFailure } from '../failure';
 
 export class WireResponder {
@@ -11,6 +12,16 @@ export class WireResponder {
     } catch (error) {
       this.sendFailure(replyTo, error);
     }
+  }
+
+  reply<E, R>(replyTo: string, effect: Effect.Effect<void, E, R>): Effect.Effect<void, never, R> {
+    return effect.pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.interrupt
+          : Effect.sync(() => this.sendFailure(replyTo, Cause.squash(cause))),
+      ),
+    );
   }
 
   sendFailure(replyTo: string, error: unknown): void {

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceKind, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey, workspaceKind } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
+import { OperationError, RequestError } from '../failure';
 import type { WorkspaceStore } from './workspace-store';
 import { InMemoryWorkspaceStore } from './workspace-store';
 
@@ -22,7 +23,10 @@ export class WorkspaceRegistry {
   constructor(private readonly store: WorkspaceStore = new InMemoryWorkspaceStore()) {}
 
   async start(): Promise<void> {
-    for (const record of await this.store.load()) {
+    const records = await storeOperation('workspace.load', 'Failed to load workspaces', () =>
+      this.store.load(),
+    );
+    for (const record of records) {
       this.index(record);
     }
   }
@@ -53,7 +57,7 @@ export class WorkspaceRegistry {
 
   /** Ensure a directory a session just ran in is registered: freshen `lastUsedAt` if known, else
    * create a record — `chat` if `cwd` is the daemon-owned chat root, `project` otherwise. */
-  touch(cwd: string, name?: string): WorkspaceRecord {
+  touch(cwd: string, name?: string): Promise<WorkspaceRecord> {
     const resolved = resolve(cwd);
     const kind =
       this.chatRootKey !== null && normalizeCwdKey(resolved) === this.chatRootKey
@@ -76,51 +80,69 @@ export class WorkspaceRegistry {
 
     const existing = nullthrow(this.byId.get(existingId), `Unindexed workspace: ${existingId}`);
     if (workspaceKind(existing) !== 'chat') {
-      existing.kind = 'chat';
-      this.persist(existing);
+      const upgraded = { ...existing, kind: 'chat' as const };
+      await this.save(upgraded);
+      this.index(upgraded);
+      return upgraded;
     }
     return existing;
   }
 
-  update(workspaceId: WorkspaceId, name: string): WorkspaceRecord {
-    const record = nullthrow(this.byId.get(workspaceId), `Unknown workspace: ${workspaceId}`);
-    if (workspaceKind(record) === 'chat') {
-      throw new Error(`Cannot rename the chat workspace: ${workspaceId}`);
+  async update(workspaceId: WorkspaceId, name: string): Promise<WorkspaceRecord> {
+    const record = this.byId.get(workspaceId);
+    if (!record) {
+      throw new RequestError({
+        code: 'not_found',
+        message: `Unknown workspace: ${workspaceId}`,
+      });
     }
-    record.name = name;
-    this.persist(record);
-    return record;
+    if (workspaceKind(record) === 'chat') {
+      throw new RequestError({
+        code: 'conflict',
+        message: `Cannot rename the chat workspace: ${workspaceId}`,
+      });
+    }
+    const updated = { ...record, name };
+    await this.save(updated);
+    this.index(updated);
+    return updated;
   }
 
   /** Drop a workspace from the registry only — this never touches the directory on disk. */
-  archive(workspaceId: WorkspaceId): void {
+  async archive(workspaceId: WorkspaceId): Promise<void> {
     const record = this.byId.get(workspaceId);
     if (!record) return;
     if (workspaceKind(record) === 'chat') {
-      throw new Error(`Cannot archive the chat workspace: ${workspaceId}`);
+      throw new RequestError({
+        code: 'conflict',
+        message: `Cannot archive the chat workspace: ${workspaceId}`,
+      });
     }
+    await storeOperation('workspace.delete', 'Failed to archive workspace', () =>
+      this.store.delete(workspaceId),
+    );
     this.byId.delete(workspaceId);
     this.byCwdKey.delete(normalizeCwdKey(record.cwd));
-    // Same stance as persist(): best-effort. The in-memory index is already gone either way, and
-    // it — not the store — is the source of truth for a running daemon.
-    void Promise.resolve(this.store.delete(workspaceId)).catch((err: unknown) => {
-      console.error(`Failed to delete workspace record ${workspaceId}:`, err);
-    });
   }
 
   /** Resolves `cwd` to an absolute path first (the wire boundary) so `register` and `touch`
    * always dedupe against the same key; `kind` only applies when minting a brand-new record —
    * an already-known directory keeps its persisted `kind` untouched. */
-  private upsert(rawCwd: string, name: string | undefined, kind: WorkspaceKind): WorkspaceRecord {
+  private async upsert(
+    rawCwd: string,
+    name: string | undefined,
+    kind: WorkspaceKind,
+  ): Promise<WorkspaceRecord> {
     const cwd = resolve(rawCwd);
     const key = normalizeCwdKey(cwd);
     const existingId = this.byCwdKey.get(key);
     const now = Date.now();
     if (existingId) {
       const existing = nullthrow(this.byId.get(existingId), `Unindexed workspace: ${existingId}`);
-      existing.lastUsedAt = now;
-      this.persist(existing);
-      return existing;
+      const updated = { ...existing, lastUsedAt: now };
+      await this.save(updated);
+      this.index(updated);
+      return updated;
     }
     const record: WorkspaceRecord = {
       workspaceId: this.nextWorkspaceId(),
@@ -130,8 +152,8 @@ export class WorkspaceRegistry {
       createdAt: now,
       lastUsedAt: now,
     };
+    await this.save(record);
     this.index(record);
-    this.persist(record);
     return record;
   }
 
@@ -140,11 +162,10 @@ export class WorkspaceRegistry {
     this.byCwdKey.set(normalizeCwdKey(record.cwd), record.workspaceId);
   }
 
-  /** Persistence failure is best-effort (logged, not surfaced), same stance as the Engine's session persistence. */
-  private persist(record: WorkspaceRecord): void {
-    void Promise.resolve(this.store.save(record)).catch((err: unknown) => {
-      console.error(`Failed to persist workspace record ${record.workspaceId}:`, err);
-    });
+  private save(record: WorkspaceRecord): Promise<void> {
+    return storeOperation('workspace.save', 'Failed to persist workspace', () =>
+      this.store.save(record),
+    );
   }
 
   private nextWorkspaceId(): WorkspaceId {
@@ -156,12 +177,38 @@ export class WorkspaceRegistry {
     let stats: Awaited<ReturnType<typeof stat>>;
     try {
       stats = await stat(cwd);
-    } catch {
-      throw new Error(`Workspace directory does not exist: ${cwd}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new RequestError({
+          code: 'not_found',
+          message: `Workspace directory does not exist: ${cwd}`,
+        });
+      }
+      throw new OperationError({
+        subsystem: 'filesystem',
+        operation: 'workspace.stat',
+        publicMessage: 'Failed to inspect workspace directory',
+        cause: error,
+      });
     }
     if (!stats.isDirectory()) {
-      throw new Error(`Workspace path is not a directory: ${cwd}`);
+      throw new RequestError({
+        code: 'invalid_request',
+        message: `Workspace path is not a directory: ${cwd}`,
+      });
     }
+  }
+}
+
+async function storeOperation<A>(
+  operation: string,
+  publicMessage: string,
+  run: () => Promise<A>,
+): Promise<A> {
+  try {
+    return await run();
+  } catch (error) {
+    throw new OperationError({ subsystem: 'store', operation, publicMessage, cause: error });
   }
 }
 

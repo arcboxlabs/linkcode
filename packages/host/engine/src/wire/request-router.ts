@@ -62,7 +62,7 @@ export class WireRequestRouter {
       case 'workspace.register':
       case 'workspace.update':
       case 'workspace.archive': {
-        return legacyHandler(() => this.handlers.workspace.handle(p));
+        return this.handlers.workspace.handle(p);
       }
       case 'git.status.get':
       case 'git.pr_status.get':

@@ -78,7 +78,7 @@ describe('WorkspaceRegistry', () => {
     try {
       const absolute = resolve(process.cwd(), 'repo');
       const first = await registry.register({ cwd: absolute });
-      const second = registry.touch('repo');
+      const second = await registry.touch('repo');
       expect(second.workspaceId).toBe(first.workspaceId);
       expect(registry.list()).toHaveLength(1);
     } finally {
@@ -86,65 +86,68 @@ describe('WorkspaceRegistry', () => {
     }
   });
 
-  it('touch() auto-registers an unknown cwd and freshens lastUsedAt monotonically for a known one', () => {
+  it('touch() auto-registers an unknown cwd and freshens lastUsedAt monotonically for a known one', async () => {
     const registry = new WorkspaceRegistry();
-    const created = registry.touch('/repo');
+    const created = await registry.touch('/repo');
     expect(created.createdAt).toBe(1000);
     expect(created.lastUsedAt).toBe(1000);
     expect(created.name).toBe('repo');
 
     vi.setSystemTime(2000);
-    const touched = registry.touch('/repo');
+    const touched = await registry.touch('/repo');
     expect(touched.workspaceId).toBe(created.workspaceId);
     expect(touched.createdAt).toBe(1000);
     expect(touched.lastUsedAt).toBe(2000);
     expect(touched.lastUsedAt).toBeGreaterThan(created.createdAt);
   });
 
-  it('list() sorts by lastUsedAt descending', () => {
+  it('list() sorts by lastUsedAt descending', async () => {
     const registry = new WorkspaceRegistry();
-    registry.touch('/a');
+    await registry.touch('/a');
     vi.setSystemTime(2000);
-    registry.touch('/b');
+    await registry.touch('/b');
     vi.setSystemTime(3000);
-    registry.touch('/c');
+    await registry.touch('/c');
     // Freshen /a so it jumps back to the front.
     vi.setSystemTime(4000);
-    registry.touch('/a');
+    await registry.touch('/a');
 
     expect(registry.list().map((record) => record.cwd)).toEqual(['/a', '/c', '/b']);
   });
 
-  it('update() renames a workspace by id', () => {
+  it('update() renames a workspace by id', async () => {
     const registry = new WorkspaceRegistry();
-    const record = registry.touch('/repo');
-    const updated = registry.update(record.workspaceId, 'My Repo');
+    const record = await registry.touch('/repo');
+    const updated = await registry.update(record.workspaceId, 'My Repo');
     expect(updated.name).toBe('My Repo');
     expect(registry.list()[0].name).toBe('My Repo');
   });
 
-  it('update() rejects an unknown workspace id', () => {
+  it('update() rejects an unknown workspace id', async () => {
     const registry = new WorkspaceRegistry();
-    expect(() => registry.update('ws-missing' as WorkspaceId, 'x')).toThrow('Unknown workspace');
+    await expect(registry.update('ws-missing' as WorkspaceId, 'x')).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'not_found',
+    });
   });
 
-  it('archive() removes the workspace from the registry only, and is a noop for an unknown id', () => {
+  it('archive() removes the workspace from the registry only, and is a noop for an unknown id', async () => {
     const registry = new WorkspaceRegistry();
-    const record = registry.touch('/repo');
-    registry.archive(record.workspaceId);
+    const record = await registry.touch('/repo');
+    await registry.archive(record.workspaceId);
     expect(registry.list()).toHaveLength(0);
     // Re-registering the same directory creates a fresh record rather than resurrecting the old one.
-    const recreated = registry.touch('/repo');
+    const recreated = await registry.touch('/repo');
     expect(recreated.workspaceId).not.toBe(record.workspaceId);
 
-    expect(() => registry.archive('ws-missing' as WorkspaceId)).not.toThrow();
+    await expect(registry.archive('ws-missing' as WorkspaceId)).resolves.toBeUndefined();
   });
 
   it('start() restores the index from the injected store', async () => {
     const dir = makeTempDir();
     const store = new InMemoryWorkspaceStore();
     const seed = new WorkspaceRegistry(store);
-    seed.touch(dir);
+    await seed.touch(dir);
 
     const restored = new WorkspaceRegistry(store);
     await restored.start();
@@ -154,6 +157,45 @@ describe('WorkspaceRegistry', () => {
     // The restored index still dedupes against the recovered key.
     const touchedAgain = await restored.register({ cwd: dir });
     expect(touchedAgain.workspaceId).toBe(restored.list()[0].workspaceId);
+  });
+
+  it('does not index a workspace when persistence fails', async () => {
+    const store = new InMemoryWorkspaceStore();
+    vi.spyOn(store, 'save').mockRejectedValueOnce(new Error('disk unavailable'));
+    const registry = new WorkspaceRegistry(store);
+
+    await expect(registry.touch('/repo')).rejects.toMatchObject({
+      _tag: 'OperationError',
+      subsystem: 'store',
+      operation: 'workspace.save',
+    });
+    expect(registry.list()).toEqual([]);
+  });
+
+  it('keeps the prior name when persistence fails during update', async () => {
+    const store = new InMemoryWorkspaceStore();
+    const registry = new WorkspaceRegistry(store);
+    const record = await registry.touch('/repo');
+    vi.spyOn(store, 'save').mockRejectedValueOnce(new Error('disk unavailable'));
+
+    await expect(registry.update(record.workspaceId, 'Renamed')).rejects.toMatchObject({
+      _tag: 'OperationError',
+      operation: 'workspace.save',
+    });
+    expect(registry.list()[0].name).toBe('repo');
+  });
+
+  it('keeps a workspace indexed when persisted deletion fails', async () => {
+    const store = new InMemoryWorkspaceStore();
+    const registry = new WorkspaceRegistry(store);
+    const record = await registry.touch('/repo');
+    vi.spyOn(store, 'delete').mockRejectedValueOnce(new Error('disk unavailable'));
+
+    await expect(registry.archive(record.workspaceId)).rejects.toMatchObject({
+      _tag: 'OperationError',
+      operation: 'workspace.delete',
+    });
+    expect(registry.list()).toEqual([record]);
   });
 });
 
@@ -198,15 +240,18 @@ describe('WorkspaceRegistry chat workspace', () => {
     const chatDir = makeTempDir();
     await registry.ensureChatWorkspace(chatDir);
 
-    expect(registry.touch(chatDir).kind).toBe('chat');
-    expect(registry.touch('/some/other/repo').kind).toBe('project');
+    expect((await registry.touch(chatDir)).kind).toBe('chat');
+    expect((await registry.touch('/some/other/repo')).kind).toBe('project');
   });
 
   it('archive() rejects the chat workspace', async () => {
     const registry = new WorkspaceRegistry();
     const chat = await registry.ensureChatWorkspace(makeTempDir());
 
-    expect(() => registry.archive(chat.workspaceId)).toThrow('Cannot archive the chat workspace');
+    await expect(registry.archive(chat.workspaceId)).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'conflict',
+    });
     expect(registry.list()).toEqual([chat]);
   });
 
@@ -214,9 +259,10 @@ describe('WorkspaceRegistry chat workspace', () => {
     const registry = new WorkspaceRegistry();
     const chat = await registry.ensureChatWorkspace(makeTempDir());
 
-    expect(() => registry.update(chat.workspaceId, 'Renamed')).toThrow(
-      'Cannot rename the chat workspace',
-    );
+    await expect(registry.update(chat.workspaceId, 'Renamed')).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'conflict',
+    });
   });
 });
 

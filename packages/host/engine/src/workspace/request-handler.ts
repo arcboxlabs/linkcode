@@ -1,6 +1,8 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
+import { toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { WorkspaceRegistry } from './workspace-registry';
 
@@ -19,47 +21,72 @@ export class WorkspaceRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: WorkspaceRequest): Promise<void> {
+  handle(payload: WorkspaceRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'workspace.list':
-        this.transport.send(
-          createWireMessage({
-            kind: 'workspace.listed',
-            replyTo: payload.clientReqId,
-            workspaces: this.workspaces.list(),
-          }),
-        );
-        break;
-      case 'workspace.register':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const record = await this.workspaces.register({
-            cwd: payload.cwd,
-            name: payload.name,
-            kind: payload.workspaceKind,
-          });
+        return Effect.sync(() =>
           this.transport.send(
             createWireMessage({
-              kind: 'workspace.registered',
+              kind: 'workspace.listed',
               replyTo: payload.clientReqId,
-              record,
+              workspaces: this.workspaces.list(),
             }),
-          );
-        });
-        break;
+          ),
+        );
+      case 'workspace.register':
+        return this.responder.reply(
+          payload.clientReqId,
+          workspaceOperation('workspace.register', 'Failed to register workspace', () =>
+            this.workspaces.register({
+              cwd: payload.cwd,
+              name: payload.name,
+              kind: payload.workspaceKind,
+            }),
+          ).pipe(
+            Effect.flatMap((record) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'workspace.registered',
+                    replyTo: payload.clientReqId,
+                    record,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'workspace.update':
-        await this.responder.tryReply(payload.clientReqId, () => {
-          this.workspaces.update(payload.workspaceId, payload.name);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          workspaceOperation('workspace.update', 'Failed to update workspace', () =>
+            this.workspaces.update(payload.workspaceId, payload.name),
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       case 'workspace.archive':
-        await this.responder.tryReply(payload.clientReqId, () => {
-          this.workspaces.archive(payload.workspaceId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          workspaceOperation('workspace.archive', 'Failed to archive workspace', () =>
+            this.workspaces.archive(payload.workspaceId),
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       default:
-        break;
+        return Effect.void;
     }
   }
+}
+
+function workspaceOperation<A>(
+  operation: string,
+  publicMessage: string,
+  run: () => Promise<A>,
+): Effect.Effect<A, ReturnType<typeof toOperationFailure>> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem: 'store', operation, publicMessage }),
+  });
 }
