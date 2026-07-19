@@ -44,6 +44,10 @@ export function bindingAvailability(account: Account, kind: AgentKind): BindingA
       ? { tier: 'native' }
       : { tier: 'unavailable', reason: 'oauth-other-agent' };
   }
+  // An account that DEFINES its provider (endpoint + model list) is registered wholesale into
+  // pi's registry at start — native regardless of protocol (the api mapping covers all three).
+  // Other agents ignore the model list and keep the plain protocol rules on the endpoint.
+  if (kind === 'pi' && account.customProvider) return { tier: 'native' };
   const protocol = accountProtocol(account);
   if (kind === 'grok-build') {
     // The headless CLI has no base-URL flag: only the xAI catalog entry is known to target its

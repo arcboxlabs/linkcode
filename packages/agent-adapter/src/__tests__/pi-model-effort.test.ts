@@ -80,6 +80,16 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
           (sdkMock.available as FakePiModel[]).find((m) => m.provider === provider && m.id === id),
         registerProvider(name: string, config: Record<string, unknown>) {
           sdkMock.registered.push([name, config]);
+          // Mirror the SDK: a models-carrying registration replaces the provider's models and
+          // its inline apiKey makes the provider count as authed.
+          const models = config.models as FakePiModel[] | undefined;
+          if (models) {
+            sdkMock.available = [
+              ...(sdkMock.available as FakePiModel[]).filter((m) => m.provider !== name),
+              ...models.map((m) => ({ ...m, provider: name })),
+            ];
+            sdkMock.authedProviders?.add(name);
+          }
         },
       }),
       // The models.json-less registry piLocalProviders diffs against: built-in models only.
@@ -214,6 +224,71 @@ describe('pi local providers', () => {
       { model: 'banned/glm', config: { apiKey: 'sk-1', baseUrl: 'https://gateway.test/v1' } },
     );
     expect(sdkMock.registered).toEqual([]);
+  });
+
+  it('registers an account-defined provider with its models and defaults inside it', async () => {
+    // Fresh machine: nothing is authed until the account's registration lands.
+    sdkMock.authedProviders = new Set();
+    const { events } = await startedAdapter(
+      { model: undefined, thinkingLevel: 'off', supportsThinking: false },
+      {
+        config: {
+          apiKey: 'sk-1',
+          baseUrl: 'https://banned.test/v1',
+          protocol: 'openai-chat',
+          customProvider: {
+            name: 'banned',
+            models: [{ id: '@cf/glm', contextWindow: 262144, maxTokens: 16384 }],
+          },
+        },
+      },
+    );
+
+    expect(sdkMock.registered).toEqual([
+      [
+        'banned',
+        {
+          baseUrl: 'https://banned.test/v1',
+          apiKey: 'sk-1',
+          api: 'openai-completions',
+          models: [
+            {
+              id: '@cf/glm',
+              name: '@cf/glm',
+              reasoning: false,
+              input: ['text'],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 262144,
+              maxTokens: 16384,
+            },
+          ],
+        },
+      ],
+    ]);
+    expect(sdkMock.createOpts?.model).toMatchObject({ provider: 'banned', id: '@cf/glm' });
+    expect(catalogs(events)[0].map((m) => m.id)).toEqual(['banned/@cf/glm']);
+  });
+
+  it('degrades an account-defined provider missing its protocol with an error event', async () => {
+    await startedAdapter(
+      { model: OPENAI_MODEL, thinkingLevel: 'medium', supportsThinking: true },
+      {
+        config: {
+          apiKey: 'sk-1',
+          baseUrl: 'https://banned.test/v1',
+          customProvider: {
+            name: 'banned',
+            models: [{ id: '@cf/glm', contextWindow: 262144, maxTokens: 16384 }],
+          },
+        },
+      },
+    ).then(({ events }) => {
+      const messages = events.flatMap((e) => (e.type === 'error' ? [e.message] : []));
+      expect(messages).toContainEqual(
+        "pi: custom provider 'banned' needs an endpoint URL, a key, and a protocol — its models are unavailable",
+      );
+      expect(sdkMock.registered).toEqual([]);
+    });
   });
 
   it('registers the account baseUrl onto a non-local provider', async () => {

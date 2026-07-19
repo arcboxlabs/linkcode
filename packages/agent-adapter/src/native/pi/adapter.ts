@@ -26,6 +26,7 @@ import type {
   StopReason,
   ToolKind,
 } from '@linkcode/schema';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -36,6 +37,7 @@ import {
   locationsFromToolInput,
   toolKindFromName,
 } from '../../util';
+import { customProviderRegistration, readCustomProvider } from './custom-provider';
 import {
   findPiSessionFile,
   importPiSdk,
@@ -242,14 +244,39 @@ export class PiAdapter extends BaseAgentAdapter {
     // gateway account's base URL is registered on the model registry (it overrides the provider's
     // URL) — except onto a models.json local provider, which owns its endpoint: the account may
     // override its key, but replacing its base URL would corrupt the routing whenever the bound
-    // account actually belongs to another provider.
-    const provider =
-      explicitRef?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
+    // account actually belongs to another provider. An account that DEFINES its provider
+    // (customProvider) names the injection target itself and registers with its full model list.
+    const custom = readCustomProvider(opts.config);
     const cred = readAgentCredential(opts.config);
     const key = cred.apiKey ?? cred.authToken;
+    const provider =
+      custom?.name ??
+      explicitRef?.provider ??
+      savedProvider ??
+      modelRegistry.getAvailable()[0]?.provider;
     if (provider && (key || cred.baseUrl)) {
       if (key) authStorage.setRuntimeApiKey(provider, key);
-      if (cred.baseUrl && !piLocalProviders(pi, modelRegistry).some((p) => p.id === provider)) {
+      if (custom) {
+        const registration = customProviderRegistration(custom, opts.config, key, cred.baseUrl);
+        if (registration) {
+          try {
+            modelRegistry.registerProvider(provider, registration);
+          } catch (err) {
+            // A rejected definition degrades (models unavailable) instead of failing the session,
+            // matching the stale-model posture below.
+            this.emitError(
+              `pi: custom provider '${provider}' was rejected — ${extractErrorMessage(err)}`,
+            );
+          }
+        } else {
+          this.emitError(
+            `pi: custom provider '${provider}' needs an endpoint URL, a key, and a protocol — its models are unavailable`,
+          );
+        }
+      } else if (
+        cred.baseUrl &&
+        !piLocalProviders(pi, modelRegistry).some((p) => p.id === provider)
+      ) {
         modelRegistry.registerProvider(provider, {
           baseUrl: cred.baseUrl,
           ...(key && { apiKey: key }),
@@ -276,7 +303,13 @@ export class PiAdapter extends BaseAgentAdapter {
         }
       }
     }
-    if (!model && !this.resumeFrom) model = modelRegistry.getAvailable()[0];
+    if (!model && !this.resumeFrom) {
+      // An account-defined provider is the session's reason for being — default inside it.
+      model = custom
+        ? (modelRegistry.getAvailable().find((m) => m.provider === custom.name) ??
+          modelRegistry.getAvailable()[0])
+        : modelRegistry.getAvailable()[0];
+    }
 
     // A resumed session runs in its own recorded cwd, not the caller's.
     const cwd = sessionManager?.getCwd() ?? opts.cwd;

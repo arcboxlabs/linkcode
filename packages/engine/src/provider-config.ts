@@ -1,6 +1,9 @@
 import type {
   Account,
   Accounts,
+  AgentModelOption,
+  AgentStartCatalog,
+  EffortLevel,
   ProviderConfig,
   ProvidersConfig,
   StartOptions,
@@ -69,8 +72,58 @@ function accountConfigBundle(account: Account): Record<string, unknown> {
     bundle.baseUrl = endpoint.baseUrl;
     bundle.protocol = endpoint.protocol;
   }
+  if (account.customProvider) bundle.customProvider = account.customProvider;
   if (extraEnv) bundle.extraEnv = extraEnv;
   return bundle;
+}
+
+const CUSTOM_MODEL_EFFORT_LEVELS = [
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+] as const satisfies readonly EffortLevel[];
+
+/**
+ * Picker options for the models a custom-provider account defines. Mirrors the pi adapter's
+ * per-model effort rule (a level nulled in `thinkingLevelMap` is unsupported; `xhigh` counts only
+ * when explicitly mapped) so pre-session entries match what the live catalog will advertise.
+ */
+export function customProviderModelOptions(account: Account | undefined): AgentModelOption[] {
+  const custom = account?.customProvider;
+  if (!custom) return [];
+  return custom.models.map((model) => ({
+    id: `${custom.name}/${model.id}`,
+    label: model.name ?? model.id,
+    description: `${custom.name}/${model.id}`,
+    effortLevels: model.reasoning
+      ? CUSTOM_MODEL_EFFORT_LEVELS.filter((level) => {
+          const mapped = model.thinkingLevelMap?.[level];
+          if (mapped === null) return false;
+          if (level === 'xhigh') return mapped !== undefined;
+          return true;
+        })
+      : [],
+  }));
+}
+
+/**
+ * Append the bound account's custom-provider models to a start catalog. The account's definitions
+ * exist only at session start (the injection is start-time-only), so the pre-session picker gets
+ * them here — the engine owns the provider config, the adapter stays machine-scoped. Existing
+ * catalog entries win on id collisions.
+ */
+export function withBoundAccountModels(
+  catalog: AgentStartCatalog,
+  config: ProviderConfig | undefined,
+  accounts: Accounts,
+): AgentStartCatalog {
+  const account = accounts.find((a) => a.id === config?.activeAccountId);
+  const options = customProviderModelOptions(account);
+  if (options.length === 0) return catalog;
+  const known = new Set(catalog.models.map((m) => m.id));
+  const appended = options.filter((option) => !known.has(option.id));
+  return appended.length === 0 ? catalog : { ...catalog, models: [...catalog.models, ...appended] };
 }
 
 /** Apply the stored config to a session's StartOptions: resolve the bound account (or legacy
