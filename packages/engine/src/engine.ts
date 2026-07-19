@@ -1,17 +1,8 @@
 import type { AdapterFactory } from '@linkcode/agent-adapter';
 import { createAdapter } from '@linkcode/agent-adapter';
-import type {
-  AgentKind,
-  AgentRuntimes,
-  SessionAutomation,
-  SessionId,
-  SessionRecord,
-  WireMessage,
-  WorkspaceRecord,
-} from '@linkcode/schema';
+import type { AgentRuntimes, WireMessage, WorkspaceRecord } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { nullthrow } from 'foxts/guard';
 import type { LoginBinaryResolver } from './agent/login-service';
 import { AgentLoginService } from './agent/login-service';
 import type { ProviderConfigStore } from './agent/provider-config';
@@ -21,7 +12,7 @@ import { AgentRuntimeService } from './agent/runtime-service';
 import type { TranslatorService } from './agent/translator';
 import type { AssetService } from './asset/service';
 import { ManagedAssetService } from './asset/service';
-import type { LoopStore, ScheduleStore, SessionDriver } from './automation';
+import type { LoopStore, ScheduleStore } from './automation';
 import {
   InMemoryLoopStore,
   InMemoryScheduleStore,
@@ -37,6 +28,7 @@ import { PreviewRouteRegistry } from './preview/route-registry';
 import { ScriptRequestHandler } from './scripts/request-handler';
 import { ScriptService } from './scripts/script-service';
 import { HistoryService } from './session/history-service';
+import { SessionLifecycleService } from './session/lifecycle-service';
 import { SessionOrchestrator } from './session/orchestrator';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import type { SessionStore } from './session/session-store';
@@ -94,6 +86,7 @@ export interface EngineDeps {
  */
 export class Engine {
   private readonly sessions: SessionOrchestrator;
+  private readonly sessionLifecycle: SessionLifecycleService;
   private readonly records: SessionRecordRegistry;
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
@@ -115,8 +108,6 @@ export class Engine {
   private readonly logins?: AgentLoginService;
   private readonly agentRequests: AgentRequestHandler;
   private readonly translator?: TranslatorService;
-  private readonly startOptions: SessionStartOptionsResolver;
-  private seq = 0;
 
   constructor(
     private readonly transport: Transport,
@@ -181,15 +172,24 @@ export class Engine {
       new ArtifactHostService(routes),
       this.responder,
     );
+    this.translator = deps.translator;
+    const startOptions = new SessionStartOptionsResolver(this.providerStore, this.translator);
+    this.sessionLifecycle = new SessionLifecycleService(
+      this.sessions,
+      this.records,
+      this.history,
+      startOptions,
+      this.workspaces,
+    );
     this.scheduler = new ScheduleService(
       transport,
       deps.scheduleStore ?? new InMemoryScheduleStore(),
-      this.buildSessionDriver(),
+      this.sessionLifecycle.driver,
     );
     this.loops = new LoopService(
       transport,
       deps.loopStore ?? new InMemoryLoopStore(),
-      this.buildSessionDriver(),
+      this.sessionLifecycle.driver,
     );
     this.automationRequests = new AutomationRequestHandler(
       transport,
@@ -200,8 +200,6 @@ export class Engine {
     this.assets = new ManagedAssetService(transport, deps.assets, () => {
       void this.runtimes.refresh();
     });
-    this.translator = deps.translator;
-    this.startOptions = new SessionStartOptionsResolver(this.providerStore, this.translator);
     this.logins = deps.resolveLoginBinary
       ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
           void this.runtimes.refresh();
@@ -246,20 +244,7 @@ export class Engine {
     switch (p.kind) {
       case 'session.start': {
         await this.tryReply(p.clientReqId, async () => {
-          const opts = await this.startOptions.resolve(p.opts);
-          const now = Date.now();
-          const record: SessionRecord = {
-            sessionId: this.nextSessionId(),
-            kind: opts.kind,
-            cwd: opts.cwd,
-            origin: { type: 'created' },
-            createdVia: opts.createdVia,
-            createdAt: now,
-            updatedAt: now,
-            runs: [{ startedAt: now }],
-          };
-          await this.sessions.startLive(p.clientReqId, record, (adapter) => adapter.start(opts));
-          if (opts.cwd) this.workspaces.touch(opts.cwd);
+          await this.sessionLifecycle.start(p.clientReqId, p.opts);
         });
         break;
       }
@@ -295,29 +280,13 @@ export class Engine {
       }
       case 'session.resume': {
         await this.tryReply(p.clientReqId, () =>
-          this.resumeSessionById(p.clientReqId, p.sessionId),
+          this.sessionLifecycle.resumeSession(p.clientReqId, p.sessionId),
         );
         break;
       }
       case 'session.import': {
         await this.tryReply(p.clientReqId, async () => {
-          // Read one event only: the summary (title/cwd/createdAt) is what the record needs.
-          const { session } = await this.history.read(p.agentKind, {
-            historyId: p.historyId,
-            limit: 1,
-          });
-          const now = Date.now();
-          const record: SessionRecord = {
-            sessionId: this.nextSessionId(),
-            kind: p.agentKind,
-            cwd: session.cwd ?? '',
-            title: session.title,
-            origin: { type: 'imported', historyId: p.historyId, importedAt: now },
-            createdAt: session.createdAt ?? now,
-            updatedAt: now,
-            runs: [],
-          };
-          await this.records.importRecord(record);
+          const record = await this.sessionLifecycle.importSession(p.agentKind, p.historyId);
           this.transport.send(
             createWireMessage({ kind: 'session.imported', replyTo: p.clientReqId, record }),
           );
@@ -344,21 +313,12 @@ export class Engine {
       }
       case 'history.resume': {
         await this.tryReply(p.clientReqId, async () => {
-          const startOpts = await this.startOptions.resolve({ ...p.startOpts, kind: p.agentKind });
-          const now = Date.now();
-          const record: SessionRecord = {
-            sessionId: this.nextSessionId(),
-            kind: p.agentKind,
-            cwd: startOpts.cwd,
-            origin: { type: 'imported', historyId: p.historyId, importedAt: now },
-            createdAt: now,
-            updatedAt: now,
-            runs: [{ historyId: p.historyId, startedAt: now }],
-          };
-          await this.sessions.startLive(p.clientReqId, record, (adapter) =>
-            this.history.resume(adapter, p.historyId, startOpts),
+          await this.sessionLifecycle.resumeHistory(
+            p.clientReqId,
+            p.agentKind,
+            p.historyId,
+            p.startOpts,
           );
-          if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
         });
         break;
       }
@@ -468,87 +428,6 @@ export class Engine {
     await this.translator?.closeAll();
     this.assets.close();
     this.transport.close();
-  }
-
-  private nextSessionId(): SessionId {
-    this.seq += 1;
-    return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
-  }
-
-  /**
-   * The session-orchestration surface the automation services drive agents through, as bound
-   * closures over the Engine's internals — so the services never import the Engine (avoiding a
-   * cycle), mirroring how ScriptService receives a `workspaceName` lookup.
-   */
-  private buildSessionDriver(): SessionDriver {
-    return {
-      createSession: async (opts: {
-        kind: AgentKind;
-        cwd: string;
-        model?: string;
-        title?: string;
-        automation: SessionAutomation;
-      }): Promise<SessionId> => {
-        const startOpts = await this.startOptions.resolve({
-          kind: opts.kind,
-          cwd: opts.cwd,
-          model: opts.model,
-        });
-        const now = Date.now();
-        const record: SessionRecord = {
-          sessionId: this.nextSessionId(),
-          kind: startOpts.kind,
-          cwd: startOpts.cwd,
-          title: opts.title,
-          origin: { type: 'created' },
-          automation: opts.automation,
-          createdAt: now,
-          updatedAt: now,
-          runs: [{ startedAt: now }],
-        };
-        await this.sessions.startLive(undefined, record, (adapter) => adapter.start(startOpts));
-        if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
-        return record.sessionId;
-      },
-      hasRecord: (sessionId) => this.records.has(sessionId),
-      isBusy: (sessionId) => this.sessions.isBusy(sessionId),
-      ensureLive: async (sessionId) => {
-        if (this.sessions.has(sessionId)) return;
-        await this.resumeSessionById(undefined, sessionId);
-      },
-      makeUnattended: (sessionId) => this.sessions.makeUnattended(sessionId),
-      prompt: (sessionId, text, opts) => this.sessions.prompt(sessionId, text, opts),
-      stopSession: (sessionId) => this.sessions.stopIfLive(sessionId),
-    };
-  }
-
-  /**
-   * Wake a cold session in place under the same Link Code id. Shared by the `session.resume` wire
-   * handler (which passes its `clientReqId` so the orchestrator echoes `session.started`) and the
-   * automation SessionDriver (which passes `undefined` — no client is awaiting a reply).
-   */
-  private async resumeSessionById(
-    replyTo: string | undefined,
-    sessionId: SessionId,
-  ): Promise<void> {
-    if (this.sessions.has(sessionId)) {
-      throw new Error(`Session is already running: ${sessionId}`);
-    }
-    const record = nullthrow(this.records.get(sessionId), `Unknown session: ${sessionId}`);
-    // A never-prompted session has no provider transcript to resume from (the adapter only mints one
-    // on the first prompt); waking it is a fresh start under the same Link Code id.
-    const historyId = this.records.historyId(sessionId);
-    const startOpts = await this.startOptions.resolve({ kind: record.kind, cwd: record.cwd });
-    record.runs.push({ historyId, startedAt: Date.now() });
-    await this.sessions.startLive(replyTo, record, (adapter) =>
-      historyId === undefined
-        ? adapter.start(startOpts)
-        : this.history.resume(adapter, historyId, startOpts),
-    );
-    // Same contract as session.start / history.resume: waking a session (re)registers its directory,
-    // so imported records and roots archived since still pass the file.suggest workspace check once
-    // their session is live again.
-    if (record.cwd) this.workspaces.touch(record.cwd);
   }
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {

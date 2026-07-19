@@ -5,9 +5,9 @@ export type { TurnResult } from './turn-watcher';
 
 /**
  * The narrow session-orchestration surface the automation services (ScheduleService, and the
- * LoopService in a later change) drive agents through. The Engine implements it with bound closures
- * (`Engine.buildSessionDriver`), so the services never import the Engine — mirroring how
- * ScriptService receives a `workspaceName` lookup instead of the registry itself.
+ * LoopService) drive agents through. SessionLifecycleService implements it with bound closures, so
+ * automation never imports the lifecycle implementation — mirroring how ScriptService receives a
+ * `workspaceName` lookup instead of the registry itself.
  */
 export interface SessionDriver {
   /**
