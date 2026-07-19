@@ -4,6 +4,7 @@ import {
   Menu,
   MenuGroup,
   MenuGroupLabel,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -198,6 +199,8 @@ export function ModelSelectorMenu({
   selectedEffortId,
   onSelectModel,
   onSelectEffort,
+  onResetModel,
+  onResetEffort,
   onSelectProvider,
 }: {
   disabled: boolean;
@@ -212,6 +215,10 @@ export function ModelSelectorMenu({
   selectedEffortId: EffortLevel | null;
   onSelectModel: (model: string) => void;
   onSelectEffort: (effort: EffortLevel) => void;
+  /** Draft-only escape hatch back to the provider/configured model default. */
+  onResetModel?: () => void;
+  /** Draft-only escape hatch back to the provider effort default. */
+  onResetEffort?: () => void;
   onSelectProvider?: (provider: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
@@ -253,6 +260,11 @@ export function ModelSelectorMenu({
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
+        {onResetModel ? <MenuItem onClick={onResetModel}>{t('useDefaultModel')}</MenuItem> : null}
+        {onResetEffort ? (
+          <MenuItem onClick={onResetEffort}>{t('useDefaultEffort')}</MenuItem>
+        ) : null}
+        {onResetModel || onResetEffort ? <MenuSeparator /> : null}
         {hasEfforts ? (
           <MenuGroup>
             <MenuGroupLabel>{t('reasoning')}</MenuGroupLabel>

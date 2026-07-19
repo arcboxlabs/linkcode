@@ -14,7 +14,8 @@ import { Input } from 'coss-ui/components/input';
 import { toastManager } from 'coss-ui/components/toast';
 import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import type { LexicalEditor } from 'lexical';
+import { falseFn, trueFn } from 'foxts/noop';
+import type { EditorState, LexicalEditor } from 'lexical';
 import { $getSelection, $setSelection, CLEAR_HISTORY_COMMAND } from 'lexical';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -58,7 +59,11 @@ import {
 } from './composer-controls';
 import type { ComposerDirectiveIssue } from './composer-editor/directive-hint';
 import { ComposerDirectiveHint } from './composer-editor/directive-hint';
-import type { ComposerDirectiveControls, DirectiveStatus } from './composer-editor/directive-state';
+import type {
+  ComposerDirectiveControls,
+  ComposerSubmissionResult,
+  DirectiveStatus,
+} from './composer-editor/directive-state';
 import {
   commandCatalog,
   commandStatus,
@@ -87,6 +92,7 @@ export type {
   ComposerDirectiveControls,
   ComposerShellCommandControls,
   ComposerSlashCommandControls,
+  ComposerSubmissionResult,
 } from './composer-editor/directive-state';
 export { UNSUPPORTED_COMPOSER_DIRECTIVES } from './composer-editor/directive-state';
 
@@ -114,6 +120,9 @@ export interface ComposerProps {
   agentKind?: AgentKind;
   /** Whether the current frontend capability stub allows image attachments. */
   attachmentsSupported?: boolean;
+  /** Blocks command and shell directives while attachments are staged. New-session surfaces opt
+   * in because their local attachment tray is discarded when session creation navigates away. */
+  blockDirectivesWithAttachments?: boolean;
   /** No active session: the composer is inert. */
   disabled: boolean;
   /** Blocks sending only (agent runtime not ready — CODE-112): typing and every menu, including
@@ -147,7 +156,8 @@ export interface ComposerProps {
    * (install-dependent agents like opencode). Takes precedence over the static per-kind table;
    * empty or absent falls back to that table. */
   agentModels?: AgentModelOption[] | null;
-  onSend: (content: ContentBlock[]) => void;
+  /** A promise defers draft clearing until the caller accepts the submission. */
+  onSend: (content: ContentBlock[]) => ComposerSubmissionResult;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
@@ -160,6 +170,10 @@ export interface ComposerProps {
   onModelChange?: (model: string) => Promise<void>;
   /** Sends the reasoning-effort switch (`set-effort`); reflected from `effort-update`, same contract. */
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
+  /** Clears a draft's explicit model override. Omitted for live sessions. */
+  onResetModel?: () => void;
+  /** Clears a draft's explicit effort override. Omitted for live sessions. */
+  onResetEffort?: () => void;
   /** Providers offered for selection (the new-session composer). Absent or empty means the
    * provider is fixed — the trigger then hides the provider glyph and submenu. */
   selectableProviders?: AgentKind[];
@@ -187,6 +201,7 @@ export function Composer({
   agentLabel,
   agentKind,
   attachmentsSupported = false,
+  blockDirectivesWithAttachments = false,
   disabled,
   sendBlocked = false,
   isRunning,
@@ -205,6 +220,8 @@ export function Composer({
   onApprovalPolicyChange,
   onModelChange,
   onEffortChange,
+  onResetModel,
+  onResetEffort,
   selectableProviders,
   runtimeCues,
   onProviderChange,
@@ -226,13 +243,17 @@ export function Composer({
   const commandListId = `${commandMenuId}-listbox`;
   const [highlightedCommandIndex, setHighlightedCommandIndex] = useState<number | null>(null);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const submissionPendingRef = useRef(false);
+  const [submissionPending, setSubmissionPending] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasAttachments = attachments.length > 0;
   const hasPendingAttachment = attachments.some((attachment) => attachment.status === 'pending');
   const hasReadyAttachment = attachments.some(
     (attachment) => attachment.status === 'ready' && attachment.block !== undefined,
   );
+  const interactionDisabled = disabled || submissionPending;
 
   const catalog = commandCatalog(directiveControls.slash);
   // A draft led by the shell chip is one shell command; slash/mention menus must stay out of
@@ -246,8 +267,11 @@ export function Composer({
     const directive = snapshot.composition.directive;
     const status = liveDirectiveStatus(directive, directiveControls);
     if (status !== 'supported') return { directive, issue: status };
-    return snapshot.composition.kind === 'blocked'
-      ? { directive, issue: snapshot.composition.issue }
+    if (snapshot.composition.kind === 'blocked') {
+      return { directive, issue: snapshot.composition.issue };
+    }
+    return blockDirectivesWithAttachments && hasAttachments
+      ? { directive, issue: 'attachments' }
       : null;
   })();
   const directiveBlocked = blockedDirective !== null;
@@ -316,7 +340,7 @@ export function Composer({
 
   const hasCommandItems = commandGroups.some((group) => group.items.length > 0);
   const commandOpen =
-    !disabled &&
+    !interactionDisabled &&
     Boolean(commandSource) &&
     (directiveControls.slash.state !== 'loading' || commandSource !== 'slash');
   const frameVisible = commandOpen || blockedDirective !== null || contextBar != null;
@@ -354,9 +378,81 @@ export function Composer({
     onMentionQueryChange?.(null);
   }
 
+  function clearAcceptedSubmission(
+    editor: LexicalEditor,
+    submittedEditorState: EditorState,
+    attachmentIds: ReadonlySet<string>,
+  ): void {
+    // A fulfilled submission may already have navigated away. Its retired editor and tray need no
+    // cleanup, and must never affect a replacement mounted by the same surface.
+    if (editorRef.current !== editor) return;
+    // A caller may have inserted a newer draft while the submission was pending. In that case,
+    // remove only the attachments that were accepted and leave the newer editor state untouched.
+    if (editor.getEditorState() === submittedEditorState) {
+      const store = directiveStateFor(editor);
+      editor.update(() => $clearDraft(), { discrete: true });
+      editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
+      store.setState({ suppressed: new Set() });
+      resetDraftBookkeeping();
+    }
+    if (attachmentIds.size > 0) {
+      setAttachments((current) =>
+        current.filter((attachment) => !attachmentIds.has(attachment.id)),
+      );
+    }
+  }
+
+  function dispatchSubmission(
+    editor: LexicalEditor,
+    invoke: () => ComposerSubmissionResult,
+    attachmentIds: ReadonlySet<string> = new Set(),
+  ): void {
+    const submittedEditorState = editor.getEditorState();
+    submissionPendingRef.current = true;
+    let result: ComposerSubmissionResult;
+    try {
+      result = invoke();
+    } catch (error) {
+      submissionPendingRef.current = false;
+      throw error;
+    }
+
+    if (result === undefined) {
+      try {
+        clearAcceptedSubmission(editor, submittedEditorState, attachmentIds);
+      } finally {
+        submissionPendingRef.current = false;
+      }
+      return;
+    }
+
+    setSubmissionPending(true);
+    void result
+      .then(trueFn)
+      .catch(falseFn)
+      .then((accepted) => {
+        // Rejection is the caller's explicit refusal signal; its owning surface reports the error.
+        if (accepted) {
+          clearAcceptedSubmission(editor, submittedEditorState, attachmentIds);
+        }
+      })
+      .finally(() => {
+        submissionPendingRef.current = false;
+        setSubmissionPending(false);
+      });
+  }
+
   function submit(): void {
     const editor = editorRef.current;
-    if (!editor || disabled || sendBlocked || hasPendingAttachment) return;
+    if (
+      !editor ||
+      interactionDisabled ||
+      submissionPendingRef.current ||
+      sendBlocked ||
+      hasPendingAttachment
+    ) {
+      return;
+    }
     const readyAttachments = attachments.filter(
       (attachment): attachment is ComposerAttachment & { block: ContentBlock } =>
         attachment.status === 'ready' && attachment.block !== undefined,
@@ -371,22 +467,31 @@ export function Composer({
     switch (directive.kind) {
       case 'command': {
         // Unknown/unsupported chips visibly error and block here — never silently model chat.
-        if (directive.status !== 'supported' || directiveControls.slash.state === 'unsupported') {
+        if (
+          directive.status !== 'supported' ||
+          directiveControls.slash.state === 'unsupported' ||
+          (blockDirectivesWithAttachments && hasAttachments)
+        ) {
           return;
         }
-        directiveControls.slash.onInvokeCommand(directive.name, directive.args || undefined);
-        break;
+        const { onInvokeCommand } = directiveControls.slash;
+        dispatchSubmission(editor, () =>
+          onInvokeCommand(directive.name, directive.args || undefined),
+        );
+        return;
       }
       case 'shell': {
         if (
           directive.status !== 'supported' ||
           !directive.command ||
-          directiveControls.shell.state === 'unsupported'
+          directiveControls.shell.state === 'unsupported' ||
+          (blockDirectivesWithAttachments && hasAttachments)
         ) {
           return;
         }
-        directiveControls.shell.onRunShellCommand(directive.command);
-        break;
+        const { onRunShellCommand } = directiveControls.shell;
+        dispatchSubmission(editor, () => onRunShellCommand(directive.command));
+        return;
       }
       case 'invalid': {
         return;
@@ -397,24 +502,21 @@ export function Composer({
           ...(directive.text ? [textBlock(directive.text)] : []),
           ...readyAttachments.map((attachment) => attachment.block),
         ];
-        onSend(content);
-        // Attachments travel only with plain prompts — a command/shell directive can't carry them,
-        // so they stay staged in the tray instead of being silently dropped unsent.
-        setAttachments([]);
-        break;
+        dispatchSubmission(
+          editor,
+          () => onSend(content),
+          new Set(readyAttachments.map((attachment) => attachment.id)),
+        );
+        return;
       }
       default: {
         return directive satisfies never;
       }
     }
-    editor.update(() => $clearDraft(), { discrete: true });
-    editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
-    store.setState({ suppressed: new Set() });
-    resetDraftBookkeeping();
   }
 
   function ingestFiles(files: File[]): void {
-    if (disabled) return;
+    if (interactionDisabled) return;
     if (!attachmentsSupported) {
       if (files.length > 0) {
         toastManager.add({ title: t('attachmentUnsupportedAgent'), type: 'error' });
@@ -466,14 +568,14 @@ export function Composer({
   }
 
   function onAttachmentDragEnter(e: React.DragEvent): void {
-    if (disabled) return;
+    if (interactionDisabled) return;
     e.preventDefault();
     dragCounterRef.current += 1;
     setIsDraggingOver(true);
   }
 
   function onAttachmentDragOver(e: React.DragEvent): void {
-    if (disabled) return;
+    if (interactionDisabled) return;
     e.preventDefault();
   }
 
@@ -487,7 +589,7 @@ export function Composer({
     e.preventDefault();
     dragCounterRef.current = 0;
     setIsDraggingOver(false);
-    if (disabled) return;
+    if (interactionDisabled) return;
     ingestFiles(Array.from(e.dataTransfer.files));
   }
 
@@ -518,7 +620,7 @@ export function Composer({
   }
 
   function triggerAttachPicker(): void {
-    if (disabled || !attachmentsSupported) return;
+    if (interactionDisabled || !attachmentsSupported) return;
     if (onPickAttachmentFiles) {
       void onPickAttachmentFiles()
         .then(mergeAttachments)
@@ -560,7 +662,7 @@ export function Composer({
   }
 
   function openPlusCommand(): void {
-    if (disabled) return;
+    if (interactionDisabled) return;
     setDismissedStart(null);
     setPlusCommandStart(lastSnapshotRef.current.caretOffset ?? lastSnapshotRef.current.text.length);
     editorRef.current?.focus();
@@ -633,7 +735,7 @@ export function Composer({
 
   // Persistent footer twins of the chip menu's recovery actions.
   function convertBlockedDirectiveToText(): void {
-    if (disabled) return;
+    if (interactionDisabled) return;
     const key = blockedDirective?.directive.nodeKey;
     if (!key) return;
     withEditor((editor) => {
@@ -647,7 +749,7 @@ export function Composer({
   }
 
   function removeBlockedDirective(): void {
-    if (disabled) return;
+    if (interactionDisabled) return;
     const key = blockedDirective?.directive.nodeKey;
     if (!key) return;
     withEditor(() => {
@@ -656,7 +758,7 @@ export function Composer({
   }
 
   function moveBlockedDirectiveToStart(): void {
-    if (disabled) return;
+    if (interactionDisabled) return;
     const key = blockedDirective?.directive.nodeKey;
     if (!key) return;
     withEditor(() => $moveDirectiveToStart(key));
@@ -708,7 +810,7 @@ export function Composer({
 
   function insertText(text: string): void {
     const insert = text.trim();
-    if (!insert || disabled) return;
+    if (!insert || interactionDisabled) return;
     withEditor(() => $insertSeparatedDraftText(insert, true));
     setDismissedStart(null);
   }
@@ -741,6 +843,7 @@ export function Composer({
         // rule for this attribute requires a static literal, so it can't be derived at render time.
         accept="image/jpeg, image/png, image/gif, image/webp"
         className="hidden"
+        disabled={interactionDisabled}
         multiple
         nativeInput
         type="file"
@@ -837,12 +940,12 @@ export function Composer({
                       pending: t('attachmentPending'),
                       remove: t('removeAttachment'),
                     }}
-                    onRemove={handleRemoveAttachment}
+                    onRemove={interactionDisabled ? undefined : handleRemoveAttachment}
                   />
                 ) : null}
                 <ComposerEditor
                   className="max-h-48 min-h-20.5 overflow-y-auto whitespace-pre-wrap break-words px-3.5 pt-3 pb-1.5 max-sm:min-h-23.5"
-                  disabled={disabled}
+                  disabled={interactionDisabled}
                   directiveControls={directiveControls}
                   editorRef={editorRef}
                   menuActiveDescendant={
@@ -865,26 +968,29 @@ export function Composer({
                 />
                 <PromptInputFooter onMouseDown={focusEditorFromFooter}>
                   <PromptInputTools>
-                    <ComposerPlusMenu disabled={disabled} onOpenPlusCommand={openPlusCommand} />
+                    <ComposerPlusMenu
+                      disabled={interactionDisabled}
+                      onOpenPlusCommand={openPlusCommand}
+                    />
                     {approvalPolicy && approvalPolicy.availablePolicies.length > 0 ? (
                       <ApprovalPolicyMenu
                         agentLabel={placeholderAgent}
                         currentPolicyId={approvalPolicy.currentPolicyId}
-                        disabled={disabled}
+                        disabled={interactionDisabled}
                         policies={approvalPolicy.availablePolicies}
                         onSelect={selectPolicy}
                       />
                     ) : null}
                     {activeMode && onModeChange ? (
                       <SessionModeChip
-                        disabled={disabled}
+                        disabled={interactionDisabled}
                         mode={activeMode}
                         onToggle={() => toggleMode(activeMode)}
                       />
                     ) : null}
                   </PromptInputTools>
                   <ModelSelectorMenu
-                    disabled={disabled}
+                    disabled={interactionDisabled}
                     effortOptions={effortOptions}
                     modelOptions={modelOptions}
                     provider={agentKind}
@@ -892,6 +998,8 @@ export function Composer({
                     selectableProviders={selectableProviders}
                     selectedEffortId={currentEffort ?? null}
                     selectedModelId={currentModel ?? null}
+                    onResetEffort={onResetEffort}
+                    onResetModel={onResetModel}
                     onSelectEffort={selectEffort}
                     onSelectModel={selectModel}
                     onSelectProvider={
@@ -906,7 +1014,7 @@ export function Composer({
                     aria-label={isRunning ? t('stop') : t('send')}
                     disabled={
                       !isRunning &&
-                      (disabled ||
+                      (interactionDisabled ||
                         sendBlocked ||
                         directiveBlocked ||
                         (snapshot.text.trim().length === 0 && !hasReadyAttachment) ||
@@ -950,7 +1058,7 @@ export function Composer({
                       >
                         <ComposerDirectiveHint
                           directive={blockedDirective.directive}
-                          disabled={disabled}
+                          disabled={interactionDisabled}
                           issue={blockedDirective.issue}
                           onConvertToText={convertBlockedDirectiveToText}
                           onMoveToStart={

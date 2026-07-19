@@ -6,7 +6,8 @@ import type { EditorDirective } from './serialize';
 
 export type ComposerDirectiveIssue =
   | DirectivePlacementIssue
-  | Exclude<DirectiveStatus, 'supported'>;
+  | Exclude<DirectiveStatus, 'supported'>
+  | 'attachments';
 
 /** Compact persistent explanation for a blocked directive draft and its recovery actions. */
 export function ComposerDirectiveHint({
@@ -26,18 +27,27 @@ export function ComposerDirectiveHint({
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const label = directive.kind === 'command' ? `/${directive.name}` : '$';
-  const reason =
-    issue === 'multiple'
-      ? t('multipleDirectives', { directive: label })
-      : issue === 'misplaced'
-        ? directive.kind === 'command'
-          ? t('commandMisplaced')
-          : t('shellMisplaced')
-        : directive.kind === 'shell'
-          ? t('shellUnsupported')
-          : issue === 'unknown'
-            ? t('commandUnknown', { command: directive.name })
-            : t('commandUnsupported');
+
+  function issueReason(): string {
+    switch (issue) {
+      case 'attachments':
+        return t('directiveAttachmentsConflict');
+      case 'multiple':
+        return t('multipleDirectives', { directive: label });
+      case 'misplaced':
+        return directive.kind === 'command' ? t('commandMisplaced') : t('shellMisplaced');
+      case 'unknown':
+        return directive.kind === 'command'
+          ? t('commandUnknown', { command: directive.name })
+          : t('shellUnsupported');
+      case 'unsupported':
+        return directive.kind === 'command' ? t('commandUnsupported') : t('shellUnsupported');
+      default:
+        return issue satisfies never;
+    }
+  }
+
+  const reason = issueReason();
   return (
     <div
       className="flex w-full flex-wrap items-center gap-x-1 gap-y-1 px-2 pt-2 pb-1"

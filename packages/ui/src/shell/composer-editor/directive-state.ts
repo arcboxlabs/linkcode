@@ -10,7 +10,11 @@ export type DirectiveStatus = 'supported' | 'unknown' | 'unsupported';
 /** Why structurally valid directive tokens cannot form one executable agent input. */
 export type DirectivePlacementIssue = 'misplaced' | 'multiple';
 
-type InvokeCommand = (name: string, args?: string) => void;
+/** Returning void accepts immediately. A promise accepts on fulfillment and rejects without
+ * mutating the draft; the owning surface remains responsible for reporting that rejection. */
+export type ComposerSubmissionResult = void | Promise<void>;
+
+type InvokeCommand = (name: string, args?: string) => ComposerSubmissionResult;
 
 /** Slash commands are either unavailable, waiting for their live catalog, or backed by an
  * authoritative catalog. Every executable state carries the handler needed to submit one. */
@@ -26,7 +30,7 @@ export type ComposerSlashCommandControls =
 /** Shell passthrough has no catalog: the ready state only needs its required execution handler. */
 export type ComposerShellCommandControls =
   | { state: 'unsupported' }
-  | { state: 'ready'; onRunShellCommand: (command: string) => void };
+  | { state: 'ready'; onRunShellCommand: (command: string) => ComposerSubmissionResult };
 
 /** Complete executable-directive contract for a composer instance. */
 export interface ComposerDirectiveControls {

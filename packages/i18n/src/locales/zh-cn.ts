@@ -280,6 +280,7 @@ export const zhCN = {
       shellUnsupported: '当前代理不支持 Shell 命令',
       commandMisplaced: '斜杠命令只能在消息开头运行',
       shellMisplaced: 'Shell 命令只能在消息开头运行',
+      directiveAttachmentsConflict: '命令不能携带附件。请先发送或移除附件。',
       multipleDirectives:
         '每条消息只能运行一个斜杠命令或 Shell 命令。请选择如何处理「{directive}」。',
       convertToText: '转换为文本',
@@ -288,6 +289,8 @@ export const zhCN = {
       modelDefault: '默认',
       effortDefault: '默认',
       effortShort: '默认',
+      useDefaultModel: '使用默认模型',
+      useDefaultEffort: '使用默认推理强度',
       add: '添加',
       attach: '图片',
       attachmentPickerTitle: '添加图片',

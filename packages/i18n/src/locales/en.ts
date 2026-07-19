@@ -289,6 +289,8 @@ export const en = {
       shellUnsupported: 'This agent does not support shell commands',
       commandMisplaced: 'Slash commands can run only at the start of a message',
       shellMisplaced: 'Shell commands can run only at the start of a message',
+      directiveAttachmentsConflict:
+        'Commands cannot include attachments. Send or remove the attachments first.',
       multipleDirectives:
         'Only one slash or shell command can run per message. Choose how to handle {directive}.',
       convertToText: 'Convert to text',
@@ -297,6 +299,8 @@ export const en = {
       modelDefault: 'Default',
       effortDefault: 'Default',
       effortShort: 'Def.',
+      useDefaultModel: 'Use default model',
+      useDefaultEffort: 'Use default effort',
       add: 'Add',
       attach: 'Images',
       attachmentPickerTitle: 'Attach images',
