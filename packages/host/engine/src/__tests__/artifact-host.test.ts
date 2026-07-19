@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RequestError } from '../failure';
 import { ArtifactHostService } from '../preview/artifact-host-service';
 import { PreviewRouteRegistry } from '../preview/route-registry';
 
@@ -36,7 +37,31 @@ describe('ArtifactHostService', () => {
     const { service, routes } = makeService();
     const artifact = service.host('<p>gone</p>', 'text/html');
     service.revoke(artifact.hash);
+    service.revoke(artifact.hash);
     expect(routes.lookup(artifact.hostname)).toBeNull();
+  });
+
+  it('close releases every hosted route', () => {
+    const { service, routes } = makeService();
+    const first = service.host('<p>first</p>', 'text/html');
+    const second = service.host('<p>second</p>', 'text/html');
+
+    service.close();
+
+    expect(routes.lookup(first.hostname)).toBeNull();
+    expect(routes.lookup(second.hostname)).toBeNull();
+  });
+
+  it('close is idempotent and rejects subsequent hosting as cancelled', () => {
+    const { service } = makeService();
+    service.close();
+    service.close();
+
+    const hostAfterClose = (): void => {
+      service.host('<p>too late</p>', 'text/html');
+    };
+    expect(hostAfterClose).toThrow(RequestError);
+    expect(hostAfterClose).toThrow(expect.objectContaining({ code: 'cancelled' }));
   });
 
   it('evicts the least-recently-hosted artifact past the cap', () => {

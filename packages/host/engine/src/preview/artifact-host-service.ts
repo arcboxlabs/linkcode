@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { HostedArtifact } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
+import { RequestError } from '../failure';
 import type { PreviewRouteRegistry } from './route-registry';
 
 /** LRU cap on hosted artifacts — a runaway conversation can't grow daemon memory unbounded. */
@@ -16,10 +17,14 @@ const OWNER = 'artifact-host';
 export class ArtifactHostService {
   /** Insertion order doubles as LRU order (re-hosting refreshes by delete+set). */
   private readonly hosted = new Map<string, HostedArtifact>();
+  private closed = false;
 
   constructor(private readonly routes: PreviewRouteRegistry) {}
 
   host(content: string, mimeType: string): HostedArtifact {
+    if (this.closed) {
+      throw new RequestError({ code: 'cancelled', message: 'Artifact hosting is shutting down' });
+    }
     const proxyPort = nullthrow(
       this.routes.proxyPort,
       'Artifact hosting is not ready (no bound listener)',
@@ -56,5 +61,14 @@ export class ArtifactHostService {
     if (!artifact) return;
     this.routes.unregister(artifact.hostname, OWNER);
     this.hosted.delete(hash);
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const artifact of this.hosted.values()) {
+      this.routes.unregister(artifact.hostname, OWNER);
+    }
+    this.hosted.clear();
   }
 }

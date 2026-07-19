@@ -98,11 +98,8 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     ? new ScriptService(transport, terminals, routes, (cwd) => workspaces.findByCwd(cwd)?.name)
     : undefined;
   const scriptRequests = new ScriptRequestHandler(transport, scripts, responder);
-  const artifactRequests = new ArtifactRequestHandler(
-    transport,
-    new ArtifactHostService(routes),
-    responder,
-  );
+  const artifacts = new ArtifactHostService(routes);
+  const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(providerStore, translator);
   const sessionLifecycle = new SessionLifecycleService(
@@ -244,6 +241,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* runtimes.close();
       yield* finalize('scripts.shutdown', () => scripts?.shutdown());
+      yield* finalize('artifacts.shutdown', () => artifacts.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());
