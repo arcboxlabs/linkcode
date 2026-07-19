@@ -7,6 +7,7 @@ import type { CodexAppServerOptions } from '../native/codex/app-server';
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
   rejectSkills = false;
+  compactResponse: Promise<unknown> = Promise.resolve({});
   private turn = 0;
 
   constructor(
@@ -26,6 +27,7 @@ class FakeCodexServer {
       this.turn += 1;
       return Promise.resolve({ turn: { id: `turn-${this.turn}` } });
     }
+    if (method === 'thread/compact/start') return this.compactResponse;
     return Promise.resolve({});
   }
 
@@ -245,5 +247,46 @@ describe('CodexAdapter slash commands', () => {
     await expect(adapter.send({ type: 'command', name: 'missing' })).rejects.toThrow(
       "codex: unknown slash command '/missing'",
     );
+  });
+
+  it('publishes running before the /compact request resolves', async () => {
+    const adapter = new TestCodex(response());
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    events.length = 0;
+    let resolveCompact!: (value: unknown) => void;
+    adapter.fake.compactResponse = new Promise((resolve) => {
+      resolveCompact = resolve;
+    });
+
+    const sending = adapter.send({ type: 'command', name: 'compact' });
+    let settled = false;
+    void sending.then(() => {
+      settled = true;
+    });
+
+    await vi.waitFor(() => expect(events).toContainEqual({ type: 'status', status: 'running' }));
+    expect(settled).toBe(false);
+    resolveCompact({});
+    await sending;
+  });
+
+  it('returns /compact to idle when its request is rejected', async () => {
+    const adapter = new TestCodex(response());
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    events.length = 0;
+    adapter.fake.compactResponse = Promise.reject(new Error('compact unavailable'));
+
+    await expect(adapter.send({ type: 'command', name: 'compact' })).rejects.toThrow(
+      'compact unavailable',
+    );
+
+    expect(events.filter((event) => event.type === 'status')).toEqual([
+      { type: 'status', status: 'running' },
+      { type: 'status', status: 'idle' },
+    ]);
   });
 });
