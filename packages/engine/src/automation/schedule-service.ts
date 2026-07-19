@@ -1,6 +1,5 @@
 import type {
   Schedule,
-  ScheduleCadence,
   ScheduleId,
   ScheduleMisfirePolicy,
   ScheduleRun,
@@ -12,9 +11,9 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { Cron } from 'croner';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { ScheduleCadenceCalculator } from './schedule-cadence';
 import type { ScheduleStore } from './schedule-store';
 import type { SessionDriver } from './session-driver';
 
@@ -26,7 +25,6 @@ export class ScheduleTargetGoneError extends Error {
   }
 }
 
-const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 const RUNS_KEPT_PER_SCHEDULE = 100;
 const SUMMARY_MAX_CHARS = 2000;
 
@@ -52,6 +50,7 @@ export class ScheduleService {
   /** In-flight run promises, kept only so {@link settleAll} can await them in tests. */
   private readonly inFlight = new Map<ScheduleId, Promise<void>>();
   private readonly now: () => number;
+  private readonly cadence: ScheduleCadenceCalculator;
   private readonly tickMs: number;
   private readonly defaultMisfirePolicy: ScheduleMisfirePolicy;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -64,6 +63,7 @@ export class ScheduleService {
     options: ScheduleServiceOptions = {},
   ) {
     this.now = options.now ?? Date.now;
+    this.cadence = new ScheduleCadenceCalculator(this.now);
     this.tickMs = options.tickMs ?? 1000;
     this.defaultMisfirePolicy = options.defaultMisfirePolicy ?? 'catch-up';
   }
@@ -100,13 +100,13 @@ export class ScheduleService {
   }
 
   async create(spec: ScheduleSpec): Promise<Schedule> {
-    this.validateCadence(spec.cadence);
+    this.cadence.validate(spec.cadence);
     const now = this.now();
     const schedule: Schedule = {
       scheduleId: this.mintScheduleId(),
       spec,
       status: 'active',
-      nextRunAt: this.nextOccurrence(spec.cadence, now),
+      nextRunAt: this.cadence.next(spec.cadence, now),
       runCount: 0,
       createdAt: now,
       updatedAt: now,
@@ -119,7 +119,7 @@ export class ScheduleService {
 
   async update(scheduleId: ScheduleId, patch: ScheduleUpdate): Promise<Schedule> {
     const schedule = this.require(scheduleId);
-    if (patch.cadence !== undefined) this.validateCadence(patch.cadence);
+    if (patch.cadence !== undefined) this.cadence.validate(patch.cadence);
     schedule.spec = {
       ...schedule.spec,
       ...(patch.name !== undefined && { name: patch.name }),
@@ -131,7 +131,7 @@ export class ScheduleService {
     };
     // A cadence change re-bases the next fire from now; other edits leave the schedule armed as-is.
     if (schedule.status === 'active' && patch.cadence !== undefined) {
-      schedule.nextRunAt = this.nextOccurrence(schedule.spec.cadence, this.now());
+      schedule.nextRunAt = this.cadence.next(schedule.spec.cadence, this.now());
     }
     schedule.updatedAt = this.now();
     await this.store.save(schedule);
@@ -161,7 +161,7 @@ export class ScheduleService {
     if (schedule.status === 'completed') throw new Error('Schedule is already completed');
     if (schedule.status === 'active') return;
     schedule.status = 'active';
-    schedule.nextRunAt = this.nextOccurrence(schedule.spec.cadence, this.now());
+    schedule.nextRunAt = this.cadence.next(schedule.spec.cadence, this.now());
     schedule.updatedAt = this.now();
     await this.store.save(schedule);
     this.broadcastSchedule(schedule);
@@ -202,9 +202,9 @@ export class ScheduleService {
       return;
     }
     const cadence = schedule.spec.cadence;
-    const latestMissed = this.latestOccurrenceAtOrBefore(cadence, schedule.nextRunAt ?? now, now);
+    const latestMissed = this.cadence.latestAtOrBefore(cadence, schedule.nextRunAt ?? now, now);
     const missedBy = now - latestMissed;
-    schedule.nextRunAt = this.nextOccurrence(cadence, latestMissed);
+    schedule.nextRunAt = this.cadence.next(cadence, latestMissed);
     schedule.updatedAt = now;
     await this.store.save(schedule);
     this.broadcastSchedule(schedule);
@@ -216,7 +216,7 @@ export class ScheduleService {
       // `skip` fast-forwards silently (nextRunAt already advanced); `catch-up` beyond grace records
       // a skipped run for visibility; within grace it replays the most recent missed occurrence.
       if (policy === 'skip') return;
-      if (missedBy > this.graceMs(cadence)) {
+      if (missedBy > this.cadence.graceMs(cadence)) {
         await this.recordSkipped(schedule, latestMissed, now);
         return;
       }
@@ -368,49 +368,6 @@ export class ScheduleService {
     }
   }
 
-  // ── Cadence math ──────────────────────────────────────────────────────────
-
-  private buildCron(cadence: Extract<ScheduleCadence, { type: 'cron' }>): Cron {
-    return new Cron(cadence.expression, cadence.timezone ? { timezone: cadence.timezone } : {});
-  }
-
-  /** Throws (surfaced as `request.failed`) on an invalid cron expression or time zone. */
-  private validateCadence(cadence: ScheduleCadence): void {
-    if (cadence.type === 'cron') this.buildCron(cadence);
-  }
-
-  /** The first occurrence strictly after `from`. */
-  private nextOccurrence(cadence: ScheduleCadence, from: number): number {
-    if (cadence.type === 'interval') return from + cadence.everyMs;
-    const next = this.buildCron(cadence).nextRun(new Date(from));
-    // A cron with no future occurrence (never for a 5-field pattern) parks a period ahead.
-    return next ? next.getTime() : from + TWELVE_HOURS_MS;
-  }
-
-  /** The last occurrence at or before `now`, walking forward from the earliest missed `from`. */
-  private latestOccurrenceAtOrBefore(cadence: ScheduleCadence, from: number, now: number): number {
-    if (cadence.type === 'interval') {
-      if (now <= from) return from;
-      const steps = Math.floor((now - from) / cadence.everyMs);
-      return from + steps * cadence.everyMs;
-    }
-    let current = from;
-    for (let guard = 0; guard < 1_000_000; guard += 1) {
-      const next = this.nextOccurrence(cadence, current);
-      if (next > now) break;
-      current = next;
-    }
-    return current;
-  }
-
-  private graceMs(cadence: ScheduleCadence): number {
-    if (cadence.type === 'interval') return Math.min(cadence.everyMs, TWELVE_HOURS_MS);
-    // The current period is the gap between the next two occurrences.
-    const a = this.nextOccurrence(cadence, this.now());
-    const b = this.nextOccurrence(cadence, a);
-    return Math.min(b - a, TWELVE_HOURS_MS);
-  }
-
   private catchUpThresholdMs(): number {
     return Math.max(this.tickMs * 2, 5000);
   }
@@ -418,8 +375,6 @@ export class ScheduleService {
   private reachedMaxRuns(schedule: Schedule): boolean {
     return schedule.spec.maxRuns !== undefined && schedule.runCount >= schedule.spec.maxRuns;
   }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
 
   private summarize(text: string): string | undefined {
     const trimmed = text.trim();
