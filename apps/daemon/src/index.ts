@@ -14,6 +14,7 @@ import type { DaemonConfig } from './config';
 import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
+import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
 import { createProviderConfigStore } from './provider-store';
@@ -32,7 +33,7 @@ import { createWorkspaceStore } from './workspace-store';
 // After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
 // die loudly rather than keep serving clients from an unknown state.
 process.on('uncaughtException', (err) => {
-  console.error('[linkcode/daemon] uncaught exception:', err);
+  logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);
 });
 
@@ -40,7 +41,7 @@ process.on('uncaughtException', (err) => {
 // coherent, so log instead of exiting. Reaching here means a fire-and-forget path missed its
 // `.catch`; fix that path.
 process.on('unhandledRejection', (reason) => {
-  console.error('[linkcode/daemon] unhandled rejection:', reason);
+  logger.error({ err: reason }, 'Unhandled rejection');
 });
 
 /** How long a graceful drain may run after the first signal before the process force-exits. */
@@ -63,13 +64,15 @@ class BoundListeners extends Context.Service<BoundListeners, readonly DaemonList
 
 // A failing finalizer must not change the shutdown outcome; log and move on.
 function finalize(run: () => void | Promise<void>): Effect.Effect<void> {
-  return Effect.promise(async () => {
-    try {
-      await run();
-    } catch (err) {
-      console.error('[linkcode/daemon] error during shutdown:', err);
-    }
-  });
+  return Effect.tryPromise({ try: async () => run(), catch: (cause) => cause }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logError(
+        'Error during shutdown',
+        { operation: 'shutdown.finalize' },
+        Cause.squash(cause),
+      ),
+    ),
+  );
 }
 
 // Explicit exits everywhere, not exitCode+return: under utilityProcess the parent IPC channel
@@ -92,7 +95,7 @@ const teardown: Runtime.Teardown = (exit, onExit) => {
     onExit(DAEMON_EXIT_ALREADY_RUNNING);
     return;
   }
-  console.error('[linkcode/daemon] fatal:', Cause.squash(exit.cause));
+  logger.fatal({ err: Cause.squash(exit.cause) }, 'Daemon failed');
   onExit(1);
 };
 
@@ -129,7 +132,10 @@ async function main(): Promise<void> {
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
-        console.error(`[linkcode/daemon] already running (pid ${running.pid}) at ${urls}`);
+        yield* Effect.logWarning('Daemon already running', {
+          operation: 'daemon.start',
+          pid: running.pid,
+        });
         yield* Effect.fail(new DaemonAlreadyRunningError(running, urls));
       }
       const identity: DaemonIdentity = {
@@ -162,10 +168,14 @@ async function main(): Promise<void> {
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
       if (gc.removed.length > 0) {
-        console.log(`[linkcode/daemon] assets gc: removed ${gc.removed.join(', ')}`);
+        yield* Effect.logInfo('Removed superseded managed assets', {
+          operation: 'asset.gc',
+        });
       }
       if (gc.skipped.length > 0) {
-        console.warn(`[linkcode/daemon] assets gc: skipped ${gc.skipped.join(', ')}`);
+        yield* Effect.logWarning('Skipped managed asset removal', {
+          operation: 'asset.gc',
+        });
       }
       agentRuntimeProber.setManagedResolver((kind) => {
         const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
@@ -221,23 +231,23 @@ async function main(): Promise<void> {
                 void assets
                   .ensure(`agent:${kind}`)
                   .catch((err) => {
-                    console.warn(
-                      `[linkcode/daemon] managed install failed for ${kind}: ${extractErrorMessage(err)}`,
+                    logger.warn(
+                      { err, agentKind: kind, operation: 'asset.ensure' },
+                      'Managed agent install failed',
                     );
                   })
                   .then((installed) => {
                     if (installed) {
-                      console.log(
-                        `[linkcode/daemon] managed runtime ready: ${installed.id}@${installed.version}`,
+                      logger.info(
+                        { agentKind: kind, operation: 'asset.ensure' },
+                        'Managed agent runtime ready',
                       );
                     }
                   });
               }
             })
             .catch((err) => {
-              console.warn(
-                `[linkcode/daemon] boot agent probe failed: ${extractErrorMessage(err)}`,
-              );
+              logger.warn({ err, operation: 'agent.probe' }, 'Boot agent probe failed');
             });
           // Runs before any listener binds, so `workspace.list` always includes the chat workspace.
           yield* engine.ensureChatWorkspace(chatWorkspaceRoot());
@@ -276,7 +286,11 @@ async function main(): Promise<void> {
               hub.addConnection(conn);
               conn.onClose(() => hub.removeConnection(conn));
             });
-            console.log(`[linkcode/daemon] listening on ${url} (${listener.type})`);
+            yield* Effect.logInfo('Daemon listener bound', {
+              operation: 'listener.bind',
+              listenerType: listener.type,
+              url,
+            });
             return { type: listener.type, url } satisfies DaemonListenerInfo;
           }),
         { concurrency: 'unbounded' },
@@ -284,7 +298,10 @@ async function main(): Promise<void> {
         Effect.tapError((err) =>
           Effect.sync(() => {
             if (err instanceof DaemonAlreadyRunningError) {
-              console.error(`[linkcode/daemon] ${extractErrorMessage(err)}`);
+              logger.warn(
+                { operation: 'listener.bind' },
+                extractErrorMessage(err) ?? 'Daemon already running',
+              );
             }
           }),
         ),
@@ -317,6 +334,7 @@ async function main(): Promise<void> {
     Layer.provideMerge(ListenersLive),
     Layer.provideMerge(EngineLive),
     Layer.provideMerge(SharedLive),
+    Layer.provide(DaemonLoggerLive),
   );
 
   // runMain turns SIGINT/SIGTERM into fiber interruption but has no escalation of its own: a
@@ -326,11 +344,11 @@ async function main(): Promise<void> {
   const escalate = (): void => {
     signalCount += 1;
     if (signalCount > 1) {
-      console.error('[linkcode/daemon] second signal during shutdown; forcing exit');
+      logger.fatal({ operation: 'shutdown' }, 'Second signal during shutdown; forcing exit');
       process.exit(1);
     }
     const deadline = setTimeout(() => {
-      console.error('[linkcode/daemon] shutdown drain timed out; forcing exit');
+      logger.fatal({ operation: 'shutdown' }, 'Shutdown drain timed out; forcing exit');
       process.exit(1);
     }, DRAIN_TIMEOUT_MS);
     deadline.unref();
@@ -342,6 +360,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error('[linkcode/daemon] fatal:', err);
+  logger.fatal({ err }, 'Daemon failed before runtime launch');
   process.exit(1);
 });

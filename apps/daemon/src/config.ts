@@ -12,6 +12,7 @@ import {
   parseProfileName,
 } from '@linkcode/schema';
 import type { TransportServerOptions } from '@linkcode/transport/server';
+import { logger } from './logger';
 
 /**
  * Daemon configuration: `config.json` in the profile's state dir (optional) with env overrides.
@@ -122,14 +123,14 @@ export function loadConfig(): DaemonConfig {
 function parseAccounts(raw: unknown): Accounts {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
-    console.error('Invalid accounts config: expected an array, got', raw);
+    logger.warn({ operation: 'config.load' }, 'Invalid accounts config: expected an array');
     return [];
   }
   const accounts: Accounts = [];
   for (const value of raw) {
     const account = AccountSchema.safeParse(value);
     if (!account.success) {
-      console.error('Invalid account config, dropping entry:', account.error);
+      logger.warn({ operation: 'config.load' }, 'Dropping invalid account config');
       continue;
     }
     accounts.push(account.data);
@@ -144,19 +145,22 @@ function parseAccounts(raw: unknown): Accounts {
 function parseProviders(raw: unknown): ProvidersConfig {
   if (raw === undefined) return {};
   if (!isRecord(raw)) {
-    console.error('Invalid providers config: expected an object, got', raw);
+    logger.warn({ operation: 'config.load' }, 'Invalid providers config: expected an object');
     return {};
   }
   const providers: ProvidersConfig = {};
   for (const [key, value] of Object.entries(raw)) {
     const kind = AgentKindSchema.safeParse(key);
     if (!kind.success) {
-      console.error(`Invalid providers config: unknown agent kind "${key}"`, kind.error);
+      logger.warn(
+        { agentKind: key, operation: 'config.load' },
+        'Dropping config for unknown agent kind',
+      );
       continue;
     }
     const config = ProviderConfigSchema.safeParse(value);
     if (!config.success) {
-      console.error(`Invalid providers config for "${key}":`, config.error);
+      logger.warn({ agentKind: key, operation: 'config.load' }, 'Dropping invalid provider config');
       continue;
     }
     providers[kind.data] = config.data;

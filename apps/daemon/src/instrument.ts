@@ -12,7 +12,12 @@ import * as Sentry from '@sentry/node';
  */
 const initOptions: Parameters<typeof Sentry.init>[0] = {
   dsn: process.env.LINKCODE_SENTRY_DSN,
-  integrations: [],
+  integrations: [
+    Sentry.pinoIntegration({
+      log: { levels: [] },
+      error: { levels: ['error', 'fatal'], handled: true },
+    }),
+  ],
   tracesSampleRate: 1,
 };
 

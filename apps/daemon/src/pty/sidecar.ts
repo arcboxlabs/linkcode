@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '@linkcode/engine';
 import { Listeners } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
+import { logger } from '../logger';
 import type { Frame } from './codec';
 import {
   CLOSE,
@@ -132,9 +133,14 @@ export class SidecarPtyBackend implements PtyBackend {
       try {
         for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
       } catch (err) {
-        console.error(
-          `[linkcode/daemon] pty sidecar protocol error (chunk length ${chunk.length}, ${this.terminals.size} active terminal(s)):`,
-          err,
+        logger.error(
+          {
+            err,
+            operation: 'pty.decode',
+            chunkLength: chunk.length,
+            activeTerminalCount: this.terminals.size,
+          },
+          'PTY sidecar protocol error',
         );
         child.kill();
         this.onChildGone();
@@ -280,8 +286,9 @@ export function resolveSidecarPath(): string {
     const repoRoot = join(dirname(here), '..', '..', '..', '..');
     return join(repoRoot, 'target', 'release', binaryName());
   }
-  console.error(
-    '[linkcode/daemon] pty sidecar is not configured: set LINKCODE_PTY_SIDECAR_PATH to the built linkcode-pty binary. Terminals will be unavailable.',
+  logger.warn(
+    { operation: 'pty.resolve' },
+    'PTY sidecar is not configured; terminals will be unavailable',
   );
   return '';
 }

@@ -1,13 +1,11 @@
 import { hostname } from 'node:os';
 import { TunnelTransportServer } from '@linkcode/transport';
 import type { Hub } from '@linkcode/transport/server';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
+import { logger } from '../logger';
 import { fetchTunnelToken } from './api';
 import { loadHqCredentials } from './credentials';
 import { ensureDeviceKey } from './device-key';
-
-const log = (message: string): void => console.log(`[linkcode/daemon] ${message}`);
 
 /** How long to wait before redialing when HQ is unreachable at boot. */
 const CONNECT_RETRY_MS = 30000;
@@ -22,7 +20,7 @@ const CONNECT_RETRY_MS = 30000;
 export function startHqUplink(hub: Hub): () => void {
   const credentials = loadHqCredentials();
   if (!credentials) {
-    log('cloud uplink off — run `linkcode-daemon login` to enable remote access');
+    logger.info({ operation: 'uplink.connect' }, 'Cloud uplink disabled');
     return noop;
   }
 
@@ -41,7 +39,9 @@ export function startHqUplink(hub: Hub): () => void {
       // token they present, so a leaked token alone cannot host this device.
       signToken: (accessToken) => key.sign(accessToken),
     });
-    transport.onStateChange((state) => log(`cloud uplink ${state}`));
+    transport.onStateChange((state) => {
+      logger.info({ operation: 'uplink.state', state }, 'Cloud uplink state changed');
+    });
     transport.onConnection((connection) => {
       hub.addConnection(connection);
       connection.onClose(() => hub.removeConnection(connection));
@@ -50,8 +50,9 @@ export function startHqUplink(hub: Hub): () => void {
       await transport.connect();
     } catch (err) {
       if (stopped) return;
-      log(
-        `cloud uplink connect failed (${extractErrorMessage(err)}); retrying in ${CONNECT_RETRY_MS / 1000}s`,
+      logger.warn(
+        { err, operation: 'uplink.connect' },
+        'Cloud uplink connection failed; retry scheduled',
       );
       retryTimer = setTimeout(() => {
         void attempt();
@@ -66,7 +67,7 @@ export function startHqUplink(hub: Hub): () => void {
     transport.onClose(() => {
       active = null;
       if (!stopped) {
-        log('cloud uplink stopped — sign in again and restart the daemon to restore remote access');
+        logger.warn({ operation: 'uplink.close' }, 'Cloud uplink stopped permanently');
       }
     });
   };
