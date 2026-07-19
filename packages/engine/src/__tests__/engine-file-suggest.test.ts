@@ -10,10 +10,10 @@ import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { waitFor } from 'foxts/wait-for';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import { Engine } from '../engine';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import { FileSuggestService } from '../workspace/file-suggest-service';
+import { createTestEngine } from './fixtures/test-engine';
 
 const tempRoots: string[] = [];
 afterAll(() => {
@@ -53,7 +53,11 @@ function harness(store: SessionStore = new InMemorySessionStore()) {
   const fileSuggest = new FileSuggestService();
   const suggest = vi.spyOn(fileSuggest, 'suggest').mockResolvedValue([{ path: 'src/index.ts' }]);
   const list = vi.spyOn(fileSuggest, 'list').mockResolvedValue(['src/index.ts', 'README.md']);
-  const engine = new Engine(transport, { factory: fakeAdapter, fileSuggest, sessionStore: store });
+  const engine = createTestEngine(transport, {
+    factory: fakeAdapter,
+    fileSuggest,
+    sessionStore: store,
+  });
 
   // handle() is fire-and-forget, so a fixed tick races the reply under parallel-suite load;
   // every request kind replies via tryReply, so the echoed replyTo is the settled signal.

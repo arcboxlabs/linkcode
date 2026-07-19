@@ -4,8 +4,8 @@ import { createWireMessage, Listeners } from '@linkcode/transport';
 import { Hub } from '@linkcode/transport/server';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
-import { Engine } from '../engine';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../terminal/pty-backend';
+import { createTestEngine } from './fixtures/test-engine';
 
 class PeerTransport implements Transport {
   readonly sent: ValidatedWireMessage[] = [];
@@ -95,7 +95,7 @@ describe('terminal takeover through Hub and Engine', () => {
   it('replays to a late mobile controller and keeps it live after desktop disconnects', async () => {
     const hub = new Hub();
     const backend = new EchoPtyBackend();
-    const engine = new Engine(hub, { ptyBackend: backend });
+    const engine = createTestEngine(hub, { ptyBackend: backend });
     const desktop = new PeerTransport();
     const mobile = new PeerTransport();
     hub.addConnection(desktop);

@@ -17,7 +17,7 @@ import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
-import { Engine } from '../engine';
+import { createTestEngine } from './fixtures/test-engine';
 
 /** Adapter that answers a prompt turn by emitting one assistant chunk and a stop. */
 class ScheduleFakeAdapter implements AgentAdapter {
@@ -100,7 +100,7 @@ function harness() {
     close: noop,
   };
   const factory: AdapterFactory = () => new ScheduleFakeAdapter();
-  const engine = new Engine(transport, { factory });
+  const engine = createTestEngine(transport, { factory });
 
   function inject(payload: WirePayload): void {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));

@@ -5,7 +5,7 @@ import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Engine } from '../engine';
+import { createTestEngine } from './fixtures/test-engine';
 
 function harness(
   agentRuntimes?: AgentRuntimes,
@@ -26,7 +26,11 @@ function harness(
     onClose: () => noop,
     close: noop,
   };
-  const engine = new Engine(transport, { agentRuntimes, collectAgentRuntimes, agentRuntimesReady });
+  const engine = createTestEngine(transport, {
+    agentRuntimes,
+    collectAgentRuntimes,
+    agentRuntimesReady,
+  });
   function inject(payload: WirePayload): void {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
   }

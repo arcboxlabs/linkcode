@@ -13,7 +13,7 @@ import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { AssetService } from '../asset/service';
 import type { EngineDeps } from '../engine';
-import { Engine } from '../engine';
+import { createTestEngine } from './fixtures/test-engine';
 
 const INSTALLED_CODEX: InstalledAsset = {
   id: 'agent:codex',
@@ -54,7 +54,7 @@ function harness(deps: EngineDeps = {}) {
     onClose: () => noop,
     close: noop,
   };
-  const engine = new Engine(transport, deps);
+  const engine = createTestEngine(transport, deps);
   function inject(payload: WirePayload): void {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
   }
@@ -147,11 +147,12 @@ describe('asset.ensure', () => {
 });
 
 describe('asset install broadcasts', () => {
-  it('forwards progress (throttled per asset) and clears the throttle on settle', () => {
+  it('forwards progress (throttled per asset) and clears the throttle on settle', async () => {
     vi.useFakeTimers();
     try {
       const { service, emit } = fakeAssets();
-      const { sent } = harness({ assets: service });
+      const { engine, sent } = harness({ assets: service });
+      await engine.start();
 
       emit({ kind: 'progress', id: 'agent:codex', receivedBytes: 1, totalBytes: 100 });
       emit({ kind: 'progress', id: 'agent:codex', receivedBytes: 2, totalBytes: 100 });
@@ -170,9 +171,10 @@ describe('asset install broadcasts', () => {
     }
   });
 
-  it('broadcasts asset.settled with the error when an install fails', () => {
+  it('broadcasts asset.settled with the error when an install fails', async () => {
     const { service, emit } = fakeAssets();
-    const { sent } = harness({ assets: service });
+    const { engine, sent } = harness({ assets: service });
+    await engine.start();
     emit({ kind: 'failed', id: 'agent:codex', error: 'network down' });
     expect(sent).toContainEqual({
       kind: 'asset.settled',

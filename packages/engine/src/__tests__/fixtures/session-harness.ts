@@ -18,9 +18,9 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
-import { Engine } from '../../engine';
 import type { SessionStore } from '../../session/session-store';
 import { InMemorySessionStore } from '../../session/session-store';
+import { createTestEngine } from './test-engine';
 
 export class FakeAdapter implements AgentAdapter {
   readonly kind = 'claude-code' as const;
@@ -119,7 +119,7 @@ export function createSessionHarness(
     adapters.push(adapter);
     return adapter;
   };
-  const engine = new Engine(transport, {
+  const engine = createTestEngine(transport, {
     factory,
     sessionStore: store,
     collectAgentRuntimes,

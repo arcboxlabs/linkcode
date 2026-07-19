@@ -19,8 +19,8 @@ import type {
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
 import { trueFn } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
-import { Engine } from '../engine';
 import { HistoryService } from '../session/history-service';
+import { createTestEngine } from './fixtures/test-engine';
 
 interface FakeState {
   listCalls: number;
@@ -150,7 +150,7 @@ describe('Engine history wire API', () => {
   it('lists, reads, and resumes history over transport', async () => {
     const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
     const [clientTransport, engineTransport] = createLocalTransportPair();
-    const engine = new Engine(engineTransport, { factory: fakeFactory(state) });
+    const engine = createTestEngine(engineTransport, { factory: fakeFactory(state) });
     const received: WireMessage[] = [];
 
     clientTransport.onMessage((msg) => received.push(msg));
