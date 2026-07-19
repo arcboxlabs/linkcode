@@ -676,14 +676,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     let emptyCloses = 0;
     while (!this.stopped) {
       let caught: unknown;
-      let sawEvent = false;
+      let sawProgress = false;
       try {
         // The directory scope is load-bearing: a bare subscribe() carries only the server-cwd
         // instance's bus and silently misses every session event (verified live on 1.17.11).
         const sub = await this.client.event.subscribe({ directory: this.directory });
         for await (const ev of sub.stream) {
           if (this.stopped) break;
-          sawEvent = true;
+          // Every successful subscription starts with this synthetic greeting, including a broken
+          // stream that immediately closes. Only a real bus event proves the replacement is healthy.
+          if (ev.type !== 'server.connected') sawProgress = true;
           this.handleEvent(ev);
         }
       } catch (err) {
@@ -707,7 +709,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // A clean close after idle/cancel interrupted nothing. Subscribe again so a later turn keeps
       // receiving lifecycle events immediately. Back off only after an empty replacement also
       // closes, preventing a hot loop without adding a gap after a healthy turn's stream.
-      emptyCloses = sawEvent ? 0 : emptyCloses + 1;
+      emptyCloses = sawProgress ? 0 : emptyCloses + 1;
       if (emptyCloses > 0) await wait(EVENT_RESUBSCRIBE_DELAY_MS);
     }
   }
