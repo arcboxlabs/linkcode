@@ -2,7 +2,7 @@ import type { ContentBlock } from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES } from '@linkcode/schema';
 import { createFixedArray } from 'foxts/create-fixed-array';
 import { describe, expect, it } from 'vitest';
-import { assertAttachmentContentAllowed } from '../attachment-guard';
+import { assertAttachmentContentAllowed } from '../session/attachment-guard';
 
 function imageOfBytes(bytes: number, mimeType = 'image/png'): ContentBlock {
   return { type: 'image', data: Buffer.alloc(bytes).toString('base64'), mimeType };

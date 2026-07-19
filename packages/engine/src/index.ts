@@ -10,5 +10,5 @@ export type { LoopStore, ScheduleStore } from './automation';
 export { type AssetService, Engine, type EngineDeps } from './engine';
 export type { PtyBackend, PtyOpenOptions, PtyProcess } from './pty-backend';
 export { PreviewRouteRegistry } from './scripts/route-registry';
-export type { SessionStore } from './session-store';
+export type { SessionStore } from './session/session-store';
 export type { WorkspaceStore } from './workspace-store';

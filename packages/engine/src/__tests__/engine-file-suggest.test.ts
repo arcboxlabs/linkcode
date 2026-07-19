@@ -12,8 +12,8 @@ import { waitFor } from 'foxts/wait-for';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
 import { FileSuggestService } from '../file-suggest-service';
-import type { SessionStore } from '../session-store';
-import { InMemorySessionStore } from '../session-store';
+import type { SessionStore } from '../session/session-store';
+import { InMemorySessionStore } from '../session/session-store';
 
 const tempRoots: string[] = [];
 afterAll(() => {

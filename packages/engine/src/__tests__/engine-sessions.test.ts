@@ -23,8 +23,8 @@ import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
-import type { SessionStore } from '../session-store';
-import { InMemorySessionStore } from '../session-store';
+import type { SessionStore } from '../session/session-store';
+import { InMemorySessionStore } from '../session/session-store';
 
 class FakeAdapter implements AgentAdapter {
   readonly kind = 'claude-code' as const;

@@ -37,9 +37,6 @@ import { applyProviderDefaults, InMemoryProviderConfigStore } from './agent/prov
 import type { TranslatorService } from './agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from './agent/translator';
 import { ArtifactHostService } from './artifacts/host-service';
-import type { AskEvent, AskResolutionEvent, AskResponseInput } from './ask-response';
-import { sessionCancellation, userResolution, validateAskResponse } from './ask-response';
-import { assertAttachmentContentAllowed } from './attachment-guard';
 import type { LoopStore, ScheduleStore, SessionDriver } from './automation';
 import {
   InMemoryLoopStore,
@@ -51,13 +48,16 @@ import {
 import { readWorkspaceFile } from './file-service';
 import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
-import { HistoryService } from './history-service';
 import { jsonValueEqual } from './json-equal';
 import type { PtyBackend } from './pty-backend';
 import { PreviewRouteRegistry } from './scripts/route-registry';
 import { ScriptService } from './scripts/script-service';
-import type { SessionStore } from './session-store';
-import { InMemorySessionStore } from './session-store';
+import type { AskEvent, AskResolutionEvent, AskResponseInput } from './session/ask-response';
+import { sessionCancellation, userResolution, validateAskResponse } from './session/ask-response';
+import { assertAttachmentContentAllowed } from './session/attachment-guard';
+import { HistoryService } from './session/history-service';
+import type { SessionStore } from './session/session-store';
+import { InMemorySessionStore } from './session/session-store';
 import { TerminalService } from './terminal-service';
 import { WorkspaceRegistry } from './workspace-registry';
 import type { WorkspaceStore } from './workspace-store';

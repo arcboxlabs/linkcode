@@ -20,7 +20,7 @@ import { createLocalTransportPair, createWireMessage } from '@linkcode/transport
 import { trueFn } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { Engine } from '../engine';
-import { HistoryService } from '../history-service';
+import { HistoryService } from '../session/history-service';
 
 interface FakeState {
   listCalls: number;
