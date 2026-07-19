@@ -1,4 +1,5 @@
 import type { Schedule, ScheduleRun, SessionId } from '@linkcode/schema';
+import { Effect } from 'effect';
 import type { ScheduleReporter } from './schedule-reporter';
 import type { ScheduleStore } from './schedule-store';
 import type { SessionDriver } from './session-driver';
@@ -26,42 +27,64 @@ export class ScheduleRunExecutor {
     private readonly reporter: ScheduleReporter,
   ) {}
 
-  async execute(schedule: Schedule, run: ScheduleRun): Promise<ScheduleRunOutcome> {
-    const target = schedule.spec.target;
-    if (target.type === 'session') {
-      if (!this.driver.hasRecord(target.sessionId)) {
-        throw new ScheduleTargetGoneError(`target session no longer exists: ${target.sessionId}`);
+  execute(schedule: Schedule, run: ScheduleRun): Effect.Effect<ScheduleRunOutcome, unknown> {
+    const { driver } = this;
+    const linkSession = (sessionId: SessionId) => this.linkSession(run, sessionId);
+    return Effect.gen(function* () {
+      const target = schedule.spec.target;
+      if (target.type === 'session') {
+        if (!driver.hasRecord(target.sessionId)) {
+          return yield* Effect.fail(
+            new ScheduleTargetGoneError(`target session no longer exists: ${target.sessionId}`),
+          );
+        }
+        if (driver.isBusy(target.sessionId)) {
+          return yield* Effect.fail(new Error('session busy'));
+        }
+        yield* driverCall((signal) => driver.ensureLive(target.sessionId, signal));
+        yield* linkSession(target.sessionId);
+        const result = yield* driverCall((signal) =>
+          driver.prompt(target.sessionId, schedule.spec.prompt, { signal }),
+        );
+        return { sessionId: target.sessionId, summary: summarize(result.text) };
       }
-      if (this.driver.isBusy(target.sessionId)) throw new Error('session busy');
-      await this.driver.ensureLive(target.sessionId);
-      await this.linkSession(run, target.sessionId);
-      const result = await this.driver.prompt(target.sessionId, schedule.spec.prompt);
-      return { sessionId: target.sessionId, summary: summarize(result.text) };
-    }
 
-    const sessionId = await this.driver.createSession({
-      kind: target.config.kind,
-      cwd: target.config.cwd,
-      model: target.config.model,
-      title: schedule.spec.name ?? 'Scheduled run',
-      automation: { kind: 'schedule', id: schedule.scheduleId },
+      const sessionId = yield* driverCall((signal) =>
+        driver.createSession({
+          kind: target.config.kind,
+          cwd: target.config.cwd,
+          model: target.config.model,
+          title: schedule.spec.name ?? 'Scheduled run',
+          automation: { kind: 'schedule', id: schedule.scheduleId },
+          signal,
+        }),
+      );
+      yield* linkSession(sessionId);
+      return yield* Effect.gen(function* () {
+        yield* driverCall((signal) => driver.makeUnattended(sessionId, signal));
+        const result = yield* driverCall((signal) =>
+          driver.prompt(sessionId, schedule.spec.prompt, { signal }),
+        );
+        return { sessionId, summary: summarize(result.text) };
+      }).pipe(
+        // The record is kept (hidden from Threads); the run's summary is the durable output.
+        Effect.onExit(() => driverCall(() => driver.stopSession(sessionId))),
+      );
     });
-    await this.linkSession(run, sessionId);
-    try {
-      await this.driver.makeUnattended(sessionId);
-      const result = await this.driver.prompt(sessionId, schedule.spec.prompt);
-      return { sessionId, summary: summarize(result.text) };
-    } finally {
-      // The record is kept (hidden from Threads); the run's summary is the durable output.
-      await this.driver.stopSession(sessionId);
-    }
   }
 
-  private async linkSession(run: ScheduleRun, sessionId: SessionId): Promise<void> {
-    run.sessionId = sessionId;
-    await this.store.saveRun(run);
-    this.reporter.runChanged(run);
+  private linkSession(run: ScheduleRun, sessionId: SessionId): Effect.Effect<void, unknown> {
+    return Effect.sync(() => {
+      run.sessionId = sessionId;
+    }).pipe(
+      Effect.andThen(driverCall(() => this.store.saveRun(run))),
+      Effect.andThen(Effect.sync(() => this.reporter.runChanged(run))),
+    );
   }
+}
+
+function driverCall<A>(run: (signal: AbortSignal) => PromiseLike<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: run, catch: (cause) => cause });
 }
 
 function summarize(text: string): string | undefined {

@@ -176,6 +176,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       const runTask = yield* FiberSet.runtime(taskSet)();
       const runEffect = yield* FiberSet.runtimePromise(taskSet)();
       sessionLifecycle.bindRuntime(runEffect);
+      scheduler.bindRuntime(runTask);
       yield* records.start((effect) => {
         runTask(effect);
       });
@@ -237,7 +238,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         unsubscribeRequests?.();
         unsubscribeRequests = undefined;
       });
-      yield* finalize('schedules.shutdown', () => scheduler.shutdown());
+      yield* finalizeEffect('schedules.shutdown', scheduler.shutdown());
       yield* finalize('loops.shutdown', () => loops.shutdown());
       yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* runtimes.close();

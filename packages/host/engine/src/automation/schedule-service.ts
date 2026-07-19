@@ -9,6 +9,7 @@ import type {
   ScheduleUpdate,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { Cause, Effect, Fiber } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { ScheduleCadenceCalculator } from './schedule-cadence';
@@ -20,6 +21,8 @@ import type { SessionDriver } from './session-driver';
 export { ScheduleTargetGoneError } from './schedule-run-executor';
 
 const RUNS_KEPT_PER_SCHEDULE = 100;
+
+type RunTask = (effect: Effect.Effect<void>) => Fiber.Fiber<void>;
 
 export interface ScheduleServiceOptions {
   /** Injectable clock for deterministic tests. */
@@ -40,8 +43,8 @@ export class ScheduleService {
   private readonly schedules = new Map<ScheduleId, Schedule>();
   /** Single-flight guard: a schedule with a run in flight is skipped by the tick. */
   private readonly activeRuns = new Set<ScheduleId>();
-  /** Accepted runs stay owned until they settle so shutdown cannot outlive their side effects. */
-  private readonly inFlight = new Map<ScheduleId, Promise<void>>();
+  /** Schedule work runs in Engine's root FiberSet; local handles provide targeted draining. */
+  private readonly inFlight = new Set<Fiber.Fiber<void>>();
   private readonly now: () => number;
   private readonly cadence: ScheduleCadenceCalculator;
   private readonly reporter: ScheduleReporter;
@@ -49,9 +52,9 @@ export class ScheduleService {
   private readonly tickMs: number;
   private readonly defaultMisfirePolicy: ScheduleMisfirePolicy;
   private timer: ReturnType<typeof setInterval> | undefined;
-  private tickInFlight: Promise<void> | undefined;
+  private runTask: RunTask | undefined;
+  private tickActive = false;
   private acceptingRuns = true;
-  private shutdownPromise: Promise<void> | undefined;
   private seq = 0;
 
   constructor(
@@ -68,6 +71,10 @@ export class ScheduleService {
     this.defaultMisfirePolicy = options.defaultMisfirePolicy ?? 'catch-up';
   }
 
+  bindRuntime(runTask: RunTask): void {
+    this.runTask = runTask;
+  }
+
   async start(): Promise<void> {
     for (const schedule of await this.store.load()) {
       this.schedules.set(schedule.scheduleId, schedule);
@@ -75,28 +82,30 @@ export class ScheduleService {
     await this.recover();
     if (this.timer) return;
     const timer = setInterval(() => {
-      if (this.tickInFlight) return;
-      const tick = this.tickOnce()
-        .catch((err: unknown) => {
-          console.error('Schedule tick failed:', err);
-        })
-        .finally(() => {
-          if (this.tickInFlight === tick) this.tickInFlight = undefined;
-        });
-      this.tickInFlight = tick;
+      if (this.tickActive) return;
+      this.tickActive = true;
+      this.track(
+        fromPromise(() => this.tickOnce()).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              this.tickActive = false;
+            }),
+          ),
+        ),
+      );
     }, this.tickMs);
     timer.unref();
     this.timer = timer;
   }
 
-  shutdown(): Promise<void> {
-    this.acceptingRuns = false;
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
-    this.shutdownPromise ??= this.drain();
-    return this.shutdownPromise;
+  shutdown(): Effect.Effect<void> {
+    return Effect.sync(() => {
+      this.acceptingRuns = false;
+      if (this.timer) {
+        clearInterval(this.timer);
+        this.timer = undefined;
+      }
+    }).pipe(Effect.andThen(this.settleAll()));
   }
 
   list(): Schedule[] {
@@ -104,8 +113,8 @@ export class ScheduleService {
   }
 
   /** Resolves once no run is in flight. Test-only seam — the tick never awaits runs. */
-  async settleAll(): Promise<void> {
-    await Promise.all(this.inFlight.values());
+  settleAll(): Effect.Effect<void> {
+    return Effect.asVoid(Effect.all([...this.inFlight].map((fiber) => Fiber.await(fiber))));
   }
 
   async create(spec: ScheduleSpec): Promise<Schedule> {
@@ -182,7 +191,7 @@ export class ScheduleService {
     const schedule = this.require(scheduleId);
     if (schedule.status === 'completed') throw new Error('Schedule is already completed');
     if (this.activeRuns.has(scheduleId)) throw new Error('Schedule run already in progress');
-    this.track(scheduleId, this.launchRun(schedule, 'manual'));
+    this.startRun(schedule, 'manual');
   }
 
   listRuns(scheduleId: ScheduleId, limit?: number): Promise<ScheduleRun[]> {
@@ -199,6 +208,7 @@ export class ScheduleService {
       if (this.activeRuns.has(schedule.scheduleId)) continue;
       if (schedule.nextRunAt > now) continue;
       await this.fireDue(schedule, now);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- shutdown can close admission while the awaited store operations are pending.
       if (!this.acceptingRuns) return;
     }
   }
@@ -234,30 +244,33 @@ export class ScheduleService {
       }
     }
     if (this.acceptingRuns) {
-      this.track(schedule.scheduleId, this.launchRun(schedule, isMiss ? 'catch-up' : 'cadence'));
+      this.startRun(schedule, isMiss ? 'catch-up' : 'cadence');
     }
   }
 
-  /** Track an in-flight run so {@link settleAll} can await it; log and drop failures. */
-  private track(scheduleId: ScheduleId, run: Promise<void>): void {
-    const wrapped = run
-      .catch((err: unknown) => {
-        console.error('Schedule run failed:', err);
-      })
-      .finally(() => {
-        if (this.inFlight.get(scheduleId) === wrapped) this.inFlight.delete(scheduleId);
-      });
-    this.inFlight.set(scheduleId, wrapped);
+  private startRun(schedule: Schedule, trigger: ScheduleRunTrigger): void {
+    this.activeRuns.add(schedule.scheduleId);
+    this.track(this.launchRun(schedule, trigger));
   }
 
-  private async drain(): Promise<void> {
-    await this.tickInFlight;
-    await this.settleAll();
+  /** Track Engine-owned schedule work for targeted shutdown without creating another Runtime. */
+  private track(effect: Effect.Effect<void, unknown>): void {
+    const run = nullthrow(this.runTask, 'Schedule runtime has not started');
+    const fiber = run(
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.void
+            : Effect.logError('Schedule task failed', Cause.squash(cause)),
+        ),
+      ),
+    );
+    this.inFlight.add(fiber);
+    fiber.addObserver(() => this.inFlight.delete(fiber));
   }
 
-  private async launchRun(schedule: Schedule, trigger: ScheduleRunTrigger): Promise<void> {
+  private launchRun(schedule: Schedule, trigger: ScheduleRunTrigger): Effect.Effect<void, unknown> {
     const scheduleId = schedule.scheduleId;
-    this.activeRuns.add(scheduleId);
     const run: ScheduleRun = {
       runId: this.mintRunId(),
       scheduleId,
@@ -265,24 +278,46 @@ export class ScheduleService {
       trigger,
       startedAt: this.now(),
     };
-    await this.saveRun(run);
-    try {
-      const outcome = await this.runExecutor.execute(schedule, run);
-      run.status = 'succeeded';
-      run.sessionId = outcome.sessionId;
-      run.summary = outcome.summary;
-    } catch (err) {
-      run.status = 'failed';
-      // Bare message (no `Error:` prefix) — this string is shown to the user in the run history.
-      run.error = extractErrorMessage(err, false) ?? 'run failed';
-      if (err instanceof ScheduleTargetGoneError) await this.complete(schedule, 'targetGone');
-    } finally {
-      run.endedAt = this.now();
-      await this.saveRun(run);
-      await this.store.pruneRuns(scheduleId, RUNS_KEPT_PER_SCHEDULE);
-      this.activeRuns.delete(scheduleId);
-      await this.settleScheduleAfterRun(schedule, trigger, run.endedAt);
-    }
+    return fromPromise(() => this.saveRun(run)).pipe(
+      Effect.andThen(
+        this.runExecutor.execute(schedule, run).pipe(
+          Effect.matchEffect({
+            onFailure: (error) => {
+              run.status = 'failed';
+              // Bare message (no `Error:` prefix) — this string is shown in the run history.
+              run.error = extractErrorMessage(error, false) ?? 'run failed';
+              return error instanceof ScheduleTargetGoneError
+                ? fromPromise(() => this.complete(schedule, 'targetGone'))
+                : Effect.void;
+            },
+            onSuccess: (outcome) =>
+              Effect.sync(() => {
+                run.status = 'succeeded';
+                run.sessionId = outcome.sessionId;
+                run.summary = outcome.summary;
+              }),
+          }),
+        ),
+      ),
+      Effect.andThen(
+        Effect.suspend(() => {
+          run.endedAt = this.now();
+          return fromPromise(() => this.saveRun(run));
+        }),
+      ),
+      Effect.andThen(fromPromise(() => this.store.pruneRuns(scheduleId, RUNS_KEPT_PER_SCHEDULE))),
+      Effect.andThen(
+        Effect.suspend(() =>
+          fromPromise(() => this.settleScheduleAfterRun(schedule, trigger, nullthrow(run.endedAt))),
+        ),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.activeRuns.delete(scheduleId);
+        }),
+      ),
+      Effect.asVoid,
+    );
   }
 
   /** Bookkeeping once a run settles: count scheduled runs toward maxRuns; record lastRunAt. */
@@ -374,4 +409,8 @@ export class ScheduleService {
     this.seq += 1;
     return `srun-${this.now().toString(36)}-${this.seq.toString(36)}` as ScheduleRunId;
   }
+}
+
+function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: run, catch: (cause) => cause });
 }

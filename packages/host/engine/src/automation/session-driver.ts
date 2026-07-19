@@ -20,6 +20,7 @@ export interface SessionDriver {
     model?: string;
     title?: string;
     automation: SessionAutomation;
+    signal?: AbortSignal;
   }): Promise<SessionId>;
 
   /** True when a persisted record exists (live or cold). */
@@ -29,21 +30,25 @@ export interface SessionDriver {
   isBusy(sessionId: SessionId): boolean;
 
   /** Resume a cold record in place under the same id; a no-op when already live. */
-  ensureLive(sessionId: SessionId): Promise<void>;
+  ensureLive(sessionId: SessionId, signal?: AbortSignal): Promise<void>;
 
   /**
    * Best-effort switch to the most permissive approval policy so the session runs unattended.
    * Adapters without a policy axis (opencode/pi) reject it, which is swallowed — a later ask then
    * fails the run instead. Only ever applied to automation-created sessions.
    */
-  makeUnattended(sessionId: SessionId): Promise<void>;
+  makeUnattended(sessionId: SessionId, signal?: AbortSignal): Promise<void>;
 
   /**
    * Send `text` as a prompt and wait for the turn to finish, returning its final assistant text.
    * Rejects on a busy session, a fatal error, a permission/question ask (unattended → the turn is
    * canceled), or a timeout.
    */
-  prompt(sessionId: SessionId, text: string, opts?: { timeoutMs?: number }): Promise<TurnResult>;
+  prompt(
+    sessionId: SessionId,
+    text: string,
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<TurnResult>;
 
   /** Stop a live session (idempotent; a no-op when cold or unknown). The record survives. */
   stopSession(sessionId: SessionId): Promise<void>;

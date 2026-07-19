@@ -15,7 +15,7 @@ import type { SessionOrchestrator } from './orchestrator';
 import type { SessionRecordRegistry } from './session-record-registry';
 import type { SessionStartOptionsResolver } from './start-options-resolver';
 
-type RunEffect = <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
+type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions) => Promise<A>;
 
 export class SessionLifecycleService {
   readonly driver: SessionDriver;
@@ -30,16 +30,18 @@ export class SessionLifecycleService {
     private readonly workspaces: WorkspaceRegistry,
   ) {
     this.driver = {
-      createSession: (options) => this.run(this.createAutomationSession(options)),
+      createSession: ({ signal, ...options }) =>
+        this.run(this.createAutomationSession(options), { signal }),
       hasRecord: (sessionId) => this.records.has(sessionId),
       isBusy: (sessionId) => this.sessions.isBusy(sessionId),
-      ensureLive: (sessionId) =>
+      ensureLive: (sessionId, signal) =>
         this.sessions.has(sessionId)
           ? Promise.resolve()
-          : this.run(this.resumeSession(undefined, sessionId)),
-      makeUnattended: (sessionId) => this.run(this.sessions.makeUnattended(sessionId)),
+          : this.run(this.resumeSession(undefined, sessionId), { signal }),
+      makeUnattended: (sessionId, signal) =>
+        this.run(this.sessions.makeUnattended(sessionId), { signal }),
       prompt: (sessionId, text, options) =>
-        this.run(this.sessions.prompt(sessionId, text, options)),
+        this.run(this.sessions.prompt(sessionId, text, options), { signal: options?.signal }),
       stopSession: (sessionId) => this.run(this.sessions.stopIfLive(sessionId)),
     };
   }
@@ -186,8 +188,8 @@ export class SessionLifecycleService {
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
   }
 
-  private run<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
-    return nullthrow(this.runEffect, 'Session runtime has not started')(effect);
+  private run<A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions): Promise<A> {
+    return nullthrow(this.runEffect, 'Session runtime has not started')(effect, options);
   }
 }
 

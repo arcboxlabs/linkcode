@@ -8,6 +8,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ScheduleService } from '../automation/schedule-service';
@@ -141,6 +142,7 @@ describe('ScheduleService', () => {
   function makeService(driver = new FakeSessionDriver(), store = new InMemoryScheduleStore()) {
     const { transport, sent } = recordingTransport();
     const service = new ScheduleService(transport, store, driver, { now, tickMs: 1000 });
+    service.bindRuntime(Effect.runFork);
     return { service, driver, store, sent };
   }
 
@@ -186,7 +188,7 @@ describe('ScheduleService', () => {
     const schedule = await service.create(INTERVAL_SPEC);
     clock += 60000;
     await service.tickOnce();
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.map((c) => c.op)).toEqual(['create', 'makeUnattended', 'prompt', 'stop']);
     expect(driver.lastAutomation).toEqual({ kind: 'schedule', id: schedule.scheduleId });
@@ -212,7 +214,7 @@ describe('ScheduleService', () => {
     });
     clock += 60000;
     await service.tickOnce();
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const run = runsIn(sent).at(-1);
     expect(run?.status).toBe('failed');
@@ -228,7 +230,7 @@ describe('ScheduleService', () => {
     });
     clock += 60000;
     await service.tickOnce();
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const run = runsIn(sent).at(-1);
     expect(run?.status).toBe('failed');
@@ -242,7 +244,7 @@ describe('ScheduleService', () => {
     const schedule = await service.create(INTERVAL_SPEC);
     const armedAt = schedule.nextRunAt;
     service.runOnce(schedule.scheduleId);
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(true);
     const run = runsIn(sent).at(-1);
@@ -257,10 +259,10 @@ describe('ScheduleService', () => {
     await service.create({ ...INTERVAL_SPEC, maxRuns: 2 });
     clock += 60000;
     await service.tickOnce();
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
     clock += 60000;
     await service.tickOnce();
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const latest = schedulesIn(sent).at(-1);
     expect(latest?.status).toBe('completed');
@@ -292,7 +294,7 @@ describe('ScheduleService', () => {
     await skip.service.create(dailySpec);
     clock += DAILY + 20 * 60 * 60 * 1000;
     await skip.service.tickOnce();
-    await skip.service.settleAll();
+    await Effect.runPromise(skip.service.settleAll());
     expect(runsIn(skip.sent).at(-1)?.status).toBe('skipped');
     expect(skipDriver.calls.some((c) => c.op === 'prompt')).toBe(false);
 
@@ -302,7 +304,7 @@ describe('ScheduleService', () => {
     await c.service.create(dailySpec);
     clock += DAILY + 2 * 60 * 60 * 1000;
     await c.service.tickOnce();
-    await c.service.settleAll();
+    await Effect.runPromise(c.service.settleAll());
     const run = runsIn(c.sent).at(-1);
     expect(run?.status).toBe('succeeded');
     expect(run?.trigger).toBe('catch-up');
@@ -315,7 +317,7 @@ describe('ScheduleService', () => {
     await service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' });
     clock += 150_000; // 2.5 intervals late → 30s past the latest slot
     await service.tickOnce();
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
     expect(runsIn(sent)).toHaveLength(0);
@@ -331,10 +333,11 @@ describe('ScheduleService', () => {
       tickMs: 1000,
       defaultMisfirePolicy: 'skip',
     });
+    service.bindRuntime(Effect.runFork);
     await service.create(INTERVAL_SPEC);
     clock += 150_000;
     await service.tickOnce();
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
     expect(runsIn(sent)).toHaveLength(0);
@@ -348,7 +351,7 @@ describe('ScheduleService', () => {
     await driver.promptStarted;
 
     let shutdownSettled = false;
-    const shutdown = Promise.resolve(service.shutdown()).then(() => {
+    const shutdown = Effect.runPromise(service.shutdown()).then(() => {
       shutdownSettled = true;
     });
     await Promise.resolve();
@@ -374,7 +377,7 @@ describe('ScheduleService', () => {
     service.runOnce(accepted.scheduleId);
     await driver.promptStarted;
 
-    const shutdown = Promise.resolve(service.shutdown());
+    const shutdown = Effect.runPromise(service.shutdown());
     try {
       service.runOnce(manual.scheduleId);
     } catch {
@@ -399,10 +402,10 @@ describe('ScheduleService', () => {
 
     let firstSettled = false;
     let secondSettled = false;
-    const first = Promise.resolve(service.shutdown()).then(() => {
+    const first = Effect.runPromise(service.shutdown()).then(() => {
       firstSettled = true;
     });
-    const second = Promise.resolve(service.shutdown()).then(() => {
+    const second = Effect.runPromise(service.shutdown()).then(() => {
       secondSettled = true;
     });
     await Promise.resolve();
@@ -443,6 +446,6 @@ describe('ScheduleService', () => {
     const failed = runsIn(second.sent).find((r) => r.runId === 'orphan-run');
     expect(failed?.status).toBe('failed');
     expect(schedulesIn(second.sent).at(-1)?.completedReason).toBe('targetGone');
-    await second.service.shutdown();
+    await Effect.runPromise(second.service.shutdown());
   });
 });
