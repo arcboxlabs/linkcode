@@ -1,4 +1,5 @@
 import type { AgentEvent, SessionId } from '@linkcode/schema';
+import { RequestError } from '../failure';
 import type { AskEvent, AskResolutionEvent, AskResponseInput } from './ask-response';
 import { sessionCancellation, userResolution, validateAskResponse } from './ask-response';
 
@@ -26,14 +27,30 @@ export class InteractiveRequests {
   }
 
   beginResponse(input: AskResponseInput): AskEvent {
-    if (this.closed) throw new Error(`Session is closed: ${this.sessionId}`);
+    if (this.closed) {
+      throw new RequestError({
+        code: 'conflict',
+        message: `Session is closed: ${this.sessionId}`,
+      });
+    }
     const ask = this.records.get(input.requestId);
-    if (!ask) throw new Error(`Unknown interactive request: ${input.requestId}`);
+    if (!ask) {
+      throw new RequestError({
+        code: 'not_found',
+        message: `Unknown interactive request: ${input.requestId}`,
+      });
+    }
     if (ask.state === 'responding') {
-      throw new Error(`Response already in flight: ${input.requestId}`);
+      throw new RequestError({
+        code: 'conflict',
+        message: `Response already in flight: ${input.requestId}`,
+      });
     }
     if (ask.state === 'resolved') {
-      throw new Error(`Interactive request already resolved: ${input.requestId}`);
+      throw new RequestError({
+        code: 'conflict',
+        message: `Interactive request already resolved: ${input.requestId}`,
+      });
     }
     validateAskResponse(ask.request, input);
     this.records.set(input.requestId, {
@@ -61,7 +78,10 @@ export class InteractiveRequests {
     if (this.closed) return undefined;
     const ask = this.records.get(input.requestId);
     if (ask?.state !== 'responding' || ask.request !== request) {
-      throw new Error(`Interactive request changed while responding: ${input.requestId}`);
+      throw new RequestError({
+        code: 'conflict',
+        message: `Interactive request changed while responding: ${input.requestId}`,
+      });
     }
     const resolution = userResolution(input);
     this.records.set(input.requestId, { request, state: 'resolved', resolution });

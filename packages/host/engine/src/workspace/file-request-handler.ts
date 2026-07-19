@@ -1,7 +1,7 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { nullthrow } from 'foxts/guard';
+import { RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import { readWorkspaceFile } from './file-service';
 import type { FileSuggestService } from './file-suggest-service';
@@ -66,6 +66,11 @@ export class FileRequestHandler {
   private registeredWorkspace(cwd: string) {
     // Opened-roots scoping, not a hard boundary: callers may only enumerate roots known from a
     // session or explicit registration, and the read runs under the record's canonical cwd.
-    return nullthrow(this.workspaces.findByCwd(cwd), `Unknown workspace: ${cwd}`);
+    const workspace = this.workspaces.findByCwd(cwd);
+    // eslint-disable-next-line sukka/prefer-nullthrow -- The wire boundary requires a typed, safely presentable error instead of nullthrow's TypeError.
+    if (!workspace) {
+      throw new RequestError({ code: 'not_found', message: `Unknown workspace: ${cwd}` });
+    }
+    return workspace;
   }
 }

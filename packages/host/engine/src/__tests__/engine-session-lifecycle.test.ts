@@ -96,6 +96,7 @@ describe('engine session lifecycle', () => {
     expect(sent.some((p) => p.kind === 'session.started' && p.replyTo === 'r1')).toBe(false);
     const failed = sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r1');
     if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r1');
+    expect(failed.code).toBe('cancelled');
     expect(failed.message).toContain('closed while starting');
     expect(adapters[0].stopped).toBe(true);
     expect(await store.load()).toHaveLength(0);
@@ -158,7 +159,8 @@ describe('engine session lifecycle', () => {
     expect(h.sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'r2',
-      message: 'Error: adapter stop failed',
+      code: 'operation_failed',
+      message: 'Agent failed to stop',
     });
     const [record] = await h.store.load();
     expect(record.runs.at(-1)?.endedAt).toBeTypeOf('number');

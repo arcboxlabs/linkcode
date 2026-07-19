@@ -1,6 +1,6 @@
 import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
-import { extractErrorMessage } from 'foxts/extract-error-message';
+import { OperationError, RequestError } from '../failure';
 import { assertAttachmentContentAllowed } from './attachment-guard';
 import type { LiveSession } from './live-session';
 import type { SessionEventProcessor } from './session-event-processor';
@@ -21,17 +21,26 @@ export class SessionInputDispatcher {
       (!session.capabilities.slashCommands ||
         !session.availableCommands?.some((command) => agentCommandMatches(command, input.name)))
     ) {
-      const error = new Error(`Unknown slash command: /${input.name}`);
+      const error = new RequestError({
+        code: 'unsupported',
+        message: `Unknown slash command: /${input.name}`,
+      });
       this.events.rejectInput(sessionId, error.message);
       throw error;
     }
     if (input.type === 'shell-command' && !session.capabilities.shellCommand) {
-      const error = new Error('Shell commands are not supported by this session');
+      const error = new RequestError({
+        code: 'unsupported',
+        message: 'Shell commands are not supported by this session',
+      });
       this.events.rejectInput(sessionId, error.message);
       throw error;
     }
     if (startsTurn && session.turnInputActive) {
-      const error = new Error(`Session is busy: ${sessionId}`);
+      const error = new RequestError({
+        code: 'conflict',
+        message: `Session is busy: ${sessionId}`,
+      });
       this.events.rejectInput(sessionId, error.message);
       throw error;
     }
@@ -77,12 +86,14 @@ export class SessionInputDispatcher {
       }
       if (startsTurn && session.status !== 'running') session.turnInputActive = false;
       if (startsTurn) {
-        this.events.rejectInput(
-          sessionId,
-          extractErrorMessage(error) ?? 'Agent input was rejected',
-        );
+        this.events.rejectInput(sessionId, 'Agent input was rejected');
       }
-      throw error;
+      throw new OperationError({
+        subsystem: 'agent',
+        operation: 'session.input',
+        publicMessage: 'Agent input was rejected',
+        cause: error,
+      });
     }
     if (responseInput && respondingAsk) {
       const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);

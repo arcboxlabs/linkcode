@@ -86,6 +86,7 @@ describe('engine file.suggest', () => {
 
     const failed = sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r1');
     if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r1');
+    expect(failed.code).toBe('not_found');
     expect(failed.message).toContain('Unknown workspace');
     expect(suggest).not.toHaveBeenCalled();
     expect(sent.some((p) => p.kind === 'file.suggest.result')).toBe(false);
@@ -160,6 +161,7 @@ describe('engine file.list', () => {
 
     const failed = sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r1');
     if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r1');
+    expect(failed.code).toBe('not_found');
     expect(failed.message).toContain('Unknown workspace');
     expect(list).not.toHaveBeenCalled();
   });

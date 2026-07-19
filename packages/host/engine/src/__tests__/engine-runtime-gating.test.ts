@@ -101,6 +101,7 @@ describe('boot probe gating (CODE-225)', () => {
       (payload) => payload.kind === 'request.failed' && payload.replyTo === 'r3',
     );
     if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r3');
+    expect(failed.code).toBe('cancelled');
     expect(failed.message).toContain('closed while starting');
     expect(
       cold.sent.filter((payload) => payload.kind === 'session.started' && payload.replyTo === 'r3'),

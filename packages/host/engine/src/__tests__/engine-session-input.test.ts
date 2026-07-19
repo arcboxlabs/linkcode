@@ -159,7 +159,8 @@ describe('engine session input', () => {
     expect(h.sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'r-second',
-      message: `Error: Session is busy: ${sessionId}`,
+      code: 'conflict',
+      message: `Session is busy: ${sessionId}`,
     });
     expect(h.sent).toContainEqual({
       kind: 'agent.event',

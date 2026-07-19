@@ -8,11 +8,11 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
+import { OperationError, RequestError } from '../failure';
 import { LiveSession } from './live-session';
 import { SessionEventProcessor } from './session-event-processor';
 import { SessionInputDispatcher } from './session-input-dispatcher';
@@ -63,16 +63,23 @@ export class SessionOrchestrator {
   }
 
   async sendInput(sessionId: SessionId, input: AgentInput): Promise<void> {
-    const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
+    const session = this.requireSession(sessionId);
     await this.inputs.send(sessionId, session, input);
   }
 
   async stop(sessionId: SessionId): Promise<void> {
-    const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
+    const session = this.requireSession(sessionId);
     this.events.broadcast(sessionId, session.closeInteractions());
     session.stopListening();
     try {
       await session.adapter.stop();
+    } catch (error) {
+      throw new OperationError({
+        subsystem: 'agent',
+        operation: 'session.stop',
+        publicMessage: 'Agent failed to stop',
+        cause: error,
+      });
     } finally {
       if (this.remove(sessionId, session)) {
         this.onStopped(sessionId);
@@ -90,7 +97,12 @@ export class SessionOrchestrator {
         await session.adapter.stop();
       } catch (error) {
         this.records.sealCurrentRun(sessionId);
-        throw error;
+        throw new OperationError({
+          subsystem: 'agent',
+          operation: 'session.delete',
+          publicMessage: 'Agent failed to stop',
+          cause: error,
+        });
       } finally {
         if (this.remove(sessionId, session)) this.onStopped(sessionId);
       }
@@ -128,8 +140,10 @@ export class SessionOrchestrator {
   }
 
   prompt(sessionId: SessionId, text: string, opts?: { timeoutMs?: number }): Promise<TurnResult> {
-    const session = nullthrow(this.get(sessionId), `Unknown session: ${sessionId}`);
-    if (session.turnInputActive) throw new Error(`Session is busy: ${sessionId}`);
+    const session = this.requireSession(sessionId);
+    if (session.turnInputActive) {
+      throw new RequestError({ code: 'conflict', message: `Session is busy: ${sessionId}` });
+    }
     session.turnInputActive = true;
     const content: ContentBlock[] = [{ type: 'text', text }];
     this.events.broadcast(sessionId, [{ type: 'user-message', content }]);
@@ -162,7 +176,10 @@ export class SessionOrchestrator {
     await this.runtimes.ready;
     if (this.sessions.get(sessionId) !== session) {
       await adapter.stop().catch(noop);
-      throw new Error(`Session was closed while starting: ${sessionId}`);
+      throw new RequestError({
+        code: 'cancelled',
+        message: `Session was closed while starting: ${sessionId}`,
+      });
     }
     try {
       await startAdapter(adapter);
@@ -170,11 +187,19 @@ export class SessionOrchestrator {
       session.stopListening();
       if (this.remove(sessionId, session)) this.records.sealCurrentRun(sessionId);
       await adapter.stop().catch(noop);
-      throw error;
+      throw new OperationError({
+        subsystem: 'agent',
+        operation: 'session.start',
+        publicMessage: 'Agent failed to start',
+        cause: error,
+      });
     }
     if (this.sessions.get(sessionId) !== session) {
       await adapter.stop().catch(noop);
-      throw new Error(`Session was closed while starting: ${sessionId}`);
+      throw new RequestError({
+        code: 'cancelled',
+        message: `Session was closed while starting: ${sessionId}`,
+      });
     }
     if (replyTo !== undefined) {
       this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
@@ -189,5 +214,14 @@ export class SessionOrchestrator {
       }),
     );
     this.sessions.clear();
+  }
+
+  private requireSession(sessionId: SessionId): LiveSession {
+    const session = this.sessions.get(sessionId);
+    // eslint-disable-next-line sukka/prefer-nullthrow -- The wire boundary requires a typed, safely presentable error instead of nullthrow's TypeError.
+    if (!session) {
+      throw new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` });
+    }
+    return session;
   }
 }

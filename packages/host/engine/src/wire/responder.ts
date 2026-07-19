@@ -1,6 +1,6 @@
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { extractErrorMessage } from 'foxts/extract-error-message';
+import { toRequestFailure } from '../failure';
 
 export class WireResponder {
   constructor(private readonly transport: Transport) {}
@@ -14,8 +14,8 @@ export class WireResponder {
   }
 
   sendFailure(replyTo: string, error: unknown): void {
-    const message = extractErrorMessage(error) ?? 'Unknown error';
-    this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
+    const { code, message } = toRequestFailure(error);
+    this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, code, message }));
   }
 
   sendSuccess(replyTo: string): void {

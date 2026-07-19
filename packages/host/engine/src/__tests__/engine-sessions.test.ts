@@ -191,7 +191,8 @@ describe('engine interactive requests', () => {
     expect(h.sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'r3',
-      message: 'Error: Response already in flight: ask-1',
+      code: 'conflict',
+      message: 'Response already in flight: ask-1',
     });
     expect(adapter.sendCount).toBe(1);
 
@@ -344,7 +345,8 @@ describe('engine interactive requests', () => {
     expect(h.sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'r2',
-      message: 'Error: adapter rejected response',
+      code: 'operation_failed',
+      message: 'Agent input was rejected',
     });
 
     const attachMark = h.sent.length;
@@ -515,7 +517,10 @@ describe('engine interactive requests', () => {
       const failure = sent.find(
         (payload) => payload.kind === 'request.failed' && payload.replyTo === replyTo,
       );
-      expect(failure).toMatchObject({ message: expect.stringContaining(testCase.error) });
+      expect(failure).toMatchObject({
+        code: 'invalid_request',
+        message: expect.stringContaining(testCase.error),
+      });
     }
     expect(adapter.sentInputs).toEqual([]);
 
@@ -589,12 +594,14 @@ describe('engine interactive requests', () => {
     expect(sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'wrong-kind',
-      message: 'Error: Request perm-1 does not accept a question response',
+      code: 'invalid_request',
+      message: 'Request perm-1 does not accept a question response',
     });
     expect(sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'unknown-option',
-      message: 'Error: Unknown permission option: missing',
+      code: 'invalid_request',
+      message: 'Unknown permission option: missing',
     });
 
     await inject({
@@ -636,12 +643,14 @@ describe('engine interactive requests', () => {
     expect(sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'duplicate',
-      message: 'Error: Interactive request already resolved: perm-1',
+      code: 'conflict',
+      message: 'Interactive request already resolved: perm-1',
     });
     expect(sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'stale',
-      message: 'Error: Unknown interactive request: missing',
+      code: 'not_found',
+      message: 'Unknown interactive request: missing',
     });
     expect(adapter.sentInputs).toHaveLength(1);
   });
