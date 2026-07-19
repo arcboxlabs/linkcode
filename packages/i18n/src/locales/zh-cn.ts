@@ -924,6 +924,11 @@ export const zhCN = {
       signIn: '登录 LinkCode Cloud',
       manageHosts: '管理 host',
       terminalAppearance: '终端外观',
+      legalAndSupport: '法律与支持',
+      privacyPolicy: '隐私政策',
+      termsOfService: '服务条款',
+      support: '支持',
+      externalLinkError: '无法打开此链接。',
       about: '关于',
     },
     terminalAppearance: {
