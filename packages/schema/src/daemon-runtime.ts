@@ -1,46 +1,41 @@
-import { z } from 'zod';
-import { TimestampSchema } from './common';
+/** Zero-dependency half of the daemon discovery contract (see `model/daemon-discovery.ts`);
+ * kept zod-free so the sandboxed Electron preload (no `require('zod')`) can import it. */
+
+/** Default TCP port of the local daemon: 0x4C43 — ascii "LC". */
+export const DAEMON_DEFAULT_PORT = 19523;
+export const DAEMON_DEFAULT_URL = `http://127.0.0.1:${DAEMON_DEFAULT_PORT}`;
 
 /**
- * Daemon runtime discovery contract: how local clients find the running daemon and tell it apart
- * from a foreign process squatting on the port. The daemon serves its identity at `GET /linkcode`
- * on every listener and advertises its bound endpoints in a runtime file under the user's home.
+ * Shape of a profile name. A profile is an isolated state universe on one machine (own daemon
+ * state directory, discovery file, device identity), activated via `LINKCODE_PROFILE` (daemon)
+ * or `--profile` (desktop); no profile means the default universe.
  */
+export const PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
-export {
-  DAEMON_DEFAULT_PORT,
-  DAEMON_DEFAULT_URL,
-  DAEMON_EXIT_ALREADY_RUNNING,
-  daemonRuntimeFileSegments,
-  linkcodeStateDirName,
-  PROFILE_NAME_PATTERN,
-  parseProfileName,
-} from './daemon-runtime-constants';
+/** Absent/empty → the default profile (`undefined`); else must match {@link PROFILE_NAME_PATTERN}.
+ * Throws so an invalid name aborts boot instead of silently landing in the default universe. */
+export function parseProfileName(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  if (!PROFILE_NAME_PATTERN.test(raw)) {
+    throw new TypeError(
+      `invalid profile name ${JSON.stringify(raw)}: expected ${PROFILE_NAME_PATTERN.source}`,
+    );
+  }
+  return raw;
+}
 
-import { PROFILE_NAME_PATTERN } from './daemon-runtime-constants';
+/** The daemon state directory name under the user's home: `.linkcode`, or a profile sibling.
+ * Validates its input so no caller can interpolate a traversal or separator — safety lives here. */
+export function linkcodeStateDirName(profile?: string): string {
+  const parsed = parseProfileName(profile);
+  return parsed === undefined ? '.linkcode' : `.linkcode-${parsed}`;
+}
 
-/** HTTP path every daemon listener answers with its `DaemonIdentity`. */
-export const DAEMON_IDENTITY_PATH = '/linkcode';
+/** Runtime discovery file the daemon writes after binding, as path segments under the user's home directory. */
+export function daemonRuntimeFileSegments(profile?: string): readonly [string, string] {
+  return [linkcodeStateDirName(profile), 'runtime.json'];
+}
 
-/** Served at `GET /linkcode`; proves a port is held by a linkcode daemon (and which one). */
-export const DaemonIdentitySchema = z.object({
-  name: z.literal('linkcode-daemon'),
-  pid: z.number().int().positive(),
-  startedAt: TimestampSchema,
-  /** The daemon's profile; absent means the default profile (pre-profile daemons included). */
-  profile: z.string().regex(PROFILE_NAME_PATTERN).optional(),
-});
-export type DaemonIdentity = z.infer<typeof DaemonIdentitySchema>;
-
-/** One bound listener endpoint, as the URL a local client should dial. */
-export const DaemonListenerInfoSchema = z.object({
-  type: z.enum(['socket.io', 'ws']),
-  url: z.url(),
-});
-export type DaemonListenerInfo = z.infer<typeof DaemonListenerInfoSchema>;
-
-/** Contents of the runtime discovery file: identity plus the actually-bound endpoints. */
-export const DaemonRuntimeInfoSchema = DaemonIdentitySchema.extend({
-  listeners: z.array(DaemonListenerInfoSchema).min(1),
-});
-export type DaemonRuntimeInfo = z.infer<typeof DaemonRuntimeInfoSchema>;
+/** Exit code of a daemon that stood down because a live daemon already serves this profile (see
+ * apps/daemon/src/runtime.ts). Supervisors treat it as "someone else is serving", not a crash. */
+export const DAEMON_EXIT_ALREADY_RUNNING = 3;

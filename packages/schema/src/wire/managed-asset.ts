@@ -3,7 +3,7 @@ import {
   InstalledAssetSchema,
   ManagedAssetIdSchema,
   ManagedAssetStatusSchema,
-} from '../managed-asset';
+} from '../model/managed-asset';
 
 /**
  * Managed-asset wire surface (CODE-111/112): pull status, trigger installs, observe progress.

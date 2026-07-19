@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SessionIdSchema, TimestampSchema } from './common';
+import { SessionIdSchema, TimestampSchema } from './primitives';
 
 /**
  * IM Channel contract: bridging agent sessions (UI "Threads") to messaging platforms; one

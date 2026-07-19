@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema, LoopIdSchema, SessionIdSchema, TimestampSchema } from './common';
+import { AgentKindSchema, LoopIdSchema, SessionIdSchema, TimestampSchema } from './primitives';
 
 /**
  * Loops: an iterate-until-verified automation. The daemon's LoopService runs a fresh worker session
@@ -132,8 +132,9 @@ export const LoopLogEntrySchema = z.object({
 export type LoopLogEntry = z.infer<typeof LoopLogEntrySchema>;
 
 /** A loop's full detail: the record, its iterations, and the ring-buffered log tail (`loop.inspect`). */
-export interface LoopInspection {
-  loop: LoopRecord;
-  iterations: LoopIteration[];
-  logs: LoopLogEntry[];
-}
+export const LoopInspectionSchema = z.object({
+  loop: LoopRecordSchema,
+  iterations: z.array(LoopIterationSchema),
+  logs: z.array(LoopLogEntrySchema),
+});
+export type LoopInspection = z.infer<typeof LoopInspectionSchema>;

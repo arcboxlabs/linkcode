@@ -1,7 +1,11 @@
 import { z } from 'zod';
-import { StartOptionsSchema } from '../agent';
-import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema } from '../common';
-import { SessionInfoSchema, SessionNotificationSchema, SessionRecordSchema } from '../session';
+import { StartOptionsSchema } from '../model/agent';
+import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema } from '../model/primitives';
+import {
+  SessionInfoSchema,
+  SessionNotificationSchema,
+  SessionRecordSchema,
+} from '../model/session';
 
 /** Session control wire variants — starting, stopping, listing, and resuming sessions. */
 export const sessionWireVariants = [

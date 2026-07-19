@@ -5,28 +5,5 @@
  * front-end, not to any wire protocol.
  */
 
-export * from './account';
-export * from './agent';
-export * from './agent-runtime';
-export * from './artifact';
-export * from './common';
-export * from './content';
-export * from './daemon-runtime';
-export * from './file';
-export * from './git';
-export * from './history';
-export * from './im';
-export * from './loop';
-export * from './managed-asset';
-export * from './permission';
-export * from './plan';
-export * from './provider-config';
-export * from './question';
-export * from './schedule';
-export * from './script';
-export * from './session';
-export * from './terminal';
-export * from './tool-call';
-export * from './usage';
+export * from './model';
 export * from './wire';
-export * from './workspace';

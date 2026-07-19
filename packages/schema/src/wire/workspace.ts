@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { WorkspaceIdSchema } from '../common';
-import { WorkspaceKindSchema, WorkspaceRecordSchema } from '../workspace';
+import { WorkspaceIdSchema } from '../model/primitives';
+import { WorkspaceKindSchema, WorkspaceRecordSchema } from '../model/workspace';
 
 /** Workspace wire variants — registered directories (see workspace.ts). */
 export const workspaceWireVariants = [

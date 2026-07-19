@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema } from './common';
+import { AgentKindSchema } from './primitives';
 
 /** Daemon-owned per-agent provider configuration (data plane), persisted in ~/.linkcode/config.json
  * and applied to StartOptions at session start. Unlike system-plane desktop settings, it travels

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentRuntimesSchema } from '../agent-runtime';
+import { AgentRuntimesSchema } from '../model/agent-runtime';
 
 /**
  * Agent runtime availability wire variants — which agent CLIs the host can actually spawn (see

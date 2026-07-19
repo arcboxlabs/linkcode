@@ -1,39 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { AgentEventSchema } from '../agent';
-import { WIRE_PROTOCOL_VERSION, WireMessageSchema } from '../wire';
+import { AgentEventSchema } from '../event';
 
 const toolCall = { toolCallId: 'tool-1', title: 'Prompt' };
 
 describe('interactive request schemas', () => {
-  it.each([
-    {
-      type: 'prompt-response-status',
-      requestId: 'permission-1',
-      status: 'responding',
-    },
-    {
-      type: 'permission-resolved',
-      requestId: 'permission-1',
-      outcome: { outcome: 'selected', optionId: 'allow' },
-      source: 'user',
-    },
-    {
-      type: 'question-resolved',
-      requestId: 'question-1',
-      outcome: { outcome: 'cancelled' },
-      source: 'session',
-    },
-  ])('accepts $type through the complete wire envelope', (event) => {
-    expect(
-      WireMessageSchema.safeParse({
-        v: WIRE_PROTOCOL_VERSION,
-        id: 'message-1',
-        ts: 0,
-        payload: { kind: 'agent.event', sessionId: 'session-1', event },
-      }).success,
-    ).toBe(true);
-  });
-
   it('accepts valid permission and question events through AgentEventSchema', () => {
     expect(
       AgentEventSchema.safeParse({

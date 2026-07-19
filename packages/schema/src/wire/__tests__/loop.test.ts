@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MessageId } from '../../common';
-import type { LoopIteration, LoopLogEntry, LoopRecord, LoopSpec } from '../../loop';
+import type { LoopIteration, LoopLogEntry, LoopRecord, LoopSpec } from '../../model/loop';
+import type { MessageId } from '../../model/primitives';
 import type { WirePayload } from '../index';
 import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '../index';
 

@@ -5,7 +5,7 @@ import {
   ScheduleRunIdSchema,
   SessionIdSchema,
   TimestampSchema,
-} from './common';
+} from './primitives';
 
 /**
  * Schedules: cron/interval recurring automations that fire a prompt at an agent. The daemon's

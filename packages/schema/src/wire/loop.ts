@@ -1,6 +1,12 @@
 import { z } from 'zod';
-import { LoopIdSchema } from '../common';
-import { LoopIterationSchema, LoopLogEntrySchema, LoopRecordSchema, LoopSpecSchema } from '../loop';
+import {
+  LoopInspectionSchema,
+  LoopIterationSchema,
+  LoopLogEntrySchema,
+  LoopRecordSchema,
+  LoopSpecSchema,
+} from '../model/loop';
+import { LoopIdSchema } from '../model/primitives';
 
 /**
  * Loop wire variants. Same conventions as wire/schedule.ts: requests carry `clientReqId`; correlated
@@ -49,9 +55,7 @@ export const loopWireVariants = [
   z.object({
     kind: z.literal('loop.inspected'),
     replyTo: z.string().min(1),
-    loop: LoopRecordSchema,
-    iterations: z.array(LoopIterationSchema),
-    logs: z.array(LoopLogEntrySchema),
+    ...LoopInspectionSchema.shape,
   }),
   /** Broadcast on start/settle and status change — whole-record replace by `loopId`. */
   z.object({

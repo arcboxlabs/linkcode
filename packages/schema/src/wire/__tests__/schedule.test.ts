@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MessageId } from '../../common';
-import type { Schedule, ScheduleRun, ScheduleSpec } from '../../schedule';
+import type { MessageId } from '../../model/primitives';
+import type { Schedule, ScheduleRun, ScheduleSpec } from '../../model/schedule';
 import type { WirePayload } from '../index';
 import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '../index';
 

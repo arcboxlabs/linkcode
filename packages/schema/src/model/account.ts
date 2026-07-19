@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema, TimestampSchema } from './common';
+import { AgentKindSchema, TimestampSchema } from './primitives';
 
 /**
  * A model-provider credential in the global account pool (data plane). The daemon persists these

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime-constants';
+import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime';
 
 /**
  * Node-only utilities on the `@linkcode/common/node` subpath so they never reach browser/RN

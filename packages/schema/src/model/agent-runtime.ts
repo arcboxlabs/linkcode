@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema } from './common';
+import { AgentKindSchema } from './primitives';
 
 /**
  * Where the spawnable CLI behind an agent kind comes from, in resolution order:

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AgentEventSchema } from './agent';
-import { AgentHistoryIdSchema, AgentKindSchema, TimestampSchema } from './common';
+import { AgentHistoryIdSchema, AgentKindSchema, TimestampSchema } from './primitives';
 
 /** History capabilities can vary by adapter and by installed SDK/runtime version. */
 export const AgentHistoryCapabilitiesSchema = z.object({

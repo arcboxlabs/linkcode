@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { ScheduleIdSchema } from '../common';
+import { ScheduleIdSchema } from '../model/primitives';
 import {
   ScheduleRunSchema,
   ScheduleSchema,
   ScheduleSpecSchema,
   ScheduleUpdateSchema,
-} from '../schedule';
+} from '../model/schedule';
 
 /**
  * Schedule wire variants. Requests carry `clientReqId`; correlated replies carry `replyTo`;

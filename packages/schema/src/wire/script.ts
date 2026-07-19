@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WorkspaceScriptSchema } from '../script';
+import { WorkspaceScriptSchema } from '../model/script';
 
 /** Workspace-script wire variants — directory-backed: keyed by cwd (see script.ts). */
 export const scriptWireVariants = [

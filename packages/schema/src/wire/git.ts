@@ -4,7 +4,7 @@ import {
   GitDiffSchema,
   GitPullRequestStatusSchema,
   GitStatusSchema,
-} from '../git';
+} from '../model/git';
 
 /** Git wire variants — directory-backed: keyed by `cwd`, shared by same-cwd sessions (see git.ts). */
 export const gitWireVariants = [

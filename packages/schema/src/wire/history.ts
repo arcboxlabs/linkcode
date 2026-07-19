@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { StartOptionsSchema } from '../agent';
-import { AgentHistoryIdSchema, AgentKindSchema } from '../common';
+import { StartOptionsSchema } from '../model/agent';
 import {
   AgentHistoryListOptionsSchema,
   AgentHistoryListResultSchema,
   AgentHistoryReadOptionsSchema,
   AgentHistoryReadResultSchema,
-} from '../history';
+} from '../model/history';
+import { AgentHistoryIdSchema, AgentKindSchema } from '../model/primitives';
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
   forceRefresh: z.boolean().optional(),

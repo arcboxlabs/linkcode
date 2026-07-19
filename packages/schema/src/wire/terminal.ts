@@ -8,7 +8,7 @@ import {
   TerminalOpenOptionsSchema,
   TerminalReplayEventSchema,
   TerminalWinsizeSchema,
-} from '../terminal';
+} from '../model/terminal';
 
 /** Terminal wire variants (data plane): interactive PTYs the host owns; bytes travel as UTF-8
  * strings (host-side decode keeps the JSON wire base64-free). Attachment secrets are capabilities:

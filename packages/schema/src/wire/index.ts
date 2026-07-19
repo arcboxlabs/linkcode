@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { AgentEventSchema, AgentInputSchema } from '../agent';
-import { MessageIdSchema, SessionIdSchema, TimestampSchema } from '../common';
+import { AgentEventSchema, AgentInputSchema } from '../model/agent';
+import { MessageIdSchema, SessionIdSchema, TimestampSchema } from '../model/primitives';
 import { agentLoginWireVariants } from './agent-login';
 import { agentRuntimeWireVariants } from './agent-runtime';
 import { artifactWireVariants } from './artifact';

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { AccountsSchema } from '../account';
-import { ProvidersConfigSchema } from '../provider-config';
+import { AccountsSchema } from '../model/account';
+import { ProvidersConfigSchema } from '../model/provider-config';
 
 /** Host configuration wire variants — per-agent provider settings (provider-config.ts) plus the
  * global account pool (account.ts); both travel together so a single `config.get`/`config.set`

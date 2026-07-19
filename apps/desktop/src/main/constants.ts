@@ -1,4 +1,4 @@
-import { parseProfileName } from '@linkcode/schema/daemon-runtime-constants';
+import { parseProfileName } from '@linkcode/schema/daemon-runtime';
 import { app, dialog } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 

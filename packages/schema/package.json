@@ -7,7 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./daemon-runtime-constants": "./src/daemon-runtime-constants.ts"
+    "./daemon-runtime": "./src/daemon-runtime.ts"
   },
   "scripts": {
     "lint": "eslint --format=sukka ."

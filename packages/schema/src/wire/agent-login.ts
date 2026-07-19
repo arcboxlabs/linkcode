@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema } from '../common';
+import { AgentKindSchema } from '../model/primitives';
 
 /**
  * Interactive provider-login wire variants: the host runs the agent CLI's own OAuth login as a

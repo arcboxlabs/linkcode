@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TimestampSchema, WorkspaceIdSchema } from './common';
+import { TimestampSchema, WorkspaceIdSchema } from './primitives';
 
 /** `project`: a directory the user explicitly registered. `chat`: the single daemon-owned chat
  * root (`~/LinkCode`) backing the sidebar's "Chats" section — a fixed system entry the user

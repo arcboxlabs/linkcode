@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FileSuggestionSchema, WorkspaceFileSchema } from '../file';
+import { FileSuggestionSchema, WorkspaceFileSchema } from '../model/file';
 
 /** File wire variants — directory-backed: keyed by cwd + path, shared by same-cwd sessions (see file.ts). */
 export const fileWireVariants = [

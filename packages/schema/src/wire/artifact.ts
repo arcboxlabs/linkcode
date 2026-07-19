@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HostedArtifactSchema, MAX_ARTIFACT_CONTENT_BYTES } from '../artifact';
+import { HostedArtifactSchema, MAX_ARTIFACT_CONTENT_BYTES } from '../model/artifact';
 
 /** Ephemeral artifact hosting wire variants — content-addressed, in-memory (see artifact.ts). */
 export const artifactWireVariants = [

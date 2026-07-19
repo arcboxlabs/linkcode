@@ -1,4 +1,4 @@
-import { DAEMON_DEFAULT_URL } from '@linkcode/schema/daemon-runtime-constants';
+import { DAEMON_DEFAULT_URL } from '@linkcode/schema/daemon-runtime';
 import { defineInvokes } from '@moeru/eventa';
 import { createContext as createRendererContext } from '@moeru/eventa/adapters/electron/renderer';
 import type { IpcRenderer } from 'electron';
