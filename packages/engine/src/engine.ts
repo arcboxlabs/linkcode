@@ -6,7 +6,6 @@ import type {
   SessionAutomation,
   SessionId,
   SessionRecord,
-  StartOptions,
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
@@ -16,11 +15,10 @@ import { nullthrow } from 'foxts/guard';
 import type { LoginBinaryResolver } from './agent/login-service';
 import { AgentLoginService } from './agent/login-service';
 import type { ProviderConfigStore } from './agent/provider-config';
-import { applyProviderDefaults, InMemoryProviderConfigStore } from './agent/provider-config';
+import { InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
 import { AgentRuntimeService } from './agent/runtime-service';
 import type { TranslatorService } from './agent/translator';
-import { translationUpstream, withTranslatorEndpoint } from './agent/translator';
 import type { AssetService } from './asset/service';
 import { ManagedAssetService } from './asset/service';
 import type { LoopStore, ScheduleStore, SessionDriver } from './automation';
@@ -43,6 +41,7 @@ import { SessionOrchestrator } from './session/orchestrator';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import type { SessionStore } from './session/session-store';
 import { InMemorySessionStore } from './session/session-store';
+import { SessionStartOptionsResolver } from './session/start-options-resolver';
 import type { PtyBackend } from './terminal/pty-backend';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
@@ -116,6 +115,7 @@ export class Engine {
   private readonly logins?: AgentLoginService;
   private readonly agentRequests: AgentRequestHandler;
   private readonly translator?: TranslatorService;
+  private readonly startOptions: SessionStartOptionsResolver;
   private seq = 0;
 
   constructor(
@@ -201,6 +201,7 @@ export class Engine {
       void this.runtimes.refresh();
     });
     this.translator = deps.translator;
+    this.startOptions = new SessionStartOptionsResolver(this.providerStore, this.translator);
     this.logins = deps.resolveLoginBinary
       ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
           void this.runtimes.refresh();
@@ -240,30 +241,12 @@ export class Engine {
     return this.workspaces.ensureChatWorkspace(cwd);
   }
 
-  /** Apply the bound account/provider defaults, then route a cross-protocol account through the
-   * local translation sidecar; a session that needs translation with no sidecar available fails. */
-  private async resolveStartOptions(opts: StartOptions): Promise<StartOptions> {
-    const resolved = applyProviderDefaults(
-      opts,
-      this.providerStore.get(),
-      this.providerStore.getAccounts(),
-    );
-    const upstream = translationUpstream(resolved);
-    if (!upstream) return resolved;
-    if (!this.translator) {
-      throw new Error(
-        'claude-code cross-protocol account needs the translation sidecar, which is unavailable',
-      );
-    }
-    return withTranslatorEndpoint(resolved, await this.translator.ensure(upstream));
-  }
-
   private async handle(msg: WireMessage): Promise<void> {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start': {
         await this.tryReply(p.clientReqId, async () => {
-          const opts = await this.resolveStartOptions(p.opts);
+          const opts = await this.startOptions.resolve(p.opts);
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -361,7 +344,7 @@ export class Engine {
       }
       case 'history.resume': {
         await this.tryReply(p.clientReqId, async () => {
-          const startOpts = await this.resolveStartOptions({ ...p.startOpts, kind: p.agentKind });
+          const startOpts = await this.startOptions.resolve({ ...p.startOpts, kind: p.agentKind });
           const now = Date.now();
           const record: SessionRecord = {
             sessionId: this.nextSessionId(),
@@ -506,7 +489,7 @@ export class Engine {
         title?: string;
         automation: SessionAutomation;
       }): Promise<SessionId> => {
-        const startOpts = await this.resolveStartOptions({
+        const startOpts = await this.startOptions.resolve({
           kind: opts.kind,
           cwd: opts.cwd,
           model: opts.model,
@@ -555,7 +538,7 @@ export class Engine {
     // A never-prompted session has no provider transcript to resume from (the adapter only mints one
     // on the first prompt); waking it is a fresh start under the same Link Code id.
     const historyId = this.records.historyId(sessionId);
-    const startOpts = await this.resolveStartOptions({ kind: record.kind, cwd: record.cwd });
+    const startOpts = await this.startOptions.resolve({ kind: record.kind, cwd: record.cwd });
     record.runs.push({ historyId, startedAt: Date.now() });
     await this.sessions.startLive(replyTo, record, (adapter) =>
       historyId === undefined
