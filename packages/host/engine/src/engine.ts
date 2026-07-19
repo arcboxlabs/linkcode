@@ -166,7 +166,10 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
 
   return {
     start: Effect.gen(function* () {
-      const runTask = yield* FiberSet.makeRuntime<never, void, never>();
+      const taskSet = yield* FiberSet.make();
+      const runTask = yield* FiberSet.runtime(taskSet)();
+      const runEffect = yield* FiberSet.runtimePromise(taskSet)();
+      sessionLifecycle.bindRuntime(runEffect);
       yield* records.start((effect) => {
         runTask(effect);
       });
@@ -230,7 +233,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       });
       yield* finalize('schedules.shutdown', () => scheduler.shutdown());
       yield* finalize('loops.shutdown', () => loops.shutdown());
-      yield* finalize('sessions.shutdown', () => sessions.shutdown());
+      yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* runtimes.close();
       yield* finalize('scripts.shutdown', () => scripts?.shutdown());
       yield* finalize('terminals.shutdown', () => terminals?.closeAll());
@@ -268,6 +271,17 @@ function trySyncOperation<A>(
 
 function finalize(operation: string, run: () => void | PromiseLike<void>): Effect.Effect<void> {
   return Effect.tryPromise({ try: async () => run(), catch: (cause) => cause }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logError('Engine shutdown step failed', { operation }, Cause.squash(cause)),
+    ),
+  );
+}
+
+function finalizeEffect(
+  operation: string,
+  effect: Effect.Effect<void, unknown>,
+): Effect.Effect<void> {
+  return effect.pipe(
     Effect.catchCause((cause) =>
       Effect.logError('Engine shutdown step failed', { operation }, Cause.squash(cause)),
     ),

@@ -1,6 +1,7 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
 import type { WireResponder } from '../wire/responder';
 import type { SessionLifecycleService } from './lifecycle-service';
 import type { SessionOrchestrator } from './orchestrator';
@@ -30,65 +31,83 @@ export class SessionRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: SessionRequest): Promise<void> {
+  handle(payload: SessionRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'session.start':
-        await this.responder.tryReply(payload.clientReqId, () =>
+        return this.responder.reply(
+          payload.clientReqId,
           this.lifecycle.start(payload.clientReqId, payload.opts),
         );
-        break;
       case 'agent.input':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          await this.sessions.sendInput(payload.sessionId, payload.input);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
-      case 'session.stop':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          await this.sessions.stop(payload.sessionId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
-      case 'session.delete':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          // Idempotent, unlike session.stop: provider-local history stays untouched, so the session
-          // can still be imported after another client deleted the LinkCode record.
-          await this.sessions.delete(payload.sessionId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
-      case 'session.list':
-        this.transport.send(
-          createWireMessage({
-            kind: 'session.listed',
-            replyTo: payload.clientReqId,
-            sessions: this.sessions.list(),
-          }),
+        return this.responder.reply(
+          payload.clientReqId,
+          this.sessions
+            .sendInput(payload.sessionId, payload.input)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
-        break;
+      case 'session.stop':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.sessions
+            .stop(payload.sessionId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
+        );
+      case 'session.delete':
+        // Idempotent, unlike session.stop: provider-local history stays untouched, so the session
+        // can still be imported after another client deleted the LinkCode record.
+        return this.responder.reply(
+          payload.clientReqId,
+          this.sessions
+            .delete(payload.sessionId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
+        );
+      case 'session.list':
+        return Effect.sync(() =>
+          this.transport.send(
+            createWireMessage({
+              kind: 'session.listed',
+              replyTo: payload.clientReqId,
+              sessions: this.sessions.list(),
+            }),
+          ),
+        );
       case 'session.resume':
-        await this.responder.tryReply(payload.clientReqId, () =>
+        return this.responder.reply(
+          payload.clientReqId,
           this.lifecycle.resumeSession(payload.clientReqId, payload.sessionId),
         );
-        break;
       case 'session.import':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const record = await this.lifecycle.importSession(payload.agentKind, payload.historyId);
-          this.transport.send(
-            createWireMessage({ kind: 'session.imported', replyTo: payload.clientReqId, record }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          this.lifecycle.importSession(payload.agentKind, payload.historyId).pipe(
+            Effect.flatMap((record) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'session.imported',
+                    replyTo: payload.clientReqId,
+                    record,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'session.attach':
         // The Hub already attached this connection. Replay state that history cannot recover;
         // clients fold it idempotently and deduplicate interactive requests by requestId.
-        this.sessions.replay(payload.sessionId);
-        break;
+        return Effect.sync(() => this.sessions.replay(payload.sessionId));
       case 'session.detach':
         // The Hub already removed this connection's session subscription.
-        break;
+        return Effect.void;
       default:
-        break;
+        return Effect.void;
     }
   }
 }

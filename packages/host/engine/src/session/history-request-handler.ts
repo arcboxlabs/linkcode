@@ -1,6 +1,7 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
 import type { WireResponder } from '../wire/responder';
 import type { HistoryService } from './history-service';
 import type { SessionLifecycleService } from './lifecycle-service';
@@ -19,30 +20,45 @@ export class HistoryRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: HistoryRequest): Promise<void> {
+  handle(payload: HistoryRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'history.list':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const result = await this.history.list(payload.agentKind, payload.opts);
-          this.transport.send(
-            createWireMessage({ kind: 'history.listed', replyTo: payload.clientReqId, result }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          historyOperation(() => this.history.list(payload.agentKind, payload.opts)).pipe(
+            Effect.flatMap((result) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'history.listed',
+                    replyTo: payload.clientReqId,
+                    result,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'history.read':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const result = await this.history.read(payload.agentKind, payload.opts);
-          this.transport.send(
-            createWireMessage({
-              kind: 'history.read.result',
-              replyTo: payload.clientReqId,
-              result,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          historyOperation(() => this.history.read(payload.agentKind, payload.opts)).pipe(
+            Effect.flatMap((result) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'history.read.result',
+                    replyTo: payload.clientReqId,
+                    result,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'history.resume':
-        await this.responder.tryReply(payload.clientReqId, () =>
+        return this.responder.reply(
+          payload.clientReqId,
           this.lifecycle.resumeHistory(
             payload.clientReqId,
             payload.agentKind,
@@ -50,9 +66,12 @@ export class HistoryRequestHandler {
             payload.startOpts,
           ),
         );
-        break;
       default:
-        break;
+        return Effect.void;
     }
   }
+}
+
+function historyOperation<A>(run: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: run, catch: (cause) => cause });
 }

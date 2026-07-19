@@ -46,12 +46,12 @@ export class WireRequestRouter {
       case 'session.import':
       case 'session.attach':
       case 'session.detach': {
-        return legacyHandler(() => this.handlers.session.handle(p));
+        return this.handlers.session.handle(p);
       }
       case 'history.list':
       case 'history.read':
       case 'history.resume': {
-        return legacyHandler(() => this.handlers.history.handle(p));
+        return this.handlers.history.handle(p);
       }
       case 'agent-runtime.list':
       case 'config.get':
