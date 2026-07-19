@@ -53,7 +53,7 @@ import {
   UsageReportSchema,
 } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { invariant, nullthrow } from 'foxts/guard';
+import { nullthrow } from 'foxts/guard';
 import { z } from 'zod';
 import { AUTH_FAILED_ERROR_CODE } from '../adapter';
 import { BaseAgentAdapter } from '../base';
@@ -392,6 +392,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private cancelling = false;
   /** The effort the session should run at; applied at `Query` creation and on live switches. */
   private effort: EffortLevel | undefined;
+  /** Whether settings enabled Ultracode before any explicit pick. The Stop hook reports only its
+   * underlying xhigh level, so retain this bit until an accepted user selection replaces it. */
+  private settingsUltracode = false;
   /** The approval policy the session runs under; applied at `Query` creation and on live switches.
    * `undefined` = no user pick — the CLI resolves its own default, reported back via init. */
   private approvalPolicy: ClaudeApprovalPolicyId | undefined;
@@ -416,12 +419,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
-    if (opts.model) this.emitModel(opts.model);
     if (this.effort === undefined) {
       const { effective } = await sdk.resolveSettings({ cwd: opts.cwd });
       // The SDK documents `high` as Claude's provider default. A persisted setting wins, while the
       // Stop hook below later reconciles any model-specific downgrade made by the running CLI.
-      this.emitEffort(effective.ultracode ? 'ultracode' : (effective.effortLevel ?? 'high'));
+      this.settingsUltracode = effective.ultracode === true;
+      this.emitEffort(this.settingsUltracode ? 'ultracode' : (effective.effortLevel ?? 'high'));
     }
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
@@ -453,12 +456,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /** Read-only `Stop` hook: learns the CLI's *resolved* effort after any per-model downgrade. The
-   * hook's base-level field cannot express `ultracode`, so preserve that orchestration mode; every
-   * other level is reconciled to what actually ran. The field is absent without effort support. */
+   * hook reports Ultracode as its underlying xhigh level, so map only that pair back to the mode;
+   * every other level is the actual downgrade. The field is absent without effort support. */
   private readonly reflectEffortHook: HookCallback = (input) => {
-    if (this.effort !== 'ultracode' && input.effort?.level) {
+    if (input.effort?.level) {
       const parsed = EffortLevelSchema.safeParse(input.effort.level);
-      if (parsed.success) this.emitEffort(parsed.data);
+      if (parsed.success) {
+        const ultracode = this.effort === 'ultracode' || this.settingsUltracode;
+        this.emitEffort(ultracode && parsed.data === 'xhigh' ? 'ultracode' : parsed.data);
+      }
     }
     return Promise.resolve({ continue: true });
   };
@@ -617,7 +623,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
     // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
-    const q = query({
+    let q: Query | null = null;
+    const reflectCurrentQueryEffort: HookCallback = (input, toolUseID, hookOptions) => {
+      if (q === null || this.q !== q) return Promise.resolve({ continue: true });
+      return this.reflectEffortHook(input, toolUseID, hookOptions);
+    };
+    q = query({
       prompt: queue,
       options: {
         cwd: opts.cwd,
@@ -642,7 +653,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // per-model thinking resolution (verified live on the 0.3.206 × 2.1.212 pair).
         extraArgs: { 'thinking-display': 'summarized' },
         // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
-        hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
+        hooks: { Stop: [{ hooks: [reflectCurrentQueryEffort] }] },
         canUseTool: this.canUseTool,
         // Resolved in onStart via `settingsDefaultMode` — the SDK-driven CLI does not apply
         // settings.json itself. `undefined` = no pick anywhere; the CLI then starts in 'default'.
@@ -657,6 +668,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
     this.q = q;
     void this.consume(q);
+    if (opts.model) {
+      // `setModel` is an acknowledged streaming-mode control request. Reflect the startup pick only
+      // after the CLI accepts it, so an unavailable model cannot masquerade as provider confirmation.
+      await q.setModel(opts.model);
+      this.emitModel(opts.model);
+    }
     // Catalog discovery is optional and may wait on CLI initialization indefinitely. Do not hold
     // session.start behind it; publish whenever the snapshot becomes available.
     void this.publishCommands(q);
@@ -680,13 +697,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * emits. Returns only when the underlying process exits (crash, `close()`, or the CLI quitting). */
   private async consume(q: Query): Promise<void> {
     try {
-      for await (const msg of q) this.handleMessage(msg);
+      for await (const msg of q) {
+        if (this.q === q) this.handleMessage(msg);
+      }
     } catch (err) {
-      if (this.cancelling) this.cancelling = false;
-      else this.emitError(extractErrorMessage(err) ?? 'Unknown error');
+      if (this.q === q || this.q === null) {
+        if (this.cancelling) this.cancelling = false;
+        else this.emitError(extractErrorMessage(err) ?? 'Unknown error');
+      }
     }
-    // Guard against clobbering a newer Query: if onPrompt already replaced this.q while this call
-    // was unwinding, only this call's own q/inputQueue should be torn down here.
+    // A replacement Query owns all session state now; the retired stream must not settle its turn,
+    // finalize its tools, or overwrite its running status with idle.
+    if (this.q !== null && this.q !== q) return;
     if (this.q === q) {
       this.q = null;
       this.inputQueue = null;
@@ -697,13 +719,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /** `supportedCommands()` is a snapshot captured at Query init — this fires once per Query to seed
-   * the catalog; later changes arrive via the `commands_changed` push. Failure is non-fatal: the
-   * independently advertised slash capability remains usable while catalog discovery is pending. */
+   * the catalog; later changes arrive via the `commands_changed` push. A failed snapshot publishes
+   * an authoritative empty catalog so host validation does not stay fail-open indefinitely. */
   private async publishCommands(q: Query): Promise<void> {
     try {
-      this.publishCatalog(await q.supportedCommands());
+      const commands = await q.supportedCommands();
+      if (this.q === q) this.publishCatalog(commands);
     } catch {
-      // Dropped on purpose — see above.
+      if (this.q === q) this.publishCatalog([]);
     }
   }
 
@@ -737,12 +760,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Live model switch via `Query#setModel` (streaming-input-mode-only control request) — the CLI
    * ignores a changed `model` option once a session is resumed, so a resume-based design can't. */
   protected override async onSetModel(model: string): Promise<void> {
-    if (this.q) {
-      await this.q.setModel(model);
-    } else {
-      invariant(this.opts, 'claude-code: session not started');
-      this.opts.model = model;
-    }
+    const opts = nullthrow(this.opts, 'claude-code: session not started');
+    if (this.q) await this.q.setModel(model);
+    // Keep rebuilt Queries on the accepted live selection, rather than replaying the startup model.
+    opts.model = model;
     // Reflect the pick immediately (the CLI accepted it, or it will apply at the next Query
     // creation); the served id off the next assistant frame reconciles it via `syncModel`.
     this.emitModel(model);
@@ -769,6 +790,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (effort === previous) return;
     if (!this.q) {
       this.effort = effort; // No process yet; onPrompt's Query creation applies it.
+      this.settingsUltracode = false;
       return;
     }
     if (effort !== 'max' && previous !== 'max') {
@@ -776,10 +798,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // Committed only after the CLI accepted the switch: a rejected one (ultracode without
       // dynamic workflows enabled) must not linger and get replayed onto a later rebuilt Query.
       this.effort = effort;
+      this.settingsUltracode = false;
       this.emitEffort(effort);
       return;
     }
     this.effort = effort;
+    this.settingsUltracode = false;
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
     // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
     const q = this.q;

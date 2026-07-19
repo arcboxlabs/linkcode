@@ -1,7 +1,7 @@
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, EffortLevel } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
-import { asyncNoop } from 'foxts/noop';
+import { asyncNoop, noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeCodeAdapter } from '../native/claude-code';
@@ -276,6 +276,21 @@ describe('ClaudeCodeAdapter effort switching', () => {
     expect(q2.options.resume).toBe('sess-1');
     expect(q2.applyFlagSettings).toHaveBeenCalledWith({ ultracode: null, effortLevel: 'high' });
   });
+
+  it('does not let a detached Query unwind settle its replacement', async () => {
+    const { adapter, events } = await makeAdapter();
+    const q0 = queries[0];
+    q0.close.mockImplementationOnce(noop);
+
+    await setEffort(adapter, 'max');
+    await prompt(adapter);
+    expect(queries).toHaveLength(2);
+
+    events.length = 0;
+    q0.push(null);
+    await wait(0);
+    expect(events.some((event) => event.type === 'status' && event.status === 'idle')).toBe(false);
+  });
 });
 
 /** The read-only Stop hook the adapter registers to learn the resolved effort level. */
@@ -307,6 +322,70 @@ describe('ClaudeCodeAdapter model/effort reflection', () => {
     const { adapter, events } = await makeAdapter();
     await adapter.send({ type: 'set-model', model: 'claude-opus-4-8' });
     expect(events).toContainEqual({ type: 'model-update', model: 'claude-opus-4-8' });
+  });
+
+  it('keeps an accepted live model across an effort-driven Query rebuild', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    await adapter.start({
+      kind: 'claude-code',
+      cwd: '/tmp/repo',
+      model: 'claude-sonnet-5',
+    });
+    await adapter.send({ type: 'set-model', model: 'claude-opus-4-8' });
+
+    await setEffort(adapter, 'max');
+    await prompt(adapter);
+    expect(queries).toHaveLength(2);
+    expect(queries[1].options.model).toBe('claude-opus-4-8');
+    expect(queries[1].setModel).toHaveBeenCalledWith('claude-opus-4-8');
+  });
+
+  it('reflects a startup model only after the CLI accepts it', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    let acceptModel: (() => void) | undefined;
+    nextQuerySetup = (q) => {
+      q.setModel.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            acceptModel = resolve;
+          }),
+      );
+    };
+
+    const started = adapter.start({
+      kind: 'claude-code',
+      cwd: '/tmp/repo',
+      model: 'claude-opus-4-8',
+    });
+    await vi.waitFor(() => {
+      expect(queries[0].setModel).toHaveBeenCalledWith('claude-opus-4-8');
+    });
+    expect(events).not.toContainEqual({ type: 'model-update', model: 'claude-opus-4-8' });
+
+    acceptModel?.();
+    await started;
+    expect(events).toContainEqual({ type: 'model-update', model: 'claude-opus-4-8' });
+  });
+
+  it('fails startup without reflecting a model the CLI rejects', async () => {
+    nextQuerySetup = (q) => {
+      q.setModel.mockRejectedValue(new Error('unknown model'));
+    };
+    const adapter = new ClaudeCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await expect(
+      adapter.start({
+        kind: 'claude-code',
+        cwd: '/tmp/repo',
+        model: 'unavailable-model',
+      }),
+    ).rejects.toThrow('unknown model');
+    expect(events).not.toContainEqual({ type: 'model-update', model: 'unavailable-model' });
+    await adapter.stop();
   });
 
   it('reflects the served model the CLI reports on its init frame', async () => {
@@ -343,6 +422,41 @@ describe('ClaudeCodeAdapter model/effort reflection', () => {
     events.length = 0;
     await stopHook({ effort: { level: 'xhigh' } });
     expect(events.some((event) => event.type === 'effort-update')).toBe(false);
+  });
+
+  it('ignores effort reported by a detached Query', async () => {
+    const { adapter, events } = await makeAdapter();
+    const staleStopHook = stopHookOf(queries[0]);
+
+    await setEffort(adapter, 'max');
+    await prompt(adapter);
+    expect(queries).toHaveLength(2);
+
+    events.length = 0;
+    await staleStopHook({ effort: { level: 'medium' } });
+    expect(events.some((event) => event.type === 'effort-update')).toBe(false);
+  });
+
+  it('preserves settings-derived Ultracode until the user selects another effort', async () => {
+    sdkMock.settings = { effortLevel: 'xhigh', ultracode: true };
+    const { adapter, events } = await makeAdapter();
+    const stopHook = stopHookOf(queries[0]);
+
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'ultracode' });
+    events.length = 0;
+    await stopHook({ effort: { level: 'xhigh' } });
+    expect(events.some((event) => event.type === 'effort-update')).toBe(false);
+
+    await stopHook({ effort: { level: 'medium' } });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
+    events.length = 0;
+    await stopHook({ effort: { level: 'xhigh' } });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'ultracode' });
+
+    await setEffort(adapter, 'high');
+    events.length = 0;
+    await stopHook({ effort: { level: 'medium' } });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
   });
 });
 

@@ -277,7 +277,7 @@ describe('ClaudeCodeAdapter slash commands', () => {
     ]);
   });
 
-  it('does not surface an error when supportedCommands() rejects', async () => {
+  it('fails closed with an empty catalog when supportedCommands() rejects', async () => {
     const { events } = await makeAdapter((q) => {
       q.supportedCommands.mockRejectedValue(new Error('not ready'));
     });
@@ -286,7 +286,31 @@ describe('ClaudeCodeAdapter slash commands', () => {
       expect(queries[0].supportedCommands).toHaveBeenCalled();
     });
     expect(events.some((e) => e.type === 'error')).toBe(false);
-    expect(commandUpdates(events)).toHaveLength(0);
+    expect(commandUpdates(events)).toEqual([{ type: 'available-commands-update', commands: [] }]);
+  });
+
+  it('ignores a stale catalog failure after the Query is rebuilt', async () => {
+    let rejectOldCatalog: ((reason: Error) => void) | undefined;
+    const { adapter, events } = await makeAdapter((q) => {
+      q.supportedCommands.mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectOldCatalog = reject;
+        }),
+      );
+    });
+    nextQuerySetup = (q) => {
+      q.supportedCommands.mockResolvedValue([{ name: 'review' }]);
+    };
+
+    await adapter.send({ type: 'set-effort', effort: 'max' });
+    await prompt(adapter);
+    await vi.waitFor(() => {
+      expect(commandUpdates(events).at(-1)?.commands).toMatchObject([{ name: 'review' }]);
+    });
+
+    rejectOldCatalog?.(new Error('old Query closed'));
+    await Promise.resolve();
+    expect(commandUpdates(events).at(-1)?.commands).toMatchObject([{ name: 'review' }]);
   });
 
   it('replaces the catalog wholesale on a commands_changed push', async () => {
