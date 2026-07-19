@@ -1,12 +1,9 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { AUTH_FAILED_ERROR_CODE } from '@linkcode/agent-adapter';
 import type {
-  AgentEvent,
   AgentInput,
   ContentBlock,
   SessionId,
   SessionInfo,
-  SessionNotificationReason,
   SessionRecord,
 } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
@@ -20,10 +17,12 @@ import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
 import { assertAttachmentContentAllowed } from './attachment-guard';
 import { LiveSession } from './live-session';
+import { SessionEventProcessor } from './session-event-processor';
 import type { SessionRecordRegistry } from './session-record-registry';
 
 export class SessionOrchestrator {
   private readonly sessions = new Map<SessionId, LiveSession>();
+  private readonly events: SessionEventProcessor;
 
   constructor(
     private readonly transport: Transport,
@@ -31,7 +30,9 @@ export class SessionOrchestrator {
     private readonly records: SessionRecordRegistry,
     private readonly runtimes: AgentRuntimeService,
     private readonly onStopped: (sessionId: SessionId) => void,
-  ) {}
+  ) {
+    this.events = new SessionEventProcessor(transport, records, runtimes);
+  }
 
   private get(sessionId: SessionId): LiveSession | undefined {
     return this.sessions.get(sessionId);
@@ -58,7 +59,7 @@ export class SessionOrchestrator {
 
   replay(sessionId: SessionId): void {
     const session = this.sessions.get(sessionId);
-    if (session) this.broadcast(sessionId, session.replay());
+    if (session) this.events.broadcast(sessionId, session.replay());
   }
 
   async sendInput(sessionId: SessionId, input: AgentInput): Promise<void> {
@@ -71,31 +72,33 @@ export class SessionOrchestrator {
         !session.availableCommands?.some((command) => agentCommandMatches(command, input.name)))
     ) {
       const error = new Error(`Unknown slash command: /${input.name}`);
-      this.rejectInput(sessionId, error.message);
+      this.events.rejectInput(sessionId, error.message);
       throw error;
     }
     if (input.type === 'shell-command' && !session.capabilities.shellCommand) {
       const error = new Error('Shell commands are not supported by this session');
-      this.rejectInput(sessionId, error.message);
+      this.events.rejectInput(sessionId, error.message);
       throw error;
     }
     if (startsTurn && session.turnInputActive) {
       const error = new Error(`Session is busy: ${sessionId}`);
-      this.rejectInput(sessionId, error.message);
+      this.events.rejectInput(sessionId, error.message);
       throw error;
     }
     if (startsTurn) session.turnInputActive = true;
     // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
     if (input.type === 'prompt') {
       assertAttachmentContentAllowed(input.content);
-      this.broadcast(sessionId, [{ type: 'user-message', content: input.content }]);
+      this.events.broadcast(sessionId, [{ type: 'user-message', content: input.content }]);
       this.records.setTitleFromContent(sessionId, input.content);
     } else if (input.type === 'command' || input.type === 'shell-command') {
       const text =
         input.type === 'command'
           ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
           : `$ ${input.command}`;
-      this.broadcast(sessionId, [{ type: 'user-message', content: [{ type: 'text', text }] }]);
+      this.events.broadcast(sessionId, [
+        { type: 'user-message', content: [{ type: 'text', text }] },
+      ]);
     }
     const responseInput =
       input.type === 'permission-response' || input.type === 'question-response'
@@ -105,7 +108,7 @@ export class SessionOrchestrator {
       ? session.interactions.beginResponse(responseInput)
       : undefined;
     if (responseInput && respondingAsk) {
-      this.broadcast(sessionId, [
+      this.events.broadcast(sessionId, [
         {
           type: 'prompt-response-status',
           requestId: responseInput.requestId,
@@ -117,20 +120,23 @@ export class SessionOrchestrator {
       await session.adapter.send(input);
     } catch (error) {
       if (responseInput && respondingAsk) {
-        this.broadcast(
+        this.events.broadcast(
           sessionId,
           session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
         );
       }
       if (startsTurn && session.status !== 'running') session.turnInputActive = false;
       if (startsTurn) {
-        this.rejectInput(sessionId, extractErrorMessage(error) ?? 'Agent input was rejected');
+        this.events.rejectInput(
+          sessionId,
+          extractErrorMessage(error) ?? 'Agent input was rejected',
+        );
       }
       throw error;
     }
     if (responseInput && respondingAsk) {
       const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
-      if (resolution) this.broadcast(sessionId, [resolution]);
+      if (resolution) this.events.broadcast(sessionId, [resolution]);
     }
     // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
     if (startsTurn && session.status !== 'running') session.turnInputActive = false;
@@ -138,7 +144,7 @@ export class SessionOrchestrator {
 
   async stop(sessionId: SessionId): Promise<void> {
     const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
-    this.broadcast(sessionId, session.closeInteractions());
+    this.events.broadcast(sessionId, session.closeInteractions());
     session.stopListening();
     try {
       await session.adapter.stop();
@@ -153,7 +159,7 @@ export class SessionOrchestrator {
   async delete(sessionId: SessionId): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
-      this.broadcast(sessionId, session.closeInteractions());
+      this.events.broadcast(sessionId, session.closeInteractions());
       session.stopListening();
       try {
         await session.adapter.stop();
@@ -201,7 +207,7 @@ export class SessionOrchestrator {
     if (session.turnInputActive) throw new Error(`Session is busy: ${sessionId}`);
     session.turnInputActive = true;
     const content: ContentBlock[] = [{ type: 'text', text }];
-    this.broadcast(sessionId, [{ type: 'user-message', content }]);
+    this.events.broadcast(sessionId, [{ type: 'user-message', content }]);
     this.records.setTitleFromContent(sessionId, content);
     return watchTurn(
       session.adapter,
@@ -214,22 +220,6 @@ export class SessionOrchestrator {
     });
   }
 
-  private broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
-    for (const event of events) {
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-    }
-  }
-
-  private rejectInput(sessionId: SessionId, message: string): void {
-    this.transport.send(
-      createWireMessage({
-        kind: 'agent.event',
-        sessionId,
-        event: { type: 'error', message, code: 'input_rejected', recoverable: true },
-      }),
-    );
-  }
-
   /** Bind a record to a live adapter. The record's current run must already be last in `runs`. */
   async startLive(
     replyTo: string | undefined,
@@ -239,7 +229,7 @@ export class SessionOrchestrator {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
     const session = new LiveSession(adapter, sessionId);
-    session.listen((event) => this.onAdapterEvent(sessionId, session, event));
+    session.listen((event) => this.events.handle(sessionId, session, event));
     this.sessions.set(sessionId, session);
     this.records.register(record);
     // A start can land before the boot probe settles. Register first so delete can tear it down,
@@ -274,62 +264,5 @@ export class SessionOrchestrator {
       }),
     );
     this.sessions.clear();
-  }
-
-  private onAdapterEvent(sessionId: SessionId, session: LiveSession, event: AgentEvent): void {
-    // Adapter callbacks are synchronous; contain failures to this session instead of throwing into
-    // the SDK operation that emitted the event.
-    try {
-      this.broadcast(sessionId, session.apply(event));
-      switch (event.type) {
-        case 'status':
-          if (event.status === 'stopped') this.records.sealCurrentRun(sessionId);
-          break;
-        case 'session-ref':
-          this.records.bindHistoryId(sessionId, event.historyId);
-          break;
-        case 'error':
-          if (event.code === AUTH_FAILED_ERROR_CODE) void this.runtimes.refresh();
-          break;
-        default:
-          break;
-      }
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-      this.notify(sessionId, event);
-    } catch (error) {
-      console.error(`Error handling adapter event for session ${sessionId}:`, error);
-    }
-  }
-
-  private notify(sessionId: SessionId, event: AgentEvent): void {
-    const reason = notificationReason(event);
-    const record = this.records.get(sessionId);
-    if (!reason || !record) return;
-    this.transport.send(
-      createWireMessage({
-        kind: 'session.notification',
-        notification: {
-          sessionId,
-          kind: record.kind,
-          cwd: record.cwd,
-          title: record.title,
-          reason,
-        },
-      }),
-    );
-  }
-}
-
-function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
-  switch (event.type) {
-    case 'stop':
-      return { type: 'turn-completed', stopReason: event.stopReason };
-    case 'permission-request':
-    case 'question-request':
-      return { type: 'awaiting-approval', toolTitle: event.toolCall.title };
-    case 'error':
-      return { type: 'error', message: event.message };
-    default:
-      return undefined;
   }
 }
