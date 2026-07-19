@@ -8,7 +8,7 @@ export type { ProviderConfigStore } from './agent/provider-config';
 export type { TranslatorService, TranslatorUpstream } from './agent/translator';
 export type { AssetService } from './asset/service';
 export type { LoopStore, ScheduleStore } from './automation';
-export type { EngineDeps } from './engine';
+export type { EngineDeps } from './deps';
 export { PreviewRouteRegistry } from './preview/route-registry';
 export { EngineService, makeEngineLayer } from './service';
 export type { SessionStore } from './session/session-store';

@@ -1,6 +1,6 @@
 import type { Transport } from '@linkcode/transport';
 import { Effect, ManagedRuntime } from 'effect';
-import type { EngineDeps } from '../../engine';
+import type { EngineDeps } from '../../deps';
 import { EngineService, makeEngineLayer } from '../../service';
 
 export function createTestEngine(transport: Transport, deps: EngineDeps = {}) {

@@ -1,7 +1,7 @@
 import type { WorkspaceRecord } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { Context, Effect, Layer } from 'effect';
-import type { EngineDeps } from './engine';
+import type { EngineDeps } from './deps';
 import { Engine as EngineRuntime } from './engine';
 
 export class EngineService extends Context.Service<

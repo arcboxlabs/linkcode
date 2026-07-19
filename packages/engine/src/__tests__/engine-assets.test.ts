@@ -12,7 +12,7 @@ import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { AssetService } from '../asset/service';
-import type { EngineDeps } from '../engine';
+import type { EngineDeps } from '../deps';
 import { createTestEngine } from './fixtures/test-engine';
 
 const INSTALLED_CODEX: InstalledAsset = {
