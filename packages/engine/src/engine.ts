@@ -17,6 +17,7 @@ import type { LoginBinaryResolver } from './agent/login-service';
 import { AgentLoginService } from './agent/login-service';
 import type { ProviderConfigStore } from './agent/provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './agent/provider-config';
+import { AgentRequestHandler } from './agent/request-handler';
 import { AgentRuntimeService } from './agent/runtime-service';
 import type { TranslatorService } from './agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from './agent/translator';
@@ -113,6 +114,7 @@ export class Engine {
   private readonly runtimes: AgentRuntimeService;
   private readonly assets: ManagedAssetService;
   private readonly logins?: AgentLoginService;
+  private readonly agentRequests: AgentRequestHandler;
   private readonly translator?: TranslatorService;
   private seq = 0;
 
@@ -204,6 +206,14 @@ export class Engine {
           void this.runtimes.refresh();
         })
       : undefined;
+    this.agentRequests = new AgentRequestHandler(
+      transport,
+      this.runtimes,
+      this.assets,
+      this.providerStore,
+      this.logins,
+      this.responder,
+    );
   }
 
   async start(): Promise<void> {
@@ -369,47 +379,12 @@ export class Engine {
         });
         break;
       }
-      case 'agent-runtime.list': {
-        // Held until the boot probe lands (CODE-225): a pre-probe snapshot reads as every agent
-        // missing, and the Download card is a consent surface — transient ignorance cannot show it.
-        this.runtimes.serve((runtimes) => {
-          this.transport.send(
-            createWireMessage({
-              kind: 'agent-runtime.listed',
-              replyTo: p.clientReqId,
-              runtimes,
-            }),
-          );
-        });
-        break;
-      }
-      case 'asset.list': {
-        this.assets.list(p.clientReqId);
-        break;
-      }
-      case 'asset.ensure': {
-        this.assets.ensure(p.clientReqId, p.id);
-        break;
-      }
-      case 'config.get': {
-        this.transport.send(
-          createWireMessage({
-            kind: 'config.get.result',
-            replyTo: p.clientReqId,
-            providers: this.providerStore.get(),
-            accounts: this.providerStore.getAccounts(),
-          }),
-        );
-        break;
-      }
+      case 'agent-runtime.list':
+      case 'asset.list':
+      case 'asset.ensure':
+      case 'config.get':
       case 'config.set': {
-        await this.tryReply(p.clientReqId, async () => {
-          // Each field is independent: a client editing only providers preserves the account pool,
-          // and one editing only accounts preserves the provider settings.
-          if (p.providers !== undefined) await this.providerStore.set(p.providers);
-          if (p.accounts !== undefined) await this.providerStore.setAccounts(p.accounts);
-          this.sendSuccess(p.clientReqId);
-        });
+        await this.agentRequests.handle(p);
         break;
       }
       case 'workspace.list':
@@ -483,21 +458,10 @@ export class Engine {
         await this.terminalRequests.handle(p);
         break;
       }
-      case 'agent-login.start': {
-        const logins = this.logins;
-        if (!logins) {
-          this.sendFailure(p.clientReqId, new Error('Login is not supported on this host'));
-          break;
-        }
-        logins.start(p.clientReqId, p.agent);
-        break;
-      }
-      case 'agent-login.submit-code': {
-        this.logins?.submitCode(p.loginId, p.code);
-        break;
-      }
+      case 'agent-login.start':
+      case 'agent-login.submit-code':
       case 'agent-login.cancel': {
-        this.logins?.cancel(p.loginId);
+        await this.agentRequests.handle(p);
         break;
       }
       case 'ping': {
@@ -606,10 +570,6 @@ export class Engine {
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
     await this.responder.tryReply(replyTo, fn);
-  }
-
-  private sendFailure(replyTo: string, err: unknown): void {
-    this.responder.sendFailure(replyTo, err);
   }
 
   private sendSuccess(replyTo: string): void {
