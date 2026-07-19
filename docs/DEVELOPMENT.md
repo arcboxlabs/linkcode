@@ -40,7 +40,7 @@ pnpm -F @linkcode/daemon run build:rust
 pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev
 ```
 
-Root `pnpm dev` (= `turbo run dev`) is different: it starts **all four** persistent dev servers at once — daemon, desktop, `@linkcode/server`, and webview. Use `-F`/`--filter` to run a subset. `apps/mobile` and the `packages/*` have no `dev` script.
+Root `pnpm dev` (= `turbo run dev`) is different: it starts **all four** persistent dev servers at once — daemon, desktop, `@linkcode/server`, and webview. Use `-F`/`--filter` to run a subset. `apps/mobile` and the `packages/*/*` have no `dev` script.
 
 ### Daemon only
 
@@ -130,7 +130,7 @@ desktop peer, attaches a late mobile controller through the Hub, verifies replay
 rejects stale desktop input, and keeps the PTY alive after the desktop peer disconnects:
 
 ```bash
-pnpm test packages/engine/src/__tests__/terminal-takeover.test.ts
+pnpm test packages/host/engine/src/__tests__/terminal-takeover.test.ts
 ```
 
 For the manual flow, open a terminal in desktop and produce recognizable output, then open the same
@@ -161,7 +161,7 @@ ln -sfn ~/Library/Keychains <fakeHOME>/Library/Keychains
 HOME=<fakeHOME> <vendored>/claude -p 'Reply ok' --model haiku   # smoke test
 ```
 
-Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/LinkCode`). Detect turn-end by `form button[type="submit"]` reappearing (it is `type=button` while a run is active / showing Stop). Auto/bypass here is the approval-policy "Bypass permissions" option wired through the SDK's `setPermissionMode` (`claude-code.ts`) — there is no daemon env var for it (the CLI-side `CLAUDE_CODE_ENABLE_AUTO_MODE` concerns Bedrock/gateway auth only; see `packages/agent-adapter/AGENTS.md`).
+Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/LinkCode`). Detect turn-end by `form button[type="submit"]` reappearing (it is `type=button` while a run is active / showing Stop). Auto/bypass here is the approval-policy "Bypass permissions" option wired through the SDK's `setPermissionMode` (`claude-code.ts`) — there is no daemon env var for it (the CLI-side `CLAUDE_CODE_ENABLE_AUTO_MODE` concerns Bedrock/gateway auth only; see `packages/host/agent-adapter/AGENTS.md`).
 
 **Packaged product.** Build with `pnpm -F @linkcode/desktop run package:devshell` (there is **no** `run package` script). It stages the host runtime, runs `node scripts/build.mts --mode devshell`, then `electron-builder --dir --config electron-builder.devshell.yml` (`productName: LinkCode Development`, `identity: null` — unsigned by design), so you launch `LinkCode Development.app`. `dev:mock` (`scripts/dev.mts --mode mock`) exists for the CDP-attach flow. Memory-only driving switches (real flags, not repo-verifiable): `--use-mock-keychain` for the keychain modal, a packaged-vs-unpackaged `--user-data-dir` inversion, and the asar-unpack debug trick. Electron flags such as `--remote-debugging-port` and `--profile` pass through `dev`/`dev:mock` with or without a `--` separator (e.g. `pnpm -F @linkcode/desktop dev --remote-debugging-port=9222`).
 

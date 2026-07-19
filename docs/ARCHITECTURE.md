@@ -122,7 +122,7 @@ move business data — doing so would couple business logic to Electron.
 ## Packages & repo layout
 
 A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable ends;
-`packages/*` are shared libraries. The whole system is glued by one zod contract
+`packages/*/*` are shared libraries grouped by architectural ownership. The whole system is glued by one zod contract
 (`@linkcode/schema`) carried over a `transport`.
 
 ### Apps (`apps/`)
@@ -137,20 +137,36 @@ A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable en
 
 ### Packages (`packages/`)
 
-| Package         | Description                                                                                                                                     |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schema`        | zod schemas — the single data contract. Every cross-process / cross-end / post-abstraction message type derives from here (`z.infer`).         |
-| `transport`     | Communication layer ("how messages travel"): local / ws / Socket.IO implementations, the `Hub` fan-out, and the versioned wire protocol.       |
-| `agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi` / `grok-build`) plus the abstraction layer that normalizes native events into `schema`.    |
-| `engine`        | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`.                                                           |
-| `client-core`   | Shared client data layer: `LinkCodeClient`, the conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`).           |
-| `common`        | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers).       |
-| `sdk`           | Transport-backed SDK (`LinkCodeSdkClient` over a `Transport`): typed operations plus the `Options` / `RequestResult` types `tayori` is parameterized with. Hand-written RPC, not OpenAPI-generated. |
-| `workbench`     | Shared workbench runtime: the connection controller (endpoint resolution, fresh transport/SDK generations, retry/backoff), `WorkbenchProviders`, the `Workbench` surface, and typed `tayori`/SWR data plumbing. SWR caches by endpoint and revalidates after a new generation becomes ready; it does not own sockets. |
-| `ui`            | Shared, business-free presentation: chat and shell view components (`AppShell`). Receives view-models and callbacks; owns no routing, connection, or state. |
-| `coss-ui`       | Vendored COSS UI primitives (base-ui + Tailwind, from cal.com's COSS UI). Synced from upstream, not hand-edited. Formatted by Biome, excluded from ESLint. |
-| `ipc`           | TypeSafe IPC (system plane) for Electron; `tRPC` is the default implementation. Desktop only.                                                  |
-| `i18n`          | Locale messages and locale resolution (`use-intl`).                                                                                            |
+Scopes make ownership and navigation visible; they do not rename package imports and do not by
+themselves enforce dependencies. Package contracts, ESLint, and the root typecheck remain the
+dependency guardrails.
+
+| Scope | Packages | Responsibility |
+| --- | --- | --- |
+| `foundation` | `schema`, `transport`, `common` | Stable contracts, communication primitives, and framework-agnostic utilities. |
+| `host` | `agent-adapter`, `assets`, `engine` | Daemon-side agent integration, managed assets, and orchestration. |
+| `client` | `client-core`, `sdk`, `workbench` | Client data plane, typed operations, runtime containers, and feature composition. |
+| `presentation` | `i18n`, `ui` | Locale data and business-free presentation driven by view-models and callbacks. |
+| `system-plane` | `ipc` | Desktop-only Electron system-plane communication. |
+| `integrations` | `im-render` | Reusable adapters at external integration boundaries. |
+| `vendor` | `coss-ui` | Upstream code preserved and consumed as-is. |
+
+| Package path | Description |
+| --- | --- |
+| `foundation/schema` | zod schemas — the single data contract. Every cross-process / cross-end / post-abstraction message type derives from here (`z.infer`). |
+| `foundation/transport` | Communication layer ("how messages travel"): local / ws / Socket.IO implementations, the `Hub` fan-out, and the versioned wire protocol. |
+| `foundation/common` | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers). |
+| `host/agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi` / `grok-build`) plus the abstraction layer that normalizes native events into `schema`. |
+| `host/assets` | Managed-asset store for verified agent CLI pairs, in-process package closures, and standalone toolchains. |
+| `host/engine` | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`. |
+| `client/client-core` | Shared client data layer: `LinkCodeClient`, the conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`). |
+| `client/sdk` | Transport-backed SDK (`LinkCodeSdkClient` over a `Transport`): typed operations plus the `Options` / `RequestResult` types `tayori` is parameterized with. Hand-written RPC, not OpenAPI-generated. |
+| `client/workbench` | Shared workbench runtime: connection control, providers, feature containers, and typed `tayori`/SWR data plumbing. It composes presentation but does not own reusable views. |
+| `presentation/i18n` | Locale messages and locale resolution (`use-intl`). |
+| `presentation/ui` | Shared, business-free presentation: chat and shell view components (`AppShell`). Receives view-models and callbacks; owns no routing, connection, or daemon state. |
+| `system-plane/ipc` | TypeSafe IPC (system plane) for Electron; `tRPC` is the default implementation. Desktop only. |
+| `integrations/im-render` | LinkCode-owned, platform-neutral `AgentEvent` / conversation-to-Markdown renderer. Telegram, Discord, and Slack escaping, splitting, buttons, and delivery remain in the external `linkcodehq` bridges. |
+| `vendor/coss-ui` | Vendored COSS UI primitives (base-ui + Tailwind, from cal.com's COSS UI). Synced from upstream and excluded from formatting and linting. |
 
 ## The host: engine, adapters, abstraction
 
@@ -234,7 +250,7 @@ keep drafts local, and submit a multi-question request as one ordered response.
 ## Key contracts
 
 All of the types below derive from `@linkcode/schema`; the signatures are the current
-shape in `packages/*`, elided for readability.
+shape in `packages/*/*`, elided for readability.
 
 ```ts
 // @linkcode/agent-adapter — one adapter per agent; native events → normalized AgentEvent

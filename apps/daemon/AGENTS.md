@@ -26,7 +26,7 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 ## Ports & one-per-profile
 
 - Default listener is `socket.io` on `127.0.0.1:19523` (`0x4C43` = ascii `'LC'`, `DAEMON_DEFAULT_PORT`
-  in `packages/schema`). `LINKCODE_PORT` / `LINKCODE_HOST` override every listener. On `EADDRINUSE` a
+  in `packages/foundation/schema`). `LINKCODE_PORT` / `LINKCODE_HOST` override every listener. On `EADDRINUSE` a
   listener hunts **upward** up to 10 ports (19523–19532); clients must read `runtime.json`, never
   assume 19523.
 - **One daemon per profile**, enforced by the daemon (not the desktop supervisor): `main()` calls
@@ -48,7 +48,7 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   **Never guess a spawnable path by walking parents or from `node_modules`** (a tsup bundle sits at a
   different depth than `tsx` src) — hand it in via env, and keep real executables unpacked (`asarUnpack`).
 - **Agent binaries do not ship in the app (CODE-114); the daemon provisions them (CODE-111).**
-  claude/codex resolve via the runtime probe (`packages/agent-adapter/src/probe/`): managed
+  claude/codex resolve via the runtime probe (`packages/host/agent-adapter/src/probe/`): managed
   install from the daemon's asset store (`@linkcode/assets` — platform data dir, e.g.
   `~/Library/Application Support/LinkCode/assets`, `LINKCODE_ASSETS_DIR` override for tests/E2E;
   SDK-pinned exact pair, SRI-verified, GC'd at boot) → detected user install (the daemon's PATH,
@@ -102,7 +102,7 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   start/stop; defaults stay in-memory so package tests need no daemon. New persistence: interface in
   `@linkcode/engine`, implementation here.
 - **Wire version:** every message pins `v: z.literal(WIRE_PROTOCOL_VERSION)`
-  (`packages/schema/src/wire/index.ts`); a version mismatch means silent frame drops — see root
+  (`packages/foundation/schema/src/wire/index.ts`); a version mismatch means silent frame drops — see root
   `AGENTS.md`, Invariant 1. Any wire change bumps the literal; after a bump, rebuild and restart the
   daemon and every client.
 - **Process safety:** `uncaughtException` logs `[linkcode/daemon] uncaught exception:` then
@@ -127,4 +127,4 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 - **Client dial models differ:** desktop discovers via `runtime.json` + fs-watch (follows a port-hunted
   daemon); the webview uses a fixed URL and cannot follow a moved port (detail in `apps/desktop` / `apps/webview`).
 - Ordered "daemon/agent won't start" triage, log locations, and DB reset → **`docs/DEVELOPMENT.md`**.
-- Agent adapter invariants (SDK↔CLI lockstep, per-agent quirks) → **`packages/agent-adapter/AGENTS.md`**.
+- Agent adapter invariants (SDK↔CLI lockstep, per-agent quirks) → **`packages/host/agent-adapter/AGENTS.md`**.

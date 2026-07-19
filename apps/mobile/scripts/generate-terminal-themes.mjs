@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-// The desktop terminal's curated scheme list (packages/ui shell/terminal/prefs).
+// The desktop terminal's curated scheme list (packages/presentation/ui shell/terminal/prefs).
 const SCHEMES = [
   'GitHub Dark Default',
   'GitHub Light Default',

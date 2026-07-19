@@ -19,7 +19,7 @@ module.exports = require('eslint-config-sukka').sukka(
         '.vscode/**',
         '.zed/**',
         '**/expo-export/**',
-        'packages/coss-ui/**', // sync from upstream
+        'packages/vendor/coss-ui/**', // sync from upstream
         'pnpm-lock.yaml',
       ],
     },
@@ -28,9 +28,9 @@ module.exports = require('eslint-config-sukka').sukka(
         'apps/desktop/**',
         'apps/mobile/src/**',
         'apps/webview/src/**',
-        'packages/ui/src/**',
-        'packages/workbench/src/**',
-        'packages/client-core/src/**',
+        'packages/presentation/ui/src/**',
+        'packages/client/workbench/src/**',
+        'packages/client/client-core/src/**',
       ],
       additionalHooks: '(useIsomorphicLayoutEffect|useAbortableEffect)',
     },
@@ -85,8 +85,8 @@ module.exports = require('eslint-config-sukka').sukka(
       'apps/daemon/src/index.ts',
       'apps/desktop/src/main/index.ts',
       'apps/server/src/index.ts',
-      'packages/client-core/src/react.tsx',
-      'packages/workbench/src/runtime.tsx',
+      'packages/client/client-core/src/react.tsx',
+      'packages/client/workbench/src/runtime.tsx',
     ],
     rules: {
       'no-console': 'off',
@@ -94,9 +94,9 @@ module.exports = require('eslint-config-sukka').sukka(
   },
   {
     files: [
-      'packages/agent-adapter/src/**/*.{ts,tsx}',
-      'packages/engine/src/**/*.{ts,tsx}',
-      'packages/sdk/src/client.ts',
+      'packages/host/agent-adapter/src/**/*.{ts,tsx}',
+      'packages/host/engine/src/**/*.{ts,tsx}',
+      'packages/client/sdk/src/client.ts',
     ],
     rules: {
       '@typescript-eslint/class-methods-use-this': 'off',
@@ -107,10 +107,10 @@ module.exports = require('eslint-config-sukka').sukka(
     // so the TypeScript import resolver can't see them.
     name: 'linkcode/unplugin-icons-virtual-modules',
     files: [
-      'packages/ui/src/chat/agent-icon.tsx',
-      'packages/ui/src/lib/__tests__/file-icon.test.ts',
-      'packages/ui/src/lib/material-file-icons.ts',
-      'packages/ui/src/shell/service-icon.tsx',
+      'packages/presentation/ui/src/chat/agent-icon.tsx',
+      'packages/presentation/ui/src/lib/__tests__/file-icon.test.ts',
+      'packages/presentation/ui/src/lib/material-file-icons.ts',
+      'packages/presentation/ui/src/shell/service-icon.tsx',
     ],
     rules: {
       'import-x/no-unresolved': ['error', { ignore: ['^~icons/'] }],

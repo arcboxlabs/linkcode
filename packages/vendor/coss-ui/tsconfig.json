@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "paths": {
+      "coss-ui/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "build", "**/node_modules/**"]
+}
