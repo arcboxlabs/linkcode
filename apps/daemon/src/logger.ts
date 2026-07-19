@@ -3,6 +3,7 @@ import type { ErrorLikeObject } from 'foxts/extract-error-message';
 import { isErrorLikeObject } from 'foxts/extract-error-message';
 import type { DestinationStream, Logger as PinoLogger } from 'pino';
 import createPino from 'pino';
+import { sanitizeDiagnostic } from './diagnostic-sanitizer';
 
 const REDACTED = '[Redacted]';
 
@@ -31,6 +32,7 @@ const EFFECT_BINDING_KEYS = [
   'scheduleId',
   'runId',
   'loopId',
+  'iteration',
   'agentKind',
   'subsystem',
   'operation',
@@ -49,12 +51,20 @@ export function createDaemonLogger(
   return createPino(
     {
       name: 'linkcode-daemon',
+      hooks: {
+        logMethod(args, method) {
+          for (let index = 0; index < args.length; index += 1) {
+            args[index] = sanitizeDiagnostic(args[index]);
+          }
+          method.apply(this, args);
+        },
+      },
       redact: {
         paths: [...REDACT_PATHS],
         censor: REDACTED,
       },
       serializers: {
-        err: createPino.stdSerializers.err,
+        err: sanitizeDiagnostic,
       },
     },
     destination,

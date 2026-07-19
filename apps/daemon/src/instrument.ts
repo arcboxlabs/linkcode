@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import * as Sentry from '@sentry/node';
+import { sanitizeDiagnostic } from './diagnostic-sanitizer';
 
 /**
  * Sentry bootstrap, loaded via `--import` so auto-instrumentation installs before anything else is
@@ -23,6 +24,8 @@ const initOptions: Parameters<typeof Sentry.init>[0] = {
   sendDefaultPii: false,
   integrations,
   tracesSampleRate: 1,
+  beforeSend: sanitizeDiagnostic,
+  beforeSendTransaction: sanitizeDiagnostic,
 };
 
 try {
