@@ -1,7 +1,8 @@
 import type { AgentAdapter } from '@linkcode/agent-adapter';
 import type { AgentEvent, MessageId, StopReason } from '@linkcode/schema';
 import { Cause, Deferred, Effect, Exit } from 'effect';
-import { extractErrorMessage } from 'foxts/extract-error-message';
+import type { AutomationFailure } from './failure';
+import { AutomationDispatchFailure, AutomationTimeout, AutomationUnattended } from './failure';
 
 /** The outcome of one driven turn. */
 export interface TurnResult {
@@ -31,10 +32,10 @@ export function watchTurn(
   adapter: Pick<AgentAdapter, 'onEvent' | 'send'>,
   send: () => Promise<void>,
   opts: { timeoutMs?: number } = {},
-): Effect.Effect<TurnResult, Error> {
+): Effect.Effect<TurnResult, AutomationFailure> {
   return Effect.gen(function* () {
     const segments = new Map<MessageId, string>();
-    const outcome = yield* Deferred.make<TurnResult, Error>();
+    const outcome = yield* Deferred.make<TurnResult, AutomationFailure>();
     const cancel = Effect.tryPromise({
       try: () => adapter.send({ type: 'cancel' }),
       catch: (cause) => cause,
@@ -71,26 +72,29 @@ export function watchTurn(
             case 'status':
               // The turn was torn down without a `stop` (cancel, adapter shutdown).
               if (event.status === 'stopped') {
-                Deferred.doneUnsafe(
-                  outcome,
-                  Effect.fail(new Error('session stopped before the turn finished')),
-                );
+                Deferred.doneUnsafe(outcome, Effect.fail(new AutomationDispatchFailure({})));
               }
               break;
             case 'error':
               // Recoverable errors are surfaced to the client but the turn still settles on `stop`.
               if (!event.recoverable) {
-                Deferred.doneUnsafe(outcome, Effect.fail(new Error(event.message)));
+                Deferred.doneUnsafe(
+                  outcome,
+                  Effect.fail(new AutomationDispatchFailure({ cause: event })),
+                );
               }
               break;
             case 'permission-request':
               Deferred.doneUnsafe(
                 outcome,
-                Effect.fail(new Error(`waiting for permission: ${event.toolCall.title}`)),
+                Effect.fail(new AutomationUnattended({ request: 'permission' })),
               );
               break;
             case 'question-request':
-              Deferred.doneUnsafe(outcome, Effect.fail(new Error('waiting for input')));
+              Deferred.doneUnsafe(
+                outcome,
+                Effect.fail(new AutomationUnattended({ request: 'input' })),
+              );
               break;
             default:
               break;
@@ -102,20 +106,20 @@ export function watchTurn(
           Effect.raceFirst(
             Effect.tryPromise({
               try: () => send(),
-              catch: (error) =>
-                new Error(extractErrorMessage(error) ?? 'failed to dispatch the turn'),
+              catch: (cause) => new AutomationDispatchFailure({ cause }),
             }).pipe(Effect.andThen(Effect.never)),
           ),
         ),
       (unsubscribe) => Effect.sync(unsubscribe),
     );
+    const timeoutMs = opts.timeoutMs;
     const timed =
-      opts.timeoutMs === undefined
+      timeoutMs === undefined
         ? turn
         : turn.pipe(
             Effect.timeoutOrElse({
-              duration: opts.timeoutMs,
-              orElse: () => Effect.fail(new Error(`turn timed out after ${opts.timeoutMs}ms`)),
+              duration: timeoutMs,
+              orElse: () => Effect.fail(new AutomationTimeout({ durationMs: timeoutMs })),
             }),
           );
 

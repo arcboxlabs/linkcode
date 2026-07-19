@@ -118,7 +118,7 @@ export class SessionOrchestrator {
     text: string,
     opts?: { timeoutMs?: number },
   ): Effect.Effect<TurnResult, unknown> {
-    return Effect.suspend(() => {
+    return Effect.suspend<TurnResult, unknown, never>(() => {
       const session = this.requireSession(sessionId);
       if (session.turnInputActive) {
         return Effect.fail(

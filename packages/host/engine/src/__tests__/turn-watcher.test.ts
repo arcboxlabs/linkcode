@@ -64,10 +64,10 @@ describe('watchTurn', () => {
 
   it('rejects when the session stops before the turn finishes', async () => {
     const a = new WatchAdapter();
-    const result = Effect.runPromise(watchTurn(a, asyncNoop));
+    const result = Effect.runPromise(Effect.flip(watchTurn(a, asyncNoop)));
     await Promise.resolve();
     a.emit({ type: 'status', status: 'stopped' });
-    await expect(result).rejects.toThrow('session stopped before the turn finished');
+    await expect(result).resolves.toMatchObject({ _tag: 'AutomationDispatchFailure' });
     expect(a.listenerCount()).toBe(0);
   });
 
@@ -80,18 +80,21 @@ describe('watchTurn', () => {
     await expect(ok).resolves.toMatchObject({ stopReason: 'end_turn' });
 
     const fatal = new WatchAdapter();
-    const bad = Effect.runPromise(watchTurn(fatal, asyncNoop));
+    const bad = Effect.runPromise(Effect.flip(watchTurn(fatal, asyncNoop)));
     await Promise.resolve();
     fatal.emit({ type: 'error', message: 'boom', recoverable: false });
-    await expect(bad).rejects.toThrow('boom');
+    await expect(bad).resolves.toMatchObject({ _tag: 'AutomationDispatchFailure' });
   });
 
   it('cancels the turn and rejects on a permission ask', async () => {
     const a = new WatchAdapter();
-    const result = Effect.runPromise(watchTurn(a, asyncNoop));
+    const result = Effect.runPromise(Effect.flip(watchTurn(a, asyncNoop)));
     await Promise.resolve();
     a.emit(permissionRequest('Edit file.ts'));
-    await expect(result).rejects.toThrow('waiting for permission: Edit file.ts');
+    await expect(result).resolves.toMatchObject({
+      _tag: 'AutomationUnattended',
+      request: 'permission',
+    });
     expect(a.sent).toContainEqual({ type: 'cancel' });
   });
 
@@ -99,8 +102,11 @@ describe('watchTurn', () => {
     vi.useFakeTimers();
     try {
       const a = new WatchAdapter();
-      const result = Effect.runPromise(watchTurn(a, asyncNoop, { timeoutMs: 1000 }));
-      const assertion = expect(result).rejects.toThrow('turn timed out after 1000ms');
+      const result = Effect.runPromise(Effect.flip(watchTurn(a, asyncNoop, { timeoutMs: 1000 })));
+      const assertion = expect(result).resolves.toMatchObject({
+        _tag: 'AutomationTimeout',
+        durationMs: 1000,
+      });
       await vi.advanceTimersByTimeAsync(1000);
       await assertion;
       expect(a.sent).toContainEqual({ type: 'cancel' });
@@ -145,9 +151,9 @@ describe('watchTurn', () => {
   it('rejects when send fails', async () => {
     const a = new WatchAdapter();
     const result = Effect.runPromise(
-      watchTurn(a, () => Promise.reject(new Error('dispatch failed'))),
+      Effect.flip(watchTurn(a, () => Promise.reject(new Error('dispatch failed')))),
     );
-    await expect(result).rejects.toThrow('dispatch failed');
+    await expect(result).resolves.toMatchObject({ _tag: 'AutomationDispatchFailure' });
     expect(a.listenerCount()).toBe(0);
   });
 });
