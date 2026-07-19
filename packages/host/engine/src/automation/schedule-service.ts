@@ -12,6 +12,7 @@ import type { Transport } from '@linkcode/transport';
 import { Cause, Effect, Fiber } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { OperationError, RequestError } from '../failure';
 import { ScheduleCadenceCalculator } from './schedule-cadence';
 import { ScheduleReporter } from './schedule-reporter';
 import { ScheduleRunExecutor, ScheduleTargetGoneError } from './schedule-run-executor';
@@ -117,44 +118,73 @@ export class ScheduleService {
     return Effect.asVoid(Effect.all([...this.inFlight].map((fiber) => Fiber.await(fiber))));
   }
 
-  async create(spec: ScheduleSpec): Promise<Schedule> {
-    this.cadence.validate(spec.cadence);
-    const now = this.now();
-    const schedule: Schedule = {
-      scheduleId: this.mintScheduleId(),
-      spec,
-      status: 'active',
-      nextRunAt: this.cadence.next(spec.cadence, now),
-      runCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.schedules.set(schedule.scheduleId, schedule);
-    await this.store.save(schedule);
-    this.reporter.changed(schedule);
-    return schedule;
+  create(spec: ScheduleSpec): Effect.Effect<Schedule, RequestError | OperationError> {
+    return cadenceEffect(() => {
+      this.cadence.validate(spec.cadence);
+      const now = this.now();
+      return {
+        scheduleId: this.mintScheduleId(),
+        spec,
+        status: 'active',
+        nextRunAt: this.cadence.next(spec.cadence, now),
+        runCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies Schedule;
+    }).pipe(
+      Effect.flatMap((schedule) =>
+        storeEffect('schedules.save', 'Failed to create schedule', () =>
+          this.store.save(schedule),
+        ).pipe(Effect.as(schedule)),
+      ),
+      Effect.tap((schedule) =>
+        Effect.sync(() => {
+          this.schedules.set(schedule.scheduleId, schedule);
+          this.reporter.changed(schedule);
+        }),
+      ),
+    );
   }
 
-  async update(scheduleId: ScheduleId, patch: ScheduleUpdate): Promise<Schedule> {
-    const schedule = this.require(scheduleId);
-    if (patch.cadence !== undefined) this.cadence.validate(patch.cadence);
-    schedule.spec = {
-      ...schedule.spec,
-      ...(patch.name !== undefined && { name: patch.name }),
-      ...(patch.prompt !== undefined && { prompt: patch.prompt }),
-      ...(patch.cadence !== undefined && { cadence: patch.cadence }),
-      ...(patch.maxRuns !== undefined && { maxRuns: patch.maxRuns }),
-      ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt }),
-      ...(patch.misfirePolicy !== undefined && { misfirePolicy: patch.misfirePolicy }),
-    };
-    // A cadence change re-bases the next fire from now; other edits leave the schedule armed as-is.
-    if (schedule.status === 'active' && patch.cadence !== undefined) {
-      schedule.nextRunAt = this.cadence.next(schedule.spec.cadence, this.now());
-    }
-    schedule.updatedAt = this.now();
-    await this.store.save(schedule);
-    this.reporter.changed(schedule);
-    return schedule;
+  update(
+    scheduleId: ScheduleId,
+    patch: ScheduleUpdate,
+  ): Effect.Effect<Schedule, RequestError | OperationError> {
+    return this.find(scheduleId).pipe(
+      Effect.flatMap((current) =>
+        cadenceEffect(() => {
+          if (patch.cadence !== undefined) this.cadence.validate(patch.cadence);
+          return {
+            ...current,
+            spec: {
+              ...current.spec,
+              ...(patch.name !== undefined && { name: patch.name }),
+              ...(patch.prompt !== undefined && { prompt: patch.prompt }),
+              ...(patch.cadence !== undefined && { cadence: patch.cadence }),
+              ...(patch.maxRuns !== undefined && { maxRuns: patch.maxRuns }),
+              ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt }),
+              ...(patch.misfirePolicy !== undefined && { misfirePolicy: patch.misfirePolicy }),
+            },
+            ...(current.status === 'active' &&
+              patch.cadence !== undefined && {
+                nextRunAt: this.cadence.next(patch.cadence, this.now()),
+              }),
+            updatedAt: this.now(),
+          };
+        }),
+      ),
+      Effect.flatMap((schedule) =>
+        storeEffect('schedules.save', 'Failed to update schedule', () =>
+          this.store.save(schedule),
+        ).pipe(Effect.as(schedule)),
+      ),
+      Effect.tap((schedule) =>
+        Effect.sync(() => {
+          this.schedules.set(scheduleId, schedule);
+          this.reporter.changed(schedule);
+        }),
+      ),
+    );
   }
 
   async delete(scheduleId: ScheduleId): Promise<void> {
@@ -286,8 +316,10 @@ export class ScheduleService {
               run.status = 'failed';
               // Bare message (no `Error:` prefix) — this string is shown in the run history.
               run.error = extractErrorMessage(error, false) ?? 'run failed';
-              return error instanceof ScheduleTargetGoneError
-                ? fromPromise(() => this.complete(schedule, 'targetGone'))
+              if (!(error instanceof ScheduleTargetGoneError)) return Effect.void;
+              const current = this.schedules.get(scheduleId);
+              return current
+                ? fromPromise(() => this.complete(current, 'targetGone'))
                 : Effect.void;
             },
             onSuccess: (outcome) =>
@@ -308,7 +340,9 @@ export class ScheduleService {
       Effect.andThen(fromPromise(() => this.store.pruneRuns(scheduleId, RUNS_KEPT_PER_SCHEDULE))),
       Effect.andThen(
         Effect.suspend(() =>
-          fromPromise(() => this.settleScheduleAfterRun(schedule, trigger, nullthrow(run.endedAt))),
+          fromPromise(() =>
+            this.settleScheduleAfterRun(scheduleId, trigger, nullthrow(run.endedAt)),
+          ),
         ),
       ),
       Effect.ensuring(
@@ -322,12 +356,13 @@ export class ScheduleService {
 
   /** Bookkeeping once a run settles: count scheduled runs toward maxRuns; record lastRunAt. */
   private async settleScheduleAfterRun(
-    schedule: Schedule,
+    scheduleId: ScheduleId,
     trigger: ScheduleRunTrigger,
     endedAt: number,
   ): Promise<void> {
+    const schedule = this.schedules.get(scheduleId);
     // A schedule completed mid-run (targetGone) is terminal; leave it alone.
-    if (schedule.status !== 'active') return;
+    if (schedule?.status !== 'active') return;
     schedule.lastRunAt = endedAt;
     if (trigger !== 'manual') schedule.runCount += 1;
     if (trigger !== 'manual' && this.reachedMaxRuns(schedule)) {
@@ -395,6 +430,14 @@ export class ScheduleService {
     return nullthrow(this.schedules.get(scheduleId), `Unknown schedule: ${scheduleId}`);
   }
 
+  private find(scheduleId: ScheduleId): Effect.Effect<Schedule, RequestError> {
+    const schedule = this.schedules.get(scheduleId);
+    if (!schedule) {
+      return Effect.fail(new RequestError({ code: 'not_found', message: 'Schedule not found' }));
+    }
+    return Effect.succeed(schedule);
+  }
+
   private async saveRun(run: ScheduleRun): Promise<void> {
     await this.store.saveRun(run);
     this.reporter.runChanged(run);
@@ -413,4 +456,22 @@ export class ScheduleService {
 
 function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: run, catch: (cause) => cause });
+}
+
+function cadenceEffect<A>(run: () => A): Effect.Effect<A, RequestError> {
+  return Effect.try({
+    try: run,
+    catch: () => new RequestError({ code: 'invalid_request', message: 'Invalid schedule cadence' }),
+  });
+}
+
+function storeEffect<A>(
+  operation: string,
+  publicMessage: string,
+  run: () => PromiseLike<A>,
+): Effect.Effect<A, OperationError> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => new OperationError({ subsystem: 'store', operation, publicMessage, cause }),
+  });
 }

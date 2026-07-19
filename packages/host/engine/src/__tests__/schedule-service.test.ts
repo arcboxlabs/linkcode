@@ -112,6 +112,14 @@ class BlockingSessionDriver extends FakeSessionDriver {
   }
 }
 
+class FailingScheduleStore extends InMemoryScheduleStore {
+  failSaves = false;
+
+  override save(schedule: Schedule): Promise<void> {
+    return this.failSaves ? Promise.reject(new Error('store unavailable')) : super.save(schedule);
+  }
+}
+
 const INTERVAL_SPEC: ScheduleSpec = {
   prompt: 'do the thing',
   cadence: { type: 'interval', everyMs: 60000 },
@@ -131,6 +139,8 @@ function flushAsyncWork(): Promise<void> {
   });
 }
 
+const runEffect = Effect.runPromise;
+
 describe('ScheduleService', () => {
   let clock: number;
   const now = () => clock;
@@ -148,7 +158,7 @@ describe('ScheduleService', () => {
 
   it('arms an interval schedule one period out and broadcasts it', async () => {
     const { service, sent } = makeService();
-    const schedule = await service.create(INTERVAL_SPEC);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
     expect(schedule.status).toBe('active');
     expect(schedule.nextRunAt).toBe(clock + 60000);
     expect(schedulesIn(sent).at(-1)?.scheduleId).toBe(schedule.scheduleId);
@@ -157,35 +167,57 @@ describe('ScheduleService', () => {
   it('validates a cron expression on create', async () => {
     const { service } = makeService();
     await expect(
-      service.create({ ...INTERVAL_SPEC, cadence: { type: 'cron', expression: 'nope' } }),
-    ).rejects.toThrow();
+      runEffect(
+        service.create({ ...INTERVAL_SPEC, cadence: { type: 'cron', expression: 'nope' } }),
+      ),
+    ).rejects.toMatchObject({ _tag: 'RequestError', code: 'invalid_request' });
   });
 
   it('persists and broadcasts an updated misfire policy', async () => {
     const { service, store, sent } = makeService();
-    const schedule = await service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' });
+    const schedule = await runEffect(service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' }));
 
-    const updated = await service.update(schedule.scheduleId, { misfirePolicy: 'catch-up' });
+    const updated = await runEffect(
+      service.update(schedule.scheduleId, { misfirePolicy: 'catch-up' }),
+    );
 
     expect(updated.spec.misfirePolicy).toBe('catch-up');
     expect((await store.load())[0]?.spec.misfirePolicy).toBe('catch-up');
     expect(schedulesIn(sent).at(-1)?.spec.misfirePolicy).toBe('catch-up');
   });
 
+  it('leaves observable state unchanged when an update cannot be persisted', async () => {
+    const store = new FailingScheduleStore();
+    const { service, sent } = makeService(new FakeSessionDriver(), store);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
+    const broadcastsBefore = schedulesIn(sent).length;
+    store.failSaves = true;
+
+    await expect(
+      runEffect(service.update(schedule.scheduleId, { prompt: 'changed' })),
+    ).rejects.toMatchObject({ _tag: 'OperationError', subsystem: 'store' });
+
+    expect(service.list()).toEqual([schedule]);
+    expect(schedulesIn(sent)).toHaveLength(broadcastsBefore);
+    expect((await store.load())[0]).toEqual(schedule);
+  });
+
   it('computes the next cron run in the given timezone', async () => {
     const { service } = makeService();
     clock = Date.parse('2026-07-16T00:00:00Z');
-    const schedule = await service.create({
-      ...INTERVAL_SPEC,
-      cadence: { type: 'cron', expression: '0 9 * * *', timezone: 'Asia/Shanghai' },
-    });
+    const schedule = await runEffect(
+      service.create({
+        ...INTERVAL_SPEC,
+        cadence: { type: 'cron', expression: '0 9 * * *', timezone: 'Asia/Shanghai' },
+      }),
+    );
     // 09:00 Shanghai == 01:00 UTC the same day.
     expect(schedule.nextRunAt).toBe(Date.parse('2026-07-16T01:00:00Z'));
   });
 
   it('runs a due new-session schedule: create → unattended → prompt → stop', async () => {
     const { service, driver, sent } = makeService();
-    const schedule = await service.create(INTERVAL_SPEC);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
     clock += 60000;
     await service.tickOnce();
     await Effect.runPromise(service.settleAll());
@@ -208,10 +240,12 @@ describe('ScheduleService', () => {
     driver.records.add('user-sess' as SessionId);
     driver.busy.add('user-sess' as SessionId);
     const { service, sent } = makeService(driver);
-    await service.create({
-      ...INTERVAL_SPEC,
-      target: { type: 'session', sessionId: 'user-sess' as SessionId },
-    });
+    await runEffect(
+      service.create({
+        ...INTERVAL_SPEC,
+        target: { type: 'session', sessionId: 'user-sess' as SessionId },
+      }),
+    );
     clock += 60000;
     await service.tickOnce();
     await Effect.runPromise(service.settleAll());
@@ -224,10 +258,12 @@ describe('ScheduleService', () => {
 
   it('completes a schedule when its target session is gone', async () => {
     const { service, sent } = makeService();
-    await service.create({
-      ...INTERVAL_SPEC,
-      target: { type: 'session', sessionId: 'ghost' as SessionId },
-    });
+    await runEffect(
+      service.create({
+        ...INTERVAL_SPEC,
+        target: { type: 'session', sessionId: 'ghost' as SessionId },
+      }),
+    );
     clock += 60000;
     await service.tickOnce();
     await Effect.runPromise(service.settleAll());
@@ -241,7 +277,7 @@ describe('ScheduleService', () => {
 
   it('run-once fires without advancing cadence or run count', async () => {
     const { service, driver, sent } = makeService();
-    const schedule = await service.create(INTERVAL_SPEC);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
     const armedAt = schedule.nextRunAt;
     service.runOnce(schedule.scheduleId);
     await Effect.runPromise(service.settleAll());
@@ -256,7 +292,7 @@ describe('ScheduleService', () => {
 
   it('completes after maxRuns cadence runs', async () => {
     const { service, sent } = makeService();
-    await service.create({ ...INTERVAL_SPEC, maxRuns: 2 });
+    await runEffect(service.create({ ...INTERVAL_SPEC, maxRuns: 2 }));
     clock += 60000;
     await service.tickOnce();
     await Effect.runPromise(service.settleAll());
@@ -272,7 +308,7 @@ describe('ScheduleService', () => {
 
   it('completes an expired schedule instead of running it', async () => {
     const { service, driver, sent } = makeService();
-    await service.create({ ...INTERVAL_SPEC, expiresAt: clock + 30000 });
+    await runEffect(service.create({ ...INTERVAL_SPEC, expiresAt: clock + 30000 }));
     clock += 60000;
     await service.tickOnce();
 
@@ -291,7 +327,7 @@ describe('ScheduleService', () => {
     // Miss the slot by 20h (> 12h grace) → skipped, no run.
     const skipDriver = new FakeSessionDriver();
     const skip = makeService(skipDriver);
-    await skip.service.create(dailySpec);
+    await runEffect(skip.service.create(dailySpec));
     clock += DAILY + 20 * 60 * 60 * 1000;
     await skip.service.tickOnce();
     await Effect.runPromise(skip.service.settleAll());
@@ -301,7 +337,7 @@ describe('ScheduleService', () => {
     // Miss the slot by 2h (< 12h grace) → catch-up run.
     const catchDriver = new FakeSessionDriver();
     const c = makeService(catchDriver);
-    await c.service.create(dailySpec);
+    await runEffect(c.service.create(dailySpec));
     clock += DAILY + 2 * 60 * 60 * 1000;
     await c.service.tickOnce();
     await Effect.runPromise(c.service.settleAll());
@@ -314,7 +350,7 @@ describe('ScheduleService', () => {
     const driver = new FakeSessionDriver();
     const { service, sent } = makeService(driver);
     // A mid-slot miss within grace: the default policy would catch up; `skip` suppresses the run.
-    await service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' });
+    await runEffect(service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' }));
     clock += 150_000; // 2.5 intervals late → 30s past the latest slot
     await service.tickOnce();
     await Effect.runPromise(service.settleAll());
@@ -334,7 +370,7 @@ describe('ScheduleService', () => {
       defaultMisfirePolicy: 'skip',
     });
     service.bindRuntime(Effect.runFork);
-    await service.create(INTERVAL_SPEC);
+    await runEffect(service.create(INTERVAL_SPEC));
     clock += 150_000;
     await service.tickOnce();
     await Effect.runPromise(service.settleAll());
@@ -346,7 +382,7 @@ describe('ScheduleService', () => {
   it('shutdown waits for an accepted run to unwind', async () => {
     const driver = new BlockingSessionDriver();
     const { service } = makeService(driver);
-    const schedule = await service.create(INTERVAL_SPEC);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
     service.runOnce(schedule.scheduleId);
     await driver.promptStarted;
 
@@ -371,9 +407,9 @@ describe('ScheduleService', () => {
   it('shutdown rejects new manual and cadence runs', async () => {
     const driver = new BlockingSessionDriver();
     const { service } = makeService(driver);
-    const accepted = await service.create(INTERVAL_SPEC);
-    const manual = await service.create(INTERVAL_SPEC);
-    await service.create(INTERVAL_SPEC);
+    const accepted = await runEffect(service.create(INTERVAL_SPEC));
+    const manual = await runEffect(service.create(INTERVAL_SPEC));
+    await runEffect(service.create(INTERVAL_SPEC));
     service.runOnce(accepted.scheduleId);
     await driver.promptStarted;
 
@@ -396,7 +432,7 @@ describe('ScheduleService', () => {
   it('repeated shutdown calls await the same unwind', async () => {
     const driver = new BlockingSessionDriver();
     const { service } = makeService(driver);
-    const schedule = await service.create(INTERVAL_SPEC);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
     service.runOnce(schedule.scheduleId);
     await driver.promptStarted;
 
@@ -425,10 +461,12 @@ describe('ScheduleService', () => {
     const driver1 = new FakeSessionDriver();
     driver1.records.add('user-sess' as SessionId);
     const first = makeService(driver1, store);
-    const schedule = await first.service.create({
-      ...INTERVAL_SPEC,
-      target: { type: 'session', sessionId: 'user-sess' as SessionId },
-    });
+    const schedule = await runEffect(
+      first.service.create({
+        ...INTERVAL_SPEC,
+        target: { type: 'session', sessionId: 'user-sess' as SessionId },
+      }),
+    );
     // Simulate a run left mid-flight when the daemon died.
     await store.saveRun({
       runId: 'orphan-run' as never,

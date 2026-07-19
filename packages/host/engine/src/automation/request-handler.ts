@@ -40,7 +40,7 @@ export class AutomationRequestHandler {
       case 'schedule.create':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.scheduler.create(payload.spec)).pipe(
+          this.scheduler.create(payload.spec).pipe(
             Effect.flatMap((schedule) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -57,7 +57,7 @@ export class AutomationRequestHandler {
       case 'schedule.update':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.scheduler.update(payload.scheduleId, payload.patch)).pipe(
+          this.scheduler.update(payload.scheduleId, payload.patch).pipe(
             Effect.flatMap((schedule) =>
               Effect.sync(() =>
                 this.transport.send(

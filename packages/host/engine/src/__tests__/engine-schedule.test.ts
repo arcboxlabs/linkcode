@@ -182,4 +182,23 @@ describe('engine schedule wiring', () => {
       message: 'Internal engine error',
     });
   });
+
+  it('reports an invalid cron cadence as an invalid request', async () => {
+    const h = harness();
+    await h.engine.start();
+
+    h.inject({
+      kind: 'schedule.create',
+      clientReqId: 'invalid-cron',
+      spec: { ...SPEC, cadence: { type: 'cron', expression: 'nope' } },
+    });
+    await h.settle();
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'invalid-cron',
+      code: 'invalid_request',
+      message: 'Invalid schedule cadence',
+    });
+  });
 });
