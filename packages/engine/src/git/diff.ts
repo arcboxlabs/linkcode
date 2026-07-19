@@ -2,7 +2,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { GitDiff, GitDiffMode, GitDiffStat } from '@linkcode/schema';
-import { runCommand } from './exec';
+import { runCommand } from '../process/run-command';
 
 /** Read-only git env: never prompt for credentials, never take optional locks — a diff read must
  * not contend with a concurrently running agent's git for `index.lock`. */

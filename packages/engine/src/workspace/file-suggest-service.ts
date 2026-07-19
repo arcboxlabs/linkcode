@@ -1,8 +1,8 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileSuggestion } from '@linkcode/schema';
-import { runCommand } from '../git/exec';
-import { TtlCache } from '../ttl-cache';
+import { TtlCache } from '../cache/ttl-cache';
+import { runCommand } from '../process/run-command';
 
 export const DEFAULT_SUGGEST_LIMIT = 50;
 const MAX_ENUMERATED_FILES = 20000;

@@ -1,6 +1,6 @@
 import type { GitDiff, GitDiffMode, GitPullRequestStatus, GitStatus } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { TtlCache } from '../ttl-cache';
+import { TtlCache } from '../cache/ttl-cache';
 import { readGitDiff } from './diff';
 import { GhCliGitHubClient } from './github';
 import type { GitProviderClient } from './provider';
