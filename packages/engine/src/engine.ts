@@ -11,12 +11,10 @@ import type {
   WireMessage,
   WorkspaceRecord,
 } from '@linkcode/schema';
-import { agentCommandMatches } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
-import { noop } from 'foxts/noop';
 import type { LoginBinaryResolver } from './agent/login-service';
 import { AgentLoginService } from './agent/login-service';
 import type { ProviderConfigStore } from './agent/provider-config';
@@ -38,7 +36,6 @@ import { GitService } from './git/git-service';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { PreviewRouteRegistry } from './preview/route-registry';
 import { ScriptService } from './scripts/script-service';
-import { assertAttachmentContentAllowed } from './session/attachment-guard';
 import { HistoryService } from './session/history-service';
 import { SessionOrchestrator } from './session/orchestrator';
 import { SessionRecordRegistry } from './session/session-record-registry';
@@ -131,7 +128,13 @@ export class Engine {
         console.error(message, error);
       },
     });
-    this.sessions = new SessionOrchestrator(transport, factory, this.records, this.runtimes);
+    this.sessions = new SessionOrchestrator(
+      transport,
+      factory,
+      this.records,
+      this.runtimes,
+      (sessionId) => this.terminals?.killBySession(sessionId),
+    );
     this.terminals = deps.ptyBackend
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
@@ -233,130 +236,14 @@ export class Engine {
       }
       case 'agent.input': {
         await this.tryReply(p.clientReqId, async () => {
-          const session = nullthrow(
-            this.sessions.get(p.sessionId),
-            `Unknown session: ${p.sessionId}`,
-          );
-          const startsTurn =
-            p.input.type === 'prompt' ||
-            p.input.type === 'command' ||
-            p.input.type === 'shell-command';
-          if (p.input.type === 'command') {
-            const commandName = p.input.name;
-            if (
-              !session.capabilities.slashCommands ||
-              !session.availableCommands?.some((command) =>
-                agentCommandMatches(command, commandName),
-              )
-            ) {
-              const error = new Error(`Unknown slash command: /${commandName}`);
-              this.sessions.rejectInput(p.sessionId, error.message);
-              throw error;
-            }
-          }
-          if (p.input.type === 'shell-command' && !session.capabilities.shellCommand) {
-            const error = new Error('Shell commands are not supported by this session');
-            this.sessions.rejectInput(p.sessionId, error.message);
-            throw error;
-          }
-          if (startsTurn && session.turnInputActive) {
-            const error = new Error(`Session is busy: ${p.sessionId}`);
-            this.sessions.rejectInput(p.sessionId, error.message);
-            throw error;
-          }
-          if (startsTurn) session.turnInputActive = true;
-          // Echo the prompt (and set the title) before awaiting send: provider events can outrun
-          // the dispatch ack, so waiting would let assistant output arrive before its user turn.
-          // A failed send still broadcasts input_rejected below and replies request.failed.
-          if (p.input.type === 'prompt') {
-            assertAttachmentContentAllowed(p.input.content);
-            this.transport.send(
-              createWireMessage({
-                kind: 'agent.event',
-                sessionId: p.sessionId,
-                event: { type: 'user-message', content: p.input.content },
-              }),
-            );
-            this.records.setTitleFromContent(p.sessionId, p.input.content);
-          }
-          // Echo command/shell inputs as the text the user typed so the transcript shows the
-          // invocation; they never drive the title.
-          if (p.input.type === 'command' || p.input.type === 'shell-command') {
-            const text =
-              p.input.type === 'command'
-                ? `/${p.input.name}${p.input.arguments ? ` ${p.input.arguments}` : ''}`
-                : `$ ${p.input.command}`;
-            this.transport.send(
-              createWireMessage({
-                kind: 'agent.event',
-                sessionId: p.sessionId,
-                event: { type: 'user-message', content: [{ type: 'text', text }] },
-              }),
-            );
-          }
-          const responseInput =
-            p.input.type === 'permission-response' || p.input.type === 'question-response'
-              ? p.input
-              : undefined;
-          const respondingAsk = responseInput
-            ? session.interactions.beginResponse(responseInput)
-            : undefined;
-          if (responseInput && respondingAsk) {
-            this.sessions.broadcast(p.sessionId, [
-              {
-                type: 'prompt-response-status',
-                requestId: responseInput.requestId,
-                status: 'responding',
-              },
-            ]);
-          }
-          try {
-            await session.adapter.send(p.input);
-          } catch (err) {
-            if (responseInput && respondingAsk) {
-              this.sessions.broadcast(
-                p.sessionId,
-                session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
-              );
-            }
-            if (startsTurn && session.status !== 'running') session.turnInputActive = false;
-            if (startsTurn) {
-              this.sessions.rejectInput(
-                p.sessionId,
-                extractErrorMessage(err) ?? 'Agent input was rejected',
-              );
-            }
-            throw err;
-          }
-          if (responseInput && respondingAsk) {
-            const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
-            if (resolution) this.sessions.broadcast(p.sessionId, [resolution]);
-          }
-          // Synchronous controls such as Codex /compact may not produce lifecycle events. A real
-          // turn has reported running by this point — BaseAgentAdapter's turn contract requires
-          // turn-starting hooks to emit it before send() resolves — and stays gated until its
-          // idle/stopped event.
-          if (startsTurn && session.status !== 'running') session.turnInputActive = false;
+          await this.sessions.sendInput(p.sessionId, p.input);
           this.sendSuccess(p.clientReqId);
         });
         break;
       }
       case 'session.stop': {
         await this.tryReply(p.clientReqId, async () => {
-          const session = nullthrow(
-            this.sessions.get(p.sessionId),
-            `Unknown session: ${p.sessionId}`,
-          );
-          this.sessions.broadcast(p.sessionId, session.closeInteractions());
-          session.stopListening();
-          try {
-            await session.adapter.stop();
-          } finally {
-            if (this.sessions.remove(p.sessionId, session)) {
-              this.terminals?.killBySession(p.sessionId);
-              this.records.sealCurrentRun(p.sessionId);
-            }
-          }
+          await this.sessions.stop(p.sessionId);
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -365,28 +252,7 @@ export class Engine {
         await this.tryReply(p.clientReqId, async () => {
           // Idempotent, unlike session.stop: the target is usually cold or already deleted by
           // another client. Provider-local history stays untouched, so session.import still works.
-          const session = this.sessions.get(p.sessionId);
-          if (session) {
-            this.sessions.broadcast(p.sessionId, session.closeInteractions());
-            session.stopListening();
-            try {
-              await session.adapter.stop();
-            } catch (error) {
-              this.records.sealCurrentRun(p.sessionId);
-              throw error;
-            } finally {
-              this.sessions.remove(p.sessionId, session);
-              this.terminals?.killBySession(p.sessionId);
-            }
-          }
-          // Persisted delete first: if the store throws, the record stays listed (now cold) and the
-          // client's retry still works — dropping it from memory first would desync the two.
-          try {
-            await this.records.delete(p.sessionId);
-          } catch (error) {
-            if (session) this.records.sealCurrentRun(p.sessionId);
-            throw error;
-          }
+          await this.sessions.delete(p.sessionId);
           this.sendSuccess(p.clientReqId);
         });
         break;
@@ -1017,14 +883,7 @@ export class Engine {
 
   /** Stop a live session idempotently, keeping its record. Shared by session.stop and the driver. */
   private async stopSessionById(sessionId: SessionId): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session) return;
-    session.stopListening();
-    await session.adapter.stop().catch(noop);
-    if (this.sessions.remove(sessionId, session)) {
-      this.terminals?.killBySession(sessionId);
-      this.records.sealCurrentRun(sessionId);
-    }
+    await this.sessions.stopIfLive(sessionId);
   }
 
   /**

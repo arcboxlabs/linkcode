@@ -2,15 +2,20 @@ import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { AUTH_FAILED_ERROR_CODE } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
+  AgentInput,
   SessionId,
   SessionInfo,
   SessionNotificationReason,
   SessionRecord,
 } from '@linkcode/schema';
+import { agentCommandMatches } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { extractErrorMessage } from 'foxts/extract-error-message';
+import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import type { AgentRuntimeService } from '../agent/runtime-service';
+import { assertAttachmentContentAllowed } from './attachment-guard';
 import { LiveSession } from './live-session';
 import type { SessionRecordRegistry } from './session-record-registry';
 
@@ -22,6 +27,7 @@ export class SessionOrchestrator {
     private readonly factory: AdapterFactory,
     private readonly records: SessionRecordRegistry,
     private readonly runtimes: AgentRuntimeService,
+    private readonly onStopped: (sessionId: SessionId) => void,
   ) {}
 
   get(sessionId: SessionId): LiveSession | undefined {
@@ -32,7 +38,7 @@ export class SessionOrchestrator {
     return this.sessions.has(sessionId);
   }
 
-  remove(sessionId: SessionId, session: LiveSession): boolean {
+  private remove(sessionId: SessionId, session: LiveSession): boolean {
     if (this.sessions.get(sessionId) !== session) return false;
     this.sessions.delete(sessionId);
     return true;
@@ -52,13 +58,135 @@ export class SessionOrchestrator {
     if (session) this.broadcast(sessionId, session.replay());
   }
 
-  broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
+  async sendInput(sessionId: SessionId, input: AgentInput): Promise<void> {
+    const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
+    const startsTurn =
+      input.type === 'prompt' || input.type === 'command' || input.type === 'shell-command';
+    if (
+      input.type === 'command' &&
+      (!session.capabilities.slashCommands ||
+        !session.availableCommands?.some((command) => agentCommandMatches(command, input.name)))
+    ) {
+      const error = new Error(`Unknown slash command: /${input.name}`);
+      this.rejectInput(sessionId, error.message);
+      throw error;
+    }
+    if (input.type === 'shell-command' && !session.capabilities.shellCommand) {
+      const error = new Error('Shell commands are not supported by this session');
+      this.rejectInput(sessionId, error.message);
+      throw error;
+    }
+    if (startsTurn && session.turnInputActive) {
+      const error = new Error(`Session is busy: ${sessionId}`);
+      this.rejectInput(sessionId, error.message);
+      throw error;
+    }
+    if (startsTurn) session.turnInputActive = true;
+    // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
+    if (input.type === 'prompt') {
+      assertAttachmentContentAllowed(input.content);
+      this.broadcast(sessionId, [{ type: 'user-message', content: input.content }]);
+      this.records.setTitleFromContent(sessionId, input.content);
+    } else if (input.type === 'command' || input.type === 'shell-command') {
+      const text =
+        input.type === 'command'
+          ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
+          : `$ ${input.command}`;
+      this.broadcast(sessionId, [{ type: 'user-message', content: [{ type: 'text', text }] }]);
+    }
+    const responseInput =
+      input.type === 'permission-response' || input.type === 'question-response'
+        ? input
+        : undefined;
+    const respondingAsk = responseInput
+      ? session.interactions.beginResponse(responseInput)
+      : undefined;
+    if (responseInput && respondingAsk) {
+      this.broadcast(sessionId, [
+        {
+          type: 'prompt-response-status',
+          requestId: responseInput.requestId,
+          status: 'responding',
+        },
+      ]);
+    }
+    try {
+      await session.adapter.send(input);
+    } catch (error) {
+      if (responseInput && respondingAsk) {
+        this.broadcast(
+          sessionId,
+          session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
+        );
+      }
+      if (startsTurn && session.status !== 'running') session.turnInputActive = false;
+      if (startsTurn) {
+        this.rejectInput(sessionId, extractErrorMessage(error) ?? 'Agent input was rejected');
+      }
+      throw error;
+    }
+    if (responseInput && respondingAsk) {
+      const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
+      if (resolution) this.broadcast(sessionId, [resolution]);
+    }
+    // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
+    if (startsTurn && session.status !== 'running') session.turnInputActive = false;
+  }
+
+  async stop(sessionId: SessionId): Promise<void> {
+    const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
+    this.broadcast(sessionId, session.closeInteractions());
+    session.stopListening();
+    try {
+      await session.adapter.stop();
+    } finally {
+      if (this.remove(sessionId, session)) {
+        this.onStopped(sessionId);
+        this.records.sealCurrentRun(sessionId);
+      }
+    }
+  }
+
+  async delete(sessionId: SessionId): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      this.broadcast(sessionId, session.closeInteractions());
+      session.stopListening();
+      try {
+        await session.adapter.stop();
+      } catch (error) {
+        this.records.sealCurrentRun(sessionId);
+        throw error;
+      } finally {
+        if (this.remove(sessionId, session)) this.onStopped(sessionId);
+      }
+    }
+    try {
+      await this.records.delete(sessionId);
+    } catch (error) {
+      if (session) this.records.sealCurrentRun(sessionId);
+      throw error;
+    }
+  }
+
+  async stopIfLive(sessionId: SessionId): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.stopListening();
+    await session.adapter.stop().catch(noop);
+    if (this.remove(sessionId, session)) {
+      this.onStopped(sessionId);
+      this.records.sealCurrentRun(sessionId);
+    }
+  }
+
+  private broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
     for (const event of events) {
       this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
     }
   }
 
-  rejectInput(sessionId: SessionId, message: string): void {
+  private rejectInput(sessionId: SessionId, message: string): void {
     this.transport.send(
       createWireMessage({
         kind: 'agent.event',
