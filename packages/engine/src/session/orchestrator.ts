@@ -3,6 +3,7 @@ import { AUTH_FAILED_ERROR_CODE } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentInput,
+  ContentBlock,
   SessionId,
   SessionInfo,
   SessionNotificationReason,
@@ -15,6 +16,8 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import type { AgentRuntimeService } from '../agent/runtime-service';
+import type { TurnResult } from '../automation/turn-watcher';
+import { watchTurn } from '../automation/turn-watcher';
 import { assertAttachmentContentAllowed } from './attachment-guard';
 import { LiveSession } from './live-session';
 import type { SessionRecordRegistry } from './session-record-registry';
@@ -30,7 +33,7 @@ export class SessionOrchestrator {
     private readonly onStopped: (sessionId: SessionId) => void,
   ) {}
 
-  get(sessionId: SessionId): LiveSession | undefined {
+  private get(sessionId: SessionId): LiveSession | undefined {
     return this.sessions.get(sessionId);
   }
 
@@ -178,6 +181,37 @@ export class SessionOrchestrator {
       this.onStopped(sessionId);
       this.records.sealCurrentRun(sessionId);
     }
+  }
+
+  async makeUnattended(sessionId: SessionId): Promise<void> {
+    const session = this.get(sessionId);
+    if (!session) return;
+    try {
+      await session.adapter.send({
+        type: 'set-approval-policy',
+        policyId: 'bypassPermissions',
+      });
+    } catch {
+      // Adapters without an approval-policy axis fail here; a later ask fails the unattended run.
+    }
+  }
+
+  prompt(sessionId: SessionId, text: string, opts?: { timeoutMs?: number }): Promise<TurnResult> {
+    const session = nullthrow(this.get(sessionId), `Unknown session: ${sessionId}`);
+    if (session.turnInputActive) throw new Error(`Session is busy: ${sessionId}`);
+    session.turnInputActive = true;
+    const content: ContentBlock[] = [{ type: 'text', text }];
+    this.broadcast(sessionId, [{ type: 'user-message', content }]);
+    this.records.setTitleFromContent(sessionId, content);
+    return watchTurn(
+      session.adapter,
+      () => session.adapter.send({ type: 'prompt', content }),
+      opts,
+    ).catch((error: unknown) => {
+      // A fatal dispatch/ask can fail before a lifecycle event releases the turn gate.
+      if (session.status !== 'running') session.turnInputActive = false;
+      throw error;
+    });
   }
 
   private broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {

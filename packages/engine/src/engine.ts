@@ -3,7 +3,6 @@ import { createAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentKind,
   AgentRuntimes,
-  ContentBlock,
   SessionAutomation,
   SessionId,
   SessionRecord,
@@ -30,7 +29,6 @@ import {
   InMemoryScheduleStore,
   LoopService,
   ScheduleService,
-  watchTurn,
 } from './automation';
 import { GitService } from './git/git-service';
 import { ArtifactHostService } from './preview/artifact-host-service';
@@ -831,59 +829,10 @@ export class Engine {
         if (this.sessions.has(sessionId)) return;
         await this.resumeSessionById(undefined, sessionId);
       },
-      makeUnattended: async (sessionId) => {
-        const session = this.sessions.get(sessionId);
-        if (!session) return;
-        try {
-          // Both policy-bearing adapters (claude-code, codex) name their most permissive policy
-          // `bypassPermissions`; opencode/pi have no policy axis and reject this — swallowed, so a
-          // later ask fails the run instead. Applied only to automation-created sessions.
-          await session.adapter.send({
-            type: 'set-approval-policy',
-            policyId: 'bypassPermissions',
-          });
-        } catch {
-          // Adapter has no approval-policy axis; unattended is best-effort.
-        }
-      },
-      prompt: (sessionId, text, opts) => this.promptAutomationTurn(sessionId, text, opts),
-      stopSession: (sessionId) => this.stopSessionById(sessionId),
+      makeUnattended: (sessionId) => this.sessions.makeUnattended(sessionId),
+      prompt: (sessionId, text, opts) => this.sessions.prompt(sessionId, text, opts),
+      stopSession: (sessionId) => this.sessions.stopIfLive(sessionId),
     };
-  }
-
-  /** Echo a prompt into the broadcast stream, dispatch it, and wait for the turn (see watchTurn). */
-  private promptAutomationTurn(
-    sessionId: SessionId,
-    text: string,
-    opts?: { timeoutMs?: number },
-  ): Promise<Awaited<ReturnType<typeof watchTurn>>> {
-    const session = nullthrow(this.sessions.get(sessionId), `Unknown session: ${sessionId}`);
-    if (session.turnInputActive) throw new Error(`Session is busy: ${sessionId}`);
-    session.turnInputActive = true;
-    const content: ContentBlock[] = [{ type: 'text', text }];
-    this.transport.send(
-      createWireMessage({
-        kind: 'agent.event',
-        sessionId,
-        event: { type: 'user-message', content },
-      }),
-    );
-    this.records.setTitleFromContent(sessionId, content);
-    return watchTurn(
-      session.adapter,
-      () => session.adapter.send({ type: 'prompt', content }),
-      opts,
-    ).catch((err: unknown) => {
-      // The turn never latched running (fatal dispatch/ask); release the gate the status handler
-      // would otherwise have cleared on idle/stopped.
-      if (session.status !== 'running') session.turnInputActive = false;
-      throw err;
-    });
-  }
-
-  /** Stop a live session idempotently, keeping its record. Shared by session.stop and the driver. */
-  private async stopSessionById(sessionId: SessionId): Promise<void> {
-    await this.sessions.stopIfLive(sessionId);
   }
 
   /**
