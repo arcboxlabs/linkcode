@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { AgentCommand } from '@linkcode/schema';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LexicalEditor, NodeKey } from 'lexical';
 import {
@@ -42,6 +42,7 @@ const COMMANDS: AgentCommand[] = [
   { name: 'review', description: 'Review the changes' },
 ];
 const RE_COMPACT_COMMAND = /\/compact/;
+const RE_REVIEW_COMMAND = /\/review/;
 const CHIP_CASES = [
   ['command', () => $createCommandNode('review')],
   ['shell', () => $createShellNode()],
@@ -134,6 +135,24 @@ describe('Composer directive chips', () => {
     expect(onInvokeCommand).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
     expect(composerText()).toBe('/typo ');
+  });
+
+  it('materializes a boundary-less unknown command when Enter submits an empty menu', async () => {
+    const onInvokeCommand = vi.fn();
+    const onSend = vi.fn();
+    render(composer({ onInvokeCommand, onSend }));
+
+    typeInComposer('/bogus');
+    expect(screen.getByRole('listbox')).toBeDefined();
+    expect(screen.queryByRole('option')).toBeNull();
+
+    await pressInComposer('Enter');
+
+    expect(await screen.findByRole('button', { name: '/bogus' })).toBeDefined();
+    expect(within(screen.getByRole('status')).getByText('commandUnknown')).toBeDefined();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
+    expect(onInvokeCommand).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it('converts an unknown command to sendable prose', async () => {
@@ -249,6 +268,37 @@ describe('Composer directive chips', () => {
     expectCaret(editor, leftKey, 1);
   });
 
+  it('leaves modified horizontal arrows to native selection handling', async () => {
+    render(composer());
+    const editor = composerLexicalEditor();
+    let chipKey: NodeKey = '';
+
+    act(() => {
+      editor.update(
+        () => {
+          const left = $createTextNode('a');
+          const chip = $createCommandNode('review');
+          chipKey = chip.getKey();
+          $getRoot()
+            .clear()
+            .append($createParagraphNode().append(left, chip, $createTextNode('b')));
+          left.selectEnd();
+        },
+        { discrete: true, tag: HISTORIC_TAG },
+      );
+    });
+
+    await pressInComposer('ArrowRight');
+    expect(hasNodeSelection(editor, chipKey)).toBe(true);
+    for (const [key, modifier] of [
+      ['ArrowLeft', { altKey: true }],
+      ['ArrowRight', { shiftKey: true }],
+    ] as const) {
+      expect(fireEvent.keyDown(composerTextbox(), { code: key, key, ...modifier })).toBe(true);
+      expect(hasNodeSelection(editor, chipKey)).toBe(true);
+    }
+  });
+
   it.each(
     CHIP_DELETION_CASES,
   )('deletes the selected %s chip with %s and preserves the caret', async (_kind, key, createChip) => {
@@ -283,11 +333,13 @@ describe('Composer directive chips', () => {
     expectCaret(editor, leftKey, 1);
   });
 
-  it('recognizes a supported mid-line command and offers to move it to the start', async () => {
+  it('offers recovery for a command explicitly selected at a mid-line trigger', async () => {
     const user = userEvent.setup();
     const onInvokeCommand = vi.fn();
     render(composer({ onInvokeCommand }));
-    typeInComposer('please /review now');
+    typeInComposer('please /rev');
+    await user.click(screen.getByRole('option', { name: RE_REVIEW_COMMAND }));
+    typeInComposer('now');
 
     const chip = screen.getByRole('button', { name: '/review' });
     expect(chip.getAttribute('aria-invalid')).toBe('true');
@@ -303,6 +355,21 @@ describe('Composer directive chips', () => {
     expect(composerText()).toBe('/review please now');
     await pressInComposer('Enter');
     expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', 'please now');
+  });
+
+  it('keeps a typed known command in mid-sentence as sendable prose', async () => {
+    const onInvokeCommand = vi.fn();
+    const onSend = vi.fn();
+    render(composer({ onInvokeCommand, onSend }));
+
+    typeInComposer('please /review now');
+
+    expect(screen.queryByRole('button', { name: '/review' })).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false);
+    await pressInComposer('Enter');
+    expect(onInvokeCommand).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: 'please /review now' }]);
   });
 
   it('blocks multiple directives until the extra chip is explicitly converted', async () => {
@@ -324,15 +391,30 @@ describe('Composer directive chips', () => {
     expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', '/compact');
   });
 
-  it('materializes a typed mid-line command when its live catalog arrives', async () => {
+  it('keeps typed mid-line prose unchanged when its live catalog arrives', () => {
     const { rerender } = render(composer({ agentCommands: [] }));
     typeInComposer('please /review ');
     expect(screen.queryByRole('button', { name: '/review' })).toBeNull();
 
     rerender(composer({ agentCommands: COMMANDS }));
 
-    expect(await screen.findByRole('button', { name: '/review' })).toBeDefined();
-    expect(within(screen.getByRole('status')).getByText('commandMisplaced')).toBeDefined();
+    expect(screen.queryByRole('button', { name: '/review' })).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(composerText()).toBe('please /review ');
+  });
+
+  it('sends a bare $ as prose instead of materializing an empty shell directive', async () => {
+    const onRunShellCommand = vi.fn();
+    const onSend = vi.fn();
+    render(composer({ onRunShellCommand, onSend, shellSupported: true }));
+
+    typeInComposer('$');
+
+    expect(screen.queryByRole('button', { name: '$' })).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false);
+    await pressInComposer('Enter');
+    expect(onRunShellCommand).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: '$' }]);
   });
 
   it('explains an unavailable shell directive and blocks submit', async () => {

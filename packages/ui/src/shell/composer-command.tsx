@@ -242,16 +242,21 @@ function CommandIcon({ entry }: { entry: ComposerCommandEntry }): React.ReactNod
 
 export function ComposerCommandMenu({
   emptyLabel,
+  listId,
   onSelect,
 }: {
   emptyLabel: string;
+  listId: string;
   onSelect: (entry: ComposerCommandEntry) => void;
 }): React.ReactNode {
   return (
     <div className="flex max-h-80 min-h-0 flex-col **:data-[slot=scroll-area-viewport]:max-h-80 **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-0!">
       <CommandEmpty>{emptyLabel}</CommandEmpty>
       <div className="min-h-0 flex-1">
-        <CommandList className="in-data-has-overflow-y:pe-2! not-empty:scroll-py-1 not-empty:p-1 not-empty:pb-2">
+        <CommandList
+          className="in-data-has-overflow-y:pe-2! not-empty:scroll-py-1 not-empty:p-1 not-empty:pb-2"
+          id={listId}
+        >
           {(group: ComposerCommandGroup) => (
             <CommandGroup key={group.value} items={group.items}>
               <CommandGroupLabel>{group.label}</CommandGroupLabel>

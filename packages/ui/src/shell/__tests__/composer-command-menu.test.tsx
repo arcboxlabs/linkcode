@@ -155,6 +155,43 @@ function imageFileWithSize(name: string, size: number): File {
 afterEach(cleanup);
 
 describe('Composer command menu', () => {
+  it('exposes autocomplete semantics on the focused editor and preserves modified arrows', async () => {
+    const { container } = render(composer());
+    const editor = composerTextbox();
+    const relay = container.querySelector<HTMLInputElement>('input.sr-only');
+
+    expect(editor.getAttribute('role')).toBe('combobox');
+    expect(editor.getAttribute('aria-expanded')).toBe('false');
+    expect(editor.getAttribute('aria-controls')).toBeNull();
+    expect(relay?.getAttribute('aria-hidden')).toBe('true');
+    expect(relay?.getAttribute('role')).toBe('presentation');
+
+    typeInComposer('/');
+    const listbox = screen.getByRole('listbox');
+    await waitFor(() => {
+      expect(editor.getAttribute('aria-expanded')).toBe('true');
+      expect(editor.getAttribute('aria-controls')).toBe(listbox.id);
+      const active = document.getElementById(editor.getAttribute('aria-activedescendant') ?? '');
+      expect(active?.getAttribute('role')).toBe('option');
+    });
+
+    const initialActive = editor.getAttribute('aria-activedescendant');
+    for (const key of ['ArrowDown', 'ArrowUp']) {
+      for (const modifier of [
+        { altKey: true },
+        { ctrlKey: true },
+        { metaKey: true },
+        { shiftKey: true },
+      ]) {
+        expect(fireEvent.keyDown(editor, { code: key, key, ...modifier })).toBe(true);
+        expect(editor.getAttribute('aria-activedescendant')).toBe(initialActive);
+      }
+    }
+
+    await pressInComposer('ArrowDown');
+    expect(editor.getAttribute('aria-activedescendant')).not.toBe(initialActive);
+  });
+
   it('renders an icon for matched and fallback file mentions', () => {
     render(
       composer({
@@ -282,7 +319,7 @@ describe('Composer command menu', () => {
     await pressInComposer('Escape');
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
     // jsdom does not reflect contenteditable focus through document.activeElement.
-    expect(screen.getByRole('textbox')).toBe(input);
+    expect(screen.getByRole('combobox')).toBe(input);
 
     backspaceInComposer();
     typeInComposer('/');

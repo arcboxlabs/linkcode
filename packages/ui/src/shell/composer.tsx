@@ -17,7 +17,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { LexicalEditor } from 'lexical';
 import { $getSelection, $setSelection, CLEAR_HISTORY_COMMAND } from 'lexical';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { ChatAttachment } from '../chat/attachments';
 import { Attachments } from '../chat/attachments';
@@ -222,6 +222,9 @@ export function Composer({
   const [plusCommandStart, setPlusCommandStart] = useState<number | null>(null);
   const editorRef = useRef<LexicalEditor | null>(null);
   const relayRef = useRef<HTMLInputElement | null>(null);
+  const commandMenuId = useId();
+  const commandListId = `${commandMenuId}-listbox`;
+  const [highlightedCommandIndex, setHighlightedCommandIndex] = useState<number | null>(null);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
@@ -749,11 +752,15 @@ export function Composer({
           <Command
             autoHighlight="always"
             filter={null}
+            id={commandMenuId}
             inline={false}
             items={renderedCommandGroups}
             itemToStringValue={commandEntryToString}
             keepHighlight
             open={commandOpen}
+            onItemHighlighted={(_entry, details) => {
+              setHighlightedCommandIndex(details.index >= 0 ? details.index : null);
+            }}
             onOpenChange={(open) => {
               if (!open) closeCommand();
             }}
@@ -764,6 +771,7 @@ export function Composer({
              * navigates and Enter-clicks the highlighted item without this input ever focusing. */}
             <AutocompletePrimitive.Input
               aria-hidden
+              role="presentation"
               render={<input ref={relayRef} className="sr-only" tabIndex={-1} />}
             />
             <Frame
@@ -806,6 +814,7 @@ export function Composer({
                     >
                       <ComposerCommandMenu
                         emptyLabel={renderedEmptyCommandLabel}
+                        listId={commandListId}
                         onSelect={selectCommand}
                       />
                     </motion.div>
@@ -836,7 +845,13 @@ export function Composer({
                   disabled={disabled}
                   directiveControls={directiveControls}
                   editorRef={editorRef}
+                  menuActiveDescendant={
+                    highlightedCommandIndex === null
+                      ? undefined
+                      : `${commandMenuId}-${highlightedCommandIndex}`
+                  }
                   menuHasItems={hasCommandItems}
+                  menuId={commandListId}
                   menuOpen={commandOpen}
                   placeholder={
                     disabled

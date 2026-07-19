@@ -1,5 +1,4 @@
 import { mergeRegister } from '@lexical/utils';
-import { agentCommandMatches } from '@linkcode/schema';
 import type { LexicalEditor } from 'lexical';
 import {
   $getRoot,
@@ -12,12 +11,11 @@ import {
   TextNode,
 } from 'lexical';
 import type { ComposerDirectiveState } from './directive-state';
-import { commandCatalog } from './directive-state';
 import { $createCommandNode, $createShellNode, $isCommandNode, $isShellNode } from './nodes';
 
 const WHITESPACE_RE = /\s/;
 
-type TokenizerState = Pick<ComposerDirectiveState, 'directiveControls' | 'suppressed'>;
+type TokenizerState = Pick<ComposerDirectiveState, 'suppressed'>;
 
 type DirectiveCandidate =
   | { end: number; kind: 'command'; name: string; start: number }
@@ -27,17 +25,6 @@ function $isDocumentStart(node: TextNode, offset: number): boolean {
   if (offset !== 0 || node.getPreviousSibling() !== null) return false;
   const block = node.getParent();
   return block !== null && block === $getRoot().getFirstChild();
-}
-
-function $hasBoundaryBefore(node: TextNode, offset: number): boolean {
-  const content = node.getTextContent();
-  if (offset > 0) return WHITESPACE_RE.test(content[offset - 1]);
-  const previous = node.getPreviousSibling();
-  return (
-    previous === null ||
-    !$isTextNode(previous) ||
-    WHITESPACE_RE.test(previous.getTextContent().slice(-1))
-  );
 }
 
 /** A command waits for a boundary the user actually typed, unless submit forces the final token. */
@@ -57,29 +44,19 @@ function $findDirectiveCandidate(
   force: boolean,
 ): DirectiveCandidate | null {
   const content = node.getTextContent();
-  const suppressInitialToken = state.suppressed.has(node.getKey());
-  const commands = commandCatalog(state.directiveControls.slash);
+  if (!$isDocumentStart(node, 0) || state.suppressed.has(node.getKey())) return null;
 
-  for (let start = 0; start < content.length; start++) {
-    if (!$hasBoundaryBefore(node, start)) continue;
-    const leading = $isDocumentStart(node, start);
-    if (content[start] === '$') {
-      // A mid-line `$` is ordinary prose too often to infer shell intent. Shell execution is
-      // unambiguous only at document start, matching the wire input it becomes.
-      if (leading && !suppressInitialToken) return { end: start + 1, kind: 'shell', start };
-      continue;
-    }
-    if (content[start] !== '/') continue;
-    let end = start + 1;
-    while (end < content.length && !WHITESPACE_RE.test(content[end])) end++;
-    const name = content.slice(start + 1, end);
-    if (!name) continue;
-    if (start === 0 && suppressInitialToken) continue;
-    const known = commands.some((command) => agentCommandMatches(command, name));
-    if ((!leading && !known) || (!$hasBoundaryAfter(node, end) && !force)) continue;
-    return { end, kind: 'command', name, start };
+  if (content[0] === '$') {
+    // A bare marker is ordinary prose. Shell intent becomes unambiguous only after the user
+    // supplies a non-whitespace payload, including when that payload is in a following node.
+    return $getRoot().getTextContent().slice(1).trim() ? { end: 1, kind: 'shell', start: 0 } : null;
   }
-  return null;
+  if (content[0] !== '/') return null;
+  let end = 1;
+  while (end < content.length && !WHITESPACE_RE.test(content[end])) end++;
+  const name = content.slice(1, end);
+  if (!name || (!$hasBoundaryAfter(node, end) && !force)) return null;
+  return { end, kind: 'command', name, start: 0 };
 }
 
 function $hasLeadingDirective(): boolean {
@@ -103,9 +80,9 @@ function $replaceCandidate(node: TextNode, candidate: DirectiveCandidate): void 
 
 /**
  * Materialize directive-looking text without lying about execution. A leading command is chipped
- * even when unknown so it cannot silently fall through as model prose. Mid-line commands require
- * an exact live catalog match; shell intent remains leading-only because a mid-line `$` is
- * ambiguous prose. Placement validity is classified separately by `$analyzeDirectives`.
+ * even when unknown so it cannot silently fall through as model prose. Typed directives are
+ * leading-only; explicit menu insertion may still create a misplaced chip whose validity is
+ * classified separately by `$analyzeDirectives`.
  */
 export function $normalizeDirectiveTokens(
   state: TokenizerState,

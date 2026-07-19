@@ -67,6 +67,19 @@ function setDraft(editor: LexicalEditor, text: string): void {
   );
 }
 
+function setStructuredCommandDraft(editor: LexicalEditor, before: string, after: string): void {
+  editor.update(
+    () => {
+      const paragraph = $createParagraphNode();
+      if (before) paragraph.append($createTextNode(before));
+      paragraph.append($createCommandNode('review'));
+      if (after) paragraph.append($createTextNode(after));
+      $getRoot().clear().append(paragraph);
+    },
+    { discrete: true },
+  );
+}
+
 /** Node types of the first paragraph's children — the draft's shape. */
 function draftShape(editor: LexicalEditor): string[] {
   return editor.read(() => {
@@ -119,26 +132,27 @@ describe('directive tokenizer', () => {
     setDraft(editor, '/usage');
     expect(draftShape(editor)).toEqual(['text']);
 
-    editor.update(
-      () =>
-        $normalizeDirectiveTokens(
-          { directiveControls: READY_DIRECTIVE_CONTROLS, suppressed: new Set() },
-          { force: true },
-        ),
-      { discrete: true },
-    );
+    editor.update(() => $normalizeDirectiveTokens({ suppressed: new Set() }, { force: true }), {
+      discrete: true,
+    });
     expect(draftShape(editor)).toEqual(['composer-command']);
     expect(draftText(editor)).toBe('/usage');
   });
 
-  it('chips a leading $ immediately', () => {
+  it('chips a leading $ only after it has a shell payload', () => {
     const editor = createEditor();
     setDraft(editor, '$ls -la');
     expect(draftShape(editor)).toEqual(['composer-shell', 'text']);
     expect(draftText(editor)).toBe('$ls -la');
 
     setDraft(editor, '$');
-    expect(draftShape(editor)).toEqual(['composer-shell']);
+    expect(draftShape(editor)).toEqual(['text']);
+
+    setDraft(editor, '$   ');
+    expect(draftShape(editor)).toEqual(['text']);
+
+    setDraft(editor, '$ ls');
+    expect(draftShape(editor)).toEqual(['composer-shell', 'text']);
   });
 
   it('chips a command when a line break supplies its boundary', () => {
@@ -158,19 +172,16 @@ describe('directive tokenizer', () => {
     expect(draftText(editor)).toBe('/usage\nargs');
   });
 
-  it('chips known commands mid-line without misreading dollar-sign prose as shell', () => {
+  it('keeps mid-line slash and dollar-sign tokens as prose', () => {
     const editor = createEditor();
-    setDraft(editor, 'run /usage now');
-    expect(draftShape(editor)).toEqual(['text', 'composer-command', 'text']);
-    expect(editor.read($analyzeDirectives).composition).toMatchObject({
-      issue: 'misplaced',
-      kind: 'blocked',
-    });
-
-    setDraft(editor, 'run $ now');
-    expect(draftShape(editor)).toEqual(['text']);
-
-    for (const draft of ['pay $5', 'echo $HOME', 'run /typo now', ' $ls']) {
+    for (const draft of [
+      'run /usage now',
+      'run /typo now',
+      'run $ now',
+      'pay $5',
+      'echo $HOME',
+      ' $ls',
+    ]) {
       setDraft(editor, draft);
       expect(draftShape(editor)).toEqual(['text']);
       expect(draftText(editor)).toBe(draft);
@@ -184,14 +195,9 @@ describe('directive tokenizer', () => {
       suppressed,
     }));
     setDraft(editor, '/typo');
-    editor.update(
-      () =>
-        $normalizeDirectiveTokens(
-          { directiveControls: READY_DIRECTIVE_CONTROLS, suppressed },
-          { force: true },
-        ),
-      { discrete: true },
-    );
+    editor.update(() => $normalizeDirectiveTokens({ suppressed }, { force: true }), {
+      discrete: true,
+    });
     editor.update(
       () => {
         const first = $getRoot().getFirstChild();
@@ -226,7 +232,8 @@ describe('directive tokenizer', () => {
       },
       { discrete: true },
     );
-    expect(draftShape(editor)).toEqual(['text', 'text', 'composer-command', 'text']);
+    expect(draftShape(editor)).toEqual(['text', 'text']);
+    expect(draftText(editor)).toBe('/review edited /usage ');
   });
 
   it('keeps more than one converted occurrence as prose', () => {
@@ -256,10 +263,7 @@ describe('directive tokenizer', () => {
           const converted = $convertDirectiveToText(child.getKey());
           if (converted) suppressed.add(converted);
         }
-        $normalizeDirectiveTokens(
-          { directiveControls: READY_DIRECTIVE_CONTROLS, suppressed },
-          { force: true },
-        );
+        $normalizeDirectiveTokens({ suppressed }, { force: true });
       },
       { discrete: true },
     );
@@ -446,7 +450,7 @@ describe('$draftDirective', () => {
 
   it('blocks a supported command outside offset zero', () => {
     const editor = createEditor();
-    setDraft(editor, 'please /review now');
+    setStructuredCommandDraft(editor, 'please ', ' now');
     expect(editor.read(() => $draftDirective(directiveState()))).toMatchObject({
       directive: { kind: 'command', name: 'review' },
       issue: 'misplaced',
@@ -456,11 +460,11 @@ describe('$draftDirective', () => {
 
   it('moves a lone misplaced directive to the start without doubling separator whitespace', () => {
     const editor = createEditor();
-    for (const [draft, expected] of [
-      ['please /review now', '/review please now'],
-      [' /review now', '/review now'],
+    for (const [before, after, expected] of [
+      ['please ', ' now', '/review please now'],
+      [' ', ' now', '/review now'],
     ]) {
-      setDraft(editor, draft);
+      setStructuredCommandDraft(editor, before, after);
       editor.update(
         () => {
           const analysis = $analyzeDirectives();
@@ -478,13 +482,13 @@ describe('$draftDirective', () => {
 
   it('normalizes boundary whitespace when removing a directive', () => {
     const editor = createEditor();
-    for (const [draft, expected] of [
-      ['please /review now', 'please now'],
-      ['/review now', 'now'],
-      ['please /review ', 'please'],
-      ['/review ', ''],
+    for (const [before, after, expected] of [
+      ['please ', ' now', 'please now'],
+      ['', ' now', 'now'],
+      ['please ', ' ', 'please'],
+      ['', ' ', ''],
     ]) {
-      setDraft(editor, draft);
+      setStructuredCommandDraft(editor, before, after);
       editor.update(
         () => {
           const analysis = $analyzeDirectives();

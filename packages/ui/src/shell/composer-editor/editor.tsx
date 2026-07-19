@@ -34,7 +34,7 @@ import {
   $computeEditorTrigger,
   $draftText,
 } from './serialize';
-import { $normalizeDirectiveTokens, registerDirectiveTokenizer } from './tokenize';
+import { registerDirectiveTokenizer } from './tokenize';
 
 /** What the composer mirrors out of the editor after every committed update. */
 export interface ComposerDraftSnapshot {
@@ -72,6 +72,8 @@ interface ComposerEditorProps {
    * base-ui's virtual list navigation drives the menu without owning focus. */
   menuOpen: boolean;
   menuHasItems: boolean;
+  menuId: string;
+  menuActiveDescendant?: string;
   relayRef: React.RefObject<HTMLInputElement | null>;
   /** Receives the live LexicalEditor for imperative draft operations (submit, insertions). */
   editorRef: React.RefObject<LexicalEditor | null>;
@@ -87,8 +89,6 @@ function DirectiveStatePlugin({
   useEffect(() => {
     const store = directiveStateFor(editor);
     store.setState({ directiveControls, disabled });
-    // A late catalog can prove that already-typed mid-line `/name` text is a real command.
-    editor.update(() => $normalizeDirectiveTokens(store.getState()), { discrete: true });
   }, [editor, directiveControls, disabled]);
   return null;
 }
@@ -145,13 +145,22 @@ function KeyboardPlugin({
 >): null {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
+    function hasModifier(event: KeyboardEvent): boolean {
+      return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+    }
+
     function forwardToRelay(event: KeyboardEvent): void {
       relayRef.current?.dispatchEvent(
         new KeyboardEvent('keydown', {
+          altKey: event.altKey,
           bubbles: true,
           cancelable: true,
           code: event.code,
+          ctrlKey: event.ctrlKey,
           key: event.key,
+          metaKey: event.metaKey,
+          repeat: event.repeat,
+          shiftKey: event.shiftKey,
         }),
       );
     }
@@ -171,9 +180,8 @@ function KeyboardPlugin({
           // Both outcomes run editor updates of their own (menu select mutates the draft,
           // submit force-tokenizes then clears); defer them out of this command dispatch —
           // a nested discrete update inside it is illegal.
-          if (menuOpen) {
-            // An open menu owns Enter even when filtering leaves it empty.
-            if (menuHasItems) queueMicrotask(() => forwardToRelay(event));
+          if (menuOpen && menuHasItems) {
+            queueMicrotask(() => forwardToRelay(event));
             return true;
           }
           queueMicrotask(onSubmit);
@@ -184,6 +192,7 @@ function KeyboardPlugin({
       editor.registerCommand(
         KEY_ARROW_LEFT_COMMAND,
         (event) => {
+          if (hasModifier(event)) return false;
           if (!$exitNodeSelection(true)) return false;
           event.preventDefault();
           return true;
@@ -193,6 +202,7 @@ function KeyboardPlugin({
       editor.registerCommand(
         KEY_ARROW_RIGHT_COMMAND,
         (event) => {
+          if (hasModifier(event)) return false;
           if (!$exitNodeSelection(false)) return false;
           event.preventDefault();
           return true;
@@ -220,7 +230,7 @@ function KeyboardPlugin({
       editor.registerCommand(
         KEY_ARROW_DOWN_COMMAND,
         (event) => {
-          if (!menuOpen || !menuHasItems) return false;
+          if (hasModifier(event) || !menuOpen || !menuHasItems) return false;
           event.preventDefault();
           forwardToRelay(event);
           return true;
@@ -230,7 +240,7 @@ function KeyboardPlugin({
       editor.registerCommand(
         KEY_ARROW_UP_COMMAND,
         (event) => {
-          if (!menuOpen || !menuHasItems) return false;
+          if (hasModifier(event) || !menuOpen || !menuHasItems) return false;
           event.preventDefault();
           forwardToRelay(event);
           return true;
@@ -274,6 +284,8 @@ export function ComposerEditor({
   onSubmit,
   menuOpen,
   menuHasItems,
+  menuId,
+  menuActiveDescendant,
   relayRef,
   editorRef,
 }: ComposerEditorProps): React.ReactNode {
@@ -315,25 +327,29 @@ export function ComposerEditor({
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
-              aria-multiline
-              aria-placeholder={placeholder}
+              aria-activedescendant={menuOpen && menuHasItems ? menuActiveDescendant : undefined}
+              aria-autocomplete="list"
+              aria-controls={menuOpen ? menuId : undefined}
+              aria-expanded={menuOpen}
+              aria-label={placeholder}
               className={cn('outline-none', className)}
               data-slot="composer-editor"
-              placeholder={
-                // Shares `className` so padding and text metrics match the editable surface.
-                <div
-                  aria-hidden
-                  className={cn(
-                    'pointer-events-none absolute inset-0 select-none text-muted-foreground',
-                    className,
-                  )}
-                >
-                  {placeholder}
-                </div>
-              }
+              role="combobox"
             />
           }
           ErrorBoundary={LexicalErrorBoundary}
+          placeholder={
+            // Shares `className` so padding and text metrics match the editable surface.
+            <div
+              aria-hidden
+              className={cn(
+                'pointer-events-none absolute inset-0 select-none text-muted-foreground',
+                className,
+              )}
+            >
+              {placeholder}
+            </div>
+          }
         />
       </div>
       <HistoryPlugin />
