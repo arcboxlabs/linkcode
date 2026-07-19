@@ -64,7 +64,8 @@ export function DesktopShell({
   runtimeCues,
   attachmentSupport,
   newSessionDefaultModels,
-  newSessionDefaultEfforts,
+  newSessionPreferredModels,
+  newSessionPreferredEfforts,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -329,7 +330,8 @@ export function DesktopShell({
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
           defaultModels={newSessionDefaultModels}
-          defaultEfforts={newSessionDefaultEfforts}
+          preferredModels={newSessionPreferredModels}
+          preferredEfforts={newSessionPreferredEfforts}
           mentionItems={mentionItems}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}

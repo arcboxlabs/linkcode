@@ -75,8 +75,10 @@ export interface NewSessionSurfaceProps {
   attachmentSupport?: AttachmentSupportByAgent;
   /** Effective user-configured model defaults. Built-in provider defaults fill missing kinds. */
   defaultModels?: Readonly<Partial<Record<AgentKind, string>>>;
-  /** Last successfully applied effort per provider. Missing kinds retain the provider default. */
-  defaultEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
+  /** Last accepted model per provider. Unlike configured defaults, this is an explicit override. */
+  preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
+  /** Last accepted effort per provider. Missing kinds retain the provider default. */
+  preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   /** Ranked files for the active draft workspace's `@` query. */
   mentionItems: MentionItem[];
   /** Queries files in the draft's currently selected workspace. */
@@ -115,7 +117,8 @@ export function NewSessionSurface({
   runtimeCues,
   attachmentSupport,
   defaultModels,
-  defaultEfforts,
+  preferredModels,
+  preferredEfforts,
   mentionItems,
   onMentionQueryChange,
   onDownloadAgent,
@@ -142,10 +145,10 @@ export function NewSessionSurface({
   const selected =
     selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   const isChatSelected = selected != null && selected === chatWorkspace;
-  const selectedModel = selectedModels[provider] ?? null;
+  const selectedModel = selectedModels[provider] ?? preferredModels?.[provider] ?? null;
   const displayedModel =
-    selectedModels[provider] ?? defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null;
-  const effort = selectedEfforts[provider] ?? defaultEfforts?.[provider] ?? null;
+    selectedModel ?? defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null;
+  const effort = selectedEfforts[provider] ?? preferredEfforts?.[provider] ?? null;
 
   function submit(input: NewSessionSubmission['input']): void {
     if (!selected) return;

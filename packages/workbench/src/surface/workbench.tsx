@@ -213,10 +213,11 @@ function WorkbenchSessionSurface({
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
   const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
-  const newSessionDefaultEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
+  const newSessionPreferredModels = useNewSessionDefaultsStore((state) => state.modelsByProvider);
+  const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
-  const rememberEffort = useNewSessionDefaultsStore((state) => state.rememberEffort);
+  const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
     const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
@@ -298,7 +299,10 @@ function WorkbenchSessionSurface({
       effort: submission.effort,
       modeId: submission.modeId,
     });
-    rememberNewSessionDefaults(submission.kind, submission.workspaceId, submission.effort);
+    rememberNewSessionDefaults(submission.kind, submission.workspaceId, {
+      model: submission.model,
+      effort: submission.effort,
+    });
     // The first input rides behind the started session, like any conversation send.
     void inputMutation.trigger({ sessionId, input: submission.input }).catch(noop);
   }
@@ -349,7 +353,10 @@ function WorkbenchSessionSurface({
     onClearError();
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
-    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(noop);
+    const provider = active?.kind;
+    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(() => {
+      if (provider) rememberSelection(provider, { model });
+    });
   }
 
   function handleEffortChange(effort: EffortLevel): Promise<void> {
@@ -358,7 +365,7 @@ function WorkbenchSessionSurface({
     // Same contract as handleModelChange: the composer awaits the rejection to keep the old pick.
     const provider = active?.kind;
     return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(() => {
-      if (provider) rememberEffort(provider, effort);
+      if (provider) rememberSelection(provider, { effort });
     });
   }
 
@@ -528,7 +535,8 @@ function WorkbenchSessionSurface({
       activeSession={active}
       draft={draft}
       newSessionDefaultModels={newSessionDefaultModels}
-      newSessionDefaultEfforts={newSessionDefaultEfforts}
+      newSessionPreferredModels={newSessionPreferredModels}
+      newSessionPreferredEfforts={newSessionPreferredEfforts}
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}

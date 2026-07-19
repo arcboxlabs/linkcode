@@ -197,7 +197,7 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        defaultEfforts={{ 'claude-code': 'medium' }}
+        preferredEfforts={{ 'claude-code': 'medium' }}
         draft={{
           initialProvider: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
@@ -243,6 +243,60 @@ describe('NewSessionSurface', () => {
 
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: undefined })),
+    );
+  });
+
+  it('shows and explicitly submits the last successful provider model without reselection', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultModels={{ 'claude-code': 'custom/claude-model' }}
+        preferredModels={{ 'claude-code': 'claude-opus-4-8' }}
+        draft={{
+          initialProvider: 'claude-code',
+          initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
+        }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /Opus 4.8/ })).toBeTruthy();
+    typeInComposer('use my last model');
+    await pressInComposer('Enter');
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-4-8' })),
+    );
+  });
+
+  it('submits a remembered dynamic-provider model even without a draft catalog', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        preferredModels={{ opencode: 'anthropic/claude-sonnet-4-6' }}
+        draft={{ initialProvider: 'opencode', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /anthropic\/claude-sonnet-4-6/ })).toBeTruthy();
+    typeInComposer('use remembered dynamic model');
+    await pressInComposer('Enter');
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'anthropic/claude-sonnet-4-6' }),
+      ),
     );
   });
 
