@@ -65,15 +65,12 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
   const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
   const history = new HistoryService(factory);
-  const runtimes = new AgentRuntimeService({
+  const runtimes = yield* AgentRuntimeService.make({
     initial: deps.agentRuntimes,
     ready: deps.agentRuntimesReady,
     collect: deps.collectAgentRuntimes,
     onChanged(next) {
       transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes: next }));
-    },
-    onError(message, error) {
-      console.error(message, error);
     },
   });
   let terminals: TerminalService | undefined;
@@ -136,13 +133,13 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     transport,
     deps.assets,
     () => {
-      void runtimes.refresh();
+      runtimes.refresh();
     },
     responder,
   );
   const logins = deps.resolveLoginBinary
     ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
-        void runtimes.refresh();
+        runtimes.refresh();
       })
     : undefined;
   const agentRequests = new AgentRequestHandler(
@@ -234,6 +231,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalize('schedules.shutdown', () => scheduler.shutdown());
       yield* finalize('loops.shutdown', () => loops.shutdown());
       yield* finalize('sessions.shutdown', () => sessions.shutdown());
+      yield* runtimes.close();
       yield* finalize('scripts.shutdown', () => scripts?.shutdown());
       yield* finalize('terminals.shutdown', () => terminals?.closeAll());
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());

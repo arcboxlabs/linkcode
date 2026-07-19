@@ -56,7 +56,7 @@ export class WireRequestRouter {
       case 'agent-runtime.list':
       case 'config.get':
       case 'config.set': {
-        return legacyHandler(() => this.handlers.agent.handle(p));
+        return this.handlers.agent.handle(p);
       }
       case 'asset.list':
       case 'asset.ensure': {
@@ -115,7 +115,7 @@ export class WireRequestRouter {
       case 'agent-login.start':
       case 'agent-login.submit-code':
       case 'agent-login.cancel': {
-        return legacyHandler(() => this.handlers.agent.handle(p));
+        return this.handlers.agent.handle(p);
       }
       case 'ping': {
         return Effect.sync(() => this.transport.send(createWireMessage({ kind: 'pong' })));

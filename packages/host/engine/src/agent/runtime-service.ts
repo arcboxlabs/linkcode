@@ -1,4 +1,7 @@
 import type { AgentRuntimes } from '@linkcode/schema';
+import type { Scope } from 'effect';
+import { Clock, Deferred, Effect, FiberSet, Semaphore } from 'effect';
+import { OperationError } from '../failure';
 import { jsonValueEqual } from '../json-equal';
 
 const REVALIDATE_COOLDOWN_MS = 5000;
@@ -8,92 +11,173 @@ interface AgentRuntimeServiceOptions {
   readonly ready?: Promise<AgentRuntimes>;
   readonly collect?: () => Promise<AgentRuntimes>;
   readonly onChanged: (runtimes: AgentRuntimes) => void;
-  readonly onError: (message: string, error: unknown) => void;
 }
 
 export class AgentRuntimeService {
-  readonly ready: Promise<void>;
   private runtimes: AgentRuntimes;
-  private seeded = true;
-  private collectTail: Promise<void> = Promise.resolve();
   private activeCollects = 0;
   private collectedAt = 0;
-  private pendingEventCollect: Promise<void> | undefined;
+  private pendingEventCollect = false;
+  private closed = false;
 
-  constructor(private readonly options: AgentRuntimeServiceOptions) {
+  private constructor(
+    private readonly options: AgentRuntimeServiceOptions,
+    private readonly readySignal: Deferred.Deferred<void>,
+    private readonly semaphore: Semaphore.Semaphore,
+    private readonly fibers: FiberSet.FiberSet<unknown, never>,
+    private readonly run: (effect: Effect.Effect<unknown>) => void,
+    private readonly runPromise: (effect: Effect.Effect<void>) => Promise<void>,
+  ) {
     this.runtimes = options.initial ?? {};
-    this.ready = options.ready ? this.seed(options.ready) : Promise.resolve();
+    if (options.ready) this.startSeed(options.ready);
   }
 
-  serve(reply: (runtimes: AgentRuntimes) => void): void {
-    if (this.seeded) {
-      reply(this.runtimes);
-      this.revalidate();
-      return;
-    }
-    void this.ready.then(() => {
-      reply(this.runtimes);
-      this.revalidate();
+  static make(
+    this: void,
+    options: AgentRuntimeServiceOptions,
+  ): Effect.Effect<AgentRuntimeService, never, Scope.Scope> {
+    return Effect.gen(function* () {
+      const readySignal = yield* Deferred.make<void>();
+      const semaphore = yield* Semaphore.make(1);
+      const fibers = yield* FiberSet.make<unknown, never>();
+      const runFork = yield* FiberSet.runtime(fibers)();
+      const runPromise = yield* FiberSet.runtimePromise(fibers)();
+      if (!options.ready) yield* Deferred.succeed(readySignal, undefined);
+
+      return new AgentRuntimeService(
+        options,
+        readySignal,
+        semaphore,
+        fibers,
+        (effect) => {
+          runFork(effect);
+        },
+        runPromise,
+      );
     });
   }
 
-  refresh(): Promise<void> {
-    if (!this.options.collect) return Promise.resolve();
-    const pending = this.pendingEventCollect;
-    if (pending) return pending;
-    const pass = this.enqueue(true, () => {
-      if (this.pendingEventCollect === pass) this.pendingEventCollect = undefined;
-    });
-    this.pendingEventCollect = pass;
-    return pass;
+  snapshot(): Effect.Effect<AgentRuntimes> {
+    return Deferred.await(this.readySignal).pipe(Effect.map(() => this.runtimes));
   }
 
-  private seed(ready: Promise<AgentRuntimes>): Promise<void> {
-    this.seeded = false;
+  revalidate(): Effect.Effect<void> {
+    return Clock.currentTimeMillis.pipe(
+      Effect.tap((now) =>
+        Effect.sync(() => {
+          if (this.closed || !this.options.collect || this.activeCollects > 0) return;
+          if (now - this.collectedAt < REVALIDATE_COOLDOWN_MS) return;
+          this.enqueue(false);
+        }),
+      ),
+      Effect.asVoid,
+    );
+  }
+
+  refresh(): void {
+    if (this.closed || !this.options.collect || this.pendingEventCollect) return;
+    this.pendingEventCollect = true;
+    this.enqueue(true, () => {
+      this.pendingEventCollect = false;
+    });
+  }
+
+  awaitReady(): Promise<void> {
+    return this.runPromise(Deferred.await(this.readySignal));
+  }
+
+  close(): Effect.Effect<void> {
+    return Effect.sync(() => {
+      this.closed = true;
+    }).pipe(
+      Effect.andThen(Deferred.interrupt(this.readySignal)),
+      Effect.andThen(FiberSet.clear(this.fibers)),
+    );
+  }
+
+  private startSeed(ready: Promise<AgentRuntimes>): void {
     this.activeCollects += 1;
-    const pass = ready
-      .then((runtimes) => {
-        this.runtimes = runtimes;
-        this.collectedAt = Date.now();
-        this.options.onChanged(runtimes);
-      })
-      .catch((error: unknown) => {
-        this.options.onError('Boot agent-runtime probe failed:', error);
-      })
-      .finally(() => {
-        this.seeded = true;
-        this.activeCollects -= 1;
-      });
-    this.collectTail = pass;
-    return pass;
+    this.run(
+      this.semaphore.withPermit(
+        this.probe('agent-runtime.seed', 'Boot agent-runtime probe failed', () => ready).pipe(
+          Effect.flatMap((runtimes) => this.commit(runtimes, true)),
+          Effect.catch(reportProbeFailure),
+          Effect.ensuring(
+            Effect.sync(() => {
+              this.activeCollects -= 1;
+            }).pipe(Effect.andThen(Deferred.succeed(this.readySignal, undefined))),
+          ),
+        ),
+      ),
+    );
   }
 
-  private revalidate(): void {
-    if (!this.options.collect) return;
-    if (this.activeCollects > 0) return;
-    if (Date.now() - this.collectedAt < REVALIDATE_COOLDOWN_MS) return;
-    void this.enqueue(false);
-  }
-
-  private enqueue(pushUnchanged: boolean, onStart?: () => void): Promise<void> {
+  private enqueue(pushUnchanged: boolean, onStart?: () => void): void {
     const collect = this.options.collect;
-    if (!collect) return Promise.resolve();
+    if (!collect || this.closed) return;
     this.activeCollects += 1;
-    const pass = this.collectTail.then(async () => {
-      onStart?.();
-      try {
-        const next = await collect();
-        const changed = !jsonValueEqual(next, this.runtimes);
-        this.runtimes = next;
-        this.collectedAt = Date.now();
-        if (changed || pushUnchanged) this.options.onChanged(next);
-      } catch (error) {
-        this.options.onError('Re-probing agent runtimes failed:', error);
-      } finally {
-        this.activeCollects -= 1;
-      }
-    });
-    this.collectTail = pass;
-    return pass;
+    this.run(
+      this.semaphore.withPermit(
+        (onStart ? Effect.yieldNow.pipe(Effect.andThen(Effect.sync(onStart))) : Effect.void).pipe(
+          Effect.andThen(
+            this.probe('agent-runtime.collect', 'Re-probing agent runtimes failed', collect),
+          ),
+          Effect.flatMap((next) => this.commit(next, pushUnchanged)),
+          Effect.catch(reportProbeFailure),
+          Effect.ensuring(
+            Effect.sync(() => {
+              this.activeCollects -= 1;
+            }),
+          ),
+        ),
+      ),
+    );
   }
+
+  private commit(next: AgentRuntimes, pushUnchanged: boolean): Effect.Effect<void, OperationError> {
+    const changed = !jsonValueEqual(next, this.runtimes);
+    return Clock.currentTimeMillis.pipe(
+      Effect.flatMap((collectedAt) =>
+        Effect.try({
+          try: () => {
+            this.runtimes = next;
+            this.collectedAt = collectedAt;
+            if (changed || pushUnchanged) this.options.onChanged(next);
+          },
+          catch: (cause) =>
+            new OperationError({
+              subsystem: 'runtime-probe',
+              operation: 'agent-runtime.publish',
+              publicMessage: 'Failed to publish agent runtimes',
+              cause,
+            }),
+        }),
+      ),
+    );
+  }
+
+  private probe(
+    operation: string,
+    publicMessage: string,
+    collect: () => Promise<AgentRuntimes>,
+  ): Effect.Effect<AgentRuntimes, OperationError> {
+    return Effect.tryPromise({
+      try: collect,
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'runtime-probe',
+          operation,
+          publicMessage,
+          cause,
+        }),
+    });
+  }
+}
+
+function reportProbeFailure(error: OperationError): Effect.Effect<void> {
+  return Effect.logError(
+    error.publicMessage,
+    { operation: error.operation, subsystem: error.subsystem },
+    error.cause,
+  );
 }

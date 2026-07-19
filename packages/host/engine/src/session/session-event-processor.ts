@@ -43,7 +43,7 @@ export class SessionEventProcessor {
           this.records.bindHistoryId(sessionId, event.historyId);
           break;
         case 'error':
-          if (event.code === AUTH_FAILED_ERROR_CODE) void this.runtimes.refresh();
+          if (event.code === AUTH_FAILED_ERROR_CODE) this.runtimes.refresh();
           break;
         default:
           break;

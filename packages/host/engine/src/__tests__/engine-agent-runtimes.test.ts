@@ -244,4 +244,22 @@ describe('boot probe seeding (CODE-225)', () => {
     expect(collect).toHaveBeenCalledTimes(1);
     expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes: probed });
   });
+
+  it('interrupts an unsettled boot probe without sending a late runtime snapshot', async () => {
+    let resolveProbe!: (runtimes: AgentRuntimes) => void;
+    const ready = new Promise<AgentRuntimes>((resolve) => {
+      resolveProbe = resolve;
+    });
+    const { engine, sent, inject } = harness(undefined, undefined, ready);
+    await engine.start();
+    inject({ kind: 'agent-runtime.list', clientReqId: 'r1' });
+    await flushBackground();
+
+    await engine.stop();
+    resolveProbe(probed);
+    await flushBackground();
+
+    expect(sent.filter((payload) => payload.kind === 'agent-runtime.changed')).toEqual([]);
+    expect(sent.filter((payload) => payload.kind === 'agent-runtime.listed')).toEqual([]);
+  });
 });

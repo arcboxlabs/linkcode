@@ -173,7 +173,7 @@ export class SessionOrchestrator {
     this.records.register(record);
     // A start can land before the boot probe settles. Register first so delete can tear it down,
     // then wait and re-check identity before and after adapter startup to prevent resurrection.
-    await this.runtimes.ready;
+    await this.runtimes.awaitReady();
     if (this.sessions.get(sessionId) !== session) {
       await adapter.stop().catch(noop);
       throw new RequestError({
