@@ -1,4 +1,5 @@
-import type { StartOptions } from '@linkcode/schema';
+import type { AccountCustomProvider, StartOptions } from '@linkcode/schema';
+import { AccountCustomProviderSchema } from '@linkcode/schema';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 
 /**
@@ -90,4 +91,11 @@ function readStringRecord(value: unknown): Record<string, string> | undefined {
   const out: Record<string, string> = {};
   for (const [key, val] of Object.entries(value)) if (typeof val === 'string') out[key] = val;
   return isObjectEmpty(out) ? undefined : out;
+}
+
+/** The account's custom-provider definition riding the resolved config bag, if any. Validated at
+ * the wire boundary already; the re-parse here is the free-form bag's type recovery. */
+export function readCustomProvider(config: StartOptions['config']): AccountCustomProvider | null {
+  const parsed = AccountCustomProviderSchema.safeParse(config?.customProvider);
+  return parsed.success ? parsed.data : null;
 }

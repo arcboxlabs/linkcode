@@ -1,5 +1,4 @@
 import type { AccountCustomProvider, StartOptions } from '@linkcode/schema';
-import { AccountCustomProviderSchema } from '@linkcode/schema';
 import type { PiSdk } from './history';
 
 type PiRegistry = ReturnType<PiSdk['ModelRegistry']['create']>;
@@ -12,13 +11,6 @@ const PI_API_BY_PROTOCOL: Record<string, string> = {
   'openai-chat': 'openai-completions',
   'openai-responses': 'openai-responses',
 };
-
-/** The account's custom-provider definition riding the resolved config bag, if any. Validated at
- * the wire boundary already; the re-parse here is the free-form bag's type recovery. */
-export function readCustomProvider(config: StartOptions['config']): AccountCustomProvider | null {
-  const parsed = AccountCustomProviderSchema.safeParse(config?.customProvider);
-  return parsed.success ? parsed.data : null;
-}
 
 /**
  * The `registerProvider` input that turns an account-defined provider into a full registry

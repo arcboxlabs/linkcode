@@ -29,7 +29,7 @@ import type {
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
-import { readAgentCredential } from '../../credential';
+import { readAgentCredential, readCustomProvider } from '../../credential';
 import { asHistoryId } from '../../history-util';
 import {
   contentToText,
@@ -37,7 +37,7 @@ import {
   locationsFromToolInput,
   toolKindFromName,
 } from '../../util';
-import { customProviderRegistration, readCustomProvider } from './custom-provider';
+import { customProviderRegistration } from './custom-provider';
 import {
   findPiSessionFile,
   importPiSdk,

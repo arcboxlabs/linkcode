@@ -559,10 +559,10 @@ export class Engine {
           // A never-started factory instance, the history-read pattern: startCatalog must not
           // touch any start() state, so a throwaway adapter is safe and needs no cleanup.
           const machineScoped = await this.factory(p.agentKind).startCatalog({ cwd: p.cwd });
-          // pi-only enrichment: pi is the one adapter that registers account-defined providers
-          // (Account.customProvider) at session start.
+          // pi and opencode register account-defined providers (Account.customProvider) at
+          // session start; their pre-session pickers get the bound account's models here.
           const catalog =
-            p.agentKind === 'pi'
+            p.agentKind === 'pi' || p.agentKind === 'opencode'
               ? withBoundAccountModels(
                   machineScoped,
                   this.providerStore.get()[p.agentKind],

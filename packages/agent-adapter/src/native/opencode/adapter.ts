@@ -23,9 +23,10 @@ import { invariant } from 'foxts/guard';
 import { falseFn } from 'foxts/noop';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
-import { readAgentCredential } from '../../credential';
+import { readAgentCredential, readCustomProvider } from '../../credential';
 import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
 import { contentToText, imageBlocksFrom, toolKindFromName } from '../../util';
+import { opencodeCustomProviderConfig } from './custom-provider';
 import {
   filterRevertedMessages,
   mapOpencodeHistoryEvents,
@@ -249,15 +250,31 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // pre-adoption behavior for this path.
       }
     }
-    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
+    // An account that DEFINES its provider (CODE-325) names the injection target itself and
+    // rides the same spawn-config seam with a full provider block (npm + models); a plain
+    // credential account keeps the narrow options-only injection.
+    const custom = readCustomProvider(opts.config);
+    if (custom && !opts.model) opts.model = `${custom.name}/${custom.models[0].id}`;
+    const providerID =
+      custom?.name ?? (opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined);
     const options: { apiKey?: string; baseURL?: string } = {};
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;
     if (cred.baseUrl) options.baseURL = cred.baseUrl;
+    const customConfig = custom
+      ? opencodeCustomProviderConfig(custom, opts.config, key, cred.baseUrl)
+      : null;
+    if (custom && !customConfig) {
+      this.emitError(
+        `opencode: custom provider '${custom.name}' needs an endpoint URL, a key, and a protocol — its models are unavailable`,
+      );
+    }
     const serverOptions =
-      providerID && (options.apiKey || options.baseURL)
-        ? { config: { provider: { [providerID]: { options } } } }
-        : undefined;
+      custom && customConfig
+        ? { config: { provider: { [custom.name]: customConfig } } }
+        : providerID && (options.apiKey || options.baseURL)
+          ? { config: { provider: { [providerID]: { options } } } }
+          : undefined;
     // The injection is spawn-time-only: remember which provider it scoped to so a later
     // set-model can refuse a cross-provider switch the running server holds no credentials for.
     this.credentialProviderId = serverOptions ? (providerID ?? null) : null;

@@ -1438,3 +1438,81 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     );
   });
 });
+
+describe('OpenCodeAdapter account-defined custom provider (CODE-325)', () => {
+  it('spawns with the full provider block and defaults inside it', async () => {
+    let spawnOpts: Record<string, unknown> | undefined;
+    sdkMock.createOpencode = (opts: unknown) => {
+      spawnOpts = opts as Record<string, unknown>;
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const adapter = new OpenCodeAdapter();
+    adapter.onEvent(noop);
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      config: {
+        apiKey: 'sk-r',
+        baseUrl: 'https://sub.acceled.test/v1',
+        protocol: 'openai-chat',
+        customProvider: {
+          name: 'acceled',
+          models: [{ id: 'gpt-5.4-mini', contextWindow: 400000, maxTokens: 128000 }],
+        },
+      },
+    });
+
+    expect(spawnOpts?.config).toEqual({
+      provider: {
+        acceled: {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'acceled',
+          options: { baseURL: 'https://sub.acceled.test/v1', apiKey: 'sk-r' },
+          models: {
+            'gpt-5.4-mini': {
+              name: 'gpt-5.4-mini',
+              reasoning: false,
+              limit: { context: 400000, output: 128000 },
+              cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('degrades a definition missing its protocol with an error event', async () => {
+    let spawnOpts: Record<string, unknown> | undefined;
+    sdkMock.createOpencode = (opts: unknown) => {
+      spawnOpts = opts as Record<string, unknown>;
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      config: {
+        apiKey: 'sk-r',
+        baseUrl: 'https://sub.acceled.test/v1',
+        customProvider: {
+          name: 'acceled',
+          models: [{ id: 'm', contextWindow: 1000, maxTokens: 100 }],
+        },
+      },
+    });
+
+    expect(errors(events).map((e) => e.message)).toContainEqual(
+      "opencode: custom provider 'acceled' needs an endpoint URL, a key, and a protocol — its models are unavailable",
+    );
+    // Falls back to the narrow options-only injection for the derived provider.
+    expect(spawnOpts?.config).toEqual({
+      provider: {
+        acceled: { options: { apiKey: 'sk-r', baseURL: 'https://sub.acceled.test/v1' } },
+      },
+    });
+  });
+});
