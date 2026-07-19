@@ -99,6 +99,9 @@ cargo fetch --locked
 echo "==> Building the terminal PTY sidecar"
 pnpm -F @linkcode/daemon run build:rust
 
+echo "==> Building the daemon bundle required by Electron development"
+pnpm -F @linkcode/daemon run build
+
 echo "==> Starting supervised Orb development services"
 amp orb services ensure
 

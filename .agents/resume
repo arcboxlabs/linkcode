@@ -34,5 +34,15 @@ if ! cargo clippy --version >/dev/null 2>&1 || [[ "$(rustup show active-toolchai
   exit 1
 fi
 
+if [ ! -x target/release/linkcode-pty ]; then
+  echo "Rebuilding the missing terminal PTY sidecar"
+  pnpm -F @linkcode/daemon run build:rust
+fi
+
+if [ ! -f apps/daemon/dist/index.js ]; then
+  echo "Rebuilding the missing daemon bundle"
+  pnpm -F @linkcode/daemon run build
+fi
+
 echo "Ensuring supervised Orb development services are running"
 amp orb services ensure
