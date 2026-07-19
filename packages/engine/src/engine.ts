@@ -12,7 +12,6 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import type { LoginBinaryResolver } from './agent/login-service';
 import { AgentLoginService } from './agent/login-service';
@@ -40,7 +39,9 @@ import { SessionRecordRegistry } from './session/session-record-registry';
 import type { SessionStore } from './session/session-store';
 import { InMemorySessionStore } from './session/session-store';
 import type { PtyBackend } from './terminal/pty-backend';
+import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
+import { WireResponder } from './wire/responder';
 import { readWorkspaceFile } from './workspace/file-service';
 import { FileSuggestService } from './workspace/file-suggest-service';
 import { WorkspaceRegistry } from './workspace/workspace-registry';
@@ -91,6 +92,8 @@ export class Engine {
   private readonly records: SessionRecordRegistry;
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
+  private readonly terminalRequests: TerminalRequestHandler;
+  private readonly responder: WireResponder;
   private readonly workspaces: WorkspaceRegistry;
   private readonly providerStore: ProviderConfigStore;
   private readonly git: GitService;
@@ -109,6 +112,7 @@ export class Engine {
     private readonly transport: Transport,
     deps: EngineDeps = {},
   ) {
+    this.responder = new WireResponder(transport);
     const factory = deps.factory ?? createAdapter;
     this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
     this.records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
@@ -136,6 +140,7 @@ export class Engine {
     this.terminals = deps.ptyBackend
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
+    this.terminalRequests = new TerminalRequestHandler(this.terminals, this.responder);
     this.workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
     const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
     this.scripts = this.terminals
@@ -665,82 +670,15 @@ export class Engine {
         // No-op in the Engine: the Hub already removed this connection's session subscription.
         break;
       }
-      case 'terminal.open': {
-        const terminals = this.terminals;
-        if (!terminals) {
-          this.sendFailure(p.clientReqId, new Error('Terminals are not supported on this host'));
-          break;
-        }
-        await this.tryReply(p.clientReqId, () =>
-          terminals.open(p.clientReqId, p.opts, {
-            attachmentId: p.attachmentId,
-            attachmentSecret: p.attachmentSecret,
-          }),
-        );
-        break;
-      }
-      case 'terminal.list': {
-        if (this.terminals) {
-          this.terminals.list(p.clientReqId);
-        } else {
-          this.sendFailure(p.clientReqId, new Error('Terminals are not supported on this host'));
-        }
-        break;
-      }
-      case 'terminal.attach': {
-        const terminals = this.terminals;
-        if (!terminals) {
-          this.sendFailure(p.clientReqId, new Error('Terminals are not supported on this host'));
-          break;
-        }
-        await this.tryReply(p.clientReqId, () => {
-          terminals.attach(
-            p.clientReqId,
-            p.terminalId,
-            { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
-            p.mode,
-          );
-          return Promise.resolve();
-        });
-        break;
-      }
-      case 'terminal.detach': {
-        this.terminals?.detach(p.terminalId, {
-          attachmentId: p.attachmentId,
-          attachmentSecret: p.attachmentSecret,
-        });
-        break;
-      }
-      case 'terminal.input': {
-        this.terminals?.input(
-          p.terminalId,
-          { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
-          p.data,
-        );
-        break;
-      }
-      case 'terminal.ack': {
-        this.terminals?.ack(
-          p.terminalId,
-          { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
-          p.acked,
-        );
-        break;
-      }
-      case 'terminal.resize': {
-        this.terminals?.resize(
-          p.terminalId,
-          { attachmentId: p.attachmentId, attachmentSecret: p.attachmentSecret },
-          p.cols,
-          p.rows,
-        );
-        break;
-      }
+      case 'terminal.open':
+      case 'terminal.list':
+      case 'terminal.attach':
+      case 'terminal.detach':
+      case 'terminal.input':
+      case 'terminal.ack':
+      case 'terminal.resize':
       case 'terminal.close': {
-        this.terminals?.close(p.terminalId, {
-          attachmentId: p.attachmentId,
-          attachmentSecret: p.attachmentSecret,
-        });
+        await this.terminalRequests.handle(p);
         break;
       }
       case 'agent-login.start': {
@@ -865,19 +803,14 @@ export class Engine {
   }
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
-    try {
-      await fn();
-    } catch (err) {
-      this.sendFailure(replyTo, err);
-    }
+    await this.responder.tryReply(replyTo, fn);
   }
 
   private sendFailure(replyTo: string, err: unknown): void {
-    const message = extractErrorMessage(err) ?? 'Unknown error';
-    this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
+    this.responder.sendFailure(replyTo, err);
   }
 
   private sendSuccess(replyTo: string): void {
-    this.transport.send(createWireMessage({ kind: 'request.succeeded', replyTo }));
+    this.responder.sendSuccess(replyTo);
   }
 }
