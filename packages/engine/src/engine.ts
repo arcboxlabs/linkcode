@@ -27,9 +27,11 @@ import { ArtifactRequestHandler } from './preview/request-handler';
 import { PreviewRouteRegistry } from './preview/route-registry';
 import { ScriptRequestHandler } from './scripts/request-handler';
 import { ScriptService } from './scripts/script-service';
+import { HistoryRequestHandler } from './session/history-request-handler';
 import { HistoryService } from './session/history-service';
 import { SessionLifecycleService } from './session/lifecycle-service';
 import { SessionOrchestrator } from './session/orchestrator';
+import { SessionRequestHandler } from './session/request-handler';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import type { SessionStore } from './session/session-store';
 import { InMemorySessionStore } from './session/session-store';
@@ -86,9 +88,9 @@ export interface EngineDeps {
  */
 export class Engine {
   private readonly sessions: SessionOrchestrator;
-  private readonly sessionLifecycle: SessionLifecycleService;
+  private readonly sessionRequests: SessionRequestHandler;
   private readonly records: SessionRecordRegistry;
-  private readonly history: HistoryService;
+  private readonly historyRequests: HistoryRequestHandler;
   private readonly terminals?: TerminalService;
   private readonly terminalRequests: TerminalRequestHandler;
   private readonly responder: WireResponder;
@@ -117,7 +119,7 @@ export class Engine {
     const factory = deps.factory ?? createAdapter;
     this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
     this.records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
-    this.history = new HistoryService(factory);
+    const history = new HistoryService(factory);
     this.runtimes = new AgentRuntimeService({
       initial: deps.agentRuntimes,
       ready: deps.agentRuntimesReady,
@@ -174,22 +176,34 @@ export class Engine {
     );
     this.translator = deps.translator;
     const startOptions = new SessionStartOptionsResolver(this.providerStore, this.translator);
-    this.sessionLifecycle = new SessionLifecycleService(
+    const sessionLifecycle = new SessionLifecycleService(
       this.sessions,
       this.records,
-      this.history,
+      history,
       startOptions,
       this.workspaces,
+    );
+    this.sessionRequests = new SessionRequestHandler(
+      transport,
+      sessionLifecycle,
+      this.sessions,
+      this.responder,
+    );
+    this.historyRequests = new HistoryRequestHandler(
+      transport,
+      history,
+      sessionLifecycle,
+      this.responder,
     );
     this.scheduler = new ScheduleService(
       transport,
       deps.scheduleStore ?? new InMemoryScheduleStore(),
-      this.sessionLifecycle.driver,
+      sessionLifecycle.driver,
     );
     this.loops = new LoopService(
       transport,
       deps.loopStore ?? new InMemoryLoopStore(),
-      this.sessionLifecycle.driver,
+      sessionLifecycle.driver,
     );
     this.automationRequests = new AutomationRequestHandler(
       transport,
@@ -242,84 +256,22 @@ export class Engine {
   private async handle(msg: WireMessage): Promise<void> {
     const p = msg.payload;
     switch (p.kind) {
-      case 'session.start': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.sessionLifecycle.start(p.clientReqId, p.opts);
-        });
+      case 'session.start':
+      case 'agent.input':
+      case 'session.stop':
+      case 'session.delete':
+      case 'session.list':
+      case 'session.resume':
+      case 'session.import':
+      case 'session.attach':
+      case 'session.detach': {
+        await this.sessionRequests.handle(p);
         break;
       }
-      case 'agent.input': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.sessions.sendInput(p.sessionId, p.input);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
-      case 'session.stop': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.sessions.stop(p.sessionId);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
-      case 'session.delete': {
-        await this.tryReply(p.clientReqId, async () => {
-          // Idempotent, unlike session.stop: the target is usually cold or already deleted by
-          // another client. Provider-local history stays untouched, so session.import still works.
-          await this.sessions.delete(p.sessionId);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
-      case 'session.list': {
-        const sessions = this.sessions.list();
-        this.transport.send(
-          createWireMessage({ kind: 'session.listed', replyTo: p.clientReqId, sessions }),
-        );
-        break;
-      }
-      case 'session.resume': {
-        await this.tryReply(p.clientReqId, () =>
-          this.sessionLifecycle.resumeSession(p.clientReqId, p.sessionId),
-        );
-        break;
-      }
-      case 'session.import': {
-        await this.tryReply(p.clientReqId, async () => {
-          const record = await this.sessionLifecycle.importSession(p.agentKind, p.historyId);
-          this.transport.send(
-            createWireMessage({ kind: 'session.imported', replyTo: p.clientReqId, record }),
-          );
-        });
-        break;
-      }
-      case 'history.list': {
-        await this.tryReply(p.clientReqId, async () => {
-          const result = await this.history.list(p.agentKind, p.opts);
-          this.transport.send(
-            createWireMessage({ kind: 'history.listed', replyTo: p.clientReqId, result }),
-          );
-        });
-        break;
-      }
-      case 'history.read': {
-        await this.tryReply(p.clientReqId, async () => {
-          const result = await this.history.read(p.agentKind, p.opts);
-          this.transport.send(
-            createWireMessage({ kind: 'history.read.result', replyTo: p.clientReqId, result }),
-          );
-        });
-        break;
-      }
+      case 'history.list':
+      case 'history.read':
       case 'history.resume': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.sessionLifecycle.resumeHistory(
-            p.clientReqId,
-            p.agentKind,
-            p.historyId,
-            p.startOpts,
-          );
-        });
+        await this.historyRequests.handle(p);
         break;
       }
       case 'agent-runtime.list':
@@ -376,20 +328,6 @@ export class Engine {
         await this.automationRequests.handle(p);
         break;
       }
-      case 'session.attach': {
-        // The Hub has already attached this connection to the session before forwarding the frame.
-        // Re-emit the buffered state that a history read cannot recover: live status (which gates
-        // pending-ask cards and the Stop affordance), adapter capabilities and approval policy,
-        // the latest command catalog, and live permission/question state. Unresolved asks replay
-        // their request; settled asks replay only their outcome so old cards cannot enter a later
-        // turn. Clients fold this state idempotently and dedupe asks by requestId.
-        this.sessions.replay(p.sessionId);
-        break;
-      }
-      case 'session.detach': {
-        // No-op in the Engine: the Hub already removed this connection's session subscription.
-        break;
-      }
       case 'terminal.open':
       case 'terminal.list':
       case 'terminal.attach':
@@ -428,13 +366,5 @@ export class Engine {
     await this.translator?.closeAll();
     this.assets.close();
     this.transport.close();
-  }
-
-  private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
-    await this.responder.tryReply(replyTo, fn);
-  }
-
-  private sendSuccess(replyTo: string): void {
-    this.responder.sendSuccess(replyTo);
   }
 }
