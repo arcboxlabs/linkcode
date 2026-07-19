@@ -1,94 +1,25 @@
-import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { AUTH_FAILED_ERROR_CODE, asHistoryId } from '@linkcode/agent-adapter';
 import type {
-  AgentCapabilities,
   AgentEvent,
-  AgentHistoryCapabilities,
-  AgentHistoryListResult,
-  AgentHistoryReadOptions,
-  AgentHistoryReadResult,
-  AgentHistoryResumeOptions,
   AgentInput,
   AgentRuntimes,
   MessageId,
-  SessionId,
   StartOptions,
-  ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
-import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
-import { Engine } from '../engine';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
-
-class FakeAdapter implements AgentAdapter {
-  readonly kind = 'claude-code' as const;
-  readonly capabilities: AgentCapabilities = { slashCommands: false, shellCommand: false };
-  readonly historyCapabilities: AgentHistoryCapabilities = {
-    list: false,
-    read: true,
-    resume: true,
-  };
-
-  startedWith: StartOptions | null = null;
-  resumedFrom: string | null = null;
-  stopped = false;
-  readonly sentInputs: AgentInput[] = [];
-  private readonly listeners = new Set<(e: AgentEvent) => void>();
-
-  start(opts: StartOptions): Promise<void> {
-    this.startedWith = opts;
-    return Promise.resolve();
-  }
-
-  listHistory(): Promise<AgentHistoryListResult> {
-    return Promise.resolve({ sessions: [] });
-  }
-
-  readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
-    return Promise.resolve({
-      session: {
-        historyId: opts.historyId,
-        kind: this.kind,
-        title: 'Imported title',
-        cwd: '/imported',
-        createdAt: 1111,
-      },
-      events: [],
-    });
-  }
-
-  resumeHistory(opts: AgentHistoryResumeOptions): Promise<void> {
-    this.resumedFrom = opts.historyId;
-    return Promise.resolve();
-  }
-
-  send(input: AgentInput): Promise<void> {
-    this.sentInputs.push(input);
-    return Promise.resolve();
-  }
-
-  onEvent(cb: (e: AgentEvent) => void): () => void {
-    this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
-  }
-
-  stop(): Promise<void> {
-    this.stopped = true;
-    return Promise.resolve();
-  }
-
-  emit(event: AgentEvent): void {
-    for (const cb of this.listeners) cb(event);
-  }
-}
+import {
+  FakeAdapter,
+  createSessionHarness as harness,
+  listedSessions,
+  startedSessionId as startedId,
+  settleEngineTasks as tick,
+} from './fixtures/session-harness';
 
 /** An adapter whose start() blocks until the test releases it, to interleave other requests. */
 class GatedStartAdapter extends FakeAdapter {
@@ -152,66 +83,6 @@ class InvalidatingSuccessfulSendAdapter extends FakeAdapter {
     this.emit({ type: 'status', status: 'idle' });
     return super.send(input);
   }
-}
-
-/** Let the fire-and-forget handle()/persist chains settle. */
-function tick(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
-function harness(
-  store: SessionStore = new InMemorySessionStore(),
-  makeAdapter: () => FakeAdapter = () => new FakeAdapter(),
-  collectAgentRuntimes?: () => Promise<AgentRuntimes>,
-  agentRuntimesReady?: Promise<AgentRuntimes>,
-) {
-  const sent: WirePayload[] = [];
-  let handler: ((msg: ValidatedWireMessage) => void) | null = null;
-  const transport: Transport = {
-    connect: () => Promise.resolve(),
-    send(msg: ValidatedWireMessage) {
-      sent.push(msg.payload);
-    },
-    onMessage(cb) {
-      handler = cb;
-      return noop;
-    },
-    onClose: () => noop,
-    close: noop,
-  };
-  const adapters: FakeAdapter[] = [];
-  const factory: AdapterFactory = () => {
-    const adapter = makeAdapter();
-    adapters.push(adapter);
-    return adapter;
-  };
-  const engine = new Engine(transport, {
-    factory,
-    sessionStore: store,
-    collectAgentRuntimes,
-    agentRuntimesReady,
-  });
-
-  async function inject(payload: WirePayload): Promise<void> {
-    nullthrow(handler, 'engine not started')(createWireMessage(payload));
-    await tick();
-  }
-
-  return { engine, sent, inject, adapters, store };
-}
-
-function startedId(sent: WirePayload[], replyTo: string): SessionId {
-  const started = sent.find((p) => p.kind === 'session.started' && p.replyTo === replyTo);
-  if (started?.kind !== 'session.started') throw new Error(`no session.started for ${replyTo}`);
-  return started.sessionId;
-}
-
-function listedSessions(sent: WirePayload[], replyTo: string) {
-  const listed = sent.find((p) => p.kind === 'session.listed' && p.replyTo === replyTo);
-  if (listed?.kind !== 'session.listed') throw new Error(`no session.listed for ${replyTo}`);
-  return listed.sessions;
 }
 
 describe('engine session persistence', () => {
