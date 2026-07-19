@@ -228,6 +228,45 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('reflects only provider-supported startup model and effort axes', async () => {
+    const client = await connectedClient();
+
+    const piSessionId = await client.startSession({ kind: 'pi', cwd: '/mock/pi' });
+    const piEvents = collectEvents(client, piSessionId);
+    expect(piEvents.some((event) => event.type === 'model-update')).toBe(false);
+    expect(piEvents.some((event) => event.type === 'effort-update')).toBe(false);
+
+    let mark = piEvents.length;
+    client.attachSession(piSessionId);
+    await eventually(() => piEvents.length === mark + 2);
+    expect(piEvents.slice(mark).map((event) => event.type)).toEqual([
+      'status',
+      'capabilities-update',
+    ]);
+
+    const opencodeSessionId = await client.startSession({
+      kind: 'opencode',
+      cwd: '/mock/opencode',
+    });
+    const opencodeEvents = collectEvents(client, opencodeSessionId);
+    expect(opencodeEvents).toContainEqual({
+      type: 'model-update',
+      model: 'opencode/hy3-free',
+    });
+    expect(opencodeEvents.some((event) => event.type === 'effort-update')).toBe(false);
+
+    mark = opencodeEvents.length;
+    client.attachSession(opencodeSessionId);
+    await eventually(() => opencodeEvents.length === mark + 5);
+    expect(opencodeEvents.slice(mark)).toContainEqual({
+      type: 'model-update',
+      model: 'opencode/hy3-free',
+    });
+    expect(opencodeEvents.slice(mark).some((event) => event.type === 'effort-update')).toBe(false);
+
+    client.dispose();
+  });
+
   it('answers workspace and git calls mounted by the workbench shell', async () => {
     const client = await connectedClient();
 

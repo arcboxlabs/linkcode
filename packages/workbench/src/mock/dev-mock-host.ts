@@ -81,6 +81,20 @@ import {
 /** Pace of the mock download's staged `asset.progress` broadcasts. */
 const ASSET_PROGRESS_LATENCY_MS = 400;
 
+/** Provider truths the mock can reflect without probing a real install. Install-discovered model
+ * defaults (Pi) stay absent; adapters without an effort axis (OpenCode/Pi) stay absent too. */
+const MOCK_DEFAULT_MODELS: Readonly<Partial<Record<AgentKind, string>>> = {
+  'claude-code': 'claude-opus-4-8',
+  codex: 'gpt-5.5',
+  'grok-build': 'grok-4.5',
+};
+
+const MOCK_DEFAULT_EFFORTS: Readonly<Partial<Record<AgentKind, EffortLevel>>> = {
+  'claude-code': 'high',
+  codex: 'high',
+  'grok-build': 'high',
+};
+
 interface MockSession extends SessionInfo {
   /** Host-only replay state: keep it off `session.list` so the mock crosses the schema boundary. */
   model?: string;
@@ -526,10 +540,11 @@ export class DevMockHost {
     const session: MockSession = {
       ...rest,
       model:
-        rest.model ??
-        SEED_MODEL_CATALOGS[rest.kind]?.[0]?.id ??
-        (rest.kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
-      effort: rest.effort ?? 'high',
+        rest.model ?? SEED_MODEL_CATALOGS[rest.kind]?.[0]?.id ?? MOCK_DEFAULT_MODELS[rest.kind],
+      effort:
+        MOCK_DEFAULT_EFFORTS[rest.kind] === undefined
+          ? undefined
+          : (rest.effort ?? MOCK_DEFAULT_EFFORTS[rest.kind]),
       sessionId: this.nextSessionId(),
       origin: origin ?? { type: 'created' },
       epoch: 0,
