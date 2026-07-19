@@ -1,7 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { Account, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
+import type { Account, AccountProtocol, AgentRuntimes, EndpointModel } from '@linkcode/schema';
+import { listEndpointModels } from '@linkcode/sdk';
 import { ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
+import { Checkbox } from 'coss-ui/components/checkbox';
 import { Field, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
 import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
@@ -21,6 +23,7 @@ import type { Control, FieldValues, Path } from 'react-hook-form';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
+import { useMutation } from '../../runtime/tayori';
 import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
 import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
 import type { ImportedProvider, ModelsJsonImport } from './import-models-json';
@@ -537,6 +540,50 @@ function CustomAccountForm({
   });
   const modelRows = useFieldArray({ control, name: 'models' });
 
+  // The "fetch model list" step: query the endpoint's listing API (daemon-proxied) and offer the
+  // ids as a checklist. Endpoints without a listing reject — the hint says to fill in manually.
+  const fetchModels = useMutation(listEndpointModels);
+  const [fetched, setFetched] = useState<EndpointModel[] | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
+  const [draftBaseUrl, draftProtocol, draftSecret, draftType] = useWatch({
+    control,
+    name: ['baseUrl', 'protocol', 'secret', 'type'],
+  });
+  const canFetch = draftBaseUrl.trim() !== '' && draftProtocol !== '' && draftSecret !== '';
+
+  const handleFetch = async (): Promise<void> => {
+    try {
+      const models = await fetchModels.trigger({
+        baseUrl: draftBaseUrl.trim(),
+        protocol: draftProtocol as AccountProtocol,
+        secret: draftSecret,
+        credentialType: draftType,
+      });
+      setFetched(models);
+      setPicked(new Set());
+      setFetchError(null);
+    } catch (err) {
+      setFetched(null);
+      setFetchError(extractErrorMessage(err));
+    }
+  };
+
+  const addPicked = (): void => {
+    for (const model of fetched ?? []) {
+      if (!picked.has(model.id)) continue;
+      modelRows.append({
+        id: model.id,
+        name: '',
+        reasoning: false,
+        contextWindow: model.contextWindow ?? 131072,
+        maxTokens: 8192,
+      });
+    }
+    setFetched(null);
+    setPicked(new Set());
+  };
+
   const typeItems = [
     { value: 'api-key', label: t('credentialApiKey') },
     { value: 'auth-token', label: t('credentialAuthToken') },
@@ -615,6 +662,56 @@ function CustomAccountForm({
           </Button>
         </div>
         <p className="text-muted-foreground text-xs">{t('form.customProviderHint')}</p>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canFetch || fetchModels.isMutating}
+            onClick={() => {
+              void handleFetch();
+            }}
+          >
+            {fetchModels.isMutating ? t('fetchModels.loading') : t('fetchModels.button')}
+          </Button>
+          {canFetch ? null : (
+            <span className="text-muted-foreground text-xs">{t('fetchModels.needsEndpoint')}</span>
+          )}
+        </div>
+        {fetchError === null ? null : (
+          <p className="text-muted-foreground text-xs">
+            {t('fetchModels.failed', { message: fetchError })}
+          </p>
+        )}
+        {fetched === null ? null : fetched.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t('fetchModels.empty')}</p>
+        ) : (
+          <div className="flex flex-col gap-2 rounded-lg border border-border p-2">
+            <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+              {fetched.map((model) => (
+                <label key={model.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={picked.has(model.id)}
+                    onCheckedChange={(checked) => {
+                      setPicked((prev) => {
+                        const next = new Set(prev);
+                        if (checked) next.add(model.id);
+                        else next.delete(model.id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="min-w-0 truncate font-mono text-xs">{model.id}</span>
+                </label>
+              ))}
+            </div>
+            <div>
+              <Button type="button" size="sm" disabled={picked.size === 0} onClick={addPicked}>
+                {t('fetchModels.addPicked', { count: picked.size })}
+              </Button>
+            </div>
+          </div>
+        )}
         {modelRows.fields.length > 0 ? (
           <Field>
             <FieldLabel>{t('form.providerName')}</FieldLabel>

@@ -6,6 +6,7 @@ import type {
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
+  AccountProtocol,
   Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -15,6 +16,7 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   EffortLevel,
+  EndpointModel,
   FileSuggestion,
   GitDiff,
   GitDiffMode,
@@ -221,6 +223,16 @@ export class LinkCodeSdkClient {
   /** Pre-session picker data (models / approval tiers) for one agent kind. */
   getAgentCatalog(agentKind: AgentKind, cwd?: string): RequestResult<AgentStartCatalog> {
     return toResult(this.raw.getAgentCatalog(agentKind, cwd));
+  }
+
+  /** Query an endpoint's model-listing API (daemon-proxied); rejects when it serves none. */
+  listEndpointModels(req: {
+    baseUrl: string;
+    protocol: AccountProtocol;
+    secret: string;
+    credentialType: 'api-key' | 'auth-token';
+  }): RequestResult<EndpointModel[]> {
+    return toResult(this.raw.listEndpointModels(req));
   }
 
   /** Managed-asset store status: wanted versions and what is installed (CODE-111). */

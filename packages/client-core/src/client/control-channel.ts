@@ -1,4 +1,5 @@
 import type {
+  AccountProtocol,
   Accounts,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -11,6 +12,7 @@ import type {
   AgentStartCatalog,
   ContentBlock,
   EffortLevel,
+  EndpointModel,
   FileSuggestion,
   GitDiff,
   GitDiffMode,
@@ -334,6 +336,21 @@ export class ControlChannel {
       clientReqId,
       agentKind,
       cwd,
+    }));
+  }
+
+  /** Query an endpoint's model-listing API (daemon-proxied; the add-account form's fetch step).
+   * Rejects when the endpoint serves no listing — the form falls back to manual entry. */
+  listEndpointModels(req: {
+    baseUrl: string;
+    protocol: AccountProtocol;
+    secret: string;
+    credentialType: 'api-key' | 'auth-token';
+  }): Promise<EndpointModel[]> {
+    return this.sendCorrelated('endpointModels', (clientReqId) => ({
+      kind: 'endpoint.list-models',
+      clientReqId,
+      ...req,
     }));
   }
 

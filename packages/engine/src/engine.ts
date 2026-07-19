@@ -44,6 +44,7 @@ import {
   ScheduleService,
   watchTurn,
 } from './automation';
+import { listEndpointModels } from './endpoint-models';
 import { readWorkspaceFile } from './file-service';
 import { FileSuggestService } from './file-suggest-service';
 import { GitService } from './git/git-service';
@@ -570,6 +571,20 @@ export class Engine {
               : machineScoped;
           this.transport.send(
             createWireMessage({ kind: 'agent.cataloged', replyTo: p.clientReqId, catalog }),
+          );
+        });
+        break;
+      }
+      case 'endpoint.list-models': {
+        await this.tryReply(p.clientReqId, async () => {
+          const models = await listEndpointModels({
+            baseUrl: p.baseUrl,
+            protocol: p.protocol,
+            secret: p.secret,
+            credentialType: p.credentialType,
+          });
+          this.transport.send(
+            createWireMessage({ kind: 'endpoint.models-listed', replyTo: p.clientReqId, models }),
           );
         });
         break;

@@ -1,5 +1,6 @@
 import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
 import type {
+  AccountProtocol,
   Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -9,6 +10,7 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   EffortLevel,
+  EndpointModel,
   FileSuggestion,
   GitDiff,
   GitDiffMode,
@@ -186,6 +188,20 @@ export function getAgentCatalog(
   options: Options<{ agentKind: AgentKind; cwd?: string }>,
 ): RequestResult<AgentStartCatalog> {
   return resolveClient(options).getAgentCatalog(options.agentKind, options.cwd);
+}
+
+/** Query an endpoint's model-listing API (daemon-proxied; the add-account form's fetch step).
+ * Rejects when the endpoint serves no listing — the form falls back to manual entry. */
+export function listEndpointModels(
+  options: Options<{
+    baseUrl: string;
+    protocol: AccountProtocol;
+    secret: string;
+    credentialType: 'api-key' | 'auth-token';
+  }>,
+): RequestResult<EndpointModel[]> {
+  const { client: _client, ...req } = options;
+  return resolveClient(options).listEndpointModels(req);
 }
 
 /** Managed-asset store status: wanted versions and what is installed (CODE-111). */
