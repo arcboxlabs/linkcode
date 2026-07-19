@@ -1,5 +1,5 @@
 import type { AgentHistoryId, AgentHistorySession, AgentKind, SessionId } from '@linkcode/schema';
-import { importSession, listHistory, listWorkspaces, registerWorkspace } from '@linkcode/sdk';
+import { importSession, listHistory } from '@linkcode/sdk';
 import { useMemo, useRef, useState } from 'react';
 import { useData, useMutation } from '../runtime/tayori';
 
@@ -17,14 +17,11 @@ export interface ProviderHistory {
   refresh: () => void;
   /** Every entry currently importing; batch imports may contain several. */
   importingIds: ReadonlySet<AgentHistoryId>;
-  /** Legacy single-entry state retained while consumers migrate to importingIds. */
-  importingId: AgentHistoryId | null;
-  importError: unknown;
   /** Directory groups currently importing. */
   importingCwds: ReadonlySet<string>;
   /** Imports the entry as a cold session and resolves with its Link Code session id. */
   importEntry: (entry: AgentHistorySession) => Promise<SessionId>;
-  /** Registers the directory as a project and imports all entries; dedupes in-flight requests. */
+  /** Imports all entries from one directory; dedupes in-flight requests. */
   importGroup: (
     cwd: string,
     entries: readonly AgentHistorySession[],
@@ -46,7 +43,6 @@ interface ImportHistoryGroupOptions {
   inFlightKey?: string;
   entries: readonly AgentHistorySession[];
   inFlight: Set<string>;
-  register: (cwd: string) => Promise<unknown>;
   importEntry: (entry: AgentHistorySession) => Promise<SessionId>;
 }
 
@@ -55,15 +51,12 @@ export async function importHistoryGroup({
   inFlightKey = cwd,
   entries,
   inFlight,
-  register,
   importEntry,
 }: ImportHistoryGroupOptions): Promise<HistoryGroupImportResult | null> {
   if (inFlight.has(inFlightKey)) return null;
   inFlight.add(inFlightKey);
   try {
-    // A directory-level action promises a project, so do not create orphaned imported sessions if
-    // the directory cannot be registered. Registration is idempotent for an existing project.
-    await register(cwd);
+    // session.import registers each successful entry's cwd as a project in the engine (CODE-345).
     const settled = await Promise.allSettled(entries.map((entry) => importEntry(entry)));
     const result: HistoryGroupImportResult = { imported: [], failures: [] };
     for (const [index, outcome] of settled.entries()) {
@@ -89,16 +82,13 @@ export function useProviderHistory(kind: AgentKind): ProviderHistory {
     // agent's sessions as another agent's while the next scan is pending or unavailable.
     { keepPreviousData: false },
   );
-  const { mutate: mutateWorkspaces } = useData(listWorkspaces, {});
   const importMutation = useMutation(importSession);
-  const registerMutation = useMutation(registerWorkspace);
   const pendingImportsRef = useRef(new Map<string, Promise<SessionId>>());
   const pendingGroupsRef = useRef(new Set<string>());
   const [importingKeys, setImportingKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [importingGroupKeys, setImportingGroupKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [importError, setImportError] = useState<unknown>(null);
 
   const entries = useMemo(
     () =>
@@ -113,15 +103,10 @@ export function useProviderHistory(kind: AgentKind): ProviderHistory {
     const existing = pendingImportsRef.current.get(key);
     if (existing) return existing;
 
-    setImportError(null);
     setImportingKeys((current) => new Set(current).add(key));
     const pending = importMutation
       .trigger({ agentKind: entry.kind, historyId: entry.historyId })
       .then((record) => record.sessionId)
-      .catch((error: unknown) => {
-        setImportError(error);
-        throw error;
-      })
       .finally(() => {
         pendingImportsRef.current.delete(key);
         setImportingKeys((current) => {
@@ -146,11 +131,6 @@ export function useProviderHistory(kind: AgentKind): ProviderHistory {
       inFlightKey: key,
       entries: groupEntries,
       inFlight: pendingGroupsRef.current,
-      register: (directory) =>
-        registerMutation.trigger({ cwd: directory }).then((record) => {
-          void mutateWorkspaces();
-          return record;
-        }),
       importEntry,
     }).finally(() => {
       setImportingGroupKeys((current) => {
@@ -170,8 +150,6 @@ export function useProviderHistory(kind: AgentKind): ProviderHistory {
       void mutate();
     },
     importingIds: currentImportingIds(entries, importingKeys),
-    importingId: currentImportingIds(entries, importingKeys).values().next().value ?? null,
-    importError,
     importingCwds: currentImportingCwds(kind, entries, importingGroupKeys),
     importEntry,
     importGroup,
