@@ -1,5 +1,11 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
-import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
+import {
+  getAccounts,
+  getAgentCatalog,
+  getProviderConfig,
+  setAccounts,
+  setProviderConfig,
+} from '@linkcode/sdk';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
@@ -7,7 +13,6 @@ import { useData, useMutation } from '../../runtime/tayori';
 import { AccountDetail } from './account-detail';
 import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
-import { LocalProvidersSection } from './local-providers';
 import { AccountMasterList } from './master-list';
 import { useProvidersSettingsStore } from './store';
 import { withBinding, withModel, withoutAccount } from './view';
@@ -27,6 +32,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   } = useData(getAccounts, {});
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: runtimes } = useAgentRuntimes();
+  // Read-only local-provider cards under the pool (pi's models.json custom providers).
+  const { data: piCatalog } = useData(getAgentCatalog, { agentKind: 'pi' });
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
 
@@ -98,6 +105,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           loading={accountsLoading}
           providers={providers}
           runtimes={runtimes}
+          localProviders={piCatalog?.localProviders}
           selectedId={selected?.id}
           onSelect={select}
           onAdd={startAdd}
@@ -137,7 +145,6 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           )}
         </div>
       </div>
-      <LocalProvidersSection />
     </div>
   );
 }
