@@ -223,6 +223,32 @@ describe('GrokBuildAdapter', () => {
     expect(reflected).toEqual(['grok-next']);
   });
 
+  it('advertises its fixed bypass posture without supporting policy changes', async () => {
+    vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
+    const adapter = new GrokBuildAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start({ kind: 'grok-build', cwd: '/tmp' });
+
+    expect(events).toContainEqual({
+      type: 'approval-policy-update',
+      state: {
+        availablePolicies: [
+          {
+            policyId: 'bypassPermissions',
+            name: 'Bypass permissions',
+            description: 'All tools run without approval prompts; this adapter cannot change it.',
+          },
+        ],
+        currentPolicyId: 'bypassPermissions',
+      },
+    });
+    await expect(
+      adapter.send({ type: 'set-approval-policy', policyId: 'default' }),
+    ).rejects.toThrow('grok-build: changing the approval policy is not supported');
+  });
+
   it('streams thought/text and settles with session-ref + usage', async () => {
     vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
     const { child, pushStdout, exit, close } = fakeChild();

@@ -183,7 +183,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected onSetMode(_modeId: string): Promise<void> {
     return Promise.resolve();
   }
-  /** Default: reject. Only adapters that advertise approval policies override this. */
+  /** Default: reject. Only adapters with selectable approval policies override this. */
   protected onSetApprovalPolicy(_policyId: string): Promise<void> {
     return Promise.reject(new Error(`${this.kind}: changing the approval policy is not supported`));
   }
