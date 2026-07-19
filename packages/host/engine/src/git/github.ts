@@ -7,7 +7,7 @@ import type {
   GitReviewDecision,
 } from '@linkcode/schema';
 import { z } from 'zod';
-import { runCommand } from '../process/run-command';
+import { runCommandPromise as runCommand } from '../process/run-command';
 import type { GitProviderClient, PullRequestQuery } from './provider';
 
 /** Never prompt: an interactive `gh` would hang the daemon's request until the timeout. */

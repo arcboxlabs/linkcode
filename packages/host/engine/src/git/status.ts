@@ -1,5 +1,5 @@
 import type { GitRemote, GitStatus } from '@linkcode/schema';
-import { runCommand } from '../process/run-command';
+import { runCommandPromise as runCommand } from '../process/run-command';
 import { parseRemoteIdentity } from './remote';
 
 /** Read-only git env: never prompt for credentials, never take optional locks — a status probe
