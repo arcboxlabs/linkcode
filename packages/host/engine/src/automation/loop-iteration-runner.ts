@@ -78,14 +78,16 @@ export class LoopIterationRunner {
       model: loop.spec.model,
       title: loop.spec.name ?? 'Loop worker',
       automation: { kind: 'loop', id: loop.loopId },
+      signal,
     });
     iteration.workerSessionId = sessionId;
     await this.save(iteration);
     return this.withAbortStop(sessionId, signal, async () => {
-      await this.driver.makeUnattended(sessionId);
+      await this.driver.makeUnattended(sessionId, signal);
       const prompt = buildLoopWorkerPrompt(loop.spec, iteration.index, lastFailure);
       const result = await this.driver.prompt(sessionId, prompt, {
         timeoutMs: loop.spec.turnTimeoutMs,
+        signal,
       });
       this.reporter.log(loop.loopId, 'info', 'worker', result.text, iteration.index);
       return result.text;
@@ -132,14 +134,16 @@ export class LoopIterationRunner {
       model: verifier.model,
       title: 'Loop verifier',
       automation: { kind: 'loop', id: loop.loopId },
+      signal,
     });
     iteration.verifierSessionId = sessionId;
     await this.save(iteration);
     return this.withAbortStop(sessionId, signal, async () => {
-      await this.driver.makeUnattended(sessionId);
+      await this.driver.makeUnattended(sessionId, signal);
       const prompt = buildLoopVerifierPrompt(verifier.prompt, loop.spec.prompt, workerText);
       const verdict = await promptForStructured(this.driver, sessionId, prompt, LoopVerdictSchema, {
         timeoutMs: loop.spec.turnTimeoutMs,
+        signal,
       });
       this.reporter.log(
         loop.loopId,

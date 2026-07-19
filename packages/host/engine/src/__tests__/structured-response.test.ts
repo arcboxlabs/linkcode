@@ -7,7 +7,10 @@ import { extractJson, promptForStructured } from '../automation/structured-respo
 const VerdictSchema = z.object({ passed: z.boolean(), reason: z.string() });
 
 /** A prompt driver whose replies are scripted per attempt; records the prompts it received. */
-function scriptedDriver(replies: string[]): {
+function scriptedDriver(
+  replies: string[],
+  afterReply?: (reply: string) => void,
+): {
   prompt: (sessionId: SessionId, text: string) => Promise<TurnResult>;
   prompts: string[];
 } {
@@ -19,6 +22,7 @@ function scriptedDriver(replies: string[]): {
       prompts.push(text);
       const reply = replies[Math.min(call, replies.length - 1)];
       call += 1;
+      afterReply?.(reply);
       return Promise.resolve({ stopReason: 'end_turn', text: reply });
     },
   };
@@ -73,6 +77,18 @@ describe('promptForStructured', () => {
     expect(result).toEqual({ passed: true, reason: 'fixed' });
     expect(driver.prompts).toHaveLength(2);
     expect(driver.prompts[1]).toContain('could not be used');
+  });
+
+  it('does not send a corrective retry after cancellation', async () => {
+    const controller = new AbortController();
+    const driver = scriptedDriver(['not json'], () => controller.abort());
+
+    await expect(
+      promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema, {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow('structured prompt cancelled');
+    expect(driver.prompts).toHaveLength(1);
   });
 
   it('throws once the retry budget is exhausted', async () => {

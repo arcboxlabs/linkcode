@@ -72,6 +72,7 @@ function balancedObjectFrom(text: string, open: number): string | undefined {
 
 export interface StructuredPromptOptions {
   timeoutMs?: number;
+  signal?: AbortSignal;
   /** Corrective re-asks allowed after the first attempt (default 2 → up to 3 turns total). */
   maxRetries?: number;
 }
@@ -93,8 +94,12 @@ export async function promptForStructured<T>(
   let prompt = basePrompt;
   let lastError = 'no reply';
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    if (opts.signal?.aborted) throw new Error('structured prompt cancelled');
     // eslint-disable-next-line no-await-in-loop -- retries are inherently sequential: each corrective re-ask depends on the previous reply.
-    const { text } = await driver.prompt(sessionId, prompt, { timeoutMs: opts.timeoutMs });
+    const { text } = await driver.prompt(sessionId, prompt, {
+      timeoutMs: opts.timeoutMs,
+      signal: opts.signal,
+    });
     const json = extractJson(text);
     if (json === undefined) {
       lastError = 'no JSON object found in the reply';

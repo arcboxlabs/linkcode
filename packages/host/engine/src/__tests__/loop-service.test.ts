@@ -9,6 +9,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoopService } from '../automation/loop-service';
@@ -110,15 +111,20 @@ function baseSpec(overrides: Partial<LoopSpec> = {}): LoopSpec {
   };
 }
 
+function bindRuntime(service: LoopService): LoopService {
+  service.bindRuntime(Effect.runFork);
+  return service;
+}
+
 describe('LoopService', () => {
   it('succeeds on the first iteration when checks pass', async () => {
     const { transport, sent } = recordingTransport();
     const store = new InMemoryLoopStore();
     const driver = new FakeSessionDriver();
-    const service = new LoopService(transport, store, driver, { now });
+    const service = bindRuntime(new LoopService(transport, store, driver, { now }));
 
     const loop = await service.startLoop(baseSpec());
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((l) => l.loopId === loop.loopId);
     expect(final?.status).toBe('succeeded');
@@ -135,7 +141,7 @@ describe('LoopService', () => {
     const { transport } = recordingTransport();
     const store = new InMemoryLoopStore();
     const driver = new FakeSessionDriver();
-    const service = new LoopService(transport, store, driver, { now });
+    const service = bindRuntime(new LoopService(transport, store, driver, { now }));
 
     const marker = join(workdir, 'done');
     // The worker "creates" the marker only on its second turn.
@@ -149,7 +155,7 @@ describe('LoopService', () => {
     };
 
     const loop = await service.startLoop(baseSpec({ verifyChecks: [`test -f ${marker}`] }));
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((l) => l.loopId === loop.loopId);
     expect(final?.status).toBe('succeeded');
@@ -162,10 +168,12 @@ describe('LoopService', () => {
   it('fails after max iterations when the check never passes', async () => {
     const { transport } = recordingTransport();
     const store = new InMemoryLoopStore();
-    const service = new LoopService(transport, store, new FakeSessionDriver(), { now });
+    const service = bindRuntime(
+      new LoopService(transport, store, new FakeSessionDriver(), { now }),
+    );
 
     const loop = await service.startLoop(baseSpec({ verifyChecks: ['false'], maxIterations: 3 }));
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((l) => l.loopId === loop.loopId);
     expect(final?.status).toBe('failed');
@@ -177,7 +185,7 @@ describe('LoopService', () => {
     const { transport } = recordingTransport();
     const store = new InMemoryLoopStore();
     const driver = new FakeSessionDriver();
-    const service = new LoopService(transport, store, driver, { now });
+    const service = bindRuntime(new LoopService(transport, store, driver, { now }));
 
     // Worker reply, then verifier verdict — alternating per iteration.
     driver.replies = [
@@ -190,7 +198,7 @@ describe('LoopService', () => {
     const loop = await service.startLoop(
       baseSpec({ verifyChecks: [], verifier: { prompt: 'is it done?' } }),
     );
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((l) => l.loopId === loop.loopId);
     expect(final?.status).toBe('succeeded');
@@ -215,11 +223,11 @@ describe('LoopService', () => {
           }
         }, 5);
       });
-    const service = new LoopService(transport, store, driver, { now });
+    const service = bindRuntime(new LoopService(transport, store, driver, { now }));
 
     const loop = await service.startLoop(baseSpec());
     service.stopLoop(loop.loopId);
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     expect(service.list().find((l) => l.loopId === loop.loopId)?.status).toBe('stopped');
   });
@@ -246,12 +254,12 @@ describe('LoopService', () => {
       await stopSession(sessionId);
       settlePrompt?.();
     };
-    const service = new LoopService(transport, store, driver);
+    const service = bindRuntime(new LoopService(transport, store, driver));
 
     const loop = await service.startLoop(baseSpec({ maxTimeMs: 1000 }));
     await promptStarted;
     await vi.advanceTimersByTimeAsync(1000);
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((item) => item.loopId === loop.loopId);
     expect(final?.status).toBe('failed');
@@ -260,14 +268,132 @@ describe('LoopService', () => {
 
   it('rejects a spec with no verification mechanism when nothing verifies (guarded upstream)', async () => {
     const { transport } = recordingTransport();
-    const service = new LoopService(transport, new InMemoryLoopStore(), new FakeSessionDriver(), {
-      now,
-    });
+    const service = bindRuntime(
+      new LoopService(transport, new InMemoryLoopStore(), new FakeSessionDriver(), { now }),
+    );
     // The service trusts the schema; deletion is refused while running.
     const loop = await service.startLoop(baseSpec());
     await expect(service.deleteLoop(loop.loopId)).rejects.toThrow('stop the loop');
-    await service.settleAll();
+    await Effect.runPromise(service.settleAll());
     await expect(service.deleteLoop(loop.loopId)).resolves.toBeUndefined();
+  });
+
+  it('shutdown closes admission and waits for session cleanup and terminal persistence', async () => {
+    const { transport, sent } = recordingTransport();
+    const store = new InMemoryLoopStore();
+    const driver = new FakeSessionDriver();
+    let promptStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      promptStarted = resolve;
+    });
+    let settlePrompt!: () => void;
+    driver.prompt = (sessionId: SessionId) => {
+      driver.calls.push({ op: 'prompt', sessionId });
+      promptStarted();
+      return new Promise<TurnResult>((resolve) => {
+        settlePrompt = () => resolve({ stopReason: 'cancelled', text: '' });
+      });
+    };
+    let releaseCleanup!: () => void;
+    const cleanupReleased = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const stopSession = driver.stopSession.bind(driver);
+    driver.stopSession = async (sessionId: SessionId) => {
+      await stopSession(sessionId);
+      settlePrompt();
+      await cleanupReleased;
+    };
+    let releaseTerminalSave!: () => void;
+    const terminalSaveReleased = new Promise<void>((resolve) => {
+      releaseTerminalSave = resolve;
+    });
+    const save = store.save.bind(store);
+    store.save = async (loop) => {
+      if (loop.status === 'stopped') await terminalSaveReleased;
+      await save(loop);
+    };
+    const service = bindRuntime(new LoopService(transport, store, driver, { now }));
+    const loop = await service.startLoop(baseSpec());
+    await started;
+
+    let shutdownCount = 0;
+    const first = Effect.runPromise(service.shutdown()).then(() => {
+      shutdownCount += 1;
+    });
+    const second = Effect.runPromise(service.shutdown()).then(() => {
+      shutdownCount += 1;
+    });
+    await expect(service.startLoop(baseSpec())).rejects.toThrow();
+    await Promise.resolve();
+
+    expect(shutdownCount).toBe(0);
+    expect(driver.calls.some((call) => call.op === 'stop')).toBe(true);
+
+    releaseCleanup();
+    await Promise.resolve();
+    expect(shutdownCount).toBe(0);
+    expect(sent.at(-1)).not.toMatchObject({ loop: { status: 'stopped' } });
+
+    releaseTerminalSave();
+    await Promise.all([first, second]);
+
+    expect(shutdownCount).toBe(2);
+    expect(driver.records).toHaveLength(0);
+    expect((await store.load()).find((item) => item.loopId === loop.loopId)?.status).toBe(
+      'stopped',
+    );
+    expect(sent.filter((payload) => payload.kind === 'loop.changed').at(-1)).toMatchObject({
+      loop: { status: 'stopped' },
+    });
+  });
+
+  it('shutdown waits for accepted admission and prevents it from launching', async () => {
+    const { transport, sent } = recordingTransport();
+    const store = new InMemoryLoopStore();
+    const driver = new FakeSessionDriver();
+    let initialSaveStarted!: () => void;
+    const saveStarted = new Promise<void>((resolve) => {
+      initialSaveStarted = resolve;
+    });
+    let releaseInitialSave!: () => void;
+    const initialSaveReleased = new Promise<void>((resolve) => {
+      releaseInitialSave = resolve;
+    });
+    const save = store.save.bind(store);
+    let blockInitialSave = true;
+    store.save = async (loop) => {
+      if (blockInitialSave && loop.status === 'running') {
+        blockInitialSave = false;
+        initialSaveStarted();
+        await initialSaveReleased;
+      }
+      await save(loop);
+    };
+    const service = bindRuntime(new LoopService(transport, store, driver, { now }));
+    const accepted = service.startLoop(baseSpec());
+    await saveStarted;
+
+    let shutdownSettled = false;
+    const shutdown = Effect.runPromise(service.shutdown()).then(() => {
+      shutdownSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(shutdownSettled).toBe(false);
+    expect(driver.calls).toHaveLength(0);
+
+    releaseInitialSave();
+    const loop = await accepted;
+    await shutdown;
+
+    expect(driver.calls).toHaveLength(0);
+    expect((await store.load()).find((item) => item.loopId === loop.loopId)?.status).toBe(
+      'stopped',
+    );
+    expect(sent.filter((payload) => payload.kind === 'loop.changed').at(-1)).toMatchObject({
+      loop: { status: 'stopped' },
+    });
   });
 
   it('marks interrupted loops stopped on restart', async () => {
@@ -282,7 +408,9 @@ describe('LoopService', () => {
       updatedAt: 0,
     });
     const { transport } = recordingTransport();
-    const service = new LoopService(transport, store, new FakeSessionDriver(), { now });
+    const service = bindRuntime(
+      new LoopService(transport, store, new FakeSessionDriver(), { now }),
+    );
     await service.start();
 
     expect(service.list()[0]?.status).toBe('stopped');

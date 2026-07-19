@@ -7,6 +7,7 @@ import type {
   LoopSpec,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { Cause, Effect, Exit, Fiber } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { LoopIterationRunner } from './loop-iteration-runner';
@@ -15,6 +16,13 @@ import type { LoopStore } from './loop-store';
 import type { SessionDriver } from './session-driver';
 
 const SUMMARY_MAX_CHARS = 2000;
+
+type RunTask = (effect: Effect.Effect<void>) => Fiber.Fiber<void>;
+
+interface LoopHandle {
+  readonly controller: AbortController;
+  readonly fiber: Fiber.Fiber<void>;
+}
 
 export interface LoopServiceOptions {
   /** Injectable clock for deterministic tests. */
@@ -31,12 +39,13 @@ export interface LoopServiceOptions {
  */
 export class LoopService {
   private readonly loops = new Map<LoopId, LoopRecord>();
-  private readonly controllers = new Map<LoopId, AbortController>();
-  /** In-flight loop promises, kept only so {@link settleAll} can await them in tests. */
-  private readonly inFlight = new Map<LoopId, Promise<void>>();
+  /** Loop fibers run in Engine's root FiberSet; handles provide per-loop cancellation and draining. */
+  private readonly handles = new Map<LoopId, LoopHandle>();
   private readonly now: () => number;
   private readonly reporter: LoopReporter;
   private readonly iterationRunner: LoopIterationRunner;
+  private runTask: RunTask | undefined;
+  private acceptingLoops = true;
   private seq = 0;
 
   constructor(
@@ -48,6 +57,10 @@ export class LoopService {
     this.now = options.now ?? Date.now;
     this.reporter = new LoopReporter(transport, this.now);
     this.iterationRunner = new LoopIterationRunner(driver, store, this.reporter, this.now);
+  }
+
+  bindRuntime(runTask: RunTask): void {
+    this.runTask = runTask;
   }
 
   async start(): Promise<void> {
@@ -66,8 +79,11 @@ export class LoopService {
     }
   }
 
-  shutdown(): void {
-    for (const controller of this.controllers.values()) controller.abort();
+  shutdown(): Effect.Effect<void> {
+    return Effect.sync(() => {
+      this.acceptingLoops = false;
+      for (const handle of this.handles.values()) handle.controller.abort();
+    }).pipe(Effect.andThen(this.settleAll()));
   }
 
   list(): LoopRecord[] {
@@ -82,7 +98,8 @@ export class LoopService {
     return { loop, iterations, logs: this.reporter.snapshot(loopId) };
   }
 
-  async startLoop(spec: LoopSpec): Promise<LoopRecord> {
+  startLoop(spec: LoopSpec): Promise<LoopRecord> {
+    if (!this.acceptingLoops) return Promise.reject(new Error('Loop service is shutting down'));
     const now = this.now();
     const loop: LoopRecord = {
       loopId: this.mintLoopId(),
@@ -93,34 +110,63 @@ export class LoopService {
       updatedAt: now,
     };
     this.loops.set(loop.loopId, loop);
-    this.reporter.start(loop.loopId);
-    await this.store.save(loop);
-    this.reporter.changed(loop);
-    this.reporter.log(loop.loopId, 'info', 'system', 'loop started');
-
     const controller = new AbortController();
-    this.controllers.set(loop.loopId, controller);
-    this.track(loop.loopId, this.runLoop(loop, controller.signal));
-    return loop;
+    let admissionSettled = false;
+    let resolveAdmission: (record: LoopRecord) => void;
+    let rejectAdmission: (cause: unknown) => void;
+    const admission = new Promise<LoopRecord>((resolve, reject) => {
+      resolveAdmission = resolve;
+      rejectAdmission = reject;
+    });
+    const finish = (error: string) => this.finish(loop, 'stopped', error);
+    const runLoop = () => this.runLoop(loop, controller.signal);
+    const { reporter, store } = this;
+    const effect = Effect.gen(function* () {
+      yield* fromPromise(() => store.save(loop));
+      reporter.start(loop.loopId);
+      admissionSettled = true;
+      resolveAdmission(loop);
+      if (controller.signal.aborted) {
+        yield* fromPromise(() => finish('engine shutting down'));
+        return;
+      }
+      reporter.changed(loop);
+      reporter.log(loop.loopId, 'info', 'system', 'loop started');
+      yield* fromPromise(runLoop);
+    }).pipe(
+      Effect.onExit((exit) =>
+        Effect.sync(() => {
+          if (admissionSettled) return;
+          this.loops.delete(loop.loopId);
+          rejectAdmission(
+            Exit.isFailure(exit) ? Cause.squash(exit.cause) : new Error('Loop stopped'),
+          );
+        }),
+      ),
+    );
+    this.track(loop.loopId, controller, effect);
+    return admission;
   }
 
   /** Signal a running loop to stop; it settles to `stopped` after the current turn unwinds. */
   stopLoop(loopId: LoopId): void {
     this.require(loopId);
-    this.controllers.get(loopId)?.abort();
+    this.handles.get(loopId)?.controller.abort();
   }
 
   async deleteLoop(loopId: LoopId): Promise<void> {
-    const loop = this.require(loopId);
-    if (loop.status === 'running') throw new Error('stop the loop before deleting it');
+    this.require(loopId);
+    if (this.handles.has(loopId)) throw new Error('stop the loop before deleting it');
     this.loops.delete(loopId);
     await this.store.delete(loopId);
     this.reporter.remove(loopId);
   }
 
-  /** Resolves once no loop is in flight. Test-only seam — nothing else awaits the runners. */
-  async settleAll(): Promise<void> {
-    await Promise.all(this.inFlight.values());
+  /** Resolves once all accepted loop fibers finish persistence, reporting, and session cleanup. */
+  settleAll(): Effect.Effect<void> {
+    return Effect.asVoid(
+      Effect.all([...this.handles.values()].map(({ fiber }) => Fiber.await(fiber))),
+    );
   }
 
   // ── The loop runner ──────────────────────────────────────────────────────
@@ -193,7 +239,6 @@ export class LoopService {
     if (summary !== undefined) loop.summary = summary;
     loop.endedAt = this.now();
     loop.updatedAt = this.now();
-    this.controllers.delete(loop.loopId);
     await this.store.save(loop);
     this.reporter.changed(loop);
     const level: LoopLogLevel =
@@ -213,21 +258,36 @@ export class LoopService {
     return nullthrow(this.loops.get(loopId), `Unknown loop: ${loopId}`);
   }
 
-  private track(loopId: LoopId, run: Promise<void>): void {
-    const wrapped = run
-      .catch((err: unknown) => {
-        console.error('Loop run failed:', err);
-      })
-      .finally(() => {
-        if (this.inFlight.get(loopId) === wrapped) this.inFlight.delete(loopId);
-      });
-    this.inFlight.set(loopId, wrapped);
+  private track(
+    loopId: LoopId,
+    controller: AbortController,
+    effect: Effect.Effect<void, unknown>,
+  ): void {
+    const run = nullthrow(this.runTask, 'Loop runtime has not started');
+    const fiber = run(
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.void
+            : Effect.logError('Loop task failed', Cause.squash(cause)),
+        ),
+      ),
+    );
+    const handle = { controller, fiber };
+    this.handles.set(loopId, handle);
+    fiber.addObserver(() => {
+      if (this.handles.get(loopId) === handle) this.handles.delete(loopId);
+    });
   }
 
   private mintLoopId(): LoopId {
     this.seq += 1;
     return `loop-${this.now().toString(36)}-${this.seq.toString(36)}` as LoopId;
   }
+}
+
+function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: run, catch: (cause) => cause });
 }
 
 /** Resolve after `ms`, or immediately when `signal` aborts. */
