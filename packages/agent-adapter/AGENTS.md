@@ -22,7 +22,7 @@ Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin)
 | --- | --- | --- |
 | claude-code | `@anthropic-ai/claude-agent-sdk` | 0.3.206 |
 | codex | `@openai/codex` (CLI carrier — no JS SDK) | 0.144.1 |
-| opencode | `@opencode-ai/sdk` | 1.17.18 |
+| opencode | `@opencode-ai/sdk` | 1.18.3 |
 | pi | `@earendil-works/pi-coding-agent` | 0.80.6 |
 | grok-build | none (user-installed `grok` CLI; headless `-p`, not ACP) | detect `grok --version` (verified 0.2.102) |
 
@@ -45,7 +45,7 @@ Every new adapter MUST honor these (`base.ts`); downstream relies on them, they 
 | --- | --- | --- | --- |
 | claude-code | ✓ | `Query#supportedCommands()` at Query creation + `commands_changed` full-replace push | ✗ (`!` bash mode is a TUI input-box feature with no verified programmatic entry) |
 | codex | ✓ (`/compact` + enabled skills) | `skills/list` at start + `skills/changed` invalidation | ✓ `thread/shellCommand` |
-| opencode | ✓ | `command.list({directory})` once at start (no change events exist — snapshot only) | ✓ `session.shell` |
+| opencode | ✓ (commands + skills) | `command.list({directory})` once at start (no change events exist — snapshot only); binary ≥1.18 includes skills as `source:'skill'` entries, invoked through the same `session.command` (live-verified 1.18.2×SDK 1.18.3, CODE-313) | ✓ `session.shell` |
 | pi | ✗ (the SDK's own `session.prompt` still expands `/` text it receives — untouched pass-through) | — | ✗ |
 
 - **claude-code**: invocation = pushing `/name args` as a plain user message — the vendored CLI parses a leading `/` on every user message even in SDK streaming-input mode (verified in the binary), so `onCommand` rides `onPrompt` and the normal result-frame settle. Live-verified on the pinned 0.3.206×2.1.206 pair: a local command run through that path returns a synthetic assistant message + a zero-cost `result` — status does not hang. `SlashCommand.aliases` ride the normalized `AgentCommand.aliases` field (`agentCommandMatches` accepts them in composer/engine; menus display only the canonical name; invocation pushes the typed alias, which the CLI resolves itself). `system/local_command_output` (never observed live, handled per SDK types) renders as assistant text bracketed by `freshSegment()`.
