@@ -88,6 +88,29 @@ class FakeSessionDriver implements SessionDriver {
   }
 }
 
+class BlockingSessionDriver extends FakeSessionDriver {
+  readonly promptStarted: Promise<void>;
+  readonly promptRelease: Promise<TurnResult>;
+  releasePrompt: (result: TurnResult) => void = noop;
+  private markPromptStarted: () => void = noop;
+
+  constructor() {
+    super();
+    this.promptStarted = new Promise((resolve) => {
+      this.markPromptStarted = resolve;
+    });
+    this.promptRelease = new Promise((resolve) => {
+      this.releasePrompt = resolve;
+    });
+  }
+
+  override prompt(sessionId: SessionId): Promise<TurnResult> {
+    this.calls.push({ op: 'prompt', sessionId });
+    this.markPromptStarted();
+    return this.promptRelease;
+  }
+}
+
 const INTERVAL_SPEC: ScheduleSpec = {
   prompt: 'do the thing',
   cadence: { type: 'interval', everyMs: 60000 },
@@ -99,6 +122,12 @@ function schedulesIn(sent: WirePayload[]): Schedule[] {
 }
 function runsIn(sent: WirePayload[]) {
   return sent.flatMap((p) => (p.kind === 'schedule.run' ? [p.run] : []));
+}
+
+function flushAsyncWork(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
 
 describe('ScheduleService', () => {
@@ -311,6 +340,82 @@ describe('ScheduleService', () => {
     expect(runsIn(sent)).toHaveLength(0);
   });
 
+  it('shutdown waits for an accepted run to unwind', async () => {
+    const driver = new BlockingSessionDriver();
+    const { service } = makeService(driver);
+    const schedule = await service.create(INTERVAL_SPEC);
+    service.runOnce(schedule.scheduleId);
+    await driver.promptStarted;
+
+    let shutdownSettled = false;
+    const shutdown = Promise.resolve(service.shutdown()).then(() => {
+      shutdownSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(shutdownSettled).toBe(false);
+
+    driver.releasePrompt({ stopReason: 'end_turn', text: 'done' });
+    await shutdown;
+    expect(driver.calls.map((call) => call.op)).toEqual([
+      'create',
+      'makeUnattended',
+      'prompt',
+      'stop',
+    ]);
+  });
+
+  it('shutdown rejects new manual and cadence runs', async () => {
+    const driver = new BlockingSessionDriver();
+    const { service } = makeService(driver);
+    const accepted = await service.create(INTERVAL_SPEC);
+    const manual = await service.create(INTERVAL_SPEC);
+    await service.create(INTERVAL_SPEC);
+    service.runOnce(accepted.scheduleId);
+    await driver.promptStarted;
+
+    const shutdown = Promise.resolve(service.shutdown());
+    try {
+      service.runOnce(manual.scheduleId);
+    } catch {
+      // Rejecting the request synchronously is an acceptable Promise-facing boundary behavior.
+    }
+    clock += 60000;
+    await service.tickOnce();
+    await flushAsyncWork();
+
+    expect(driver.calls.filter((call) => call.op === 'prompt')).toHaveLength(1);
+
+    driver.releasePrompt({ stopReason: 'end_turn', text: 'done' });
+    await shutdown;
+  });
+
+  it('repeated shutdown calls await the same unwind', async () => {
+    const driver = new BlockingSessionDriver();
+    const { service } = makeService(driver);
+    const schedule = await service.create(INTERVAL_SPEC);
+    service.runOnce(schedule.scheduleId);
+    await driver.promptStarted;
+
+    let firstSettled = false;
+    let secondSettled = false;
+    const first = Promise.resolve(service.shutdown()).then(() => {
+      firstSettled = true;
+    });
+    const second = Promise.resolve(service.shutdown()).then(() => {
+      secondSettled = true;
+    });
+    await Promise.resolve();
+
+    expect({ firstSettled, secondSettled }).toEqual({
+      firstSettled: false,
+      secondSettled: false,
+    });
+
+    driver.releasePrompt({ stopReason: 'end_turn', text: 'done' });
+    await Promise.all([first, second]);
+  });
+
   it('recovers interrupted runs and orphaned targets on restart', async () => {
     const store = new InMemoryScheduleStore();
     // First service: a session-target schedule whose target exists.
@@ -338,6 +443,6 @@ describe('ScheduleService', () => {
     const failed = runsIn(second.sent).find((r) => r.runId === 'orphan-run');
     expect(failed?.status).toBe('failed');
     expect(schedulesIn(second.sent).at(-1)?.completedReason).toBe('targetGone');
-    second.service.shutdown();
+    await second.service.shutdown();
   });
 });

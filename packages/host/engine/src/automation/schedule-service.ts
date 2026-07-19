@@ -40,7 +40,7 @@ export class ScheduleService {
   private readonly schedules = new Map<ScheduleId, Schedule>();
   /** Single-flight guard: a schedule with a run in flight is skipped by the tick. */
   private readonly activeRuns = new Set<ScheduleId>();
-  /** In-flight run promises, kept only so {@link settleAll} can await them in tests. */
+  /** Accepted runs stay owned until they settle so shutdown cannot outlive their side effects. */
   private readonly inFlight = new Map<ScheduleId, Promise<void>>();
   private readonly now: () => number;
   private readonly cadence: ScheduleCadenceCalculator;
@@ -49,6 +49,9 @@ export class ScheduleService {
   private readonly tickMs: number;
   private readonly defaultMisfirePolicy: ScheduleMisfirePolicy;
   private timer: ReturnType<typeof setInterval> | undefined;
+  private tickInFlight: Promise<void> | undefined;
+  private acceptingRuns = true;
+  private shutdownPromise: Promise<void> | undefined;
   private seq = 0;
 
   constructor(
@@ -72,19 +75,28 @@ export class ScheduleService {
     await this.recover();
     if (this.timer) return;
     const timer = setInterval(() => {
-      void this.tickOnce().catch((err: unknown) => {
-        console.error('Schedule tick failed:', err);
-      });
+      if (this.tickInFlight) return;
+      const tick = this.tickOnce()
+        .catch((err: unknown) => {
+          console.error('Schedule tick failed:', err);
+        })
+        .finally(() => {
+          if (this.tickInFlight === tick) this.tickInFlight = undefined;
+        });
+      this.tickInFlight = tick;
     }, this.tickMs);
     timer.unref();
     this.timer = timer;
   }
 
-  shutdown(): void {
+  shutdown(): Promise<void> {
+    this.acceptingRuns = false;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    this.shutdownPromise ??= this.drain();
+    return this.shutdownPromise;
   }
 
   list(): Schedule[] {
@@ -166,6 +178,7 @@ export class ScheduleService {
 
   /** Fire one manual run now without touching the cadence or `nextRunAt`. */
   runOnce(scheduleId: ScheduleId): void {
+    if (!this.acceptingRuns) throw new Error('Schedule service is shutting down');
     const schedule = this.require(scheduleId);
     if (schedule.status === 'completed') throw new Error('Schedule is already completed');
     if (this.activeRuns.has(scheduleId)) throw new Error('Schedule run already in progress');
@@ -179,12 +192,14 @@ export class ScheduleService {
 
   /** One scheduler pass. Public so tests can drive it deterministically instead of the interval. */
   async tickOnce(): Promise<void> {
+    if (!this.acceptingRuns) return;
     const now = this.now();
     for (const schedule of this.schedules.values()) {
       if (schedule.status !== 'active' || schedule.nextRunAt === undefined) continue;
       if (this.activeRuns.has(schedule.scheduleId)) continue;
       if (schedule.nextRunAt > now) continue;
       await this.fireDue(schedule, now);
+      if (!this.acceptingRuns) return;
     }
   }
 
@@ -218,7 +233,9 @@ export class ScheduleService {
         return;
       }
     }
-    this.track(schedule.scheduleId, this.launchRun(schedule, isMiss ? 'catch-up' : 'cadence'));
+    if (this.acceptingRuns) {
+      this.track(schedule.scheduleId, this.launchRun(schedule, isMiss ? 'catch-up' : 'cadence'));
+    }
   }
 
   /** Track an in-flight run so {@link settleAll} can await it; log and drop failures. */
@@ -231,6 +248,11 @@ export class ScheduleService {
         if (this.inFlight.get(scheduleId) === wrapped) this.inFlight.delete(scheduleId);
       });
     this.inFlight.set(scheduleId, wrapped);
+  }
+
+  private async drain(): Promise<void> {
+    await this.tickInFlight;
+    await this.settleAll();
   }
 
   private async launchRun(schedule: Schedule, trigger: ScheduleRunTrigger): Promise<void> {
