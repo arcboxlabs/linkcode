@@ -90,10 +90,6 @@ function isNoPullRequestStderr(stderr: string): boolean {
   return stderr.toLowerCase().includes('no pull requests found');
 }
 
-function firstLine(text: string): string {
-  return text.split('\n', 1)[0]?.trim() ?? '';
-}
-
 /** Absolute path of the user's `gh`, resolved like the agent runtime probe (PATH scan, then
  * per-platform fallback install dirs — CODE-271): a GUI-launched daemon inherits launchd's bare
  * PATH, where a bare `spawn('gh')` misses a Homebrew install. Falls back to the bare name so an
@@ -135,7 +131,7 @@ export class GhCliGitHubClient implements GitProviderClient {
       }
       return {
         status: 'error',
-        message: firstLine(result.stderr) || `gh exited with code ${result.exitCode}`,
+        message: 'GitHub CLI request failed',
       };
     }
 

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { GitService } from '../git/git-service';
 import { readGitStatus } from '../git/status';
 
 const roots: string[] = [];
@@ -83,5 +84,21 @@ describe('readGitStatus', () => {
     git(dir, 'checkout', '--detach');
     const status = await readGitStatus(dir);
     expect(status.isRepo && status.branch).toBeNull();
+  });
+
+  it('does not expose provider rejection details', async () => {
+    const dir = makeRepo();
+    git(dir, 'remote', 'add', 'origin', 'git@github.com:arcboxlabs/linkcode.git');
+    const service = new GitService([
+      {
+        kind: 'github',
+        getPullRequestStatus: () => Promise.reject(new Error('token ghp-secret was rejected')),
+      },
+    ]);
+
+    await expect(service.getPullRequestStatus(dir)).resolves.toEqual({
+      status: 'error',
+      message: 'Provider request failed',
+    });
   });
 });

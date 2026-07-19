@@ -59,6 +59,7 @@ describe('daemon logger', () => {
     await Effect.runPromise(
       Effect.logWarning('Schedule recovery failed', {
         scheduleId: 'schedule-1',
+        subsystem: 'store',
         operation: 'recover',
         token: 'not-logged',
         prompt: 'not-logged',
@@ -70,6 +71,7 @@ describe('daemon logger', () => {
       msg: 'Schedule recovery failed',
       source: 'effect',
       scheduleId: 'schedule-1',
+      subsystem: 'store',
       operation: 'recover',
     });
     expect(parseLine(lines)).not.toHaveProperty('token');

@@ -32,6 +32,7 @@ const EFFECT_BINDING_KEYS = [
   'runId',
   'loopId',
   'agentKind',
+  'subsystem',
   'operation',
   'pid',
   'listenerType',

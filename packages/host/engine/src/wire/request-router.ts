@@ -67,7 +67,7 @@ export class WireRequestRouter {
       case 'git.status.get':
       case 'git.pr_status.get':
       case 'git.diff.get': {
-        return legacyHandler(() => this.handlers.git.handle(p));
+        return this.handlers.git.handle(p);
       }
       case 'file.read':
       case 'file.list':

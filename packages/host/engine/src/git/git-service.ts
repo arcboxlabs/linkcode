@@ -1,5 +1,4 @@
 import type { GitDiff, GitDiffMode, GitPullRequestStatus, GitStatus } from '@linkcode/schema';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { TtlCache } from '../cache/ttl-cache';
 import { readGitDiff } from './diff';
 import { GhCliGitHubClient } from './github';
@@ -49,10 +48,10 @@ export class GitService {
       if (status.branch === null) return { status: 'ok', pullRequest: null };
       try {
         return await provider.getPullRequestStatus({ cwd, branch: status.branch, identity });
-      } catch (err) {
+      } catch {
         return {
           status: 'error',
-          message: extractErrorMessage(err) ?? 'provider request failed',
+          message: 'Provider request failed',
         };
       }
     });
