@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TerminalReplayJournal } from '../terminal-replay';
+import { TerminalReplayJournal } from '../terminal/replay';
 
 describe('TerminalReplayJournal', () => {
   it('shares one sequence across writes/resizes and drops oldest events by UTF-8 bytes', () => {

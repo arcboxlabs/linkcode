@@ -1,5 +1,5 @@
 import type { TerminalReplayEvent } from '@linkcode/schema';
-import type { TerminalReplayJournal } from './terminal-replay';
+import type { TerminalReplayJournal } from './replay';
 
 /**
  * Per-terminal output flow control (CODE-231): the journal is the only buffer, a single cursor

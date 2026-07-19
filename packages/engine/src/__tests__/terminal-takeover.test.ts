@@ -5,7 +5,7 @@ import { Hub } from '@linkcode/transport/server';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
-import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../pty-backend';
+import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../terminal/pty-backend';
 
 class PeerTransport implements Transport {
   readonly sent: ValidatedWireMessage[] = [];

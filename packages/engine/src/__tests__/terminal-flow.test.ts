@@ -1,7 +1,7 @@
 import type { TerminalReplayEvent } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { TerminalFlow } from '../terminal-flow';
-import { TerminalReplayJournal } from '../terminal-replay';
+import { TerminalFlow } from '../terminal/flow';
+import { TerminalReplayJournal } from '../terminal/replay';
 
 interface Harness {
   journal: TerminalReplayJournal;

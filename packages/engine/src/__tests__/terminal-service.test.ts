@@ -2,8 +2,8 @@ import type { SessionId, WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../pty-backend';
-import { TerminalService } from '../terminal-service';
+import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../terminal/pty-backend';
+import { TerminalService } from '../terminal/service';
 
 /** A PTY that loops written data straight back as output, and exits with code 0 when killed. */
 class FakePtyProcess implements PtyProcess {

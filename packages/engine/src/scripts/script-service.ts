@@ -5,7 +5,7 @@ import { normalizeCwdKey } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { PreviewRouteRegistry } from '../preview/route-registry';
-import type { TerminalService } from '../terminal-service';
+import type { TerminalService } from '../terminal/service';
 import type { ScriptDeclaration } from './config';
 import { readWorkspaceScripts } from './config';
 import { scriptHostname } from './hostname';

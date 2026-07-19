@@ -12,9 +12,9 @@ import type { ResttyHeadlessTerminal } from 'restty/headless';
 import { createHeadlessTerminal } from 'restty/headless';
 import type { ResttyWasm } from 'restty/internal';
 import { loadResttyWasm } from 'restty/internal';
+import { TERMINAL_SIDECAR_WINDOW_BYTES, TerminalFlow } from './flow';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from './pty-backend';
-import { TERMINAL_SIDECAR_WINDOW_BYTES, TerminalFlow } from './terminal-flow';
-import { TerminalReplayJournal } from './terminal-replay';
+import { TerminalReplayJournal } from './replay';
 
 interface TerminalRecord {
   metadata: TerminalMetadata;

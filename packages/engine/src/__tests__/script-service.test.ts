@@ -6,11 +6,11 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PreviewRouteRegistry } from '../preview/route-registry';
-import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../pty-backend';
 import { readWorkspaceScripts } from '../scripts/config';
 import { scriptHostname } from '../scripts/hostname';
 import { ScriptService } from '../scripts/script-service';
-import { TerminalService } from '../terminal-service';
+import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../terminal/pty-backend';
+import { TerminalService } from '../terminal/service';
 
 const roots: string[] = [];
 const RE_TERMINAL_ID = /^term-/;
