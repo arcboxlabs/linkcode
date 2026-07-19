@@ -1,8 +1,6 @@
+import type { MessageId, Schedule, ScheduleRun, ScheduleSpec, WirePayload } from '@linkcode/schema';
+import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import type { MessageId } from '../../model/primitives';
-import type { Schedule, ScheduleRun, ScheduleSpec } from '../../model/schedule';
-import type { WirePayload } from '../index';
-import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '../index';
 
 function envelope(payload: WirePayload) {
   return { v: WIRE_PROTOCOL_VERSION, id: 'msg-1' as MessageId, ts: 0, payload };

@@ -44,8 +44,8 @@ module.exports = require('eslint-config-sukka').sukka(
         // apps/desktop's vite.{shared,main,preload,renderer}.config.ts are intentionally absent
         // (and deliberately named so 'apps/*/vite.config.ts' does not match them): they are
         // included by the desktop tsconfig (project service), and a file must not appear in both.
-        // agent-adapter tests are included by that package's tsconfig like every other package's;
-        // listing them here too would breach typescript-eslint's 8-file default-project cap.
+        // Workspace tests belong to their source tsconfig or a tests/tsconfig.json referenced by
+        // the root solution; listing them here too would breach typescript-eslint's 8-file cap.
         'vitest.config.ts',
       ],
     },

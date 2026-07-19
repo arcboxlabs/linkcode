@@ -15,6 +15,7 @@
     { "path": "packages/client/workbench" },
     { "path": "packages/foundation/common" },
     { "path": "packages/foundation/schema" },
+    { "path": "packages/foundation/schema/tests" },
     { "path": "packages/foundation/transport" },
     { "path": "packages/host/agent-adapter" },
     { "path": "packages/host/assets" },

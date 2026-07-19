@@ -1,5 +1,5 @@
+import { WIRE_PROTOCOL_VERSION, WireMessageSchema } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { WIRE_PROTOCOL_VERSION, WireMessageSchema } from '../index';
 
 describe('agent wire variants', () => {
   it.each([

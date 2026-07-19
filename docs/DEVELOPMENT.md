@@ -95,7 +95,7 @@ The release build is used in dev on purpose, so the daemon's fallback path match
 
 ### One runner
 
-There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` (`environment: 'node'`; include globs cover `*.test.ts` and `*.test.tsx` under package/app `src/**/__tests__`). DOM component tests opt in per file with `@vitest-environment jsdom`; other tests stay in the default node environment. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
+There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` with `environment: 'node'`. Module unit tests stay beside their source under package/app `src/**/__tests__`; workspace-level contract and integration tests live under `tests/{contract,integration}`. Shared fixtures live under `tests/support` and are type-checked but are not test entry points. Test files use `*.test.ts` or `*.test.tsx`; DOM component tests opt in per file with `@vitest-environment jsdom`. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
 
 ```bash
 pnpm test apps/daemon/src/pty     # just the PTY unit tests
@@ -104,6 +104,8 @@ pnpm test apps/daemon/src/pty     # just the PTY unit tests
 ### CI does NOT run vitest
 
 CI (`.github/workflows/ci.yml`) has three jobs: **typescript** (`format:check`, `lint`, `typecheck`), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over both. None of them runs `pnpm test` — the vitest suite gates nothing in CI, so **run it yourself before every commit**. Do not trust an agent workflow's "all green" self-report: run `pnpm check:ci` and `pnpm test` and re-check anything a review left unfixed. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+
+Every workspace with a root `tests/` directory must provide `tests/tsconfig.json`, extending its production config with the workspace root as `rootDir`, and the root `tsconfig.json` must reference it. Vitest discovery alone does not type-check every support file.
 
 Store tests load the `better-sqlite3` native binding (allow-listed under `allowBuilds:` in `pnpm-workspace.yaml`). If that build was skipped, `pnpm test` fails at require time loading the store — a native-binding error, not a test-logic failure.
 

@@ -1,5 +1,5 @@
+import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '../index';
 
 describe('terminal wire schema', () => {
   it('does not admit a client-supplied session owner on terminal.open', () => {

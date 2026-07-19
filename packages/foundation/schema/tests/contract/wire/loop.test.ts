@@ -1,8 +1,13 @@
+import type {
+  LoopIteration,
+  LoopLogEntry,
+  LoopRecord,
+  LoopSpec,
+  MessageId,
+  WirePayload,
+} from '@linkcode/schema';
+import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import type { LoopIteration, LoopLogEntry, LoopRecord, LoopSpec } from '../../model/loop';
-import type { MessageId } from '../../model/primitives';
-import type { WirePayload } from '../index';
-import { parseWireMessage, WIRE_PROTOCOL_VERSION } from '../index';
 
 function envelope(payload: WirePayload) {
   return { v: WIRE_PROTOCOL_VERSION, id: 'msg-1' as MessageId, ts: 0, payload };
