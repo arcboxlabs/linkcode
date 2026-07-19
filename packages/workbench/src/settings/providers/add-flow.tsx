@@ -497,7 +497,8 @@ const CustomDraftSchema = z
     // A model list turns the account into a provider definition (pi registerProvider), which
     // needs a provider id and a complete endpoint (the api is derived from the protocol).
     if (draft.models.length === 0) return;
-    if (!draft.providerName.trim()) {
+    if (!draft.providerName.trim() || draft.providerName.includes('/')) {
+      // Slash-free: the first '/' in a model ref splits provider from model id (schema rule).
       ctx.addIssue({ code: 'custom', path: ['providerName'], message: 'required' });
     }
     if (!draft.baseUrl.trim()) {

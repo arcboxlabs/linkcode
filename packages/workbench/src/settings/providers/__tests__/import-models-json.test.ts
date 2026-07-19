@@ -95,6 +95,12 @@ describe('parseModelsJson', () => {
             models: [{ id: 'm' }],
           },
           urlless: { api: 'openai-completions', apiKey: 'k', models: [{ id: 'm' }] },
+          'team/gw': {
+            baseUrl: 'https://t.test',
+            api: 'openai-completions',
+            apiKey: 'k',
+            models: [{ id: 'm' }],
+          },
         },
       }),
     );
@@ -104,6 +110,8 @@ describe('parseModelsJson', () => {
       { name: 'keyless', reason: 'missing-api-key' },
       { name: 'exotic', reason: 'unsupported-api' },
       { name: 'urlless', reason: 'missing-base-url' },
+      // A '/' in the provider name would make `provider/model` refs ambiguous.
+      { name: 'team/gw', reason: 'invalid-name' },
     ]);
   });
 

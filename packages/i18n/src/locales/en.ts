@@ -753,6 +753,7 @@ export const en = {
           'missing-base-url': 'Missing endpoint URL',
           'missing-api-key': 'Missing API key',
           'unsupported-api': 'Unsupported api kind',
+          'invalid-name': 'Provider name must not contain "/"',
         },
       },
       form: {

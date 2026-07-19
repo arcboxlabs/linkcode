@@ -61,8 +61,13 @@ export type AccountCustomModel = z.infer<typeof AccountCustomModelSchema>;
  * `endpoint` (the wire `api` is derived from its `protocol`) and a key credential.
  */
 export const AccountCustomProviderSchema = z.object({
-  /** Registry provider id (e.g. `banned`); models are addressed as `<name>/<model id>`. */
-  name: z.string().min(1),
+  /** Registry provider id (e.g. `banned`); models are addressed as `<name>/<model id>`, and the
+   * FIRST slash splits provider from model id — so the name itself must be slash-free (model ids
+   * may contain slashes; the provider segment must stay unambiguous). */
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[^/]+$/, 'provider name must not contain "/"'),
   models: z.array(AccountCustomModelSchema).min(1),
 });
 export type AccountCustomProvider = z.infer<typeof AccountCustomProviderSchema>;

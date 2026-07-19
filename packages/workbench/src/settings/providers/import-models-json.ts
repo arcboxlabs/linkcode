@@ -53,7 +53,8 @@ export type ImportSkipReason =
   | 'no-models'
   | 'missing-base-url'
   | 'missing-api-key'
-  | 'unsupported-api';
+  | 'unsupported-api'
+  | 'invalid-name';
 
 export interface ImportedProvider {
   name: string;
@@ -77,6 +78,11 @@ export function parseModelsJson(text: string): ModelsJsonImport {
     // can represent.
     if (!entry.models || entry.models.length === 0) {
       result.skipped.push({ name, reason: 'no-models' });
+      continue;
+    }
+    // Slash-free provider names only: the first '/' in a model ref splits provider from model id.
+    if (name.includes('/')) {
+      result.skipped.push({ name, reason: 'invalid-name' });
       continue;
     }
     const protocol = entry.api === undefined ? undefined : PROTOCOL_BY_PI_API[entry.api];

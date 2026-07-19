@@ -739,6 +739,7 @@ export const zhCN = {
           'missing-base-url': '缺少端点 URL',
           'missing-api-key': '缺少 API 密钥',
           'unsupported-api': '不支持的 api 类型',
+          'invalid-name': 'provider 名称不能含 "/"',
         },
       },
       form: {
