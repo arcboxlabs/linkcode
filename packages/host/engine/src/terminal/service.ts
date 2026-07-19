@@ -7,6 +7,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { RequestError } from '../failure';
 import type { TerminalFlow } from './flow';
 import type { PtyBackend, PtyOpenOptions } from './pty-backend';
 import type { TerminalReplayJournal } from './replay';
@@ -112,19 +113,35 @@ export class TerminalService {
     const entry = this.terminals.get(terminalId);
     if (!entry) {
       const exited = this.exitedTerminals.get(terminalId);
-      if (!exited) throw new Error(`terminal ${terminalId} is not running`);
-      if (mode === 'control') throw new Error(`terminal ${terminalId} has exited`);
+      if (!exited) {
+        throw new RequestError({
+          code: 'not_found',
+          message: `Terminal ${terminalId} is not running`,
+        });
+      }
+      if (mode === 'control') {
+        throw new RequestError({
+          code: 'conflict',
+          message: `Terminal ${terminalId} has exited`,
+        });
+      }
       this.sendAttached(clientReqId, exited);
       this.send({ kind: 'terminal.exit', terminalId, exitCode: exited.exitCode });
       return;
     }
     if (mode === 'control' && entry.managed) {
-      throw new Error(`managed terminal ${terminalId} is read-only`);
+      throw new RequestError({
+        code: 'unsupported',
+        message: `Managed terminal ${terminalId} is read-only`,
+      });
     }
 
     const existingSecret = entry.attachments.get(attachment.attachmentId);
     if (existingSecret !== undefined && existingSecret !== attachment.attachmentSecret) {
-      throw new Error(`terminal attachment ${attachment.attachmentId} is already in use`);
+      throw new RequestError({
+        code: 'conflict',
+        message: `Terminal attachment ${attachment.attachmentId} is already in use`,
+      });
     }
     entry.flushOutput();
     entry.attachments.set(attachment.attachmentId, attachment.attachmentSecret);

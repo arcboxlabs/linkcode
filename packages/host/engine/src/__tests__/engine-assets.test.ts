@@ -115,7 +115,8 @@ describe('asset.ensure', () => {
       expect(sent).toContainEqual({
         kind: 'request.failed',
         replyTo: 'r1',
-        message: 'Error: boom',
+        code: 'operation_failed',
+        message: 'Asset installation failed',
       });
     });
   });
@@ -129,7 +130,8 @@ describe('asset.ensure', () => {
       expect(sent).toContainEqual({
         kind: 'request.failed',
         replyTo: 'r1',
-        message: 'Error: asset agent:opencode cannot be installed here',
+        code: 'unsupported',
+        message: 'Asset agent:opencode cannot be installed here',
       });
     });
   });
@@ -141,7 +143,8 @@ describe('asset.ensure', () => {
     expect(sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'r1',
-      message: 'Error: managed assets are unavailable on this host',
+      code: 'unsupported',
+      message: 'Managed assets are unavailable on this host',
     });
   });
 });

@@ -2,6 +2,7 @@ import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { ManagedAssetService } from '../asset/service';
+import { RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { AgentLoginService } from './login-service';
 import type { ProviderConfigStore } from './provider-config';
@@ -78,7 +79,10 @@ export class AgentRequestHandler {
         } else {
           this.responder.sendFailure(
             payload.clientReqId,
-            new Error('Login is not supported on this host'),
+            new RequestError({
+              code: 'unsupported',
+              message: 'Login is not supported on this host',
+            }),
           );
         }
         break;

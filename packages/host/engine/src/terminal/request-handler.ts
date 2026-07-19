@@ -1,4 +1,5 @@
 import type { TerminalAttachmentCredentials, WirePayload } from '@linkcode/schema';
+import { RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { TerminalService } from './service';
 
@@ -90,6 +91,12 @@ export class TerminalRequestHandler {
   }
 
   private unsupported(replyTo: string): void {
-    this.responder.sendFailure(replyTo, new Error('Terminals are not supported on this host'));
+    this.responder.sendFailure(
+      replyTo,
+      new RequestError({
+        code: 'unsupported',
+        message: 'Terminals are not supported on this host',
+      }),
+    );
   }
 }

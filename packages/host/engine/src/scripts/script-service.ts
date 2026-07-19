@@ -4,6 +4,7 @@ import type { ScriptHealth, ScriptLifecycle, WirePayload, WorkspaceScript } from
 import { normalizeCwdKey } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { RequestError } from '../failure';
 import type { PreviewRouteRegistry } from '../preview/route-registry';
 import type { TerminalService } from '../terminal/service';
 import type { ScriptDeclaration } from './config';
@@ -62,10 +63,20 @@ export class ScriptService {
   async start(cwd: string, scriptName: string): Promise<void> {
     const declarations = readWorkspaceScripts(cwd);
     const decl = declarations.find((d) => d.name === scriptName);
-    if (!decl) throw new Error(`Script not declared in ${cwd}: ${scriptName}`);
+    if (!decl) {
+      throw new RequestError({
+        code: 'not_found',
+        message: `Script not declared in ${cwd}: ${scriptName}`,
+      });
+    }
 
     const state = this.stateFor(cwd);
-    if (state.running.has(scriptName)) throw new Error(`Script already running: ${scriptName}`);
+    if (state.running.has(scriptName)) {
+      throw new RequestError({
+        code: 'conflict',
+        message: `Script already running: ${scriptName}`,
+      });
+    }
     await this.ensurePortPlan(declarations, state);
 
     let registered = false;
@@ -115,7 +126,12 @@ export class ScriptService {
 
   stop(cwd: string, scriptName: string): void {
     const run = this.stateFor(cwd).running.get(scriptName);
-    if (!run) throw new Error(`Script not running: ${scriptName}`);
+    if (!run) {
+      throw new RequestError({
+        code: 'conflict',
+        message: `Script not running: ${scriptName}`,
+      });
+    }
     // Cleanup and the status broadcast follow from the PTY exit event.
     this.terminals.closeManaged(run.terminalId);
   }

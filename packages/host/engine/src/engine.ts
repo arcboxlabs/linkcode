@@ -128,9 +128,14 @@ export function createEngineRuntime(transport: Transport, deps: EngineDeps = {})
     sessionLifecycle.driver,
   );
   const automationRequests = new AutomationRequestHandler(transport, scheduler, loops, responder);
-  const assets = new ManagedAssetService(transport, deps.assets, () => {
-    void runtimes.refresh();
-  });
+  const assets = new ManagedAssetService(
+    transport,
+    deps.assets,
+    () => {
+      void runtimes.refresh();
+    },
+    responder,
+  );
   const logins = deps.resolveLoginBinary
     ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
         void runtimes.refresh();

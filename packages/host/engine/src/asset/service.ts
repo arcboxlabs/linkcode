@@ -6,8 +6,9 @@ import type {
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { OperationError, RequestError } from '../failure';
+import type { WireResponder } from '../wire/responder';
 
 /** The slice of the daemon's AssetManager consumed by the engine. */
 export interface AssetService {
@@ -27,6 +28,7 @@ export class ManagedAssetService {
     private readonly transport: Transport,
     private readonly assets: AssetService | undefined,
     private readonly onAgentInstalled: () => void,
+    private readonly responder: WireResponder,
   ) {
     this.unsubscribe = assets?.subscribe((event) => this.onInstallEvent(event));
   }
@@ -44,7 +46,13 @@ export class ManagedAssetService {
   ensure(replyTo: string, id: ManagedAssetId): void {
     const assets = this.assets;
     if (!assets) {
-      this.sendFailure(replyTo, new Error('managed assets are unavailable on this host'));
+      this.responder.sendFailure(
+        replyTo,
+        new RequestError({
+          code: 'unsupported',
+          message: 'Managed assets are unavailable on this host',
+        }),
+      );
       return;
     }
     // Do not await: the reply lands only when the potentially minutes-long install settles,
@@ -53,7 +61,13 @@ export class ManagedAssetService {
       .ensure(id)
       .then((installed) => {
         if (!installed) {
-          this.sendFailure(replyTo, new Error(`asset ${id} cannot be installed here`));
+          this.responder.sendFailure(
+            replyTo,
+            new RequestError({
+              code: 'unsupported',
+              message: `Asset ${id} cannot be installed here`,
+            }),
+          );
           return;
         }
         const status = nullthrow(
@@ -62,7 +76,17 @@ export class ManagedAssetService {
         );
         this.transport.send(createWireMessage({ kind: 'asset.ensured', replyTo, status }));
       })
-      .catch((error: unknown) => this.sendFailure(replyTo, error));
+      .catch((error: unknown) =>
+        this.responder.sendFailure(
+          replyTo,
+          new OperationError({
+            subsystem: 'asset',
+            operation: 'asset.ensure',
+            publicMessage: 'Asset installation failed',
+            cause: error,
+          }),
+        ),
+      );
   }
 
   close(): void {
@@ -102,10 +126,5 @@ export class ManagedAssetService {
       }
       // no default
     }
-  }
-
-  private sendFailure(replyTo: string, error: unknown): void {
-    const message = extractErrorMessage(error) ?? 'Unknown error';
-    this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, message }));
   }
 }

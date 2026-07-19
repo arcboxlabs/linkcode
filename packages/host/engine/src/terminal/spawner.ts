@@ -10,6 +10,7 @@ import type { ResttyHeadlessTerminal } from 'restty/headless';
 import { createHeadlessTerminal } from 'restty/headless';
 import type { ResttyWasm } from 'restty/internal';
 import { loadResttyWasm } from 'restty/internal';
+import { OperationError, RequestError } from '../failure';
 import { TERMINAL_SIDECAR_WINDOW_BYTES, TerminalFlow } from './flow';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from './pty-backend';
 import { TerminalReplayJournal } from './replay';
@@ -59,14 +60,24 @@ export class TerminalSpawner {
   ) {}
 
   async spawn(terminalId: string, opts: PtyOpenOptions, owner: TerminalOwner) {
-    const wasm = await (this.wasm ??= loadResttyWasm());
-    const headless = await createHeadlessTerminal({
-      cols: opts.cols,
-      rows: opts.rows,
-      maxScrollbackBytes: 0,
-      replay: false,
-      wasm,
-    });
+    let headless: ResttyHeadlessTerminal;
+    try {
+      const wasm = await (this.wasm ??= loadResttyWasm());
+      headless = await createHeadlessTerminal({
+        cols: opts.cols,
+        rows: opts.rows,
+        maxScrollbackBytes: 0,
+        replay: false,
+        wasm,
+      });
+    } catch (error) {
+      throw new OperationError({
+        subsystem: 'pty',
+        operation: 'terminal.initialize',
+        publicMessage: 'Terminal failed to open',
+        cause: error,
+      });
+    }
     let process: PtyProcess;
     try {
       process = await this.backend.open(terminalId, {
@@ -75,13 +86,21 @@ export class TerminalSpawner {
       });
     } catch (error) {
       headless.dispose();
-      throw error;
+      throw new OperationError({
+        subsystem: 'pty',
+        operation: 'terminal.open',
+        publicMessage: 'Terminal failed to open',
+        cause: error,
+      });
     }
 
     if (owner.sessionId && this.isSessionActive?.(owner.sessionId) === false) {
       process.kill();
       headless.dispose();
-      throw new Error(`session ${owner.sessionId} stopped before terminal ${terminalId} opened`);
+      throw new RequestError({
+        code: 'cancelled',
+        message: `Session ${owner.sessionId} stopped before terminal ${terminalId} opened`,
+      });
     }
 
     const attachments = new Map<string, string>();

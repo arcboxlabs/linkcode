@@ -1,6 +1,7 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { ScriptService } from './script-service';
 
@@ -19,7 +20,10 @@ export class ScriptRequestHandler {
     if (!scripts) {
       this.responder.sendFailure(
         payload.clientReqId,
-        new Error('Scripts are not supported on this host'),
+        new RequestError({
+          code: 'unsupported',
+          message: 'Scripts are not supported on this host',
+        }),
       );
       return;
     }
