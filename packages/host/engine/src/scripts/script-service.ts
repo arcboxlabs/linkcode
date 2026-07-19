@@ -4,7 +4,7 @@ import type { ScriptHealth, ScriptLifecycle, WirePayload, WorkspaceScript } from
 import { normalizeCwdKey } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { Effect, Fiber } from 'effect';
+import { Cause, Effect, Fiber } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { EngineFailure } from '../failure';
 import { RequestError, toOperationFailure } from '../failure';
@@ -34,7 +34,7 @@ interface RunningScript {
   lifecycle: Extract<ScriptLifecycle, 'running'>;
   health: ScriptHealth;
   startedAt: number;
-  probeTimer?: NodeJS.Timeout;
+  probeFiber?: Fiber.Fiber<unknown>;
   consecutiveProbeFailures: number;
   hostname?: string;
 }
@@ -47,6 +47,11 @@ interface WorkspaceScriptsState {
   stopped: Map<string, { terminalId: string; exitCode: number | null }>;
 }
 
+interface ScriptServiceOptions {
+  readonly healthProbeIntervalMs?: number;
+  readonly probeTcp?: (port: number) => Effect.Effect<boolean>;
+}
+
 /**
  * Runs the workspace's declared scripts in managed PTYs (port planning, LINKCODE_* env contract,
  * preview routes, TCP health probes, `script.status` broadcasts). Declarations are re-read from
@@ -54,6 +59,7 @@ interface WorkspaceScriptsState {
  */
 export class ScriptService {
   private readonly workspaces = new Map<string, WorkspaceScriptsState>();
+  private readonly probes = new Set<Fiber.Fiber<unknown>>();
   private runTask: RunTask | undefined;
   private accepting = true;
 
@@ -63,6 +69,7 @@ export class ScriptService {
     private readonly routes: PreviewRouteRegistry,
     /** Display name for the hostname label (falls back to the cwd's last segment). */
     private readonly workspaceName: (cwd: string) => string | undefined,
+    private readonly options: ScriptServiceOptions = {},
   ) {}
 
   bindRuntime(runTask: RunTask): void {
@@ -211,10 +218,7 @@ export class ScriptService {
       const port = nullthrow(state.plan.get(decl.name));
       running.hostname = this.hostnameFor(cwd, decl.name);
       this.routes.register(running.hostname, { port }, ownerKey(cwd, decl.name));
-      running.probeTimer = setInterval(() => {
-        void this.probe(cwd, decl, running, port);
-      }, HEALTH_PROBE_INTERVAL_MS);
-      running.probeTimer.unref();
+      running.probeFiber = this.startProbe(cwd, decl, running, port);
     }
 
     this.broadcast(cwd, this.describe(cwd, decl, state));
@@ -228,7 +232,7 @@ export class ScriptService {
   ): void {
     const state = this.stateFor(cwd);
     if (state.running.get(scriptName) !== run) return;
-    if (run.probeTimer) clearInterval(run.probeTimer);
+    run.probeFiber?.interruptUnsafe();
     if (run.hostname) this.routes.unregister(run.hostname, ownerKey(cwd, scriptName));
     state.running.delete(scriptName);
     state.stopped.set(scriptName, { terminalId: run.terminalId, exitCode });
@@ -245,27 +249,64 @@ export class ScriptService {
     });
   }
 
-  private async probe(
+  private startProbe(
     cwd: string,
     decl: ScriptDeclaration,
     run: RunningScript,
     port: number,
-  ): Promise<void> {
-    const reachable = await probeTcp(port);
-    const state = this.stateFor(cwd);
-    if (!this.accepting || state.running.get(decl.name) !== run) return;
-    let next: ScriptHealth = run.health;
-    if (reachable) {
-      run.consecutiveProbeFailures = 0;
-      next = 'healthy';
-    } else if (Date.now() - run.startedAt > HEALTH_GRACE_MS) {
-      run.consecutiveProbeFailures += 1;
-      if (run.consecutiveProbeFailures >= HEALTH_FAILURES_FOR_UNHEALTHY) next = 'unhealthy';
-    }
-    if (next !== run.health) {
-      run.health = next;
-      this.broadcast(cwd, this.describe(cwd, decl, state));
-    }
+  ): Fiber.Fiber<unknown> {
+    const runTask = nullthrow(this.runTask, 'Script runtime has not started');
+    const interval = this.options.healthProbeIntervalMs ?? HEALTH_PROBE_INTERVAL_MS;
+    const fiber = runTask(
+      Effect.sleep(interval).pipe(
+        Effect.andThen(
+          this.probe(cwd, decl, run, port).pipe(
+            Effect.catchCause((cause) =>
+              Cause.hasInterruptsOnly(cause)
+                ? Effect.failCause(cause)
+                : Effect.logError(
+                    'Script health probe failed',
+                    { operation: 'script.probe', subsystem: 'script' },
+                    Cause.squash(cause),
+                  ),
+            ),
+          ),
+        ),
+        Effect.forever,
+      ),
+    );
+    this.probes.add(fiber);
+    fiber.addObserver(() => this.probes.delete(fiber));
+    return fiber;
+  }
+
+  private probe(
+    cwd: string,
+    decl: ScriptDeclaration,
+    run: RunningScript,
+    port: number,
+  ): Effect.Effect<void> {
+    return (this.options.probeTcp ?? probeTcp)(port).pipe(
+      Effect.tap((reachable) =>
+        Effect.sync(() => {
+          const state = this.stateFor(cwd);
+          if (!this.accepting || state.running.get(decl.name) !== run) return;
+          let next: ScriptHealth = run.health;
+          if (reachable) {
+            run.consecutiveProbeFailures = 0;
+            next = 'healthy';
+          } else if (Date.now() - run.startedAt > HEALTH_GRACE_MS) {
+            run.consecutiveProbeFailures += 1;
+            if (run.consecutiveProbeFailures >= HEALTH_FAILURES_FOR_UNHEALTHY) next = 'unhealthy';
+          }
+          if (next !== run.health) {
+            run.health = next;
+            this.broadcast(cwd, this.describe(cwd, decl, state));
+          }
+        }),
+      ),
+      Effect.asVoid,
+    );
   }
 
   private describe(
@@ -353,7 +394,7 @@ export class ScriptService {
   }
 
   private beginShutdown(): Array<Fiber.Fiber<unknown, unknown>> {
-    const fibers: Array<Fiber.Fiber<unknown, unknown>> = [];
+    const fibers: Array<Fiber.Fiber<unknown, unknown>> = [...this.probes];
     for (const state of this.workspaces.values()) {
       for (const handle of state.starting.values()) {
         if (handle.fiber) fibers.push(handle.fiber);
@@ -363,7 +404,6 @@ export class ScriptService {
     this.accepting = false;
     for (const [cwd, state] of this.workspaces) {
       for (const [scriptName, run] of state.running) {
-        if (run.probeTimer) clearInterval(run.probeTimer);
         if (run.hostname) this.routes.unregister(run.hostname, ownerKey(cwd, scriptName));
         this.terminals.closeManaged(run.terminalId);
       }
@@ -381,18 +421,45 @@ function ownerKey(cwd: string, scriptName: string): string {
   return `${normalizeCwdKey(cwd)}#${scriptName}`;
 }
 
-function probeTcp(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
+function probeTcp(port: number): Effect.Effect<boolean> {
+  return Effect.callback<boolean>((resume) => {
     const socket = new Socket();
     socket.setTimeout(HEALTH_PROBE_TIMEOUT_MS);
-    const done = (ok: boolean): void => {
+    let settled = false;
+    function cleanup(): void {
+      socket.off('connect', onConnect);
+      socket.off('timeout', onTimeout);
+      socket.off('error', onError);
       socket.destroy();
-      resolve(ok);
-    };
-    socket.once('connect', () => done(true));
-    socket.once('timeout', () => done(false));
-    socket.once('error', () => done(false));
-    socket.connect(port, '127.0.0.1');
+    }
+    function done(ok: boolean): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resume(Effect.succeed(ok));
+    }
+    function onConnect(): void {
+      done(true);
+    }
+    function onTimeout(): void {
+      done(false);
+    }
+    function onError(): void {
+      done(false);
+    }
+    socket.once('connect', onConnect);
+    socket.once('timeout', onTimeout);
+    socket.once('error', onError);
+    try {
+      socket.connect(port, '127.0.0.1');
+    } catch {
+      done(false);
+    }
+    return Effect.sync(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+    });
   });
 }
 

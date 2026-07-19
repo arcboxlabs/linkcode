@@ -5,7 +5,8 @@ import type { WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { Cause, Effect, Exit } from 'effect';
 import { noop } from 'foxts/noop';
-import { afterAll, describe, expect, it } from 'vitest';
+import { wait } from 'foxts/wait';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { PreviewRouteRegistry } from '../preview/route-registry';
 import { readWorkspaceScripts } from '../scripts/config';
 import { scriptHostname } from '../scripts/hostname';
@@ -133,7 +134,10 @@ function recordingTransport(): { transport: Transport; sent: WirePayload[] } {
   return { transport, sent };
 }
 
-function makeService(backend = new FakePtyBackend()): {
+function makeService(
+  backend = new FakePtyBackend(),
+  options: NonNullable<ConstructorParameters<typeof ScriptService>[4]> = {},
+): {
   service: ScriptService;
   terminals: TerminalService;
   backend: FakePtyBackend;
@@ -144,7 +148,7 @@ function makeService(backend = new FakePtyBackend()): {
   const terminals = new TerminalService(backend, transport);
   const routes = new PreviewRouteRegistry();
   routes.proxyPort = 19523;
-  const service = new ScriptService(transport, terminals, routes, () => 'app');
+  const service = new ScriptService(transport, terminals, routes, () => 'app', options);
   service.bindRuntime(Effect.runFork);
   return { service, terminals, backend, routes, sent };
 }
@@ -297,6 +301,124 @@ describe('ScriptService', () => {
 
     backend.release();
     await first;
+  });
+
+  it('runs service health probes as an owned serial Effect loop', async () => {
+    const cwd = makeWorkspace({
+      scripts: { web: { type: 'service', command: 'sleep 999', port: 4747 } },
+    });
+    const { service, terminals, sent } = makeService(new FakePtyBackend(), {
+      healthProbeIntervalMs: 1,
+      probeTcp: () => Effect.succeed(true),
+    });
+
+    await Effect.runPromise(service.start(cwd, 'web'));
+    await vi.waitFor(() => {
+      const status = sent.findLast((payload) => payload.kind === 'script.status');
+      expect(status?.kind === 'script.status' && status.script.health).toBe('healthy');
+    });
+
+    await Effect.runPromise(service.shutdown());
+    await Effect.runPromise(terminals.shutdown());
+  });
+
+  it('interrupts an active probe when its PTY exits', async () => {
+    const cwd = makeWorkspace({
+      scripts: { web: { type: 'service', command: 'sleep 999', port: 4797 } },
+    });
+    let signalStarted = noop;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    let finishProbe = noop;
+    let cleanups = 0;
+    const { service, terminals, sent } = makeService(new FakePtyBackend(), {
+      healthProbeIntervalMs: 1,
+      probeTcp: () =>
+        Effect.callback<boolean>((resume) => {
+          finishProbe = () => resume(Effect.succeed(true));
+          signalStarted();
+          return Effect.sync(() => {
+            cleanups += 1;
+          });
+        }),
+    });
+
+    await Effect.runPromise(service.start(cwd, 'web'));
+    await started;
+    await Effect.runPromise(service.stop(cwd, 'web'));
+    await vi.waitFor(() => expect(cleanups).toBe(1));
+
+    const statusCount = sent.filter((payload) => payload.kind === 'script.status').length;
+    finishProbe();
+    await wait(0);
+    expect(sent.filter((payload) => payload.kind === 'script.status')).toHaveLength(statusCount);
+    await Effect.runPromise(service.shutdown());
+    await Effect.runPromise(terminals.shutdown());
+  });
+
+  it('does not overlap probes and waits for probe cleanup during shutdown', async () => {
+    const cwd = makeWorkspace({
+      scripts: { web: { type: 'service', command: 'sleep 999', port: 4848 } },
+    });
+    let signalStarted = noop;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    let signalCleanupStarted = noop;
+    const cleanupStarted = new Promise<void>((resolve) => {
+      signalCleanupStarted = resolve;
+    });
+    let releaseCleanup = noop;
+    const cleanupReleased = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    let finishProbe = noop;
+    let probeCalls = 0;
+    let cleanups = 0;
+    const { service, terminals, routes, sent } = makeService(new FakePtyBackend(), {
+      healthProbeIntervalMs: 1,
+      probeTcp: () =>
+        Effect.callback<boolean>((resume) => {
+          probeCalls += 1;
+          finishProbe = () => resume(Effect.succeed(true));
+          signalStarted();
+          return Effect.sync(signalCleanupStarted).pipe(
+            Effect.andThen(Effect.promise(() => cleanupReleased)),
+            Effect.tap(() =>
+              Effect.sync(() => {
+                cleanups += 1;
+              }),
+            ),
+          );
+        }),
+    });
+
+    await Effect.runPromise(service.start(cwd, 'web'));
+    await started;
+    await wait(10);
+    expect(probeCalls).toBe(1);
+    const running = sent.find((payload) => payload.kind === 'script.status');
+    const hostname = running?.kind === 'script.status' ? running.script.hostname : undefined;
+
+    let shutdownSettled = false;
+    const shutdown = Effect.runPromise(service.shutdown()).then(() => {
+      shutdownSettled = true;
+    });
+    await cleanupStarted;
+    await wait(0);
+    expect(shutdownSettled).toBe(false);
+
+    releaseCleanup();
+    await shutdown;
+    expect(cleanups).toBe(1);
+    expect(hostname && routes.lookup(hostname)).toBeNull();
+
+    const statusCount = sent.filter((payload) => payload.kind === 'script.status').length;
+    finishProbe();
+    await wait(0);
+    expect(sent.filter((payload) => payload.kind === 'script.status')).toHaveLength(statusCount);
+    await Effect.runPromise(terminals.shutdown());
   });
 
   it('shutdown interrupts a pending start and closes admission', async () => {
