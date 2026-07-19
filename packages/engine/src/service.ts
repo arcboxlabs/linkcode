@@ -2,7 +2,7 @@ import type { WorkspaceRecord } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { Context, Effect, Layer } from 'effect';
 import type { EngineDeps } from './deps';
-import { Engine as EngineRuntime } from './engine';
+import { createEngineRuntime } from './engine';
 
 export class EngineService extends Context.Service<
   EngineService,
@@ -19,7 +19,7 @@ export function makeEngineLayer(
     EngineService,
     Effect.acquireRelease(
       Effect.gen(function* () {
-        const engine = new EngineRuntime(transport, deps);
+        const engine = createEngineRuntime(transport, deps);
         yield* Effect.promise(() => engine.start());
         return engine;
       }),
