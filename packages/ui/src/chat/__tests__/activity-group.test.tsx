@@ -9,7 +9,8 @@ import { ActivityGroup } from '../activity-group';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
 import type { ConversationItem } from '../types';
 
-function translateKey(key: string): string {
+function translateKey(key: string, values?: Record<string, unknown>): string {
+  if (key === 'failed') return `${String(values?.count)} failed`;
   return key;
 }
 
@@ -50,6 +51,25 @@ function fileTool(
 }
 
 describe('ActivityGroup', () => {
+  it('gives the compact failed count an accessible label', () => {
+    const failed = fileTool('edit-1', 'edit', '/repo/packages/first.ts');
+    failed.toolCall.status = 'failed';
+    const group: ActivityToolGroup = {
+      type: 'group',
+      id: 'files-1',
+      bucket: 'files',
+      items: [failed],
+    };
+
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile: vi.fn() }}>
+        <ActivityGroup group={group} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    expect(screen.getByLabelText('1 failed').textContent).toBe('1');
+  });
+
   it('keeps file directories out of collapsed summaries and expanded rows', async () => {
     const user = userEvent.setup();
     const openFile = vi.fn();
