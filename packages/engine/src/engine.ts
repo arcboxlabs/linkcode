@@ -32,7 +32,9 @@ import {
 import { AutomationRequestHandler } from './automation/request-handler';
 import { GitService } from './git/git-service';
 import { ArtifactHostService } from './preview/artifact-host-service';
+import { ArtifactRequestHandler } from './preview/request-handler';
 import { PreviewRouteRegistry } from './preview/route-registry';
+import { ScriptRequestHandler } from './scripts/request-handler';
 import { ScriptService } from './scripts/script-service';
 import { HistoryService } from './session/history-service';
 import { SessionOrchestrator } from './session/orchestrator';
@@ -100,10 +102,11 @@ export class Engine {
   private readonly git: GitService;
   private readonly fileSuggest: FileSuggestService;
   private readonly scripts?: ScriptService;
+  private readonly scriptRequests: ScriptRequestHandler;
   private readonly scheduler: ScheduleService;
   private readonly loops: LoopService;
   private readonly automationRequests: AutomationRequestHandler;
-  private readonly artifactHost: ArtifactHostService;
+  private readonly artifactRequests: ArtifactRequestHandler;
   private readonly runtimes: AgentRuntimeService;
   private readonly assets: ManagedAssetService;
   private readonly logins?: AgentLoginService;
@@ -153,7 +156,12 @@ export class Engine {
           (cwd) => this.workspaces.findByCwd(cwd)?.name,
         )
       : undefined;
-    this.artifactHost = new ArtifactHostService(routes);
+    this.scriptRequests = new ScriptRequestHandler(transport, this.scripts, this.responder);
+    this.artifactRequests = new ArtifactRequestHandler(
+      transport,
+      new ArtifactHostService(routes),
+      this.responder,
+    );
     this.scheduler = new ScheduleService(
       transport,
       deps.scheduleStore ?? new InMemoryScheduleStore(),
@@ -495,58 +503,15 @@ export class Engine {
         });
         break;
       }
-      case 'script.list': {
-        const scripts = this.scripts;
-        if (!scripts) {
-          this.sendFailure(p.clientReqId, new Error('Scripts are not supported on this host'));
-          break;
-        }
-        await this.tryReply(p.clientReqId, async () => {
-          const list = await scripts.list(p.cwd);
-          this.transport.send(
-            createWireMessage({ kind: 'script.listed', replyTo: p.clientReqId, scripts: list }),
-          );
-        });
-        break;
-      }
-      case 'script.start': {
-        const scripts = this.scripts;
-        if (!scripts) {
-          this.sendFailure(p.clientReqId, new Error('Scripts are not supported on this host'));
-          break;
-        }
-        await this.tryReply(p.clientReqId, async () => {
-          await scripts.start(p.cwd, p.scriptName);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
+      case 'script.list':
+      case 'script.start':
       case 'script.stop': {
-        const scripts = this.scripts;
-        if (!scripts) {
-          this.sendFailure(p.clientReqId, new Error('Scripts are not supported on this host'));
-          break;
-        }
-        await this.tryReply(p.clientReqId, () => {
-          scripts.stop(p.cwd, p.scriptName);
-          this.sendSuccess(p.clientReqId);
-          return Promise.resolve();
-        });
+        await this.scriptRequests.handle(p);
         break;
       }
-      case 'artifact.host': {
-        await this.tryReply(p.clientReqId, () => {
-          const artifact = this.artifactHost.host(p.content, p.mimeType);
-          this.transport.send(
-            createWireMessage({ kind: 'artifact.hosted', replyTo: p.clientReqId, artifact }),
-          );
-          return Promise.resolve();
-        });
-        break;
-      }
+      case 'artifact.host':
       case 'artifact.revoke': {
-        this.artifactHost.revoke(p.hash);
-        this.sendSuccess(p.clientReqId);
+        await this.artifactRequests.handle(p);
         break;
       }
       case 'schedule.create':
