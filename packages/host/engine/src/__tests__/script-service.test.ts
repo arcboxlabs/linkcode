@@ -452,4 +452,31 @@ describe('ScriptService', () => {
     expect(second.port).toBe(first.port);
     expect(first.localProxyUrl).toBe(`http://${first.hostname}:19523`);
   });
+
+  it('shares one port plan across concurrent callers', async () => {
+    const cwd = makeWorkspace({ scripts: { api: { type: 'service', command: 'x' } } });
+    let releaseAllocation = noop;
+    const allocationReleased = new Promise<void>((resolve) => {
+      releaseAllocation = resolve;
+    });
+    let allocations = 0;
+    const { service, terminals } = makeService(new FakePtyBackend(), {
+      async allocatePort() {
+        const allocation = ++allocations;
+        await allocationReleased;
+        return 5000 + allocation;
+      },
+    });
+
+    const first = Effect.runPromise(service.list(cwd));
+    const second = Effect.runPromise(service.list(cwd));
+    await vi.waitFor(() => expect(allocations).toBeGreaterThan(0));
+    releaseAllocation();
+    const [[firstScript], [secondScript]] = await Promise.all([first, second]);
+
+    expect(allocations).toBe(1);
+    expect(secondScript.port).toBe(firstScript.port);
+    await Effect.runPromise(service.shutdown());
+    await Effect.runPromise(terminals.shutdown());
+  });
 });

@@ -42,12 +42,14 @@ interface RunningScript {
 interface WorkspaceScriptsState {
   /** Planned ports for every declared service, allocated together on first need. */
   plan: Map<string, number>;
+  planning?: Promise<void>;
   starting: Map<string, StartingHandle>;
   running: Map<string, RunningScript>;
   stopped: Map<string, { terminalId: string; exitCode: number | null }>;
 }
 
 interface ScriptServiceOptions {
+  readonly allocatePort?: () => Promise<number>;
   readonly healthProbeIntervalMs?: number;
   readonly probeTcp?: (port: number) => Effect.Effect<boolean>;
 }
@@ -362,10 +364,33 @@ export class ScriptService {
     declarations: ScriptDeclaration[],
     state: WorkspaceScriptsState,
   ): Promise<void> {
+    if (state.planning) {
+      await state.planning;
+      return this.ensurePortPlan(declarations, state);
+    }
+    const missing = declarations.filter(
+      (decl) => decl.type === 'service' && !state.plan.has(decl.name),
+    );
+    if (missing.length === 0) return;
+    const planning = this.allocatePorts(missing, state);
+    state.planning = planning;
+    try {
+      await planning;
+    } finally {
+      if (state.planning === planning) state.planning = undefined;
+    }
+    return this.ensurePortPlan(declarations, state);
+  }
+
+  private async allocatePorts(
+    declarations: ScriptDeclaration[],
+    state: WorkspaceScriptsState,
+  ): Promise<void> {
     for (const decl of declarations) {
-      if (decl.type !== 'service' || state.plan.has(decl.name)) continue;
       // eslint-disable-next-line no-await-in-loop -- ports are allocated one at a time on purpose
-      state.plan.set(decl.name, decl.preferredPort ?? (await allocatePort()));
+      const port = decl.preferredPort ?? (await (this.options.allocatePort ?? allocatePort)());
+      this.ensureAccepting();
+      state.plan.set(decl.name, port);
     }
   }
 
