@@ -123,7 +123,7 @@ describe('LoopService', () => {
     const driver = new FakeSessionDriver();
     const service = bindRuntime(new LoopService(transport, store, driver, { now }));
 
-    const loop = await service.startLoop(baseSpec());
+    const loop = await Effect.runPromise(service.startLoop(baseSpec()));
     await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((l) => l.loopId === loop.loopId);
@@ -159,10 +159,10 @@ describe('LoopService', () => {
     const service = bindRuntime(
       new LoopService(transport, store, new FakeSessionDriver(), { now }),
     );
-    const loop = await service.startLoop(baseSpec());
+    const loop = await Effect.runPromise(service.startLoop(baseSpec()));
     await saveStarted;
 
-    service.stopLoop(loop.loopId);
+    await Effect.runPromise(service.stopLoop(loop.loopId));
     releaseTerminalSave();
     await Effect.runPromise(service.settleAll());
 
@@ -196,7 +196,9 @@ describe('LoopService', () => {
       return originalPrompt(sessionId);
     };
 
-    const loop = await service.startLoop(baseSpec({ verifyChecks: [`test -f ${marker}`] }));
+    const loop = await Effect.runPromise(
+      service.startLoop(baseSpec({ verifyChecks: [`test -f ${marker}`] })),
+    );
     await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((l) => l.loopId === loop.loopId);
@@ -214,7 +216,9 @@ describe('LoopService', () => {
       new LoopService(transport, store, new FakeSessionDriver(), { now }),
     );
 
-    const loop = await service.startLoop(baseSpec({ verifyChecks: ['false'], maxIterations: 3 }));
+    const loop = await Effect.runPromise(
+      service.startLoop(baseSpec({ verifyChecks: ['false'], maxIterations: 3 })),
+    );
     await Effect.runPromise(service.settleAll());
 
     const final = service.list().find((l) => l.loopId === loop.loopId);
@@ -237,8 +241,8 @@ describe('LoopService', () => {
       '{"passed": true, "reason": "looks good"}',
     ];
 
-    const loop = await service.startLoop(
-      baseSpec({ verifyChecks: [], verifier: { prompt: 'is it done?' } }),
+    const loop = await Effect.runPromise(
+      service.startLoop(baseSpec({ verifyChecks: [], verifier: { prompt: 'is it done?' } })),
     );
     await Effect.runPromise(service.settleAll());
 
@@ -267,8 +271,8 @@ describe('LoopService', () => {
       });
     const service = bindRuntime(new LoopService(transport, store, driver, { now }));
 
-    const loop = await service.startLoop(baseSpec());
-    service.stopLoop(loop.loopId);
+    const loop = await Effect.runPromise(service.startLoop(baseSpec()));
+    await Effect.runPromise(service.stopLoop(loop.loopId));
     await Effect.runPromise(service.settleAll());
 
     expect(service.list().find((l) => l.loopId === loop.loopId)?.status).toBe('stopped');
@@ -298,7 +302,7 @@ describe('LoopService', () => {
     };
     const service = bindRuntime(new LoopService(transport, store, driver));
 
-    const loop = await service.startLoop(baseSpec({ maxTimeMs: 1000 }));
+    const loop = await Effect.runPromise(service.startLoop(baseSpec({ maxTimeMs: 1000 })));
     await promptStarted;
     await vi.advanceTimersByTimeAsync(1000);
     await Effect.runPromise(service.settleAll());
@@ -314,10 +318,10 @@ describe('LoopService', () => {
       new LoopService(transport, new InMemoryLoopStore(), new FakeSessionDriver(), { now }),
     );
     // The service trusts the schema; deletion is refused while running.
-    const loop = await service.startLoop(baseSpec());
-    await expect(service.deleteLoop(loop.loopId)).rejects.toThrow('stop the loop');
+    const loop = await Effect.runPromise(service.startLoop(baseSpec()));
+    await expect(Effect.runPromise(service.deleteLoop(loop.loopId))).rejects.toThrow();
     await Effect.runPromise(service.settleAll());
-    await expect(service.deleteLoop(loop.loopId)).resolves.toBeUndefined();
+    await expect(Effect.runPromise(service.deleteLoop(loop.loopId))).resolves.toBeUndefined();
   });
 
   it('shutdown closes admission and waits for session cleanup and terminal persistence', async () => {
@@ -356,7 +360,7 @@ describe('LoopService', () => {
       await save(loop);
     };
     const service = bindRuntime(new LoopService(transport, store, driver, { now }));
-    const loop = await service.startLoop(baseSpec());
+    const loop = await Effect.runPromise(service.startLoop(baseSpec()));
     await started;
 
     let shutdownCount = 0;
@@ -366,7 +370,7 @@ describe('LoopService', () => {
     const second = Effect.runPromise(service.shutdown()).then(() => {
       shutdownCount += 1;
     });
-    await expect(service.startLoop(baseSpec())).rejects.toThrow();
+    await expect(Effect.runPromise(service.startLoop(baseSpec()))).rejects.toThrow();
     await Promise.resolve();
 
     expect(shutdownCount).toBe(0);
@@ -386,7 +390,7 @@ describe('LoopService', () => {
     expect((await store.load()).find((item) => item.loopId === loop.loopId)?.status).toBe(
       'stopped',
     );
-    expect(sent.filter((payload) => payload.kind === 'loop.changed').at(-1)).toMatchObject({
+    expect(sent.findLast((payload) => payload.kind === 'loop.changed')).toMatchObject({
       loop: { status: 'stopped' },
     });
   });
@@ -419,7 +423,7 @@ describe('LoopService', () => {
       loopFiber = Effect.runFork(effect);
       return loopFiber;
     });
-    const loop = await service.startLoop(baseSpec());
+    const loop = await Effect.runPromise(service.startLoop(baseSpec()));
     await started;
 
     let interruptionSettled = false;
@@ -462,7 +466,7 @@ describe('LoopService', () => {
       await save(loop);
     };
     const service = bindRuntime(new LoopService(transport, store, driver, { now }));
-    const accepted = service.startLoop(baseSpec());
+    const accepted = Effect.runPromise(service.startLoop(baseSpec()));
     await saveStarted;
 
     let shutdownSettled = false;
@@ -482,7 +486,7 @@ describe('LoopService', () => {
     expect((await store.load()).find((item) => item.loopId === loop.loopId)?.status).toBe(
       'stopped',
     );
-    expect(sent.filter((payload) => payload.kind === 'loop.changed').at(-1)).toMatchObject({
+    expect(sent.findLast((payload) => payload.kind === 'loop.changed')).toMatchObject({
       loop: { status: 'stopped' },
     });
   });

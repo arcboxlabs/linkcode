@@ -137,29 +137,35 @@ export class AutomationRequestHandler {
       case 'loop.start':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.loops.startLoop(payload.spec)).pipe(
-            Effect.flatMap((loop) =>
-              Effect.sync(() =>
-                this.transport.send(
-                  createWireMessage({ kind: 'loop.started', replyTo: payload.clientReqId, loop }),
+          this.loops
+            .startLoop(payload.spec)
+            .pipe(
+              Effect.flatMap((loop) =>
+                Effect.sync(() =>
+                  this.transport.send(
+                    createWireMessage({ kind: 'loop.started', replyTo: payload.clientReqId, loop }),
+                  ),
                 ),
               ),
             ),
-          ),
         );
       case 'loop.stop':
         return this.responder.reply(
           payload.clientReqId,
-          fromSync(() => this.loops.stopLoop(payload.loopId)).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
+          this.loops
+            .stopLoop(payload.loopId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       case 'loop.delete':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.loops.deleteLoop(payload.loopId)).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
+          this.loops
+            .deleteLoop(payload.loopId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       case 'loop.list':
         return Effect.sync(() =>
@@ -174,7 +180,7 @@ export class AutomationRequestHandler {
       case 'loop.inspect':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.loops.inspect(payload.loopId)).pipe(
+          this.loops.inspect(payload.loopId).pipe(
             Effect.flatMap(({ loop, iterations, logs }) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -194,12 +200,4 @@ export class AutomationRequestHandler {
         return Effect.void;
     }
   }
-}
-
-function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: () => run(), catch: (cause) => cause });
-}
-
-function fromSync<A>(run: () => A): Effect.Effect<A, unknown> {
-  return Effect.try({ try: run, catch: (cause) => cause });
 }
