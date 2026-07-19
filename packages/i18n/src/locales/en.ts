@@ -736,6 +736,12 @@ export const en = {
       oauthLoggedOutHint:
         'No CLI login detected — you can still add it; sessions will prompt for login.',
       oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
+      localProviders: {
+        title: 'Local providers',
+        hint: "Custom providers scanned from the agent's own config; their models are ready to use. Edit the config file to change them.",
+        source: 'pi · models.json',
+        modelCount: '{count} models',
+      },
       form: {
         label: 'Name',
         variant: 'Protocol shape',

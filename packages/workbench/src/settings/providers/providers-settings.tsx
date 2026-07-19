@@ -7,6 +7,7 @@ import { useData, useMutation } from '../../runtime/tayori';
 import { AccountDetail } from './account-detail';
 import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
+import { LocalProvidersSection } from './local-providers';
 import { AccountMasterList } from './master-list';
 import { useProvidersSettingsStore } from './store';
 import { withBinding, withModel, withoutAccount } from './view';
@@ -136,6 +137,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           )}
         </div>
       </div>
+      <LocalProvidersSection />
     </div>
   );
 }

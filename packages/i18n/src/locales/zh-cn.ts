@@ -722,6 +722,12 @@ export const zhCN = {
       },
       oauthLoggedOutHint: '未检测到 CLI 登录——仍可添加,会话启动时会提示登录。',
       oauthUnprobedHint: '登录状态未知——以 CLI 自身的登录态为准。',
+      localProviders: {
+        title: '本地 Provider',
+        hint: '从智能体自身配置扫描到的自定义 Provider，模型已可直接使用；修改请编辑对应配置文件。',
+        source: 'pi · models.json',
+        modelCount: '{count} 个模型',
+      },
       form: {
         label: '名称',
         variant: '协议形态',
