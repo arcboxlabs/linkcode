@@ -3,6 +3,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRequestHandler } from '../agent/request-handler';
+import type { ManagedAssetService } from '../asset/service';
 import type { AutomationRequestHandler } from '../automation/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
 import type { ArtifactRequestHandler } from '../preview/request-handler';
@@ -17,6 +18,7 @@ interface RequestHandlers {
   readonly session: SessionRequestHandler;
   readonly history: HistoryRequestHandler;
   readonly agent: AgentRequestHandler;
+  readonly asset: ManagedAssetService;
   readonly workspace: WorkspaceRequestHandler;
   readonly git: GitRequestHandler;
   readonly file: FileRequestHandler;
@@ -52,11 +54,13 @@ export class WireRequestRouter {
         return legacyHandler(() => this.handlers.history.handle(p));
       }
       case 'agent-runtime.list':
-      case 'asset.list':
-      case 'asset.ensure':
       case 'config.get':
       case 'config.set': {
         return legacyHandler(() => this.handlers.agent.handle(p));
+      }
+      case 'asset.list':
+      case 'asset.ensure': {
+        return this.handlers.asset.handle(p);
       }
       case 'workspace.list':
       case 'workspace.register':

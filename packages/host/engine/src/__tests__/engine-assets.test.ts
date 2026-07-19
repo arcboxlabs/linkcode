@@ -107,7 +107,9 @@ describe('asset.ensure', () => {
   });
 
   it('fails the request when the install rejects', async () => {
-    const { service } = fakeAssets({ ensure: () => Promise.reject(new Error('boom')) });
+    const { service } = fakeAssets({
+      ensure: () => Promise.reject(new Error('secret install stderr')),
+    });
     const { engine, sent, inject } = harness({ assets: service });
     await engine.start();
     inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
@@ -119,6 +121,7 @@ describe('asset.ensure', () => {
         message: 'Asset installation failed',
       });
     });
+    expect(JSON.stringify(sent)).not.toContain('secret install stderr');
   });
 
   it('fails the request when the asset cannot be pinned (ensure resolves undefined)', async () => {
@@ -146,6 +149,43 @@ describe('asset.ensure', () => {
       code: 'unsupported',
       message: 'Managed assets are unavailable on this host',
     });
+  });
+
+  it('fails safely when the installed asset is absent from the fresh status snapshot', async () => {
+    const { service } = fakeAssets({ statuses: () => [] });
+    const { engine, sent, inject } = harness({ assets: service });
+    await engine.start();
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
+    await vi.waitFor(() => {
+      expect(sent).toContainEqual({
+        kind: 'request.failed',
+        replyTo: 'r1',
+        code: 'operation_failed',
+        message: 'Asset installation failed',
+      });
+    });
+  });
+
+  it('does not reply after shutdown interrupts a pending installation request', async () => {
+    let resolveInstall!: (installed: InstalledAsset) => void;
+    const ensure = vi.fn(
+      () =>
+        new Promise<InstalledAsset>((resolve) => {
+          resolveInstall = resolve;
+        }),
+    );
+    const { service } = fakeAssets({ ensure });
+    const { engine, sent, inject } = harness({ assets: service });
+    await engine.start();
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
+    await vi.waitFor(() => expect(ensure).toHaveBeenCalledOnce());
+
+    await engine.stop();
+    resolveInstall(INSTALLED_CODEX);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sent.filter((payload) => 'replyTo' in payload && payload.replyTo === 'r1')).toEqual([]);
   });
 });
 

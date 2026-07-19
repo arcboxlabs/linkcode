@@ -148,7 +148,6 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const agentRequests = new AgentRequestHandler(
     transport,
     runtimes,
-    assets,
     providerStore,
     logins,
     responder,
@@ -157,6 +156,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     session: sessionRequests,
     history: historyRequests,
     agent: agentRequests,
+    asset: assets,
     workspace: workspaceRequests,
     git: gitRequests,
     file: fileRequests,
