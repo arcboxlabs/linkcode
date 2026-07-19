@@ -31,7 +31,7 @@ export function MessageContent({
     <div
       className={cn(
         'min-w-0 max-w-full text-sm leading-relaxed',
-        'group-data-[role=user]:break-words group-data-[role=user]:rounded-2xl group-data-[role=user]:rounded-br group-data-[role=user]:border group-data-[role=user]:border-border group-data-[role=user]:bg-secondary group-data-[role=user]:px-3.5 group-data-[role=user]:py-2.5 group-data-[role=user]:text-secondary-foreground sm:group-data-[role=user]:max-w-2xl',
+        'group-data-[role=user]:break-words group-data-[role=user]:rounded-2xl group-data-[role=user]:bg-secondary group-data-[role=user]:px-3.5 group-data-[role=user]:py-2.5 group-data-[role=user]:text-secondary-foreground sm:group-data-[role=user]:max-w-2xl',
         'group-data-[role=assistant]:w-full group-data-[role=assistant]:text-foreground',
         className,
       )}
