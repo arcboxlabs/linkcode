@@ -11,7 +11,8 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AccountDetail } from './account-detail';
-import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { oauthAccount } from './account-form';
+import { AddAccountForm, EditAccountForm, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
 import { AccountMasterList } from './master-list';
 import { useProvidersSettingsStore } from './store';
@@ -43,6 +44,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const startAdd = useProvidersSettingsStore((state) => state.startAdd);
   const pickService = useProvidersSettingsStore((state) => state.pickService);
   const backToCatalog = useProvidersSettingsStore((state) => state.backToCatalog);
+  const startEdit = useProvidersSettingsStore((state) => state.startEdit);
   const closeAdd = useProvidersSettingsStore((state) => state.closeAdd);
 
   const pool = accounts ?? [];
@@ -83,6 +85,15 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     void handleAdd(oauthAccount(service, t(`serviceName.${service.id}`)));
   };
 
+  // In-place replacement keyed by id — bindings referencing the account stay valid.
+  const handleUpdate = async (account: Account): Promise<void> => {
+    await saveAccounts.trigger({
+      accounts: pool.map((candidate) => (candidate.id === account.id ? account : candidate)),
+    });
+    void mutateAccounts();
+    select(account.id);
+  };
+
   const handleRemove = async (): Promise<void> => {
     if (!selected) return;
     const cleared = withoutAccount(providers ?? {}, selected.id);
@@ -100,6 +111,11 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     view.kind === 'browse' && pool.length === 0 && !accountsLoading
       ? ({ kind: 'add-catalog' } as const)
       : view;
+  // The edited account may have vanished under us (another client's write) — fall back to browse.
+  const editing =
+    effectiveView.kind === 'edit'
+      ? pool.find((account) => account.id === effectiveView.accountId)
+      : undefined;
 
   return (
     <div className="flex flex-col gap-5">
@@ -120,7 +136,16 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           onAdoptDetected={handleAdoptDetected}
         />
         <div className="min-w-0 flex-1">
-          {effectiveView.kind === 'add-form' ? (
+          {editing ? (
+            <EditAccountForm
+              account={editing}
+              busy={saveAccounts.isMutating}
+              onCancel={closeAdd}
+              onSubmit={(account) => {
+                void handleUpdate(account);
+              }}
+            />
+          ) : effectiveView.kind === 'add-form' ? (
             <AddAccountForm
               serviceId={effectiveView.service}
               runtimes={runtimes}
@@ -147,6 +172,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
               busy={busy}
               onSetBinding={handleSetBinding}
               onSetModel={handleSetModel}
+              onEdit={() => startEdit(selected.id)}
               onRemove={() => {
                 void handleRemove();
               }}

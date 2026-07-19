@@ -22,11 +22,20 @@ import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
-import { z } from 'zod';
 import { useMutation } from '../../runtime/tayori';
-import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
+import type { CatalogDraft, CustomDraft } from './account-form';
+import {
+  CustomDraftSchema,
+  catalogAccount,
+  catalogDraftSchema,
+  customAccount,
+  customDraftFromAccount,
+  importedAccount,
+  oauthAccount,
+} from './account-form';
+import type { ServiceDescriptor, ServiceGroup } from './catalog';
 import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
-import type { ImportedProvider, ModelsJsonImport } from './import-models-json';
+import type { ModelsJsonImport } from './import-models-json';
 import { parseProviderImport } from './import-models-json';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
@@ -35,80 +44,6 @@ const SERVICES_BY_GROUP = new Map<ServiceGroup, ServiceDescriptor[]>(
   GROUPS.map((group) => [group, []]),
 );
 for (const service of SERVICE_CATALOG) SERVICES_BY_GROUP.get(service.group)?.push(service);
-
-/** Account constructors live at module scope: `Date.now` may not run in a component body. */
-function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdAt'> {
-  return { id: `acc_${crypto.randomUUID()}`, label: label.trim(), createdAt: Date.now() };
-}
-
-export function oauthAccount(
-  service: Extract<ServiceDescriptor, { kind: 'oauth' }>,
-  label: string,
-): Account {
-  return {
-    ...newAccountBase(label),
-    service: service.id,
-    credential: { type: 'oauth', agent: service.agent },
-  };
-}
-
-function catalogAccount(
-  service: Extract<ServiceDescriptor, { kind: 'endpoint' }>,
-  variant: ServiceVariant,
-  draft: CatalogDraft,
-): Account {
-  const trimmed: Record<string, string> = {};
-  for (const key of templatePlaceholders(variant.baseUrl)) {
-    trimmed[key] = draft.placeholders[key]?.trim() ?? '';
-  }
-  return {
-    ...newAccountBase(draft.label),
-    service: service.id,
-    credential:
-      variant.credentialType === 'auth-token'
-        ? { type: 'auth-token', token: draft.secret }
-        : { type: 'api-key', key: draft.secret },
-    endpoint: { baseUrl: fillTemplate(variant.baseUrl, trimmed), protocol: variant.protocol },
-    ...(draft.model.trim() && { model: draft.model.trim() }),
-  };
-}
-
-function customAccount(draft: CustomDraft): Account {
-  const protocol = draft.protocol as AccountProtocol | '';
-  return {
-    ...newAccountBase(draft.label),
-    credential:
-      draft.type === 'auth-token'
-        ? { type: 'auth-token', token: draft.secret }
-        : { type: 'api-key', key: draft.secret },
-    ...(draft.baseUrl.trim() &&
-      protocol && { endpoint: { baseUrl: draft.baseUrl.trim(), protocol } }),
-    ...(draft.models.length > 0 && {
-      customProvider: {
-        name: draft.providerName.trim(),
-        models: draft.models.map((model) => ({
-          id: model.id.trim(),
-          ...(model.name.trim() && { name: model.name.trim() }),
-          reasoning: model.reasoning,
-          input: ['text' as const],
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: model.contextWindow,
-          maxTokens: model.maxTokens,
-        })),
-      },
-    }),
-    ...(draft.model.trim() && { model: draft.model.trim() }),
-  };
-}
-
-function importedAccount(provider: ImportedProvider): Account {
-  return {
-    ...newAccountBase(provider.name),
-    credential: { type: 'api-key', key: provider.apiKey },
-    endpoint: { baseUrl: provider.baseUrl, protocol: provider.protocol },
-    customProvider: { name: provider.name, models: provider.models },
-  };
-}
 
 /** Step one of the add flow: the service directory, grouped, taking over the detail pane. */
 export function ServiceCatalogView({
@@ -348,24 +283,6 @@ function OauthCreateForm({
   );
 }
 
-const CatalogDraftSchema = z.object({
-  label: z.string().min(1),
-  secret: z.string().min(1),
-  model: z.string(),
-  placeholders: z.record(z.string(), z.string()),
-});
-type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
-
-function catalogDraftSchema(variant: ServiceVariant): typeof CatalogDraftSchema {
-  return CatalogDraftSchema.superRefine((draft, ctx) => {
-    for (const key of templatePlaceholders(variant.baseUrl)) {
-      if (!draft.placeholders[key]?.trim()) {
-        ctx.addIssue({ code: 'custom', path: ['placeholders', key], message: 'required' });
-      }
-    }
-  });
-}
-
 function placeholderLabel(key: string): string {
   return key
     .split('_')
@@ -480,45 +397,14 @@ function CatalogAccountForm({
   );
 }
 
-const CustomModelDraftSchema = z.object({
-  id: z.string().min(1),
-  name: z.string(),
-  reasoning: z.boolean(),
-  contextWindow: z.coerce.number<number>().int().positive(),
-  maxTokens: z.coerce.number<number>().int().positive(),
-});
-
-const CustomDraftSchema = z
-  .object({
-    label: z.string().min(1),
-    type: z.enum(['api-key', 'auth-token']),
-    secret: z.string().min(1),
-    baseUrl: z.string(),
-    protocol: z.string(),
-    model: z.string(),
-    providerName: z.string(),
-    models: z.array(CustomModelDraftSchema),
-  })
-  .superRefine((draft, ctx) => {
-    // A model list turns the account into a provider definition (pi registerProvider), which
-    // needs a provider id and a complete endpoint (the api is derived from the protocol).
-    if (draft.models.length === 0) return;
-    if (!draft.providerName.trim() || draft.providerName.includes('/')) {
-      // Slash-free: the first '/' in a model ref splits provider from model id (schema rule).
-      ctx.addIssue({ code: 'custom', path: ['providerName'], message: 'required' });
-    }
-    if (!draft.baseUrl.trim()) {
-      ctx.addIssue({ code: 'custom', path: ['baseUrl'], message: 'required' });
-    }
-    if (!draft.protocol) ctx.addIssue({ code: 'custom', path: ['protocol'], message: 'required' });
-  });
-type CustomDraft = z.infer<typeof CustomDraftSchema>;
-
-/** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
+/** The full free-form account form (any endpoint, any protocol) — no catalog seeding. With
+ * `initial` set it edits: prefilled from the account, submitting a same-id replacement. */
 function CustomAccountForm({
+  initial,
   busy,
   onSubmit,
 }: {
+  initial?: Account;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -530,16 +416,18 @@ function CustomAccountForm({
     formState: { isSubmitting },
   } = useForm<CustomDraft>({
     resolver: zodResolver(CustomDraftSchema),
-    defaultValues: {
-      label: '',
-      type: 'api-key',
-      secret: '',
-      baseUrl: '',
-      protocol: '',
-      model: '',
-      providerName: '',
-      models: [],
-    },
+    defaultValues: initial
+      ? customDraftFromAccount(initial)
+      : {
+          label: '',
+          type: 'api-key',
+          secret: '',
+          baseUrl: '',
+          protocol: '',
+          model: '',
+          providerName: '',
+          models: [],
+        },
   });
   const modelRows = useFieldArray({ control, name: 'models' });
 
@@ -601,7 +489,7 @@ function CustomAccountForm({
   return (
     <form
       className="flex flex-col gap-3"
-      onSubmit={handleSubmit((draft) => onSubmit(customAccount(draft)))}
+      onSubmit={handleSubmit((draft) => onSubmit(customAccount(draft, initial)))}
     >
       <Field>
         <FieldLabel>{t('form.label')}</FieldLabel>
@@ -797,10 +685,83 @@ function CustomAccountForm({
       </div>
       <div>
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
-          {t('form.submit')}
+          {initial ? t('form.save') : t('form.submit')}
         </Button>
       </div>
     </form>
+  );
+}
+
+/** The edit flow's detail pane: label-only for oauth (the credential is the CLI's own login),
+ * the full custom form prefilled for key/token accounts. Submits a same-id replacement. */
+export function EditAccountForm({
+  account,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  account: Account;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (account: Account) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  return (
+    <div className="flex min-w-0 max-w-md flex-1 flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <ServiceIcon service={account.service} label={account.label} />
+          <h3 className="truncate font-semibold text-sm">
+            {t('editTitle', { label: account.label })}
+          </h3>
+        </div>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          {t('cancel')}
+        </Button>
+      </div>
+      {account.credential.type === 'oauth' ? (
+        <OauthLabelEditForm account={account} busy={busy} onSubmit={onSubmit} />
+      ) : (
+        <CustomAccountForm initial={account} busy={busy} onSubmit={onSubmit} />
+      )}
+    </div>
+  );
+}
+
+function OauthLabelEditForm({
+  account,
+  busy,
+  onSubmit,
+}: {
+  account: Account;
+  busy: boolean;
+  onSubmit: (account: Account) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  const [label, setLabel] = useState(account.label);
+  return (
+    <div className="flex flex-col gap-3">
+      <Field>
+        <FieldLabel>{t('form.label')}</FieldLabel>
+        <Input
+          className="w-full"
+          autoComplete="off"
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+        />
+      </Field>
+      <p className="text-muted-foreground text-xs">{t('editOauthHint')}</p>
+      <div>
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || label.trim() === ''}
+          onClick={() => onSubmit({ ...account, label: label.trim() })}
+        >
+          {t('form.save')}
+        </Button>
+      </div>
+    </div>
   );
 }
 
