@@ -6,7 +6,7 @@ import type {
   SessionRecord,
   StartOptions,
 } from '@linkcode/schema';
-import { Effect } from 'effect';
+import { Effect, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { SessionDriver } from '../automation';
 import type { EngineFailure } from '../failure';
@@ -21,6 +21,7 @@ type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions
 
 export class SessionLifecycleService {
   readonly driver: SessionDriver;
+  private readonly importSemaphore = Semaphore.makeUnsafe(1);
   private seq = 0;
   private runEffect: RunEffect | undefined;
 
@@ -80,25 +81,32 @@ export class SessionLifecycleService {
     historyId: AgentHistoryId,
   ): Effect.Effect<SessionRecord, EngineFailure> {
     const { history, records, workspaces } = this;
-    const sessionId = this.nextSessionId();
-    return Effect.gen(function* () {
-      // Read one event only: the summary (title/cwd/createdAt) is what the record needs.
-      const { session } = yield* history.read(kind, { historyId, limit: 1 });
-      const now = Date.now();
-      const record: SessionRecord = {
-        sessionId,
-        kind,
-        cwd: session.cwd ?? '',
-        title: session.title,
-        origin: { type: 'imported', historyId, importedAt: now },
-        createdAt: session.createdAt ?? now,
-        updatedAt: now,
-        runs: [],
-      };
-      yield* records.importRecord(record);
-      if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
-      return record;
-    });
+    return this.importSemaphore.withPermit(
+      Effect.suspend(() => {
+        const existing = records.findImported(kind, historyId);
+        if (existing) return Effect.succeed(existing);
+
+        const sessionId = this.nextSessionId();
+        return Effect.gen(function* () {
+          // Read one event only: the summary (title/cwd/createdAt) is what the record needs.
+          const { session } = yield* history.read(kind, { historyId, limit: 1 });
+          const now = Date.now();
+          const record: SessionRecord = {
+            sessionId,
+            kind,
+            cwd: session.cwd ?? '',
+            title: session.title,
+            origin: { type: 'imported', historyId, importedAt: now },
+            createdAt: session.createdAt ?? now,
+            updatedAt: now,
+            runs: [],
+          };
+          yield* records.importRecord(record);
+          if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
+          return record;
+        });
+      }),
+    );
   }
 
   resumeHistory(

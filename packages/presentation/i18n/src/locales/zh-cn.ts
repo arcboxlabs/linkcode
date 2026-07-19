@@ -568,6 +568,7 @@ export const zhCN = {
       sortByProject: '按项目',
       noProject: '无项目',
       importAction: '导入',
+      importFolder: '全部导入（{count}）',
       importedBadge: '已导入',
       open: '打开',
       emptyTitle: '暂无历史对话',
@@ -576,6 +577,9 @@ export const zhCN = {
       retry: '重试',
       showingLatest: '仅显示最近 {count} 条对话',
       importError: '导入失败：{message}',
+      groupImportError: '无法将目录导入为项目：{message}',
+      groupPartialFailure: '已导入 {imported}/{total} 条对话；失败项仍可重试。',
+      actionError: '操作失败：{message}',
       messageCount: '{count} 条消息',
     },
     general: {
