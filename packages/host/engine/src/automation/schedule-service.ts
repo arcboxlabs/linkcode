@@ -9,7 +9,7 @@ import type {
   ScheduleUpdate,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { Cause, Effect, Fiber } from 'effect';
+import { Cause, Effect, Fiber, Semaphore } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { OperationError, RequestError } from '../failure';
@@ -42,6 +42,8 @@ export interface ScheduleServiceOptions {
  */
 export class ScheduleService {
   private readonly schedules = new Map<ScheduleId, Schedule>();
+  /** Serializes persisted state transitions so request and cadence fibers cannot overwrite each other. */
+  private readonly mutations = Semaphore.makeUnsafe(1);
   /** Single-flight guard: a schedule with a run in flight is skipped by the tick. */
   private readonly activeRuns = new Set<ScheduleId>();
   /** Schedule work runs in Engine's root FiberSet; local handles provide targeted draining. */
@@ -119,29 +121,31 @@ export class ScheduleService {
   }
 
   create(spec: ScheduleSpec): Effect.Effect<Schedule, RequestError | OperationError> {
-    return cadenceEffect(() => {
-      this.cadence.validate(spec.cadence);
-      const now = this.now();
-      return {
-        scheduleId: this.mintScheduleId(),
-        spec,
-        status: 'active',
-        nextRunAt: this.cadence.next(spec.cadence, now),
-        runCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      } satisfies Schedule;
-    }).pipe(
-      Effect.flatMap((schedule) =>
-        storeEffect('schedules.save', 'Failed to create schedule', () =>
-          this.store.save(schedule),
-        ).pipe(Effect.as(schedule)),
-      ),
-      Effect.tap((schedule) =>
-        Effect.sync(() => {
-          this.schedules.set(schedule.scheduleId, schedule);
-          this.reporter.changed(schedule);
-        }),
+    return this.serialized(() =>
+      cadenceEffect(() => {
+        this.cadence.validate(spec.cadence);
+        const now = this.now();
+        return {
+          scheduleId: this.mintScheduleId(),
+          spec,
+          status: 'active',
+          nextRunAt: this.cadence.next(spec.cadence, now),
+          runCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        } satisfies Schedule;
+      }).pipe(
+        Effect.flatMap((schedule) =>
+          storeEffect('schedules.save', 'Failed to create schedule', () =>
+            this.store.save(schedule),
+          ).pipe(Effect.as(schedule)),
+        ),
+        Effect.tap((schedule) =>
+          Effect.sync(() => {
+            this.schedules.set(schedule.scheduleId, schedule);
+            this.reporter.changed(schedule);
+          }),
+        ),
       ),
     );
   }
@@ -150,55 +154,59 @@ export class ScheduleService {
     scheduleId: ScheduleId,
     patch: ScheduleUpdate,
   ): Effect.Effect<Schedule, RequestError | OperationError> {
-    return this.find(scheduleId).pipe(
-      Effect.flatMap((current) =>
-        cadenceEffect(() => {
-          if (patch.cadence !== undefined) this.cadence.validate(patch.cadence);
-          return {
-            ...current,
-            spec: {
-              ...current.spec,
-              ...(patch.name !== undefined && { name: patch.name }),
-              ...(patch.prompt !== undefined && { prompt: patch.prompt }),
-              ...(patch.cadence !== undefined && { cadence: patch.cadence }),
-              ...(patch.maxRuns !== undefined && { maxRuns: patch.maxRuns }),
-              ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt }),
-              ...(patch.misfirePolicy !== undefined && { misfirePolicy: patch.misfirePolicy }),
-            },
-            ...(current.status === 'active' &&
-              patch.cadence !== undefined && {
-                nextRunAt: this.cadence.next(patch.cadence, this.now()),
-              }),
-            updatedAt: this.now(),
-          };
-        }),
-      ),
-      Effect.flatMap((schedule) =>
-        storeEffect('schedules.save', 'Failed to update schedule', () =>
-          this.store.save(schedule),
-        ).pipe(Effect.as(schedule)),
-      ),
-      Effect.tap((schedule) =>
-        Effect.sync(() => {
-          this.schedules.set(scheduleId, schedule);
-          this.reporter.changed(schedule);
-        }),
+    return this.serialized(() =>
+      this.find(scheduleId).pipe(
+        Effect.flatMap((current) =>
+          cadenceEffect(() => {
+            if (patch.cadence !== undefined) this.cadence.validate(patch.cadence);
+            return {
+              ...current,
+              spec: {
+                ...current.spec,
+                ...(patch.name !== undefined && { name: patch.name }),
+                ...(patch.prompt !== undefined && { prompt: patch.prompt }),
+                ...(patch.cadence !== undefined && { cadence: patch.cadence }),
+                ...(patch.maxRuns !== undefined && { maxRuns: patch.maxRuns }),
+                ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt }),
+                ...(patch.misfirePolicy !== undefined && { misfirePolicy: patch.misfirePolicy }),
+              },
+              ...(current.status === 'active' &&
+                patch.cadence !== undefined && {
+                  nextRunAt: this.cadence.next(patch.cadence, this.now()),
+                }),
+              updatedAt: this.now(),
+            };
+          }),
+        ),
+        Effect.flatMap((schedule) =>
+          storeEffect('schedules.save', 'Failed to update schedule', () =>
+            this.store.save(schedule),
+          ).pipe(Effect.as(schedule)),
+        ),
+        Effect.tap((schedule) =>
+          Effect.sync(() => {
+            this.schedules.set(scheduleId, schedule);
+            this.reporter.changed(schedule);
+          }),
+        ),
       ),
     );
   }
 
   delete(scheduleId: ScheduleId): Effect.Effect<void, RequestError | OperationError> {
-    return this.find(scheduleId).pipe(
-      Effect.andThen(
-        storeEffect('schedules.delete', 'Failed to delete schedule', () =>
-          this.store.delete(scheduleId),
+    return this.serialized(() =>
+      this.find(scheduleId).pipe(
+        Effect.andThen(
+          storeEffect('schedules.delete', 'Failed to delete schedule', () =>
+            this.store.delete(scheduleId),
+          ),
         ),
-      ),
-      Effect.tap(() =>
-        Effect.sync(() => {
-          this.schedules.delete(scheduleId);
-          this.reporter.removed(scheduleId);
-        }),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            this.schedules.delete(scheduleId);
+            this.reporter.removed(scheduleId);
+          }),
+        ),
       ),
     );
   }
@@ -246,35 +254,37 @@ export class ScheduleService {
     scheduleId: ScheduleId,
     status: 'active' | 'paused',
   ): Effect.Effect<void, RequestError | OperationError> {
-    return this.find(scheduleId).pipe(
-      Effect.flatMap((current) => {
-        if (current.status === 'completed') {
-          return Effect.fail(conflict('Schedule is already completed'));
-        }
-        if (current.status === status) return Effect.void;
-        return cadenceEffect(() => ({
-          ...current,
-          status,
-          nextRunAt:
-            status === 'active' ? this.cadence.next(current.spec.cadence, this.now()) : undefined,
-          updatedAt: this.now(),
-        })).pipe(
-          Effect.flatMap((schedule) =>
-            storeEffect(
-              'schedules.save',
-              status === 'active' ? 'Failed to resume schedule' : 'Failed to pause schedule',
-              () => this.store.save(schedule),
-            ).pipe(Effect.as(schedule)),
-          ),
-          Effect.tap((schedule) =>
-            Effect.sync(() => {
-              this.schedules.set(scheduleId, schedule);
-              this.reporter.changed(schedule);
-            }),
-          ),
-          Effect.asVoid,
-        );
-      }),
+    return this.serialized(() =>
+      this.find(scheduleId).pipe(
+        Effect.flatMap((current) => {
+          if (current.status === 'completed') {
+            return Effect.fail(conflict('Schedule is already completed'));
+          }
+          if (current.status === status) return Effect.void;
+          return cadenceEffect(() => ({
+            ...current,
+            status,
+            nextRunAt:
+              status === 'active' ? this.cadence.next(current.spec.cadence, this.now()) : undefined,
+            updatedAt: this.now(),
+          })).pipe(
+            Effect.flatMap((schedule) =>
+              storeEffect(
+                'schedules.save',
+                status === 'active' ? 'Failed to resume schedule' : 'Failed to pause schedule',
+                () => this.store.save(schedule),
+              ).pipe(Effect.as(schedule)),
+            ),
+            Effect.tap((schedule) =>
+              Effect.sync(() => {
+                this.schedules.set(scheduleId, schedule);
+                this.reporter.changed(schedule);
+              }),
+            ),
+            Effect.asVoid,
+          );
+        }),
+      ),
     );
   }
 
@@ -486,6 +496,10 @@ export class ScheduleService {
   private async saveRun(run: ScheduleRun): Promise<void> {
     await this.store.saveRun(run);
     this.reporter.runChanged(run);
+  }
+
+  private serialized<A, E>(effect: () => Effect.Effect<A, E>): Effect.Effect<A, E> {
+    return this.mutations.withPermit(Effect.suspend(effect));
   }
 
   private mintScheduleId(): ScheduleId {
