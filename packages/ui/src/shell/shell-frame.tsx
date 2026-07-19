@@ -45,8 +45,8 @@ export interface ShellFrameProps
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
-  /** Effective daemon-configured default models for new sessions. */
-  newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>>;
+  /** Effective daemon-configured default models for new sessions; null while unresolved. */
+  newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
   /** Last model accepted by LinkCode per provider, submitted as a new-session override. */
   newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */

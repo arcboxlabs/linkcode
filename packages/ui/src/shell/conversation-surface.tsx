@@ -6,7 +6,6 @@ import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
-import { AGENT_DEFAULT_MODELS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
@@ -103,10 +102,6 @@ export function ConversationSurface({
   onPickAttachmentFiles,
 }: ConversationSurfaceProps): React.ReactNode {
   const composerRef = useRef<ComposerHandle | null>(null);
-  // Keep the static-provider model axis concrete during the short startup window before the
-  // adapter's authoritative model-update arrives. This is presentation only, never an override.
-  const displayedModel =
-    conversation.currentModel ?? (agentKind ? (AGENT_DEFAULT_MODELS[agentKind] ?? null) : null);
   // Only the signed-out cue matters mid-session (the next turn would fail on auth); a missing or
   // unverified CLI stays a new-session concern — this session's process is already running.
   const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
@@ -171,7 +166,7 @@ export function ConversationSurface({
           sendBlocked={loginCue !== undefined}
           currentModeId={conversation.currentModeId}
           approvalPolicy={conversation.approvalPolicy}
-          currentModel={displayedModel}
+          currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
           agentModels={conversation.availableModels}
           directiveControls={composer.directiveControls}

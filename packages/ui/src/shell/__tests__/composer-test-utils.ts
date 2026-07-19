@@ -33,7 +33,7 @@ export function setupComposerTestDOM(): void {
 }
 
 export function composerTextbox(): HTMLElement {
-  return screen.getByRole('textbox');
+  return screen.getByRole('combobox');
 }
 
 export function composerLexicalEditor(): LexicalEditor {

@@ -19,10 +19,11 @@ export function configuredDefaultModels(
   return defaults;
 }
 
-/** Configured defaults for new-session controls. Built-in provider defaults remain presentation
- * knowledge in `@linkcode/ui`; this hook only reflects daemon-owned user configuration. */
-export function useConfiguredDefaultModels(): Partial<Record<AgentKind, string>> {
+/** Configured defaults for new-session controls. `null` means one of the daemon-owned sources is
+ * still unresolved; consumers must not replace that unknown value with a guessed provider model. */
+export function useConfiguredDefaultModels(): Partial<Record<AgentKind, string>> | null {
   const { data: providers } = useData(getProviderConfig, {});
   const { data: accounts } = useData(getAccounts, {});
+  if (providers === undefined || accounts === undefined) return null;
   return configuredDefaultModels(providers, accounts);
 }

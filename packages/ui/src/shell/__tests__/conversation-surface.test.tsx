@@ -77,7 +77,7 @@ afterEach(cleanup);
 
 function composerEditor(): LexicalEditor {
   return nullthrow(
-    getNearestEditorFromDOMNode(screen.getByRole('textbox')),
+    getNearestEditorFromDOMNode(screen.getByRole('combobox')),
     'composer editor not mounted',
   );
 }
@@ -93,9 +93,9 @@ function composerText(): string {
 }
 
 describe('ConversationSurface prompt card', () => {
-  it('shows a static-provider default until the adapter reports its concrete model', () => {
+  it('keeps the model unresolved until the adapter reports its concrete value', () => {
     const { rerender } = render(surface());
-    expect(screen.getByRole('button', { name: /Sonnet 5/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /modelDefault/ })).toBeTruthy();
 
     rerender(surface(undefined, { ...EMPTY_CONVERSATION, currentModel: 'claude-opus-4-8' }));
     expect(screen.getByRole('button', { name: /Opus 4.8/ })).toBeTruthy();
@@ -119,7 +119,7 @@ describe('ConversationSurface prompt card', () => {
     rerender(surface(undefined, pendingConversation));
 
     expect(screen.getByRole('button', { name: 'Allow' })).toBeTruthy();
-    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
 
     rerender(surface());
     expect(composerText()).toBe('Keep this draft');

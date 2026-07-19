@@ -53,8 +53,10 @@ export interface NewSessionSubmission {
   cwd: string;
   /** The picked workspace backing `cwd` — lets the caller persist it as the next draft's default. */
   workspaceId: WorkspaceId;
-  model?: string;
-  effort?: EffortLevel;
+  /** Null explicitly returns this provider to its configured/default model. */
+  model?: string | null;
+  /** Null explicitly returns this provider to its default effort. */
+  effort?: EffortLevel | null;
   modeId?: SessionModeId;
   input: Extract<AgentInput, { type: 'command' | 'prompt' | 'shell-command' }>;
 }
@@ -73,8 +75,9 @@ export interface NewSessionSurfaceProps {
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
-  /** Effective user-configured model defaults. Built-in provider defaults fill missing kinds. */
-  defaultModels?: Readonly<Partial<Record<AgentKind, string>>>;
+  /** Effective user-configured model defaults. `null` means they are still loading; when omitted,
+   * built-in provider defaults fill missing kinds for standalone consumers. */
+  defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
   /** Last accepted model per provider. Unlike configured defaults, this is an explicit override. */
   preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last accepted effort per provider. Missing kinds retain the provider default. */
@@ -134,10 +137,12 @@ export function NewSessionSurface({
   const t = useTranslations('workbench.newSession');
   const [provider, setProvider] = useState(draft.initialProvider);
   const [workspaceId, setWorkspaceId] = useState(draft.initialWorkspaceId);
-  const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string>>>({});
-  const [selectedEfforts, setSelectedEfforts] = useState<Partial<Record<AgentKind, EffortLevel>>>(
+  const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string | null>>>(
     {},
   );
+  const [selectedEfforts, setSelectedEfforts] = useState<
+    Partial<Record<AgentKind, EffortLevel | null>>
+  >({});
   const [modeId, setModeId] = useState<string>(DEFAULT_MODE_ID);
   const [pending, setPending] = useState(false);
 
@@ -145,37 +150,45 @@ export function NewSessionSurface({
   const selected =
     selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   const isChatSelected = selected != null && selected === chatWorkspace;
-  const selectedModel = selectedModels[provider] ?? preferredModels?.[provider] ?? null;
+  const localModel = selectedModels[provider];
+  const selectedModel =
+    localModel === undefined ? (preferredModels?.[provider] ?? null) : localModel;
   const displayedModel =
-    selectedModel ?? defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null;
-  const effort = selectedEfforts[provider] ?? preferredEfforts?.[provider] ?? null;
+    selectedModel ??
+    (defaultModels === null
+      ? null
+      : (defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null));
+  const localEffort = selectedEfforts[provider];
+  const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
 
-  function submit(input: NewSessionSubmission['input']): void {
-    if (!selected) return;
+  async function submit(input: NewSessionSubmission['input']): Promise<void> {
+    if (!selected) throw new Error('Cannot start a session without a workspace');
     setPending(true);
-    onSubmit({
-      kind: provider,
-      cwd: selected.cwd,
-      workspaceId: selected.workspaceId,
-      model: selectedModel ?? undefined,
-      ...(effort !== null && { effort }),
-      modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
-      input,
-    })
-      .catch(noop)
-      .finally(() => setPending(false));
+    try {
+      await onSubmit({
+        kind: provider,
+        cwd: selected.cwd,
+        workspaceId: selected.workspaceId,
+        model: localModel === null ? null : (selectedModel ?? undefined),
+        ...(localEffort === null ? { effort: null } : effort !== null && { effort }),
+        modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
+        input,
+      });
+    } finally {
+      setPending(false);
+    }
   }
 
-  function handleSend(content: ContentBlock[]): void {
-    submit({ type: 'prompt', content });
+  function handleSend(content: ContentBlock[]): Promise<void> {
+    return submit({ type: 'prompt', content });
   }
 
-  function handleInvokeCommand(name: string, args?: string): void {
-    submit({ type: 'command', name, arguments: args });
+  function handleInvokeCommand(name: string, args?: string): Promise<void> {
+    return submit({ type: 'command', name, arguments: args });
   }
 
-  function handleRunShellCommand(command: string): void {
-    submit({ type: 'shell-command', command });
+  function handleRunShellCommand(command: string): Promise<void> {
+    return submit({ type: 'shell-command', command });
   }
 
   function handleProviderChange(nextProvider: AgentKind): Promise<void> {
@@ -191,6 +204,14 @@ export function NewSessionSurface({
   function handleEffortChange(nextEffort: EffortLevel): Promise<void> {
     setSelectedEfforts((current) => ({ ...current, [provider]: nextEffort }));
     return Promise.resolve();
+  }
+
+  function handleResetModel(): void {
+    setSelectedModels((current) => ({ ...current, [provider]: null }));
+  }
+
+  function handleResetEffort(): void {
+    setSelectedEfforts((current) => ({ ...current, [provider]: null }));
   }
 
   function handleModeChange(nextModeId: string): Promise<void> {
@@ -245,6 +266,7 @@ export function NewSessionSurface({
             agentLabel={AGENT_LABELS[provider]}
             agentKind={provider}
             attachmentsSupported={Boolean(attachmentSupport?.[provider])}
+            blockDirectivesWithAttachments
             disabled={pending || !selected}
             directiveControls={directiveControls}
             isRunning={false}
@@ -262,6 +284,8 @@ export function NewSessionSurface({
             onEffortChange={handleEffortChange}
             onModeChange={handleModeChange}
             onModelChange={handleModelChange}
+            onResetEffort={effort === null ? undefined : handleResetEffort}
+            onResetModel={selectedModel === null ? undefined : handleResetModel}
             onProviderChange={handleProviderChange}
             contextBar={
               <NewSessionContextBar
