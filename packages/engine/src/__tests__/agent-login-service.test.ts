@@ -3,8 +3,8 @@ import type { WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
-import type { LoginBinaryResolver, StartLogin } from '../agent-login-service';
-import { AgentLoginService } from '../agent-login-service';
+import type { LoginBinaryResolver, StartLogin } from '../agent/login-service';
+import { AgentLoginService } from '../agent/login-service';
 
 function recordingTransport(): { transport: Transport; sent: WirePayload[] } {
   const sent: WirePayload[] = [];

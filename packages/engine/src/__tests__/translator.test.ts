@@ -4,7 +4,7 @@ import {
   TRANSLATOR_PLACEHOLDER_TOKEN,
   translationUpstream,
   withTranslatorEndpoint,
-} from '../translator';
+} from '../agent/translator';
 
 const gatewayOpts: StartOptions = {
   kind: 'claude-code',

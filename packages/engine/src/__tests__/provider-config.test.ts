@@ -1,6 +1,6 @@
 import type { Account, ProvidersConfig, StartOptions } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { applyProviderDefaults } from '../provider-config';
+import { applyProviderDefaults } from '../agent/provider-config';
 
 const baseOpts: StartOptions = { kind: 'codex', cwd: '/repo' };
 
