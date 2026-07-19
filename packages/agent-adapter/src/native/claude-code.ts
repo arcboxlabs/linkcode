@@ -748,10 +748,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         this.emitError('claude-code: query ended before the turn returned a result');
       }
     }
-    // The process is gone; finalize anything a mid-flight turn left dangling, then leave the
-    // adapter idle so the next prompt can recreate the Query.
+    // The process is gone; finalize anything a mid-flight turn left dangling. Normal exits leave
+    // the adapter idle; onCancel owns that transition while its interrupt request is still open.
     this.teardown();
-    this.emitStatus('idle');
+    // onCancel keeps the engine gate closed until its interrupt round trip and base teardown finish.
+    if (!cancelling) this.emitStatus('idle');
   }
 
   /** `supportedCommands()` is a snapshot captured at Query init — this fires once per Query to seed
@@ -772,19 +773,48 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitCommands(this.commandCatalog);
   }
 
+  /** Detach a Query before closing it so its late messages and consume() unwind cannot affect the
+   * replacement. The next turn resumes from the last provider session id when one was observed. */
+  private detachQueryForRebuild(q: Query): void {
+    const queue = this.inputQueue;
+    this.q = null;
+    this.inputQueue = null;
+    this.resumeFrom = this.lastSessionRef;
+    q.close();
+    queue?.close();
+  }
+
   protected override async onCancel(): Promise<void> {
+    const q = this.q;
+    const hadTurn = this.turnActive;
+    let interruptFailed = false;
     this.cancelling = true;
     this.turnActive = false;
     try {
-      if (this.q) await this.q.interrupt();
+      if (q) await q.interrupt();
       else this.cancelling = false;
     } catch {
-      // Nothing was in flight, so no result/error will follow to consume the flag — clear it now,
-      // or a later unrelated error would be wrongly swallowed as if it were this cancel's fallout.
+      // No ack can delimit this turn's fallout. Clear the suppression flag and fall through to
+      // detach the Query; otherwise a late result could still be mistaken for the next turn's.
+      interruptFailed = true;
       this.cancelling = false;
     }
-    // interrupt() stops the current turn's generation but doesn't guarantee a matching `result`
-    // message, so finalize here too; teardown()/emitStatus('idle') are idempotent if one does follow.
+    // The interrupt ack can precede the cancelled turn's terminal result. If no result/EOF settled
+    // while awaiting it, detach the old Query so that late fallout cannot settle the next turn.
+    const settledWhileInterrupting =
+      q !== null && hadTurn && !interruptFailed && (this.q !== q || !this.cancelling);
+    if (settledWhileInterrupting) {
+      this.teardown();
+      this.emitStatus('idle');
+      return;
+    }
+    if (q && hadTurn && this.q === q && !this.turnActive) {
+      this.cancelling = false;
+      this.detachQueryForRebuild(q);
+    }
+    // A prompt racing the interrupt round trip owns the running status and the live queue.
+    if (this.turnActive) return;
+    this.cancelling = false;
     this.teardown();
     this.emitStatus('idle');
   }
@@ -847,14 +877,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
     // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
     const q = this.q;
-    const queue = this.inputQueue;
-    this.q = null;
-    this.inputQueue = null;
     // If the process died before any message carried a session id there is nothing to resume;
     // the rebuilt Query then simply starts fresh, keeping the same Link Code session.
-    this.resumeFrom = this.lastSessionRef;
-    q.close();
-    queue?.close();
+    this.detachQueryForRebuild(q);
   }
 
   /** Invoking a command is pushing a plain user message through the existing prompt path: the
@@ -1222,7 +1247,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           false,
         );
         this.teardown();
-        this.emitStatus('idle');
+        if (!cancelling) this.emitStatus('idle');
         return;
       }
       const usage = isRecord(msg.usage) ? msg.usage : {};
@@ -1241,7 +1266,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.emitError(claudeResultErrorMessage(msg), undefined, true);
     }
     this.teardown();
-    this.emitStatus('idle');
+    // A result can beat interrupt()'s control ack. Keep the gate closed until onCancel returns so
+    // base send(cancel)'s final teardown cannot sweep a newly admitted turn.
+    if (!cancelling) this.emitStatus('idle');
   }
 }
 

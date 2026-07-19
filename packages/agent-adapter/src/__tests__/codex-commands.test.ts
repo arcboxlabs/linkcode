@@ -249,7 +249,7 @@ describe('CodexAdapter slash commands', () => {
     );
   });
 
-  it('publishes running before the /compact request resolves', async () => {
+  it('stays running after the /compact ack and settles from its compaction turn', async () => {
     const adapter = new TestCodex(response());
     const events: AgentEvent[] = [];
     adapter.onEvent((event) => events.push(event));
@@ -270,6 +270,29 @@ describe('CodexAdapter slash commands', () => {
     expect(settled).toBe(false);
     resolveCompact({});
     await sending;
+
+    expect(events.filter((event) => event.type === 'status')).toEqual([
+      { type: 'status', status: 'running' },
+    ]);
+    // thread/compact/start returns an empty ack before app-server 0.144.1 runs compaction as a
+    // normal turn. The standard notifications — not the request response — own settlement.
+    adapter.fake.notify('turn/started', { turn: { id: 'compact-turn' } });
+    adapter.fake.notify('item/started', {
+      item: { id: 'compaction-1', type: 'contextCompaction' },
+    });
+    adapter.fake.notify('item/completed', {
+      item: { id: 'compaction-1', type: 'contextCompaction' },
+    });
+    adapter.fake.notify('turn/completed', {
+      turn: { id: 'compact-turn', status: 'completed' },
+    });
+
+    expect(events.filter((event) => event.type === 'compaction')).toEqual([
+      { type: 'compaction', compactionId: 'compaction-1', status: 'in_progress' },
+      { type: 'compaction', compactionId: 'compaction-1', status: 'completed' },
+    ]);
+    expect(events).toContainEqual({ type: 'stop', stopReason: 'end_turn' });
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
   });
 
   it('returns /compact to idle when its request is rejected', async () => {
