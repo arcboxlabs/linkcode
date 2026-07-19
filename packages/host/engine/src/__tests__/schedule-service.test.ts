@@ -1,6 +1,7 @@
 import type {
   AgentKind,
   Schedule,
+  ScheduleRun,
   ScheduleSpec,
   SessionAutomation,
   SessionId,
@@ -117,6 +118,72 @@ class FailingScheduleStore extends InMemoryScheduleStore {
 
   override save(schedule: Schedule): Promise<void> {
     return this.failSaves ? Promise.reject(new Error('store unavailable')) : super.save(schedule);
+  }
+}
+
+class ControlledScheduleStore extends InMemoryScheduleStore {
+  failNextRunningRun = false;
+  private blockedRunningRun:
+    | {
+        readonly started: () => void;
+        readonly release: Promise<void>;
+      }
+    | undefined;
+  private blockedSave:
+    | {
+        readonly started: () => void;
+        readonly release: Promise<void>;
+      }
+    | undefined;
+
+  blockNextSave(): { readonly started: Promise<void>; readonly release: () => void } {
+    let markStarted: () => void = noop;
+    let release: () => void = noop;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.blockedSave = { started: markStarted, release: released };
+    return { started, release };
+  }
+
+  blockNextRunningRun(): { readonly started: Promise<void>; readonly release: () => void } {
+    let markStarted: () => void = noop;
+    let release: () => void = noop;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.blockedRunningRun = { started: markStarted, release: released };
+    return { started, release };
+  }
+
+  override async save(schedule: Schedule): Promise<void> {
+    const blocked = this.blockedSave;
+    if (blocked) {
+      this.blockedSave = undefined;
+      blocked.started();
+      await blocked.release;
+    }
+    await super.save(schedule);
+  }
+
+  override async saveRun(run: ScheduleRun): Promise<void> {
+    if (this.failNextRunningRun && run.status === 'running') {
+      this.failNextRunningRun = false;
+      throw new Error('run store unavailable');
+    }
+    const blocked = this.blockedRunningRun;
+    if (blocked && run.status === 'running') {
+      this.blockedRunningRun = undefined;
+      blocked.started();
+      await blocked.release;
+    }
+    await super.saveRun(run);
   }
 }
 
@@ -321,6 +388,73 @@ describe('ScheduleService', () => {
     expect(service.list()[0]?.status).toBe('paused');
     expect((await store.load())[0]?.status).toBe('paused');
     expect(schedulesIn(sent).at(-1)?.status).toBe('paused');
+  });
+
+  it('serializes a cadence transition with a concurrent pause', async () => {
+    const store = new ControlledScheduleStore();
+    const { service } = makeService(new FakeSessionDriver(), store);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
+    const gate = store.blockNextSave();
+    clock += 60000;
+
+    const tick = runEffect(service.tickOnce());
+    await gate.started;
+    let pauseSettled = false;
+    const pause = runEffect(service.pause(schedule.scheduleId)).then(() => {
+      pauseSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(pauseSettled).toBe(false);
+    expect(service.list()[0]).toEqual(schedule);
+
+    gate.release();
+    await Promise.all([tick, pause]);
+    await runEffect(service.settleAll());
+
+    expect(service.list()[0]?.status).toBe('paused');
+    expect((await store.load())[0]?.status).toBe('paused');
+  });
+
+  it('does not launch a session when the initial running run cannot be persisted', async () => {
+    const store = new ControlledScheduleStore();
+    const driver = new FakeSessionDriver();
+    const { service, sent } = makeService(driver, store);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
+    store.failNextRunningRun = true;
+
+    await expect(runEffect(service.runOnce(schedule.scheduleId))).rejects.toMatchObject({
+      _tag: 'OperationError',
+      subsystem: 'store',
+    });
+
+    expect(driver.calls).toHaveLength(0);
+    expect(runsIn(sent)).toHaveLength(0);
+    expect(await store.loadRuns(schedule.scheduleId)).toHaveLength(0);
+  });
+
+  it('shutdown drains a run admitted while its running record is being persisted', async () => {
+    const store = new ControlledScheduleStore();
+    const driver = new BlockingSessionDriver();
+    const { service } = makeService(driver, store);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
+    const gate = store.blockNextRunningRun();
+
+    const request = runEffect(service.runOnce(schedule.scheduleId));
+    await gate.started;
+    let shutdownSettled = false;
+    const shutdown = runEffect(service.shutdown()).then(() => {
+      shutdownSettled = true;
+    });
+
+    gate.release();
+    await request;
+    await driver.promptStarted;
+    await Promise.resolve();
+    expect(shutdownSettled).toBe(false);
+
+    driver.releasePrompt({ stopReason: 'end_turn', text: 'done' });
+    await shutdown;
   });
 
   it('completes after maxRuns cadence runs', async () => {
