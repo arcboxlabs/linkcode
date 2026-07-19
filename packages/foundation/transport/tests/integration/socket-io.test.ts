@@ -1,11 +1,11 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { SocketIoTransport } from '@linkcode/transport';
+import type { SocketIoServer } from '@linkcode/transport/server';
+import { createSocketIoServer } from '@linkcode/transport/server';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { describe, expect, it, vi } from 'vitest';
-import { SocketIoTransport } from '../socket-io';
-import type { SocketIoServer } from '../socket-io-server';
-import { createSocketIoServer } from '../socket-io-server';
 
 describe('SocketIoTransport connection lifetime', () => {
   it('does not reconnect after the initial connection attempt fails', async () => {

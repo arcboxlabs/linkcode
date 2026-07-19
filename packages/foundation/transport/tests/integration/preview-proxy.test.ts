@@ -1,11 +1,10 @@
 import { createServer, request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { PreviewRouteTable } from '@linkcode/transport';
+import type { WsServer } from '@linkcode/transport/server';
+import { createWsServer } from '@linkcode/transport/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
-import type { PreviewRouteTable } from '../preview-routes';
-import { isPreviewHostname, normalizeHostname } from '../preview-routes';
-import type { WsServer } from '../ws-server';
-import { createWsServer } from '../ws-server';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -60,18 +59,6 @@ function get(port: number, path: string, host: string): Promise<{ status: number
     req.end();
   });
 }
-
-describe('preview hostname classification', () => {
-  it('normalizes Host headers and recognizes the namespace', () => {
-    expect(normalizeHostname('Web--App.LOCALHOST:19523')).toBe('web--app.localhost');
-    expect(normalizeHostname(undefined)).toBeNull();
-    expect(normalizeHostname('[::1]:19523')).toBeNull();
-    expect(isPreviewHostname('web--app-1a2b3c.localhost')).toBe(true);
-    expect(isPreviewHostname('localhost')).toBe(false);
-    expect(isPreviewHostname('web.localhost')).toBe(false);
-    expect(isPreviewHostname('web--app.example.com')).toBe(false);
-  });
-});
 
 describe('preview reverse proxy (ws server)', () => {
   it('routes registered hosts upstream, 404s unrouted preview hosts, keeps the daemon API', async () => {
