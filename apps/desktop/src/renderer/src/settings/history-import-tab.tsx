@@ -41,13 +41,17 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
       </DesktopChromePortal>
       <HistoryBrowserList
         entries={surface.entries}
-        groupByProject={sort === 'project'}
+        groupByProject
         truncated={surface.truncated}
         isLoading={surface.isLoading}
         loadError={surface.loadError}
-        importingId={surface.importingId}
-        importError={surface.importError}
+        importingIds={surface.importingIds}
+        importingCwds={surface.importingCwds}
+        importErrors={surface.importErrors}
+        groupImportFailures={surface.groupImportFailures}
+        actionError={surface.actionError}
         onImport={surface.importEntry}
+        onImportGroup={surface.importGroup}
         onOpen={surface.openEntry}
         onRefresh={surface.refresh}
       />

@@ -589,7 +589,6 @@ export const en = {
       showingLatest:
         'Showing the latest {count, plural, one {# conversation} other {# conversations}}',
       importError: 'Failed to import: {message}',
-      groupImportError: 'Failed to import directory as a project: {message}',
       groupPartialFailure:
         'Imported {imported} of {total} conversations; failed conversations can be retried.',
       actionError: 'Action failed: {message}',

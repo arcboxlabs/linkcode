@@ -9,7 +9,6 @@ import type {
 } from '@linkcode/schema';
 import { AgentHistoryIdSchema } from '@linkcode/schema';
 import { cleanup, renderHook } from '@testing-library/react';
-import { asyncNoop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { importHistoryGroup, useProviderHistory } from '../use-provider-history';
 
@@ -146,8 +145,7 @@ function entry(historyId: string): AgentHistorySession {
 }
 
 describe('importHistoryGroup', () => {
-  it('registers the directory and imports every conversation', async () => {
-    const register = vi.fn(asyncNoop);
+  it('imports every conversation in the directory', async () => {
     const importEntry = vi.fn((item: AgentHistorySession) =>
       Promise.resolve(`session-${item.historyId}` as SessionId),
     );
@@ -158,12 +156,9 @@ describe('importHistoryGroup', () => {
         cwd: '/work/linkcode',
         entries,
         inFlight: new Set(),
-        register,
         importEntry,
       }),
     ).resolves.toEqual({ imported: ['one', 'two'], failures: [] });
-    expect(register).toHaveBeenCalledOnce();
-    expect(register).toHaveBeenCalledWith('/work/linkcode');
     expect(importEntry).toHaveBeenCalledTimes(2);
   });
 
@@ -180,7 +175,6 @@ describe('importHistoryGroup', () => {
         cwd: '/work/linkcode',
         entries,
         inFlight: new Set(),
-        register: () => Promise.resolve(),
         importEntry,
       }),
     ).resolves.toEqual({
@@ -191,27 +185,24 @@ describe('importHistoryGroup', () => {
   });
 
   it('drops a repeated click while the same directory import is in flight', async () => {
-    let finishRegistration: (() => void) | undefined;
-    const registration = new Promise<void>((resolve) => {
-      finishRegistration = resolve;
+    let finishImport: ((sessionId: SessionId) => void) | undefined;
+    const pendingImport = new Promise<SessionId>((resolve) => {
+      finishImport = resolve;
     });
-    const register = vi.fn(() => registration);
-    const importEntry = vi.fn(() => Promise.resolve('session-one' as SessionId));
+    const importEntry = vi.fn(() => pendingImport);
     const inFlight = new Set<string>();
     const options = {
       cwd: '/work/linkcode',
       entries: [entry('one')],
       inFlight,
-      register,
       importEntry,
     };
 
     const first = importHistoryGroup(options);
     await expect(importHistoryGroup(options)).resolves.toBeNull();
-    expect(register).toHaveBeenCalledOnce();
-    expect(importEntry).not.toHaveBeenCalled();
+    expect(importEntry).toHaveBeenCalledOnce();
 
-    finishRegistration?.();
+    finishImport?.('session-one' as SessionId);
     await expect(first).resolves.toEqual({ imported: ['one'], failures: [] });
     expect(inFlight).toEqual(new Set());
   });

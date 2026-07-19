@@ -577,7 +577,6 @@ export const zhCN = {
       retry: '重试',
       showingLatest: '仅显示最近 {count} 条对话',
       importError: '导入失败：{message}',
-      groupImportError: '无法将目录导入为项目：{message}',
       groupPartialFailure: '已导入 {imported}/{total} 条对话；失败项仍可重试。',
       actionError: '操作失败：{message}',
       messageCount: '{count} 条消息',
