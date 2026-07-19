@@ -287,6 +287,7 @@ export const zhCN = {
       removeDirective: '移除指令',
       modelDefault: '默认',
       effortDefault: '推理强度',
+      effortShort: '推理',
       add: '添加',
       attach: '图片',
       attachmentPickerTitle: '添加图片',

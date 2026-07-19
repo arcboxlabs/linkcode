@@ -744,7 +744,7 @@ export function Composer({
         unstyled
         onChange={onFileInputChange}
       />
-      <div className="mx-auto max-w-3xl">
+      <div className="@container/composer mx-auto max-w-3xl">
         <div className="relative isolate">
           <Command
             autoHighlight="always"

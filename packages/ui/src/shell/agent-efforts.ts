@@ -3,6 +3,7 @@ import type { AgentKind, EffortLevel } from '@linkcode/schema';
 export interface EffortOption {
   id: EffortLevel;
   label: string;
+  shortLabel: string;
 }
 
 /**
@@ -17,23 +18,23 @@ export interface EffortOption {
  */
 export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = {
   'claude-code': [
-    { id: 'low', label: 'Low' },
-    { id: 'medium', label: 'Medium' },
-    { id: 'high', label: 'High' },
-    { id: 'xhigh', label: 'xHigh' },
-    { id: 'max', label: 'Max' },
-    { id: 'ultracode', label: 'Ultracode' },
+    { id: 'low', label: 'Low', shortLabel: 'L' },
+    { id: 'medium', label: 'Medium', shortLabel: 'M' },
+    { id: 'high', label: 'High', shortLabel: 'H' },
+    { id: 'xhigh', label: 'xHigh', shortLabel: 'xH' },
+    { id: 'max', label: 'Max', shortLabel: 'Max' },
+    { id: 'ultracode', label: 'Ultracode', shortLabel: 'UC' },
   ],
   codex: [
-    { id: 'low', label: 'Low' },
-    { id: 'medium', label: 'Medium' },
-    { id: 'high', label: 'High' },
-    { id: 'xhigh', label: 'xHigh' },
+    { id: 'low', label: 'Low', shortLabel: 'L' },
+    { id: 'medium', label: 'Medium', shortLabel: 'M' },
+    { id: 'high', label: 'High', shortLabel: 'H' },
+    { id: 'xhigh', label: 'xHigh', shortLabel: 'xH' },
   ],
   // Grok Build headless: `--reasoning-effort` high|medium|low (verified 0.2.102).
   'grok-build': [
-    { id: 'low', label: 'Low' },
-    { id: 'medium', label: 'Medium' },
-    { id: 'high', label: 'High' },
+    { id: 'low', label: 'Low', shortLabel: 'L' },
+    { id: 'medium', label: 'Medium', shortLabel: 'M' },
+    { id: 'high', label: 'High', shortLabel: 'H' },
   ],
 };

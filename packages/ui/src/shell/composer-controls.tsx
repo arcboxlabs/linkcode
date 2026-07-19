@@ -89,12 +89,18 @@ export function ApprovalPolicyMenu({
       <MenuTrigger
         disabled={disabled}
         render={
-          <Button className="text-muted-foreground" size="sm" type="button" variant="ghost" />
+          <Button
+            className="text-muted-foreground @max-[480px]/composer:size-8 @max-[480px]/composer:p-0"
+            size="sm"
+            title={active.name}
+            type="button"
+            variant="ghost"
+          />
         }
       >
         <ShieldIcon />
-        {active.name}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <span className="@max-[480px]/composer:sr-only">{active.name}</span>
+        <ChevronDownIcon className="size-3 text-muted-foreground/72 @max-[480px]/composer:hidden" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
@@ -151,11 +157,12 @@ export function SessionModeChip({
         disabled={disabled}
         onClick={onToggle}
         size="sm"
+        title={mode.name}
         type="button"
         variant="ghost"
       >
         <Icon />
-        {mode.name}
+        <span className="@max-[480px]/composer:sr-only">{mode.name}</span>
       </Button>
     </>
   );
@@ -228,7 +235,12 @@ export function ModelSelectorMenu({
         {hasModels ? (selectedModel?.label ?? t('modelDefault')) : null}
         {hasEfforts ? (
           <span className="font-normal text-muted-foreground">
-            {selectedEffort?.label ?? t('effortDefault')}
+            <span className="@max-[480px]/composer:sr-only">
+              {selectedEffort?.label ?? t('effortDefault')}
+            </span>
+            <span aria-hidden className="hidden @max-[480px]/composer:inline">
+              {selectedEffort?.shortLabel ?? t('effortShort')}
+            </span>
           </span>
         ) : null}
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />

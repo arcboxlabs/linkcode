@@ -296,6 +296,7 @@ export const en = {
       removeDirective: 'Remove directive',
       modelDefault: 'Default',
       effortDefault: 'Effort',
+      effortShort: 'Eff.',
       add: 'Add',
       attach: 'Images',
       attachmentPickerTitle: 'Attach images',
