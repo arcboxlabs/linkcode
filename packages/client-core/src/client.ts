@@ -1,4 +1,5 @@
 import type {
+  AccountProtocol,
   Accounts,
   AgentEvent,
   AgentHistoryId,
@@ -10,6 +11,7 @@ import type {
   AgentStartCatalog,
   ContentBlock,
   EffortLevel,
+  EndpointModel,
   FileSuggestion,
   GitDiff,
   GitDiffMode,
@@ -303,6 +305,9 @@ export class LinkCodeClient {
       case 'agent.cataloged':
         this.pending.resolve('agentCatalog', p.replyTo, p.catalog);
         break;
+      case 'endpoint.models-listed':
+        this.pending.resolve('endpointModels', p.replyTo, p.models);
+        break;
       case 'agent-runtime.changed':
         for (const cb of this.agentRuntimesChangedSubs) cb(p.runtimes);
         break;
@@ -570,6 +575,16 @@ export class LinkCodeClient {
   /** Pre-session picker data (models / approval tiers) for one agent kind. */
   getAgentCatalog(agentKind: AgentKind, cwd?: string): Promise<AgentStartCatalog> {
     return this.control.getAgentCatalog(agentKind, cwd);
+  }
+
+  /** Query an endpoint's model-listing API (daemon-proxied); rejects when it serves none. */
+  listEndpointModels(req: {
+    baseUrl: string;
+    protocol: AccountProtocol;
+    secret: string;
+    credentialType: 'api-key' | 'auth-token';
+  }): Promise<EndpointModel[]> {
+    return this.control.listEndpointModels(req);
   }
 
   listAssets(): Promise<ManagedAssetStatus[]> {

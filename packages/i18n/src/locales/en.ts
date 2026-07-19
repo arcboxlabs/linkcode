@@ -742,6 +742,15 @@ export const en = {
       localProviders: {
         source: 'pi · models.json',
       },
+      fetchModels: {
+        button: 'Fetch model list',
+        loading: 'Fetching…',
+        needsEndpoint: 'Fill in the endpoint URL, protocol, and key to fetch automatically',
+        failed:
+          'Fetch failed ({message}) — the endpoint may not serve a listing; fill in models manually.',
+        empty: 'The endpoint returned an empty list; fill in models manually.',
+        addPicked: 'Add selected ({count})',
+      },
       import: {
         hint: 'Pick a pi models.json file; each custom provider becomes one account, with model definitions (cost and thinking-level map included) preserved in full. Plain JSON only (no comments).',
         parseError: 'Cannot parse: {message}',

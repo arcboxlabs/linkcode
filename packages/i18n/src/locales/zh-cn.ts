@@ -728,6 +728,14 @@ export const zhCN = {
       localProviders: {
         source: 'pi · models.json',
       },
+      fetchModels: {
+        button: '获取模型列表',
+        loading: '获取中…',
+        needsEndpoint: '填好端点 URL、协议和密钥后可自动获取',
+        failed: '获取失败({message})——该端点可能不提供列表接口,请手动填写模型。',
+        empty: '端点返回了空列表,请手动填写模型。',
+        addPicked: '添加所选({count})',
+      },
       import: {
         hint: '选择 pi 的 models.json 文件;每个自定义 provider 导入为一个账号,模型定义(含成本与思考等级映射)完整保留。仅支持纯 JSON(不支持注释)。',
         parseError: '无法解析:{message}',
