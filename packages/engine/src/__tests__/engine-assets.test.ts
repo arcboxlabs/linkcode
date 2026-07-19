@@ -11,7 +11,8 @@ import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
-import type { AssetService, EngineDeps } from '../engine';
+import type { AssetService } from '../asset/service';
+import type { EngineDeps } from '../engine';
 import { Engine } from '../engine';
 
 const INSTALLED_CODEX: InstalledAsset = {
@@ -174,6 +175,21 @@ describe('asset install broadcasts', () => {
     const { sent } = harness({ assets: service });
     emit({ kind: 'failed', id: 'agent:codex', error: 'network down' });
     expect(sent).toContainEqual({
+      kind: 'asset.settled',
+      id: 'agent:codex',
+      error: 'network down',
+    });
+  });
+
+  it('stops forwarding install events after the engine shuts down', async () => {
+    const { service, emit } = fakeAssets();
+    const { engine, sent } = harness({ assets: service });
+    await engine.start();
+    await engine.stop();
+
+    emit({ kind: 'failed', id: 'agent:codex', error: 'network down' });
+
+    expect(sent).not.toContainEqual({
       kind: 'asset.settled',
       id: 'agent:codex',
       error: 'network down',

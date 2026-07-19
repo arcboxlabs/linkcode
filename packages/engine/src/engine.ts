@@ -9,12 +9,8 @@ import type {
   AgentModelOption,
   AgentRuntimes,
   ApprovalPolicyState,
-  AssetInstallEvent,
   ContentBlock,
   EffortLevel,
-  InstalledAsset,
-  ManagedAssetId,
-  ManagedAssetStatus,
   SessionAutomation,
   SessionId,
   SessionInfo,
@@ -37,6 +33,8 @@ import { applyProviderDefaults, InMemoryProviderConfigStore } from './agent/prov
 import { AgentRuntimeService } from './agent/runtime-service';
 import type { TranslatorService } from './agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from './agent/translator';
+import type { AssetService } from './asset/service';
+import { ManagedAssetService } from './asset/service';
 import type { LoopStore, ScheduleStore, SessionDriver } from './automation';
 import {
   InMemoryLoopStore,
@@ -121,16 +119,6 @@ export interface EngineDeps {
   loopStore?: LoopStore;
 }
 
-/** The slice of the daemon's AssetManager the engine consumes (live service, not a snapshot). */
-export interface AssetService {
-  statuses(): ManagedAssetStatus[];
-  ensure(id: ManagedAssetId): Promise<InstalledAsset | undefined>;
-  subscribe(listener: (event: AssetInstallEvent) => void): () => void;
-}
-
-/** Progress broadcasts are throttled per asset so a fast download can't flood the wire. */
-const ASSET_PROGRESS_INTERVAL_MS = 150;
-
 /**
  * The local core engine — the "host" that runs the agents, carrier-agnostic
  * (docs/ARCHITECTURE.md#the-host-engine-adapters-abstraction, #core-principles).
@@ -154,10 +142,9 @@ export class Engine {
   private readonly loops: LoopService;
   private readonly artifactHost: ArtifactHostService;
   private readonly runtimes: AgentRuntimeService;
-  private readonly assets?: AssetService;
+  private readonly assets: ManagedAssetService;
   private readonly logins?: AgentLoginService;
   private readonly translator?: TranslatorService;
-  private readonly assetProgressSentAt = new Map<ManagedAssetId, number>();
   private seq = 0;
 
   constructor(
@@ -205,15 +192,15 @@ export class Engine {
         console.error(message, error);
       },
     });
-    this.assets = deps.assets;
+    this.assets = new ManagedAssetService(transport, deps.assets, () => {
+      void this.runtimes.refresh();
+    });
     this.translator = deps.translator;
     this.logins = deps.resolveLoginBinary
       ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
           void this.runtimes.refresh();
         })
       : undefined;
-    // Lifetime = the daemon's: the engine is never disposed, so the subscription is never torn down.
-    this.assets?.subscribe((event) => this.onAssetInstallEvent(event));
   }
 
   async start(): Promise<void> {
@@ -534,40 +521,11 @@ export class Engine {
         break;
       }
       case 'asset.list': {
-        this.transport.send(
-          createWireMessage({
-            kind: 'asset.listed',
-            replyTo: p.clientReqId,
-            assets: this.assets?.statuses() ?? [],
-          }),
-        );
+        this.assets.list(p.clientReqId);
         break;
       }
       case 'asset.ensure': {
-        const assets = this.assets;
-        if (!assets) {
-          this.sendFailure(p.clientReqId, new Error('managed assets are unavailable on this host'));
-          break;
-        }
-        // Rides the promise instead of awaiting: the reply lands only when the install settles
-        // (minutes for a download), and this message's handling must finish before then.
-        assets
-          .ensure(p.id)
-          .then((installed) => {
-            if (!installed) {
-              // Unknown asset or no version pin (e.g. the backing SDK is absent on this host).
-              this.sendFailure(p.clientReqId, new Error(`asset ${p.id} cannot be installed here`));
-              return;
-            }
-            const status = nullthrow(
-              assets.statuses().find((candidate) => candidate.id === p.id),
-              `installed asset ${p.id} missing from statuses`,
-            );
-            this.transport.send(
-              createWireMessage({ kind: 'asset.ensured', replyTo: p.clientReqId, status }),
-            );
-          })
-          .catch((err: unknown) => this.sendFailure(p.clientReqId, err));
+        this.assets.ensure(p.clientReqId, p.id);
         break;
       }
       case 'config.get': {
@@ -1026,6 +984,7 @@ export class Engine {
     this.terminals?.closeAll();
     this.logins?.closeAll();
     await this.translator?.closeAll();
+    this.assets.close();
     this.transport.close();
   }
 
@@ -1405,46 +1364,6 @@ export class Engine {
       await fn();
     } catch (err) {
       this.sendFailure(replyTo, err);
-    }
-  }
-
-  /** Forward AssetManager lifecycle to the wire, whoever triggered the install (client or boot). */
-  private onAssetInstallEvent(event: AssetInstallEvent): void {
-    switch (event.kind) {
-      case 'progress': {
-        const now = Date.now();
-        if (now - (this.assetProgressSentAt.get(event.id) ?? 0) < ASSET_PROGRESS_INTERVAL_MS) {
-          return;
-        }
-        this.assetProgressSentAt.set(event.id, now);
-        this.transport.send(
-          createWireMessage({
-            kind: 'asset.progress',
-            id: event.id,
-            receivedBytes: event.receivedBytes,
-            totalBytes: event.totalBytes,
-          }),
-        );
-        break;
-      }
-      case 'installed': {
-        this.assetProgressSentAt.delete(event.id);
-        this.transport.send(
-          createWireMessage({ kind: 'asset.settled', id: event.id, installed: event.installed }),
-        );
-        // A freshly installed agent binary changes what this host can spawn — re-probe so
-        // `agent-runtime.list` stops serving the stale boot snapshot, and push the new truth.
-        if (event.id.startsWith('agent:')) void this.runtimes.refresh();
-        break;
-      }
-      case 'failed': {
-        this.assetProgressSentAt.delete(event.id);
-        this.transport.send(
-          createWireMessage({ kind: 'asset.settled', id: event.id, error: event.error }),
-        );
-        break;
-      }
-      // no default
     }
   }
 
