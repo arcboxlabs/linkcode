@@ -412,11 +412,17 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private commandCatalog: AgentCommand[] = [];
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    await this.loadSdk(
+    const sdk = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
     if (opts.model) this.emitModel(opts.model);
+    if (this.effort === undefined) {
+      const { effective } = await sdk.resolveSettings({ cwd: opts.cwd });
+      // The SDK documents `high` as Claude's provider default. A persisted setting wins, while the
+      // Stop hook below later reconciles any model-specific downgrade made by the running CLI.
+      this.emitEffort(effective.ultracode ? 'ultracode' : (effective.effortLevel ?? 'high'));
+    }
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
     // Query init is the only authoritative slash-command catalog source: start the persistent
@@ -446,12 +452,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (model) this.emitModel(model);
   }
 
-  /** Read-only `Stop` hook: learns the CLI's *resolved* effort (after any per-model downgrade) so a
-   * session with no explicit pick still reflects a real value. Skipped once the user picks — the
-   * pick (including `ultracode`/`max`, which this hook's base-level field can't express) is
-   * authoritative via `onSetEffort`. The field is absent on models without effort support. */
+  /** Read-only `Stop` hook: learns the CLI's *resolved* effort after any per-model downgrade. The
+   * hook's base-level field cannot express `ultracode`, so preserve that orchestration mode; every
+   * other level is reconciled to what actually ran. The field is absent without effort support. */
   private readonly reflectEffortHook: HookCallback = (input) => {
-    if (this.effort === undefined && input.effort?.level) {
+    if (this.effort !== 'ultracode' && input.effort?.level) {
       const parsed = EffortLevelSchema.safeParse(input.effort.level);
       if (parsed.success) this.emitEffort(parsed.data);
     }

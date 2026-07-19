@@ -8,6 +8,7 @@ import { ClaudeCodeAdapter } from '../native/claude-code';
 
 const sdkMock = vi.hoisted(() => ({
   query: null as ((opts: unknown) => unknown) | null,
+  settings: {},
 }));
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
@@ -15,6 +16,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     if (!sdkMock.query) throw new Error('query mock not installed');
     return sdkMock.query(opts);
   },
+  resolveSettings: () => Promise.resolve({ effective: sdkMock.settings }),
 }));
 
 interface QueryInput {
@@ -88,6 +90,7 @@ sdkMock.query = (opts) => {
 afterEach(() => {
   queries.length = 0;
   nextQuerySetup = null;
+  sdkMock.settings = {};
 });
 
 async function makeAdapter(effort?: EffortLevel): Promise<{
@@ -284,6 +287,16 @@ function stopHookOf(q: FakeQuery): (input: unknown) => Promise<unknown> {
 }
 
 describe('ClaudeCodeAdapter model/effort reflection', () => {
+  it('reflects the configured effort before the first turn, else the provider default', async () => {
+    sdkMock.settings = { effortLevel: 'medium' };
+    const configured = await makeAdapter();
+    expect(configured.events).toContainEqual({ type: 'effort-update', effort: 'medium' });
+
+    sdkMock.settings = {};
+    const providerDefault = await makeAdapter();
+    expect(providerDefault.events).toContainEqual({ type: 'effort-update', effort: 'high' });
+  });
+
   it('reflects an explicit effort pick as an effort-update event', async () => {
     const { adapter, events } = await makeAdapter();
     await setEffort(adapter, 'high');
@@ -310,20 +323,26 @@ describe('ClaudeCodeAdapter model/effort reflection', () => {
     });
   });
 
-  it("learns the resolved default effort from the Stop hook only when the user hasn't picked one", async () => {
+  it('reconciles the displayed effort with what the Stop hook says actually ran', async () => {
     const { adapter, events } = await makeAdapter();
     await prompt(adapter);
     const stopHook = stopHookOf(queries[0]);
 
-    // Effort unset: the hook reflects the CLI's resolved level.
+    // The startup baseline is high; the hook reflects a model-specific downgrade.
     await stopHook({ effort: { level: 'medium' } });
     expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
 
-    // After an explicit pick, the hook must not overwrite the authoritative choice.
+    // An explicit pick can also be silently downgraded by the model, so actual runtime wins.
     await setEffort(adapter, 'high');
     events.length = 0;
     await stopHook({ effort: { level: 'medium' } });
-    expect(events.some((e) => e.type === 'effort-update')).toBe(false);
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
+
+    // Ultracode is an orchestration mode whose underlying hook level is xhigh; keep the mode.
+    await setEffort(adapter, 'ultracode');
+    events.length = 0;
+    await stopHook({ effort: { level: 'xhigh' } });
+    expect(events.some((event) => event.type === 'effort-update')).toBe(false);
   });
 });
 
