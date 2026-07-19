@@ -71,16 +71,16 @@ export class GitService {
           }
           const branch = status.branch;
           if (branch === null) return { status: 'ok', pullRequest: null } as const;
-          return yield* Effect.tryPromise({
-            try: () => provider.getPullRequestStatus({ cwd, branch, identity }),
-            catch: (cause) =>
-              new OperationError({
-                subsystem: 'git',
-                operation: 'git.provider',
-                publicMessage: 'Provider request failed',
-                cause,
-              }),
-          }).pipe(
+          return yield* provider.getPullRequestStatus({ cwd, branch, identity }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OperationError({
+                  subsystem: 'git',
+                  operation: 'git.provider',
+                  publicMessage: 'Provider request failed',
+                  cause,
+                }),
+            ),
             Effect.tapError((error) =>
               Effect.logError(
                 error.publicMessage,

@@ -1,14 +1,12 @@
 import { existsSync } from 'node:fs';
 import { executableSearchLocations } from '@linkcode/common/node';
-import type {
-  GitChecksState,
-  GitPullRequestStatus,
-  GitPullRequestSummary,
-  GitReviewDecision,
-} from '@linkcode/schema';
+import type { GitChecksState, GitPullRequestSummary, GitReviewDecision } from '@linkcode/schema';
+import { Effect } from 'effect';
 import { z } from 'zod';
-import { runCommandPromise as runCommand } from '../process/run-command';
+import type { CommandError } from '../process/run-command';
+import { runCommand } from '../process/run-command';
 import type { GitProviderClient, PullRequestQuery } from './provider';
+import { GitProviderError } from './provider';
 
 /** Never prompt: an interactive `gh` would hang the daemon's request until the timeout. */
 const GH_ENV = { GH_PROMPT_DISABLED: '1', GIT_TERMINAL_PROMPT: '0', NO_COLOR: '1' } as const;
@@ -100,42 +98,56 @@ function resolveGhBinary(): string {
   return executableSearchLocations(binary).find((path) => existsSync(path)) ?? 'gh';
 }
 
+function isMissingCommand(error: CommandError): boolean {
+  return (
+    error.reason === 'spawn' &&
+    typeof error.cause === 'object' &&
+    error.cause !== null &&
+    Reflect.get(error.cause, 'code') === 'ENOENT'
+  );
+}
+
 /** GitHub via the user's local `gh` CLI — auth is fully delegated to `gh auth login`; the daemon
  * never sees or stores a token. A token-backed client (LinkCode GitHub App) can later implement
  * the same {@link GitProviderClient} seam without touching the wire contract. */
 export class GhCliGitHubClient implements GitProviderClient {
   readonly kind = 'github' as const;
 
-  async getPullRequestStatus(query: PullRequestQuery): Promise<GitPullRequestStatus> {
-    let result;
-    try {
-      // `gh pr view` resolves the PR for the checked-out branch (cwd-derived), open or merged.
-      result = await runCommand(resolveGhBinary(), ['pr', 'view', '--json', GH_PR_JSON_FIELDS], {
+  readonly getPullRequestStatus = Effect.fn('GitHub.getPullRequestStatus')(function* (
+    query: PullRequestQuery,
+  ) {
+    // `gh pr view` resolves the PR for the checked-out branch (cwd-derived), open or merged.
+    const result = yield* runCommand(
+      resolveGhBinary(),
+      ['pr', 'view', '--json', GH_PR_JSON_FIELDS],
+      {
         cwd: query.cwd,
         env: GH_ENV,
         timeoutMs: GH_TIMEOUT_MS,
-      });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { status: 'unavailable', reason: 'cli_not_installed' };
-      }
-      throw err;
-    }
+      },
+    ).pipe(
+      Effect.catchIf(isMissingCommand, () => Effect.succeed(null)),
+      Effect.mapError((cause) => new GitProviderError({ operation: 'command', cause })),
+    );
+    if (!result) return { status: 'unavailable', reason: 'cli_not_installed' } as const;
 
     if (result.exitCode !== 0) {
       if (isAuthFailureStderr(result.stderr)) {
-        return { status: 'unavailable', reason: 'cli_not_authenticated' };
+        return { status: 'unavailable', reason: 'cli_not_authenticated' } as const;
       }
       if (isNoPullRequestStderr(result.stderr)) {
-        return { status: 'ok', pullRequest: null };
+        return { status: 'ok', pullRequest: null } as const;
       }
       return {
-        status: 'error',
+        status: 'error' as const,
         message: 'GitHub CLI request failed',
       };
     }
 
-    const parsed = GhPrViewSchema.parse(JSON.parse(result.stdout));
+    const parsed = yield* Effect.try({
+      try: () => GhPrViewSchema.parse(JSON.parse(result.stdout)),
+      catch: (cause) => new GitProviderError({ operation: 'response', cause }),
+    });
     const pullRequest: GitPullRequestSummary = {
       provider: 'github',
       number: parsed.number,
@@ -148,6 +160,6 @@ export class GhCliGitHubClient implements GitProviderClient {
       checks: rollUpChecks(parsed.statusCheckRollup),
       reviewDecision: REVIEW_DECISION_MAP[parsed.reviewDecision ?? ''] ?? 'none',
     };
-    return { status: 'ok', pullRequest };
-  }
+    return { status: 'ok' as const, pullRequest };
+  });
 }

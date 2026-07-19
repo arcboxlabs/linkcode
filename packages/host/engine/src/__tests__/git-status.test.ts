@@ -6,6 +6,7 @@ import { Effect, Logger as EffectLogger } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterAll, describe, expect, it } from 'vitest';
 import { GitService } from '../git/git-service';
+import { GitProviderError } from '../git/provider';
 import { readGitStatus } from '../git/status';
 
 const roots: string[] = [];
@@ -96,7 +97,13 @@ describe('readGitStatus', () => {
       GitService.make([
         {
           kind: 'github',
-          getPullRequestStatus: () => Promise.reject(new Error('token ghp-secret was rejected')),
+          getPullRequestStatus: () =>
+            Effect.fail(
+              new GitProviderError({
+                operation: 'command',
+                cause: new Error('token ghp-secret was rejected'),
+              }),
+            ),
         },
       ]).pipe(Effect.provide(silentLogger)),
     );
@@ -118,9 +125,14 @@ describe('readGitStatus', () => {
           getPullRequestStatus() {
             if (firstRequest) {
               firstRequest = false;
-              return Promise.reject(new Error('temporary provider failure'));
+              return Effect.fail(
+                new GitProviderError({
+                  operation: 'command',
+                  cause: new Error('temporary provider failure'),
+                }),
+              );
             }
-            return Promise.resolve({ status: 'ok', pullRequest: null });
+            return Effect.succeed({ status: 'ok', pullRequest: null } as const);
           },
         },
       ]).pipe(Effect.provide(silentLogger)),
