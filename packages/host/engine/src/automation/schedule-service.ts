@@ -317,25 +317,29 @@ export class ScheduleService {
     const cadence = schedule.spec.cadence;
     const latestMissed = this.cadence.latestAtOrBefore(cadence, schedule.nextRunAt ?? now, now);
     const missedBy = now - latestMissed;
-    schedule.nextRunAt = this.cadence.next(cadence, latestMissed);
-    schedule.updatedAt = now;
-    await this.store.save(schedule);
-    this.reporter.changed(schedule);
+    const advanced: Schedule = {
+      ...schedule,
+      nextRunAt: this.cadence.next(cadence, latestMissed),
+      updatedAt: now,
+    };
+    await this.store.save(advanced);
+    this.schedules.set(advanced.scheduleId, advanced);
+    this.reporter.changed(advanced);
 
     // On-time fires (within the catch-up threshold) always run, whatever the policy.
     const isMiss = missedBy > this.catchUpThresholdMs();
     if (isMiss) {
-      const policy = schedule.spec.misfirePolicy ?? this.defaultMisfirePolicy;
+      const policy = advanced.spec.misfirePolicy ?? this.defaultMisfirePolicy;
       // `skip` fast-forwards silently (nextRunAt already advanced); `catch-up` beyond grace records
       // a skipped run for visibility; within grace it replays the most recent missed occurrence.
       if (policy === 'skip') return;
       if (missedBy > this.cadence.graceMs(cadence)) {
-        await this.recordSkipped(schedule, latestMissed, now);
+        await this.recordSkipped(advanced, latestMissed, now);
         return;
       }
     }
     if (this.acceptingRuns) {
-      this.startRun(schedule, isMiss ? 'catch-up' : 'cadence');
+      this.startRun(advanced, isMiss ? 'catch-up' : 'cadence');
     }
   }
 
@@ -431,18 +435,22 @@ export class ScheduleService {
     trigger: ScheduleRunTrigger,
     endedAt: number,
   ): Promise<void> {
-    const schedule = this.schedules.get(scheduleId);
+    const current = this.schedules.get(scheduleId);
     // A schedule completed mid-run (targetGone) is terminal; leave it alone.
-    if (schedule?.status !== 'active') return;
-    schedule.lastRunAt = endedAt;
-    if (trigger !== 'manual') schedule.runCount += 1;
-    if (trigger !== 'manual' && this.reachedMaxRuns(schedule)) {
-      await this.complete(schedule, 'maxRuns');
+    if (current?.status !== 'active') return;
+    const settled: Schedule = {
+      ...current,
+      lastRunAt: endedAt,
+      runCount: trigger === 'manual' ? current.runCount : current.runCount + 1,
+      updatedAt: this.now(),
+    };
+    if (trigger !== 'manual' && this.reachedMaxRuns(settled)) {
+      await this.complete(settled, 'maxRuns');
       return;
     }
-    schedule.updatedAt = this.now();
-    await this.store.save(schedule);
-    this.reporter.changed(schedule);
+    await this.store.save(settled);
+    this.schedules.set(scheduleId, settled);
+    this.reporter.changed(settled);
   }
 
   private async recordSkipped(
@@ -464,12 +472,16 @@ export class ScheduleService {
   }
 
   private async complete(schedule: Schedule, reason: Schedule['completedReason']): Promise<void> {
-    schedule.status = 'completed';
-    schedule.completedReason = reason;
-    schedule.nextRunAt = undefined;
-    schedule.updatedAt = this.now();
-    await this.store.save(schedule);
-    this.reporter.changed(schedule);
+    const completed: Schedule = {
+      ...schedule,
+      status: 'completed',
+      completedReason: reason,
+      nextRunAt: undefined,
+      updatedAt: this.now(),
+    };
+    await this.store.save(completed);
+    this.schedules.set(completed.scheduleId, completed);
+    this.reporter.changed(completed);
   }
 
   /** Mark runs left `running` by a previous daemon as failed, then complete orphaned targets. */
