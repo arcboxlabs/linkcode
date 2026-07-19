@@ -945,6 +945,11 @@ export const en = {
       signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
       terminalAppearance: 'Terminal appearance',
+      legalAndSupport: 'Legal & Support',
+      privacyPolicy: 'Privacy Policy',
+      termsOfService: 'Terms of Service',
+      support: 'Support',
+      externalLinkError: 'Unable to open this link.',
       about: 'About',
     },
     terminalAppearance: {
