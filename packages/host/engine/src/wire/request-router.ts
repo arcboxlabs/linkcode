@@ -1,6 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
 import type { AgentRequestHandler } from '../agent/request-handler';
 import type { AutomationRequestHandler } from '../automation/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
@@ -31,7 +32,7 @@ export class WireRequestRouter {
     private readonly handlers: RequestHandlers,
   ) {}
 
-  async handle(msg: WireMessage): Promise<void> {
+  handle(msg: WireMessage): Effect.Effect<void, unknown> {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start':
@@ -43,52 +44,44 @@ export class WireRequestRouter {
       case 'session.import':
       case 'session.attach':
       case 'session.detach': {
-        await this.handlers.session.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.session.handle(p));
       }
       case 'history.list':
       case 'history.read':
       case 'history.resume': {
-        await this.handlers.history.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.history.handle(p));
       }
       case 'agent-runtime.list':
       case 'asset.list':
       case 'asset.ensure':
       case 'config.get':
       case 'config.set': {
-        await this.handlers.agent.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.agent.handle(p));
       }
       case 'workspace.list':
       case 'workspace.register':
       case 'workspace.update':
       case 'workspace.archive': {
-        await this.handlers.workspace.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.workspace.handle(p));
       }
       case 'git.status.get':
       case 'git.pr_status.get':
       case 'git.diff.get': {
-        await this.handlers.git.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.git.handle(p));
       }
       case 'file.read':
       case 'file.list':
       case 'file.suggest': {
-        await this.handlers.file.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.file.handle(p));
       }
       case 'script.list':
       case 'script.start':
       case 'script.stop': {
-        await this.handlers.script.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.script.handle(p));
       }
       case 'artifact.host':
       case 'artifact.revoke': {
-        await this.handlers.artifact.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.artifact.handle(p));
       }
       case 'schedule.create':
       case 'schedule.update':
@@ -103,8 +96,7 @@ export class WireRequestRouter {
       case 'loop.delete':
       case 'loop.list':
       case 'loop.inspect': {
-        await this.handlers.automation.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.automation.handle(p));
       }
       case 'terminal.open':
       case 'terminal.list':
@@ -114,22 +106,23 @@ export class WireRequestRouter {
       case 'terminal.ack':
       case 'terminal.resize':
       case 'terminal.close': {
-        await this.handlers.terminal.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.terminal.handle(p));
       }
       case 'agent-login.start':
       case 'agent-login.submit-code':
       case 'agent-login.cancel': {
-        await this.handlers.agent.handle(p);
-        break;
+        return legacyHandler(() => this.handlers.agent.handle(p));
       }
       case 'ping': {
-        this.transport.send(createWireMessage({ kind: 'pong' }));
-        break;
+        return Effect.sync(() => this.transport.send(createWireMessage({ kind: 'pong' })));
       }
       // Downstream-only payloads are ignored here.
       default:
-        break;
+        return Effect.void;
     }
   }
+}
+
+function legacyHandler(handle: () => Promise<void>): Effect.Effect<void, unknown> {
+  return Effect.tryPromise({ try: handle, catch: (cause) => cause });
 }

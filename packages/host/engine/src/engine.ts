@@ -199,16 +199,18 @@ export function createEngineRuntime(transport: Transport, deps: EngineDeps = {})
         () => {
           unsubscribeRequests = transport.onMessage((msg) => {
             runRequest(
-              Effect.tryPromise({ try: () => requests.handle(msg), catch: (cause) => cause }).pipe(
-                Effect.catchCause((cause) =>
-                  Cause.hasInterruptsOnly(cause)
-                    ? Effect.void
-                    : Effect.logError(
-                        'Unhandled error while processing engine request',
-                        Cause.squash(cause),
-                      ),
+              requests
+                .handle(msg)
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Cause.hasInterruptsOnly(cause)
+                      ? Effect.void
+                      : Effect.logError(
+                          'Unhandled error while processing engine request',
+                          Cause.squash(cause),
+                        ),
+                  ),
                 ),
-              ),
             );
           });
         },
