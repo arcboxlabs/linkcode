@@ -21,6 +21,12 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
+  private turnActive = false;
+  private promptInFlight = false;
+  private settlementPending = false;
+  private finalOutcome: { stopReason: 'aborted' | 'error' | 'success'; errorMessage?: string } = {
+    stopReason: 'success',
+  };
 
   protected async onStart(opts: StartOptions): Promise<void> {
     // Managed closure entry first (the packaged source, CODE-219), then node_modules
@@ -71,6 +77,16 @@ export class PiAdapter extends BaseAgentAdapter {
     this.unsub = session.subscribe((ev) => this.handleEvent(ev));
     const runningModel = session.model ?? model;
     if (runningModel) this.emitModel(`${runningModel.provider}/${runningModel.id}`);
+    this.emitApprovalPolicy({
+      availablePolicies: [
+        {
+          policyId: 'bypassPermissions',
+          name: 'Bypass permissions',
+          description: 'All tools run without approval prompts; this adapter cannot change it.',
+        },
+      ],
+      currentPolicyId: 'bypassPermissions',
+    });
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -87,13 +103,29 @@ export class PiAdapter extends BaseAgentAdapter {
               mimeType: image.mimeType,
             })),
           };
+    this.turnActive = true;
+    this.promptInFlight = true;
+    this.settlementPending = false;
+    this.finalOutcome = { stopReason: 'success' };
     this.emitStatus('running');
-    if (this.session.isStreaming) {
-      await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
-    } else await this.session.prompt(text, imageOptions);
+    try {
+      if (this.session.isStreaming) {
+        await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
+      } else await this.session.prompt(text, imageOptions);
+      this.promptInFlight = false;
+      if (this.settlementPending) this.settleTurn();
+    } catch (error) {
+      this.promptInFlight = false;
+      this.settlementPending = false;
+      this.turnActive = false;
+      this.teardown();
+      this.emitStatus('idle');
+      throw error;
+    }
   }
 
   protected override async onCancel(): Promise<void> {
+    this.finalOutcome = { stopReason: 'aborted' };
     await this.session?.abort();
   }
 
@@ -112,12 +144,23 @@ export class PiAdapter extends BaseAgentAdapter {
     switch (ev.type) {
       case 'agent_start':
         // Fresh ids at the turn start; a tool boundary later opens the next segment (see below).
+        this.turnActive = true;
+        this.finalOutcome = { stopReason: 'success' };
         this.freshSegment();
         this.emitStatus('running');
         break;
-      case 'agent_end':
-        this.emitStop('end_turn');
-        this.emitStatus('idle');
+      case 'agent_end': {
+        const assistant = ev.messages.findLast((message) => message.role === 'assistant');
+        if (assistant?.stopReason === 'aborted') {
+          this.finalOutcome = { stopReason: 'aborted', errorMessage: assistant.errorMessage };
+        } else if (assistant?.stopReason === 'error') {
+          this.finalOutcome = { stopReason: 'error', errorMessage: assistant.errorMessage };
+        } else this.finalOutcome = { stopReason: 'success' };
+        break;
+      }
+      case 'agent_settled':
+        if (this.promptInFlight) this.settlementPending = true;
+        else this.settleTurn();
         break;
       case 'message_update': {
         const a = ev.assistantMessageEvent;
@@ -147,5 +190,17 @@ export class PiAdapter extends BaseAgentAdapter {
       default:
         break;
     }
+  }
+
+  private settleTurn(): void {
+    if (!this.turnActive) return;
+    this.turnActive = false;
+    this.settlementPending = false;
+    this.teardown();
+    if (this.finalOutcome.stopReason === 'aborted') this.emitStop('cancelled');
+    else if (this.finalOutcome.stopReason === 'error') {
+      this.emitError(this.finalOutcome.errorMessage ?? 'Pi agent failed');
+    } else this.emitStop('end_turn');
+    this.emitStatus('idle');
   }
 }
