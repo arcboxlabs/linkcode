@@ -2,11 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Effect, Logger as EffectLogger } from 'effect';
+import { noop } from 'foxts/noop';
 import { afterAll, describe, expect, it } from 'vitest';
 import { GitService } from '../git/git-service';
 import { readGitStatus } from '../git/status';
 
 const roots: string[] = [];
+const silentLogger = EffectLogger.layer([EffectLogger.make(noop)]);
 
 function makeTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'linkcode-git-test-'));
@@ -89,16 +92,47 @@ describe('readGitStatus', () => {
   it('does not expose provider rejection details', async () => {
     const dir = makeRepo();
     git(dir, 'remote', 'add', 'origin', 'git@github.com:arcboxlabs/linkcode.git');
-    const service = new GitService([
-      {
-        kind: 'github',
-        getPullRequestStatus: () => Promise.reject(new Error('token ghp-secret was rejected')),
-      },
-    ]);
+    const service = await Effect.runPromise(
+      GitService.make([
+        {
+          kind: 'github',
+          getPullRequestStatus: () => Promise.reject(new Error('token ghp-secret was rejected')),
+        },
+      ]).pipe(Effect.provide(silentLogger)),
+    );
 
-    await expect(service.getPullRequestStatus(dir)).resolves.toEqual({
+    await expect(Effect.runPromise(service.getPullRequestStatus(dir))).resolves.toEqual({
       status: 'error',
       message: 'Provider request failed',
+    });
+  });
+
+  it('retries a provider request after a failure', async () => {
+    const dir = makeRepo();
+    git(dir, 'remote', 'add', 'origin', 'git@github.com:arcboxlabs/linkcode.git');
+    let firstRequest = true;
+    const service = await Effect.runPromise(
+      GitService.make([
+        {
+          kind: 'github',
+          getPullRequestStatus() {
+            if (firstRequest) {
+              firstRequest = false;
+              return Promise.reject(new Error('temporary provider failure'));
+            }
+            return Promise.resolve({ status: 'ok', pullRequest: null });
+          },
+        },
+      ]).pipe(Effect.provide(silentLogger)),
+    );
+
+    await expect(Effect.runPromise(service.getPullRequestStatus(dir))).resolves.toEqual({
+      status: 'error',
+      message: 'Provider request failed',
+    });
+    await expect(Effect.runPromise(service.getPullRequestStatus(dir))).resolves.toEqual({
+      status: 'ok',
+      pullRequest: null,
     });
   });
 });

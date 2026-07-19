@@ -56,7 +56,10 @@ export interface EngineRuntime {
   readonly stop: Effect.Effect<void>;
 }
 
-export function createEngineRuntime(transport: Transport, deps: EngineDeps = {}): EngineRuntime {
+export const createEngineRuntime = Effect.fn('Engine.create')(function* (
+  transport: Transport,
+  deps: EngineDeps = {},
+) {
   const responder = new WireResponder(transport);
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
@@ -83,7 +86,8 @@ export function createEngineRuntime(transport: Transport, deps: EngineDeps = {})
   const terminalRequests = new TerminalRequestHandler(terminals, responder);
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
-  const gitRequests = new GitRequestHandler(transport, deps.git ?? new GitService(), responder);
+  const git = deps.git ?? (yield* GitService.make());
+  const gitRequests = new GitRequestHandler(transport, git, responder);
   const fileRequests = new FileRequestHandler(
     transport,
     deps.fileSuggest ?? new FileSuggestService(),
@@ -242,7 +246,7 @@ export function createEngineRuntime(transport: Transport, deps: EngineDeps = {})
       yield* finalize('transport.close', () => transport.close());
     }).pipe(Effect.withSpan('Engine.stop')),
   };
-}
+});
 
 function tryOperation<A>(
   subsystem: OperationSubsystem,

@@ -20,7 +20,7 @@ export function makeEngineLayer(
     EngineService,
     Effect.gen(function* () {
       const engine = yield* Effect.acquireRelease(
-        Effect.sync(() => createEngineRuntime(transport, deps)),
+        createEngineRuntime(transport, deps),
         (runtime) => runtime.stop,
       );
       yield* engine.start;

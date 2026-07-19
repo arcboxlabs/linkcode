@@ -2,7 +2,6 @@ import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
-import { toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { GitService } from './git-service';
 
@@ -24,9 +23,7 @@ export class GitRequestHandler {
       case 'git.status.get':
         return this.responder.reply(
           payload.clientReqId,
-          gitOperation('git.status', 'Failed to read git status', () =>
-            this.git.getStatus(payload.cwd),
-          ).pipe(
+          this.git.getStatus(payload.cwd).pipe(
             Effect.flatMap((status) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -43,9 +40,7 @@ export class GitRequestHandler {
       case 'git.pr_status.get':
         return this.responder.reply(
           payload.clientReqId,
-          gitOperation('git.pr-status', 'Failed to read pull request status', () =>
-            this.git.getPullRequestStatus(payload.cwd),
-          ).pipe(
+          this.git.getPullRequestStatus(payload.cwd).pipe(
             Effect.flatMap((prStatus) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -62,9 +57,7 @@ export class GitRequestHandler {
       case 'git.diff.get':
         return this.responder.reply(
           payload.clientReqId,
-          gitOperation('git.diff', 'Failed to read git diff', () =>
-            this.git.getDiff(payload.cwd, payload.mode),
-          ).pipe(
+          this.git.getDiff(payload.cwd, payload.mode).pipe(
             Effect.flatMap((diff) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -82,11 +75,4 @@ export class GitRequestHandler {
         return Effect.void;
     }
   }
-}
-
-function gitOperation<A>(operation: string, publicMessage: string, run: () => Promise<A>) {
-  return Effect.tryPromise({
-    try: run,
-    catch: (cause) => toOperationFailure(cause, { subsystem: 'git', operation, publicMessage }),
-  });
 }

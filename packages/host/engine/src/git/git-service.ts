@@ -1,5 +1,7 @@
 import type { GitDiff, GitDiffMode, GitPullRequestStatus, GitStatus } from '@linkcode/schema';
-import { TtlCache } from '../cache/ttl-cache';
+import { Cache, Effect, Exit } from 'effect';
+import type { EngineFailure } from '../failure';
+import { OperationError, toOperationFailure } from '../failure';
 import { readGitDiff } from './diff';
 import { GhCliGitHubClient } from './github';
 import type { GitProviderClient } from './provider';
@@ -11,6 +13,8 @@ const STATUS_TTL_MS = 5000;
 const PR_STATUS_TTL_MS = 30000;
 /** A diff reads more of the tree than a status probe; still cheap enough to poll every few seconds. */
 const DIFF_TTL_MS = 10000;
+const CACHE_CAPACITY = 256;
+type GitDiffKey = readonly [cwd: string, mode: GitDiffMode];
 
 /**
  * Read-only git and hosting-provider state answering the `git.*` wire RPCs. Keyed by `cwd`
@@ -18,42 +22,93 @@ const DIFF_TTL_MS = 10000;
  * converge any number of polling clients onto one underlying call.
  */
 export class GitService {
-  private readonly statusCache = new TtlCache<GitStatus>(STATUS_TTL_MS);
-  private readonly prStatusCache = new TtlCache<GitPullRequestStatus>(PR_STATUS_TTL_MS);
-  private readonly diffCache = new TtlCache<GitDiff>(DIFF_TTL_MS);
-  private readonly providers: ReadonlyMap<string, GitProviderClient>;
+  private constructor(
+    private readonly statusCache: Cache.Cache<string, GitStatus, EngineFailure>,
+    private readonly prStatusCache: Cache.Cache<string, GitPullRequestStatus, EngineFailure>,
+    private readonly diffCache: Cache.Cache<GitDiffKey, GitDiff, EngineFailure>,
+  ) {}
 
-  constructor(providers: readonly GitProviderClient[] = [new GhCliGitHubClient()]) {
-    this.providers = new Map(providers.map((provider) => [provider.kind, provider]));
+  static readonly make = Effect.fn('GitService.make')(function* (
+    providers: readonly GitProviderClient[] = [new GhCliGitHubClient()],
+  ) {
+    const byKind = new Map(providers.map((provider) => [provider.kind, provider]));
+    const statusCache = yield* makeCache(
+      (cwd: string) =>
+        gitOperation('git.status', 'Failed to read git status', () => readGitStatus(cwd)),
+      STATUS_TTL_MS,
+    );
+    const diffCache = yield* makeCache(
+      ([cwd, mode]: GitDiffKey) =>
+        gitOperation('git.diff', 'Failed to read git diff', () => readGitDiff(cwd, mode)),
+      DIFF_TTL_MS,
+    );
+    const prStatusCache = yield* Cache.makeWith(
+      (cwd: string) =>
+        Effect.gen(function* () {
+          const status = yield* Cache.get(statusCache, cwd);
+          if (!status.isRepo) return { status: 'unavailable', reason: 'not_git_repo' } as const;
+          if (!status.remote) return { status: 'unavailable', reason: 'no_remote' } as const;
+          const identity = status.remote.identity;
+          const provider = identity && byKind.get(identity.provider);
+          if (!identity || !provider) {
+            return { status: 'unavailable', reason: 'unsupported_remote' } as const;
+          }
+          const branch = status.branch;
+          if (branch === null) return { status: 'ok', pullRequest: null } as const;
+          return yield* Effect.tryPromise({
+            try: () => provider.getPullRequestStatus({ cwd, branch, identity }),
+            catch: (cause) =>
+              new OperationError({
+                subsystem: 'git',
+                operation: 'git.provider',
+                publicMessage: 'Provider request failed',
+                cause,
+              }),
+          }).pipe(
+            Effect.tapError((error) =>
+              Effect.logError(
+                error.publicMessage,
+                { operation: error.operation, subsystem: error.subsystem },
+                error.cause,
+              ),
+            ),
+            Effect.catch(() =>
+              Effect.succeed({ status: 'error', message: 'Provider request failed' } as const),
+            ),
+          );
+        }),
+      {
+        capacity: CACHE_CAPACITY,
+        timeToLive: (exit) =>
+          Exit.isSuccess(exit) && exit.value.status !== 'error' ? PR_STATUS_TTL_MS : 0,
+      },
+    );
+    return new GitService(statusCache, prStatusCache, diffCache);
+  });
+
+  getStatus(cwd: string): Effect.Effect<GitStatus, EngineFailure> {
+    return Cache.get(this.statusCache, cwd);
   }
 
-  getStatus(cwd: string): Promise<GitStatus> {
-    return this.statusCache.read(cwd, () => readGitStatus(cwd));
+  getDiff(cwd: string, mode: GitDiffMode): Effect.Effect<GitDiff, EngineFailure> {
+    return Cache.get(this.diffCache, [cwd, mode]);
   }
 
-  getDiff(cwd: string, mode: GitDiffMode): Promise<GitDiff> {
-    // "::" can't appear in a directory path's mode slot, so this can't collide across (cwd, mode) pairs.
-    return this.diffCache.read(`${cwd}::${mode}`, () => readGitDiff(cwd, mode));
+  getPullRequestStatus(cwd: string): Effect.Effect<GitPullRequestStatus, EngineFailure> {
+    return Cache.get(this.prStatusCache, cwd);
   }
+}
 
-  getPullRequestStatus(cwd: string): Promise<GitPullRequestStatus> {
-    return this.prStatusCache.read(cwd, async () => {
-      const status = await this.getStatus(cwd);
-      if (!status.isRepo) return { status: 'unavailable', reason: 'not_git_repo' };
-      if (!status.remote) return { status: 'unavailable', reason: 'no_remote' };
-      const identity = status.remote.identity;
-      const provider = identity && this.providers.get(identity.provider);
-      if (!identity || !provider) return { status: 'unavailable', reason: 'unsupported_remote' };
-      // A detached HEAD has no branch, hence no change request to resolve.
-      if (status.branch === null) return { status: 'ok', pullRequest: null };
-      try {
-        return await provider.getPullRequestStatus({ cwd, branch: status.branch, identity });
-      } catch {
-        return {
-          status: 'error',
-          message: 'Provider request failed',
-        };
-      }
-    });
-  }
+function makeCache<Key, A, E>(lookup: (key: Key) => Effect.Effect<A, E>, ttl: number) {
+  return Cache.makeWith(lookup, {
+    capacity: CACHE_CAPACITY,
+    timeToLive: (exit) => (Exit.isSuccess(exit) ? ttl : 0),
+  });
+}
+
+function gitOperation<A>(operation: string, publicMessage: string, run: () => Promise<A>) {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem: 'git', operation, publicMessage }),
+  });
 }
