@@ -76,9 +76,9 @@ export interface NewSessionSurfaceProps {
   /** Effective user-configured model defaults. Built-in provider defaults fill missing kinds. */
   defaultModels?: Readonly<Partial<Record<AgentKind, string>>>;
   /** Ranked files for the active draft workspace's `@` query. */
-  mentionItems?: MentionItem[];
+  mentionItems: MentionItem[];
   /** Queries files in the draft's currently selected workspace. */
-  onMentionQueryChange?: (cwd: string | undefined, query: string | null) => void;
+  onMentionQueryChange: (cwd: string | undefined, query: string | null) => void;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
@@ -208,7 +208,7 @@ export function NewSessionSurface({
   };
 
   function handleWorkspaceChange(nextWorkspaceId: WorkspaceId): void {
-    onMentionQueryChange?.(undefined, null);
+    onMentionQueryChange(undefined, null);
     setWorkspaceId(nextWorkspaceId);
   }
 
@@ -243,7 +243,7 @@ export function NewSessionSurface({
             directiveControls={directiveControls}
             isRunning={false}
             mentionItems={mentionItems}
-            onMentionQueryChange={(query) => onMentionQueryChange?.(selected?.cwd, query)}
+            onMentionQueryChange={(query) => onMentionQueryChange(selected?.cwd, query)}
             runtimeCues={runtimeCues}
             sendBlocked={cue !== undefined}
             currentModeId={modeId}
