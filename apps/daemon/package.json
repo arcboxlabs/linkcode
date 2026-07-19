@@ -32,6 +32,7 @@
     "pino": "^10.3.1"
   },
   "devDependencies": {
+    "@effect/opentelemetry": "4.0.0-beta.98",
     "@effect/platform-node": "4.0.0-beta.98",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cross-spawn": "^6.0.6",

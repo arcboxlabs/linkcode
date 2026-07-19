@@ -1,3 +1,5 @@
+import * as OtelTracer from '@effect/opentelemetry/OtelTracer';
+import * as OtelResource from '@effect/opentelemetry/Resource';
 import { NodeRuntime } from '@effect/platform-node';
 import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { AssetManager } from '@linkcode/assets';
@@ -5,6 +7,7 @@ import { EngineService, makeEngineLayer, PreviewRouteRegistry } from '@linkcode/
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import { Hub } from '@linkcode/transport/server';
+import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
 import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -145,6 +148,9 @@ async function main(): Promise<void> {
         ...(profile !== undefined && { profile }),
       };
       const hub = new Hub();
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => Sentry.close(DRAIN_TIMEOUT_MS)).pipe(Effect.ignore),
+      );
       // Engine.stop() also closes the hub via transport.close(); Hub.close is idempotent, so the
       // late double-close here matches the old stopAll behavior.
       yield* Effect.addFinalizer(() => finalize(() => hub.close()));
@@ -335,6 +341,11 @@ async function main(): Promise<void> {
     Layer.provideMerge(EngineLive),
     Layer.provideMerge(SharedLive),
     Layer.provide(DaemonLoggerLive),
+    Layer.provide(
+      OtelTracer.layerGlobal.pipe(
+        Layer.provide(OtelResource.layer({ serviceName: 'linkcode-daemon' })),
+      ),
+    ),
   );
 
   // runMain turns SIGINT/SIGTERM into fiber interruption but has no escalation of its own: a
