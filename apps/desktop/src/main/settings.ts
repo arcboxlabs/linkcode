@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DesktopSettings, DesktopSettingsPatch } from '@linkcode/ipc';
 import { DesktopSettingsSchema } from '@linkcode/ipc';
@@ -17,11 +17,19 @@ function settingsPath(): string {
 }
 
 function load(): DesktopSettings {
+  const file = settingsPath();
   try {
-    return DesktopSettingsSchema.parse(JSON.parse(readFileSync(settingsPath(), 'utf8')));
+    const stored: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (stored && typeof stored === 'object' && !('historyImportOnboardingHandled' in stored)) {
+      // A settings file predating this onboarding belongs to an existing user. Do not turn a
+      // newly-added first-install experience into a surprise migration prompt.
+      return DesktopSettingsSchema.parse({ ...stored, historyImportOnboardingHandled: true });
+    }
+    return DesktopSettingsSchema.parse(stored);
   } catch {
-    // Missing or malformed file → defaults (zod fills every field from its schema default).
-    return DesktopSettingsSchema.parse({});
+    // No file is a first install. A malformed pre-existing file still belongs to an existing user,
+    // so suppress the one-time offer while recovering every other field to its default.
+    return DesktopSettingsSchema.parse({ historyImportOnboardingHandled: existsSync(file) });
   }
 }
 

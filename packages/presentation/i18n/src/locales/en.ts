@@ -593,6 +593,21 @@ export const en = {
         'Imported {imported} of {total} conversations; failed conversations can be retried.',
       actionError: 'Action failed: {message}',
       messageCount: '{count, plural, one {# message} other {# messages}}',
+      importAllAction: 'Import all scanned ({count})',
+      importAllTitle: 'Import all local conversations?',
+      importAllDescription:
+        '{count, plural, one {# local conversation is} other {# local conversations are}} ready to import. This imports all of them at once.',
+      importAllScanWarning:
+        '{count, plural, one {History from # agent could not be scanned} other {History from # agents could not be scanned}}. All other scanned conversations can still be imported.',
+      importAllCancel: 'Not now',
+      importAllConfirm: 'Import all {count}',
+      importAllCompleteTitle: 'All conversations imported',
+      importAllPartialTitle: 'Some conversations failed to import',
+      importAllCompleteResult:
+        'Imported {imported, plural, one {# conversation} other {# conversations}}.',
+      importAllPartialResult:
+        'Imported {imported, plural, one {# conversation} other {# conversations}}; {failed, plural, one {# failed} other {# failed}}. Failed conversations remain available to retry.',
+      importAllClose: 'Done',
     },
     general: {
       language: 'Language',

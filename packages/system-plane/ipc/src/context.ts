@@ -79,6 +79,7 @@ export const DesktopSettingsSchema = z.object({
   locale: z.string().nullable().default(null),
   /** Explicit daemon endpoint override; `null` discovers the local daemon (runtime file, then default port). */
   daemonUrl: z.url().nullable().default(null),
+  historyImportOnboardingHandled: z.boolean().default(false),
 });
 export type DesktopSettings = z.infer<typeof DesktopSettingsSchema>;
 
@@ -88,6 +89,7 @@ export const DesktopSettingsPatchSchema = z.object({
   theme: ThemePreferenceSchema.optional(),
   locale: z.string().nullable().optional(),
   daemonUrl: z.url().nullable().optional(),
+  historyImportOnboardingHandled: z.boolean().optional(),
 });
 export type DesktopSettingsPatch = z.infer<typeof DesktopSettingsPatchSchema>;
 

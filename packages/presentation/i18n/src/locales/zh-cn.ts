@@ -580,6 +580,18 @@ export const zhCN = {
       groupPartialFailure: '已导入 {imported}/{total} 条对话；失败项仍可重试。',
       actionError: '操作失败：{message}',
       messageCount: '{count} 条消息',
+      importAllAction: '导入全部扫描结果（{count}）',
+      importAllTitle: '导入所有本地对话？',
+      importAllDescription: '已扫描到 {count} 条尚未导入的本地对话。确认后将一次性全部导入。',
+      importAllScanWarning:
+        '有 {count} 个智能体的历史记录未能扫描；本次仍会导入其余已扫描到的对话。',
+      importAllCancel: '暂不导入',
+      importAllConfirm: '导入全部 {count} 条',
+      importAllCompleteTitle: '所有对话已导入',
+      importAllPartialTitle: '部分对话导入失败',
+      importAllCompleteResult: '已成功导入 {imported} 条对话。',
+      importAllPartialResult: '成功导入 {imported} 条，失败 {failed} 条。失败的对话仍可再次导入。',
+      importAllClose: '完成',
     },
     general: {
       language: '语言',
