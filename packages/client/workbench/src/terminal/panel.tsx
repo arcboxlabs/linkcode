@@ -7,6 +7,7 @@ import { useTranslations } from 'use-intl';
 import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
 import type { TerminalSessionLease } from './session-registry';
 import { acquireTerminalSession, peekTerminalSnapshot } from './session-registry';
+import { useTerminalTabsStore } from './tabs-store';
 
 const TERMINAL_INITIAL_SIZE = { cols: 80, rows: 24 };
 const INPUT_LOST_BANNER_MS = 4000;
@@ -39,7 +40,12 @@ export function TerminalPanel({
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      const lease = acquireTerminalSession(client, sessionKey, { ...TERMINAL_INITIAL_SIZE, cwd });
+      const lease = acquireTerminalSession(
+        client,
+        sessionKey,
+        { ...TERMINAL_INITIAL_SIZE, cwd },
+        () => useTerminalTabsStore.getState().closeTab(sessionKey),
+      );
       leaseRef.current = lease;
       const unsubscribe = lease.subscribe(onStoreChange);
       return () => {
