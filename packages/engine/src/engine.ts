@@ -29,6 +29,7 @@ import {
   LoopService,
   ScheduleService,
 } from './automation';
+import { AutomationRequestHandler } from './automation/request-handler';
 import { GitService } from './git/git-service';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { PreviewRouteRegistry } from './preview/route-registry';
@@ -101,6 +102,7 @@ export class Engine {
   private readonly scripts?: ScriptService;
   private readonly scheduler: ScheduleService;
   private readonly loops: LoopService;
+  private readonly automationRequests: AutomationRequestHandler;
   private readonly artifactHost: ArtifactHostService;
   private readonly runtimes: AgentRuntimeService;
   private readonly assets: ManagedAssetService;
@@ -161,6 +163,12 @@ export class Engine {
       transport,
       deps.loopStore ?? new InMemoryLoopStore(),
       this.buildSessionDriver(),
+    );
+    this.automationRequests = new AutomationRequestHandler(
+      transport,
+      this.scheduler,
+      this.loops,
+      this.responder,
     );
     this.assets = new ManagedAssetService(transport, deps.assets, () => {
       void this.runtimes.refresh();
@@ -541,119 +549,20 @@ export class Engine {
         this.sendSuccess(p.clientReqId);
         break;
       }
-      case 'schedule.create': {
-        await this.tryReply(p.clientReqId, async () => {
-          const schedule = await this.scheduler.create(p.spec);
-          this.transport.send(
-            createWireMessage({ kind: 'schedule.created', replyTo: p.clientReqId, schedule }),
-          );
-        });
-        break;
-      }
-      case 'schedule.update': {
-        await this.tryReply(p.clientReqId, async () => {
-          const schedule = await this.scheduler.update(p.scheduleId, p.patch);
-          this.transport.send(
-            createWireMessage({ kind: 'schedule.updated', replyTo: p.clientReqId, schedule }),
-          );
-        });
-        break;
-      }
-      case 'schedule.delete': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.scheduler.delete(p.scheduleId);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
-      case 'schedule.pause': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.scheduler.pause(p.scheduleId);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
-      case 'schedule.resume': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.scheduler.resume(p.scheduleId);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
-      case 'schedule.run-once': {
-        await this.tryReply(p.clientReqId, () => {
-          this.scheduler.runOnce(p.scheduleId);
-          this.sendSuccess(p.clientReqId);
-          return Promise.resolve();
-        });
-        break;
-      }
-      case 'schedule.list': {
-        this.transport.send(
-          createWireMessage({
-            kind: 'schedule.listed',
-            replyTo: p.clientReqId,
-            schedules: this.scheduler.list(),
-          }),
-        );
-        break;
-      }
-      case 'schedule.runs.list': {
-        await this.tryReply(p.clientReqId, async () => {
-          const runs = await this.scheduler.listRuns(p.scheduleId, p.limit);
-          this.transport.send(
-            createWireMessage({ kind: 'schedule.runs.listed', replyTo: p.clientReqId, runs }),
-          );
-        });
-        break;
-      }
-      case 'loop.start': {
-        await this.tryReply(p.clientReqId, async () => {
-          const loop = await this.loops.startLoop(p.spec);
-          this.transport.send(
-            createWireMessage({ kind: 'loop.started', replyTo: p.clientReqId, loop }),
-          );
-        });
-        break;
-      }
-      case 'loop.stop': {
-        await this.tryReply(p.clientReqId, () => {
-          this.loops.stopLoop(p.loopId);
-          this.sendSuccess(p.clientReqId);
-          return Promise.resolve();
-        });
-        break;
-      }
-      case 'loop.delete': {
-        await this.tryReply(p.clientReqId, async () => {
-          await this.loops.deleteLoop(p.loopId);
-          this.sendSuccess(p.clientReqId);
-        });
-        break;
-      }
-      case 'loop.list': {
-        this.transport.send(
-          createWireMessage({
-            kind: 'loop.listed',
-            replyTo: p.clientReqId,
-            loops: this.loops.list(),
-          }),
-        );
-        break;
-      }
+      case 'schedule.create':
+      case 'schedule.update':
+      case 'schedule.delete':
+      case 'schedule.pause':
+      case 'schedule.resume':
+      case 'schedule.run-once':
+      case 'schedule.list':
+      case 'schedule.runs.list':
+      case 'loop.start':
+      case 'loop.stop':
+      case 'loop.delete':
+      case 'loop.list':
       case 'loop.inspect': {
-        await this.tryReply(p.clientReqId, async () => {
-          const { loop, iterations, logs } = await this.loops.inspect(p.loopId);
-          this.transport.send(
-            createWireMessage({
-              kind: 'loop.inspected',
-              replyTo: p.clientReqId,
-              loop,
-              iterations,
-              logs,
-            }),
-          );
-        });
+        await this.automationRequests.handle(p);
         break;
       }
       case 'session.attach': {
