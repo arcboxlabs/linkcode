@@ -12,11 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
+import { Switch } from 'coss-ui/components/switch';
 import { noop } from 'foxact/noop';
 import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
@@ -76,6 +77,20 @@ function customAccount(draft: CustomDraft): Account {
         : { type: 'api-key', key: draft.secret },
     ...(draft.baseUrl.trim() &&
       protocol && { endpoint: { baseUrl: draft.baseUrl.trim(), protocol } }),
+    ...(draft.models.length > 0 && {
+      customProvider: {
+        name: draft.providerName.trim(),
+        models: draft.models.map((model) => ({
+          id: model.id.trim(),
+          ...(model.name.trim() && { name: model.name.trim() }),
+          reasoning: model.reasoning,
+          input: ['text' as const],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: model.contextWindow,
+          maxTokens: model.maxTokens,
+        })),
+      },
+    }),
     ...(draft.model.trim() && { model: draft.model.trim() }),
   };
 }
@@ -356,14 +371,37 @@ function CatalogAccountForm({
   );
 }
 
-const CustomDraftSchema = z.object({
-  label: z.string().min(1),
-  type: z.enum(['api-key', 'auth-token']),
-  secret: z.string().min(1),
-  baseUrl: z.string(),
-  protocol: z.string(),
-  model: z.string(),
+const CustomModelDraftSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  reasoning: z.boolean(),
+  contextWindow: z.coerce.number<number>().int().positive(),
+  maxTokens: z.coerce.number<number>().int().positive(),
 });
+
+const CustomDraftSchema = z
+  .object({
+    label: z.string().min(1),
+    type: z.enum(['api-key', 'auth-token']),
+    secret: z.string().min(1),
+    baseUrl: z.string(),
+    protocol: z.string(),
+    model: z.string(),
+    providerName: z.string(),
+    models: z.array(CustomModelDraftSchema),
+  })
+  .superRefine((draft, ctx) => {
+    // A model list turns the account into a provider definition (pi registerProvider), which
+    // needs a provider id and a complete endpoint (the api is derived from the protocol).
+    if (draft.models.length === 0) return;
+    if (!draft.providerName.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['providerName'], message: 'required' });
+    }
+    if (!draft.baseUrl.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['baseUrl'], message: 'required' });
+    }
+    if (!draft.protocol) ctx.addIssue({ code: 'custom', path: ['protocol'], message: 'required' });
+  });
 type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
 /** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
@@ -382,8 +420,18 @@ function CustomAccountForm({
     formState: { isSubmitting },
   } = useForm<CustomDraft>({
     resolver: zodResolver(CustomDraftSchema),
-    defaultValues: { label: '', type: 'api-key', secret: '', baseUrl: '', protocol: '', model: '' },
+    defaultValues: {
+      label: '',
+      type: 'api-key',
+      secret: '',
+      baseUrl: '',
+      protocol: '',
+      model: '',
+      providerName: '',
+      models: [],
+    },
   });
+  const modelRows = useFieldArray({ control, name: 'models' });
 
   const typeItems = [
     { value: 'api-key', label: t('credentialApiKey') },
@@ -442,6 +490,107 @@ function CustomAccountForm({
         <FieldLabel>{t('form.model')}</FieldLabel>
         <Input className="w-full" autoComplete="off" {...register('model')} />
       </Field>
+      <div className="flex flex-col gap-2 rounded-lg border border-border border-dashed p-3">
+        <div className="flex items-center justify-between">
+          <span className="font-medium text-sm">{t('form.customProviderTitle')}</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              modelRows.append({
+                id: '',
+                name: '',
+                reasoning: false,
+                contextWindow: 131072,
+                maxTokens: 8192,
+              })
+            }
+          >
+            {t('form.addModel')}
+          </Button>
+        </div>
+        <p className="text-muted-foreground text-xs">{t('form.customProviderHint')}</p>
+        {modelRows.fields.length > 0 ? (
+          <Field>
+            <FieldLabel>{t('form.providerName')}</FieldLabel>
+            <Input
+              className="w-full"
+              autoComplete="off"
+              placeholder="my-gateway"
+              {...register('providerName')}
+            />
+          </Field>
+        ) : null}
+        {modelRows.fields.map((row, index) => (
+          <div key={row.id} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.modelId')}</FieldLabel>
+                  <Input
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.id`)}
+                  />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.modelName')}</FieldLabel>
+                  <Input
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.name`)}
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.contextWindow')}</FieldLabel>
+                  <Input
+                    type="number"
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.contextWindow`)}
+                  />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.maxTokens')}</FieldLabel>
+                  <Input
+                    type="number"
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.maxTokens`)}
+                  />
+                </Field>
+              </div>
+              <label className="flex h-9 shrink-0 items-center gap-2 text-sm">
+                <Controller
+                  control={control}
+                  name={`models.${index}.reasoning`}
+                  render={({ field }) => (
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  )}
+                />
+                {t('form.reasoning')}
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => modelRows.remove(index)}
+              >
+                {t('form.removeModel')}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
       <div>
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {t('form.submit')}
