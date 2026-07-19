@@ -31,6 +31,7 @@ import {
 } from './automation';
 import { AutomationRequestHandler } from './automation/request-handler';
 import { GitService } from './git/git-service';
+import { GitRequestHandler } from './git/request-handler';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { ArtifactRequestHandler } from './preview/request-handler';
 import { PreviewRouteRegistry } from './preview/route-registry';
@@ -45,7 +46,7 @@ import type { PtyBackend } from './terminal/pty-backend';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
 import { WireResponder } from './wire/responder';
-import { readWorkspaceFile } from './workspace/file-service';
+import { FileRequestHandler } from './workspace/file-request-handler';
 import { FileSuggestService } from './workspace/file-suggest-service';
 import { WorkspaceRegistry } from './workspace/workspace-registry';
 import type { WorkspaceStore } from './workspace/workspace-store';
@@ -99,8 +100,8 @@ export class Engine {
   private readonly responder: WireResponder;
   private readonly workspaces: WorkspaceRegistry;
   private readonly providerStore: ProviderConfigStore;
-  private readonly git: GitService;
-  private readonly fileSuggest: FileSuggestService;
+  private readonly gitRequests: GitRequestHandler;
+  private readonly fileRequests: FileRequestHandler;
   private readonly scripts?: ScriptService;
   private readonly scriptRequests: ScriptRequestHandler;
   private readonly scheduler: ScheduleService;
@@ -121,8 +122,6 @@ export class Engine {
     const factory = deps.factory ?? createAdapter;
     this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
     this.records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
-    this.git = deps.git ?? new GitService();
-    this.fileSuggest = deps.fileSuggest ?? new FileSuggestService();
     this.history = new HistoryService(factory);
     this.runtimes = new AgentRuntimeService({
       initial: deps.agentRuntimes,
@@ -147,6 +146,17 @@ export class Engine {
       : undefined;
     this.terminalRequests = new TerminalRequestHandler(this.terminals, this.responder);
     this.workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
+    this.gitRequests = new GitRequestHandler(
+      transport,
+      deps.git ?? new GitService(),
+      this.responder,
+    );
+    this.fileRequests = new FileRequestHandler(
+      transport,
+      deps.fileSuggest ?? new FileSuggestService(),
+      this.workspaces,
+      this.responder,
+    );
     const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
     this.scripts = this.terminals
       ? new ScriptService(
@@ -434,73 +444,16 @@ export class Engine {
         });
         break;
       }
-      case 'git.status.get': {
-        await this.tryReply(p.clientReqId, async () => {
-          const status = await this.git.getStatus(p.cwd);
-          this.transport.send(
-            createWireMessage({ kind: 'git.status.get.result', replyTo: p.clientReqId, status }),
-          );
-        });
-        break;
-      }
-      case 'git.pr_status.get': {
-        await this.tryReply(p.clientReqId, async () => {
-          const prStatus = await this.git.getPullRequestStatus(p.cwd);
-          this.transport.send(
-            createWireMessage({
-              kind: 'git.pr_status.get.result',
-              replyTo: p.clientReqId,
-              prStatus,
-            }),
-          );
-        });
-        break;
-      }
+      case 'git.status.get':
+      case 'git.pr_status.get':
       case 'git.diff.get': {
-        await this.tryReply(p.clientReqId, async () => {
-          const diff = await this.git.getDiff(p.cwd, p.mode);
-          this.transport.send(
-            createWireMessage({ kind: 'git.diff.get.result', replyTo: p.clientReqId, diff }),
-          );
-        });
+        await this.gitRequests.handle(p);
         break;
       }
-      case 'file.read': {
-        await this.tryReply(p.clientReqId, async () => {
-          const file = await readWorkspaceFile(p.cwd, p.path);
-          this.transport.send(
-            createWireMessage({ kind: 'file.read.result', replyTo: p.clientReqId, file }),
-          );
-        });
-        break;
-      }
-      case 'file.list': {
-        await this.tryReply(p.clientReqId, async () => {
-          // Same opened-roots scoping as file.suggest below.
-          const workspace = nullthrow(
-            this.workspaces.findByCwd(p.cwd),
-            `Unknown workspace: ${p.cwd}`,
-          );
-          const files = await this.fileSuggest.list(workspace.cwd);
-          this.transport.send(
-            createWireMessage({ kind: 'file.list.result', replyTo: p.clientReqId, files }),
-          );
-        });
-        break;
-      }
+      case 'file.read':
+      case 'file.list':
       case 'file.suggest': {
-        await this.tryReply(p.clientReqId, async () => {
-          // Refuse a cwd no session ever ran in (opened-roots scoping, not a hard boundary);
-          // the search runs under the registered record's cwd, not the caller's spelling.
-          const workspace = nullthrow(
-            this.workspaces.findByCwd(p.cwd),
-            `Unknown workspace: ${p.cwd}`,
-          );
-          const suggestions = await this.fileSuggest.suggest(workspace.cwd, p.query, p.limit);
-          this.transport.send(
-            createWireMessage({ kind: 'file.suggest.result', replyTo: p.clientReqId, suggestions }),
-          );
-        });
+        await this.fileRequests.handle(p);
         break;
       }
       case 'script.list':
