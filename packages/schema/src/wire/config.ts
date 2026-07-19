@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AccountsSchema } from '../account';
+import { AccountProtocolSchema, AccountsSchema, EndpointModelSchema } from '../account';
 import { ProvidersConfigSchema } from '../provider-config';
 
 /** Host configuration wire variants — per-agent provider settings (provider-config.ts) plus the
@@ -20,5 +20,22 @@ export const configWireVariants = [
     providers: ProvidersConfigSchema.optional(),
     /** The global account pool; omitted by a client editing only provider settings. */
     accounts: AccountsSchema.optional(),
+  }),
+  /** Ask the daemon to query an endpoint's model-listing API (the add-account form's fetch step).
+   * Daemon-proxied because renderers cannot reach arbitrary user endpoints (desktop CSP, browser
+   * CORS). Endpoints without a listing (404 etc.) reject the request — the form falls back to
+   * manual entry. */
+  z.object({
+    kind: z.literal('endpoint.list-models'),
+    clientReqId: z.string().min(1),
+    baseUrl: z.url(),
+    protocol: AccountProtocolSchema,
+    secret: z.string().min(1),
+    credentialType: z.enum(['api-key', 'auth-token']),
+  }),
+  z.object({
+    kind: z.literal('endpoint.models-listed'),
+    replyTo: z.string().min(1),
+    models: z.array(EndpointModelSchema),
   }),
 ] as const;

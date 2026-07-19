@@ -72,6 +72,15 @@ export const AccountCustomProviderSchema = z.object({
 });
 export type AccountCustomProvider = z.infer<typeof AccountCustomProviderSchema>;
 
+/** One model an endpoint's listing API reports (`endpoint.list-models`). Listings carry ids and,
+ * on some gateways (OpenRouter `context_length`), a context window — never cost or reasoning
+ * capability; form rows built from these fall back to defaults for the rest. */
+export const EndpointModelSchema = z.object({
+  id: z.string().min(1),
+  contextWindow: z.number().int().positive().optional(),
+});
+export type EndpointModel = z.infer<typeof EndpointModelSchema>;
+
 export const AccountSchema = z.object({
   /** Stable id referenced by `providers[kind].activeAccountId` and `StartOptions.config.accountId`. */
   id: z.string().min(1),
