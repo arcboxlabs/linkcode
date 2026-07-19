@@ -331,7 +331,10 @@ type DraftDirective =
  * no silent string-prefix parsing path anymore.
  */
 export function $draftDirective(
-  state: Pick<ComposerDirectiveState, 'commands' | 'commandsSupported' | 'shellEnabled'>,
+  state: Pick<
+    ComposerDirectiveState,
+    'commands' | 'commandsSupported' | 'deferCommandValidation' | 'shellEnabled'
+  >,
 ): DraftDirective {
   const root = $getRoot();
   const text = root.getTextContent();

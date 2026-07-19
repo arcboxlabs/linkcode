@@ -85,10 +85,11 @@ function liveDirectiveStatus(
   directive: EditorDirective,
   commands: readonly AgentCommand[],
   commandsSupported: boolean,
+  deferCommandValidation: boolean,
   shellEnabled: boolean,
 ): DirectiveStatus {
   return directive.kind === 'command'
-    ? commandStatus(directive.name, { commands, commandsSupported })
+    ? commandStatus(directive.name, { commands, commandsSupported, deferCommandValidation })
     : shellStatus({ shellEnabled });
 }
 
@@ -143,6 +144,8 @@ export interface ComposerProps {
   agentModels?: AgentModelOption[] | null;
   /** Stable input features advertised by the live adapter session. */
   agentCapabilities?: AgentCapabilities | null;
+  /** A new session has no command catalog yet; defer validation to the host after creation. */
+  deferCommandValidation?: boolean;
   onSend: (content: ContentBlock[]) => void;
   /** Sends a catalog command invocation; absent, a command draft cannot submit (directives never
    * silently degrade to `onSend` text). */
@@ -202,6 +205,7 @@ export function Composer({
   agentCommands,
   agentModels,
   agentCapabilities,
+  deferCommandValidation = false,
   onSend,
   onInvokeCommand,
   onRunShellCommand,
@@ -250,7 +254,13 @@ export function Composer({
   } | null = (() => {
     if (snapshot.composition.kind === 'none') return null;
     const directive = snapshot.composition.directive;
-    const status = liveDirectiveStatus(directive, catalog, commandsSupported, shellEnabled);
+    const status = liveDirectiveStatus(
+      directive,
+      catalog,
+      commandsSupported,
+      deferCommandValidation,
+      shellEnabled,
+    );
     if (status !== 'supported') return { directive, issue: status };
     return snapshot.composition.kind === 'blocked'
       ? { directive, issue: snapshot.composition.issue }
@@ -321,7 +331,10 @@ export function Composer({
   );
 
   const hasCommandItems = commandGroups.some((group) => group.items.length > 0);
-  const commandOpen = !disabled && Boolean(commandSource);
+  const commandOpen =
+    !disabled &&
+    Boolean(commandSource) &&
+    (!deferCommandValidation || commandSource !== 'slash' || catalog.length !== 0);
   const frameVisible = commandOpen || blockedDirective !== null || contextBar != null;
   const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
   const [exitCommandGroups, setExitCommandGroups] = useState(() => commandGroups);
@@ -371,7 +384,12 @@ export function Composer({
       discrete: true,
     });
     const directive = editor.read(() =>
-      $draftDirective({ commands: catalog, commandsSupported, shellEnabled }),
+      $draftDirective({
+        commands: catalog,
+        commandsSupported,
+        deferCommandValidation,
+        shellEnabled,
+      }),
     );
     switch (directive.kind) {
       case 'command': {
@@ -835,6 +853,7 @@ export function Composer({
                   className="max-h-48 min-h-20.5 overflow-y-auto whitespace-pre-wrap break-words px-3.5 pt-3 pb-1.5 max-sm:min-h-23.5"
                   commands={catalog}
                   commandsSupported={commandsSupported}
+                  deferCommandValidation={deferCommandValidation}
                   disabled={disabled}
                   editorRef={editorRef}
                   menuHasItems={hasCommandItems}

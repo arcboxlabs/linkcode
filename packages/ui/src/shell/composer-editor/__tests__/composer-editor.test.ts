@@ -91,10 +91,14 @@ function triggerAtEnd(editor: LexicalEditor, draft: string): void {
 
 function directiveState(
   over: Partial<ComposerDirectiveState> = {},
-): Pick<ComposerDirectiveState, 'commands' | 'commandsSupported' | 'shellEnabled'> {
+): Pick<
+  ComposerDirectiveState,
+  'commands' | 'commandsSupported' | 'deferCommandValidation' | 'shellEnabled'
+> {
   return {
     commands: COMMANDS,
     commandsSupported: true,
+    deferCommandValidation: false,
     shellEnabled: true,
     ...over,
   };

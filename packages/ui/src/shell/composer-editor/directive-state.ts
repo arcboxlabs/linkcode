@@ -16,6 +16,8 @@ export interface ComposerDirectiveState {
   /** Whether slash-command invocation is currently available (capability + handler) — distinguishes
    * an unknown command (catalog miss) from a composer that cannot execute commands. */
   commandsSupported: boolean;
+  /** Pre-session commands have no catalog yet; the host validates them after creating the session. */
+  deferCommandValidation: boolean;
   /** Whether shell passthrough is currently available (capability + handler present). */
   shellEnabled: boolean;
   /** Mirrors the editor's disabled state for interactive decorator buttons. */
@@ -38,6 +40,7 @@ export function directiveStateFor(editor: LexicalEditor): DirectiveStateStore {
     store = createStore<ComposerDirectiveState>(() => ({
       commands: [],
       commandsSupported: false,
+      deferCommandValidation: false,
       disabled: false,
       placementIssues: {},
       shellEnabled: false,
@@ -52,9 +55,10 @@ export function directiveStateFor(editor: LexicalEditor): DirectiveStateStore {
  * after the draft was typed re-labels existing chips. */
 export function commandStatus(
   name: string,
-  state: Pick<ComposerDirectiveState, 'commands' | 'commandsSupported'>,
+  state: Pick<ComposerDirectiveState, 'commands' | 'commandsSupported' | 'deferCommandValidation'>,
 ): DirectiveStatus {
   if (!state.commandsSupported) return 'unsupported';
+  if (state.deferCommandValidation) return 'supported';
   return state.commands.some((command) => agentCommandMatches(command, name))
     ? 'supported'
     : 'unknown';

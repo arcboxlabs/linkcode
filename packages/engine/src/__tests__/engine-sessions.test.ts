@@ -625,6 +625,25 @@ describe('engine attach replay', () => {
     expect(sent.slice(mark).some((payload) => payload.kind === 'request.failed')).toBe(false);
   });
 
+  it('accepts a supported command while the initial catalog is still loading', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: false },
+    });
+    const mark = sent.length;
+
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r-command-before-catalog',
+      sessionId,
+      input: { type: 'command', name: 'compact' },
+    });
+
+    expect(adapter.sentInputs).toContainEqual({ type: 'command', name: 'compact' });
+    expect(sent.slice(mark).some((payload) => payload.kind === 'request.failed')).toBe(false);
+  });
+
   it('rejects unavailable command and shell inputs before echoing them', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({

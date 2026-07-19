@@ -1,4 +1,6 @@
 import type {
+  AgentCapabilities,
+  AgentInput,
   AgentKind,
   ContentBlock,
   SessionModeId,
@@ -51,7 +53,7 @@ export interface NewSessionSubmission {
   workspaceId: WorkspaceId;
   model?: string;
   modeId?: SessionModeId;
-  content: ContentBlock[];
+  input: Extract<AgentInput, { type: 'command' | 'prompt' }>;
 }
 
 export type AttachmentSupportByAgent = Readonly<Partial<Record<AgentKind, true>>>;
@@ -90,6 +92,10 @@ export interface NewSessionSurfaceProps {
 }
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
+const CLAUDE_DRAFT_CAPABILITIES: AgentCapabilities = {
+  slashCommands: true,
+  shellCommand: false,
+};
 
 /** Unified new-session page: heading + shared `Composer` + workspace context bar. Model and
  * workflow-mode picks ride into the submission; the session reflects them from then on. */
@@ -123,7 +129,7 @@ export function NewSessionSurface({
     selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   const isChatSelected = selected != null && selected === chatWorkspace;
 
-  function handleSend(content: ContentBlock[]): void {
+  function submit(input: NewSessionSubmission['input']): void {
     if (!selected) return;
     // The model rides only when it belongs to the submitted provider — mirroring what the
     // composer's trigger displays (a pick made under another provider shows as "Default").
@@ -137,10 +143,18 @@ export function NewSessionSurface({
       workspaceId: selected.workspaceId,
       model: validModel,
       modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
-      content,
+      input,
     })
       .catch(noop)
       .finally(() => setPending(false));
+  }
+
+  function handleSend(content: ContentBlock[]): void {
+    submit({ type: 'prompt', content });
+  }
+
+  function handleInvokeCommand(name: string, args?: string): void {
+    submit({ type: 'command', name, arguments: args });
   }
 
   function handleProviderChange(nextProvider: AgentKind): Promise<void> {
@@ -163,6 +177,7 @@ export function NewSessionSurface({
       ? t('headingIn', { name: selected.name ?? repositoryLabel(selected.cwd) })
       : t('heading');
   const cue = runtimeCues?.[provider];
+  const acceptsInitialCommand = provider === 'claude-code';
 
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
@@ -190,7 +205,9 @@ export function NewSessionSurface({
           <Composer
             agentLabel={AGENT_LABELS[provider]}
             agentKind={provider}
+            agentCapabilities={acceptsInitialCommand ? CLAUDE_DRAFT_CAPABILITIES : null}
             attachmentsSupported={Boolean(attachmentSupport?.[provider])}
+            deferCommandValidation={acceptsInitialCommand}
             disabled={pending || !selected}
             isRunning={false}
             runtimeCues={runtimeCues}
@@ -199,6 +216,7 @@ export function NewSessionSurface({
             currentModel={model}
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
+            onInvokeCommand={acceptsInitialCommand ? handleInvokeCommand : undefined}
             onStop={noop}
             onPickAttachmentFiles={onPickAttachmentFiles}
             onModeChange={handleModeChange}

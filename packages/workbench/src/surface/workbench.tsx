@@ -292,10 +292,8 @@ function WorkbenchSessionSurface({
       modeId: submission.modeId,
     });
     rememberNewSessionDefaults(submission.kind, submission.workspaceId);
-    // The first prompt rides behind the started session, like any conversation send.
-    void inputMutation
-      .trigger({ sessionId, input: { type: 'prompt', content: submission.content } })
-      .catch(noop);
+    // The first input rides behind the started session, like any conversation send.
+    void inputMutation.trigger({ sessionId, input: submission.input }).catch(noop);
   }
 
   async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {

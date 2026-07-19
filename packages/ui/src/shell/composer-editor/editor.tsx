@@ -66,6 +66,7 @@ interface ComposerEditorProps {
   /** Live directive inputs, mirrored into the per-editor store for chips and the tokenizer. */
   commands: readonly AgentCommand[];
   commandsSupported: boolean;
+  deferCommandValidation: boolean;
   shellEnabled: boolean;
   onDraftChange: (snapshot: ComposerDraftSnapshot) => void;
   /** Image files pasted into the editor; text paste stays internal. */
@@ -83,21 +84,22 @@ interface ComposerEditorProps {
 function DirectiveStatePlugin({
   commands,
   commandsSupported,
+  deferCommandValidation,
   disabled,
   shellEnabled,
 }: Pick<
   ComposerEditorProps,
-  'commands' | 'commandsSupported' | 'disabled' | 'shellEnabled'
+  'commands' | 'commandsSupported' | 'deferCommandValidation' | 'disabled' | 'shellEnabled'
 >): null {
   const [editor] = useLexicalComposerContext();
   // Prop → external-store sync for the chip portals (they can't receive props through Lexical's
   // decorator boundary); not a state watcher.
   useEffect(() => {
     const store = directiveStateFor(editor);
-    store.setState({ commands, commandsSupported, disabled, shellEnabled });
+    store.setState({ commands, commandsSupported, deferCommandValidation, disabled, shellEnabled });
     // A late catalog can prove that already-typed mid-line `/name` text is a real command.
     editor.update(() => $normalizeDirectiveTokens(store.getState()), { discrete: true });
-  }, [editor, commands, commandsSupported, disabled, shellEnabled]);
+  }, [editor, commands, commandsSupported, deferCommandValidation, disabled, shellEnabled]);
   return null;
 }
 
@@ -278,6 +280,7 @@ export function ComposerEditor({
   disabled,
   commands,
   commandsSupported,
+  deferCommandValidation,
   shellEnabled,
   onDraftChange,
   onPasteFiles,
@@ -352,6 +355,7 @@ export function ComposerEditor({
       <DirectiveStatePlugin
         commands={commands}
         commandsSupported={commandsSupported}
+        deferCommandValidation={deferCommandValidation}
         disabled={disabled}
         shellEnabled={shellEnabled}
       />
