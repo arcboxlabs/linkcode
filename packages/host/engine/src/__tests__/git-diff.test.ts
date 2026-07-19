@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Effect } from 'effect';
 import { createFixedArray } from 'foxts/create-fixed-array';
 import { afterAll, describe, expect, it } from 'vitest';
 import { readGitDiff } from '../git/diff';
@@ -78,7 +79,7 @@ describe('readGitDiff', () => {
     commit(dir, 'init');
     writeFileSync(join(dir, 'a.txt'), 'one\nTWO\nthree\nfour\n');
 
-    const diff = await readGitDiff(dir, 'uncommitted');
+    const diff = await Effect.runPromise(readGitDiff(dir, 'uncommitted'));
     expect(diff.truncated).toBe(false);
     expect(diff.patch).toContain('diff --git a/a.txt b/a.txt');
 
@@ -91,7 +92,7 @@ describe('readGitDiff', () => {
     commit(dir, 'init', '--allow-empty');
     writeFileSync(join(dir, 'new.txt'), 'hello\nworld\n');
 
-    const diff = await readGitDiff(dir, 'uncommitted');
+    const diff = await Effect.runPromise(readGitDiff(dir, 'uncommitted'));
     expect(diff.patch).toContain('diff --git a/new.txt b/new.txt');
     expect(diff.stat).toEqual({ files: 1, additions: 2, deletions: 0 });
   });
@@ -101,7 +102,7 @@ describe('readGitDiff', () => {
     commit(dir, 'init', '--allow-empty');
     writeFileSync(join(dir, 'binary.bin'), Buffer.from([0, 1, 2, 3, 0, 255, 254]));
 
-    const diff = await readGitDiff(dir, 'uncommitted');
+    const diff = await Effect.runPromise(readGitDiff(dir, 'uncommitted'));
     expect(diff.patch).toContain('Binary files /dev/null and b/binary.bin differ');
     expect(diff.patch.length).toBeLessThan(200);
     expect(diff.stat).toEqual({ files: 1, additions: 0, deletions: 0 });
@@ -116,7 +117,7 @@ describe('readGitDiff', () => {
     // ~500KB of unique content per file, ~2.5MB combined — comfortably over the 2MB cap.
     for (const name of fileNames) writeFileSync(join(dir, name), bigLineBlock(500000, name));
 
-    const diff = await readGitDiff(dir, 'uncommitted');
+    const diff = await Effect.runPromise(readGitDiff(dir, 'uncommitted'));
     expect(diff.truncated).toBe(true);
     expect(Buffer.byteLength(diff.patch, 'utf8')).toBeLessThanOrEqual(2 * 1024 * 1024);
     const fileCount = diff.patch.split('diff --git ').length - 1;
@@ -136,7 +137,7 @@ describe('readGitDiff', () => {
     writeFileSync(join(dir, 'a.txt'), 'one\ntwo\n');
     commit(dir, 'feature commit', 'a.txt');
 
-    const diff = await readGitDiff(dir, 'base');
+    const diff = await Effect.runPromise(readGitDiff(dir, 'base'));
     expect(diff.patch).toContain('diff --git a/a.txt b/a.txt');
     expect(diff.stat).toEqual({ files: 1, additions: 1, deletions: 0 });
   });
@@ -144,6 +145,6 @@ describe('readGitDiff', () => {
   it('rejects base mode when no default branch can be resolved', async () => {
     const dir = makeRepo();
     commit(dir, 'init', '--allow-empty');
-    await expect(readGitDiff(dir, 'base')).rejects.toThrow();
+    await expect(Effect.runPromise(readGitDiff(dir, 'base'))).rejects.toThrow();
   });
 });

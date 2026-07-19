@@ -47,7 +47,15 @@ export class GitService {
     );
     const diffCache = yield* makeCache(
       ([cwd, mode]: GitDiffKey) =>
-        gitOperation('git.diff', 'Failed to read git diff', () => readGitDiff(cwd, mode)),
+        readGitDiff(cwd, mode).pipe(
+          Effect.mapError((cause) =>
+            toOperationFailure(cause, {
+              subsystem: 'git',
+              operation: 'git.diff',
+              publicMessage: 'Failed to read git diff',
+            }),
+          ),
+        ),
       DIFF_TTL_MS,
     );
     const prStatusCache = yield* Cache.makeWith(
@@ -111,12 +119,5 @@ function makeCache<Key, A, E>(lookup: (key: Key) => Effect.Effect<A, E>, ttl: nu
   return Cache.makeWith(lookup, {
     capacity: CACHE_CAPACITY,
     timeToLive: (exit) => (Exit.isSuccess(exit) ? ttl : 0),
-  });
-}
-
-function gitOperation<A>(operation: string, publicMessage: string, run: () => Promise<A>) {
-  return Effect.tryPromise({
-    try: run,
-    catch: (cause) => toOperationFailure(cause, { subsystem: 'git', operation, publicMessage }),
   });
 }
