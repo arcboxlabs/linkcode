@@ -188,9 +188,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       );
       // After the session records are loaded (the schedule orphan-sweep reads them) and before the
       // transport connects, so the first tick can't race an unconnected transport.
-      yield* tryOperation('store', 'schedules.recover', 'Failed to recover schedules', () =>
-        scheduler.start(),
-      );
+      yield* scheduler.start();
       // Loops don't resume across a restart; start() only sweeps interrupted loops to `stopped`.
       yield* tryOperation('store', 'loops.recover', 'Failed to recover loops', () => loops.start());
       yield* trySyncOperation(

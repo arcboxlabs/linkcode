@@ -9,7 +9,7 @@ import type {
   ScheduleUpdate,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { Cause, Effect, Fiber, Semaphore } from 'effect';
+import { Cause, Effect, Schedule as EffectSchedule, Fiber, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { OperationError, RequestError } from '../failure';
 import { automationFailureMessage } from './failure';
@@ -54,9 +54,8 @@ export class ScheduleService {
   private readonly runExecutor: ScheduleRunExecutor;
   private readonly tickMs: number;
   private readonly defaultMisfirePolicy: ScheduleMisfirePolicy;
-  private timer: ReturnType<typeof setInterval> | undefined;
+  private cadenceFiber: Fiber.Fiber<void> | undefined;
   private runTask: RunTask | undefined;
-  private tickActive = false;
   private acceptingRuns = true;
   private seq = 0;
 
@@ -78,37 +77,44 @@ export class ScheduleService {
     this.runTask = runTask;
   }
 
-  async start(): Promise<void> {
-    for (const schedule of await this.store.load()) {
-      this.schedules.set(schedule.scheduleId, schedule);
-    }
-    await this.recover();
-    if (this.timer) return;
-    const timer = setInterval(() => {
-      if (this.tickActive) return;
-      this.tickActive = true;
-      this.track(
-        fromPromise(() => this.tickOnce()).pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              this.tickActive = false;
-            }),
-          ),
+  start(): Effect.Effect<void, OperationError> {
+    return storeEffect('schedules.load', 'Failed to recover schedules', () =>
+      this.store.load(),
+    ).pipe(
+      Effect.tap((schedules) =>
+        Effect.sync(() =>
+          schedules.forEach((schedule) => this.schedules.set(schedule.scheduleId, schedule)),
         ),
-      );
-    }, this.tickMs);
-    timer.unref();
-    this.timer = timer;
+      ),
+      Effect.andThen(this.recover()),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          if (this.cadenceFiber) return;
+          const tick = this.tickOnce().pipe(
+            Effect.catch((error) => Effect.logError('Schedule tick failed', error)),
+          );
+          const forkTick = Effect.sync(() => this.track(tick));
+          const tickCycle = Effect.asVoid(Effect.flatMap(forkTick, Fiber.await));
+          const cadence = Effect.sleep(this.tickMs).pipe(
+            Effect.andThen(tickCycle.pipe(Effect.repeat(EffectSchedule.spaced(this.tickMs)))),
+            Effect.asVoid,
+          );
+          this.cadenceFiber = this.track(cadence);
+        }),
+      ),
+      Effect.asVoid,
+    );
   }
 
   shutdown(): Effect.Effect<void> {
     return Effect.sync(() => {
       this.acceptingRuns = false;
-      if (this.timer) {
-        clearInterval(this.timer);
-        this.timer = undefined;
-      }
-    }).pipe(Effect.andThen(this.settleAll()));
+      this.cadenceFiber?.interruptUnsafe();
+      this.cadenceFiber = undefined;
+    }).pipe(
+      Effect.andThen(this.serialized(() => Effect.void)),
+      Effect.andThen(Effect.suspend(() => this.settleAll())),
+    );
   }
 
   list(): Schedule[] {
@@ -293,17 +299,25 @@ export class ScheduleService {
   }
 
   /** One scheduler pass. Public so tests can drive it deterministically instead of the interval. */
-  async tickOnce(): Promise<void> {
-    if (!this.acceptingRuns) return;
-    const now = this.now();
-    for (const schedule of this.schedules.values()) {
-      if (schedule.status !== 'active' || schedule.nextRunAt === undefined) continue;
-      if (this.activeRuns.has(schedule.scheduleId)) continue;
-      if (schedule.nextRunAt > now) continue;
-      await this.fireDue(schedule, now);
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- shutdown can close admission while the awaited store operations are pending.
-      if (!this.acceptingRuns) return;
-    }
+  tickOnce(): Effect.Effect<void, OperationError> {
+    const fireDue = this.fireDue.bind(this);
+    const isAcceptingRuns = (): boolean => this.acceptingRuns;
+    return this.serialized(() => {
+      if (!isAcceptingRuns()) return Effect.void;
+      const now = this.now();
+      const due = [...this.schedules.values()].filter(
+        (schedule) =>
+          schedule.status === 'active' &&
+          schedule.nextRunAt !== undefined &&
+          !this.activeRuns.has(schedule.scheduleId) &&
+          schedule.nextRunAt <= now,
+      );
+      return Effect.forEach(
+        due,
+        (schedule) => (isAcceptingRuns() ? fireDue(schedule, now) : Effect.void),
+        { discard: true },
+      );
+    });
   }
 
   /**
@@ -311,38 +325,50 @@ export class ScheduleService {
    * so a slow run can't double-fire), then either replay the most recent missed occurrence within
    * the grace window (a catch-up) or record it skipped.
    */
-  private async fireDue(schedule: Schedule, now: number): Promise<void> {
-    if (schedule.spec.expiresAt !== undefined && schedule.spec.expiresAt <= now) {
-      await this.complete(schedule, 'expired');
-      return;
-    }
-    const cadence = schedule.spec.cadence;
-    const latestMissed = this.cadence.latestAtOrBefore(cadence, schedule.nextRunAt ?? now, now);
-    const missedBy = now - latestMissed;
-    const advanced: Schedule = {
-      ...schedule,
-      nextRunAt: this.cadence.next(cadence, latestMissed),
-      updatedAt: now,
-    };
-    await this.store.save(advanced);
-    this.schedules.set(advanced.scheduleId, advanced);
-    this.reporter.changed(advanced);
-
-    // On-time fires (within the catch-up threshold) always run, whatever the policy.
-    const isMiss = missedBy > this.catchUpThresholdMs();
-    if (isMiss) {
-      const policy = advanced.spec.misfirePolicy ?? this.defaultMisfirePolicy;
-      // `skip` fast-forwards silently (nextRunAt already advanced); `catch-up` beyond grace records
-      // a skipped run for visibility; within grace it replays the most recent missed occurrence.
-      if (policy === 'skip') return;
-      if (missedBy > this.cadence.graceMs(cadence)) {
-        await this.recordSkipped(advanced, latestMissed, now);
+  private fireDue(schedule: Schedule, now: number): Effect.Effect<void, OperationError> {
+    const cadenceService = this.cadence;
+    const complete = this.complete.bind(this);
+    const defaultMisfirePolicy = this.defaultMisfirePolicy;
+    const recordSkipped = this.recordSkipped.bind(this);
+    const startRun = this.startRun.bind(this);
+    const catchUpThresholdMs = this.catchUpThresholdMs();
+    const isAcceptingRuns = (): boolean => this.acceptingRuns;
+    const { reporter, schedules, store } = this;
+    return Effect.gen(function* () {
+      if (schedule.spec.expiresAt !== undefined && schedule.spec.expiresAt <= now) {
+        yield* complete(schedule, 'expired');
         return;
       }
-    }
-    if (this.acceptingRuns) {
-      this.track(this.startRun(advanced, isMiss ? 'catch-up' : 'cadence'));
-    }
+      const cadence = schedule.spec.cadence;
+      const latestMissed = cadenceService.latestAtOrBefore(cadence, schedule.nextRunAt ?? now, now);
+      const missedBy = now - latestMissed;
+      const advanced: Schedule = {
+        ...schedule,
+        nextRunAt: cadenceService.next(cadence, latestMissed),
+        updatedAt: now,
+      };
+      yield* storeEffect('schedules.save', 'Failed to advance schedule', () =>
+        store.save(advanced),
+      );
+      schedules.set(advanced.scheduleId, advanced);
+      reporter.changed(advanced);
+
+      // On-time fires (within the catch-up threshold) always run, whatever the policy.
+      const isMiss = missedBy > catchUpThresholdMs;
+      if (isMiss) {
+        const policy = advanced.spec.misfirePolicy ?? defaultMisfirePolicy;
+        // `skip` fast-forwards silently (nextRunAt already advanced); `catch-up` beyond grace records
+        // a skipped run for visibility; within grace it replays the most recent missed occurrence.
+        if (policy === 'skip') return;
+        if (missedBy > cadenceService.graceMs(cadence)) {
+          yield* recordSkipped(advanced, latestMissed, now);
+          return;
+        }
+      }
+      if (isAcceptingRuns()) {
+        yield* startRun(advanced, isMiss ? 'catch-up' : 'cadence');
+      }
+    });
   }
 
   private startRun(
@@ -356,21 +382,18 @@ export class ScheduleService {
       trigger,
       startedAt: this.now(),
     };
-    return storeEffect('schedule-runs.save', 'Failed to save schedule run', () =>
-      this.store.saveRun(run),
-    ).pipe(
-      Effect.tap(() => Effect.sync(() => this.reporter.runChanged(run))),
+    return this.saveRun(run).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
           this.activeRuns.add(schedule.scheduleId);
-          this.track(this.launchRun(schedule, run));
+          this.track(this.executeRun(schedule, run));
         }),
       ),
     );
   }
 
   /** Track Engine-owned schedule work for targeted shutdown without creating another Runtime. */
-  private track(effect: Effect.Effect<void, unknown>): void {
+  private track(effect: Effect.Effect<void, unknown>): Fiber.Fiber<void> {
     const run = nullthrow(this.runTask, 'Schedule runtime has not started');
     const fiber = run(
       effect.pipe(
@@ -383,9 +406,10 @@ export class ScheduleService {
     );
     this.inFlight.add(fiber);
     fiber.addObserver(() => this.inFlight.delete(fiber));
+    return fiber;
   }
 
-  private launchRun(schedule: Schedule, run: ScheduleRun): Effect.Effect<void, unknown> {
+  private executeRun(schedule: Schedule, run: ScheduleRun): Effect.Effect<void, unknown> {
     const scheduleId = schedule.scheduleId;
     return this.runExecutor.execute(schedule, run).pipe(
       Effect.matchEffect({
@@ -403,10 +427,10 @@ export class ScheduleService {
             error,
           );
           if (!(error instanceof ScheduleTargetGoneError)) return diagnostic;
-          const current = this.schedules.get(scheduleId);
-          const completion = current
-            ? fromPromise(() => this.complete(current, 'targetGone'))
-            : Effect.void;
+          const completion = this.serialized(() => {
+            const current = this.schedules.get(scheduleId);
+            return current ? this.complete(current, 'targetGone') : Effect.void;
+          });
           return diagnostic.pipe(Effect.andThen(completion));
         },
         onSuccess: (outcome) =>
@@ -419,13 +443,17 @@ export class ScheduleService {
       Effect.andThen(
         Effect.suspend(() => {
           run.endedAt = this.now();
-          return fromPromise(() => this.saveRun(run));
+          return this.saveRun(run);
         }),
       ),
-      Effect.andThen(fromPromise(() => this.store.pruneRuns(scheduleId, RUNS_KEPT_PER_SCHEDULE))),
+      Effect.andThen(
+        storeEffect('schedule-runs.prune', 'Failed to prune schedule runs', () =>
+          this.store.pruneRuns(scheduleId, RUNS_KEPT_PER_SCHEDULE),
+        ),
+      ),
       Effect.andThen(
         Effect.suspend(() =>
-          fromPromise(() =>
+          this.serialized(() =>
             this.settleScheduleAfterRun(scheduleId, run.trigger, nullthrow(run.endedAt)),
           ),
         ),
@@ -440,34 +468,40 @@ export class ScheduleService {
   }
 
   /** Bookkeeping once a run settles: count scheduled runs toward maxRuns; record lastRunAt. */
-  private async settleScheduleAfterRun(
+  private settleScheduleAfterRun(
     scheduleId: ScheduleId,
     trigger: ScheduleRunTrigger,
     endedAt: number,
-  ): Promise<void> {
-    const current = this.schedules.get(scheduleId);
+  ): Effect.Effect<void, OperationError> {
+    const schedule = this.schedules.get(scheduleId);
     // A schedule completed mid-run (targetGone) is terminal; leave it alone.
-    if (current?.status !== 'active') return;
+    if (schedule?.status !== 'active') return Effect.void;
     const settled: Schedule = {
-      ...current,
+      ...schedule,
       lastRunAt: endedAt,
-      runCount: trigger === 'manual' ? current.runCount : current.runCount + 1,
+      runCount: trigger === 'manual' ? schedule.runCount : schedule.runCount + 1,
       updatedAt: this.now(),
     };
     if (trigger !== 'manual' && this.reachedMaxRuns(settled)) {
-      await this.complete(settled, 'maxRuns');
-      return;
+      return this.complete(settled, 'maxRuns');
     }
-    await this.store.save(settled);
-    this.schedules.set(scheduleId, settled);
-    this.reporter.changed(settled);
+    return storeEffect('schedules.save', 'Failed to settle schedule run', () =>
+      this.store.save(settled),
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.schedules.set(scheduleId, settled);
+          this.reporter.changed(settled);
+        }),
+      ),
+    );
   }
 
-  private async recordSkipped(
+  private recordSkipped(
     schedule: Schedule,
     scheduledFor: number,
     now: number,
-  ): Promise<void> {
+  ): Effect.Effect<void, OperationError> {
     const run: ScheduleRun = {
       runId: this.mintRunId(),
       scheduleId: schedule.scheduleId,
@@ -477,11 +511,19 @@ export class ScheduleService {
       startedAt: scheduledFor,
       endedAt: now,
     };
-    await this.saveRun(run);
-    await this.store.pruneRuns(schedule.scheduleId, RUNS_KEPT_PER_SCHEDULE);
+    return this.saveRun(run).pipe(
+      Effect.andThen(
+        storeEffect('schedule-runs.prune', 'Failed to prune schedule runs', () =>
+          this.store.pruneRuns(schedule.scheduleId, RUNS_KEPT_PER_SCHEDULE),
+        ),
+      ),
+    );
   }
 
-  private async complete(schedule: Schedule, reason: Schedule['completedReason']): Promise<void> {
+  private complete(
+    schedule: Schedule,
+    reason: Schedule['completedReason'],
+  ): Effect.Effect<void, OperationError> {
     const completed: Schedule = {
       ...schedule,
       status: 'completed',
@@ -489,26 +531,46 @@ export class ScheduleService {
       nextRunAt: undefined,
       updatedAt: this.now(),
     };
-    await this.store.save(completed);
-    this.schedules.set(completed.scheduleId, completed);
-    this.reporter.changed(completed);
+    return storeEffect('schedules.save', 'Failed to complete schedule', () =>
+      this.store.save(completed),
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.schedules.set(completed.scheduleId, completed);
+          this.reporter.changed(completed);
+        }),
+      ),
+    );
   }
 
   /** Mark runs left `running` by a previous daemon as failed, then complete orphaned targets. */
-  private async recover(): Promise<void> {
-    for (const run of await this.store.loadRunningRuns()) {
-      run.status = 'failed';
-      run.error = 'daemon restarted before the run completed';
-      run.endedAt = this.now();
-      await this.saveRun(run);
-    }
-    for (const schedule of this.schedules.values()) {
-      if (schedule.status !== 'active') continue;
-      const target = schedule.spec.target;
-      if (target.type === 'session' && !this.driver.hasRecord(target.sessionId)) {
-        await this.complete(schedule, 'targetGone');
+  private recover(): Effect.Effect<void, OperationError> {
+    const complete = this.complete.bind(this);
+    const saveRun = this.saveRun.bind(this);
+    const { driver, schedules, store } = this;
+    const now = this.now;
+    return Effect.gen(function* () {
+      const running = yield* storeEffect(
+        'schedule-runs.load-running',
+        'Failed to recover schedule runs',
+        () => store.loadRunningRuns(),
+      );
+      for (const run of running) {
+        yield* saveRun({
+          ...run,
+          status: 'failed',
+          error: 'daemon restarted before the run completed',
+          endedAt: now(),
+        });
       }
-    }
+      for (const schedule of schedules.values()) {
+        if (schedule.status !== 'active') continue;
+        const target = schedule.spec.target;
+        if (target.type === 'session' && !driver.hasRecord(target.sessionId)) {
+          yield* complete(schedule, 'targetGone');
+        }
+      }
+    });
   }
 
   private catchUpThresholdMs(): number {
@@ -527,9 +589,10 @@ export class ScheduleService {
     return Effect.succeed(schedule);
   }
 
-  private async saveRun(run: ScheduleRun): Promise<void> {
-    await this.store.saveRun(run);
-    this.reporter.runChanged(run);
+  private saveRun(run: ScheduleRun): Effect.Effect<void, OperationError> {
+    return storeEffect('schedule-runs.save', 'Failed to save schedule run', () =>
+      this.store.saveRun(run),
+    ).pipe(Effect.tap(() => Effect.sync(() => this.reporter.runChanged(run))));
   }
 
   private serialized<A, E>(effect: () => Effect.Effect<A, E>): Effect.Effect<A, E> {
@@ -545,10 +608,6 @@ export class ScheduleService {
     this.seq += 1;
     return `srun-${this.now().toString(36)}-${this.seq.toString(36)}` as ScheduleRunId;
   }
-}
-
-function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (cause) => cause });
 }
 
 function cadenceEffect<A>(run: () => A): Effect.Effect<A, RequestError> {

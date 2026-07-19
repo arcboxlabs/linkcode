@@ -236,7 +236,7 @@ describe('ScheduleService', () => {
     const { service, driver, sent } = makeService();
     const schedule = await runEffect(service.create(INTERVAL_SPEC));
     clock += 60000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.map((c) => c.op)).toEqual(['create', 'makeUnattended', 'prompt', 'stop']);
@@ -264,7 +264,7 @@ describe('ScheduleService', () => {
       }),
     );
     clock += 60000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 
     const run = runsIn(sent).at(-1);
@@ -282,7 +282,7 @@ describe('ScheduleService', () => {
       }),
     );
     clock += 60000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 
     const run = runsIn(sent).at(-1);
@@ -327,10 +327,10 @@ describe('ScheduleService', () => {
     const { service, sent } = makeService();
     await runEffect(service.create({ ...INTERVAL_SPEC, maxRuns: 2 }));
     clock += 60000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
     clock += 60000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 
     const latest = schedulesIn(sent).at(-1);
@@ -343,7 +343,7 @@ describe('ScheduleService', () => {
     const { service, driver, sent } = makeService();
     await runEffect(service.create({ ...INTERVAL_SPEC, expiresAt: clock + 30000 }));
     clock += 60000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
 
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
     expect(schedulesIn(sent).at(-1)?.completedReason).toBe('expired');
@@ -362,7 +362,7 @@ describe('ScheduleService', () => {
     const skip = makeService(skipDriver);
     await runEffect(skip.service.create(dailySpec));
     clock += DAILY + 20 * 60 * 60 * 1000;
-    await skip.service.tickOnce();
+    await Effect.runPromise(skip.service.tickOnce());
     await Effect.runPromise(skip.service.settleAll());
     expect(runsIn(skip.sent).at(-1)?.status).toBe('skipped');
     expect(skipDriver.calls.some((c) => c.op === 'prompt')).toBe(false);
@@ -372,7 +372,7 @@ describe('ScheduleService', () => {
     const c = makeService(catchDriver);
     await runEffect(c.service.create(dailySpec));
     clock += DAILY + 2 * 60 * 60 * 1000;
-    await c.service.tickOnce();
+    await Effect.runPromise(c.service.tickOnce());
     await Effect.runPromise(c.service.settleAll());
     const run = runsIn(c.sent).at(-1);
     expect(run?.status).toBe('succeeded');
@@ -385,7 +385,7 @@ describe('ScheduleService', () => {
     // A mid-slot miss within grace: the default policy would catch up; `skip` suppresses the run.
     await runEffect(service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' }));
     clock += 150_000; // 2.5 intervals late → 30s past the latest slot
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
@@ -405,7 +405,7 @@ describe('ScheduleService', () => {
     service.bindRuntime(Effect.runFork);
     await runEffect(service.create(INTERVAL_SPEC));
     clock += 150_000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
@@ -453,7 +453,7 @@ describe('ScheduleService', () => {
       // Rejecting the request synchronously is an acceptable Promise-facing boundary behavior.
     }
     clock += 60000;
-    await service.tickOnce();
+    await Effect.runPromise(service.tickOnce());
     await flushAsyncWork();
 
     expect(driver.calls.filter((call) => call.op === 'prompt')).toHaveLength(1);
@@ -512,7 +512,7 @@ describe('ScheduleService', () => {
     // Second service over the same store, with the target session now absent.
     const driver2 = new FakeSessionDriver();
     const second = makeService(driver2, store);
-    await second.service.start();
+    await Effect.runPromise(second.service.start());
 
     const failed = runsIn(second.sent).find((r) => r.runId === 'orphan-run');
     expect(failed?.status).toBe('failed');
