@@ -36,7 +36,7 @@ export {
 // 39 disambiguates a parallel double-bump: #186 (CODE-142) and #189 (CODE-219) both shipped as
 // "38" with different schemas, so a build from between their merges shares a number with a
 // schema it does not speak.
-export const WIRE_PROTOCOL_VERSION = 40 as const;
+export const WIRE_PROTOCOL_VERSION = 41 as const;
 
 /** Envelope payload: a discriminated union keyed by `kind`. */
 export const WirePayloadSchema = z.discriminatedUnion('kind', [

@@ -1,5 +1,6 @@
 import type { Conversation } from '@linkcode/client-core';
 import type {
+  AgentInput,
   ContentBlock,
   EffortLevel,
   QuestionOutcome,
@@ -24,6 +25,8 @@ import {
 import type {
   AttachmentSupportByAgent,
   ComposerAttachment,
+  ComposerDirectiveControls,
+  ConversationComposerController,
   NewSessionDraft,
   NewSessionSubmission,
   PermissionDecision,
@@ -45,6 +48,7 @@ import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { useFileMentionSource } from '../files/mentions';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
+import { useConfiguredDefaultModels } from '../provider-config/default-models';
 import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
@@ -55,9 +59,11 @@ import { useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
+import { submitActiveSessionInput } from './active-session-input';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
+import { newlyConfirmedStartupSelection, reflectedStartupSelection } from './startup-selection';
 import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
@@ -179,7 +185,8 @@ function WorkbenchSessionSurface({
     if (message) visibleResponseErrors.set(requestId, message);
   }
   const active = sessions.active;
-  const { mentionItems, onMentionQueryChange } = useFileMentionSource(active?.cwd);
+  const { mentionItems, onMentionQueryChange } = useFileMentionSource();
+  const newSessionDefaultModels = useConfiguredDefaultModels();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -209,8 +216,11 @@ function WorkbenchSessionSurface({
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
   const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
+  const newSessionPreferredModels = useNewSessionDefaultsStore((state) => state.modelsByProvider);
+  const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
+  const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
     const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
@@ -247,12 +257,14 @@ function WorkbenchSessionSurface({
     previewExpandedKeys,
   ]);
 
-  function handleSend(content: ContentBlock[]): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    void inputMutation
-      .trigger({ sessionId: sessions.activeId, input: { type: 'prompt', content } })
-      .catch(noop);
+  function submitActiveInput(input: AgentInput): Promise<void> {
+    const sessionId = sessions.activeId;
+    if (sessionId) onClearError();
+    return submitActiveSessionInput(sessionId, input, inputMutation.trigger);
+  }
+
+  function handleSend(content: ContentBlock[]): Promise<void> {
+    return submitActiveInput({ type: 'prompt', content });
   }
 
   function handleStopTurn(): void {
@@ -261,25 +273,12 @@ function WorkbenchSessionSurface({
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
   }
 
-  // Command/shell directives fire-and-forget like handleSend: the invocation echoes back as a
-  // user-message and results stream as normal events; failures land in the error banner.
-  function handleInvokeCommand(name: string, args?: string): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    void inputMutation
-      .trigger({
-        sessionId: sessions.activeId,
-        input: { type: 'command', name, arguments: args },
-      })
-      .catch(noop);
+  function handleInvokeCommand(name: string, args?: string): Promise<void> {
+    return submitActiveInput({ type: 'command', name, arguments: args });
   }
 
-  function handleRunShellCommand(command: string): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    void inputMutation
-      .trigger({ sessionId: sessions.activeId, input: { type: 'shell-command', command } })
-      .catch(noop);
+  function handleRunShellCommand(command: string): Promise<void> {
+    return submitActiveInput({ type: 'shell-command', command });
   }
 
   async function handleSubmitDraft(submission: NewSessionSubmission): Promise<void> {
@@ -288,13 +287,30 @@ function WorkbenchSessionSurface({
     const sessionId = await sessions.create({
       kind: submission.kind,
       cwd: submission.cwd,
-      model: submission.model,
+      model: submission.model ?? undefined,
+      effort: submission.effort ?? undefined,
       modeId: submission.modeId,
     });
-    rememberNewSessionDefaults(submission.kind, submission.workspaceId);
-    // The first prompt rides behind the started session, like any conversation send.
+    const startupSelection = reflectedStartupSelection(
+      submission,
+      sdkClient.raw.eventsSnapshot(sessionId),
+    );
+    rememberNewSessionDefaults(submission.kind, submission.workspaceId, startupSelection);
+    // The first input rides behind the started session, like any conversation send.
     void inputMutation
-      .trigger({ sessionId, input: { type: 'prompt', content: submission.content } })
+      .trigger({ sessionId, input: submission.input })
+      .then(() => {
+        // Some process-per-turn adapters can confirm a startup override only after their first
+        // successful run. Promote only a positive late match: replaying a mismatch here could erase
+        // a newer live selection made while that turn was running.
+        const newlyConfirmed = newlyConfirmedStartupSelection(
+          submission,
+          startupSelection,
+          sdkClient.raw.eventsSnapshot(sessionId),
+        );
+        if (newlyConfirmed.model === undefined && newlyConfirmed.effort === undefined) return;
+        rememberSelection(submission.kind, newlyConfirmed);
+      })
       .catch(noop);
   }
 
@@ -344,15 +360,45 @@ function WorkbenchSessionSurface({
     onClearError();
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
-    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(noop);
+    const provider = active?.kind;
+    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(() => {
+      if (provider) rememberSelection(provider, { model });
+    });
   }
 
   function handleEffortChange(effort: EffortLevel): Promise<void> {
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
     // Same contract as handleModelChange: the composer awaits the rejection to keep the old pick.
-    return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
+    const provider = active?.kind;
+    return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(() => {
+      if (provider) rememberSelection(provider, { effort });
+    });
   }
+
+  const directiveControls: ComposerDirectiveControls = {
+    slash: conversation.capabilities?.slashCommands
+      ? conversation.availableCommands === null
+        ? { state: 'loading', onInvokeCommand: handleInvokeCommand }
+        : {
+            state: 'ready',
+            commands: conversation.availableCommands,
+            onInvokeCommand: handleInvokeCommand,
+          }
+      : { state: 'unsupported' },
+    shell: conversation.capabilities?.shellCommand
+      ? { state: 'ready', onRunShellCommand: handleRunShellCommand }
+      : { state: 'unsupported' },
+  };
+  const conversationComposer: ConversationComposerController = {
+    onSend: handleSend,
+    onStop: handleStopTurn,
+    directiveControls,
+    onModeChange: handleModeChange,
+    onApprovalPolicyChange: handleApprovalPolicyChange,
+    onModelChange: handleModelChange,
+    onEffortChange: handleEffortChange,
+  };
 
   // Every workspace-mutating request revalidates the workspace list the same way afterward.
   function afterWorkspacesChange<T>(pending: Promise<T>): Promise<T> {
@@ -495,6 +541,9 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      newSessionDefaultModels={newSessionDefaultModels}
+      newSessionPreferredModels={newSessionPreferredModels}
+      newSessionPreferredEfforts={newSessionPreferredEfforts}
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
@@ -533,8 +582,7 @@ function WorkbenchSessionSurface({
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
       mentionItems={mentionItems}
       onMentionQueryChange={onMentionQueryChange}
-      onSendPrompt={handleSend}
-      onStopTurn={handleStopTurn}
+      conversationComposer={conversationComposer}
       onRespondPermission={handleRespond}
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
@@ -544,12 +592,6 @@ function WorkbenchSessionSurface({
       TerminalBlockComponent={RuntimeTerminalBlock}
       BranchStatusComponent={RuntimeBranchStatus}
       onDismissError={onClearError}
-      onModeChange={handleModeChange}
-      onApprovalPolicyChange={handleApprovalPolicyChange}
-      onModelChange={handleModelChange}
-      onEffortChange={handleEffortChange}
-      onInvokeCommand={handleInvokeCommand}
-      onRunShellCommand={handleRunShellCommand}
     />
   );
 }

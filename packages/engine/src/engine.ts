@@ -322,9 +322,10 @@ export class Engine {
             const commandName = p.input.name;
             if (
               !session.capabilities.slashCommands ||
-              !session.availableCommands?.some((command) =>
-                agentCommandMatches(command, commandName),
-              )
+              (session.availableCommands !== undefined &&
+                !session.availableCommands.some((command) =>
+                  agentCommandMatches(command, commandName),
+                ))
             ) {
               const error = new Error(`Unknown slash command: /${commandName}`);
               this.broadcastInputRejected(p.sessionId, error.message);

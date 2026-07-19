@@ -12,6 +12,7 @@ import type { GrokEffort, GrokHeadlessRun } from './process';
 import { runGrokHeadless } from './process';
 
 const RE_RESUME_FAIL = /session|resume|not found/i;
+const DEFAULT_GROK_MODEL = 'grok-4.5';
 
 /**
  * Grok Build adapter — drives the local `grok` CLI in **headless** mode (`grok -p`), not ACP.
@@ -26,6 +27,7 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
 
   private binaryPath: string | null = null;
   private model: string | undefined;
+  private modelSelectionRevision = 0;
   private effort: GrokEffort = 'high';
   private resumeSessionId: string | null = null;
   private activeRun: GrokHeadlessRun | null = null;
@@ -41,8 +43,9 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
     }
     this.binaryPath = resolved;
     this.model = opts.model;
-    this.effort = effortFromLevel(undefined);
-    if (this.model) this.emitModel(this.model);
+    // Reflect the verified CLI default without turning it into a `-m` override. An explicit model
+    // is reflected only after a successful headless run proves the CLI accepted its `-m` value.
+    if (!this.model) this.emitModel(DEFAULT_GROK_MODEL);
     this.emitEffort(this.effort);
     return Promise.resolve();
   }
@@ -99,6 +102,7 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
 
   protected override onSetModel(model: string): Promise<void> {
     this.model = model;
+    this.modelSelectionRevision += 1;
     this.emitModel(model);
     return Promise.resolve();
   }
@@ -119,12 +123,14 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
     const opts = this.opts;
     if (!binaryPath || !opts) throw new Error('grok-build: session not started');
     let sawEnd = false;
+    const model = this.model;
+    const modelSelectionRevision = this.modelSelectionRevision;
 
     const run = runGrokHeadless({
       binaryPath,
       cwd: opts.cwd,
       prompt: input.prompt,
-      model: this.model,
+      model,
       effort: this.effort,
       resumeSessionId: input.resumeSessionId,
       env: input.env,
@@ -156,6 +162,7 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
         }
         throw new Error(message);
       }
+      if (model && modelSelectionRevision === this.modelSelectionRevision) this.emitModel(model);
       if (!sawEnd) this.emitStop('end_turn');
       this.teardown();
       this.emitStatus('idle');
@@ -206,6 +213,9 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
 }
 
 function effortFromLevel(effort: EffortLevel | undefined): GrokEffort {
+  if (effort === undefined || effort === 'high') return 'high';
   if (effort === 'low' || effort === 'medium') return effort;
-  return 'high';
+  throw new Error(
+    `grok-build: effort '${effort}' is not supported (expected low, medium, or high)`,
+  );
 }

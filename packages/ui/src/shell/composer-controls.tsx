@@ -4,6 +4,7 @@ import {
   Menu,
   MenuGroup,
   MenuGroupLabel,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -25,6 +26,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
+import { EFFORT_OPTIONS_BY_ID } from './agent-efforts';
 import type { ModelOption } from './agent-models';
 import { groupModelsByProvider, resolveModel } from './agent-models';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
@@ -89,12 +91,18 @@ export function ApprovalPolicyMenu({
       <MenuTrigger
         disabled={disabled}
         render={
-          <Button className="text-muted-foreground" size="sm" type="button" variant="ghost" />
+          <Button
+            className="text-muted-foreground @max-[480px]/composer:size-8 @max-[480px]/composer:p-0"
+            size="sm"
+            title={active.name}
+            type="button"
+            variant="ghost"
+          />
         }
       >
         <ShieldIcon />
-        {active.name}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <span className="@max-[480px]/composer:sr-only">{active.name}</span>
+        <ChevronDownIcon className="size-3 text-muted-foreground/72 @max-[480px]/composer:hidden" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
@@ -151,11 +159,12 @@ export function SessionModeChip({
         disabled={disabled}
         onClick={onToggle}
         size="sm"
+        title={mode.name}
         type="button"
         variant="ghost"
       >
         <Icon />
-        {mode.name}
+        <span className="@max-[480px]/composer:sr-only">{mode.name}</span>
       </Button>
     </>
   );
@@ -190,6 +199,8 @@ export function ModelSelectorMenu({
   selectedEffortId,
   onSelectModel,
   onSelectEffort,
+  onResetModel,
+  onResetEffort,
   onSelectProvider,
 }: {
   disabled: boolean;
@@ -204,17 +215,27 @@ export function ModelSelectorMenu({
   selectedEffortId: EffortLevel | null;
   onSelectModel: (model: string) => void;
   onSelectEffort: (effort: EffortLevel) => void;
+  /** Draft-only escape hatch back to the provider/configured model default. */
+  onResetModel?: () => void;
+  /** Draft-only escape hatch back to the provider effort default. */
+  onResetEffort?: () => void;
   onSelectProvider?: (provider: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const selectedModel = resolveModel(modelOptions, selectedModelId);
   const providerGroups = groupModelsByProvider(modelOptions);
-  const selectedEffort = optionById(effortOptions, selectedEffortId);
+  const selectedEffort =
+    optionById(effortOptions, selectedEffortId) ??
+    (selectedEffortId ? EFFORT_OPTIONS_BY_ID[selectedEffortId] : undefined);
   const providers = selectableProviders ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
   const hasModels = Boolean(modelOptions?.length);
+  const modelLabel = selectedModel?.label ?? selectedModelId ?? t('modelDefault');
+  // A draft provider picker must keep the model axis visible even when that provider discovers
+  // its concrete model only after session start (OpenCode/Pi). The live update replaces Default.
+  const showsModel = providers.length > 0 || hasModels || selectedModelId !== null;
 
-  if (!hasEfforts && !hasModels && providers.length === 0) return null;
+  if (!hasEfforts && !showsModel && providers.length === 0) return null;
 
   return (
     <Menu>
@@ -225,15 +246,25 @@ export function ModelSelectorMenu({
         {providers.length > 0 && provider ? (
           <AgentIcon className="text-muted-foreground" kind={provider} variant="ghost" />
         ) : null}
-        {hasModels ? (selectedModel?.label ?? t('modelDefault')) : null}
+        {showsModel ? modelLabel : null}
         {hasEfforts ? (
           <span className="font-normal text-muted-foreground">
-            {selectedEffort?.label ?? t('effortDefault')}
+            <span className="@max-[480px]/composer:sr-only">
+              {selectedEffort?.label ?? t('effortDefault')}
+            </span>
+            <span aria-hidden className="hidden @max-[480px]/composer:inline">
+              {selectedEffort?.shortLabel ?? t('effortShort')}
+            </span>
           </span>
         ) : null}
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
+        {onResetModel ? <MenuItem onClick={onResetModel}>{t('useDefaultModel')}</MenuItem> : null}
+        {onResetEffort ? (
+          <MenuItem onClick={onResetEffort}>{t('useDefaultEffort')}</MenuItem>
+        ) : null}
+        {onResetModel || onResetEffort ? <MenuSeparator /> : null}
         {hasEfforts ? (
           <MenuGroup>
             <MenuGroupLabel>{t('reasoning')}</MenuGroupLabel>
@@ -253,7 +284,7 @@ export function ModelSelectorMenu({
           <>
             {hasEfforts ? <MenuSeparator /> : null}
             <MenuSub>
-              <MenuSubTrigger>{selectedModel?.label ?? t('modelDefault')}</MenuSubTrigger>
+              <MenuSubTrigger>{modelLabel}</MenuSubTrigger>
               <MenuSubPopup className="w-56">
                 <MenuRadioGroup
                   value={selectedModel?.id ?? selectedModelId ?? ''}

@@ -2,10 +2,28 @@
 
 import type { AgentCommand, AgentKind, SessionMode } from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES } from '@linkcode/schema';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isRangeSelection,
+  $isTextNode,
+  UNDO_COMMAND,
+} from 'lexical';
+import { createRef } from 'react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ComposerDirectiveControls, ComposerHandle } from '../composer';
 import { Composer } from '../composer';
+import {
+  composerLexicalEditor,
+  composerText,
+  composerTextbox,
+  pressInComposer,
+  setupComposerTestDOM,
+  typeInComposer,
+} from './composer-test-utils';
 
 function translateKey(key: string): string {
   return key;
@@ -14,6 +32,8 @@ function translateKey(key: string): string {
 vi.mock('use-intl', () => ({
   useTranslations: () => translateKey,
 }));
+
+beforeAll(setupComposerTestDOM);
 
 const COMMANDS: AgentCommand[] = [
   { name: 'compact', description: 'Compact the context' },
@@ -30,6 +50,7 @@ function composer({
   agentKind,
   contextBar,
   disabled = false,
+  handleRef,
   mentionItems,
   onInvokeCommand,
   onMentionQueryChange,
@@ -38,6 +59,7 @@ function composer({
   agentKind?: AgentKind;
   contextBar?: React.ReactNode;
   disabled?: boolean;
+  handleRef?: React.Ref<ComposerHandle>;
   mentionItems?: React.ComponentProps<typeof Composer>['mentionItems'];
   onInvokeCommand?: (name: string, args?: string) => void;
   onMentionQueryChange?: React.ComponentProps<typeof Composer>['onMentionQueryChange'];
@@ -45,17 +67,25 @@ function composer({
 } = {}): React.ReactNode {
   return (
     <Composer
-      agentCapabilities={{ shellCommand: false, slashCommands: true }}
-      agentCommands={COMMANDS}
       agentKind={agentKind}
       attachmentsSupported={agentKind !== undefined}
       availableModes={MODES}
       currentModeId={null}
       contextBar={contextBar}
       disabled={disabled}
+      directiveControls={
+        {
+          shell: { state: 'unsupported' },
+          slash: {
+            commands: COMMANDS,
+            onInvokeCommand: onInvokeCommand ?? vi.fn(),
+            state: 'ready',
+          },
+        } satisfies ComposerDirectiveControls
+      }
+      handleRef={handleRef}
       isRunning={false}
       mentionItems={mentionItems}
-      onInvokeCommand={onInvokeCommand}
       onMentionQueryChange={onMentionQueryChange}
       onModeChange={vi.fn().mockResolvedValue(undefined)}
       onSend={onSend}
@@ -68,6 +98,54 @@ function renderComposer(): void {
   render(composer());
 }
 
+/** State-level backspace: Lexical's `deleteCharacter` needs the non-standard `Selection.modify`
+ * DOM API for collapsed selections, which jsdom lacks — so a key-driven Backspace can never
+ * mutate the draft here. Deletes one char before the caret, or the node right before it. */
+function backspaceInComposer(): void {
+  const editor = composerLexicalEditor();
+  act(() => {
+    editor.update(
+      () => {
+        // Selection may have been dropped by jsdom's partial DOM-selection support between
+        // updates; a real backspace always acts at the caret, which tests keep at the end.
+        const currentSelection = $getSelection();
+        const selection = $isRangeSelection(currentSelection)
+          ? currentSelection
+          : $getRoot().selectEnd();
+        if (!selection.isCollapsed()) return;
+        const { anchor } = selection;
+        if (anchor.type === 'text') {
+          const node = anchor.getNode();
+          if ($isTextNode(node) && anchor.offset > 0) {
+            node.spliceText(anchor.offset - 1, 1, '', true);
+            return;
+          }
+          node.getPreviousSibling()?.remove();
+          return;
+        }
+        const element = anchor.getNode();
+        if ($isElementNode(element)) element.getChildAtIndex(anchor.offset - 1)?.remove();
+      },
+      { discrete: true },
+    );
+  });
+}
+
+function selectComposerText(start: number, end: number): void {
+  act(() => {
+    composerLexicalEditor().update(
+      () => {
+        const paragraph = $getRoot().getFirstChild();
+        if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
+        const text = paragraph.getFirstChildOrThrow();
+        if (!$isTextNode(text)) throw new Error('expected text');
+        text.select(start, end);
+      },
+      { discrete: true },
+    );
+  });
+}
+
 function imageFileWithSize(name: string, size: number): File {
   const file = new File([Uint8Array.from([137, 80, 78, 71])], name, { type: 'image/png' });
   Object.defineProperty(file, 'size', { value: size });
@@ -77,8 +155,44 @@ function imageFileWithSize(name: string, size: number): File {
 afterEach(cleanup);
 
 describe('Composer command menu', () => {
-  it('renders an icon for matched and fallback file mentions', async () => {
-    const user = userEvent.setup();
+  it('exposes autocomplete semantics on the focused editor and preserves modified arrows', async () => {
+    const { container } = render(composer());
+    const editor = composerTextbox();
+    const relay = container.querySelector<HTMLInputElement>('input.sr-only');
+
+    expect(editor.getAttribute('role')).toBe('combobox');
+    expect(editor.getAttribute('aria-expanded')).toBe('false');
+    expect(editor.getAttribute('aria-controls')).toBeNull();
+    expect(relay?.getAttribute('aria-hidden')).toBe('true');
+    expect(relay?.getAttribute('role')).toBe('presentation');
+
+    typeInComposer('/');
+    const listbox = screen.getByRole('listbox');
+    await waitFor(() => {
+      expect(editor.getAttribute('aria-expanded')).toBe('true');
+      expect(editor.getAttribute('aria-controls')).toBe(listbox.id);
+      const active = document.getElementById(editor.getAttribute('aria-activedescendant') ?? '');
+      expect(active?.getAttribute('role')).toBe('option');
+    });
+
+    const initialActive = editor.getAttribute('aria-activedescendant');
+    for (const key of ['ArrowDown', 'ArrowUp']) {
+      for (const modifier of [
+        { altKey: true },
+        { ctrlKey: true },
+        { metaKey: true },
+        { shiftKey: true },
+      ]) {
+        expect(fireEvent.keyDown(editor, { code: key, key, ...modifier })).toBe(true);
+        expect(editor.getAttribute('aria-activedescendant')).toBe(initialActive);
+      }
+    }
+
+    await pressInComposer('ArrowDown');
+    expect(editor.getAttribute('aria-activedescendant')).not.toBe(initialActive);
+  });
+
+  it('renders an icon for matched and fallback file mentions', () => {
     render(
       composer({
         mentionItems: [
@@ -88,7 +202,7 @@ describe('Composer command menu', () => {
       }),
     );
 
-    await user.type(screen.getByRole('textbox'), '@');
+    typeInComposer('@');
 
     expect(screen.getByRole('option', { name: '.envrc' }).querySelector('svg')).not.toBeNull();
     expect(
@@ -99,7 +213,6 @@ describe('Composer command menu', () => {
   it('keeps normal plus actions and modes searchable', async () => {
     const user = userEvent.setup();
     renderComposer();
-    const input = screen.getByRole('textbox');
 
     await user.click(screen.getByRole('button', { name: 'add' }));
     expect(screen.getByText('attach')).toBeDefined();
@@ -108,7 +221,7 @@ describe('Composer command menu', () => {
     expect(screen.getByText('Plan')).toBeDefined();
     expect(screen.getByText('Goal')).toBeDefined();
 
-    await user.type(input, 'pla');
+    typeInComposer('pla');
     expect(screen.getByText('Plan')).toBeDefined();
     expect(screen.queryByText('Goal')).toBeNull();
   });
@@ -122,25 +235,46 @@ describe('Composer command menu', () => {
         onMentionQueryChange,
       }),
     );
-    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
 
     await user.click(screen.getByRole('button', { name: 'add' }));
     await user.click(screen.getByRole('option', { name: 'mentions' }));
 
-    expect(input.value).toBe('@');
+    expect(composerText()).toBe('@');
     expect(onMentionQueryChange).toHaveBeenLastCalledWith('');
     expect(screen.getByRole('option', { name: 'README.md' })).toBeDefined();
+  });
+
+  it('replaces selected text with a single-spaced mention trigger', async () => {
+    const user = userEvent.setup();
+    render(composer());
+    typeInComposer('hello world');
+    selectComposerText(6, 11);
+
+    await user.click(screen.getByRole('button', { name: 'add' }));
+    await user.click(screen.getByRole('option', { name: 'mentions' }));
+
+    expect(composerText()).toBe('hello @');
+  });
+
+  it('replaces selected text through the imperative handle without duplicate spacing', () => {
+    const handleRef = createRef<ComposerHandle>();
+    render(composer({ handleRef }));
+    typeInComposer('hello world');
+    selectComposerText(6, 11);
+
+    act(() => handleRef.current?.insertText('ref'));
+
+    expect(composerText()).toBe('hello ref ');
   });
 
   it('opens the slash command list from the plus menu', async () => {
     const user = userEvent.setup();
     renderComposer();
-    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
 
     await user.click(screen.getByRole('button', { name: 'add' }));
     await user.click(screen.getByRole('option', { name: 'commands' }));
 
-    expect(input.value).toBe('/');
+    expect(composerText()).toBe('/');
     expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
     expect(screen.getByRole('option', { name: RE_REVIEW_COMMAND })).toBeDefined();
   });
@@ -148,10 +282,9 @@ describe('Composer command menu', () => {
   it('gives a typed slash ownership of an open plus search', async () => {
     const user = userEvent.setup();
     renderComposer();
-    const input = screen.getByRole('textbox');
 
     await user.click(screen.getByRole('button', { name: 'add' }));
-    await user.type(input, '/');
+    typeInComposer('/');
 
     expect(screen.getByText('/compact')).toBeDefined();
     expect(screen.getByText('/review')).toBeDefined();
@@ -159,20 +292,22 @@ describe('Composer command menu', () => {
     expect(screen.queryByText('mentions')).toBeNull();
     expect(screen.queryByText('Plan')).toBeNull();
 
-    await user.type(input, ' ');
+    typeInComposer(' ');
     expect(screen.queryByRole('listbox')).toBeNull();
     await waitFor(() => expect(screen.queryByText('/compact')).toBeNull());
-    await user.keyboard('{Backspace}');
+    backspaceInComposer();
     expect(screen.getByText('/compact')).toBeDefined();
     expect(screen.queryByText('attach')).toBeNull();
   });
 
   it('keeps direct slash provider-command-only', async () => {
-    const user = userEvent.setup();
     renderComposer();
-    const input = screen.getByRole('textbox');
+    const input = composerTextbox();
+    act(() => {
+      input.focus();
+    });
 
-    await user.type(input, '/');
+    typeInComposer('/');
 
     expect(screen.getByRole('listbox')).toBeDefined();
     expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
@@ -181,21 +316,21 @@ describe('Composer command menu', () => {
     expect(screen.queryByText('mentions')).toBeNull();
     expect(screen.queryByText('Plan')).toBeNull();
 
-    await user.keyboard('{Escape}');
+    await pressInComposer('Escape');
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
-    expect(screen.getByRole('textbox')).toBe(input);
-    expect(document.activeElement).toBe(input);
+    // jsdom does not reflect contenteditable focus through document.activeElement.
+    expect(screen.getByRole('combobox')).toBe(input);
 
-    await user.keyboard('{Backspace}/');
+    backspaceInComposer();
+    typeInComposer('/');
     expect(screen.getByRole('listbox')).toBeDefined();
     expect(screen.getByRole('option', { name: RE_COMPACT_COMMAND })).toBeDefined();
   });
 
   it('retains command rows only for the visual exit when disabled externally', async () => {
-    const user = userEvent.setup();
     const { rerender } = render(composer());
 
-    await user.type(screen.getByRole('textbox'), '/');
+    typeInComposer('/');
     expect(screen.getByText('/compact')).toBeDefined();
 
     rerender(composer({ disabled: true }));
@@ -205,11 +340,10 @@ describe('Composer command menu', () => {
   });
 
   it('keeps staged attachments out of a command invocation, then sends them with the next prompt', async () => {
-    const user = userEvent.setup();
     const onSend = vi.fn();
     const onInvokeCommand = vi.fn();
     render(composer({ agentKind: 'claude-code', onInvokeCommand, onSend }));
-    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
+    const input = composerTextbox();
 
     fireEvent.paste(input, {
       clipboardData: {
@@ -219,18 +353,23 @@ describe('Composer command menu', () => {
     // The tray shows the preview image only once the file read settles into `ready`.
     await screen.findByRole('img', { name: 'probe.png' });
 
-    await user.type(input, '/compact');
-    await user.keyboard('{Escape}');
+    typeInComposer('/compact');
+    await pressInComposer('Escape');
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
-    await user.keyboard('{Enter}');
+    await pressInComposer('Enter');
 
     expect(onInvokeCommand).toHaveBeenCalledWith('compact', undefined);
     expect(onSend).not.toHaveBeenCalled();
-    expect(input.value).toBe('');
+    expect(composerText()).toBe('');
     expect(screen.getByRole('img', { name: 'probe.png' })).toBeDefined();
 
-    await user.type(input, 'ship it');
-    await user.keyboard('{Enter}');
+    act(() => {
+      composerLexicalEditor().dispatchCommand(UNDO_COMMAND, undefined);
+    });
+    expect(composerText()).toBe('');
+
+    typeInComposer('ship it');
+    await pressInComposer('Enter');
 
     expect(onSend).toHaveBeenCalledExactlyOnceWith([
       { type: 'text', text: 'ship it' },
@@ -241,9 +380,8 @@ describe('Composer command menu', () => {
 
   it('localizes failed attachment controls and keeps a failed-only prompt unsendable', async () => {
     render(composer({ agentKind: 'claude-code' }));
-    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
 
-    fireEvent.paste(input, {
+    fireEvent.paste(composerTextbox(), {
       clipboardData: {
         files: [imageFileWithSize('too-large.png', MAX_ATTACHMENT_BYTES + 1)],
       },
@@ -256,16 +394,15 @@ describe('Composer command menu', () => {
 
   it('does not count failed attachments toward the aggregate size limit', async () => {
     render(composer({ agentKind: 'claude-code' }));
-    const input = screen.getByRole<HTMLTextAreaElement>('textbox');
 
-    fireEvent.paste(input, {
+    fireEvent.paste(composerTextbox(), {
       clipboardData: {
         files: [imageFileWithSize('too-large.png', MAX_ATTACHMENT_BYTES + 1)],
       },
     });
     await screen.findByText('attachmentFailed');
 
-    fireEvent.paste(input, {
+    fireEvent.paste(composerTextbox(), {
       clipboardData: {
         files: [imageFileWithSize('valid.png', MAX_ATTACHMENT_BYTES)],
       },
@@ -274,15 +411,20 @@ describe('Composer command menu', () => {
     expect(await screen.findByRole('img', { name: 'valid.png' })).toBeDefined();
   });
 
-  it('renders new-session context as a separate frame footer outside the form', () => {
+  it('shares one frame footer between directive status and new-session context', () => {
     render(composer({ contextBar: <button type="button">Workspace context</button> }));
+    typeInComposer('/typo ');
 
     const context = screen.getByRole('button', { name: 'Workspace context' });
+    const status = screen.getByRole('status');
     const footer = context.closest('[data-slot="frame-panel-footer"]');
     const frame = context.closest('[data-slot="frame"]');
     expect(footer).not.toBeNull();
     expect(footer?.parentElement).toBe(frame);
+    expect(status.closest('[data-slot="frame-panel-footer"]')).toBe(footer);
+    expect(frame?.querySelectorAll('[data-slot="frame-panel-footer"]')).toHaveLength(1);
     expect(context.closest('form')).toBeNull();
+    expect(status.closest('form')).toBeNull();
     expect(frame?.querySelector('form')).not.toBeNull();
   });
 });

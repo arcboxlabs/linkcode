@@ -19,7 +19,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
 
 /** Adapter that answers any prompt turn with one assistant chunk and a stop. */
@@ -141,7 +141,13 @@ describe('engine loop wiring', () => {
     const h = harness();
     await h.engine.start();
     h.inject({ kind: 'loop.start', clientReqId: 'c1', spec });
-    await h.settle();
+    await vi.waitFor(
+      () => {
+        const latest = h.sent.flatMap((p) => (p.kind === 'loop.changed' ? [p.loop] : [])).at(-1);
+        expect(latest?.status).toBe('succeeded');
+      },
+      { timeout: 5000 },
+    );
 
     const loopId = pick(h.sent, 'loop.started', 'c1').loop.loopId;
     const final = h.sent.flatMap((p) => (p.kind === 'loop.changed' ? [p.loop] : [])).at(-1);
@@ -171,7 +177,13 @@ describe('engine loop wiring', () => {
     const h = harness();
     await h.engine.start();
     h.inject({ kind: 'loop.start', clientReqId: 'c1', spec });
-    await h.settle();
+    await vi.waitFor(
+      () => {
+        const latest = h.sent.flatMap((p) => (p.kind === 'loop.changed' ? [p.loop] : [])).at(-1);
+        expect(latest?.status).toBe('failed');
+      },
+      { timeout: 5000 },
+    );
     const loopId = pick(h.sent, 'loop.started', 'c1').loop.loopId;
 
     h.inject({ kind: 'loop.inspect', clientReqId: 'c2', loopId });

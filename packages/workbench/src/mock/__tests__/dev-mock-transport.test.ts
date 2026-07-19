@@ -48,6 +48,32 @@ describe('dev mock transport', () => {
     const seeded = await client.listSessions();
     expect(seeded.length).toBeGreaterThan(0);
     expect(seeded.some((session) => session.status === 'stopped')).toBe(true);
+    const seededLive = seeded.find(
+      (session) => session.title === 'Wire the workbench to the daemon',
+    );
+    if (!seededLive) throw new Error('seeded live session not found');
+    const seededEvents = collectEvents(client, seededLive.sessionId);
+    await client.listSessions();
+    expect(seededEvents).toEqual([]);
+
+    client.attachSession(seededLive.sessionId);
+    await eventually(() => seededEvents.length === 5);
+    expect(seededEvents.map((event) => event.type)).toEqual([
+      'status',
+      'model-update',
+      'effort-update',
+      'capabilities-update',
+      'available-commands-update',
+    ]);
+    expect(seededEvents[0]).toEqual({ type: 'status', status: 'idle' });
+    expect(seededEvents[3]).toEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: false },
+    });
+    expect(seededEvents[4]).toMatchObject({
+      type: 'available-commands-update',
+      commands: expect.arrayContaining([expect.objectContaining({ name: 'review' })]),
+    });
 
     const sessionId = await client.startSession({
       kind: 'codex',
@@ -95,6 +121,148 @@ describe('dev mock transport', () => {
     expect(await client.getAccounts()).toEqual(accounts);
     // Independent fields: writing accounts preserved the provider config.
     expect(await client.getProviderConfig()).toEqual(providers);
+
+    client.dispose();
+  });
+
+  it('advertises and handles composer directives', async () => {
+    const client = await connectedClient();
+    const sessionId = await client.startSession({
+      kind: 'codex',
+      cwd: '/mock/repo',
+      effort: 'low',
+    });
+    const events = collectEvents(client, sessionId);
+
+    expect(events).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    expect(events.find((event) => event.type === 'available-commands-update')).toEqual({
+      type: 'available-commands-update',
+      commands: [
+        {
+          name: 'compact',
+          description: 'Summarize conversation to prevent hitting the context limit',
+        },
+        {
+          name: 'review',
+          description: 'Review the current changes',
+          argumentHint: '<path>',
+        },
+        {
+          name: 'usage',
+          description: 'Show session usage and rate limits',
+          aliases: ['cost'],
+        },
+      ],
+    });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'low' });
+
+    let mark = events.length;
+    await expect(client.invokeCommand(sessionId, 'review', 'src/app.ts')).resolves.toEqual({
+      ok: true,
+    });
+    expect(events.slice(mark)).toEqual([
+      {
+        type: 'user-message',
+        content: [{ type: 'text', text: '/review src/app.ts' }],
+      },
+      { type: 'status', status: 'running' },
+      {
+        type: 'agent-message-chunk',
+        messageId: expect.any(String),
+        content: { type: 'text', text: 'Mock review complete: no blocking issues found.' },
+      },
+      { type: 'stop', stopReason: 'end_turn' },
+      { type: 'status', status: 'idle' },
+    ]);
+
+    mark = events.length;
+    await expect(client.invokeCommand(sessionId, 'cost')).resolves.toEqual({ ok: true });
+    const usageEvents = events.slice(mark);
+    expect(usageEvents.map((event) => event.type)).toEqual([
+      'user-message',
+      'status',
+      'usage-report',
+      'status',
+    ]);
+    expect(usageEvents[0]).toEqual({
+      type: 'user-message',
+      content: [{ type: 'text', text: '/cost' }],
+    });
+    expect(usageEvents[1]).toEqual({ type: 'status', status: 'running' });
+    expect(usageEvents[3]).toEqual({ type: 'status', status: 'idle' });
+
+    mark = events.length;
+    await expect(client.invokeCommand(sessionId, 'missing')).rejects.toThrow(
+      'Unknown mock slash command: /missing',
+    );
+    expect(events).toHaveLength(mark);
+
+    mark = events.length;
+    await expect(client.runShellCommand(sessionId, 'git status')).resolves.toEqual({ ok: true });
+    expect(events.slice(mark)).toEqual([
+      {
+        type: 'user-message',
+        content: [{ type: 'text', text: '$ git status' }],
+      },
+    ]);
+
+    await client.setModel(sessionId, 'mock-model-small');
+    await client.setEffort(sessionId, 'medium');
+    mark = events.length;
+    client.attachSession(sessionId);
+    await eventually(() => events.length === mark + 5);
+    expect(events.slice(mark)).toEqual([
+      { type: 'status', status: 'idle' },
+      { type: 'model-update', model: 'mock-model-small' },
+      { type: 'effort-update', effort: 'medium' },
+      {
+        type: 'capabilities-update',
+        capabilities: { slashCommands: true, shellCommand: true },
+      },
+      expect.objectContaining({ type: 'available-commands-update' }),
+    ]);
+
+    client.dispose();
+  });
+
+  it('reflects only provider-supported startup model and effort axes', async () => {
+    const client = await connectedClient();
+
+    const piSessionId = await client.startSession({ kind: 'pi', cwd: '/mock/pi' });
+    const piEvents = collectEvents(client, piSessionId);
+    expect(piEvents.some((event) => event.type === 'model-update')).toBe(false);
+    expect(piEvents.some((event) => event.type === 'effort-update')).toBe(false);
+
+    let mark = piEvents.length;
+    client.attachSession(piSessionId);
+    await eventually(() => piEvents.length === mark + 2);
+    expect(piEvents.slice(mark).map((event) => event.type)).toEqual([
+      'status',
+      'capabilities-update',
+    ]);
+
+    const opencodeSessionId = await client.startSession({
+      kind: 'opencode',
+      cwd: '/mock/opencode',
+    });
+    const opencodeEvents = collectEvents(client, opencodeSessionId);
+    expect(opencodeEvents).toContainEqual({
+      type: 'model-update',
+      model: 'opencode/hy3-free',
+    });
+    expect(opencodeEvents.some((event) => event.type === 'effort-update')).toBe(false);
+
+    mark = opencodeEvents.length;
+    client.attachSession(opencodeSessionId);
+    await eventually(() => opencodeEvents.length === mark + 5);
+    expect(opencodeEvents.slice(mark)).toContainEqual({
+      type: 'model-update',
+      model: 'opencode/hy3-free',
+    });
+    expect(opencodeEvents.slice(mark).some((event) => event.type === 'effort-update')).toBe(false);
 
     client.dispose();
   });
@@ -239,6 +407,13 @@ describe('dev mock transport', () => {
     if (!showcase) throw new Error('showcase session not found');
 
     const events = collectEvents(client, showcase.sessionId);
+    client.attachSession(showcase.sessionId);
+    await eventually(() => events.some((event) => event.type === 'capabilities-update'));
+    expect(events).toContainEqual({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: true },
+    });
+    expect(events.some((event) => event.type === 'available-commands-update')).toBe(true);
     const terminalId = await eventually(() => {
       const terminalTool = toolCalls(events).find((tool) =>
         tool.content.some((content) => content.type === 'terminal'),
@@ -497,10 +672,24 @@ describe('dev mock transport', () => {
 
     await expect(client.resumeSession(sessionId)).rejects.toThrow('already running');
 
+    await client.setModel(sessionId, 'mock-resumed-model');
+    await client.setEffort(sessionId, 'xhigh');
     await client.stopSession(sessionId);
     await expect(client.promptText(sessionId, 'hi')).rejects.toThrow('stopped');
 
+    // stopSession clears event subscribers; subscribe again before resuming.
+    const events = collectEvents(client, sessionId);
     expect(await client.resumeSession(sessionId)).toBe(sessionId);
+    expect(events.slice(0, 5)).toEqual([
+      { type: 'status', status: 'idle' },
+      { type: 'model-update', model: 'mock-resumed-model' },
+      { type: 'effort-update', effort: 'xhigh' },
+      {
+        type: 'capabilities-update',
+        capabilities: { slashCommands: true, shellCommand: true },
+      },
+      expect.objectContaining({ type: 'available-commands-update' }),
+    ]);
     await expect(client.promptText(sessionId, 'hi again')).resolves.toEqual({ ok: true });
 
     client.dispose();

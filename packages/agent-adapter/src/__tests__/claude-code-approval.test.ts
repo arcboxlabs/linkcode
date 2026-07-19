@@ -15,6 +15,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     if (!sdkMock.query) throw new Error('query mock not installed');
     return sdkMock.query(opts);
   },
+  resolveSettings: () => Promise.resolve({ effective: {} }),
 }));
 
 // Isolate `settingsDefaultMode` from the developer's real ~/.claude/settings.json: every settings

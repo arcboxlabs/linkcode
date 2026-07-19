@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AgentKind } from './common';
 import {
   AgentHistoryIdSchema,
   AgentKindSchema,
@@ -30,6 +31,12 @@ import { TokenUsageSchema, UsageReportSchema } from './usage';
 
 // ── Upstream: client → host → agent ──────────────────────────────────────────
 
+/** Reasoning-effort levels. low–xhigh switch live; `max` only applies at process startup, so
+ * adapters honor it by restarting the underlying process and resuming in place. `ultracode` is
+ * claude-code's xhigh-plus-standing-orchestration mode, modeled as a level; it switches live. */
+export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
+export type EffortLevel = z.infer<typeof EffortLevelSchema>;
+
 /** Parameters required to start an agent session. */
 export const StartOptionsSchema = z.object({
   kind: AgentKindSchema,
@@ -39,6 +46,8 @@ export const StartOptionsSchema = z.object({
   model: z.string().optional(),
   /** Initial session mode (e.g. plan / accept-edits), if the agent advertises modes. */
   modeId: SessionModeIdSchema.optional(),
+  /** Initial reasoning effort, if the selected adapter supports effort. */
+  effort: EffortLevelSchema.optional(),
   /** MCP servers the agent should connect to. */
   mcpServers: z.array(McpServerSchema).optional(),
   /** Extra directories the agent may access beyond `cwd`. */
@@ -49,12 +58,6 @@ export const StartOptionsSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
 });
 export type StartOptions = z.infer<typeof StartOptionsSchema>;
-
-/** Reasoning-effort levels. low–xhigh switch live; `max` only applies at process startup, so
- * adapters honor it by restarting the underlying process and resuming in place. `ultracode` is
- * claude-code's xhigh-plus-standing-orchestration mode, modeled as a level; it switches live. */
-export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
-export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
 /** A provider slash command the session can invoke, normalized across agents (claude-code
  * `SlashCommand`, opencode `Command`). `name` carries no leading slash. */
@@ -91,6 +94,17 @@ export const AgentCapabilitiesSchema = z.object({
   shellCommand: z.boolean(),
 });
 export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
+
+/** Stable pre-session input capabilities. Live clients still trust each session's
+ * `capabilities-update`; this complete matrix lets drafts and adapters share one source of truth
+ * before that event stream exists. */
+export const AGENT_INPUT_CAPABILITIES = {
+  'claude-code': { slashCommands: true, shellCommand: false },
+  codex: { slashCommands: true, shellCommand: true },
+  opencode: { slashCommands: true, shellCommand: true },
+  pi: { slashCommands: false, shellCommand: false },
+  'grok-build': { slashCommands: false, shellCommand: false },
+} as const satisfies Readonly<Record<AgentKind, AgentCapabilities>>;
 
 /** Input sent up to the agent, normalized into discrete actions. */
 export const AgentInputSchema = z.discriminatedUnion('type', [

@@ -3,7 +3,19 @@ import type { AgentKind, EffortLevel } from '@linkcode/schema';
 export interface EffortOption {
   id: EffortLevel;
   label: string;
+  shortLabel: string;
 }
+
+/** Labels for every normalized effort value, independent of which adapter currently offers it.
+ * A provider-reflected value can therefore remain truthful even when it is not selectable there. */
+export const EFFORT_OPTIONS_BY_ID: Readonly<Record<EffortLevel, EffortOption>> = {
+  low: { id: 'low', label: 'Low', shortLabel: 'L' },
+  medium: { id: 'medium', label: 'Medium', shortLabel: 'M' },
+  high: { id: 'high', label: 'High', shortLabel: 'H' },
+  xhigh: { id: 'xhigh', label: 'xHigh', shortLabel: 'xH' },
+  max: { id: 'max', label: 'Max', shortLabel: 'Max' },
+  ultracode: { id: 'ultracode', label: 'Ultracode', shortLabel: 'UC' },
+};
 
 /**
  * Reasoning-effort choices, keyed by adapter — same discipline as `AGENT_MODEL_OPTIONS`: only
@@ -17,23 +29,19 @@ export interface EffortOption {
  */
 export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = {
   'claude-code': [
-    { id: 'low', label: 'Low' },
-    { id: 'medium', label: 'Medium' },
-    { id: 'high', label: 'High' },
-    { id: 'xhigh', label: 'xHigh' },
-    { id: 'max', label: 'Max' },
-    { id: 'ultracode', label: 'Ultracode' },
+    EFFORT_OPTIONS_BY_ID.low,
+    EFFORT_OPTIONS_BY_ID.medium,
+    EFFORT_OPTIONS_BY_ID.high,
+    EFFORT_OPTIONS_BY_ID.xhigh,
+    EFFORT_OPTIONS_BY_ID.max,
+    EFFORT_OPTIONS_BY_ID.ultracode,
   ],
   codex: [
-    { id: 'low', label: 'Low' },
-    { id: 'medium', label: 'Medium' },
-    { id: 'high', label: 'High' },
-    { id: 'xhigh', label: 'xHigh' },
+    EFFORT_OPTIONS_BY_ID.low,
+    EFFORT_OPTIONS_BY_ID.medium,
+    EFFORT_OPTIONS_BY_ID.high,
+    EFFORT_OPTIONS_BY_ID.xhigh,
   ],
   // Grok Build headless: `--reasoning-effort` high|medium|low (verified 0.2.102).
-  'grok-build': [
-    { id: 'low', label: 'Low' },
-    { id: 'medium', label: 'Medium' },
-    { id: 'high', label: 'High' },
-  ],
+  'grok-build': [EFFORT_OPTIONS_BY_ID.low, EFFORT_OPTIONS_BY_ID.medium, EFFORT_OPTIONS_BY_ID.high],
 };

@@ -69,6 +69,8 @@ export class PiAdapter extends BaseAgentAdapter {
     });
     this.session = session;
     this.unsub = session.subscribe((ev) => this.handleEvent(ev));
+    const runningModel = session.model ?? model;
+    if (runningModel) this.emitModel(`${runningModel.provider}/${runningModel.id}`);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {

@@ -125,8 +125,8 @@ export interface ConversationViewModel {
   /** The reasoning-effort level the session is running at, from `effort-update`. `null` until the
    * adapter reports it — same placeholder rule as `currentModel`. */
   currentEffort: EffortLevel | null;
-  /** Slash-command catalog from `available-commands-update` (full-replace). `null` means the agent
-   * advertised none — the composer then offers no command menu. */
+  /** Slash-command catalog from `available-commands-update` (full-replace). `null` means no
+   * authoritative catalog has arrived yet; `[]` means the adapter advertised an empty catalog. */
   availableCommands: AgentCommand[] | null;
   /** Model catalog from `available-models-update` (full-replace). `null` means the agent
    * advertised none — the composer then falls back to its static per-kind table. */

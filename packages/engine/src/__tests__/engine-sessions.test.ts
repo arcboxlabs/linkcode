@@ -215,6 +215,18 @@ function listedSessions(sent: WirePayload[], replyTo: string) {
 }
 
 describe('engine session persistence', () => {
+  it('forwards initial effort from session.start to the adapter', async () => {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo', effort: 'high' },
+    });
+
+    expect(h.adapters[0].startedWith).toMatchObject({ effort: 'high' });
+  });
+
   it('persists created sessions with title and session-ref, and lists them cold after a restart', async () => {
     const store = new InMemorySessionStore();
     const first = harness(store);
@@ -561,6 +573,17 @@ describe('engine attach replay', () => {
     ]);
   });
 
+  it('replays the latest reflected effort to an attaching client', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'effort-update', effort: 'medium' });
+    adapter.emit({ type: 'effort-update', effort: 'high' });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const efforts = eventsAfter(sent, mark).filter((event) => event.type === 'effort-update');
+    expect(efforts).toEqual([{ type: 'effort-update', effort: 'high' }]);
+  });
+
   it('replays the latest adapter capabilities to an attaching client', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({
@@ -622,6 +645,25 @@ describe('engine attach replay', () => {
     });
     const echoes = eventsAfter(sent, mark).filter((e) => e.type === 'user-message');
     expect(echoes).toEqual([{ type: 'user-message', content: [{ type: 'text', text: '/cost' }] }]);
+    expect(sent.slice(mark).some((payload) => payload.kind === 'request.failed')).toBe(false);
+  });
+
+  it('accepts a supported command while the initial catalog is still loading', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({
+      type: 'capabilities-update',
+      capabilities: { slashCommands: true, shellCommand: false },
+    });
+    const mark = sent.length;
+
+    await inject({
+      kind: 'agent.input',
+      clientReqId: 'r-command-before-catalog',
+      sessionId,
+      input: { type: 'command', name: 'compact' },
+    });
+
+    expect(adapter.sentInputs).toContainEqual({ type: 'command', name: 'compact' });
     expect(sent.slice(mark).some((payload) => payload.kind === 'request.failed')).toBe(false);
   });
 
