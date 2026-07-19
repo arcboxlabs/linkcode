@@ -6,6 +6,7 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
+import { useTerminalTabsStore } from './tabs-store';
 import { createTransportTerminalSession } from './transport-session';
 
 /**
@@ -64,20 +65,27 @@ export function AttachedTerminalPanel({
   useAbortableEffect(
     (signal) => {
       if (!primary) return;
-      let attached = false;
       void client
         .attachTerminal(terminalId)
         .then((result) => {
-          attached = true;
-          if (signal.aborted) client.detachTerminal(terminalId);
-          else setAttachment({ terminalId, result });
+          if (!signal.aborted) setAttachment({ terminalId, result });
         })
         .catch(() => {
           if (!signal.aborted) setAttachment({ terminalId, failed: true });
         });
-      return () => {
-        if (attached) client.detachTerminal(terminalId);
-      };
+      // Balance the retain immediately. If attach is still pending, client-core observes the
+      // zero retain count when the reply arrives and sends the terminal.detach frame then.
+      return () => client.detachTerminal(terminalId);
+    },
+    [client, terminalId, primary],
+  );
+
+  useAbortableEffect(
+    (signal) => {
+      if (!primary) return;
+      return client.subscribeTerminalExit(terminalId, () => {
+        if (!signal.aborted) useTerminalTabsStore.getState().closeTab(`attach:${terminalId}`);
+      });
     },
     [client, terminalId, primary],
   );

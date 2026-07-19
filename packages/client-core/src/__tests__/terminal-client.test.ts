@@ -348,6 +348,50 @@ describe('LinkCodeClient terminal attachments', () => {
     serverTransport.close();
   });
 
+  it('releases an attachment whose final viewer detaches while attach is pending', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const received: WirePayload[] = [];
+    let replyAttached = noop;
+    serverTransport.onMessage((message) => {
+      const p = message.payload;
+      received.push(p);
+      if (p.kind !== 'terminal.attach') return;
+      replyAttached = () => {
+        serverTransport.send(
+          createWireMessage({
+            kind: 'terminal.attached',
+            replyTo: p.clientReqId,
+            terminal: metadata(p.terminalId, null),
+            replay: [],
+            cutoffSeq: 0,
+            truncated: false,
+          }),
+        );
+      };
+    });
+
+    const attached = client.attachTerminal('term-pending');
+    await flushMicrotasks();
+    const attachFrame = received.find((payload) => payload.kind === 'terminal.attach');
+    if (attachFrame?.kind !== 'terminal.attach') throw new Error('no terminal.attach frame');
+
+    client.detachTerminal('term-pending');
+    replyAttached();
+    await attached;
+    await flushMicrotasks();
+
+    expect(received.filter((payload) => payload.kind === 'terminal.detach')).toEqual([
+      {
+        kind: 'terminal.detach',
+        terminalId: 'term-pending',
+        attachmentId: attachFrame.attachmentId,
+        attachmentSecret: attachFrame.attachmentSecret,
+      },
+    ]);
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('replays an exit that arrives immediately after a tombstone attachment', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();
     serverTransport.onMessage((message) => {

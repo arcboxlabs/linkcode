@@ -7,6 +7,7 @@ interface FakeClient extends TerminalSessionClient {
   opened: string[];
   closed: string[];
   detached: string[];
+  detachAttempts: string[];
   attachments: Set<string>;
   controlled: Set<string>;
   exitCbs: Map<string, (code: number | null) => void>;
@@ -18,6 +19,7 @@ function createFakeClient(): FakeClient {
   const opened: string[] = [];
   const closed: string[] = [];
   const detached: string[] = [];
+  const detachAttempts: string[] = [];
   const exitCbs = new Map<string, (code: number | null) => void>();
   const controllerCbs = new Map<string, (canControl: boolean) => void>();
   const attached = new Set<string>();
@@ -27,6 +29,7 @@ function createFakeClient(): FakeClient {
     opened,
     closed,
     detached,
+    detachAttempts,
     attachments: attached,
     controlled,
     exitCbs,
@@ -40,6 +43,7 @@ function createFakeClient(): FakeClient {
       return Promise.resolve(id);
     },
     detachTerminal(terminalId) {
+      detachAttempts.push(terminalId);
       if (!attached.delete(terminalId)) return;
       detached.push(terminalId);
       controlled.delete(terminalId);
@@ -202,6 +206,119 @@ describe('terminal session registry', () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
 
+  it('notifies the tab owner once when the terminal exits normally', async () => {
+    const client = createFakeClient();
+    const onExit = vi.fn();
+    const lease = acquireTerminalSession(client, 'tab-1', dims, onExit);
+    await vi.advanceTimersByTimeAsync(0);
+
+    client.exitCbs.get('term-1')?.(0);
+    client.exitCbs.get('term-1')?.(0);
+
+    expect(onExit).toHaveBeenCalledOnce();
+    expect(onExit).toHaveBeenCalledWith(0);
+    lease.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('notifies the tab owner when the terminal is killed by a signal', async () => {
+    const client = createFakeClient();
+    const onExit = vi.fn();
+    const lease = acquireTerminalSession(client, 'tab-1', dims, onExit);
+    await vi.advanceTimersByTimeAsync(0);
+
+    client.exitCbs.get('term-1')?.(null);
+
+    expect(onExit).toHaveBeenCalledOnce();
+    expect(onExit).toHaveBeenCalledWith(null);
+    lease.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('does not notify after the user releases the tab before a late exit', async () => {
+    const client = createFakeClient();
+    const onExit = vi.fn();
+    const lease = acquireTerminalSession(client, 'tab-1', dims, onExit);
+    await vi.advanceTimersByTimeAsync(0);
+    const lateExit = client.exitCbs.get('term-1');
+
+    lease.release();
+    lateExit?.(0);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(onExit).not.toHaveBeenCalled();
+    expect(client.closed).toEqual([]);
+    expect(client.detached).toEqual([]);
+    expect(client.detachAttempts).toEqual(['term-1']);
+  });
+
+  it('closes only the tab whose terminal exits', async () => {
+    const client = createFakeClient();
+    const onFirstExit = vi.fn();
+    const onSecondExit = vi.fn();
+    const first = acquireTerminalSession(client, 'tab-1', dims, onFirstExit);
+    const second = acquireTerminalSession(client, 'tab-2', dims, onSecondExit);
+    await vi.advanceTimersByTimeAsync(0);
+
+    client.exitCbs.get('term-1')?.(0);
+
+    expect(onFirstExit).toHaveBeenCalledOnce();
+    expect(onSecondExit).not.toHaveBeenCalled();
+    expect(second.getSnapshot().exit).toBeNull();
+    first.release();
+    second.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('notifies only once while a tab lease is handed between panel mounts', async () => {
+    const client = createFakeClient();
+    const firstOwner = vi.fn();
+    const secondOwner = vi.fn();
+    const first = acquireTerminalSession(client, 'tab-1', dims, firstOwner);
+    await vi.advanceTimersByTimeAsync(0);
+    const second = acquireTerminalSession(client, 'tab-1', dims, secondOwner);
+
+    client.exitCbs.get('term-1')?.(0);
+
+    expect(firstOwner.mock.calls.length + secondOwner.mock.calls.length).toBe(1);
+    first.release();
+    second.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('delivers an exit that arrives between releasing and reacquiring a handed-off tab', async () => {
+    const client = createFakeClient();
+    const staleOwner = vi.fn();
+    const nextOwner = vi.fn();
+    const first = acquireTerminalSession(client, 'tab-1', dims, staleOwner);
+    await vi.advanceTimersByTimeAsync(0);
+
+    first.release();
+    client.exitCbs.get('term-1')?.(0);
+    const second = acquireTerminalSession(client, 'tab-1', dims, nextOwner);
+
+    expect(staleOwner).not.toHaveBeenCalled();
+    expect(nextOwner).toHaveBeenCalledOnce();
+    expect(nextOwner).toHaveBeenCalledWith(0);
+    second.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  it('keeps equal callbacks registered independently for concurrent leases', async () => {
+    const client = createFakeClient();
+    const onExit = vi.fn();
+    const first = acquireTerminalSession(client, 'tab-1', dims, onExit);
+    await vi.advanceTimersByTimeAsync(0);
+    const second = acquireTerminalSession(client, 'tab-1', dims, onExit);
+
+    first.release();
+    client.exitCbs.get('term-1')?.(0);
+
+    expect(onExit).toHaveBeenCalledOnce();
+    second.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
   it('preserves a signal exit as distinct from a running terminal', async () => {
     const client = createFakeClient();
     const lease = acquireTerminalSession(client, 'tab-1', dims);
@@ -217,12 +334,13 @@ describe('terminal session registry', () => {
 
   it('preserves an exit delivered synchronously while the terminal opens', async () => {
     const client = createFakeClient();
+    const onExit = vi.fn();
     client.subscribeTerminalExit = (_terminalId, cb) => {
       cb(7);
       return noop;
     };
 
-    const lease = acquireTerminalSession(client, 'tab-1', dims);
+    const lease = acquireTerminalSession(client, 'tab-1', dims, onExit);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(lease.getSnapshot()).toMatchObject({
@@ -231,6 +349,8 @@ describe('terminal session registry', () => {
       exit: { code: 7 },
       canControl: false,
     });
+    expect(onExit).toHaveBeenCalledOnce();
+    expect(onExit).toHaveBeenCalledWith(7);
     lease.release();
     await vi.advanceTimersByTimeAsync(1000);
   });

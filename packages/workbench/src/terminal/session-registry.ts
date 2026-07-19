@@ -43,6 +43,8 @@ interface RegistryEntry {
   unsubController: (() => void) | null;
   snapshot: TerminalSnapshot;
   listeners: Set<() => void>;
+  exitListeners: Map<symbol, (exitCode: number | null) => void>;
+  exitDelivered: boolean;
 }
 
 /**
@@ -79,6 +81,15 @@ function notify(entry: RegistryEntry): void {
   for (const listener of entry.listeners) listener();
 }
 
+function deliverExit(entry: RegistryEntry): void {
+  if (entry.exitDelivered || entry.snapshot.exit === null) return;
+  let onExit: ((exitCode: number | null) => void) | undefined;
+  for (const listener of entry.exitListeners.values()) onExit = listener;
+  if (!onExit) return;
+  entry.exitDelivered = true;
+  onExit(entry.snapshot.exit.code);
+}
+
 function startOpen(
   client: TerminalSessionClient,
   registry: Map<string, RegistryEntry>,
@@ -87,6 +98,7 @@ function startOpen(
   opts: TerminalOpenOptions,
 ): void {
   entry.attempt += 1;
+  entry.exitDelivered = false;
   const attempt = entry.attempt;
   const isCurrent = (): boolean => registry.get(key) === entry && entry.attempt === attempt;
 
@@ -136,6 +148,7 @@ function startOpen(
           exit: { code: exitCode },
           canControl: false,
         };
+        deliverExit(entry);
         notify(entry);
       });
       notify(entry);
@@ -177,6 +190,7 @@ export function acquireTerminalSession(
   client: TerminalSessionClient,
   key: string,
   opts: TerminalOpenOptions,
+  onExit?: (exitCode: number | null) => void,
 ): TerminalSessionLease {
   const registry = getRegistry(client);
   let entry = registry.get(key);
@@ -197,6 +211,8 @@ export function acquireTerminalSession(
       unsubController: null,
       snapshot: OPENING_SNAPSHOT,
       listeners: new Set(),
+      exitListeners: new Map(),
+      exitDelivered: false,
     };
     registry.set(key, created);
     entry = created;
@@ -205,6 +221,11 @@ export function acquireTerminalSession(
 
   const leased = entry;
   let released = false;
+  const exitListenerId = Symbol('terminal-exit-listener');
+  if (onExit) {
+    leased.exitListeners.set(exitListenerId, onExit);
+    deliverExit(leased);
+  }
 
   return {
     getSnapshot: () => leased.snapshot,
@@ -222,6 +243,7 @@ export function acquireTerminalSession(
     release() {
       if (released) return;
       released = true;
+      leased.exitListeners.delete(exitListenerId);
       leased.refCount -= 1;
       if (leased.refCount > 0) return;
       leased.closeTimer = setTimeout(() => {
