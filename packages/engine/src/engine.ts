@@ -4,7 +4,6 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
-  AgentHistoryId,
   AgentKind,
   AgentModelOption,
   AgentRuntimes,
@@ -50,6 +49,7 @@ import { ScriptService } from './scripts/script-service';
 import { assertAttachmentContentAllowed } from './session/attachment-guard';
 import { HistoryService } from './session/history-service';
 import { InteractiveRequests } from './session/interactive-requests';
+import { SessionRecordRegistry } from './session/session-record-registry';
 import type { SessionStore } from './session/session-store';
 import { InMemorySessionStore } from './session/session-store';
 import type { PtyBackend } from './terminal/pty-backend';
@@ -127,14 +127,12 @@ export interface EngineDeps {
  */
 export class Engine {
   private readonly sessions = new Map<SessionId, Session>();
-  /** Persisted session identities (live and cold), loaded from the store and kept in sync. */
-  private readonly records = new Map<SessionId, SessionRecord>();
+  private readonly records: SessionRecordRegistry;
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
   private readonly workspaces: WorkspaceRegistry;
   private readonly factory: AdapterFactory;
   private readonly providerStore: ProviderConfigStore;
-  private readonly sessionStore: SessionStore;
   private readonly git: GitService;
   private readonly fileSuggest: FileSuggestService;
   private readonly scripts?: ScriptService;
@@ -153,7 +151,7 @@ export class Engine {
   ) {
     this.factory = deps.factory ?? createAdapter;
     this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
-    this.sessionStore = deps.sessionStore ?? new InMemorySessionStore();
+    this.records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
     this.git = deps.git ?? new GitService();
     this.fileSuggest = deps.fileSuggest ?? new FileSuggestService();
     this.history = new HistoryService(this.factory);
@@ -204,9 +202,7 @@ export class Engine {
   }
 
   async start(): Promise<void> {
-    for (const record of await this.sessionStore.load()) {
-      this.records.set(record.sessionId, record);
-    }
+    await this.records.load();
     await this.workspaces.start();
     // After the session records are loaded (the schedule orphan-sweep reads them) and before the
     // transport connects, so the first tick can't race an unconnected transport.
@@ -315,7 +311,7 @@ export class Engine {
                 event: { type: 'user-message', content: p.input.content },
               }),
             );
-            this.maybeSetTitle(p.sessionId, p.input.content);
+            this.records.setTitleFromContent(p.sessionId, p.input.content);
           }
           // Echo command/shell inputs as the text the user typed so the transcript shows the
           // invocation; they never drive the title.
@@ -392,7 +388,7 @@ export class Engine {
           } finally {
             this.sessions.delete(p.sessionId);
             this.terminals?.killBySession(p.sessionId);
-            this.sealCurrentRun(p.sessionId);
+            this.records.sealCurrentRun(p.sessionId);
           }
           this.sendSuccess(p.clientReqId);
         });
@@ -409,7 +405,7 @@ export class Engine {
             try {
               await session.adapter.stop();
             } catch (error) {
-              this.sealCurrentRun(p.sessionId);
+              this.records.sealCurrentRun(p.sessionId);
               throw error;
             } finally {
               this.sessions.delete(p.sessionId);
@@ -419,18 +415,17 @@ export class Engine {
           // Persisted delete first: if the store throws, the record stays listed (now cold) and the
           // client's retry still works — dropping it from memory first would desync the two.
           try {
-            await this.sessionStore.delete(p.sessionId);
+            await this.records.delete(p.sessionId);
           } catch (error) {
-            if (session) this.sealCurrentRun(p.sessionId);
+            if (session) this.records.sealCurrentRun(p.sessionId);
             throw error;
           }
-          this.records.delete(p.sessionId);
           this.sendSuccess(p.clientReqId);
         });
         break;
       }
       case 'session.list': {
-        const sessions = Array.from(this.records.values(), (record) => this.toSessionInfo(record));
+        const sessions = this.records.list((sessionId) => this.sessions.get(sessionId)?.status);
         this.transport.send(
           createWireMessage({ kind: 'session.listed', replyTo: p.clientReqId, sessions }),
         );
@@ -460,8 +455,7 @@ export class Engine {
             updatedAt: now,
             runs: [],
           };
-          this.records.set(record.sessionId, record);
-          await this.sessionStore.save(record);
+          await this.records.importRecord(record);
           this.transport.send(
             createWireMessage({ kind: 'session.imported', replyTo: p.clientReqId, record }),
           );
@@ -1029,10 +1023,10 @@ export class Engine {
             if (event.status === 'idle' || event.status === 'stopped') {
               this.broadcastSessionEvents(sessionId, session.interactions.cancelOpen());
             }
-            if (event.status === 'stopped') this.sealCurrentRun(sessionId);
+            if (event.status === 'stopped') this.records.sealCurrentRun(sessionId);
             break;
           case 'session-ref':
-            this.bindSessionRef(sessionId, event.historyId);
+            this.records.bindHistoryId(sessionId, event.historyId);
             break;
           case 'approval-policy-update':
             session.approvalPolicy = event.state;
@@ -1081,10 +1075,7 @@ export class Engine {
       }
     });
     this.sessions.set(sessionId, session);
-    this.records.set(sessionId, record);
-    // persistRecord() never throws (see its doc) — a disk failure here logs and moves on rather
-    // than failing this request or leaving the session registered without a caller-visible error.
-    this.persistRecord(record);
+    this.records.register(record);
     // A start can land between listener bind and the boot probe settling (CODE-225); wait, or
     // `resolveBinary` misses a detected-only install and a packaged host fails the spawn. The
     // wait sits AFTER registration so a session.delete arriving mid-wait finds the session and
@@ -1099,7 +1090,7 @@ export class Engine {
     } catch (err) {
       session.unsub();
       this.sessions.delete(sessionId);
-      this.sealCurrentRun(sessionId);
+      this.records.sealCurrentRun(sessionId);
       await adapter.stop().catch(noop);
       throw err;
     }
@@ -1196,7 +1187,7 @@ export class Engine {
         event: { type: 'user-message', content },
       }),
     );
-    this.maybeSetTitle(sessionId, content);
+    this.records.setTitleFromContent(sessionId, content);
     return watchTurn(
       session.adapter,
       () => session.adapter.send({ type: 'prompt', content }),
@@ -1217,7 +1208,7 @@ export class Engine {
     await session.adapter.stop().catch(noop);
     this.sessions.delete(sessionId);
     this.terminals?.killBySession(sessionId);
-    this.sealCurrentRun(sessionId);
+    this.records.sealCurrentRun(sessionId);
   }
 
   /**
@@ -1235,7 +1226,7 @@ export class Engine {
     const record = nullthrow(this.records.get(sessionId), `Unknown session: ${sessionId}`);
     // A never-prompted session has no provider transcript to resume from (the adapter only mints one
     // on the first prompt); waking it is a fresh start under the same Link Code id.
-    const historyId = latestHistoryId(record);
+    const historyId = this.records.historyId(sessionId);
     const startOpts = await this.resolveStartOptions({ kind: record.kind, cwd: record.cwd });
     record.runs.push({ historyId, startedAt: Date.now() });
     await this.startLiveSession(replyTo, record, (adapter) =>
@@ -1301,64 +1292,6 @@ export class Engine {
     );
   }
 
-  private toSessionInfo(record: SessionRecord): SessionInfo {
-    return {
-      sessionId: record.sessionId,
-      kind: record.kind,
-      cwd: record.cwd,
-      status: this.sessions.get(record.sessionId)?.status ?? 'stopped',
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-      title: record.title,
-      origin: record.origin,
-      createdVia: record.createdVia,
-      automation: record.automation,
-      historyId: latestHistoryId(record),
-    };
-  }
-
-  /** Record the provider-local id of the session's current (last) run. */
-  private bindSessionRef(sessionId: SessionId, historyId: AgentHistoryId): void {
-    const record = this.records.get(sessionId);
-    const run = record?.runs.at(-1);
-    if (!record || !run || run.historyId === historyId) return;
-    run.historyId = historyId;
-    this.persistRecord(record);
-  }
-
-  private sealCurrentRun(sessionId: SessionId): void {
-    const record = this.records.get(sessionId);
-    const run = record?.runs.at(-1);
-    if (!record || !run || run.endedAt !== undefined) return;
-    run.endedAt = Date.now();
-    this.persistRecord(record);
-  }
-
-  private maybeSetTitle(sessionId: SessionId, content: ContentBlock[]): void {
-    const record = this.records.get(sessionId);
-    if (!record || record.title !== undefined) return;
-    const title = titleFromContent(content);
-    if (title === undefined) return;
-    record.title = title;
-    this.persistRecord(record);
-  }
-
-  /** Persist best-effort: `this.records` is the source of truth for a running daemon, so a save
-   * failure (sync throw or async rejection) is logged and must never fail the triggering request. */
-  private persistRecord(record: SessionRecord): void {
-    record.updatedAt = Date.now();
-    void this.persistRecordSafely(record);
-  }
-
-  /** `await` inside `try` catches both a sync throw and an async rejection, so this never rejects. */
-  private async persistRecordSafely(record: SessionRecord): Promise<void> {
-    try {
-      await this.sessionStore.save(record);
-    } catch (err) {
-      console.error(`Failed to persist session record ${record.sessionId}:`, err);
-    }
-  }
-
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
     try {
       await fn();
@@ -1377,15 +1310,6 @@ export class Engine {
   }
 }
 
-/** The provider-local id to resume from: the latest run that has one, else the imported origin. */
-function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
-  for (let index = record.runs.length - 1; index >= 0; index -= 1) {
-    const historyId = record.runs[index].historyId;
-    if (historyId !== undefined) return historyId;
-  }
-  return record.origin.type === 'imported' ? record.origin.historyId : undefined;
-}
-
 /** The notification-worthy subset of adapter events. `stop` marks the turn boundary (`idle` also
  * fires at session start, so it can't be the trigger); an ask is the only "awaiting input" signal
  * any adapter emits. */
@@ -1401,18 +1325,4 @@ function notificationReason(event: AgentEvent): SessionNotificationReason | unde
     default:
       return undefined;
   }
-}
-
-const SESSION_TITLE_MAX_LENGTH = 80;
-
-function titleFromContent(content: ContentBlock[]): string | undefined {
-  for (const block of content) {
-    if (block.type !== 'text') continue;
-    const text = block.text.trim().replaceAll(/\s+/g, ' ');
-    if (text.length === 0) continue;
-    return text.length > SESSION_TITLE_MAX_LENGTH
-      ? `${text.slice(0, SESSION_TITLE_MAX_LENGTH - 1)}…`
-      : text;
-  }
-  return undefined;
 }
