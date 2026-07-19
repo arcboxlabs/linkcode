@@ -288,7 +288,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     expect(events).toContainEqual({ type: 'model-update', model: 'openai/gpt-5.6-sol' });
   });
 
-  it('treats the stream ending after the turn already went idle as expected, not an error', async () => {
+  it('resubscribes after an idle stream close so the next turn still receives events', async () => {
     const { adapter, events } = await makeAdapter();
 
     await adapter.send({ type: 'prompt', content: [] });
@@ -301,12 +301,42 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     });
     events.length = 0;
 
-    // opencode closing the SSE stream right after the turn ended is the normal fallout of a
-    // completed round-trip, not a failure — there's nothing left to interrupt.
+    // opencode closing the SSE stream right after the turn ended is normal fallout. The adapter
+    // replaces it rather than silently leaving the next prompt without lifecycle events.
     client.stream.end();
+    await vi.waitFor(() => {
+      expect(client.event.subscribe).toHaveBeenCalledTimes(2);
+    });
+    expect(errors(events)).toHaveLength(0);
 
-    await drained();
-    expect(events).toHaveLength(0);
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+    pushBusy();
+    client.stream.push({
+      id: 'e-second-turn',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          id: 'p-second-turn',
+          sessionID: 'sess-1',
+          messageID: 'msg-second-turn',
+          type: 'text',
+          text: 'still connected',
+        },
+      },
+    });
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events).map((event) => event.stopReason)).toEqual(['end_turn']);
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'agent-message-chunk',
+        content: { type: 'text', text: 'still connected' },
+      }),
+    );
   });
 
   it('treats the stream closing while a turn is still active as a fatal error and stops the session', async () => {
@@ -346,8 +376,20 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     // that's the abort's own fallout, not an unexpected disconnect.
     client.stream.end();
 
-    await drained();
-    expect(events).toHaveLength(0);
+    await vi.waitFor(() => {
+      expect(stops(events).map((event) => event.stopReason)).toEqual(['cancelled']);
+    });
+    expect(errors(events)).toHaveLength(0);
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+
+    // The local settle clears the cancellation latch even if no abort error/idle event survived the
+    // closed stream, so the replacement subscription can carry another turn.
+    await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events).map((event) => event.stopReason)).toEqual(['cancelled', 'end_turn']);
+    });
   });
 
   it('does not latch the cancel suppression when abort() itself rejects, so a later stream failure still surfaces', async () => {
@@ -407,13 +449,15 @@ describe('OpenCodeAdapter.consumeEvents', () => {
 
   it('on stop(): the stream ending afterwards is the expected shutdown, not an error', async () => {
     const { adapter, events } = await makeAdapter();
+    const subscriptions = client.event.subscribe.mock.calls.length;
     await adapter.stop();
     events.length = 0;
 
     // stop() already closed the server; the stream ending is the normal fallout, not a failure.
     client.stream.end();
-    await drained();
+    await wait(150);
     expect(events).toHaveLength(0);
+    expect(client.event.subscribe).toHaveBeenCalledTimes(subscriptions);
   });
 });
 
