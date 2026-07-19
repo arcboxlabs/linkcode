@@ -20,6 +20,7 @@ import type { Event, FilePartInput, Part, TextPartInput } from '@opencode-ai/sdk
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
 import { falseFn } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -51,6 +52,8 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
  * in ~30ms). Past the cap the local cancel proceeds while the abort settles server-side. */
 const ABORT_WAIT_MS = 2000;
 const ABORT_TIMED_OUT = Symbol('opencode-abort-timeout');
+/** Prevent a server that repeatedly closes an empty SSE response from spinning a hot subscribe loop. */
+const EVENT_RESUBSCRIBE_DELAY_MS = 100;
 
 /** Most `session.error` variants carry `data.message`; fall back to the variant name. */
 function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): string {
@@ -665,40 +668,48 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return this.opts?.model ? parseModelRef(this.opts.model) : undefined;
   }
 
-  /** Runs for the whole session, dispatching every SSE event from the single long-lived
-   * `event.subscribe()` stream; returns only when that stream ends. Not every ending is a failure —
-   * a turn finishing normally (`session.idle`) or our own cancel closes the stream too. Only a
-   * close while a turn is active with no cancel pending, or a non-cancel iterator throw, is a
-   * real, unexpected failure. */
+  /** Runs for the whole session, dispatching every SSE event and replacing a stream the server
+   * cleanly closes while idle/cancelling. A close while a turn is active with no cancel pending,
+   * or any non-cancel iterator throw, remains fatal: completion events may have been lost. */
   private async consumeEvents(): Promise<void> {
     if (!this.client) return;
-    let caught: unknown;
-    try {
-      // The directory scope is load-bearing: a bare subscribe() carries only the server-cwd
-      // instance's bus and silently misses every session event (verified live on 1.17.11).
-      const sub = await this.client.event.subscribe({ directory: this.directory });
-      for await (const ev of sub.stream) {
-        if (this.stopped) break;
-        this.handleEvent(ev);
+    let emptyCloses = 0;
+    while (!this.stopped) {
+      let caught: unknown;
+      let sawEvent = false;
+      try {
+        // The directory scope is load-bearing: a bare subscribe() carries only the server-cwd
+        // instance's bus and silently misses every session event (verified live on 1.17.11).
+        const sub = await this.client.event.subscribe({ directory: this.directory });
+        for await (const ev of sub.stream) {
+          if (this.stopped) break;
+          sawEvent = true;
+          this.handleEvent(ev);
+        }
+      } catch (err) {
+        caught = err;
       }
-    } catch (err) {
-      caught = err;
+      if (this.stopped) return;
+      const fatal = !this.cancelling && (caught !== undefined || this.turnActive);
+      if (fatal) {
+        this.teardown();
+        this.emitError(
+          caught
+            ? (extractErrorMessage(caught) ?? 'opencode: event stream failed')
+            : 'opencode: event stream ended unexpectedly',
+          undefined,
+          false,
+        );
+        this.emitStatus('stopped');
+        return;
+      }
+      if (this.cancelling) this.settleTurn(true);
+      // A clean close after idle/cancel interrupted nothing. Subscribe again so a later turn keeps
+      // receiving lifecycle events immediately. Back off only after an empty replacement also
+      // closes, preventing a hot loop without adding a gap after a healthy turn's stream.
+      emptyCloses = sawEvent ? 0 : emptyCloses + 1;
+      if (emptyCloses > 0) await wait(EVENT_RESUBSCRIBE_DELAY_MS);
     }
-    if (this.stopped || this.cancelling) return;
-    // Clean close with no turn in flight (already idle, or never started one) is expected —
-    // nothing was interrupted.
-    if (!caught && !this.turnActive) return;
-    // Nothing resubscribes today (CODE-9), so this session can no longer receive events. Surface
-    // it as fatal — `stopped`, not `idle`, so the UI disables the composer.
-    this.teardown();
-    this.emitError(
-      caught
-        ? (extractErrorMessage(caught) ?? 'opencode: event stream failed')
-        : 'opencode: event stream ended unexpectedly',
-      undefined,
-      false,
-    );
-    this.emitStatus('stopped');
   }
 
   /** Each event is handled in its own try/catch so one malformed event (e.g. an unexpected

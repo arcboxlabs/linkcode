@@ -78,8 +78,14 @@ class FakeQuery {
 
 const queries: FakeQuery[] = [];
 let nextQuerySetup: ((q: FakeQuery) => void) | null = null;
+let nextQueryError: Error | null = null;
 
 sdkMock.query = (opts) => {
+  if (nextQueryError) {
+    const error = nextQueryError;
+    nextQueryError = null;
+    throw error;
+  }
   const q = new FakeQuery(opts as QueryInput);
   queries.push(q);
   nextQuerySetup?.(q);
@@ -91,6 +97,7 @@ afterEach(() => {
   queries.length = 0;
   nextQuerySetup = null;
   sdkMock.settings = {};
+  nextQueryError = null;
 });
 
 async function makeAdapter(effort?: EffortLevel): Promise<{
@@ -480,5 +487,77 @@ describe('ClaudeCodeAdapter auth failure', () => {
     // The swallowed turn must not emit a usage or a phantom stop.
     expect(events.some((e) => e.type === 'stop')).toBe(false);
     expect(events.some((e) => e.type === 'token-usage')).toBe(false);
+  });
+});
+
+describe('ClaudeCodeAdapter turn lifecycle', () => {
+  it('unwinds running when recreating the Query rejects', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+    queries[0].push(null);
+    await waitIdle(events);
+    events.length = 0;
+    nextQueryError = new Error('spawn failed');
+
+    await expect(prompt(adapter)).rejects.toThrow('spawn failed');
+
+    expect(events).toEqual([
+      { type: 'status', status: 'running' },
+      { type: 'status', status: 'idle' },
+    ]);
+  });
+
+  it('reports a Query EOF without a result as a failed turn and recovers on the next prompt', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+    await prompt(adapter);
+    queries[0].push({ type: 'system', session_id: 'sess-recover' });
+    await vi.waitFor(() => {
+      expect(events.some((event) => event.type === 'session-ref')).toBe(true);
+    });
+
+    queries[0].push(null);
+    await waitIdle(events);
+
+    expect(events).toContainEqual({
+      type: 'error',
+      message: 'claude-code: query ended before the turn returned a result',
+      recoverable: true,
+    });
+    expect(events.some((event) => event.type === 'stop')).toBe(false);
+
+    events.length = 0;
+    await prompt(adapter);
+    expect(queries[1].options.resume).toBe('sess-recover');
+    queries[1].push({
+      type: 'result',
+      subtype: 'success',
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: {},
+    });
+    await waitIdle(events);
+    expect(events).toContainEqual({ type: 'stop', stopReason: 'end_turn' });
+  });
+
+  it('preserves structured diagnostics from a non-success result', async () => {
+    const { adapter, events } = await makeAdapter();
+    events.length = 0;
+    await prompt(adapter);
+
+    queries[0].push({
+      type: 'result',
+      subtype: 'error_during_execution',
+      terminal_reason: 'turn_setup_failed',
+      errors: ['MCP server failed', 'Connection refused'],
+    });
+    await waitIdle(events);
+
+    expect(events).toContainEqual({
+      type: 'error',
+      message:
+        'Claude failed (error_during_execution, turn_setup_failed): MCP server failed; Connection refused',
+      recoverable: true,
+    });
   });
 });

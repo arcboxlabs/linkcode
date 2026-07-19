@@ -249,6 +249,15 @@ export function mapClaudeStop(reason: string | null): StopReason {
   }
 }
 
+/** Preserve the SDK's structured failure diagnostics instead of collapsing every terminal result
+ * into the same generic message. The machine-readable subtype/reason make provider failures
+ * attributable even when the CLI supplies no prose in `errors`. */
+function claudeResultErrorMessage(msg: Exclude<ResultMessage, { subtype: 'success' }>): string {
+  const terminal = msg.terminal_reason ? `, ${msg.terminal_reason}` : '';
+  const errors = msg.errors.filter((error) => error.length > 0).join('; ');
+  return `Claude failed (${msg.subtype}${terminal})${errors ? `: ${errors}` : ''}`;
+}
+
 /** Normalize a `SlashCommand` onto `AgentCommand`: empty-string `description`/`argumentHint` and an
  * empty `aliases` list become `undefined`. Aliases ride through so composer/engine matching accepts
  * them; invocation pushes the alias itself, which the CLI resolves like any typed `/`. */
@@ -385,6 +394,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private q: Query | null = null;
   private inputQueue: AsyncMessageQueue | null = null;
+  /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
+  private turnActive = false;
+  /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
+  private stopped = false;
   /** Session id to resume *once*, when the persistent Query starts from saved history — not updated
    * afterwards; the Query carries the conversation itself from there. */
   private resumeFrom: string | undefined;
@@ -415,6 +428,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private commandCatalog: AgentCommand[] = [];
 
   protected async onStart(opts: StartOptions): Promise<void> {
+    this.stopped = false;
     const sdk = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
@@ -566,7 +580,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     this.freshSegment();
-    this.emitStatus('running');
     type ClaudeImageBlock = {
       type: 'image';
       source: { type: 'base64'; media_type: SupportedAttachmentImageMimeType; data: string };
@@ -600,26 +613,33 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       message: { role: 'user', content: messageContent },
       parent_tool_use_id: null,
     };
-    if (this.inputQueue) {
-      // Session already running: hand the SDK's own queued-message support the next turn.
-      this.inputQueue.push(message);
-      return;
+    this.turnActive = true;
+    this.emitStatus('running');
+    try {
+      if (this.inputQueue) {
+        // Session already running: hand the SDK's own queued-message support the next turn.
+        this.inputQueue.push(message);
+        return;
+      }
+      // A crashed or deliberately rebuilt process is recreated on demand. Normal sessions already
+      // own their Query from onStart so the command catalog is available before this first prompt.
+      const queue = await this.createQuery();
+      queue.push(message);
+    } catch (error) {
+      this.turnActive = false;
+      this.teardown();
+      this.emitStatus('idle');
+      throw error;
     }
-    // A crashed or deliberately rebuilt process is recreated on demand. Normal sessions already
-    // own their Query from onStart so the command catalog is available before this first prompt.
-    const queue = await this.createQuery();
-    queue.push(message);
   }
 
   private async createQuery(): Promise<AsyncMessageQueue> {
     const opts = nullthrow(this.opts, 'claude-code: session not started');
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const queue = new AsyncMessageQueue();
-    this.inputQueue = queue;
     // One-time use: the persistent Query carries the conversation itself from here on, so a later
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
-    this.resumeFrom = undefined;
     // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
     // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
@@ -666,7 +686,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         ...(credentialEnv && { env: credentialEnv }),
       },
     });
+    this.resumeFrom = undefined;
     this.q = q;
+    this.inputQueue = queue;
     void this.consume(q);
     if (opts.model) {
       // `setModel` is an acknowledged streaming-mode control request. Reflect the startup pick only
@@ -696,24 +718,38 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
    * emits. Returns only when the underlying process exits (crash, `close()`, or the CLI quitting). */
   private async consume(q: Query): Promise<void> {
+    let streamError: unknown;
     try {
       for await (const msg of q) {
         if (this.q === q) this.handleMessage(msg);
       }
     } catch (err) {
-      if (this.q === q || this.q === null) {
-        if (this.cancelling) this.cancelling = false;
-        else this.emitError(extractErrorMessage(err) ?? 'Unknown error');
+      streamError = err;
+    }
+    // A deliberately rebuilt Query is detached before close. Its late unwind must not tear down or
+    // emit idle into the newer Query's active turn.
+    if (this.q !== q) return;
+    this.q = null;
+    this.inputQueue = null;
+    const cancelling = this.cancelling;
+    this.cancelling = false;
+    const interruptedTurn = this.turnActive;
+    this.turnActive = false;
+    if (this.stopped) return;
+    // Rebuild from the last provider session after a process/transport exit; `createQuery()` consumes
+    // this once. Without re-arming it, an async spawn failure silently starts a new conversation.
+    this.resumeFrom = this.lastSessionRef;
+    if (!cancelling) {
+      if (streamError !== undefined) {
+        this.emitError(
+          `claude-code: query failed (${extractErrorMessage(streamError) ?? 'unknown error'})`,
+        );
+      } else if (interruptedTurn) {
+        this.emitError('claude-code: query ended before the turn returned a result');
       }
     }
-    // A replacement Query owns all session state now; the retired stream must not settle its turn,
-    // finalize its tools, or overwrite its running status with idle.
-    if (this.q !== null && this.q !== q) return;
-    if (this.q === q) {
-      this.q = null;
-      this.inputQueue = null;
-    }
-    // The process is gone; finalize anything a mid-flight turn left dangling.
+    // The process is gone; finalize anything a mid-flight turn left dangling, then leave the
+    // adapter idle so the next prompt can recreate the Query.
     this.teardown();
     this.emitStatus('idle');
   }
@@ -738,8 +774,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected override async onCancel(): Promise<void> {
     this.cancelling = true;
+    this.turnActive = false;
     try {
-      await this.q?.interrupt();
+      if (this.q) await this.q.interrupt();
+      else this.cancelling = false;
     } catch {
       // Nothing was in flight, so no result/error will follow to consume the flag — clear it now,
       // or a later unrelated error would be wrongly swallowed as if it were this cancel's fallout.
@@ -752,6 +790,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   protected override onStop(): Promise<void> {
+    this.stopped = true;
+    this.turnActive = false;
     this.q?.close();
     this.inputQueue?.close();
     return Promise.resolve();
@@ -1169,6 +1209,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** A `result` message ends one turn — not the session, which spans the whole `consume()` loop —
    * so per-turn cleanup happens here. */
   private handleResult(msg: ResultMessage): void {
+    const cancelling = this.cancelling;
+    this.cancelling = false;
+    this.turnActive = false;
     if (msg.subtype === 'success') {
       // A 401 comes back as a `success` result carrying `api_error_status` (CODE-75) — surface it
       // as a non-recoverable auth error driving the daemon's login re-probe, not usage + a phantom stop.
@@ -1191,12 +1234,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         totalCostUsd: msg.total_cost_usd,
       });
       this.emitStop(mapClaudeStop(msg.stop_reason));
-    } else if (this.cancelling) {
+    } else if (cancelling) {
       // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real
       // failure — consume the flag instead of surfacing it as an error.
-      this.cancelling = false;
     } else {
-      this.emitError('Claude returned an error', undefined, true);
+      this.emitError(claudeResultErrorMessage(msg), undefined, true);
     }
     this.teardown();
     this.emitStatus('idle');
