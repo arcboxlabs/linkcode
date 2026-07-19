@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { Effect } from 'effect';
 import { afterAll, describe, expect, it } from 'vitest';
-import { readWorkspaceFile } from '../workspace/file-service';
+import { MAX_FILE_READ_BYTES, readWorkspaceFile } from '../workspace/file-service';
 
 const roots: string[] = [];
 
@@ -16,12 +17,16 @@ afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
+function runReadWorkspaceFile(cwd: string, path: string) {
+  return Effect.runPromise(readWorkspaceFile(cwd, path));
+}
+
 describe('readWorkspaceFile', () => {
   it('reads utf8 text with size, mtime, and mime', async () => {
     const root = makeTempDir();
     writeFileSync(join(root, 'PLAN.md'), '# Plan\n\nhello');
 
-    const file = await readWorkspaceFile(root, 'PLAN.md');
+    const file = await runReadWorkspaceFile(root, 'PLAN.md');
     expect(file.encoding).toBe('utf8');
     expect(file.content).toBe('# Plan\n\nhello');
     expect(file.size).toBe(Buffer.byteLength('# Plan\n\nhello'));
@@ -35,7 +40,7 @@ describe('readWorkspaceFile', () => {
     const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]);
     writeFileSync(join(root, 'pic.png'), bytes);
 
-    const file = await readWorkspaceFile(root, 'pic.png');
+    const file = await runReadWorkspaceFile(root, 'pic.png');
     expect(file.encoding).toBe('base64');
     expect(Buffer.from(file.content, 'base64')).toEqual(bytes);
     expect(file.mimeType).toBe('image/png');
@@ -47,7 +52,7 @@ describe('readWorkspaceFile', () => {
     const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n');
     writeFileSync(join(root, 'doc.pdf'), pdf);
 
-    const file = await readWorkspaceFile(root, 'doc.pdf');
+    const file = await runReadWorkspaceFile(root, 'doc.pdf');
     expect(file.mimeType).toBe('application/pdf');
     expect(file.encoding).toBe('base64');
     expect(Buffer.from(file.content, 'base64')).toEqual(pdf);
@@ -58,7 +63,7 @@ describe('readWorkspaceFile', () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
     writeFileSync(join(root, 'icon.svg'), svg);
 
-    const file = await readWorkspaceFile(root, 'icon.svg');
+    const file = await runReadWorkspaceFile(root, 'icon.svg');
     expect(file.mimeType).toBe('image/svg+xml');
     expect(file.encoding).toBe('utf8');
     expect(file.content).toBe(svg);
@@ -69,8 +74,8 @@ describe('readWorkspaceFile', () => {
     mkdirSync(join(root, 'docs'));
     writeFileSync(join(root, 'docs', 'a.txt'), 'a');
 
-    const relative = await readWorkspaceFile(root, 'docs/a.txt');
-    const absolute = await readWorkspaceFile(root, join(root, 'docs', 'a.txt'));
+    const relative = await runReadWorkspaceFile(root, 'docs/a.txt');
+    const absolute = await runReadWorkspaceFile(root, join(root, 'docs', 'a.txt'));
     expect(relative.content).toBe('a');
     expect(absolute.path).toBe(relative.path);
   });
@@ -80,10 +85,10 @@ describe('readWorkspaceFile', () => {
     const outside = makeTempDir();
     writeFileSync(join(outside, 'note.txt'), 'outside');
 
-    const absolute = await readWorkspaceFile(root, join(outside, 'note.txt'));
+    const absolute = await runReadWorkspaceFile(root, join(outside, 'note.txt'));
     expect(absolute.content).toBe('outside');
 
-    const traversal = await readWorkspaceFile(root, relative(root, join(outside, 'note.txt')));
+    const traversal = await runReadWorkspaceFile(root, relative(root, join(outside, 'note.txt')));
     expect(traversal.content).toBe('outside');
     expect(traversal.path).toBe(join(outside, 'note.txt'));
   });
@@ -94,18 +99,36 @@ describe('readWorkspaceFile', () => {
     writeFileSync(join(outside, 'target.txt'), 'linked');
     symlinkSync(join(outside, 'target.txt'), join(root, 'link.md'));
 
-    const file = await readWorkspaceFile(root, 'link.md');
+    const file = await runReadWorkspaceFile(root, 'link.md');
     expect(file.content).toBe('linked');
   });
 
-  it('propagates a missing-file error with the resolved path', async () => {
+  it('classifies a missing file as not found', async () => {
     const root = makeTempDir();
-    await expect(readWorkspaceFile(root, 'absent.pdf')).rejects.toThrow(/ENOENT/);
+    await expect(runReadWorkspaceFile(root, 'absent.pdf')).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'not_found',
+    });
   });
 
   it('rejects directories', async () => {
     const root = makeTempDir();
     mkdirSync(join(root, 'dir'));
-    await expect(readWorkspaceFile(root, 'dir')).rejects.toThrow();
+    await expect(runReadWorkspaceFile(root, 'dir')).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'invalid_request',
+    });
+  });
+
+  it('rejects files above the wire payload limit before reading them', async () => {
+    const root = makeTempDir();
+    const oversized = join(root, 'oversized.bin');
+    writeFileSync(oversized, '');
+    truncateSync(oversized, MAX_FILE_READ_BYTES + 1);
+
+    await expect(runReadWorkspaceFile(root, oversized)).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'limit_exceeded',
+    });
   });
 });

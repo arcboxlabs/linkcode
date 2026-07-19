@@ -72,7 +72,7 @@ export class WireRequestRouter {
       case 'file.read':
       case 'file.list':
       case 'file.suggest': {
-        return legacyHandler(() => this.handlers.file.handle(p));
+        return this.handlers.file.handle(p);
       }
       case 'script.list':
       case 'script.start':

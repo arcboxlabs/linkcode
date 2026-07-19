@@ -1,7 +1,8 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { RequestError } from '../failure';
+import { Effect } from 'effect';
+import { RequestError, toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import { readWorkspaceFile } from './file-service';
 import type { FileSuggestService } from './file-suggest-service';
@@ -18,48 +19,66 @@ export class FileRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: FileRequest): Promise<void> {
+  handle(payload: FileRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'file.read':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const file = await readWorkspaceFile(payload.cwd, payload.path);
-          this.transport.send(
-            createWireMessage({
-              kind: 'file.read.result',
-              replyTo: payload.clientReqId,
-              file,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          readWorkspaceFile(payload.cwd, payload.path).pipe(
+            Effect.flatMap((file) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'file.read.result',
+                    replyTo: payload.clientReqId,
+                    file,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'file.list':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const workspace = this.registeredWorkspace(payload.cwd);
-          const files = await this.files.list(workspace.cwd);
-          this.transport.send(
-            createWireMessage({
-              kind: 'file.list.result',
-              replyTo: payload.clientReqId,
-              files,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fileOperation('file.list', 'Failed to list workspace files', () =>
+            this.files.list(this.registeredWorkspace(payload.cwd).cwd),
+          ).pipe(
+            Effect.flatMap((files) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'file.list.result',
+                    replyTo: payload.clientReqId,
+                    files,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'file.suggest':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const workspace = this.registeredWorkspace(payload.cwd);
-          const suggestions = await this.files.suggest(workspace.cwd, payload.query, payload.limit);
-          this.transport.send(
-            createWireMessage({
-              kind: 'file.suggest.result',
-              replyTo: payload.clientReqId,
-              suggestions,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fileOperation('file.suggest', 'Failed to suggest workspace files', () => {
+            const workspace = this.registeredWorkspace(payload.cwd);
+            return this.files.suggest(workspace.cwd, payload.query, payload.limit);
+          }).pipe(
+            Effect.flatMap((suggestions) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'file.suggest.result',
+                    replyTo: payload.clientReqId,
+                    suggestions,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       default:
-        break;
+        return Effect.void;
     }
   }
 
@@ -73,4 +92,12 @@ export class FileRequestHandler {
     }
     return workspace;
   }
+}
+
+function fileOperation<A>(operation: string, publicMessage: string, run: () => Promise<A>) {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) =>
+      toOperationFailure(cause, { subsystem: 'filesystem', operation, publicMessage }),
+  });
 }
