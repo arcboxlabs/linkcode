@@ -25,10 +25,16 @@ export interface ProviderHistory {
 
 /** Global (cwd-less) provider history for one agent kind, plus the import mutation. */
 export function useProviderHistory(kind: AgentKind): ProviderHistory {
-  const { data, isLoading, error, mutate } = useData(listHistory, {
-    agentKind: kind,
-    opts: { limit: HISTORY_PAGE_LIMIT },
-  });
+  const { data, isLoading, error, mutate } = useData(
+    listHistory,
+    {
+      agentKind: kind,
+      opts: { limit: HISTORY_PAGE_LIMIT },
+    },
+    // Provider history is identity-scoped: retaining the previous key's rows would label one
+    // agent's sessions as another agent's while the next scan is pending or unavailable.
+    { keepPreviousData: false },
+  );
   const importMutation = useMutation(importSession);
   const [importingId, setImportingId] = useState<AgentHistoryId | null>(null);
   const [importError, setImportError] = useState<unknown>(null);
