@@ -215,6 +215,27 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       },
     });
     client.stream.push({
+      id: 'e-assistant-msg',
+      type: 'message.updated',
+      properties: {
+        sessionID: 'sess-1',
+        info: {
+          id: 'msg-assist',
+          sessionID: 'sess-1',
+          role: 'assistant',
+          time: { created: 0 },
+          parentID: 'msg-user',
+          modelID: 'gpt-5.6-sol',
+          providerID: 'openai',
+          mode: 'build',
+          agent: 'build',
+          path: { cwd: '/tmp/repo', root: '/tmp/repo' },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        },
+      },
+    });
+    client.stream.push({
       id: 'e-assistant-part',
       type: 'message.part.updated',
       properties: {
@@ -239,6 +260,8 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     );
     expect(chunks).toHaveLength(1);
     expect(chunks[0].content).toEqual({ type: 'text', text: 'reply' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'openai/gpt-5.5' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'openai/gpt-5.6-sol' });
   });
 
   it('treats the stream ending after the turn already went idle as expected, not an error', async () => {
@@ -932,6 +955,12 @@ describe('OpenCodeAdapter command catalog', () => {
       { name: 'review', description: 'Review code', argumentHint: '<file>' },
       { name: 'noop', description: undefined, argumentHint: undefined },
     ]);
+  });
+
+  it('emits an authoritative empty catalog when command.list succeeds without commands', async () => {
+    const { events } = await makeAdapter();
+
+    expect(events).toContainEqual({ type: 'available-commands-update', commands: [] });
   });
 
   it('still starts successfully when command.list resolves with an error envelope', async () => {

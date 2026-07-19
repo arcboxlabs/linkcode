@@ -26,7 +26,7 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
-import { normalizeCwdKey, textBlock } from '@linkcode/schema';
+import { AGENT_INPUT_CAPABILITIES, normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
@@ -280,7 +280,7 @@ export class DevMockHost {
         break;
       case 'session.start':
         await wait(CONTROL_LATENCY_MS);
-        this.startSession(p.clientReqId, p.opts.kind, p.opts.cwd, p.opts.model);
+        this.startSession(p.clientReqId, p.opts.kind, p.opts.cwd, p.opts.model, p.opts.effort);
         break;
       case 'session.resume':
         await wait(CONTROL_LATENCY_MS);
@@ -579,6 +579,7 @@ export class DevMockHost {
     kind: MockSession['kind'],
     cwd: string,
     model: string | undefined,
+    effort: EffortLevel | undefined,
   ): void {
     const now = Date.now();
     const session = this.addSession({
@@ -588,6 +589,7 @@ export class DevMockHost {
       createdAt: now,
       updatedAt: now,
       model,
+      effort,
     });
     // Parity with the engine: starting a session registers/freshens its directory's workspace.
     this.touchWorkspace(cwd, now);
@@ -783,11 +785,16 @@ export class DevMockHost {
 
   /** The composer's directive inputs: what the session accepts (`/` + `$`) and its `/` catalog. */
   private emitDirectiveAdvertisement(sessionId: SessionId): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const capabilities = AGENT_INPUT_CAPABILITIES[session.kind];
     this.emit(sessionId, {
       type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: true },
+      capabilities,
     });
-    this.emit(sessionId, { type: 'available-commands-update', commands: MOCK_COMMAND_CATALOG });
+    if (capabilities.slashCommands) {
+      this.emit(sessionId, { type: 'available-commands-update', commands: MOCK_COMMAND_CATALOG });
+    }
   }
 
   private stopSession(replyTo: string, sessionId: SessionId): void {

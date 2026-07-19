@@ -12,6 +12,7 @@ import type { GrokEffort, GrokHeadlessRun } from './process';
 import { runGrokHeadless } from './process';
 
 const RE_RESUME_FAIL = /session|resume|not found/i;
+const DEFAULT_GROK_MODEL = 'grok-4.5';
 
 /**
  * Grok Build adapter — drives the local `grok` CLI in **headless** mode (`grok -p`), not ACP.
@@ -41,8 +42,8 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
     }
     this.binaryPath = resolved;
     this.model = opts.model;
-    this.effort = effortFromLevel(undefined);
-    if (this.model) this.emitModel(this.model);
+    // Reflect the verified CLI default without turning it into a `-m` override.
+    this.emitModel(this.model ?? DEFAULT_GROK_MODEL);
     this.emitEffort(this.effort);
     return Promise.resolve();
   }
@@ -206,6 +207,9 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
 }
 
 function effortFromLevel(effort: EffortLevel | undefined): GrokEffort {
+  if (effort === undefined || effort === 'high') return 'high';
   if (effort === 'low' || effort === 'medium') return effort;
-  return 'high';
+  throw new Error(
+    `grok-build: effort '${effort}' is not supported (expected low, medium, or high)`,
+  );
 }

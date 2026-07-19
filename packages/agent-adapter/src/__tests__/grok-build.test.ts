@@ -142,6 +142,37 @@ describe('GrokBuildAdapter', () => {
     expect(events.some((e) => e.type === 'error' && e.code === 'sdk-unavailable')).toBe(true);
   });
 
+  it('uses and reflects initial effort on the first headless run', async () => {
+    vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
+    const { child, exit, close } = fakeChild();
+    vi.mocked(grokProcess.runGrokHeadless).mockImplementation((opts: GrokHeadlessRunOptions) => {
+      const run = grokProcess.attachGrokHeadlessChild(child as never, opts.onEvent);
+      queueMicrotask(() => {
+        exit(0);
+        close(0);
+      });
+      return run;
+    });
+    const adapter = new GrokBuildAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ kind: 'grok-build', cwd: '/tmp', effort: 'medium' });
+    await adapter.send({ type: 'prompt', content: textPrompt('hi') });
+
+    expect(grokProcess.runGrokHeadless).toHaveBeenCalledWith(
+      expect.objectContaining({ effort: 'medium', model: undefined }),
+    );
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'grok-4.5' });
+  });
+
+  it('rejects effort levels the Grok CLI cannot represent', async () => {
+    const adapter = new GrokBuildAdapter();
+    await expect(
+      adapter.start({ kind: 'grok-build', cwd: '/tmp', effort: 'xhigh' }),
+    ).rejects.toThrow("grok-build: effort 'xhigh' is not supported");
+  });
+
   it('streams thought/text and settles with session-ref + usage', async () => {
     vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
     const { child, pushStdout, exit, close } = fakeChild();

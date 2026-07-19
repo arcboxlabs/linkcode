@@ -377,7 +377,6 @@ const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
  */
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
-  override readonly capabilities = { slashCommands: true, shellCommand: false } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -417,6 +416,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    if (opts.model) this.emitModel(opts.model);
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
     // Query init is the only authoritative slash-command catalog source: start the persistent
@@ -658,12 +658,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (this.effort !== undefined && this.effort !== 'max') {
       try {
         await q.applyFlagSettings(effortFlagSettings(this.effort));
+        this.emitEffort(this.effort);
       } catch (err) {
         // A stored level the CLI rejects (ultracode without dynamic workflows enabled) must not
         // fail the prompt or wedge later ones: drop it, report it, run at the CLI's default level.
         this.effort = undefined;
         this.emitError(extractErrorMessage(err) ?? 'claude-code: effort switch rejected');
       }
+    } else if (this.effort === 'max') {
+      this.emitEffort(this.effort);
     }
     return queue;
   }
@@ -689,9 +692,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /** `supportedCommands()` is a snapshot captured at Query init — this fires once per Query to seed
-   * the catalog; later changes arrive via the `commands_changed` push. Failure is non-fatal: a
-   * catalog's absence IS the capability signal (see `AgentEvent.available-commands-update`), so it
-   * must not surface as a session error. */
+   * the catalog; later changes arrive via the `commands_changed` push. Failure is non-fatal: the
+   * independently advertised slash capability remains usable while catalog discovery is pending. */
   private async publishCommands(q: Query): Promise<void> {
     try {
       this.publishCatalog(await q.supportedCommands());
@@ -762,7 +764,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (effort === previous) return;
     if (!this.q) {
       this.effort = effort; // No process yet; onPrompt's Query creation applies it.
-      this.emitEffort(effort);
       return;
     }
     if (effort !== 'max' && previous !== 'max') {
@@ -774,7 +775,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return;
     }
     this.effort = effort;
-    this.emitEffort(effort);
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
     // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
     const q = this.q;

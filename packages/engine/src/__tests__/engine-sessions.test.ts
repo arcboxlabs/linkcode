@@ -215,6 +215,18 @@ function listedSessions(sent: WirePayload[], replyTo: string) {
 }
 
 describe('engine session persistence', () => {
+  it('forwards initial effort from session.start to the adapter', async () => {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo', effort: 'high' },
+    });
+
+    expect(h.adapters[0].startedWith).toMatchObject({ effort: 'high' });
+  });
+
   it('persists created sessions with title and session-ref, and lists them cold after a restart', async () => {
     const store = new InMemorySessionStore();
     const first = harness(store);
@@ -559,6 +571,17 @@ describe('engine attach replay', () => {
         models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
       },
     ]);
+  });
+
+  it('replays the latest reflected effort to an attaching client', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'effort-update', effort: 'medium' });
+    adapter.emit({ type: 'effort-update', effort: 'high' });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    const efforts = eventsAfter(sent, mark).filter((event) => event.type === 'effort-update');
+    expect(efforts).toEqual([{ type: 'effort-update', effort: 'high' }]);
   });
 
   it('replays the latest adapter capabilities to an attaching client', async () => {

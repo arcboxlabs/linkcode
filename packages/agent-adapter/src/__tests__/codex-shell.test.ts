@@ -1,4 +1,5 @@
 import type { AgentEvent, StartOptions } from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { CodexAdapter } from '../native/codex';
 import type { CodexServerHandle } from '../native/codex/adapter';
@@ -19,6 +20,14 @@ class FakeCodexServer {
     }
     if (method === 'thread/start' || method === 'thread/resume') {
       return Promise.resolve({ thread: { id: 'thread-1' } });
+    }
+    if (method === 'model/list') {
+      return Promise.resolve({
+        data: [
+          { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', isDefault: false },
+          { id: 'gpt-5.6-sol', model: 'gpt-5.6-sol', isDefault: true },
+        ],
+      });
     }
     return Promise.resolve({});
   }
@@ -84,6 +93,39 @@ function driveShellTurn(
 }
 
 describe('CodexAdapter shell-command passthrough', () => {
+  it('reflects model/list default without pinning a thread override', async () => {
+    const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+
+    expect(events).toContainEqual({ type: 'model-update', model: 'gpt-5.6-sol' });
+    expect(adapter.fakeServers[0].requests).toContainEqual({
+      method: 'thread/start',
+      params: expect.objectContaining({ model: undefined }),
+    });
+  });
+
+  it('applies and reflects initial effort on the first turn', async () => {
+    const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ ...start, effort: 'high' });
+    await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
+
+    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
+    expect(turn?.params).toMatchObject({ effort: 'high' });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'high' });
+  });
+
+  it('rejects Claude-only effort levels before starting app-server', async () => {
+    const adapter = new TestCodex();
+    await expect(adapter.start({ ...start, effort: 'max' })).rejects.toThrow(
+      "codex: effort 'max' is not supported",
+    );
+    expect(adapter.fakeServers).toHaveLength(0);
+  });
+
   it('sends thread/shellCommand with the started thread id and the command', async () => {
     const adapter = new TestCodex();
     await adapter.start(start);

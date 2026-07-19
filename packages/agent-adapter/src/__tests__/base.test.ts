@@ -1,4 +1,10 @@
-import type { AgentCommand, AgentEvent, ContentBlock, ToolCallUpdate } from '@linkcode/schema';
+import type {
+  AgentCommand,
+  AgentEvent,
+  ContentBlock,
+  EffortLevel,
+  ToolCallUpdate,
+} from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { BaseAgentAdapter } from '../base';
 
@@ -42,6 +48,21 @@ class TestAdapter extends BaseAgentAdapter {
         ],
       },
     ]);
+  }
+}
+
+class EffortTestAdapter extends TestAdapter {
+  readonly lifecycle: string[] = [];
+
+  protected override onSetEffort(effort: EffortLevel): Promise<void> {
+    this.lifecycle.push(`effort:${effort}`);
+    this.emitEffort(effort);
+    return Promise.resolve();
+  }
+
+  protected override onStart(): Promise<void> {
+    this.lifecycle.push('start');
+    return Promise.resolve();
   }
 }
 
@@ -194,5 +215,22 @@ describe('BaseAgentAdapter command/shell defaults', () => {
       type: 'available-commands-update',
       commands: [{ name: 'compact', description: 'Compact the context' }],
     });
+  });
+});
+
+describe('BaseAgentAdapter initial effort', () => {
+  it('validates and applies initial effort before starting the provider', async () => {
+    const a = new EffortTestAdapter();
+    await a.start({ kind: 'pi', cwd: '/repo', effort: 'high' });
+
+    expect(a.lifecycle).toEqual(['effort:high', 'start']);
+    expect(a.seen).toContainEqual({ type: 'effort-update', effort: 'high' });
+  });
+
+  it('rejects initial effort when the adapter does not support it', async () => {
+    const a = new TestAdapter();
+    await expect(a.start({ kind: 'pi', cwd: '/repo', effort: 'high' })).rejects.toThrow(
+      'pi: changing effort is not supported',
+    );
   });
 });

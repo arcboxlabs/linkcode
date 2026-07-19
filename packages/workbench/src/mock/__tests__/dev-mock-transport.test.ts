@@ -68,7 +68,7 @@ describe('dev mock transport', () => {
     expect(seededEvents[0]).toEqual({ type: 'status', status: 'idle' });
     expect(seededEvents[3]).toEqual({
       type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: true },
+      capabilities: { slashCommands: true, shellCommand: false },
     });
     expect(seededEvents[4]).toMatchObject({
       type: 'available-commands-update',
@@ -127,7 +127,11 @@ describe('dev mock transport', () => {
 
   it('advertises and handles composer directives', async () => {
     const client = await connectedClient();
-    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    const sessionId = await client.startSession({
+      kind: 'codex',
+      cwd: '/mock/repo',
+      effort: 'low',
+    });
     const events = collectEvents(client, sessionId);
 
     expect(events).toContainEqual({
@@ -153,6 +157,7 @@ describe('dev mock transport', () => {
         },
       ],
     });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'low' });
 
     let mark = events.length;
     await expect(client.invokeCommand(sessionId, 'review', 'src/app.ts')).resolves.toEqual({

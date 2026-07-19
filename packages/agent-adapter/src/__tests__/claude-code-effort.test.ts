@@ -1,5 +1,5 @@
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent } from '@linkcode/schema';
+import type { AgentEvent, EffortLevel } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { asyncNoop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
@@ -90,11 +90,14 @@ afterEach(() => {
   nextQuerySetup = null;
 });
 
-async function makeAdapter(): Promise<{ adapter: ClaudeCodeAdapter; events: AgentEvent[] }> {
+async function makeAdapter(effort?: EffortLevel): Promise<{
+  adapter: ClaudeCodeAdapter;
+  events: AgentEvent[];
+}> {
   const adapter = new ClaudeCodeAdapter();
   const events: AgentEvent[] = [];
   adapter.onEvent((e) => events.push(e));
-  await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+  await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo', effort });
   return { adapter, events };
 }
 
@@ -113,6 +116,39 @@ async function waitIdle(events: AgentEvent[]): Promise<void> {
 }
 
 describe('ClaudeCodeAdapter effort switching', () => {
+  it('applies initial effort while constructing the first Query', async () => {
+    const { events } = await makeAdapter('high');
+    const q0 = queries[0];
+
+    expect(q0.options.effort).toBeUndefined();
+    expect(q0.applyFlagSettings).toHaveBeenCalledWith({ ultracode: null, effortLevel: 'high' });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'high' });
+  });
+
+  it('passes initial max through the Query startup-only channel', async () => {
+    const { events } = await makeAdapter('max');
+    const q0 = queries[0];
+
+    expect(q0.options.effort).toBe('max');
+    expect(q0.applyFlagSettings).not.toHaveBeenCalled();
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'max' });
+  });
+
+  it('does not reflect an initial effort that the CLI rejects', async () => {
+    nextQuerySetup = (q) => {
+      q.applyFlagSettings.mockRejectedValue(new Error('dynamic workflows disabled'));
+    };
+    const { events } = await makeAdapter('ultracode');
+
+    expect(events).not.toContainEqual({ type: 'effort-update', effort: 'ultracode' });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        message: expect.stringContaining('dynamic workflows disabled'),
+      }),
+    );
+  });
+
   it('applies a switchable level before the first message reaches the CLI', async () => {
     const { adapter } = await makeAdapter();
     const q0 = queries[0];
@@ -187,6 +223,7 @@ describe('ClaudeCodeAdapter effort switching', () => {
     q0.push(null);
     await waitIdle(events);
     await setEffort(adapter, 'ultracode');
+    expect(events).not.toContainEqual({ type: 'effort-update', effort: 'ultracode' });
 
     nextQuerySetup = (q) => {
       q.applyFlagSettings.mockRejectedValue(new Error('dynamic workflows disabled'));

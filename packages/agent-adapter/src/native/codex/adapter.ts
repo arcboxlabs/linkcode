@@ -93,6 +93,17 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Read the app-server's effective default from `model/list` without pinning it as a thread/turn
+ * override. The response is an external JSON-RPC boundary, so accept only the verified fields. */
+export function codexDefaultModel(response: unknown): string | undefined {
+  if (!isRecord(response) || !Array.isArray(response.data)) return undefined;
+  for (const candidate of response.data) {
+    if (!isRecord(candidate) || candidate.isDefault !== true) continue;
+    return stringField(candidate, 'model') ?? stringField(candidate, 'id');
+  }
+  return undefined;
+}
+
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
  * structurally (the class's private fields would otherwise force a top-type cast). */
 export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHandler' | 'close'>;
@@ -214,7 +225,6 @@ export function decisionFromOutcome(
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
-  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -276,8 +286,8 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model;
-    // Reflect a model chosen at new-session time; codex has no live channel to observe the
-    // config.toml default when none was picked, so a fresh unset session shows a placeholder.
+    // Reflect an explicit new-session choice immediately. With no override, openThread queries the
+    // app-server's effective default without pinning that presentation value into thread/start.
     if (this.model) this.emitModel(this.model);
     await this.ensureThread();
   }
@@ -554,6 +564,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.server = server;
     // A fresh process re-read the on-disk credentials — its auth state is unknown again.
     this.authFailed = false;
+    if (!this.model) void this.publishDefaultModel(server);
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
     const preset = POLICY_PRESETS[this.policyId];
@@ -591,6 +602,17 @@ export class CodexAdapter extends BaseAgentAdapter {
       server.close();
       this.server = null;
       throw err;
+    }
+  }
+
+  /** Best-effort model reflection. `model/list` is presentation metadata; an older detected CLI
+   * lacking it still starts normally and remains on its own unforced default. */
+  private async publishDefaultModel(server: CodexServerHandle): Promise<void> {
+    try {
+      const model = codexDefaultModel(await server.request('model/list', {}));
+      if (this.server === server && model) this.emitModel(model);
+    } catch {
+      // Optional on older detected app-server builds; thread startup remains authoritative.
     }
   }
 

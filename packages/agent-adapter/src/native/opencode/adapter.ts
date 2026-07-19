@@ -109,7 +109,6 @@ type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['cli
  */
 export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'opencode' as const;
-  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -245,9 +244,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.directory = opts.cwd;
     }
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
-    // list must not fail session start — absence is itself the capability signal (no command /
-    // model / approval-policy state ever fires for this session). They are independent reads of
-    // the same local server, so they run concurrently.
+    // list must not fail session start. They are independent reads of the same local server, so
+    // they run concurrently.
     await Promise.all([
       this.fetchCommandCatalog(),
       this.fetchAgentCatalog(resumedAgent),
@@ -264,7 +262,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (!this.client) return;
     try {
       const listed = await this.client.command.list({ directory: this.directory });
-      if (listed.error === undefined && listed.data.length > 0) {
+      if (listed.error === undefined) {
         this.emitCommands(
           listed.data.map(
             (c): AgentCommand => ({
@@ -696,8 +694,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     try {
       switch (ev.type) {
         case 'message.updated':
-          if (ev.properties.sessionID === this.sessionId && ev.properties.info.role === 'user') {
-            this.userMessageIds.add(ev.properties.info.id);
+          if (ev.properties.sessionID === this.sessionId) {
+            const { info } = ev.properties;
+            if (info.role === 'user') {
+              this.userMessageIds.add(info.id);
+              this.emitModel(`${info.model.providerID}/${info.model.modelID}`);
+            } else {
+              this.emitModel(`${info.providerID}/${info.modelID}`);
+            }
           }
           break;
         case 'message.part.updated':
