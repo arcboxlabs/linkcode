@@ -7,26 +7,19 @@ import type {
   ScheduleRunTrigger,
   ScheduleSpec,
   ScheduleUpdate,
-  SessionId,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { ScheduleCadenceCalculator } from './schedule-cadence';
+import { ScheduleReporter } from './schedule-reporter';
+import { ScheduleRunExecutor, ScheduleTargetGoneError } from './schedule-run-executor';
 import type { ScheduleStore } from './schedule-store';
 import type { SessionDriver } from './session-driver';
 
-/** A run whose target no longer exists: the schedule can never fire again, so it is completed. */
-export class ScheduleTargetGoneError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'ScheduleTargetGoneError';
-  }
-}
+export { ScheduleTargetGoneError } from './schedule-run-executor';
 
 const RUNS_KEPT_PER_SCHEDULE = 100;
-const SUMMARY_MAX_CHARS = 2000;
 
 export interface ScheduleServiceOptions {
   /** Injectable clock for deterministic tests. */
@@ -51,19 +44,23 @@ export class ScheduleService {
   private readonly inFlight = new Map<ScheduleId, Promise<void>>();
   private readonly now: () => number;
   private readonly cadence: ScheduleCadenceCalculator;
+  private readonly reporter: ScheduleReporter;
+  private readonly runExecutor: ScheduleRunExecutor;
   private readonly tickMs: number;
   private readonly defaultMisfirePolicy: ScheduleMisfirePolicy;
   private timer: ReturnType<typeof setInterval> | undefined;
   private seq = 0;
 
   constructor(
-    private readonly transport: Transport,
+    transport: Transport,
     private readonly store: ScheduleStore,
     private readonly driver: SessionDriver,
     options: ScheduleServiceOptions = {},
   ) {
     this.now = options.now ?? Date.now;
     this.cadence = new ScheduleCadenceCalculator(this.now);
+    this.reporter = new ScheduleReporter(transport);
+    this.runExecutor = new ScheduleRunExecutor(driver, store, this.reporter);
     this.tickMs = options.tickMs ?? 1000;
     this.defaultMisfirePolicy = options.defaultMisfirePolicy ?? 'catch-up';
   }
@@ -113,7 +110,7 @@ export class ScheduleService {
     };
     this.schedules.set(schedule.scheduleId, schedule);
     await this.store.save(schedule);
-    this.broadcastSchedule(schedule);
+    this.reporter.changed(schedule);
     return schedule;
   }
 
@@ -135,14 +132,14 @@ export class ScheduleService {
     }
     schedule.updatedAt = this.now();
     await this.store.save(schedule);
-    this.broadcastSchedule(schedule);
+    this.reporter.changed(schedule);
     return schedule;
   }
 
   async delete(scheduleId: ScheduleId): Promise<void> {
     this.schedules.delete(scheduleId);
     await this.store.delete(scheduleId);
-    this.broadcastRemoved(scheduleId);
+    this.reporter.removed(scheduleId);
   }
 
   async pause(scheduleId: ScheduleId): Promise<void> {
@@ -153,7 +150,7 @@ export class ScheduleService {
     schedule.nextRunAt = undefined;
     schedule.updatedAt = this.now();
     await this.store.save(schedule);
-    this.broadcastSchedule(schedule);
+    this.reporter.changed(schedule);
   }
 
   async resume(scheduleId: ScheduleId): Promise<void> {
@@ -164,7 +161,7 @@ export class ScheduleService {
     schedule.nextRunAt = this.cadence.next(schedule.spec.cadence, this.now());
     schedule.updatedAt = this.now();
     await this.store.save(schedule);
-    this.broadcastSchedule(schedule);
+    this.reporter.changed(schedule);
   }
 
   /** Fire one manual run now without touching the cadence or `nextRunAt`. */
@@ -207,7 +204,7 @@ export class ScheduleService {
     schedule.nextRunAt = this.cadence.next(cadence, latestMissed);
     schedule.updatedAt = now;
     await this.store.save(schedule);
-    this.broadcastSchedule(schedule);
+    this.reporter.changed(schedule);
 
     // On-time fires (within the catch-up threshold) always run, whatever the policy.
     const isMiss = missedBy > this.catchUpThresholdMs();
@@ -248,7 +245,7 @@ export class ScheduleService {
     };
     await this.saveRun(run);
     try {
-      const outcome = await this.executeRun(schedule, run);
+      const outcome = await this.runExecutor.execute(schedule, run);
       run.status = 'succeeded';
       run.sessionId = outcome.sessionId;
       run.summary = outcome.summary;
@@ -282,46 +279,7 @@ export class ScheduleService {
     }
     schedule.updatedAt = this.now();
     await this.store.save(schedule);
-    this.broadcastSchedule(schedule);
-  }
-
-  private async executeRun(
-    schedule: Schedule,
-    run: ScheduleRun,
-  ): Promise<{ sessionId: SessionId; summary?: string }> {
-    const target = schedule.spec.target;
-    if (target.type === 'session') {
-      if (!this.driver.hasRecord(target.sessionId)) {
-        throw new ScheduleTargetGoneError(`target session no longer exists: ${target.sessionId}`);
-      }
-      if (this.driver.isBusy(target.sessionId)) throw new Error('session busy');
-      await this.driver.ensureLive(target.sessionId);
-      await this.linkRunSession(run, target.sessionId);
-      const result = await this.driver.prompt(target.sessionId, schedule.spec.prompt);
-      return { sessionId: target.sessionId, summary: this.summarize(result.text) };
-    }
-
-    const sessionId = await this.driver.createSession({
-      kind: target.config.kind,
-      cwd: target.config.cwd,
-      model: target.config.model,
-      title: schedule.spec.name ?? 'Scheduled run',
-      automation: { kind: 'schedule', id: schedule.scheduleId },
-    });
-    await this.linkRunSession(run, sessionId);
-    try {
-      await this.driver.makeUnattended(sessionId);
-      const result = await this.driver.prompt(sessionId, schedule.spec.prompt);
-      return { sessionId, summary: this.summarize(result.text) };
-    } finally {
-      // The record is kept (hidden from Threads); the run's summary is the durable output.
-      await this.driver.stopSession(sessionId);
-    }
-  }
-
-  private async linkRunSession(run: ScheduleRun, sessionId: SessionId): Promise<void> {
-    run.sessionId = sessionId;
-    await this.saveRun(run);
+    this.reporter.changed(schedule);
   }
 
   private async recordSkipped(
@@ -348,7 +306,7 @@ export class ScheduleService {
     schedule.nextRunAt = undefined;
     schedule.updatedAt = this.now();
     await this.store.save(schedule);
-    this.broadcastSchedule(schedule);
+    this.reporter.changed(schedule);
   }
 
   /** Mark runs left `running` by a previous daemon as failed, then complete orphaned targets. */
@@ -376,19 +334,13 @@ export class ScheduleService {
     return schedule.spec.maxRuns !== undefined && schedule.runCount >= schedule.spec.maxRuns;
   }
 
-  private summarize(text: string): string | undefined {
-    const trimmed = text.trim();
-    if (!trimmed) return undefined;
-    return trimmed.length > SUMMARY_MAX_CHARS ? trimmed.slice(0, SUMMARY_MAX_CHARS) : trimmed;
-  }
-
   private require(scheduleId: ScheduleId): Schedule {
     return nullthrow(this.schedules.get(scheduleId), `Unknown schedule: ${scheduleId}`);
   }
 
   private async saveRun(run: ScheduleRun): Promise<void> {
     await this.store.saveRun(run);
-    this.broadcastRun(run);
+    this.reporter.runChanged(run);
   }
 
   private mintScheduleId(): ScheduleId {
@@ -399,17 +351,5 @@ export class ScheduleService {
   private mintRunId(): ScheduleRunId {
     this.seq += 1;
     return `srun-${this.now().toString(36)}-${this.seq.toString(36)}` as ScheduleRunId;
-  }
-
-  private broadcastSchedule(schedule: Schedule): void {
-    this.transport.send(createWireMessage({ kind: 'schedule.changed', schedule }));
-  }
-
-  private broadcastRemoved(scheduleId: ScheduleId): void {
-    this.transport.send(createWireMessage({ kind: 'schedule.removed', scheduleId }));
-  }
-
-  private broadcastRun(run: ScheduleRun): void {
-    this.transport.send(createWireMessage({ kind: 'schedule.run', run }));
   }
 }
