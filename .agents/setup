@@ -6,7 +6,24 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 echo "==> Installing native build prerequisites"
 sudo apt-get update -qq
-sudo apt-get install -y -qq build-essential ca-certificates curl pkg-config python3 xz-utils
+sudo apt-get install -y -qq \
+  build-essential \
+  ca-certificates \
+  curl \
+  dbus-x11 \
+  libasound2 \
+  libatk-bridge2.0-0 \
+  libdrm2 \
+  libgbm1 \
+  libgtk-3-0 \
+  libnss3 \
+  libxkbcommon0 \
+  libxss1 \
+  pkg-config \
+  python3 \
+  xauth \
+  xz-utils \
+  xvfb
 
 node_major="$(tr -d '[:space:]' < .nvmrc)"
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(`.`)[0]')" != "$node_major" ]; then
@@ -21,17 +38,22 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.spli
   node_archive="node-${node_version}-linux-${node_arch}.tar.xz"
   node_root="$HOME/.local/share/node-${node_version}-linux-${node_arch}"
 
-  if [ ! -x "$node_root/bin/node" ]; then
+  if [ ! -x "$node_root/bin/node" ] || [ ! -x "$node_root/bin/npm" ]; then
     tmp_dir="$(mktemp -d)"
-    trap 'rm -rf "$tmp_dir"' EXIT
+    mkdir -p "$(dirname "$node_root")"
+    node_stage="$(mktemp -d "$(dirname "$node_root")/.node-${node_version}.XXXXXX")"
+    trap 'rm -rf "$tmp_dir" "${node_stage:-}"' EXIT
     curl -fsSL "https://nodejs.org/dist/${node_version}/${node_archive}" -o "$tmp_dir/$node_archive"
     curl -fsSL "https://nodejs.org/dist/${node_version}/SHASUMS256.txt" -o "$tmp_dir/SHASUMS256.txt"
     (
       cd "$tmp_dir"
       grep "  ${node_archive}$" SHASUMS256.txt | sha256sum --check --status
     )
-    mkdir -p "$(dirname "$node_root")"
-    tar -xJf "$tmp_dir/$node_archive" -C "$(dirname "$node_root")"
+    tar -xJf "$tmp_dir/$node_archive" --strip-components=1 -C "$node_stage"
+    [ -x "$node_stage/bin/node" ] && [ -x "$node_stage/bin/npm" ]
+    rm -rf "$node_root"
+    mv "$node_stage" "$node_root"
+    node_stage=""
   fi
 
   mkdir -p "$HOME/.local/bin"
@@ -56,8 +78,16 @@ echo "==> Installing the stable Rust toolchain"
 rustup toolchain install stable --profile minimal --component clippy,rustfmt
 rustup default stable
 
+mkdir -p "$HOME/.local/bin"
+for executable in cargo cargo-clippy cargo-fmt clippy-driver rustc rustdoc rustfmt rustup; do
+  ln -sfn "$HOME/.cargo/bin/$executable" "$HOME/.local/bin/$executable"
+done
+
 echo "==> Installing JavaScript dependencies"
 pnpm install --frozen-lockfile
+
+echo "==> Ensuring the Electron runtime is downloaded"
+pnpm exec electron --version >/dev/null
 
 echo "==> Fetching Rust dependencies"
 cargo fetch --locked

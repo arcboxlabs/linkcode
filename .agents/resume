@@ -4,17 +4,34 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 node_major="$(tr -d '[:space:]' < .nvmrc)"
-pnpm_version="$(node -p 'require(`./package.json`).packageManager.split(`@`)[1]')"
 
-if [ "$(node -p 'process.versions.node.split(`.`)[0]')" != "$node_major" ]; then
+if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(`.`)[0]' 2>/dev/null)" != "$node_major" ]; then
   echo "Expected Node.js ${node_major}; rerun .agents/setup" >&2
   exit 1
 fi
 
-if [ "$(pnpm --version)" != "$pnpm_version" ]; then
+pnpm_version="$(node -p 'require(`./package.json`).packageManager.split(`@`)[1]')"
+if ! command -v pnpm >/dev/null 2>&1 || [ "$(pnpm --version 2>/dev/null)" != "$pnpm_version" ]; then
   echo "Expected pnpm ${pnpm_version}; rerun .agents/setup" >&2
   exit 1
 fi
 
-cargo --version >/dev/null
+mkdir -p "$HOME/.local/bin"
+for executable in cargo cargo-clippy cargo-fmt clippy-driver rustc rustdoc rustfmt rustup; do
+  if [ -x "$HOME/.cargo/bin/$executable" ]; then
+    ln -sfn "$HOME/.cargo/bin/$executable" "$HOME/.local/bin/$executable"
+  fi
+done
+
+for executable in rustup cargo rustc rustfmt; do
+  if ! command -v "$executable" >/dev/null 2>&1 || ! "$executable" --version >/dev/null 2>&1; then
+    echo "Expected stable Rust with rustfmt and Clippy; rerun .agents/setup" >&2
+    exit 1
+  fi
+done
+if ! cargo clippy --version >/dev/null 2>&1 || [[ "$(rustup show active-toolchain 2>/dev/null)" != stable-* ]]; then
+  echo "Expected stable Rust with rustfmt and Clippy; rerun .agents/setup" >&2
+  exit 1
+fi
+
 echo "Orb toolchains are ready; no persistent services require repair"
