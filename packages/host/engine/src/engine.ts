@@ -87,6 +87,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     records,
     runtimes,
     scope,
+    runTask,
     (sessionId) => terminals?.killBySession(sessionId),
   );
   terminals = deps.ptyBackend

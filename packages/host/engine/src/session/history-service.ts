@@ -11,6 +11,8 @@ import type {
   AgentKind,
   StartOptions,
 } from '@linkcode/schema';
+import { Effect } from 'effect';
+import { OperationError, RequestError } from '../failure';
 
 export const HISTORY_CONVERSION_CACHE_VERSION = 3;
 
@@ -55,29 +57,45 @@ export class HistoryService {
     this.now = opts.now ?? Date.now;
   }
 
-  async list(kind: AgentKind, opts: HistoryListOptions = {}): Promise<AgentHistoryListResult> {
+  list(
+    kind: AgentKind,
+    opts: HistoryListOptions = {},
+  ): Effect.Effect<AgentHistoryListResult, RequestError | OperationError> {
     const key = listCacheKey(kind, opts);
     const cached = this.listCache.get(key);
     const now = this.now();
     if (!opts.forceRefresh && cached && cached.expiresAt > now) {
-      return cloneListResult(cached.result);
+      return Effect.succeed(cloneListResult(cached.result));
     }
 
     const adapter = this.factory(kind);
     if (!adapter.historyCapabilities.list) {
-      throw new Error(`${kind}: history list is not supported`);
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${kind}: history list is not supported`,
+        }),
+      );
     }
-
-    const result = await adapter.listHistory(stripForceRefresh(opts));
-    this.invalidateEventCacheFromList(kind, result.sessions);
-    this.listCache.set(key, {
-      expiresAt: now + this.ttlMs,
-      result: cloneListResult(result),
-    });
-    return result;
+    return agentHistoryOperation('history.list', 'Failed to list agent history', () =>
+      adapter.listHistory(stripForceRefresh(opts)),
+    ).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          this.invalidateEventCacheFromList(kind, result.sessions);
+          this.listCache.set(key, {
+            expiresAt: now + this.ttlMs,
+            result: cloneListResult(result),
+          });
+        }),
+      ),
+    );
   }
 
-  async read(kind: AgentKind, opts: HistoryReadOptions): Promise<AgentHistoryReadResult> {
+  read(
+    kind: AgentKind,
+    opts: HistoryReadOptions,
+  ): Effect.Effect<AgentHistoryReadResult, RequestError | OperationError> {
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const key = eventCacheKey(kind, opts.historyId);
@@ -91,44 +109,57 @@ export class HistoryService {
       cached.version === HISTORY_CONVERSION_CACHE_VERSION &&
       (!cached.partialCursor || offset < cached.events.length)
     ) {
-      return sliceEventCache(cached, offset, limit);
+      return Effect.succeed(sliceEventCache(cached, offset, limit));
     }
 
     const adapter = this.factory(kind);
     if (!adapter.historyCapabilities.read) {
-      throw new Error(`${kind}: history read is not supported`);
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${kind}: history read is not supported`,
+        }),
+      );
     }
-
-    const fullResult = await adapter.readHistory({
-      historyId: opts.historyId,
-      limit: 1000,
-    });
-    const entry: EventCacheEntry = {
-      expiresAt: now + this.ttlMs,
-      version: HISTORY_CONVERSION_CACHE_VERSION,
-      session: fullResult.session,
-      events: [...fullResult.events],
-      fingerprint: sessionFingerprint(fullResult.session),
-      partialCursor: fullResult.cursor,
-    };
-    this.eventCache.set(key, entry);
-
-    if (!entry.partialCursor || offset < entry.events.length) {
-      return sliceEventCache(entry, offset, limit);
-    }
-
-    return adapter.readHistory(stripForceRefresh(opts));
+    return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
+      adapter.readHistory({ historyId: opts.historyId, limit: 1000 }),
+    ).pipe(
+      Effect.flatMap((fullResult) => {
+        const entry: EventCacheEntry = {
+          expiresAt: now + this.ttlMs,
+          version: HISTORY_CONVERSION_CACHE_VERSION,
+          session: fullResult.session,
+          events: [...fullResult.events],
+          fingerprint: sessionFingerprint(fullResult.session),
+          partialCursor: fullResult.cursor,
+        };
+        this.eventCache.set(key, entry);
+        if (!entry.partialCursor || offset < entry.events.length) {
+          return Effect.succeed(sliceEventCache(entry, offset, limit));
+        }
+        return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
+          adapter.readHistory(stripForceRefresh(opts)),
+        );
+      }),
+    );
   }
 
-  async resume(
+  resume(
     adapter: AgentAdapter,
     historyId: AgentHistoryId,
     startOpts: StartOptions,
-  ): Promise<void> {
+  ): Effect.Effect<void, RequestError | OperationError> {
     if (!adapter.historyCapabilities.resume) {
-      throw new Error(`${adapter.kind}: history resume is not supported`);
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${adapter.kind}: history resume is not supported`,
+        }),
+      );
     }
-    await adapter.resumeHistory({ historyId }, startOpts);
+    return agentHistoryOperation('history.resume', 'Failed to resume agent history', () =>
+      adapter.resumeHistory({ historyId }, startOpts),
+    );
   }
 
   clear(): void {
@@ -143,6 +174,17 @@ export class HistoryService {
       if (cached && cached.fingerprint !== sessionFingerprint(session)) this.eventCache.delete(key);
     }
   }
+}
+
+function agentHistoryOperation<A>(
+  operation: string,
+  publicMessage: string,
+  run: () => Promise<A>,
+): Effect.Effect<A, OperationError> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => new OperationError({ subsystem: 'agent', operation, publicMessage, cause }),
+  });
 }
 
 function stripForceRefresh<T extends { forceRefresh?: boolean }>(opts: T): Omit<T, 'forceRefresh'> {

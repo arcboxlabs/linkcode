@@ -68,23 +68,17 @@ export class SessionRecordRegistry {
   }
 
   /** Imported records have no live adapter, so a store failure remains request-fatal. */
-  async importRecord(record: SessionRecord): Promise<void> {
-    try {
-      await this.store.save(record);
-      this.records.set(record.sessionId, record);
-    } catch (error) {
-      throw storeFailure('session-records.save', 'Failed to persist session record', error);
-    }
+  importRecord(record: SessionRecord): Effect.Effect<void, OperationError> {
+    return storeOperation('session-records.save', 'Failed to persist session record', () =>
+      this.store.save(record),
+    ).pipe(Effect.tap(() => Effect.sync(() => this.records.set(record.sessionId, record))));
   }
 
   /** Delete from durable storage first so a failed delete leaves the in-memory record retryable. */
-  async delete(sessionId: SessionId): Promise<void> {
-    try {
-      await this.store.delete(sessionId);
-      this.records.delete(sessionId);
-    } catch (error) {
-      throw storeFailure('session-records.delete', 'Failed to delete session record', error);
-    }
+  delete(sessionId: SessionId): Effect.Effect<void, OperationError> {
+    return storeOperation('session-records.delete', 'Failed to delete session record', () =>
+      this.store.delete(sessionId),
+    ).pipe(Effect.tap(() => Effect.sync(() => this.records.delete(sessionId))));
   }
 
   bindHistoryId(sessionId: SessionId, historyId: AgentHistoryId): void {

@@ -9,6 +9,8 @@ import type {
 import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { SessionDriver } from '../automation';
+import type { EngineFailure } from '../failure';
+import { RequestError, toOperationFailure } from '../failure';
 import type { WorkspaceRegistry } from '../workspace/workspace-registry';
 import type { HistoryService } from './history-service';
 import type { SessionOrchestrator } from './orchestrator';
@@ -50,11 +52,11 @@ export class SessionLifecycleService {
     this.runEffect = runEffect;
   }
 
-  start(replyTo: string, options: StartOptions): Effect.Effect<void, unknown> {
+  start(replyTo: string, options: StartOptions): Effect.Effect<void, EngineFailure> {
     const { sessions, startOptions, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const resolved = yield* fromPromise(() => startOptions.resolve(options));
+      const resolved = yield* startOptions.resolve(options);
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -66,17 +68,22 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ startedAt: now }],
       };
-      if (resolved.cwd) yield* fromPromise(() => workspaces.touch(resolved.cwd));
-      yield* sessions.startLive(replyTo, record, (adapter) => adapter.start(resolved));
+      if (resolved.cwd) yield* workspaceTouch(workspaces, resolved.cwd);
+      yield* sessions.startLive(replyTo, record, (adapter) =>
+        sessions.startAdapter(adapter, resolved),
+      );
     });
   }
 
-  importSession(kind: AgentKind, historyId: AgentHistoryId): Effect.Effect<SessionRecord, unknown> {
+  importSession(
+    kind: AgentKind,
+    historyId: AgentHistoryId,
+  ): Effect.Effect<SessionRecord, EngineFailure> {
     const { history, records } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
       // Read one event only: the summary (title/cwd/createdAt) is what the record needs.
-      const { session } = yield* fromPromise(() => history.read(kind, { historyId, limit: 1 }));
+      const { session } = yield* history.read(kind, { historyId, limit: 1 });
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -88,7 +95,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [],
       };
-      yield* fromPromise(() => records.importRecord(record));
+      yield* records.importRecord(record);
       return record;
     });
   }
@@ -98,11 +105,11 @@ export class SessionLifecycleService {
     kind: AgentKind,
     historyId: AgentHistoryId,
     options: StartOptions,
-  ): Effect.Effect<void, unknown> {
+  ): Effect.Effect<void, EngineFailure> {
     const { history, sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* fromPromise(() => resolver.resolve({ ...options, kind }));
+      const startOptions = yield* resolver.resolve({ ...options, kind });
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -113,7 +120,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ historyId, startedAt: now }],
       };
-      if (startOptions.cwd) yield* fromPromise(() => workspaces.touch(startOptions.cwd));
+      if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(replyTo, record, (adapter) =>
         history.resume(adapter, historyId, startOptions),
       );
@@ -121,27 +128,38 @@ export class SessionLifecycleService {
   }
 
   /** Wake a cold session in place under the same LinkCode id. */
-  resumeSession(replyTo: string | undefined, sessionId: SessionId): Effect.Effect<void, unknown> {
+  resumeSession(
+    replyTo: string | undefined,
+    sessionId: SessionId,
+  ): Effect.Effect<void, EngineFailure> {
     return Effect.suspend(() => {
       if (this.sessions.has(sessionId)) {
-        return Effect.fail(new Error(`Session is already running: ${sessionId}`));
+        return Effect.fail(
+          new RequestError({
+            code: 'conflict',
+            message: `Session is already running: ${sessionId}`,
+          }),
+        );
       }
-      const record = nullthrow(this.records.get(sessionId), `Unknown session: ${sessionId}`);
+      const record = this.records.get(sessionId);
+      if (!record) {
+        return Effect.fail(
+          new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+        );
+      }
       // A never-prompted session has no provider transcript to resume from (the adapter only mints one
       // on the first prompt); waking it is a fresh start under the same LinkCode id.
       const historyId = this.records.historyId(sessionId);
       const { history, sessions, startOptions: resolver, workspaces } = this;
       return Effect.gen(function* () {
-        const startOptions = yield* fromPromise(() =>
-          resolver.resolve({ kind: record.kind, cwd: record.cwd }),
-        );
+        const startOptions = yield* resolver.resolve({ kind: record.kind, cwd: record.cwd });
         // Register before starting so a persistence failure cannot follow a successful
         // `session.started` reply with a contradictory request failure.
-        if (record.cwd) yield* fromPromise(() => workspaces.touch(record.cwd));
+        if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
         record.runs.push({ historyId, startedAt: Date.now() });
         yield* sessions.startLive(replyTo, record, (adapter) =>
           historyId === undefined
-            ? adapter.start(startOptions)
+            ? sessions.startAdapter(adapter, startOptions)
             : history.resume(adapter, historyId, startOptions),
         );
       });
@@ -154,17 +172,15 @@ export class SessionLifecycleService {
     model?: string;
     title?: string;
     automation: SessionAutomation;
-  }): Effect.Effect<SessionId, unknown> {
+  }): Effect.Effect<SessionId, EngineFailure> {
     const { sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* fromPromise(() =>
-        resolver.resolve({
-          kind: options.kind,
-          cwd: options.cwd,
-          model: options.model,
-        }),
-      );
+      const startOptions = yield* resolver.resolve({
+        kind: options.kind,
+        cwd: options.cwd,
+        model: options.model,
+      });
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -177,8 +193,10 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ startedAt: now }],
       };
-      if (startOptions.cwd) yield* fromPromise(() => workspaces.touch(startOptions.cwd));
-      yield* sessions.startLive(undefined, record, (adapter) => adapter.start(startOptions));
+      if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
+      yield* sessions.startLive(undefined, record, (adapter) =>
+        sessions.startAdapter(adapter, startOptions),
+      );
       return record.sessionId;
     });
   }
@@ -193,6 +211,17 @@ export class SessionLifecycleService {
   }
 }
 
-function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: () => run(), catch: (cause) => cause });
+function workspaceTouch(
+  workspaces: WorkspaceRegistry,
+  cwd: string,
+): Effect.Effect<unknown, EngineFailure> {
+  return Effect.tryPromise({
+    try: () => workspaces.touch(cwd),
+    catch: (cause) =>
+      toOperationFailure(cause, {
+        subsystem: 'store',
+        operation: 'workspace.touch',
+        publicMessage: 'Failed to persist workspace',
+      }),
+  });
 }

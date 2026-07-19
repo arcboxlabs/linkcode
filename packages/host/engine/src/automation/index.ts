@@ -1,3 +1,13 @@
+export {
+  AutomationBusy,
+  AutomationDispatchFailure,
+  type AutomationFailure,
+  AutomationMalformedResponse,
+  AutomationTargetGone,
+  AutomationTimeout,
+  AutomationUnattended,
+  automationFailureMessage,
+} from './failure';
 export { LoopService, type LoopServiceOptions } from './loop-service';
 export { InMemoryLoopStore, type LoopStore } from './loop-store';
 export { RingBuffer } from './ring-buffer';

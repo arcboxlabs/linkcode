@@ -12,6 +12,7 @@ import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
+import type { EngineFailure } from '../failure';
 import { OperationError, RequestError } from '../failure';
 import { LiveSession } from './live-session';
 import { SessionEventProcessor } from './session-event-processor';
@@ -29,9 +30,10 @@ export class SessionOrchestrator {
     private readonly records: SessionRecordRegistry,
     private readonly runtimes: AgentRuntimeService,
     private readonly scope: Scope.Scope,
+    reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly onStopped: (sessionId: SessionId) => void,
   ) {
-    this.events = new SessionEventProcessor(transport, records, runtimes);
+    this.events = new SessionEventProcessor(transport, records, runtimes, reportFailure);
     this.inputs = new SessionInputDispatcher(records, this.events);
   }
 
@@ -64,7 +66,7 @@ export class SessionOrchestrator {
   }
 
   sendInput(sessionId: SessionId, input: AgentInput): Effect.Effect<void, unknown> {
-    return Effect.suspend(() => {
+    return Effect.suspend<void, unknown, never>(() => {
       const session = this.requireSession(sessionId);
       return session.run(Effect.suspend(() => this.inputs.send(sessionId, session, input)));
     });
@@ -76,16 +78,13 @@ export class SessionOrchestrator {
     );
   }
 
-  delete(sessionId: SessionId): Effect.Effect<void, unknown> {
+  delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
     return Effect.gen({ self: this }, function* () {
       const session = this.sessions.get(sessionId);
       if (session) {
         yield* this.teardown(sessionId, session, 'session.delete');
       }
-      yield* Effect.tryPromise({
-        try: () => this.records.delete(sessionId),
-        catch: (e) => e,
-      });
+      yield* this.records.delete(sessionId);
     });
   }
 
@@ -156,8 +155,8 @@ export class SessionOrchestrator {
   startLive(
     replyTo: string | undefined,
     record: SessionRecord,
-    startAdapter: (adapter: AgentAdapter) => Promise<void>,
-  ): Effect.Effect<void, unknown> {
+    startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
+  ): Effect.Effect<void, EngineFailure> {
     const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
@@ -175,22 +174,26 @@ export class SessionOrchestrator {
       const start = Effect.gen(function* () {
         yield* runtimes.awaitReady();
         if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
-        yield* Effect.tryPromise({
-          try: () => startAdapter(adapter),
-          catch: (cause) =>
-            new OperationError({
-              subsystem: 'agent',
-              operation: 'session.start',
-              publicMessage: 'Agent failed to start',
-              cause,
-            }),
-        });
+        yield* startAdapter(adapter);
         if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
         if (replyTo !== undefined) {
           transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
         }
       });
       yield* session.run(start).pipe(Effect.tapError(() => discardFailedStart(session)));
+    });
+  }
+
+  startAdapter(adapter: AgentAdapter, options: Parameters<AgentAdapter['start']>[0]) {
+    return Effect.tryPromise({
+      try: () => adapter.start(options),
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'agent',
+          operation: 'session.start',
+          publicMessage: 'Agent failed to start',
+          cause,
+        }),
     });
   }
 

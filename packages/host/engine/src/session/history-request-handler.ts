@@ -25,7 +25,7 @@ export class HistoryRequestHandler {
       case 'history.list':
         return this.responder.reply(
           payload.clientReqId,
-          historyOperation(() => this.history.list(payload.agentKind, payload.opts)).pipe(
+          this.history.list(payload.agentKind, payload.opts).pipe(
             Effect.flatMap((result) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -42,7 +42,7 @@ export class HistoryRequestHandler {
       case 'history.read':
         return this.responder.reply(
           payload.clientReqId,
-          historyOperation(() => this.history.read(payload.agentKind, payload.opts)).pipe(
+          this.history.read(payload.agentKind, payload.opts).pipe(
             Effect.flatMap((result) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -70,8 +70,4 @@ export class HistoryRequestHandler {
         return Effect.void;
     }
   }
-}
-
-function historyOperation<A>(run: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (cause) => cause });
 }

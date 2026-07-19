@@ -2,6 +2,7 @@ import { AUTH_FAILED_ERROR_CODE } from '@linkcode/agent-adapter';
 import type { AgentEvent, SessionId, SessionNotificationReason } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { LiveSession } from './live-session';
 import type { SessionRecordRegistry } from './session-record-registry';
@@ -12,6 +13,7 @@ export class SessionEventProcessor {
     private readonly transport: Transport,
     private readonly records: SessionRecordRegistry,
     private readonly runtimes: AgentRuntimeService,
+    private readonly reportFailure: (effect: Effect.Effect<void>) => void,
   ) {}
 
   broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
@@ -51,7 +53,7 @@ export class SessionEventProcessor {
       this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
       this.notify(sessionId, event);
     } catch (error) {
-      console.error(`Error handling adapter event for session ${sessionId}:`, error);
+      this.reportFailure(Effect.logError('Failed to process agent event', { sessionId }, error));
     }
   }
 
