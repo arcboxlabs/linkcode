@@ -1,13 +1,11 @@
-import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
+import type { AdapterFactory } from '@linkcode/agent-adapter';
+import { createAdapter } from '@linkcode/agent-adapter';
 import type {
-  AgentEvent,
   AgentKind,
   AgentRuntimes,
   ContentBlock,
   SessionAutomation,
   SessionId,
-  SessionNotificationReason,
   SessionRecord,
   StartOptions,
   WireMessage,
@@ -42,7 +40,7 @@ import { PreviewRouteRegistry } from './preview/route-registry';
 import { ScriptService } from './scripts/script-service';
 import { assertAttachmentContentAllowed } from './session/attachment-guard';
 import { HistoryService } from './session/history-service';
-import { LiveSession } from './session/live-session';
+import { SessionOrchestrator } from './session/orchestrator';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import type { SessionStore } from './session/session-store';
 import { InMemorySessionStore } from './session/session-store';
@@ -94,12 +92,11 @@ export interface EngineDeps {
  * by id: a request's `clientReqId` echoes back as `replyTo` on the matching reply.
  */
 export class Engine {
-  private readonly sessions = new Map<SessionId, LiveSession>();
+  private readonly sessions: SessionOrchestrator;
   private readonly records: SessionRecordRegistry;
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
   private readonly workspaces: WorkspaceRegistry;
-  private readonly factory: AdapterFactory;
   private readonly providerStore: ProviderConfigStore;
   private readonly git: GitService;
   private readonly fileSuggest: FileSuggestService;
@@ -117,12 +114,24 @@ export class Engine {
     private readonly transport: Transport,
     deps: EngineDeps = {},
   ) {
-    this.factory = deps.factory ?? createAdapter;
+    const factory = deps.factory ?? createAdapter;
     this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
     this.records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
     this.git = deps.git ?? new GitService();
     this.fileSuggest = deps.fileSuggest ?? new FileSuggestService();
-    this.history = new HistoryService(this.factory);
+    this.history = new HistoryService(factory);
+    this.runtimes = new AgentRuntimeService({
+      initial: deps.agentRuntimes,
+      ready: deps.agentRuntimesReady,
+      collect: deps.collectAgentRuntimes,
+      onChanged: (runtimes) => {
+        this.transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes }));
+      },
+      onError(message, error) {
+        console.error(message, error);
+      },
+    });
+    this.sessions = new SessionOrchestrator(transport, factory, this.records, this.runtimes);
     this.terminals = deps.ptyBackend
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
@@ -147,17 +156,6 @@ export class Engine {
       deps.loopStore ?? new InMemoryLoopStore(),
       this.buildSessionDriver(),
     );
-    this.runtimes = new AgentRuntimeService({
-      initial: deps.agentRuntimes,
-      ready: deps.agentRuntimesReady,
-      collect: deps.collectAgentRuntimes,
-      onChanged: (runtimes) => {
-        this.transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes }));
-      },
-      onError(message, error) {
-        console.error(message, error);
-      },
-    });
     this.assets = new ManagedAssetService(transport, deps.assets, () => {
       void this.runtimes.refresh();
     });
@@ -228,7 +226,7 @@ export class Engine {
             updatedAt: now,
             runs: [{ startedAt: now }],
           };
-          await this.startLiveSession(p.clientReqId, record, (adapter) => adapter.start(opts));
+          await this.sessions.startLive(p.clientReqId, record, (adapter) => adapter.start(opts));
           if (opts.cwd) this.workspaces.touch(opts.cwd);
         });
         break;
@@ -252,18 +250,18 @@ export class Engine {
               )
             ) {
               const error = new Error(`Unknown slash command: /${commandName}`);
-              this.broadcastInputRejected(p.sessionId, error.message);
+              this.sessions.rejectInput(p.sessionId, error.message);
               throw error;
             }
           }
           if (p.input.type === 'shell-command' && !session.capabilities.shellCommand) {
             const error = new Error('Shell commands are not supported by this session');
-            this.broadcastInputRejected(p.sessionId, error.message);
+            this.sessions.rejectInput(p.sessionId, error.message);
             throw error;
           }
           if (startsTurn && session.turnInputActive) {
             const error = new Error(`Session is busy: ${p.sessionId}`);
-            this.broadcastInputRejected(p.sessionId, error.message);
+            this.sessions.rejectInput(p.sessionId, error.message);
             throw error;
           }
           if (startsTurn) session.turnInputActive = true;
@@ -304,7 +302,7 @@ export class Engine {
             ? session.interactions.beginResponse(responseInput)
             : undefined;
           if (responseInput && respondingAsk) {
-            this.broadcastSessionEvents(p.sessionId, [
+            this.sessions.broadcast(p.sessionId, [
               {
                 type: 'prompt-response-status',
                 requestId: responseInput.requestId,
@@ -316,14 +314,14 @@ export class Engine {
             await session.adapter.send(p.input);
           } catch (err) {
             if (responseInput && respondingAsk) {
-              this.broadcastSessionEvents(
+              this.sessions.broadcast(
                 p.sessionId,
                 session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
               );
             }
             if (startsTurn && session.status !== 'running') session.turnInputActive = false;
             if (startsTurn) {
-              this.broadcastInputRejected(
+              this.sessions.rejectInput(
                 p.sessionId,
                 extractErrorMessage(err) ?? 'Agent input was rejected',
               );
@@ -332,7 +330,7 @@ export class Engine {
           }
           if (responseInput && respondingAsk) {
             const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
-            if (resolution) this.broadcastSessionEvents(p.sessionId, [resolution]);
+            if (resolution) this.sessions.broadcast(p.sessionId, [resolution]);
           }
           // Synchronous controls such as Codex /compact may not produce lifecycle events. A real
           // turn has reported running by this point — BaseAgentAdapter's turn contract requires
@@ -349,14 +347,15 @@ export class Engine {
             this.sessions.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
-          this.broadcastSessionEvents(p.sessionId, session.closeInteractions());
+          this.sessions.broadcast(p.sessionId, session.closeInteractions());
           session.stopListening();
           try {
             await session.adapter.stop();
           } finally {
-            this.sessions.delete(p.sessionId);
-            this.terminals?.killBySession(p.sessionId);
-            this.records.sealCurrentRun(p.sessionId);
+            if (this.sessions.remove(p.sessionId, session)) {
+              this.terminals?.killBySession(p.sessionId);
+              this.records.sealCurrentRun(p.sessionId);
+            }
           }
           this.sendSuccess(p.clientReqId);
         });
@@ -368,7 +367,7 @@ export class Engine {
           // another client. Provider-local history stays untouched, so session.import still works.
           const session = this.sessions.get(p.sessionId);
           if (session) {
-            this.broadcastSessionEvents(p.sessionId, session.closeInteractions());
+            this.sessions.broadcast(p.sessionId, session.closeInteractions());
             session.stopListening();
             try {
               await session.adapter.stop();
@@ -376,7 +375,7 @@ export class Engine {
               this.records.sealCurrentRun(p.sessionId);
               throw error;
             } finally {
-              this.sessions.delete(p.sessionId);
+              this.sessions.remove(p.sessionId, session);
               this.terminals?.killBySession(p.sessionId);
             }
           }
@@ -393,7 +392,7 @@ export class Engine {
         break;
       }
       case 'session.list': {
-        const sessions = this.records.list((sessionId) => this.sessions.get(sessionId)?.status);
+        const sessions = this.sessions.list();
         this.transport.send(
           createWireMessage({ kind: 'session.listed', replyTo: p.clientReqId, sessions }),
         );
@@ -461,7 +460,7 @@ export class Engine {
             updatedAt: now,
             runs: [{ historyId: p.historyId, startedAt: now }],
           };
-          await this.startLiveSession(p.clientReqId, record, (adapter) =>
+          await this.sessions.startLive(p.clientReqId, record, (adapter) =>
             this.history.resume(adapter, p.historyId, startOpts),
           );
           if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
@@ -795,9 +794,7 @@ export class Engine {
         // the latest command catalog, and live permission/question state. Unresolved asks replay
         // their request; settled asks replay only their outcome so old cards cannot enter a later
         // turn. Clients fold this state idempotently and dedupe asks by requestId.
-        const attached = this.sessions.get(p.sessionId);
-        if (!attached) break;
-        this.broadcastSessionEvents(p.sessionId, attached.replay());
+        this.sessions.replay(p.sessionId);
         break;
       }
       case 'session.detach': {
@@ -913,13 +910,7 @@ export class Engine {
     // Stop launching new automation sessions before the session-teardown sweep runs.
     this.scheduler.shutdown();
     this.loops.shutdown();
-    await Promise.all(
-      Array.from(this.sessions.values(), async (session) => {
-        session.stopListening();
-        await session.adapter.stop();
-      }),
-    );
-    this.sessions.clear();
+    await this.sessions.shutdown();
     this.scripts?.shutdown();
     this.terminals?.closeAll();
     this.logins?.closeAll();
@@ -931,74 +922,6 @@ export class Engine {
   private nextSessionId(): SessionId {
     this.seq += 1;
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
-  }
-
-  /** Bind a (new or resumed) record — its current run already last in `runs` — to a live adapter
-   * run; the adapter's `session-ref` event later backfills that run's provider-local id. */
-  private async startLiveSession(
-    replyTo: string | undefined,
-    record: SessionRecord,
-    startAdapter: (adapter: AgentAdapter) => Promise<void>,
-  ): Promise<void> {
-    const sessionId = record.sessionId;
-    const adapter = this.factory(record.kind);
-    const session = new LiveSession(adapter, sessionId);
-    session.listen((event) => {
-      // The adapter invokes this synchronously; an uncaught throw would bubble into whatever
-      // triggered the event instead of staying contained to this session.
-      try {
-        this.broadcastSessionEvents(sessionId, session.apply(event));
-        switch (event.type) {
-          case 'status':
-            if (event.status === 'stopped') this.records.sealCurrentRun(sessionId);
-            break;
-          case 'session-ref':
-            this.records.bindHistoryId(sessionId, event.historyId);
-            break;
-          case 'error':
-            // Signed-out/expired-token turn: re-probe so the runtime snapshot flips to
-            // `loggedIn: false` and the client surfaces the login cue.
-            if (event.code === AUTH_FAILED_ERROR_CODE) void this.runtimes.refresh();
-            break;
-          default:
-            break;
-        }
-        this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-        this.maybeNotify(sessionId, event);
-      } catch (err) {
-        console.error(`Error handling adapter event for session ${sessionId}:`, err);
-      }
-    });
-    this.sessions.set(sessionId, session);
-    this.records.register(record);
-    // A start can land between listener bind and the boot probe settling (CODE-225); wait, or
-    // `resolveBinary` misses a detected-only install and a packaged host fails the spawn. The
-    // wait sits AFTER registration so a session.delete arriving mid-wait finds the session and
-    // tears it down — the guard then aborts this start instead of resurrecting the deleted record.
-    await this.runtimes.ready;
-    if (this.sessions.get(sessionId) !== session) {
-      await adapter.stop().catch(noop);
-      throw new Error(`Session was closed while starting: ${sessionId}`);
-    }
-    try {
-      await startAdapter(adapter);
-    } catch (err) {
-      session.stopListening();
-      this.sessions.delete(sessionId);
-      this.records.sealCurrentRun(sessionId);
-      await adapter.stop().catch(noop);
-      throw err;
-    }
-    // A session.stop/session.delete handled while the adapter was still starting has already torn
-    // this binding down; announcing it as started would leak a live adapter nothing tracks.
-    if (this.sessions.get(sessionId) !== session) {
-      await adapter.stop().catch(noop);
-      throw new Error(`Session was closed while starting: ${sessionId}`);
-    }
-    // Automation-driven sessions have no client awaiting a reply (replyTo === undefined).
-    if (replyTo !== undefined) {
-      this.transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
-    }
   }
 
   /**
@@ -1032,15 +955,12 @@ export class Engine {
           updatedAt: now,
           runs: [{ startedAt: now }],
         };
-        await this.startLiveSession(undefined, record, (adapter) => adapter.start(startOpts));
+        await this.sessions.startLive(undefined, record, (adapter) => adapter.start(startOpts));
         if (startOpts.cwd) this.workspaces.touch(startOpts.cwd);
         return record.sessionId;
       },
       hasRecord: (sessionId) => this.records.has(sessionId),
-      isBusy: (sessionId) => {
-        const session = this.sessions.get(sessionId);
-        return session !== undefined && (session.turnInputActive || session.status === 'running');
-      },
+      isBusy: (sessionId) => this.sessions.isBusy(sessionId),
       ensureLive: async (sessionId) => {
         if (this.sessions.has(sessionId)) return;
         await this.resumeSessionById(undefined, sessionId);
@@ -1101,14 +1021,15 @@ export class Engine {
     if (!session) return;
     session.stopListening();
     await session.adapter.stop().catch(noop);
-    this.sessions.delete(sessionId);
-    this.terminals?.killBySession(sessionId);
-    this.records.sealCurrentRun(sessionId);
+    if (this.sessions.remove(sessionId, session)) {
+      this.terminals?.killBySession(sessionId);
+      this.records.sealCurrentRun(sessionId);
+    }
   }
 
   /**
    * Wake a cold session in place under the same Link Code id. Shared by the `session.resume` wire
-   * handler (which passes its `clientReqId` so `startLiveSession` echoes `session.started`) and the
+   * handler (which passes its `clientReqId` so the orchestrator echoes `session.started`) and the
    * automation SessionDriver (which passes `undefined` — no client is awaiting a reply).
    */
   private async resumeSessionById(
@@ -1124,7 +1045,7 @@ export class Engine {
     const historyId = this.records.historyId(sessionId);
     const startOpts = await this.resolveStartOptions({ kind: record.kind, cwd: record.cwd });
     record.runs.push({ historyId, startedAt: Date.now() });
-    await this.startLiveSession(replyTo, record, (adapter) =>
+    await this.sessions.startLive(replyTo, record, (adapter) =>
       historyId === undefined
         ? adapter.start(startOpts)
         : this.history.resume(adapter, historyId, startOpts),
@@ -1133,43 +1054,6 @@ export class Engine {
     // so imported records and roots archived since still pass the file.suggest workspace check once
     // their session is live again.
     if (record.cwd) this.workspaces.touch(record.cwd);
-  }
-
-  private broadcastSessionEvents(sessionId: SessionId, events: Iterable<AgentEvent>): void {
-    for (const event of events) {
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-    }
-  }
-
-  private broadcastInputRejected(sessionId: SessionId, message: string): void {
-    this.transport.send(
-      createWireMessage({
-        kind: 'agent.event',
-        sessionId,
-        event: { type: 'error', message, code: 'input_rejected', recoverable: true },
-      }),
-    );
-  }
-
-  /** Classification is daemon-side so clients never fold background sessions' event streams;
-   * surfacing is client-side policy. Must stay a broadcast even once per-connection subscription
-   * modes exist (CODE-72). */
-  private maybeNotify(sessionId: SessionId, event: AgentEvent): void {
-    const reason = notificationReason(event);
-    const record = this.records.get(sessionId);
-    if (!reason || !record) return;
-    this.transport.send(
-      createWireMessage({
-        kind: 'session.notification',
-        notification: {
-          sessionId,
-          kind: record.kind,
-          cwd: record.cwd,
-          title: record.title,
-          reason,
-        },
-      }),
-    );
   }
 
   private async tryReply(replyTo: string, fn: () => Promise<void>): Promise<void> {
@@ -1187,22 +1071,5 @@ export class Engine {
 
   private sendSuccess(replyTo: string): void {
     this.transport.send(createWireMessage({ kind: 'request.succeeded', replyTo }));
-  }
-}
-
-/** The notification-worthy subset of adapter events. `stop` marks the turn boundary (`idle` also
- * fires at session start, so it can't be the trigger); an ask is the only "awaiting input" signal
- * any adapter emits. */
-function notificationReason(event: AgentEvent): SessionNotificationReason | undefined {
-  switch (event.type) {
-    case 'stop':
-      return { type: 'turn-completed', stopReason: event.stopReason };
-    case 'permission-request':
-    case 'question-request':
-      return { type: 'awaiting-approval', toolTitle: event.toolCall.title };
-    case 'error':
-      return { type: 'error', message: event.message };
-    default:
-      return undefined;
   }
 }
