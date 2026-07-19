@@ -9,6 +9,7 @@ interface FakePiModel {
   name?: string;
   reasoning: boolean;
   thinkingLevelMap?: Record<string, string | null>;
+  baseUrl?: string;
 }
 
 const OPENAI_MODEL: FakePiModel = {
@@ -28,6 +29,11 @@ const sdkMock = vi.hoisted(() => ({
   /** null = every model counts as available (auth not modeled); a Set gates `getAvailable` on the
    * providers it contains, mirroring the real registry's auth-gated availability view. */
   authedProviders: null as Set<string> | null,
+  /** Providers whose models come from models.json — excluded from `inMemory`'s built-in view,
+   * mirroring the double-registry diff `piLocalProviders` performs. null = none local. */
+  localProviders: null as Set<string> | null,
+  /** `registerProvider(name, config)` calls, for the endpoint-protection assertions. */
+  registered: [] as Array<[string, Record<string, unknown>]>,
 }));
 
 vi.mock('@earendil-works/pi-coding-agent', async () => {
@@ -61,6 +67,8 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
     },
     ModelRegistry: {
       create: () => ({
+        authStorage: {},
+        getAll: () => sdkMock.available,
         getAvailable: () =>
           sdkMock.authedProviders
             ? (sdkMock.available as FakePiModel[]).filter((m) =>
@@ -70,7 +78,16 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
         // find is deliberately NOT auth-gated, matching the real registry.
         find: (provider: string, id: string) =>
           (sdkMock.available as FakePiModel[]).find((m) => m.provider === provider && m.id === id),
-        registerProvider: noopFn,
+        registerProvider(name: string, config: Record<string, unknown>) {
+          sdkMock.registered.push([name, config]);
+        },
+      }),
+      // The models.json-less registry piLocalProviders diffs against: built-in models only.
+      inMemory: () => ({
+        getAll: () =>
+          (sdkMock.available as FakePiModel[]).filter(
+            (m) => !sdkMock.localProviders?.has(m.provider),
+          ),
       }),
     },
     DefaultResourceLoader: class {
@@ -142,6 +159,8 @@ beforeEach(() => {
   sdkMock.session = null;
   sdkMock.createOpts = null;
   sdkMock.authedProviders = null;
+  sdkMock.localProviders = null;
+  sdkMock.registered = [];
 });
 
 describe('pi startCatalog', () => {
@@ -159,6 +178,52 @@ describe('pi startCatalog', () => {
     expect(catalog.defaultPolicyId).toBe('default');
     // Never started: no events, no session.
     expect(sdkMock.createOpts).toBeNull();
+  });
+});
+
+describe('pi local providers', () => {
+  const BANNED_MODEL: FakePiModel = {
+    provider: 'banned',
+    id: 'glm',
+    reasoning: false,
+    baseUrl: 'https://banned.test/v1',
+  };
+
+  it('reports models.json providers in the start catalog', async () => {
+    sdkMock.available = [OPENAI_MODEL, BANNED_MODEL];
+    sdkMock.localProviders = new Set(['banned']);
+    const adapter = new PiAdapter();
+    const catalog = await adapter.startCatalog({});
+
+    expect(catalog.localProviders).toEqual([
+      { id: 'banned', baseUrl: 'https://banned.test/v1', models: ['glm'] },
+    ]);
+  });
+
+  it('omits localProviders when models.json defines none', async () => {
+    const adapter = new PiAdapter();
+    const catalog = await adapter.startCatalog({});
+    expect(catalog.localProviders).toBeUndefined();
+  });
+
+  it('never overrides a models.json provider endpoint with the bound account baseUrl', async () => {
+    sdkMock.available = [BANNED_MODEL];
+    sdkMock.localProviders = new Set(['banned']);
+    await startedAdapter(
+      { model: BANNED_MODEL, thinkingLevel: 'off', supportsThinking: false },
+      { model: 'banned/glm', config: { apiKey: 'sk-1', baseUrl: 'https://gateway.test/v1' } },
+    );
+    expect(sdkMock.registered).toEqual([]);
+  });
+
+  it('registers the account baseUrl onto a non-local provider', async () => {
+    await startedAdapter(
+      { model: OPENAI_MODEL, thinkingLevel: 'medium', supportsThinking: true },
+      { model: 'openai/gpt-test', config: { apiKey: 'sk-1', baseUrl: 'https://gateway.test/v1' } },
+    );
+    expect(sdkMock.registered).toEqual([
+      ['openai', { baseUrl: 'https://gateway.test/v1', apiKey: 'sk-1' }],
+    ]);
   });
 });
 
@@ -234,7 +299,9 @@ describe('pi dynamic model catalog', () => {
     expect(catalogs(events)[0][0].effortLevels).toEqual(['high']);
   });
 
-  it('narrows the catalog to the credential provider and rejects cross-provider switches', async () => {
+  it('narrows the catalog to the credential provider and rejects switches to unauthed providers', async () => {
+    // Nothing locally authed: the injected credential is the only auth in play.
+    sdkMock.authedProviders = new Set();
     const { adapter, events } = await startedAdapter(
       { model: OPENAI_MODEL, thinkingLevel: 'medium', supportsThinking: true },
       { model: 'openai/gpt-test', config: { apiKey: 'sk-1' } },
@@ -244,6 +311,20 @@ describe('pi dynamic model catalog', () => {
     await expect(adapter.send({ type: 'set-model', model: 'anthropic/claude-x' })).rejects.toThrow(
       "credential is scoped to 'openai'",
     );
+  });
+
+  it('keeps locally-authed providers visible and switchable alongside a bound credential', async () => {
+    // anthropic authenticates through pi's own stores (auth.json / a models.json inline key);
+    // only openai's auth arrives via the injected credential.
+    sdkMock.authedProviders = new Set(['anthropic']);
+    const { adapter, events } = await startedAdapter(
+      { model: OPENAI_MODEL, thinkingLevel: 'medium', supportsThinking: true },
+      { model: 'openai/gpt-test', config: { apiKey: 'sk-1' } },
+    );
+
+    expect(catalogs(events)[0].map((m) => m.id)).toEqual(['openai/gpt-test', 'anthropic/claude-x']);
+    await adapter.send({ type: 'set-model', model: 'anthropic/claude-x' });
+    expect(modelUpdates(events)).toContain('anthropic/claude-x');
   });
 
   it('emits no catalog when nothing is available', async () => {

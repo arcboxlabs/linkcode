@@ -44,6 +44,7 @@ import {
   piAgentDir,
   readPiHistory,
 } from './history';
+import { piLocalProviders } from './local-providers';
 import { createPiUiContext } from './ui-bridge';
 
 type PiModel = NonNullable<CreateAgentSessionOptions['model']>;
@@ -158,8 +159,12 @@ export class PiAdapter extends BaseAgentAdapter {
   private readonly sessionAllowedTools = new Set<string>();
   private modelRegistry: PiModelRegistry | null = null;
   /** Set when a per-account credential was injected at start — the injection is start-time-only
-   * and scoped to one provider, so live model switches must stay inside it (opencode parity). */
+   * and scoped to one provider, so live model switches must stay inside it (opencode parity) or
+   * inside {@link locallyAuthedProviders}, whose auth does not depend on the injection. */
   private credentialProviderId: string | null = null;
+  /** Providers usable WITHOUT the injected credential (models.json inline keys, auth.json
+   * logins), snapshotted before injection: credential scoping must not hide or reject them. */
+  private locallyAuthedProviders: ReadonlySet<string> = new Set();
 
   override async startCatalog(_opts: { cwd?: string }): Promise<AgentStartCatalog> {
     // Plain import on a never-started instance (the history precedent). The catalog reflects the
@@ -167,10 +172,12 @@ export class PiAdapter extends BaseAgentAdapter {
     // appear pre-session only when local auth also covers them.
     const pi = await importPiSdk();
     const registry = pi.ModelRegistry.create(pi.AuthStorage.create());
+    const localProviders = piLocalProviders(pi, registry);
     return {
       models: piModelOptions(registry.getAvailable()),
       policies: [...APPROVAL_POLICIES],
       defaultPolicyId: INITIAL_POLICY_ID,
+      ...(localProviders.length > 0 && { localProviders }),
     };
   }
 
@@ -228,16 +235,21 @@ export class PiAdapter extends BaseAgentAdapter {
       throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
     }
 
+    this.locallyAuthedProviders = new Set(modelRegistry.getAvailable().map((m) => m.provider));
+
     // Pi resolves auth through AuthStorage; inject the account's key as a runtime override for the
     // session's provider so it takes precedence over ~/.pi/agent/auth.json and env vars. A
-    // gateway account's base URL is registered on the model registry (it overrides the provider's URL).
+    // gateway account's base URL is registered on the model registry (it overrides the provider's
+    // URL) — except onto a models.json local provider, which owns its endpoint: the account may
+    // override its key, but replacing its base URL would corrupt the routing whenever the bound
+    // account actually belongs to another provider.
     const provider =
       explicitRef?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
     const cred = readAgentCredential(opts.config);
     const key = cred.apiKey ?? cred.authToken;
     if (provider && (key || cred.baseUrl)) {
       if (key) authStorage.setRuntimeApiKey(provider, key);
-      if (cred.baseUrl) {
+      if (cred.baseUrl && !piLocalProviders(pi, modelRegistry).some((p) => p.id === provider)) {
         modelRegistry.registerProvider(provider, {
           baseUrl: cred.baseUrl,
           ...(key && { apiKey: key }),
@@ -357,7 +369,11 @@ export class PiAdapter extends BaseAgentAdapter {
     if (!ref) {
       throw new Error(`pi: model must be 'provider/modelId' (got '${model}')`);
     }
-    if (this.credentialProviderId && ref.provider !== this.credentialProviderId) {
+    if (
+      this.credentialProviderId &&
+      ref.provider !== this.credentialProviderId &&
+      !this.locallyAuthedProviders.has(ref.provider)
+    ) {
       throw new Error(
         `pi: this session's credential is scoped to '${this.credentialProviderId}' — start a new session to use provider '${ref.provider}'`,
       );
@@ -421,7 +437,13 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private emitModelCatalog(registry: PiModelRegistry): void {
     const models = this.credentialProviderId
-      ? registry.getAvailable().filter((m) => m.provider === this.credentialProviderId)
+      ? registry
+          .getAvailable()
+          .filter(
+            (m) =>
+              m.provider === this.credentialProviderId ||
+              this.locallyAuthedProviders.has(m.provider),
+          )
       : registry.getAvailable();
     if (models.length === 0) return;
     this.emitModels(piModelOptions(models));
