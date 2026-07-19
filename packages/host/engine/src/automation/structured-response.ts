@@ -1,5 +1,8 @@
 import type { SessionId } from '@linkcode/schema';
+import { Effect } from 'effect';
 import type { ZodType } from 'zod';
+import type { AutomationFailure } from './failure';
+import { AutomationDispatchFailure, AutomationMalformedResponse } from './failure';
 import type { SessionDriver } from './session-driver';
 
 /** Matches a fenced code block; the opener's rest-of-line is skipped, the body captured. */
@@ -72,7 +75,6 @@ function balancedObjectFrom(text: string, open: number): string | undefined {
 
 export interface StructuredPromptOptions {
   timeoutMs?: number;
-  signal?: AbortSignal;
   /** Corrective re-asks allowed after the first attempt (default 2 → up to 3 turns total). */
   maxRetries?: number;
 }
@@ -83,36 +85,36 @@ export interface StructuredPromptOptions {
  * can correct itself. Rejects once the retry budget is spent, or propagates a `driver.prompt` failure
  * (busy/timeout/permission stall) unchanged.
  */
-export async function promptForStructured<T>(
+export function promptForStructured<T>(
   driver: Pick<SessionDriver, 'prompt'>,
   sessionId: SessionId,
   basePrompt: string,
   schema: ZodType<T>,
   opts: StructuredPromptOptions = {},
-): Promise<T> {
-  const maxRetries = opts.maxRetries ?? 2;
-  let prompt = basePrompt;
-  let lastError = 'no reply';
-  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-    if (opts.signal?.aborted) throw new Error('structured prompt cancelled');
-    // eslint-disable-next-line no-await-in-loop -- retries are inherently sequential: each corrective re-ask depends on the previous reply.
-    const { text } = await driver.prompt(sessionId, prompt, {
-      timeoutMs: opts.timeoutMs,
-      signal: opts.signal,
-    });
-    const json = extractJson(text);
-    if (json === undefined) {
-      lastError = 'no JSON object found in the reply';
-    } else {
-      const parsed = schema.safeParse(json);
-      if (parsed.success) return parsed.data;
-      lastError = parsed.error.issues
-        .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
-        .join('; ');
+): Effect.Effect<T, AutomationFailure> {
+  return Effect.gen(function* () {
+    const maxRetries = opts.maxRetries ?? 2;
+    let prompt = basePrompt;
+    let lastError: string;
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      const currentPrompt = prompt;
+      const { text } = yield* Effect.tryPromise({
+        try: (signal) =>
+          driver.prompt(sessionId, currentPrompt, { timeoutMs: opts.timeoutMs, signal }),
+        catch: (cause) => new AutomationDispatchFailure({ cause }),
+      });
+      const json = extractJson(text);
+      if (json === undefined) {
+        lastError = 'no JSON object found in the reply';
+      } else {
+        const parsed = schema.safeParse(json);
+        if (parsed.success) return parsed.data;
+        lastError = parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+          .join('; ');
+      }
+      prompt = `Your previous reply could not be used: ${lastError}. Reply with ONLY a single JSON object matching the required shape — no prose, no code fence.`;
     }
-    prompt = `Your previous reply could not be used: ${lastError}. Reply with ONLY a single JSON object matching the required shape — no prose, no code fence.`;
-  }
-  throw new Error(
-    `could not parse structured output after ${maxRetries + 1} attempts: ${lastError}`,
-  );
+    return yield* new AutomationMalformedResponse({ attempts: maxRetries + 1 });
+  });
 }

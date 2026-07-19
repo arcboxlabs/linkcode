@@ -1,8 +1,10 @@
 import type { LoopIteration, LoopRecord, LoopVerdict } from '@linkcode/schema';
 import { LoopVerdictSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { OperationError } from '../failure';
+import type { AutomationFailure } from './failure';
+import { AutomationDispatchFailure, automationFailureMessage } from './failure';
 import {
   buildLoopVerifierPrompt,
   buildLoopWorkerPrompt,
@@ -33,7 +35,7 @@ export class LoopIterationRunner {
     loop: LoopRecord,
     index: number,
     lastFailure: string | undefined,
-  ): Effect.Effect<LoopIterationResult, unknown> {
+  ): Effect.Effect<LoopIterationResult, AutomationFailure | OperationError> {
     const iteration: LoopIteration = {
       loopId: loop.loopId,
       index,
@@ -62,12 +64,26 @@ export class LoopIterationRunner {
           }
           iteration.status = checksPassed && verifierPassed ? 'passed' : 'failed';
         }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              iteration.status = 'failed';
-              iteration.error = extractErrorMessage(error, false) ?? 'iteration failed';
-              reporter.log(loop.loopId, 'error', 'system', iteration.error, index);
-            }),
+          Effect.catch((error: AutomationFailure | OperationError) =>
+            error instanceof OperationError
+              ? Effect.fail(error)
+              : Effect.sync(() => {
+                  iteration.status = 'failed';
+                  iteration.error = automationFailureMessage(error);
+                  reporter.log(loop.loopId, 'error', 'system', iteration.error, index);
+                }).pipe(
+                  Effect.andThen(
+                    Effect.logError(
+                      'Loop iteration failed',
+                      {
+                        loopId: loop.loopId,
+                        iteration: index,
+                        operation: 'automation.loop.iteration',
+                      },
+                      error,
+                    ),
+                  ),
+                ),
           ),
         );
         return { iteration, workerText, failureFeedback: describeLoopFailure(iteration) };
@@ -85,7 +101,7 @@ export class LoopIterationRunner {
     loop: LoopRecord,
     iteration: LoopIteration,
     lastFailure: string | undefined,
-  ): Effect.Effect<string, unknown> {
+  ): Effect.Effect<string, AutomationFailure | OperationError> {
     const { driver, reporter } = this;
     const saveEffect = this.saveEffect.bind(this);
     return Effect.acquireUseRelease(
@@ -119,7 +135,10 @@ export class LoopIterationRunner {
   }
 
   /** Run the shell checks in order, failing fast; each result is appended and streamed. */
-  private runChecks(loop: LoopRecord, iteration: LoopIteration): Effect.Effect<boolean, unknown> {
+  private runChecks(
+    loop: LoopRecord,
+    iteration: LoopIteration,
+  ): Effect.Effect<boolean, AutomationFailure | OperationError> {
     const { reporter } = this;
     const saveEffect = this.saveEffect.bind(this);
     return Effect.gen(function* () {
@@ -147,7 +166,7 @@ export class LoopIterationRunner {
     loop: LoopRecord,
     iteration: LoopIteration,
     workerText: string,
-  ): Effect.Effect<LoopVerdict, unknown> {
+  ): Effect.Effect<LoopVerdict, AutomationFailure | OperationError> {
     const verifier = nullthrow(loop.spec.verifier);
     const { driver, reporter } = this;
     const saveEffect = this.saveEffect.bind(this);
@@ -168,12 +187,9 @@ export class LoopIterationRunner {
           yield* saveEffect(iteration);
           yield* driverCall((signal) => driver.makeUnattended(sessionId, signal));
           const prompt = buildLoopVerifierPrompt(verifier.prompt, loop.spec.prompt, workerText);
-          const verdict = yield* driverCall((signal) =>
-            promptForStructured(driver, sessionId, prompt, LoopVerdictSchema, {
-              timeoutMs: loop.spec.turnTimeoutMs,
-              signal,
-            }),
-          );
+          const verdict = yield* promptForStructured(driver, sessionId, prompt, LoopVerdictSchema, {
+            timeoutMs: loop.spec.turnTimeoutMs,
+          });
           reporter.log(
             loop.loopId,
             verdict.passed ? 'info' : 'warn',
@@ -187,17 +203,25 @@ export class LoopIterationRunner {
     );
   }
 
-  private saveEffect(iteration: LoopIteration): Effect.Effect<void, unknown> {
-    return fromPromise(() => this.store.saveIteration(iteration)).pipe(
-      Effect.andThen(Effect.sync(() => this.reporter.iteration(iteration))),
-    );
+  private saveEffect(iteration: LoopIteration): Effect.Effect<void, OperationError> {
+    return Effect.tryPromise({
+      try: () => this.store.saveIteration(iteration),
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'store',
+          operation: 'loop-iterations.save',
+          publicMessage: 'Failed to save loop iteration',
+          cause,
+        }),
+    }).pipe(Effect.andThen(Effect.sync(() => this.reporter.iteration(iteration))));
   }
 }
 
-function driverCall<A>(run: (signal: AbortSignal) => PromiseLike<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (cause) => cause });
-}
-
-function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (cause) => cause });
+function driverCall<A>(
+  run: (signal: AbortSignal) => PromiseLike<A>,
+): Effect.Effect<A, AutomationDispatchFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => new AutomationDispatchFailure({ cause }),
+  });
 }

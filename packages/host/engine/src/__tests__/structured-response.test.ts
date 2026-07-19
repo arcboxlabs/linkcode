@@ -1,4 +1,5 @@
 import type { SessionId } from '@linkcode/schema';
+import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { TurnResult } from '../automation/session-driver';
@@ -66,36 +67,33 @@ describe('extractJson', () => {
 describe('promptForStructured', () => {
   it('returns the parsed value on the first usable reply', async () => {
     const driver = scriptedDriver(['{"passed": true, "reason": "done"}']);
-    const result = await promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema);
+    const result = await Effect.runPromise(
+      promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema),
+    );
     expect(result).toEqual({ passed: true, reason: 'done' });
     expect(driver.prompts).toHaveLength(1);
   });
 
   it('re-asks with the validation error until a reply parses', async () => {
     const driver = scriptedDriver(['not json', '{"passed": true, "reason": "fixed"}']);
-    const result = await promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema);
+    const result = await Effect.runPromise(
+      promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema),
+    );
     expect(result).toEqual({ passed: true, reason: 'fixed' });
     expect(driver.prompts).toHaveLength(2);
     expect(driver.prompts[1]).toContain('could not be used');
   });
 
-  it('does not send a corrective retry after cancellation', async () => {
-    const controller = new AbortController();
-    const driver = scriptedDriver(['not json'], () => controller.abort());
-
-    await expect(
-      promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema, {
-        signal: controller.signal,
-      }),
-    ).rejects.toThrow('structured prompt cancelled');
-    expect(driver.prompts).toHaveLength(1);
-  });
-
-  it('throws once the retry budget is exhausted', async () => {
+  it('returns a typed malformed-response failure once the retry budget is exhausted', async () => {
     const driver = scriptedDriver(['nope']);
-    await expect(
-      promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema, { maxRetries: 1 }),
-    ).rejects.toThrow('could not parse structured output after 2 attempts');
+    const failure = await Effect.runPromise(
+      Effect.flip(
+        promptForStructured(driver, 's1' as SessionId, 'judge it', VerdictSchema, {
+          maxRetries: 1,
+        }),
+      ),
+    );
+    expect(failure).toMatchObject({ _tag: 'AutomationMalformedResponse', attempts: 2 });
     expect(driver.prompts).toHaveLength(2);
   });
 });
