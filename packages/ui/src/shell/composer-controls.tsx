@@ -220,8 +220,12 @@ export function ModelSelectorMenu({
   const providers = selectableProviders ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
   const hasModels = Boolean(modelOptions?.length);
+  const modelLabel = selectedModel?.label ?? selectedModelId ?? t('modelDefault');
+  // A draft provider picker must keep the model axis visible even when that provider discovers
+  // its concrete model only after session start (OpenCode/Pi). The live update replaces Default.
+  const showsModel = providers.length > 0 || hasModels || selectedModelId !== null;
 
-  if (!hasEfforts && !hasModels && providers.length === 0) return null;
+  if (!hasEfforts && !showsModel && providers.length === 0) return null;
 
   return (
     <Menu>
@@ -232,7 +236,7 @@ export function ModelSelectorMenu({
         {providers.length > 0 && provider ? (
           <AgentIcon className="text-muted-foreground" kind={provider} variant="ghost" />
         ) : null}
-        {hasModels ? (selectedModel?.label ?? t('modelDefault')) : null}
+        {showsModel ? modelLabel : null}
         {hasEfforts ? (
           <span className="font-normal text-muted-foreground">
             <span className="@max-[480px]/composer:sr-only">
@@ -265,7 +269,7 @@ export function ModelSelectorMenu({
           <>
             {hasEfforts ? <MenuSeparator /> : null}
             <MenuSub>
-              <MenuSubTrigger>{selectedModel?.label ?? t('modelDefault')}</MenuSubTrigger>
+              <MenuSubTrigger>{modelLabel}</MenuSubTrigger>
               <MenuSubPopup className="w-56">
                 <MenuRadioGroup
                   value={selectedModel?.id ?? selectedModelId ?? ''}
