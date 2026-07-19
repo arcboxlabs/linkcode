@@ -34,7 +34,15 @@ export class GitService {
     const byKind = new Map(providers.map((provider) => [provider.kind, provider]));
     const statusCache = yield* makeCache(
       (cwd: string) =>
-        gitOperation('git.status', 'Failed to read git status', () => readGitStatus(cwd)),
+        readGitStatus(cwd).pipe(
+          Effect.mapError((cause) =>
+            toOperationFailure(cause, {
+              subsystem: 'git',
+              operation: 'git.status',
+              publicMessage: 'Failed to read git status',
+            }),
+          ),
+        ),
       STATUS_TTL_MS,
     );
     const diffCache = yield* makeCache(

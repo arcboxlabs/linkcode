@@ -47,12 +47,12 @@ afterAll(() => {
 describe('readGitStatus', () => {
   it('reports a non-repo directory', async () => {
     const dir = makeTempDir();
-    await expect(readGitStatus(dir)).resolves.toEqual({ isRepo: false });
+    await expect(Effect.runPromise(readGitStatus(dir))).resolves.toEqual({ isRepo: false });
   });
 
   it('reads branch, cleanliness, and missing remote/upstream of a fresh repo', async () => {
     const dir = makeRepo();
-    const status = await readGitStatus(dir);
+    const status = await Effect.runPromise(readGitStatus(dir));
     expect(status).toEqual({
       isRepo: true,
       repoRoot: expect.any(String) as string,
@@ -68,14 +68,14 @@ describe('readGitStatus', () => {
     const dir = makeRepo();
     writeFileSync(join(dir, 'a.txt'), 'a');
     writeFileSync(join(dir, 'b.txt'), 'b');
-    const status = await readGitStatus(dir);
+    const status = await Effect.runPromise(readGitStatus(dir));
     expect(status.isRepo && status.dirtyFileCount).toBe(2);
   });
 
   it('resolves the origin remote to a provider identity', async () => {
     const dir = makeRepo();
     git(dir, 'remote', 'add', 'origin', 'git@github.com:arcboxlabs/linkcode.git');
-    const status = await readGitStatus(dir);
+    const status = await Effect.runPromise(readGitStatus(dir));
     expect(status.isRepo && status.remote).toEqual({
       url: 'git@github.com:arcboxlabs/linkcode.git',
       identity: { provider: 'github', host: 'github.com', owner: 'arcboxlabs', repo: 'linkcode' },
@@ -85,7 +85,7 @@ describe('readGitStatus', () => {
   it('reports a detached HEAD as a null branch', async () => {
     const dir = makeRepo();
     git(dir, 'checkout', '--detach');
-    const status = await readGitStatus(dir);
+    const status = await Effect.runPromise(readGitStatus(dir));
     expect(status.isRepo && status.branch).toBeNull();
   });
 
