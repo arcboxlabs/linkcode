@@ -17,6 +17,7 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "croner": "^10.0.1",
+    "effect": "4.0.0-beta.98",
     "foxts": "^5.8.0",
     "restty": "^0.2.5",
     "zod": "catalog:"

@@ -97,9 +97,10 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 
 ## Engine wiring, errors & lifecycle
 
-- **Injection over imports.** The `Engine` receives daemon-owned implementations (`ProviderConfigStore`,
-  `SessionStore`, `WorkspaceStore`, `PtyBackend`) at construction; defaults stay in-memory so bare
-  engines and tests need no daemon. New persistence: interface in `@linkcode/engine`, implementation here.
+- **Injection over imports.** `makeEngineLayer` receives daemon-owned implementations
+  (`ProviderConfigStore`, `SessionStore`, `WorkspaceStore`, `PtyBackend`) and owns Engine
+  start/stop; defaults stay in-memory so package tests need no daemon. New persistence: interface in
+  `@linkcode/engine`, implementation here.
 - **Wire version:** every message pins `v: z.literal(WIRE_PROTOCOL_VERSION)`
   (`packages/schema/src/wire/index.ts`); a version mismatch means silent frame drops — see root
   `AGENTS.md`, Invariant 1. Any wire change bumps the literal; after a bump, rebuild and restart the
@@ -111,7 +112,7 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   user-visible side effects after the awaited op succeeds. Full bug catalog → `docs/DEVELOPMENT.md`.
 - **Lifecycle:** boot/shutdown is an Effect v4 layer graph in `src/index.ts` (CODE-244; Effect is
   beta-pinned and bundled — root `AGENTS.md` "Never Guess" applies before touching it): layers
-  acquire in order Shared (config, double-start gate, hub) → Engine → Listeners → lifecycle
+  acquire in order Shared (config, double-start gate, hub) → EngineService → Listeners → lifecycle
   (runtime file, then uplink) and release LIFO, so `ensureChatWorkspace(~/LinkCode)` still runs
   **before** any listener binds and `workspace.list` always includes the "Chats" workspace. SIGINT/SIGTERM interrupt the
   root fiber at any boot phase and unwind exactly the layers acquired; exit codes: graceful drain

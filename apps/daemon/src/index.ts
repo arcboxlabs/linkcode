@@ -1,7 +1,7 @@
 import { NodeRuntime } from '@effect/platform-node';
 import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { AssetManager } from '@linkcode/assets';
-import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
+import { EngineService, makeEngineLayer, PreviewRouteRegistry } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import { Hub } from '@linkcode/transport/server';
@@ -56,8 +56,6 @@ class Shared extends Context.Service<
     readonly previewRoutes: PreviewRouteRegistry;
   }
 >()('daemon/Shared') {}
-
-class EngineHandle extends Context.Service<EngineHandle, Engine>()('daemon/Engine') {}
 
 class BoundListeners extends Context.Service<BoundListeners, readonly DaemonListenerInfo[]>()(
   'daemon/BoundListeners',
@@ -152,8 +150,7 @@ async function main(): Promise<void> {
     }),
   );
 
-  const EngineLive = Layer.effect(
-    EngineHandle,
+  const EngineLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
       const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
@@ -188,7 +185,7 @@ async function main(): Promise<void> {
       // status`) that take seconds on a cold machine — listener bind must not wait on them, or
       // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
       const agentRuntimesReady = agentRuntimeProber.collect();
-      const engine = new Engine(hub, {
+      const EngineRuntimeLive = makeEngineLayer(hub, {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         sessionStore: createSessionStore(databasePath()),
@@ -212,41 +209,41 @@ async function main(): Promise<void> {
           ensureBinary: async () => (await assets.ensure('tool:aigateway'))?.path,
         }),
       });
-      // Refresh consented managed installs in the background — boot never waits on a download. A
-      // never-installed agent waits for the client's explicit `asset.ensure` instead (CODE-221).
-      // Rides the probe promise (CODE-225); the engine exists first so its asset subscription
-      // sees the whole install lifecycle. `agentsToRefresh` also includes installs that spawn but
-      // lack catalog-expected extra members (`needsRepair`) so they heal via backfill (CODE-234).
-      void agentRuntimesReady
-        .then((agentRuntimes) => {
-          for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
-            void assets
-              .ensure(`agent:${kind}`)
-              .catch((err) => {
-                console.warn(
-                  `[linkcode/daemon] managed install failed for ${kind}: ${extractErrorMessage(err)}`,
-                );
-              })
-              .then((installed) => {
-                if (installed) {
-                  console.log(
-                    `[linkcode/daemon] managed runtime ready: ${installed.id}@${installed.version}`,
-                  );
-                }
-              });
-          }
-        })
-        .catch((err) => {
-          console.warn(`[linkcode/daemon] boot agent probe failed: ${extractErrorMessage(err)}`);
-        });
-      yield* Effect.acquireRelease(
-        Effect.promise(() => engine.start()),
-        () => finalize(() => engine.stop()),
+      const EngineReady = Layer.effectDiscard(
+        Effect.gen(function* () {
+          const engine = yield* EngineService;
+          // Refresh consented managed installs in the background — boot never waits on a download.
+          // Rides the probe promise (CODE-225); yielding the service first guarantees the engine's
+          // asset subscription sees the whole install lifecycle.
+          void agentRuntimesReady
+            .then((agentRuntimes) => {
+              for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
+                void assets
+                  .ensure(`agent:${kind}`)
+                  .catch((err) => {
+                    console.warn(
+                      `[linkcode/daemon] managed install failed for ${kind}: ${extractErrorMessage(err)}`,
+                    );
+                  })
+                  .then((installed) => {
+                    if (installed) {
+                      console.log(
+                        `[linkcode/daemon] managed runtime ready: ${installed.id}@${installed.version}`,
+                      );
+                    }
+                  });
+              }
+            })
+            .catch((err) => {
+              console.warn(
+                `[linkcode/daemon] boot agent probe failed: ${extractErrorMessage(err)}`,
+              );
+            });
+          // Runs before any listener binds, so `workspace.list` always includes the chat workspace.
+          yield* engine.ensureChatWorkspace(chatWorkspaceRoot());
+        }),
       );
-      // Runs before any listener binds, so `workspace.list` always includes the chat workspace by
-      // the time a client can connect.
-      yield* Effect.promise(() => engine.ensureChatWorkspace(chatWorkspaceRoot()));
-      return engine;
+      return EngineReady.pipe(Layer.provideMerge(EngineRuntimeLive));
     }),
   );
 
@@ -256,7 +253,7 @@ async function main(): Promise<void> {
       const { config, identity, hub, previewRoutes } = yield* Shared;
       // Ordering only: listeners must not bind before the engine is started and the chat
       // workspace exists.
-      yield* EngineHandle;
+      yield* EngineService;
       // Listeners hunt concurrently; a transient collision between two of our own hunts resolves
       // itself because listenWithPortHunt treats an occupant with our pid as "keep hunting".
       return yield* Effect.forEach(
