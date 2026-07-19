@@ -8,7 +8,8 @@ import { create } from 'zustand';
 export type ProvidersSettingsView =
   | { kind: 'browse' }
   | { kind: 'add-catalog' }
-  | { kind: 'add-form'; service: string };
+  | { kind: 'add-form'; service: string }
+  | { kind: 'edit'; accountId: string };
 
 interface ProvidersSettingsState {
   /** Selected pool account id; null falls back to the first account. */
@@ -18,6 +19,8 @@ interface ProvidersSettingsState {
   startAdd: () => void;
   pickService: (service: string) => void;
   backToCatalog: () => void;
+  startEdit: (accountId: string) => void;
+  /** Leave the add or edit pane, back to browsing the selected account. */
   closeAdd: () => void;
 }
 
@@ -28,5 +31,7 @@ export const useProvidersSettingsStore = create<ProvidersSettingsState>()((set) 
   startAdd: () => set({ view: { kind: 'add-catalog' } }),
   pickService: (service) => set({ view: { kind: 'add-form', service } }),
   backToCatalog: () => set({ view: { kind: 'add-catalog' } }),
+  startEdit: (accountId) =>
+    set({ selectedAccountId: accountId, view: { kind: 'edit', accountId } }),
   closeAdd: () => set({ view: { kind: 'browse' } }),
 }));

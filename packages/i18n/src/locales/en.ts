@@ -690,6 +690,10 @@ export const en = {
       modelDefault: 'Default',
       configPreview: 'config.json snippet · what this account writes',
       configPreviewEmpty: '// not connected to any agent yet',
+      edit: 'Edit account',
+      editTitle: 'Edit “{label}”',
+      editOauthHint:
+        'Subscription accounts follow the CLI login; the credential is not managed here — only the name can be changed.',
       remove: 'Remove account',
       removeTitle: 'Remove “{label}”?',
       removeInUse: '{agents} will fall back to the CLI login.',
@@ -774,6 +778,7 @@ export const en = {
         variant: 'Protocol shape',
         model: 'Default model (optional)',
         submit: 'Add account',
+        save: 'Save changes',
         credentialType: 'Type',
         secret: 'Key / token',
         baseUrl: 'Endpoint URL (optional)',
