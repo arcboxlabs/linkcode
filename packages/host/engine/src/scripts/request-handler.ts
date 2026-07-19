@@ -1,7 +1,9 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { RequestError } from '../failure';
+import { Effect } from 'effect';
+import type { EngineFailure } from '../failure';
+import { RequestError, toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { ScriptService } from './script-service';
 
@@ -15,46 +17,82 @@ export class ScriptRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: ScriptRequest): Promise<void> {
+  handle(payload: ScriptRequest): Effect.Effect<void> {
     const scripts = this.scripts;
     if (!scripts) {
-      this.responder.sendFailure(
+      return this.responder.reply(
         payload.clientReqId,
-        new RequestError({
-          code: 'unsupported',
-          message: 'Scripts are not supported on this host',
-        }),
+        Effect.fail(
+          new RequestError({
+            code: 'unsupported',
+            message: 'Scripts are not supported on this host',
+          }),
+        ),
       );
-      return;
     }
 
     switch (payload.kind) {
       case 'script.list':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const list = await scripts.list(payload.cwd);
-          this.transport.send(
-            createWireMessage({
-              kind: 'script.listed',
-              replyTo: payload.clientReqId,
-              scripts: list,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          scriptOperation('script.list', 'Failed to list workspace scripts', () =>
+            scripts.list(payload.cwd),
+          ).pipe(
+            Effect.flatMap((list) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'script.listed',
+                    replyTo: payload.clientReqId,
+                    scripts: list,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'script.start':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          await scripts.start(payload.cwd, payload.scriptName);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          scriptOperation('script.start', 'Failed to start workspace script', () =>
+            scripts.start(payload.cwd, payload.scriptName),
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       case 'script.stop':
-        await this.responder.tryReply(payload.clientReqId, () => {
-          scripts.stop(payload.cwd, payload.scriptName);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          syncScriptOperation('script.stop', 'Failed to stop workspace script', () =>
+            scripts.stop(payload.cwd, payload.scriptName),
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       default:
-        break;
+        return Effect.void;
     }
   }
+}
+
+function scriptOperation<A>(
+  operation: string,
+  publicMessage: string,
+  run: () => PromiseLike<A>,
+): Effect.Effect<A, EngineFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem: 'script', operation, publicMessage }),
+  });
+}
+
+function syncScriptOperation(
+  operation: string,
+  publicMessage: string,
+  run: () => void,
+): Effect.Effect<void, EngineFailure> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem: 'script', operation, publicMessage }),
+  });
 }

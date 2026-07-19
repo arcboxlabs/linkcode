@@ -81,11 +81,11 @@ export class WireRequestRouter {
       case 'script.list':
       case 'script.start':
       case 'script.stop': {
-        return legacyHandler(() => this.handlers.script.handle(p));
+        return this.handlers.script.handle(p);
       }
       case 'artifact.host':
       case 'artifact.revoke': {
-        return legacyHandler(() => this.handlers.artifact.handle(p));
+        return this.handlers.artifact.handle(p);
       }
       case 'schedule.create':
       case 'schedule.update':
@@ -110,7 +110,7 @@ export class WireRequestRouter {
       case 'terminal.ack':
       case 'terminal.resize':
       case 'terminal.close': {
-        return legacyHandler(() => this.handlers.terminal.handle(p));
+        return this.handlers.terminal.handle(p);
       }
       case 'agent-login.start':
       case 'agent-login.submit-code':

@@ -18,8 +18,10 @@ export type OperationSubsystem =
   | 'asset'
   | 'filesystem'
   | 'git'
+  | 'preview'
   | 'pty'
   | 'runtime-probe'
+  | 'script'
   | 'store'
   | 'translator'
   | 'transport';

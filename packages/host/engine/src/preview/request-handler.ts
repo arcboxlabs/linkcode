@@ -1,6 +1,9 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
+import type { EngineFailure } from '../failure';
+import { toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { ArtifactHostService } from './artifact-host-service';
 
@@ -14,26 +17,49 @@ export class ArtifactRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: ArtifactRequest): Promise<void> {
+  handle(payload: ArtifactRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'artifact.host':
-        await this.responder.tryReply(payload.clientReqId, () => {
-          const artifact = this.artifacts.host(payload.content, payload.mimeType);
-          this.transport.send(
-            createWireMessage({
-              kind: 'artifact.hosted',
-              replyTo: payload.clientReqId,
-              artifact,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          artifactOperation('artifact.host', 'Failed to host artifact', () =>
+            this.artifacts.host(payload.content, payload.mimeType),
+          ).pipe(
+            Effect.flatMap((artifact) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'artifact.hosted',
+                    replyTo: payload.clientReqId,
+                    artifact,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'artifact.revoke':
-        this.artifacts.revoke(payload.hash);
-        this.responder.sendSuccess(payload.clientReqId);
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          artifactOperation('artifact.revoke', 'Failed to revoke artifact', () =>
+            this.artifacts.revoke(payload.hash),
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       default:
-        break;
+        return Effect.void;
     }
   }
+}
+
+function artifactOperation<A>(
+  operation: string,
+  publicMessage: string,
+  run: () => A,
+): Effect.Effect<A, EngineFailure> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem: 'preview', operation, publicMessage }),
+  });
 }

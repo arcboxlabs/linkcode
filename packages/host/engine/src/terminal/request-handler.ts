@@ -1,5 +1,7 @@
 import type { TerminalAttachmentCredentials, WirePayload } from '@linkcode/schema';
-import { RequestError } from '../failure';
+import { Effect } from 'effect';
+import type { EngineFailure } from '../failure';
+import { RequestError, toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { TerminalService } from './service';
 
@@ -34,69 +36,91 @@ export class TerminalRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: TerminalRequest): Promise<void> {
+  handle(payload: TerminalRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'terminal.open':
-        await this.withTerminals(payload.clientReqId, (terminals) =>
-          terminals.open(payload.clientReqId, payload.opts, attachment(payload)),
+        return this.withTerminals(payload.clientReqId, (terminals) =>
+          terminalOperation('terminal.open', 'Failed to open terminal', () =>
+            terminals.open(payload.clientReqId, payload.opts, attachment(payload)),
+          ),
         );
-        break;
       case 'terminal.list':
-        if (this.terminals) {
-          this.terminals.list(payload.clientReqId);
-        } else {
-          this.unsupported(payload.clientReqId);
-        }
-        break;
+        return this.withTerminals(payload.clientReqId, (terminals) =>
+          syncTerminalOperation('terminal.list', 'Failed to list terminals', () =>
+            terminals.list(payload.clientReqId),
+          ),
+        );
       case 'terminal.attach':
-        await this.withTerminals(payload.clientReqId, (terminals) => {
-          terminals.attach(
-            payload.clientReqId,
+        return this.withTerminals(payload.clientReqId, (terminals) =>
+          syncTerminalOperation('terminal.attach', 'Failed to attach terminal', () =>
+            terminals.attach(
+              payload.clientReqId,
+              payload.terminalId,
+              attachment(payload),
+              payload.mode,
+            ),
+          ),
+        );
+      case 'terminal.detach':
+        return Effect.sync(() => this.terminals?.detach(payload.terminalId, attachment(payload)));
+      case 'terminal.input':
+        return Effect.sync(() =>
+          this.terminals?.input(payload.terminalId, attachment(payload), payload.data),
+        );
+      case 'terminal.ack':
+        return Effect.sync(() =>
+          this.terminals?.ack(payload.terminalId, attachment(payload), payload.acked),
+        );
+      case 'terminal.resize':
+        return Effect.sync(() =>
+          this.terminals?.resize(
             payload.terminalId,
             attachment(payload),
-            payload.mode,
-          );
-        });
-        break;
-      case 'terminal.detach':
-        this.terminals?.detach(payload.terminalId, attachment(payload));
-        break;
-      case 'terminal.input':
-        this.terminals?.input(payload.terminalId, attachment(payload), payload.data);
-        break;
-      case 'terminal.ack':
-        this.terminals?.ack(payload.terminalId, attachment(payload), payload.acked);
-        break;
-      case 'terminal.resize':
-        this.terminals?.resize(payload.terminalId, attachment(payload), payload.cols, payload.rows);
-        break;
+            payload.cols,
+            payload.rows,
+          ),
+        );
       case 'terminal.close':
-        this.terminals?.close(payload.terminalId, attachment(payload));
-        break;
+        return Effect.sync(() => this.terminals?.close(payload.terminalId, attachment(payload)));
       default:
-        break;
+        return Effect.void;
     }
   }
 
-  private async withTerminals(
+  private withTerminals(
     replyTo: string,
-    fn: (terminals: TerminalService) => void | Promise<void>,
-  ): Promise<void> {
-    const terminals = this.terminals;
-    if (!terminals) {
-      this.unsupported(replyTo);
-      return;
-    }
-    await this.responder.tryReply(replyTo, () => fn(terminals));
+    fn: (terminals: TerminalService) => Effect.Effect<void, EngineFailure>,
+  ): Effect.Effect<void> {
+    const operation = this.terminals
+      ? fn(this.terminals)
+      : Effect.fail(
+          new RequestError({
+            code: 'unsupported',
+            message: 'Terminals are not supported on this host',
+          }),
+        );
+    return this.responder.reply(replyTo, operation);
   }
+}
 
-  private unsupported(replyTo: string): void {
-    this.responder.sendFailure(
-      replyTo,
-      new RequestError({
-        code: 'unsupported',
-        message: 'Terminals are not supported on this host',
-      }),
-    );
-  }
+function terminalOperation(
+  operation: string,
+  publicMessage: string,
+  run: () => PromiseLike<void>,
+): Effect.Effect<void, EngineFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem: 'pty', operation, publicMessage }),
+  });
+}
+
+function syncTerminalOperation(
+  operation: string,
+  publicMessage: string,
+  run: () => void,
+): Effect.Effect<void, EngineFailure> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem: 'pty', operation, publicMessage }),
+  });
 }
