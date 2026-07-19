@@ -1,4 +1,4 @@
-import { FilesIcon, FileTextIcon, GlobeIcon, SquareTerminalIcon } from 'lucide-react';
+import { CompassIcon, FileDiffIcon, FolderCodeIcon, SquareTerminalIcon } from 'lucide-react';
 
 export type PanelSide = 'right' | 'bottom';
 
@@ -31,10 +31,10 @@ export interface PanelControl {
 
 /** Window labels are translated at the render site (`workbench.panel.window.*`); only icons live here. */
 export const PANEL_WINDOW_ICONS: Record<PanelWindowType, React.ReactNode> = {
-  diff: <FileTextIcon />,
+  diff: <FileDiffIcon />,
   terminal: <SquareTerminalIcon />,
-  browser: <GlobeIcon />,
-  files: <FilesIcon />,
+  browser: <CompassIcon />,
+  files: <FolderCodeIcon />,
 };
 
 /** Shared tab recipe: the active/inactive halves of every panel tab button's className. */
