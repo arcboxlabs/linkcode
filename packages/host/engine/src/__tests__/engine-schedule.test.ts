@@ -8,6 +8,7 @@ import type {
   AgentInput,
   MessageId,
   Schedule,
+  ScheduleId,
   ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
@@ -161,5 +162,24 @@ describe('engine schedule wiring', () => {
     );
     expect(automationSession?.automation).toEqual({ kind: 'schedule', id: scheduleId });
     expect(automationSession?.status).toBe('stopped');
+  });
+
+  it('reports a safe failure when a synchronous schedule operation rejects', async () => {
+    const h = harness();
+    await h.engine.start();
+
+    h.inject({
+      kind: 'schedule.run-once',
+      clientReqId: 'missing',
+      scheduleId: 'schedule-missing' as ScheduleId,
+    });
+    await h.settle();
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'missing',
+      code: 'internal_error',
+      message: 'Internal engine error',
+    });
   });
 });

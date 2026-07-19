@@ -65,7 +65,7 @@ async function harness(store: SessionStore = new InMemorySessionStore()) {
   });
 
   // handle() is fire-and-forget, so a fixed tick races the reply under parallel-suite load;
-  // every request kind replies via tryReply, so the echoed replyTo is the settled signal.
+  // every request kind has a correlated reply, so the echoed replyTo is the settled signal.
   async function inject(payload: Extract<WirePayload, { clientReqId: string }>): Promise<void> {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
     await waitFor(() => sent.some((p) => 'replyTo' in p && p.replyTo === payload.clientReqId), 5);

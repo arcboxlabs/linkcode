@@ -19,7 +19,7 @@ function attachmentData(block: ContentBlock): string | undefined {
 }
 
 /** Defense-in-depth for less-trusted peers (mobile/Server tunnel); local clients already enforce
- * this before encoding. A throw surfaces as `request.failed` via `tryReply`. The aggregate cap
+ * this before encoding. A throw surfaces as `request.failed` via the wire responder. The aggregate cap
  * keeps a prompt's base64 under the transport's frame buffer, whose overflow kills the connection. */
 export function assertAttachmentContentAllowed(content: ContentBlock[]): void {
   let totalBytes = 0;

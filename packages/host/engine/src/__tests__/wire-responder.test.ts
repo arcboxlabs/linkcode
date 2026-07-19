@@ -44,8 +44,8 @@ describe('wire responder', () => {
     const { transport, sent } = recordingTransport();
     const responder = new WireResponder(transport);
 
-    await responder.tryReply('request-1', () =>
-      Promise.reject(new Error('provider rejected token sk-secret')),
+    await Effect.runPromise(
+      responder.reply('request-1', Effect.fail(new Error('provider rejected token sk-secret'))),
     );
 
     expect(sent).toEqual([

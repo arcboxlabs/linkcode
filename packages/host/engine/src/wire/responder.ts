@@ -6,14 +6,6 @@ import { OperationError, OperationTimeout, RequestError, toRequestFailure } from
 export class WireResponder {
   constructor(private readonly transport: Transport) {}
 
-  async tryReply(replyTo: string, fn: () => void | Promise<void>): Promise<void> {
-    try {
-      await fn();
-    } catch (error) {
-      this.sendFailure(replyTo, error);
-    }
-  }
-
   reply<E, R>(replyTo: string, effect: Effect.Effect<void, E, R>): Effect.Effect<void, never, R> {
     return effect.pipe(
       Effect.catchCause((cause) => {

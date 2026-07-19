@@ -100,7 +100,7 @@ export class WireRequestRouter {
       case 'loop.delete':
       case 'loop.list':
       case 'loop.inspect': {
-        return legacyHandler(() => this.handlers.automation.handle(p));
+        return this.handlers.automation.handle(p);
       }
       case 'terminal.open':
       case 'terminal.list':
@@ -125,8 +125,4 @@ export class WireRequestRouter {
         return Effect.void;
     }
   }
-}
-
-function legacyHandler(handle: () => Promise<void>): Effect.Effect<void, unknown> {
-  return Effect.tryPromise({ try: handle, catch: (cause) => cause });
 }

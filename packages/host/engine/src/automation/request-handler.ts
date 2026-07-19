@@ -1,6 +1,7 @@
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
 import type { WireResponder } from '../wire/responder';
 import type { LoopService } from './loop-service';
 import type { ScheduleService } from './schedule-service';
@@ -34,122 +35,163 @@ export class AutomationRequestHandler {
     private readonly responder: WireResponder,
   ) {}
 
-  async handle(payload: AutomationRequest): Promise<void> {
+  handle(payload: AutomationRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'schedule.create':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const schedule = await this.scheduler.create(payload.spec);
-          this.transport.send(
-            createWireMessage({
-              kind: 'schedule.created',
-              replyTo: payload.clientReqId,
-              schedule,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.scheduler.create(payload.spec)).pipe(
+            Effect.flatMap((schedule) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'schedule.created',
+                    replyTo: payload.clientReqId,
+                    schedule,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'schedule.update':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const schedule = await this.scheduler.update(payload.scheduleId, payload.patch);
-          this.transport.send(
-            createWireMessage({
-              kind: 'schedule.updated',
-              replyTo: payload.clientReqId,
-              schedule,
-            }),
-          );
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.scheduler.update(payload.scheduleId, payload.patch)).pipe(
+            Effect.flatMap((schedule) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'schedule.updated',
+                    replyTo: payload.clientReqId,
+                    schedule,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'schedule.delete':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          await this.scheduler.delete(payload.scheduleId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.scheduler.delete(payload.scheduleId)).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       case 'schedule.pause':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          await this.scheduler.pause(payload.scheduleId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.scheduler.pause(payload.scheduleId)).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       case 'schedule.resume':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          await this.scheduler.resume(payload.scheduleId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.scheduler.resume(payload.scheduleId)).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       case 'schedule.run-once':
-        await this.responder.tryReply(payload.clientReqId, () => {
-          this.scheduler.runOnce(payload.scheduleId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
+        return this.responder.reply(
+          payload.clientReqId,
+          fromSync(() => this.scheduler.runOnce(payload.scheduleId)).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       case 'schedule.list':
-        this.transport.send(
-          createWireMessage({
-            kind: 'schedule.listed',
-            replyTo: payload.clientReqId,
-            schedules: this.scheduler.list(),
-          }),
+        return Effect.sync(() =>
+          this.transport.send(
+            createWireMessage({
+              kind: 'schedule.listed',
+              replyTo: payload.clientReqId,
+              schedules: this.scheduler.list(),
+            }),
+          ),
         );
-        break;
       case 'schedule.runs.list':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const runs = await this.scheduler.listRuns(payload.scheduleId, payload.limit);
-          this.transport.send(
-            createWireMessage({
-              kind: 'schedule.runs.listed',
-              replyTo: payload.clientReqId,
-              runs,
-            }),
-          );
-        });
-        break;
-      case 'loop.start':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const loop = await this.loops.startLoop(payload.spec);
-          this.transport.send(
-            createWireMessage({ kind: 'loop.started', replyTo: payload.clientReqId, loop }),
-          );
-        });
-        break;
-      case 'loop.stop':
-        await this.responder.tryReply(payload.clientReqId, () => {
-          this.loops.stopLoop(payload.loopId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
-      case 'loop.delete':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          await this.loops.deleteLoop(payload.loopId);
-          this.responder.sendSuccess(payload.clientReqId);
-        });
-        break;
-      case 'loop.list':
-        this.transport.send(
-          createWireMessage({
-            kind: 'loop.listed',
-            replyTo: payload.clientReqId,
-            loops: this.loops.list(),
-          }),
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.scheduler.listRuns(payload.scheduleId, payload.limit)).pipe(
+            Effect.flatMap((runs) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'schedule.runs.listed',
+                    replyTo: payload.clientReqId,
+                    runs,
+                  }),
+                ),
+              ),
+            ),
+          ),
         );
-        break;
-      case 'loop.inspect':
-        await this.responder.tryReply(payload.clientReqId, async () => {
-          const { loop, iterations, logs } = await this.loops.inspect(payload.loopId);
+      case 'loop.start':
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.loops.startLoop(payload.spec)).pipe(
+            Effect.flatMap((loop) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({ kind: 'loop.started', replyTo: payload.clientReqId, loop }),
+                ),
+              ),
+            ),
+          ),
+        );
+      case 'loop.stop':
+        return this.responder.reply(
+          payload.clientReqId,
+          fromSync(() => this.loops.stopLoop(payload.loopId)).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
+      case 'loop.delete':
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.loops.deleteLoop(payload.loopId)).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
+      case 'loop.list':
+        return Effect.sync(() =>
           this.transport.send(
             createWireMessage({
-              kind: 'loop.inspected',
+              kind: 'loop.listed',
               replyTo: payload.clientReqId,
-              loop,
-              iterations,
-              logs,
+              loops: this.loops.list(),
             }),
-          );
-        });
-        break;
+          ),
+        );
+      case 'loop.inspect':
+        return this.responder.reply(
+          payload.clientReqId,
+          fromPromise(() => this.loops.inspect(payload.loopId)).pipe(
+            Effect.flatMap(({ loop, iterations, logs }) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'loop.inspected',
+                    replyTo: payload.clientReqId,
+                    loop,
+                    iterations,
+                    logs,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
       default:
-        break;
+        return Effect.void;
     }
   }
+}
+
+function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: () => run(), catch: (cause) => cause });
+}
+
+function fromSync<A>(run: () => A): Effect.Effect<A, unknown> {
+  return Effect.try({ try: run, catch: (cause) => cause });
 }
