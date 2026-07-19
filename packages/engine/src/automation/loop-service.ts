@@ -13,6 +13,11 @@ import type { Transport } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import {
+  buildLoopVerifierPrompt,
+  buildLoopWorkerPrompt,
+  describeLoopFailure,
+} from './loop-prompts';
 import { LoopReporter } from './loop-reporter';
 import type { LoopStore } from './loop-store';
 import type { SessionDriver } from './session-driver';
@@ -20,7 +25,6 @@ import { runShellCheck } from './shell-exec';
 import { promptForStructured } from './structured-response';
 
 const SUMMARY_MAX_CHARS = 2000;
-const WORKER_FEEDBACK_MAX_CHARS = 2000;
 
 export interface LoopServiceOptions {
   /** Injectable clock for deterministic tests. */
@@ -172,7 +176,7 @@ export class LoopService {
           return await this.finish(loop, 'succeeded', undefined, this.summarize(workerText));
         }
 
-        lastFailure = this.failureFeedback(iteration);
+        lastFailure = describeLoopFailure(iteration);
         if (spec.sleepMs > 0) await sleep(spec.sleepMs, runSignal);
       }
       await this.finish(loop, 'failed', 'max iterations reached without passing verification');
@@ -240,7 +244,7 @@ export class LoopService {
     await this.saveIteration(iteration);
     return this.withAbortStop(sessionId, signal, async () => {
       await this.driver.makeUnattended(sessionId);
-      const prompt = buildWorkerPrompt(loop.spec, iteration.index, lastFailure);
+      const prompt = buildLoopWorkerPrompt(loop.spec, iteration.index, lastFailure);
       const result = await this.driver.prompt(sessionId, prompt, {
         timeoutMs: loop.spec.turnTimeoutMs,
       });
@@ -294,7 +298,7 @@ export class LoopService {
     await this.saveIteration(iteration);
     return this.withAbortStop(sessionId, signal, async () => {
       await this.driver.makeUnattended(sessionId);
-      const prompt = buildVerifierPrompt(verifier.prompt, loop.spec.prompt, workerText);
+      const prompt = buildLoopVerifierPrompt(verifier.prompt, loop.spec.prompt, workerText);
       const verdict = await promptForStructured(this.driver, sessionId, prompt, LoopVerdictSchema, {
         timeoutMs: loop.spec.turnTimeoutMs,
       });
@@ -352,18 +356,6 @@ export class LoopService {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  private failureFeedback(iteration: LoopIteration): string {
-    if (iteration.error) return iteration.error;
-    if (iteration.verdict && !iteration.verdict.passed) {
-      return `Verifier rejected the result: ${iteration.verdict.reason}`;
-    }
-    const failed = iteration.checks.find((check) => check.exitCode !== 0);
-    if (failed) {
-      return `Check \`${failed.command}\` failed (exit ${failed.exitCode}):\n${truncate(failed.outputTail, WORKER_FEEDBACK_MAX_CHARS)}`;
-    }
-    return 'The previous attempt did not pass verification.';
-  }
-
   private summarize(text: string): string | undefined {
     const trimmed = text.trim();
     if (!trimmed) return undefined;
@@ -394,30 +386,6 @@ export class LoopService {
     this.seq += 1;
     return `loop-${this.now().toString(36)}-${this.seq.toString(36)}` as LoopId;
   }
-}
-
-function buildWorkerPrompt(spec: LoopSpec, index: number, lastFailure: string | undefined): string {
-  if (index === 0 || !lastFailure) return spec.prompt;
-  return `${spec.prompt}\n\nThe previous attempt did not pass verification:\n${lastFailure}\n\nAddress the problem and try again.`;
-}
-
-function buildVerifierPrompt(
-  verifierPrompt: string,
-  workerGoal: string,
-  workerText: string,
-): string {
-  return [
-    verifierPrompt,
-    `\nThe worker was asked to: ${workerGoal}`,
-    workerText.trim()
-      ? `\nThe worker reported:\n${truncate(workerText, WORKER_FEEDBACK_MAX_CHARS)}`
-      : '',
-    '\nInspect the working directory as needed, then reply with ONLY a JSON object: {"passed": boolean, "reason": string}.',
-  ].join('\n');
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max) : text;
 }
 
 /** Resolve after `ms`, or immediately when `signal` aborts. */
