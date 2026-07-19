@@ -256,7 +256,7 @@ describe('engine interactive requests', () => {
     ).toBe(false);
   });
 
-  it('session.stop during an in-flight response keeps a successful send successful', async () => {
+  it('session.stop cancels an in-flight response without reporting a request outcome', async () => {
     const h = harness(new InMemorySessionStore(), () => new GatedSendAdapter());
     await h.engine.start();
     await h.inject({
@@ -280,7 +280,13 @@ describe('engine interactive requests', () => {
     adapter.releaseSend();
     await tick();
 
-    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'response' });
+    expect(
+      h.sent.some(
+        (payload) =>
+          (payload.kind === 'request.succeeded' || payload.kind === 'request.failed') &&
+          payload.replyTo === 'response',
+      ),
+    ).toBe(false);
     // The stop's session-cancellation stays the only resolution; no user-sourced duplicate follows.
     expect(eventsAfter(h.sent, mark).filter((event) => event.type === 'question-resolved')).toEqual(
       [

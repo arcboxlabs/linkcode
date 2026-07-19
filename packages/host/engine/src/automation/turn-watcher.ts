@@ -30,19 +30,21 @@ function joinSegments(segments: Map<MessageId, string>): string {
 export function watchTurn(
   adapter: Pick<AgentAdapter, 'onEvent' | 'send'>,
   send: () => Promise<void>,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<TurnResult> {
   return new Promise<TurnResult>((resolve, reject) => {
     const segments = new Map<MessageId, string>();
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let unsub: () => void = noop;
+    let removeAbortListener: () => void = noop;
 
     const finish = (act: () => void): void => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
       unsub();
+      removeAbortListener();
       act();
     };
 
@@ -87,6 +89,16 @@ export function watchTurn(
           break;
       }
     });
+
+    const abort = (): void => cancelAndReject('turn cancelled');
+    if (opts.signal?.aborted) {
+      abort();
+      return;
+    }
+    if (opts.signal) {
+      opts.signal.addEventListener('abort', abort, { once: true });
+      removeAbortListener = () => opts.signal?.removeEventListener('abort', abort);
+    }
 
     if (opts.timeoutMs !== undefined) {
       timer = setTimeout(

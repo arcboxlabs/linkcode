@@ -97,12 +97,9 @@ describe('boot probe gating (CODE-225)', () => {
 
     resolveProbe({ pi: { status: 'available', source: 'builtin' } });
     await settleEngineTasks();
-    const failed = cold.sent.find(
-      (payload) => payload.kind === 'request.failed' && payload.replyTo === 'r3',
-    );
-    if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r3');
-    expect(failed.code).toBe('cancelled');
-    expect(failed.message).toContain('closed while starting');
+    expect(
+      cold.sent.some((payload) => payload.kind === 'request.failed' && payload.replyTo === 'r3'),
+    ).toBe(false);
     expect(
       cold.sent.filter((payload) => payload.kind === 'session.started' && payload.replyTo === 'r3'),
     ).toEqual([]);

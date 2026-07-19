@@ -61,6 +61,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   deps: EngineDeps = {},
 ) {
   const responder = new WireResponder(transport);
+  const scope = yield* Effect.scope;
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
   const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
@@ -74,8 +75,13 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     },
   });
   let terminals: TerminalService | undefined;
-  const sessions = new SessionOrchestrator(transport, factory, records, runtimes, (sessionId) =>
-    terminals?.killBySession(sessionId),
+  const sessions = new SessionOrchestrator(
+    transport,
+    factory,
+    records,
+    runtimes,
+    scope,
+    (sessionId) => terminals?.killBySession(sessionId),
   );
   terminals = deps.ptyBackend
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))

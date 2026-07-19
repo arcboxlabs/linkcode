@@ -100,6 +100,30 @@ describe('watchTurn', () => {
     }
   });
 
+  it('aborting a pending turn cancels it and releases its resources', async () => {
+    vi.useFakeTimers();
+    try {
+      const a = new WatchAdapter();
+      const controller = new AbortController();
+      const result = watchTurn(a, asyncNoop, {
+        signal: controller.signal,
+        timeoutMs: 1000,
+      });
+      const assertion = expect(result).rejects.toBeInstanceOf(Error);
+      expect(vi.getTimerCount()).toBe(1);
+
+      controller.abort();
+
+      await assertion;
+      expect(a.sent).toEqual([{ type: 'cancel' }]);
+      expect(vi.getTimerCount()).toBe(0);
+      a.emit(permissionRequest('Edit file.ts'));
+      expect(a.sent).toEqual([{ type: 'cancel' }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects when send fails', async () => {
     const a = new WatchAdapter();
     const result = watchTurn(a, () => Promise.reject(new Error('dispatch failed')));

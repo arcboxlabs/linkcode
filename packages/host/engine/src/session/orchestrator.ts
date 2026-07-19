@@ -8,7 +8,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { Effect } from 'effect';
+import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
@@ -28,6 +28,7 @@ export class SessionOrchestrator {
     private readonly factory: AdapterFactory,
     private readonly records: SessionRecordRegistry,
     private readonly runtimes: AgentRuntimeService,
+    private readonly scope: Scope.Scope,
     private readonly onStopped: (sessionId: SessionId) => void,
   ) {
     this.events = new SessionEventProcessor(transport, records, runtimes);
@@ -63,85 +64,52 @@ export class SessionOrchestrator {
   }
 
   sendInput(sessionId: SessionId, input: AgentInput): Effect.Effect<void, unknown> {
-    return Effect.suspend(() => this.inputs.send(sessionId, this.requireSession(sessionId), input));
-  }
-
-  stop(sessionId: SessionId): Effect.Effect<void, OperationError> {
     return Effect.suspend(() => {
       const session = this.requireSession(sessionId);
-      this.events.broadcast(sessionId, session.closeInteractions());
-      session.stopListening();
-      return stopAdapter(session, 'session.stop').pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (this.remove(sessionId, session)) {
-              this.onStopped(sessionId);
-              this.records.sealCurrentRun(sessionId);
-            }
-          }),
-        ),
-      );
+      return session.run(Effect.suspend(() => this.inputs.send(sessionId, session, input)));
     });
   }
 
+  stop(sessionId: SessionId): Effect.Effect<void, OperationError> {
+    return Effect.suspend(() =>
+      this.teardown(sessionId, this.requireSession(sessionId), 'session.stop'),
+    );
+  }
+
   delete(sessionId: SessionId): Effect.Effect<void, unknown> {
-    const { events, records, sessions } = this;
-    const remove = (session: LiveSession): boolean => this.remove(sessionId, session);
-    const onStopped = (): void => this.onStopped(sessionId);
-    return Effect.gen(function* () {
-      const session = sessions.get(sessionId);
+    return Effect.gen({ self: this }, function* () {
+      const session = this.sessions.get(sessionId);
       if (session) {
-        events.broadcast(sessionId, session.closeInteractions());
-        session.stopListening();
-        yield* stopAdapter(session, 'session.delete').pipe(
-          Effect.tapError(() => Effect.sync(() => records.sealCurrentRun(sessionId))),
-          Effect.ensuring(
-            Effect.sync(() => {
-              if (remove(session)) onStopped();
-            }),
-          ),
-        );
+        yield* this.teardown(sessionId, session, 'session.delete');
       }
-      yield* Effect.tryPromise({ try: () => records.delete(sessionId), catch: (e) => e }).pipe(
-        Effect.tapError(() =>
-          Effect.sync(() => {
-            if (session) records.sealCurrentRun(sessionId);
-          }),
-        ),
-      );
+      yield* Effect.tryPromise({
+        try: () => this.records.delete(sessionId),
+        catch: (e) => e,
+      });
     });
   }
 
   stopIfLive(sessionId: SessionId): Effect.Effect<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return Effect.void;
-    session.stopListening();
-    return Effect.tryPromise({ try: () => session.adapter.stop(), catch: (e) => e }).pipe(
-      Effect.catch(() => Effect.void),
-      Effect.andThen(
-        Effect.sync(() => {
-          if (this.remove(sessionId, session)) {
-            this.onStopped(sessionId);
-            this.records.sealCurrentRun(sessionId);
-          }
-        }),
-      ),
-    );
+    return this.teardown(sessionId, session, 'session.stop').pipe(Effect.catch(() => Effect.void));
   }
 
   makeUnattended(sessionId: SessionId): Effect.Effect<void> {
     const session = this.get(sessionId);
     if (!session) return Effect.void;
-    return Effect.tryPromise({
-      try: () =>
-        session.adapter.send({
-          type: 'set-approval-policy',
-          policyId: 'bypassPermissions',
-        }),
-      catch: (e) => e,
-    }).pipe(
-      // Adapters without an approval-policy axis fail here; a later ask fails the unattended run.
-      Effect.catch(() => Effect.void),
+    return session.run(
+      Effect.tryPromise({
+        try: () =>
+          session.adapter.send({
+            type: 'set-approval-policy',
+            policyId: 'bypassPermissions',
+          }),
+        catch: (e) => e,
+      }).pipe(
+        // Adapters without an approval-policy axis fail here; a later ask fails the unattended run.
+        Effect.catch(() => Effect.void),
+      ),
     );
   }
 
@@ -159,18 +127,28 @@ export class SessionOrchestrator {
       }
       session.turnInputActive = true;
       const content: ContentBlock[] = [{ type: 'text', text }];
-      this.events.broadcast(sessionId, [{ type: 'user-message', content }]);
-      this.records.setTitleFromContent(sessionId, content);
-      return Effect.tryPromise({
-        try: () =>
-          watchTurn(session.adapter, () => session.adapter.send({ type: 'prompt', content }), opts),
-        catch: (e) => e,
-      }).pipe(
-        Effect.tapError(() =>
-          Effect.sync(() => {
-            // A fatal dispatch/ask can fail before a lifecycle event releases the turn gate.
-            if (session.status !== 'running') session.turnInputActive = false;
-          }),
+      return session.run(
+        Effect.sync(() => {
+          this.events.broadcast(sessionId, [{ type: 'user-message', content }]);
+          this.records.setTitleFromContent(sessionId, content);
+        }).pipe(
+          Effect.andThen(
+            Effect.tryPromise({
+              try: (signal) =>
+                watchTurn(
+                  session.adapter,
+                  () => session.adapter.send({ type: 'prompt', content }),
+                  { ...opts, signal },
+                ),
+              catch: (e) => e,
+            }),
+          ),
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              // A fatal dispatch/ask can fail before a lifecycle event releases the turn gate.
+              if (session.status !== 'running') session.turnInputActive = false;
+            }),
+          ),
         ),
       );
     });
@@ -182,23 +160,26 @@ export class SessionOrchestrator {
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Promise<void>,
   ): Effect.Effect<void, unknown> {
-    return Effect.suspend(() => {
+    const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
+    const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
+      this.discardFailedStart(record.sessionId, session);
+    return Effect.gen(function* () {
       const sessionId = record.sessionId;
-      const adapter = this.factory(record.kind);
-      const session = new LiveSession(adapter, sessionId);
-      const { records, runtimes, sessions, transport } = this;
-      const remove = (): boolean => this.remove(sessionId, session);
-      session.listen((event) => this.events.handle(sessionId, session, event));
+      const adapter = factory(record.kind);
+      const scope = yield* Scope.fork(parentScope);
+      const closed = yield* Deferred.make<void, OperationError>();
+      const session = new LiveSession(adapter, sessionId, scope, closed);
+      session.listen((event) => events.handle(sessionId, session, event));
       sessions.set(sessionId, session);
       records.register(record);
       // A start can land before the boot probe settles. Register first so delete can tear it down,
       // then wait and re-check identity before and after adapter startup to prevent resurrection.
-      return Effect.gen(function* () {
-        yield* Effect.tryPromise({ try: () => runtimes.awaitReady(), catch: (e) => e });
-        if (sessions.get(sessionId) !== session) {
-          yield* stopBestEffort(adapter);
-          return yield* Effect.fail(sessionClosed(sessionId));
-        }
+      const start = Effect.gen(function* () {
+        yield* Effect.tryPromise({
+          try: () => runtimes.awaitReady(),
+          catch: (e) => e,
+        });
+        if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
         yield* Effect.tryPromise({
           try: () => startAdapter(adapter),
           catch: (cause) =>
@@ -208,35 +189,78 @@ export class SessionOrchestrator {
               publicMessage: 'Agent failed to start',
               cause,
             }),
-        }).pipe(
-          Effect.tapError(() =>
-            Effect.sync(() => {
-              session.stopListening();
-              if (remove()) records.sealCurrentRun(sessionId);
-            }),
-          ),
-          Effect.tapError(() => stopBestEffort(adapter)),
-        );
-        if (sessions.get(sessionId) !== session) {
-          yield* stopBestEffort(adapter);
-          return yield* Effect.fail(sessionClosed(sessionId));
-        }
+        });
+        if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
         if (replyTo !== undefined) {
           transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
         }
       });
+      yield* session.run(start).pipe(Effect.tapError(() => discardFailedStart(session)));
     });
   }
 
-  shutdown(): Effect.Effect<void, unknown> {
+  shutdown(): Effect.Effect<void> {
     return Effect.forEach(
-      this.sessions.values(),
-      (session) => {
-        session.stopListening();
-        return Effect.tryPromise({ try: () => session.adapter.stop(), catch: (e) => e });
-      },
+      Array.from(this.sessions),
+      ([sessionId, session]) =>
+        this.teardown(sessionId, session, 'session.shutdown').pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError(
+              'Failed to stop session during shutdown',
+              { sessionId },
+              Cause.squash(cause),
+            ),
+          ),
+        ),
       { concurrency: 'unbounded', discard: true },
     ).pipe(Effect.ensuring(Effect.sync(() => this.sessions.clear())));
+  }
+
+  private teardown(
+    sessionId: SessionId,
+    session: LiveSession,
+    operation: string,
+  ): Effect.Effect<void, OperationError> {
+    return Effect.suspend(() => {
+      if (!session.beginClose()) return Deferred.await(session.closed);
+      return Scope.close(session.scope, Exit.interrupt()).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            this.events.broadcast(sessionId, session.closeInteractions());
+            session.stopListening();
+          }),
+        ),
+        Effect.andThen(stopAdapter(session, operation)),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.remove(sessionId, session)) {
+              this.onStopped(sessionId);
+              this.records.sealCurrentRun(sessionId);
+            }
+          }),
+        ),
+        Effect.onExit((exit) => Deferred.done(session.closed, exit).pipe(Effect.asVoid)),
+      );
+    });
+  }
+
+  private discardFailedStart(sessionId: SessionId, session: LiveSession): Effect.Effect<void> {
+    return Effect.suspend(() => {
+      if (!session.beginClose()) {
+        return Deferred.await(session.closed).pipe(Effect.exit, Effect.asVoid);
+      }
+      return Scope.close(session.scope, Exit.void).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            session.stopListening();
+            this.records.sealCurrentRun(sessionId);
+          }),
+        ),
+        Effect.andThen(stopBestEffort(session.adapter)),
+        Effect.ensuring(Effect.sync(() => this.remove(sessionId, session))),
+        Effect.onExit((exit) => Deferred.done(session.closed, exit).pipe(Effect.asVoid)),
+      );
+    });
   }
 
   private requireSession(sessionId: SessionId): LiveSession {
@@ -266,11 +290,4 @@ function stopBestEffort(adapter: AgentAdapter): Effect.Effect<void> {
   return Effect.tryPromise({ try: () => adapter.stop(), catch: (e) => e }).pipe(
     Effect.catch(() => Effect.void),
   );
-}
-
-function sessionClosed(sessionId: SessionId): RequestError {
-  return new RequestError({
-    code: 'cancelled',
-    message: `Session was closed while starting: ${sessionId}`,
-  });
 }

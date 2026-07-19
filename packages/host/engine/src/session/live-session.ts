@@ -10,7 +10,10 @@ import type {
   SessionInfo,
 } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
+import type { Deferred, Scope } from 'effect';
+import { Effect, Fiber } from 'effect';
 import { noop } from 'foxts/noop';
+import type { OperationError } from '../failure';
 import { InteractiveRequests } from './interactive-requests';
 
 /** Mutable state derived from one live adapter's event stream. */
@@ -26,13 +29,30 @@ export class LiveSession {
   availableModels?: AgentModelOption[];
   capabilities: AgentCapabilities;
   private unsubscribe: Unsubscribe = noop;
+  private closing = false;
 
   constructor(
     readonly adapter: AgentAdapter,
     sessionId: SessionId,
+    readonly scope: Scope.Closeable,
+    readonly closed: Deferred.Deferred<void, OperationError>,
   ) {
     this.interactions = new InteractiveRequests(sessionId);
     this.capabilities = adapter.capabilities;
+  }
+
+  run<A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {
+    return Effect.suspend(() =>
+      this.closing
+        ? Effect.interrupt
+        : Effect.forkIn(effect, this.scope).pipe(Effect.flatMap(Fiber.join)),
+    );
+  }
+
+  beginClose(): boolean {
+    if (this.closing) return false;
+    this.closing = true;
+    return true;
   }
 
   listen(listener: (event: AgentEvent) => void): void {

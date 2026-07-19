@@ -137,7 +137,7 @@ describe('engine session input', () => {
     const sessionId = startedId(h.sent, 'r1');
     const adapter = nullthrow(h.adapters[0]) as GatedSendAdapter;
 
-    await h.inject({
+    void h.inject({
       kind: 'agent.input',
       clientReqId: 'r-first',
       sessionId,

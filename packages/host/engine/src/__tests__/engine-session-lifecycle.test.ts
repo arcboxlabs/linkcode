@@ -1,4 +1,4 @@
-import type { StartOptions } from '@linkcode/schema';
+import type { AgentInput, StartOptions } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import type { SessionStore } from '../session/session-store';
@@ -19,6 +19,29 @@ class GatedStartAdapter extends FakeAdapter {
     this.startedWith = opts;
     return new Promise((resolve) => {
       this.releaseStart = resolve;
+    });
+  }
+}
+
+class GatedSendAndStopAdapter extends FakeAdapter {
+  releaseSend: () => void = noop;
+  releaseStop: () => void = noop;
+  stopStarted = false;
+
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    return new Promise((resolve) => {
+      this.releaseSend = resolve;
+    });
+  }
+
+  override stop(): Promise<void> {
+    this.stopStarted = true;
+    return new Promise((resolve) => {
+      this.releaseStop = () => {
+        this.stopped = true;
+        resolve();
+      };
     });
   }
 }
@@ -77,7 +100,7 @@ describe('engine session lifecycle', () => {
     );
   });
 
-  it('fails the start instead of leaking the adapter when deleted while starting', async () => {
+  it('deleting a session cancels its pending start without reporting a request failure', async () => {
     const store = new InMemorySessionStore();
     const { engine, sent, inject, adapters } = harness(store, () => new GatedStartAdapter());
     await engine.start();
@@ -91,15 +114,45 @@ describe('engine session lifecycle', () => {
     await inject({ kind: 'session.delete', clientReqId: 'r2', sessionId: record.sessionId });
     expect(sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'r2')).toBe(true);
 
-    (adapters[0] as GatedStartAdapter).releaseStart();
+    const adapter = adapters[0] as GatedStartAdapter;
+    expect(adapter.stopped).toBe(true);
+
+    adapter.releaseStart();
     await tick();
     expect(sent.some((p) => p.kind === 'session.started' && p.replyTo === 'r1')).toBe(false);
-    const failed = sent.find((p) => p.kind === 'request.failed' && p.replyTo === 'r1');
-    if (failed?.kind !== 'request.failed') throw new Error('no request.failed for r1');
-    expect(failed.code).toBe('cancelled');
-    expect(failed.message).toContain('closed while starting');
-    expect(adapters[0].stopped).toBe(true);
+    expect(sent.some((p) => p.kind === 'request.failed' && p.replyTo === 'r1')).toBe(false);
     expect(await store.load()).toHaveLength(0);
+  });
+
+  it('stopping a session cancels its pending input and waits for the adapter to stop', async () => {
+    const h = harness(new InMemorySessionStore(), () => new GatedSendAndStopAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const adapter = h.adapters[0] as GatedSendAndStopAdapter;
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId,
+      input: { type: 'prompt', content: [{ type: 'text', text: 'Hello' }] },
+    });
+
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId });
+    expect(adapter.stopStarted).toBe(true);
+    expect(h.sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'stop')).toBe(false);
+
+    adapter.releaseStop();
+    await tick();
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'stop' });
+
+    adapter.releaseSend();
+    await tick();
+    expect(h.sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'input')).toBe(false);
+    expect(h.sent.some((p) => p.kind === 'request.failed' && p.replyTo === 'input')).toBe(false);
   });
 
   it('keeps the session listed when the persisted delete fails', async () => {
