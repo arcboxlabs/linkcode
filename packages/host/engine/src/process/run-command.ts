@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { Data, Effect } from 'effect';
+import { noop } from 'foxts/noop';
 
 export interface RunCommandOptions {
   cwd: string;
@@ -31,78 +32,92 @@ export const runCommand = Effect.fn('Process.runCommand')(function* (
   args: readonly string[],
   options: RunCommandOptions,
 ) {
-  return yield* Effect.acquireUseRelease(
-    Effect.try({
-      try: () =>
-        spawn(bin, args, {
-          cwd: options.cwd,
-          env: { ...process.env, ...options.env },
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-        }),
-      catch: (cause) => new CommandError({ reason: 'spawn', bin, cause }),
-    }),
-    (child) =>
-      Effect.callback<CommandResult, CommandError>((resume) => {
-        const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-        let stdout = '';
-        let stderr = '';
-        let stdoutBytes = 0;
-        let stderrBytes = 0;
-        let settled = false;
-        let timer: NodeJS.Timeout | undefined;
+  return yield* Effect.callback<CommandResult, CommandError>((resume) => {
+    let child: ReturnType<typeof spawnCommand>;
+    try {
+      child = spawnCommand(bin, args, options);
+    } catch (error) {
+      resume(Effect.fail(new CommandError({ reason: 'spawn', bin, cause: error })));
+      return;
+    }
 
-        function cleanup(): void {
-          if (timer) clearTimeout(timer);
-          child.stdout.off('data', onStdout);
-          child.stderr.off('data', onStderr);
-          child.off('error', onError);
-          child.off('close', onClose);
-        }
-        function settle(effect: Effect.Effect<CommandResult, CommandError>): void {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resume(effect);
-        }
-        function onStdout(chunk: Buffer): void {
-          stdoutBytes += chunk.byteLength;
-          if (stdoutBytes > maxOutputBytes) {
-            child.kill('SIGKILL');
-            settle(Effect.fail(new CommandError({ reason: 'output_limit', bin })));
-            return;
-          }
-          stdout += chunk.toString('utf8');
-        }
-        function onStderr(chunk: Buffer): void {
-          if (stderrBytes >= STDERR_CAP_BYTES) return;
-          const remaining = STDERR_CAP_BYTES - stderrBytes;
-          const capped = chunk.subarray(0, remaining);
-          stderr += capped.toString('utf8');
-          stderrBytes += capped.byteLength;
-        }
-        function onError(cause: Error): void {
-          settle(Effect.fail(new CommandError({ reason: 'spawn', bin, cause })));
-        }
-        function onClose(code: number | null): void {
-          settle(Effect.succeed({ stdout, stderr, exitCode: code ?? -1 }));
-        }
+    const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+    let stdout = '';
+    let stderr = '';
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+    let outcome: Effect.Effect<CommandResult, CommandError> | undefined;
+    let timer: NodeJS.Timeout | undefined;
 
-        child.stdout.on('data', onStdout);
-        child.stderr.on('data', onStderr);
-        child.on('error', onError);
-        child.on('close', onClose);
-        timer = setTimeout(() => {
-          child.kill('SIGKILL');
-          settle(Effect.fail(new CommandError({ reason: 'timeout', bin })));
-        }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    function cleanup(): void {
+      if (timer) clearTimeout(timer);
+      child.stdout.off('data', onStdout);
+      child.stderr.off('data', onStderr);
+      child.off('error', onError);
+      child.off('close', onClose);
+    }
+    function stop(effect: Effect.Effect<CommandResult, CommandError>): void {
+      if (settled || outcome !== undefined) return;
+      outcome = effect;
+      if (timer) clearTimeout(timer);
+      child.kill('SIGKILL');
+    }
+    function onStdout(chunk: Buffer): void {
+      stdoutBytes += chunk.byteLength;
+      if (stdoutBytes > maxOutputBytes) {
+        stop(Effect.fail(new CommandError({ reason: 'output_limit', bin })));
+        return;
+      }
+      stdout += chunk.toString('utf8');
+    }
+    function onStderr(chunk: Buffer): void {
+      if (stderrBytes >= STDERR_CAP_BYTES) return;
+      const remaining = STDERR_CAP_BYTES - stderrBytes;
+      const capped = chunk.subarray(0, remaining);
+      stderr += capped.toString('utf8');
+      stderrBytes += capped.byteLength;
+    }
+    function onError(cause: Error): void {
+      if (outcome === undefined) {
+        outcome = Effect.fail(new CommandError({ reason: 'spawn', bin, cause }));
+      }
+    }
+    function onClose(code: number | null): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resume(outcome ?? Effect.succeed({ stdout, stderr, exitCode: code ?? -1 }));
+    }
 
-        return Effect.sync(cleanup);
-      }),
-    (child) =>
-      Effect.sync(() => {
-        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
-      }),
-  );
+    child.stdout.on('data', onStdout);
+    child.stderr.on('data', onStderr);
+    child.on('error', onError);
+    child.on('close', onClose);
+    timer = setTimeout(() => {
+      stop(Effect.fail(new CommandError({ reason: 'timeout', bin })));
+    }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+
+    return Effect.callback<void>((done) => {
+      if (settled) {
+        cleanup();
+        done(Effect.void);
+        return;
+      }
+      cleanup();
+      child.on('error', noop);
+      child.once('close', () => done(Effect.void));
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    });
+  });
 });
+
+function spawnCommand(bin: string, args: readonly string[], options: RunCommandOptions) {
+  return spawn(bin, args, {
+    cwd: options.cwd,
+    env: { ...process.env, ...options.env },
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+}
