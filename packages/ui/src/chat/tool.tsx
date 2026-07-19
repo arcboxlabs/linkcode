@@ -146,7 +146,7 @@ export function ToolContent({
   return (
     <CollapsibleContent
       className={cn(
-        'mt-1 space-y-2 border-l-2 border-border pl-3',
+        'mt-1 space-y-2 border-0',
         constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
         className,
       )}

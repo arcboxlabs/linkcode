@@ -3,7 +3,7 @@ import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Menu, MenuLinkItem, MenuPopup, MenuSeparator, MenuTrigger } from 'coss-ui/components/menu';
 import { Skeleton } from 'coss-ui/components/skeleton';
-import { ChevronDownIcon, ExternalLinkIcon, GitPullRequestIcon } from 'lucide-react';
+import { ChevronDownIcon, CircleDotIcon, ExternalLinkIcon, GitPullRequestIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 
@@ -21,15 +21,6 @@ export function GitPullRequestSection({
 
   return <GitPullRequestButton pullRequest={pullRequest.pullRequest} className={className} />;
 }
-
-const PR_STATE_BADGE_VARIANT = {
-  open: 'success',
-  closed: 'destructive',
-  merged: 'info',
-} as const satisfies Record<
-  GitPullRequestSummary['state'],
-  React.ComponentProps<typeof Badge>['variant']
->;
 
 function GitPullRequestButton({
   pullRequest,
@@ -55,15 +46,19 @@ function GitPullRequestButton({
           <p className="line-clamp-2 font-medium text-sm leading-snug">{pullRequest.title}</p>
           <div className="flex flex-wrap items-center gap-1.5">
             {pullRequest.isDraft && <Badge variant="outline">{t('draft')}</Badge>}
-            <Badge variant={PR_STATE_BADGE_VARIANT[pullRequest.state]}>
-              {tPrState(pullRequest.state)}
-            </Badge>
-            <span className="text-muted-foreground text-xs">
-              {tChecksState(pullRequest.checks)}
-            </span>
-            <span className="text-muted-foreground text-xs">
-              {tReviewDecision(pullRequest.reviewDecision)}
-            </span>
+            {[
+              tPrState(pullRequest.state),
+              tChecksState(pullRequest.checks),
+              tReviewDecision(pullRequest.reviewDecision),
+            ].map((v) => (
+              <span
+                className="text-xs bg-secondary rounded-full px-1 py-0.1 text-primary/60"
+                key={v}
+              >
+                <CircleDotIcon size={10} className="inline mr-1 opacity-80" />
+                {v}
+              </span>
+            ))}
           </div>
         </div>
         <MenuSeparator />

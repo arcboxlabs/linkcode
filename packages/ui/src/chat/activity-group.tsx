@@ -1,5 +1,4 @@
 import type { ToolCall } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
 import {
   Collapsible,
   CollapsibleContent,
@@ -67,16 +66,14 @@ export function ActivityGroup({
         <CollapsibleTrigger className="group flex w-full items-center gap-2 py-1 text-left text-sm">
           <ActivityBucketIcon bucket={group.bucket} running={hasRunning} />
           <span className="shrink-0 text-foreground">{t(group.bucket)}</span>
-          <Badge size="sm" variant="secondary">
-            {group.items.length}
-          </Badge>
+          <span className="text-xs bg-secondary rounded-sm px-1 py-0.5">{group.items.length}</span>
           {failedCount > 0 ? (
-            <Badge size="sm" variant="error">
-              {t('failed', { count: failedCount })}
-            </Badge>
+            <span className="text-xs bg-red-500/10 rounded-sm px-1 py-0.5 text-destructive-foreground">
+              {failedCount}
+            </span>
           ) : null}
           {diffTotals ? <DiffCounter stats={diffTotals} /> : null}
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/70" ref={tooltipAnchorRef}>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground/40" ref={tooltipAnchorRef}>
             {open
               ? ''
               : summaries
@@ -91,7 +88,7 @@ export function ActivityGroup({
       </FilePathTooltip>
       <CollapsibleContent
         className={cn(
-          'mt-1 space-y-0.5 border-l-2 border-border pl-3',
+          'space-y-0.5 border-0 pl-2 bg-secondary/50 rounded-md',
           TOOL_DETAIL_SCROLL_CLASS_NAME,
         )}
       >
@@ -196,11 +193,13 @@ function ActivityGroupRow({
   return (
     <Collapsible>
       <FilePathTooltip anchor={tooltipAnchorRef} tooltip={summary?.tooltip}>
-        <CollapsibleTrigger className={cn(titleClassName, 'w-full hover:text-foreground')}>
+        <CollapsibleTrigger
+          className={cn(titleClassName, 'w-full hover:text-foreground font-mono')}
+        >
           {label}
         </CollapsibleTrigger>
       </FilePathTooltip>
-      <CollapsibleContent className="my-1 space-y-2 pl-1.5">
+      <CollapsibleContent>
         <ToolCallBody TerminalBlockComponent={TerminalBlockComponent} toolCall={toolCall} />
       </CollapsibleContent>
     </Collapsible>
