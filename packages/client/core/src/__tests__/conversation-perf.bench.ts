@@ -1,6 +1,6 @@
 /**
  * Microbenchmarks for the conversation fold path — run with:
- *   pnpm exec vitest bench packages/client/client-core/src/__tests__/conversation-perf.bench.ts
+ *   pnpm exec vitest bench packages/client/core/src/__tests__/conversation-perf.bench.ts
  *
  * Scenarios mirror a mid/long agent session: multi-turn history, then high-frequency
  * agent-message-chunk streaming on top of an already-large timeline.

@@ -1,7 +1,7 @@
 /**
  * One-shot timing report for the conversation fold path.
  *
- *   pnpm test packages/client/client-core/src/__tests__/conversation-perf.report.test.ts
+ *   pnpm test packages/client/core/src/__tests__/conversation-perf.report.test.ts
  *
  * Always prints a table (not a flaky timing assertion). Pair with the *.bench.ts files
  * for statistical runs via `pnpm exec vitest bench …`.

@@ -30,7 +30,7 @@ module.exports = require('eslint-config-sukka').sukka(
         'apps/webview/src/**',
         'packages/presentation/ui/src/**',
         'packages/client/workbench/src/**',
-        'packages/client/client-core/src/**',
+        'packages/client/core/src/**',
       ],
       additionalHooks: '(useIsomorphicLayoutEffect|useAbortableEffect)',
     },
@@ -85,7 +85,7 @@ module.exports = require('eslint-config-sukka').sukka(
       'apps/daemon/src/index.ts',
       'apps/desktop/src/main/index.ts',
       'apps/server/src/index.ts',
-      'packages/client/client-core/src/react.tsx',
+      'packages/client/core/src/react.tsx',
       'packages/client/workbench/src/runtime.tsx',
     ],
     rules: {

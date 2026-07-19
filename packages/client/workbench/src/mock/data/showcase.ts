@@ -242,7 +242,7 @@ const SHOWCASE_STATIC_EXEC_OUTPUT = [
   'apps/webview: 2246',
   'packages/host/agent-adapter: 11884',
   'packages/host/assets: 1737',
-  'packages/client/client-core: 3698',
+  'packages/client/core: 3698',
   'packages/foundation/common: 94',
   'packages/vendor/coss-ui: 7927',
   'packages/host/engine: 6037',
@@ -323,7 +323,7 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         rawOutput: {
           matches: [
             'packages/presentation/ui/src/chat/conversation-view.tsx',
-            'packages/client/client-core/src/conversation.ts',
+            'packages/client/core/src/conversation.ts',
           ],
           files: 2,
           elapsedMs: 17,

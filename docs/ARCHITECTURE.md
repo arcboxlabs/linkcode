@@ -145,7 +145,7 @@ dependency guardrails.
 | --- | --- | --- |
 | `foundation` | `schema`, `transport`, `common` | Stable contracts, communication primitives, and framework-agnostic utilities. |
 | `host` | `agent-adapter`, `assets`, `engine` | Daemon-side agent integration, managed assets, and orchestration. |
-| `client` | `client-core`, `sdk`, `workbench` | Client data plane, typed operations, runtime containers, and feature composition. |
+| `client` | `core`, `sdk`, `workbench` | Client data plane, typed operations, runtime containers, and feature composition. |
 | `presentation` | `i18n`, `ui` | Locale data and business-free presentation driven by view-models and callbacks. |
 | `system-plane` | `ipc` | Desktop-only Electron system-plane communication. |
 | `integrations` | `im-render` | Reusable adapters at external integration boundaries. |
@@ -159,7 +159,7 @@ dependency guardrails.
 | `host/agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi` / `grok-build`) plus the abstraction layer that normalizes native events into `schema`. |
 | `host/assets` | Managed-asset store for verified agent CLI pairs, in-process package closures, and standalone toolchains. |
 | `host/engine` | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`. |
-| `client/client-core` | Shared client data layer: `LinkCodeClient`, the conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`). |
+| `client/core` | `@linkcode/client-core`: shared client data layer, conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`). |
 | `client/sdk` | Transport-backed SDK (`LinkCodeSdkClient` over a `Transport`): typed operations plus the `Options` / `RequestResult` types `tayori` is parameterized with. Hand-written RPC, not OpenAPI-generated. |
 | `client/workbench` | Shared workbench runtime: connection control, providers, feature containers, and typed `tayori`/SWR data plumbing. It composes presentation but does not own reusable views. |
 | `presentation/i18n` | Locale messages and locale resolution (`use-intl`). |

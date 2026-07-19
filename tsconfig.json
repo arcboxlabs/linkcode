@@ -11,7 +11,7 @@
     { "path": "apps/daemon" },
     { "path": "apps/mobile" },
     { "path": "apps/server" },
-    { "path": "packages/client/client-core" },
+    { "path": "packages/client/core" },
     { "path": "packages/client/sdk" },
     { "path": "packages/client/workbench" },
     { "path": "packages/foundation/common" },
