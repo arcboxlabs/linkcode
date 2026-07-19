@@ -6,15 +6,29 @@ import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
+import { AGENT_DEFAULT_MODELS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
-import type { ComposerHandle, MentionItem } from './composer';
+import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
 import { ConversationPromptDock } from './conversation-prompt-dock';
 
+/** Composer behavior that every app shell must carry as one unit. Keeping the complete controller
+ * required prevents a custom shell from silently dropping only mode, slash, or shell actions. */
+export interface ConversationComposerController {
+  onSend: (content: ContentBlock[]) => void;
+  onStop: () => void;
+  directiveControls: ComposerDirectiveControls;
+  onModeChange?: (modeId: string) => Promise<void>;
+  onApprovalPolicyChange?: (policyId: string) => Promise<void>;
+  onModelChange?: (model: string) => Promise<void>;
+  onEffortChange?: (effort: EffortLevel) => Promise<void>;
+}
+
 export interface ConversationSurfaceProps {
   conversation: ConversationViewModel;
+  composer: ConversationComposerController;
   agentKind?: AgentKind;
   agentLabel?: string;
   /** Frontend capability stub used until attachment support is advertised by the session. */
@@ -43,8 +57,6 @@ export interface ConversationSurfaceProps {
   mentionItems?: MentionItem[];
   /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
   onMentionQueryChange?: (query: string | null) => void;
-  onSendPrompt: (content: ContentBlock[]) => void;
-  onStopTurn: () => void;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
   /** Opens a produced-file artifact in the shell's viewer (desktop right panel). Absent
@@ -59,18 +71,11 @@ export interface ConversationSurfaceProps {
   /** Native file picker returning picked images ready to stage. Desktop-only — absent on
    * webview, where the composer's "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
-  onModeChange?: (modeId: string) => Promise<void>;
-  onApprovalPolicyChange?: (policyId: string) => Promise<void>;
-  onModelChange?: (model: string) => Promise<void>;
-  onEffortChange?: (effort: EffortLevel) => Promise<void>;
-  /** Sends a catalog slash-command invocation (see Composer.onInvokeCommand). */
-  onInvokeCommand?: (name: string, args?: string) => void;
-  /** Sends a `$` shell passthrough (see Composer.onRunShellCommand). */
-  onRunShellCommand?: (command: string) => void;
 }
 
 export function ConversationSurface({
   conversation,
+  composer,
   agentKind,
   agentLabel,
   attachmentsSupported = false,
@@ -89,8 +94,6 @@ export function ConversationSurface({
   TerminalBlockComponent,
   mentionItems,
   onMentionQueryChange,
-  onSendPrompt,
-  onStopTurn,
   onRespondPermission,
   onRespondQuestion,
   onOpenFileArtifact,
@@ -98,14 +101,12 @@ export function ConversationSurface({
   onHostArtifact,
   onOpenPreviewUrl,
   onPickAttachmentFiles,
-  onModeChange,
-  onApprovalPolicyChange,
-  onModelChange,
-  onEffortChange,
-  onInvokeCommand,
-  onRunShellCommand,
 }: ConversationSurfaceProps): React.ReactNode {
   const composerRef = useRef<ComposerHandle | null>(null);
+  // Keep the static-provider model axis concrete during the short startup window before the
+  // adapter's authoritative model-update arrives. This is presentation only, never an override.
+  const displayedModel =
+    conversation.currentModel ?? (agentKind ? (AGENT_DEFAULT_MODELS[agentKind] ?? null) : null);
   // Only the signed-out cue matters mid-session (the next turn would fail on auth); a missing or
   // unverified CLI stays a new-session concern — this session's process is already running.
   const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
@@ -170,20 +171,17 @@ export function ConversationSurface({
           sendBlocked={loginCue !== undefined}
           currentModeId={conversation.currentModeId}
           approvalPolicy={conversation.approvalPolicy}
-          currentModel={conversation.currentModel}
+          currentModel={displayedModel}
           currentEffort={conversation.currentEffort}
-          agentCommands={conversation.availableCommands}
           agentModels={conversation.availableModels}
-          agentCapabilities={conversation.capabilities}
-          onSend={onSendPrompt}
-          onInvokeCommand={onInvokeCommand}
-          onRunShellCommand={onRunShellCommand}
-          onStop={onStopTurn}
+          directiveControls={composer.directiveControls}
+          onSend={composer.onSend}
+          onStop={composer.onStop}
           onPickAttachmentFiles={onPickAttachmentFiles}
-          onModeChange={onModeChange}
-          onApprovalPolicyChange={onApprovalPolicyChange}
-          onModelChange={onModelChange}
-          onEffortChange={onEffortChange}
+          onModeChange={composer.onModeChange}
+          onApprovalPolicyChange={composer.onApprovalPolicyChange}
+          onModelChange={composer.onModelChange}
+          onEffortChange={composer.onEffortChange}
         />
       </div>
     </div>

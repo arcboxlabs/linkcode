@@ -1,6 +1,4 @@
 import type {
-  AgentCapabilities,
-  AgentCommand,
   AgentKind,
   AgentModelOption,
   ApprovalPolicyState,
@@ -66,7 +64,6 @@ import {
   commandStatus,
   directiveStateFor,
   shellStatus,
-  UNSUPPORTED_COMPOSER_DIRECTIVES,
 } from './composer-editor/directive-state';
 import type { ComposerDraftSnapshot } from './composer-editor/editor';
 import { ComposerEditor, EMPTY_DRAFT_SNAPSHOT } from './composer-editor/editor';
@@ -145,13 +142,7 @@ export interface ComposerProps {
   currentEffort?: EffortLevel | null;
   /** Executable directive contract. Loading slash catalogs accept typed commands for host-side
    * validation; ready catalogs are authoritative, including an empty catalog. */
-  directiveControls?: ComposerDirectiveControls;
-  /** Legacy migration inputs; shells should pass `directiveControls` as one executable contract. */
-  agentCommands?: AgentCommand[] | null;
-  agentCapabilities?: AgentCapabilities | null;
-  deferCommandValidation?: boolean;
-  onInvokeCommand?: (name: string, args?: string) => void;
-  onRunShellCommand?: (command: string) => void;
+  directiveControls: ComposerDirectiveControls;
   /** The session's adapter-advertised model catalog, reflected from `available-models-update`
    * (install-dependent agents like opencode). Takes precedence over the static per-kind table;
    * empty or absent falls back to that table. */
@@ -207,12 +198,8 @@ export function Composer({
   currentModel,
   currentEffort,
   directiveControls,
-  agentCommands,
-  agentCapabilities,
   agentModels,
   onSend,
-  onInvokeCommand,
-  onRunShellCommand,
   onStop,
   onModeChange,
   onApprovalPolicyChange,
@@ -244,21 +231,7 @@ export function Composer({
     (attachment) => attachment.status === 'ready' && attachment.block !== undefined,
   );
 
-  const legacyDirectiveControls: ComposerDirectiveControls = {
-    slash:
-      agentCapabilities?.slashCommands && onInvokeCommand
-        ? agentCommands == null
-          ? { state: 'loading', onInvokeCommand }
-          : { state: 'ready', commands: agentCommands, onInvokeCommand }
-        : UNSUPPORTED_COMPOSER_DIRECTIVES.slash,
-    shell:
-      agentCapabilities?.shellCommand && onRunShellCommand
-        ? { state: 'ready', onRunShellCommand }
-        : UNSUPPORTED_COMPOSER_DIRECTIVES.shell,
-  };
-  const resolvedDirectiveControls = directiveControls ?? legacyDirectiveControls;
-
-  const catalog = commandCatalog(resolvedDirectiveControls.slash);
+  const catalog = commandCatalog(directiveControls.slash);
   // A draft led by the shell chip is one shell command; slash/mention menus must stay out of
   // the way (a path like /tmp inside the command must not pop the command menu).
   const shellActive = snapshot.directive?.kind === 'shell';
@@ -268,7 +241,7 @@ export function Composer({
   } | null = (() => {
     if (snapshot.composition.kind === 'none') return null;
     const directive = snapshot.composition.directive;
-    const status = liveDirectiveStatus(directive, resolvedDirectiveControls);
+    const status = liveDirectiveStatus(directive, directiveControls);
     if (status !== 'supported') return { directive, issue: status };
     return snapshot.composition.kind === 'blocked'
       ? { directive, issue: snapshot.composition.issue }
@@ -342,7 +315,7 @@ export function Composer({
   const commandOpen =
     !disabled &&
     Boolean(commandSource) &&
-    (resolvedDirectiveControls.slash.state !== 'loading' || commandSource !== 'slash');
+    (directiveControls.slash.state !== 'loading' || commandSource !== 'slash');
   const frameVisible = commandOpen || blockedDirective !== null || contextBar != null;
   const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
   const [exitCommandGroups, setExitCommandGroups] = useState(() => commandGroups);
@@ -391,33 +364,25 @@ export function Composer({
     editor.update(() => $normalizeDirectiveTokens(store.getState(), { force: true }), {
       discrete: true,
     });
-    const directive = editor.read(() =>
-      $draftDirective({ directiveControls: resolvedDirectiveControls }),
-    );
+    const directive = editor.read(() => $draftDirective({ directiveControls }));
     switch (directive.kind) {
       case 'command': {
         // Unknown/unsupported chips visibly error and block here — never silently model chat.
-        if (
-          directive.status !== 'supported' ||
-          resolvedDirectiveControls.slash.state === 'unsupported'
-        ) {
+        if (directive.status !== 'supported' || directiveControls.slash.state === 'unsupported') {
           return;
         }
-        resolvedDirectiveControls.slash.onInvokeCommand(
-          directive.name,
-          directive.args || undefined,
-        );
+        directiveControls.slash.onInvokeCommand(directive.name, directive.args || undefined);
         break;
       }
       case 'shell': {
         if (
           directive.status !== 'supported' ||
           !directive.command ||
-          resolvedDirectiveControls.shell.state === 'unsupported'
+          directiveControls.shell.state === 'unsupported'
         ) {
           return;
         }
-        resolvedDirectiveControls.shell.onRunShellCommand(directive.command);
+        directiveControls.shell.onRunShellCommand(directive.command);
         break;
       }
       case 'invalid': {
@@ -869,7 +834,7 @@ export function Composer({
                 <ComposerEditor
                   className="max-h-48 min-h-20.5 overflow-y-auto whitespace-pre-wrap break-words px-3.5 pt-3 pb-1.5 max-sm:min-h-23.5"
                   disabled={disabled}
-                  directiveControls={resolvedDirectiveControls}
+                  directiveControls={directiveControls}
                   editorRef={editorRef}
                   menuHasItems={hasCommandItems}
                   menuOpen={commandOpen}

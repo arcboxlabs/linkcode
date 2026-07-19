@@ -10,8 +10,8 @@ const MENTION_SUGGEST_LIMIT = 50;
 export interface FileMentionSource {
   /** Ranked workspace files for the current `@` query, mapped for the composer's menu. */
   mentionItems: MentionItem[];
-  /** Feed the composer's live `@` query in here (null = no active mention trigger). */
-  onMentionQueryChange: (query: string | null) => void;
+  /** Feed a composer's workspace and live `@` query here (null = no active mention trigger). */
+  onMentionQueryChange: (cwd: string | undefined, query: string | null) => void;
 }
 
 /** The live `@` query plus its open-trigger generation. The generation bumps on every trigger
@@ -33,22 +33,23 @@ const NO_MENTION_QUERY: MentionQuery = {
 };
 
 /**
- * Backs the composer's `@` menu with `file.suggest` daemon searches. Queries are debounced and
- * scoped to the cwd that opened the trigger, so a session switch cannot reuse the old file list.
+ * Backs composers' `@` menus with `file.suggest` daemon searches. Each query carries its own cwd,
+ * so one source can serve either a live session or a new-session draft without retaining results
+ * from the previously active workspace.
  */
-export function useFileMentionSource(cwd: string | undefined): FileMentionSource {
+export function useFileMentionSource(): FileMentionSource {
   const [live, setLive] = useState<MentionQuery>(NO_MENTION_QUERY);
   const debounced = useDebouncedValue(live, MENTION_QUERY_DEBOUNCE_MS);
   // Until the debounce catches up with THIS trigger (generation mismatch = the trailing value is
   // a previous trigger's), fetch the opening query; once caught up, the debounced one takes over.
   const effectiveQuery =
-    cwd === undefined || live.cwd !== cwd || live.query === null
+    live.cwd === undefined || live.query === null
       ? null
       : debounced.generation === live.generation
         ? (debounced.query ?? live.query)
         : (live.openingQuery ?? live.query);
 
-  const onMentionQueryChange = (query: string | null): void => {
+  const onMentionQueryChange = (cwd: string | undefined, query: string | null): void => {
     setLive((prev) => {
       if (query === null) {
         return prev.query === null ? prev : { ...prev, query: null };
@@ -61,9 +62,9 @@ export function useFileMentionSource(cwd: string | undefined): FileMentionSource
 
   const { data } = useData(
     suggestWorkspaceFiles,
-    cwd === undefined || effectiveQuery === null
+    live.cwd === undefined || effectiveQuery === null
       ? null
-      : { cwd, query: effectiveQuery, limit: MENTION_SUGGEST_LIMIT },
+      : { cwd: live.cwd, query: effectiveQuery, limit: MENTION_SUGGEST_LIMIT },
   );
 
   const mentionItems = useMemo<MentionItem[]>(

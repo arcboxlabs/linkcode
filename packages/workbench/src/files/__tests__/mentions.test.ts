@@ -32,26 +32,33 @@ afterEach(() => {
 });
 
 describe('useFileMentionSource', () => {
-  it('closes the old query when cwd changes and opens a new scoped query on demand', () => {
-    const initialProps: { cwd: string | undefined } = { cwd: '/project-a' };
-    const { result, rerender } = renderHook(
-      ({ cwd }: { cwd: string | undefined }) => useFileMentionSource(cwd),
-      { initialProps },
-    );
+  it('scopes each query to its supplied cwd', () => {
+    const { result } = renderHook(() => useFileMentionSource());
 
-    act(() => result.current.onMentionQueryChange(''));
+    act(() => result.current.onMentionQueryChange('/project-a', ''));
     expect(latestRequest()).toEqual({ cwd: '/project-a', limit: 50, query: '' });
     expect(result.current.mentionItems.map((item) => item.value)).toEqual(['src/a.ts']);
 
-    rerender({ cwd: '/project-b' });
+    act(() => result.current.onMentionQueryChange('/project-b', ''));
+    expect(latestRequest()).toEqual({ cwd: '/project-b', limit: 50, query: '' });
+    expect(result.current.mentionItems.map((item) => item.value)).toEqual(['src/b.ts']);
+  });
+
+  it('hides stale results after closing and never reuses a previous trigger query', () => {
+    const { result } = renderHook(() => useFileMentionSource());
+
+    act(() => result.current.onMentionQueryChange('/project-a', 'old-query'));
+    expect(latestRequest()).toEqual({ cwd: '/project-a', limit: 50, query: 'old-query' });
+
+    act(() => result.current.onMentionQueryChange('/project-a', null));
     expect(latestRequest()).toBeNull();
     expect(result.current.mentionItems).toEqual([]);
 
-    act(() => result.current.onMentionQueryChange(''));
-    expect(latestRequest()).toEqual({ cwd: '/project-b', limit: 50, query: '' });
+    act(() => result.current.onMentionQueryChange('/project-b', 'new-query'));
+    expect(latestRequest()).toEqual({ cwd: '/project-b', limit: 50, query: 'new-query' });
     expect(result.current.mentionItems.map((item) => item.value)).toEqual(['src/b.ts']);
 
-    rerender({ cwd: undefined });
+    act(() => result.current.onMentionQueryChange(undefined, 'new-query'));
     expect(latestRequest()).toBeNull();
     expect(result.current.mentionItems).toEqual([]);
   });

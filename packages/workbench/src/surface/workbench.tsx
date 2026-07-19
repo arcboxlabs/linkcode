@@ -24,6 +24,8 @@ import {
 import type {
   AttachmentSupportByAgent,
   ComposerAttachment,
+  ComposerDirectiveControls,
+  ConversationComposerController,
   NewSessionDraft,
   NewSessionSubmission,
   PermissionDecision,
@@ -45,6 +47,7 @@ import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { useFileMentionSource } from '../files/mentions';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
+import { useConfiguredDefaultModels } from '../provider-config/default-models';
 import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
@@ -179,7 +182,8 @@ function WorkbenchSessionSurface({
     if (message) visibleResponseErrors.set(requestId, message);
   }
   const active = sessions.active;
-  const { mentionItems, onMentionQueryChange } = useFileMentionSource(active?.cwd);
+  const { mentionItems, onMentionQueryChange } = useFileMentionSource();
+  const newSessionDefaultModels = useConfiguredDefaultModels();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -289,6 +293,7 @@ function WorkbenchSessionSurface({
       kind: submission.kind,
       cwd: submission.cwd,
       model: submission.model,
+      effort: submission.effort,
       modeId: submission.modeId,
     });
     rememberNewSessionDefaults(submission.kind, submission.workspaceId);
@@ -351,6 +356,30 @@ function WorkbenchSessionSurface({
     // Same contract as handleModelChange: the composer awaits the rejection to keep the old pick.
     return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
   }
+
+  const directiveControls: ComposerDirectiveControls = {
+    slash: conversation.capabilities?.slashCommands
+      ? conversation.availableCommands === null
+        ? { state: 'loading', onInvokeCommand: handleInvokeCommand }
+        : {
+            state: 'ready',
+            commands: conversation.availableCommands,
+            onInvokeCommand: handleInvokeCommand,
+          }
+      : { state: 'unsupported' },
+    shell: conversation.capabilities?.shellCommand
+      ? { state: 'ready', onRunShellCommand: handleRunShellCommand }
+      : { state: 'unsupported' },
+  };
+  const conversationComposer: ConversationComposerController = {
+    onSend: handleSend,
+    onStop: handleStopTurn,
+    directiveControls,
+    onModeChange: handleModeChange,
+    onApprovalPolicyChange: handleApprovalPolicyChange,
+    onModelChange: handleModelChange,
+    onEffortChange: handleEffortChange,
+  };
 
   // Every workspace-mutating request revalidates the workspace list the same way afterward.
   function afterWorkspacesChange<T>(pending: Promise<T>): Promise<T> {
@@ -493,6 +522,7 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      newSessionDefaultModels={newSessionDefaultModels}
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
@@ -531,8 +561,7 @@ function WorkbenchSessionSurface({
       onTogglePreviewExpanded={handleTogglePreviewExpanded}
       mentionItems={mentionItems}
       onMentionQueryChange={onMentionQueryChange}
-      onSendPrompt={handleSend}
-      onStopTurn={handleStopTurn}
+      conversationComposer={conversationComposer}
       onRespondPermission={handleRespond}
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
@@ -542,12 +571,6 @@ function WorkbenchSessionSurface({
       TerminalBlockComponent={RuntimeTerminalBlock}
       BranchStatusComponent={RuntimeBranchStatus}
       onDismissError={onClearError}
-      onModeChange={handleModeChange}
-      onApprovalPolicyChange={handleApprovalPolicyChange}
-      onModelChange={handleModelChange}
-      onEffortChange={handleEffortChange}
-      onInvokeCommand={handleInvokeCommand}
-      onRunShellCommand={handleRunShellCommand}
     />
   );
 }

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PermissionConversationItem } from '../../chat/conversation-prompts';
 import type { ConversationViewModel } from '../../chat/types';
 import type { AgentRuntimeCues } from '../agent-onboarding-card';
+import { UNSUPPORTED_COMPOSER_DIRECTIVES } from '../composer';
 import { $draftText, $insertDraftText } from '../composer-editor/serialize';
 import { ConversationSurface } from '../conversation-surface';
 
@@ -56,13 +57,16 @@ function surface(
   return (
     <ConversationSurface
       conversation={conversation}
+      composer={{
+        directiveControls: UNSUPPORTED_COMPOSER_DIRECTIVES,
+        onSend: vi.fn(),
+        onStop: vi.fn(),
+      }}
       agentKind="claude-code"
       respondingRequestIds={new Set()}
       isRunning={false}
       runtimeCues={runtimeCues}
       onLoginAgent={vi.fn()}
-      onSendPrompt={vi.fn()}
-      onStopTurn={vi.fn()}
       onRespondPermission={vi.fn()}
       onRespondQuestion={vi.fn()}
     />
@@ -89,6 +93,14 @@ function composerText(): string {
 }
 
 describe('ConversationSurface prompt card', () => {
+  it('shows a static-provider default until the adapter reports its concrete model', () => {
+    const { rerender } = render(surface());
+    expect(screen.getByRole('button', { name: /Sonnet 5/ })).toBeTruthy();
+
+    rerender(surface(undefined, { ...EMPTY_CONVERSATION, currentModel: 'claude-opus-4-8' }));
+    expect(screen.getByRole('button', { name: /Opus 4.8/ })).toBeTruthy();
+  });
+
   it('hides the composer while a prompt card is visible and preserves its draft', () => {
     const pendingConversation: ConversationViewModel = {
       ...EMPTY_CONVERSATION,
