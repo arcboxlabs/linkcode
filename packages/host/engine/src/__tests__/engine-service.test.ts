@@ -3,12 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Transport } from '@linkcode/transport';
 import { Effect, Logger as EffectLogger, Layer, ManagedRuntime } from 'effect';
-import { noop } from 'foxts/noop';
+import { asyncNoop, noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { TranslatorService } from '../agent/translator';
 import { InMemoryLoopStore } from '../automation/loop-store';
 import { InMemoryScheduleStore } from '../automation/schedule-store';
 import { EngineService, makeEngineLayer } from '../service';
+import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import type { PtyBackend } from '../terminal/pty-backend';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
@@ -193,6 +194,35 @@ describe('engine service', () => {
         'translator.close',
         'transport.close',
       ]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it('fails before connecting when session records cannot load', async () => {
+    const connect = vi.fn(asyncNoop);
+    const sessionStore: SessionStore = {
+      load: () => Promise.reject(new Error('private database detail')),
+      save: asyncNoop,
+      delete: asyncNoop,
+    };
+    const transport: Transport = {
+      connect,
+      send: noop,
+      onMessage: () => noop,
+      onClose: () => noop,
+      close: noop,
+    };
+    const runtime = ManagedRuntime.make(makeEngineLayer(transport, { sessionStore }));
+
+    try {
+      await expect(runtime.runPromise(Effect.service(EngineService))).rejects.toMatchObject({
+        _tag: 'OperationError',
+        subsystem: 'store',
+        operation: 'session-records.load',
+        publicMessage: 'Failed to load session records',
+      });
+      expect(connect).not.toHaveBeenCalled();
     } finally {
       await runtime.dispose();
     }

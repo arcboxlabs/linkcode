@@ -119,7 +119,15 @@ describe('engine session lifecycle', () => {
     const sessionId = startedId(sent, 'r1');
     await inject({ kind: 'session.delete', clientReqId: 'r2', sessionId });
 
-    expect(sent.some((p) => p.kind === 'request.failed' && p.replyTo === 'r2')).toBe(true);
+    expect(sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'r2',
+      code: 'operation_failed',
+      message: 'Failed to delete session record',
+    });
+    expect(sent.some((payload) => JSON.stringify(payload).includes('disk unavailable'))).toBe(
+      false,
+    );
     // The live adapter was stopped, but the record must stay listed (cold) — not half-deleted.
     await inject({ kind: 'session.list', clientReqId: 'r3' });
     const sessions = listedSessions(sent, 'r3');

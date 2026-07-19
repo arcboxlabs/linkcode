@@ -166,9 +166,10 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
 
   return {
     start: Effect.gen(function* () {
-      yield* tryOperation('store', 'session-records.load', 'Failed to load session records', () =>
-        records.load(),
-      );
+      const runTask = yield* FiberSet.makeRuntime<never, void, never>();
+      yield* records.start((effect) => {
+        runTask(effect);
+      });
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
         workspaces.start(),
       );
@@ -188,14 +189,13 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* tryOperation('transport', 'transport.connect', 'Failed to connect transport', () =>
         transport.connect(),
       );
-      const runRequest = yield* FiberSet.makeRuntime<never, void, never>();
       yield* trySyncOperation(
         'transport',
         'transport.subscribe',
         'Failed to subscribe to transport messages',
         () => {
           unsubscribeRequests = transport.onMessage((msg) => {
-            runRequest(
+            runTask(
               requests
                 .handle(msg)
                 .pipe(

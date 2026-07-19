@@ -5,17 +5,36 @@ import type {
   SessionInfo,
   SessionRecord,
 } from '@linkcode/schema';
+import { Effect } from 'effect';
+import { nullthrow } from 'foxts/guard';
+import { OperationError } from '../failure';
 import type { SessionStore } from './session-store';
 
 const TITLE_MAX_LENGTH = 80;
+type RunTask = (effect: Effect.Effect<void>) => void;
 
 export class SessionRecordRegistry {
   private readonly records = new Map<SessionId, SessionRecord>();
+  private runTask: RunTask | undefined;
 
   constructor(private readonly store: SessionStore) {}
 
-  async load(): Promise<void> {
-    for (const record of await this.store.load()) this.records.set(record.sessionId, record);
+  start(runTask: RunTask): Effect.Effect<void, OperationError> {
+    return Effect.sync(() => {
+      this.runTask = runTask;
+    }).pipe(
+      Effect.andThen(
+        storeOperation('session-records.load', 'Failed to load session records', () =>
+          this.store.load(),
+        ),
+      ),
+      Effect.tap((records) =>
+        Effect.sync(() => {
+          for (const record of records) this.records.set(record.sessionId, record);
+        }),
+      ),
+      Effect.asVoid,
+    );
   }
 
   has(sessionId: SessionId): boolean {
@@ -50,14 +69,22 @@ export class SessionRecordRegistry {
 
   /** Imported records have no live adapter, so a store failure remains request-fatal. */
   async importRecord(record: SessionRecord): Promise<void> {
-    this.records.set(record.sessionId, record);
-    await this.store.save(record);
+    try {
+      await this.store.save(record);
+      this.records.set(record.sessionId, record);
+    } catch (error) {
+      throw storeFailure('session-records.save', 'Failed to persist session record', error);
+    }
   }
 
   /** Delete from durable storage first so a failed delete leaves the in-memory record retryable. */
   async delete(sessionId: SessionId): Promise<void> {
-    await this.store.delete(sessionId);
-    this.records.delete(sessionId);
+    try {
+      await this.store.delete(sessionId);
+      this.records.delete(sessionId);
+    } catch (error) {
+      throw storeFailure('session-records.delete', 'Failed to delete session record', error);
+    }
   }
 
   bindHistoryId(sessionId: SessionId, historyId: AgentHistoryId): void {
@@ -93,16 +120,40 @@ export class SessionRecordRegistry {
   /** The in-memory record is authoritative while running; persistence is best-effort. */
   private persist(record: SessionRecord): void {
     record.updatedAt = Date.now();
-    void this.persistSafely(record);
+    const runTask = nullthrow(this.runTask, 'Session record registry is not started');
+    runTask(
+      storeOperation('session-records.save', 'Failed to persist session record', () =>
+        this.store.save(record),
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.logError(
+            error.publicMessage,
+            {
+              operation: error.operation,
+              subsystem: error.subsystem,
+              sessionId: record.sessionId,
+            },
+            error.cause,
+          ),
+        ),
+      ),
+    );
   }
+}
 
-  private async persistSafely(record: SessionRecord): Promise<void> {
-    try {
-      await this.store.save(record);
-    } catch (error) {
-      console.error(`Failed to persist session record ${record.sessionId}:`, error);
-    }
-  }
+function storeOperation<A>(
+  operation: string,
+  publicMessage: string,
+  run: () => Promise<A>,
+): Effect.Effect<A, OperationError> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => storeFailure(operation, publicMessage, cause),
+  });
+}
+
+function storeFailure(operation: string, publicMessage: string, cause: unknown): OperationError {
+  return new OperationError({ subsystem: 'store', operation, publicMessage, cause });
 }
 
 function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {

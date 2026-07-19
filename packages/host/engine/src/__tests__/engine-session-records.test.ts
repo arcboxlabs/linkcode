@@ -1,6 +1,7 @@
 import { asHistoryId } from '@linkcode/agent-adapter';
 import { textBlock } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
+import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import {
   createSessionHarness as harness,
@@ -99,5 +100,33 @@ describe('engine session records', () => {
 
     await inject({ kind: 'session.list', clientReqId: 'r2' });
     expect(listedSessions(sent, 'r2')[0].status).toBe('stopped');
+  });
+
+  it('does not retain an imported session when its durable save fails', async () => {
+    const store: SessionStore = {
+      load: () => Promise.resolve([]),
+      save: () => Promise.reject(new Error('private database detail')),
+      delete: () => Promise.resolve(),
+    };
+    const { engine, sent, inject } = harness(store);
+    await engine.start();
+    await inject({
+      kind: 'session.import',
+      clientReqId: 'r1',
+      agentKind: 'claude-code',
+      historyId: asHistoryId('native-9'),
+    });
+
+    expect(sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'r1',
+      code: 'operation_failed',
+      message: 'Failed to persist session record',
+    });
+    expect(
+      sent.some((payload) => JSON.stringify(payload).includes('private database detail')),
+    ).toBe(false);
+    await inject({ kind: 'session.list', clientReqId: 'r2' });
+    expect(listedSessions(sent, 'r2')).toEqual([]);
   });
 });
