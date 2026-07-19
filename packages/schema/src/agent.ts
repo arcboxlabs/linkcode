@@ -94,6 +94,19 @@ export const AgentModelOptionSchema = z.object({
 });
 export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
 
+/** A model provider the agent's own local config defines (pi: a custom entry in
+ * `~/.pi/agent/models.json`). Its models already ride the catalog's `models`; this entry exists so
+ * clients can attribute them to a locally-scanned source (the Providers page's read-only block).
+ * The definition lives in the agent's config — LinkCode never edits it. */
+export const AgentLocalProviderSchema = z.object({
+  id: z.string().min(1),
+  /** The provider's endpoint, when its local definition carries one. */
+  baseUrl: z.string().optional(),
+  /** Model ids the local definition contributes (unprefixed — provider-local ids). */
+  models: z.array(z.string().min(1)),
+});
+export type AgentLocalProvider = z.infer<typeof AgentLocalProviderSchema>;
+
 /** What an agent kind can offer BEFORE a session exists — the new-session pickers' data source,
  * served over the `agent.catalog` wire request from a never-started adapter instance (the history
  * pattern). Empty arrays mean the axis has no pre-session data: the UI falls back to its static
@@ -103,6 +116,9 @@ export const AgentStartCatalogSchema = z.object({
   policies: z.array(ApprovalPolicySchema),
   /** The tier a session starts on when the user picks nothing. */
   defaultPolicyId: ApprovalPolicyIdSchema.optional(),
+  /** Providers defined by the agent's own local config (pi models.json); absent for agents
+   * without such a mechanism. */
+  localProviders: z.array(AgentLocalProviderSchema).optional(),
 });
 export type AgentStartCatalog = z.infer<typeof AgentStartCatalogSchema>;
 
