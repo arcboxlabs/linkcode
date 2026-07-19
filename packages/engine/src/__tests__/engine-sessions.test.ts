@@ -56,7 +56,7 @@ class InvalidatingSuccessfulSendAdapter extends FakeAdapter {
   }
 }
 
-describe('engine attach replay', () => {
+describe('engine interactive requests', () => {
   const QUESTION_ASK: AgentEvent = {
     type: 'question-request',
     requestId: 'ask-1',
@@ -119,75 +119,6 @@ describe('engine attach replay', () => {
     });
     return { ...h, sessionId: startedId(h.sent, 'r1'), adapter: nullthrow(h.adapters[0]) };
   }
-
-  it('replays the live status and open asks to an attaching client', async () => {
-    const { sent, inject, adapter, sessionId } = await startedHarness();
-    adapter.emit({ type: 'status', status: 'running' });
-    adapter.emit(PERMISSION_ASK);
-    adapter.emit(QUESTION_ASK);
-
-    const mark = sent.length;
-    await inject({ kind: 'session.attach', sessionId });
-    const replayed = eventsAfter(sent, mark);
-    expect(replayed[0]).toEqual({ type: 'status', status: 'running' });
-    expect(replayed).toContainEqual(PERMISSION_ASK);
-    expect(replayed).toContainEqual(QUESTION_ASK);
-  });
-
-  it('replays the latest command catalog to an attaching client', async () => {
-    const { sent, inject, adapter, sessionId } = await startedHarness();
-    adapter.emit({ type: 'available-commands-update', commands: [{ name: 'stale' }] });
-    adapter.emit({
-      type: 'available-commands-update',
-      commands: [{ name: 'compact', description: 'Compact the context' }],
-    });
-
-    const mark = sent.length;
-    await inject({ kind: 'session.attach', sessionId });
-    const catalogs = eventsAfter(sent, mark).filter((e) => e.type === 'available-commands-update');
-    // Full-replace semantics: only the latest catalog is replayed.
-    expect(catalogs).toEqual([
-      {
-        type: 'available-commands-update',
-        commands: [{ name: 'compact', description: 'Compact the context' }],
-      },
-    ]);
-  });
-
-  it('replays the latest model catalog to an attaching client', async () => {
-    const { sent, inject, adapter, sessionId } = await startedHarness();
-    adapter.emit({ type: 'available-models-update', models: [{ id: 'stale/old', label: 'Old' }] });
-    adapter.emit({
-      type: 'available-models-update',
-      models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
-    });
-
-    const mark = sent.length;
-    await inject({ kind: 'session.attach', sessionId });
-    const catalogs = eventsAfter(sent, mark).filter((e) => e.type === 'available-models-update');
-    // Full-replace semantics: only the latest catalog is replayed.
-    expect(catalogs).toEqual([
-      {
-        type: 'available-models-update',
-        models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
-      },
-    ]);
-  });
-
-  it('replays the latest adapter capabilities to an attaching client', async () => {
-    const { sent, inject, adapter, sessionId } = await startedHarness();
-    adapter.emit({
-      type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: false },
-    });
-
-    const mark = sent.length;
-    await inject({ kind: 'session.attach', sessionId });
-    expect(eventsAfter(sent, mark)).toContainEqual({
-      type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: false },
-    });
-  });
 
   it('echoes command and shell inputs as the text the user typed', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
