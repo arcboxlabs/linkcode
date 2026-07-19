@@ -45,7 +45,11 @@ export class LiveSession {
     return Effect.suspend(() =>
       this.closing
         ? Effect.interrupt
-        : Effect.forkIn(effect, this.scope).pipe(Effect.flatMap(Fiber.join)),
+        : Effect.forkIn(effect, this.scope).pipe(
+            Effect.flatMap((fiber) =>
+              Fiber.join(fiber).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber))),
+            ),
+          ),
     );
   }
 

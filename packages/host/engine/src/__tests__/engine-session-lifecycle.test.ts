@@ -1,6 +1,9 @@
-import type { AgentInput, StartOptions } from '@linkcode/schema';
+import type { AgentInput, SessionId, StartOptions } from '@linkcode/schema';
+import { Deferred, Effect, Exit, Fiber, Scope } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
+import type { OperationError } from '../failure';
+import { LiveSession } from '../session/live-session';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import {
@@ -227,5 +230,41 @@ describe('engine session lifecycle', () => {
     expect(record.runs.at(-1)?.endedAt).toBeTypeOf('number');
     await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
     expect(startedId(h.sent, 'r3')).toBe(sessionId);
+  });
+
+  it('interrupts scoped session work with its caller', async () => {
+    let operationInterrupted = false;
+    const interruptedBeforeScopeClose = await Effect.runPromise(
+      Effect.gen(function* () {
+        const scope = yield* Scope.make();
+        const closed = yield* Deferred.make<void, OperationError>();
+        const operationStarted = yield* Deferred.make<void>();
+        const session = new LiveSession(
+          new FakeAdapter(),
+          'sess-interrupt' as SessionId,
+          scope,
+          closed,
+        );
+        const fiber = yield* Effect.forkChild(
+          session.run(
+            Deferred.succeed(operationStarted, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  operationInterrupted = true;
+                }),
+              ),
+            ),
+          ),
+        );
+        yield* Deferred.await(operationStarted);
+        yield* Fiber.interrupt(fiber);
+        const interrupted = operationInterrupted;
+        yield* Scope.close(scope, Exit.void);
+        return interrupted;
+      }),
+    );
+
+    expect(interruptedBeforeScopeClose).toBe(true);
   });
 });

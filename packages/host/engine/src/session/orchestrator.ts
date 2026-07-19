@@ -133,21 +133,19 @@ export class SessionOrchestrator {
           this.records.setTitleFromContent(sessionId, content);
         }).pipe(
           Effect.andThen(
-            Effect.tryPromise({
-              try: (signal) =>
-                watchTurn(
-                  session.adapter,
-                  () => session.adapter.send({ type: 'prompt', content }),
-                  { ...opts, signal },
-                ),
-              catch: (e) => e,
-            }),
+            watchTurn(
+              session.adapter,
+              () => session.adapter.send({ type: 'prompt', content }),
+              opts,
+            ),
           ),
-          Effect.tapError(() =>
-            Effect.sync(() => {
-              // A fatal dispatch/ask can fail before a lifecycle event releases the turn gate.
-              if (session.status !== 'running') session.turnInputActive = false;
-            }),
+          Effect.onExit((exit) =>
+            Exit.isFailure(exit)
+              ? Effect.sync(() => {
+                  // A failed or interrupted dispatch can exit before a lifecycle event releases it.
+                  if (session.status !== 'running') session.turnInputActive = false;
+                })
+              : Effect.void,
           ),
         ),
       );
