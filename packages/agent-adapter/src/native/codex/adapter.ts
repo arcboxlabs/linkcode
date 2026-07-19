@@ -371,7 +371,14 @@ export class CodexAdapter extends BaseAgentAdapter {
     await this.ensureThread();
     const { server, threadId } = this.liveThread();
     if (name === COMPACT_COMMAND.name) {
-      await server.request('thread/compact/start', { threadId });
+      this.emitStatus('running');
+      try {
+        await server.request('thread/compact/start', { threadId });
+      } catch (err) {
+        this.teardown();
+        this.emitStatus('idle');
+        throw err;
+      }
       return;
     }
     const skill = this.skillCommands.get(name);
