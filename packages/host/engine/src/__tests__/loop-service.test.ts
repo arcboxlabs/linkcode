@@ -9,7 +9,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { Effect } from 'effect';
+import { Effect, Fiber } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoopService } from '../automation/loop-service';
@@ -135,6 +135,48 @@ describe('LoopService', () => {
     expect(driver.calls.some((c) => c.op === 'stop')).toBe(true);
     const changed = sent.filter((p) => p.kind === 'loop.changed');
     expect(changed.at(-1)).toMatchObject({ loop: { status: 'succeeded' } });
+  });
+
+  it('commits one terminal outcome when stop races a successful save', async () => {
+    const { transport, sent } = recordingTransport();
+    const store = new InMemoryLoopStore();
+    let terminalSaveStarted!: () => void;
+    const saveStarted = new Promise<void>((resolve) => {
+      terminalSaveStarted = resolve;
+    });
+    let releaseTerminalSave!: () => void;
+    const terminalSaveReleased = new Promise<void>((resolve) => {
+      releaseTerminalSave = resolve;
+    });
+    const save = store.save.bind(store);
+    store.save = async (loop) => {
+      if (loop.status === 'succeeded') {
+        terminalSaveStarted();
+        await terminalSaveReleased;
+      }
+      await save(loop);
+    };
+    const service = bindRuntime(
+      new LoopService(transport, store, new FakeSessionDriver(), { now }),
+    );
+    const loop = await service.startLoop(baseSpec());
+    await saveStarted;
+
+    service.stopLoop(loop.loopId);
+    releaseTerminalSave();
+    await Effect.runPromise(service.settleAll());
+
+    expect(service.list().find((item) => item.loopId === loop.loopId)?.status).toBe('succeeded');
+    expect((await store.load()).find((item) => item.loopId === loop.loopId)?.status).toBe(
+      'succeeded',
+    );
+    expect(
+      sent.filter(
+        (payload) => payload.kind === 'loop.changed' && payload.loop.status !== 'running',
+      ),
+    ).toEqual([
+      expect.objectContaining({ loop: expect.objectContaining({ status: 'succeeded' }) }),
+    ]);
   });
 
   it('retries with failure feedback until a check passes', async () => {
@@ -339,6 +381,7 @@ describe('LoopService', () => {
     await Promise.all([first, second]);
 
     expect(shutdownCount).toBe(2);
+    expect(driver.calls.filter((call) => call.op === 'stop')).toHaveLength(1);
     expect(driver.records).toHaveLength(0);
     expect((await store.load()).find((item) => item.loopId === loop.loopId)?.status).toBe(
       'stopped',
@@ -346,6 +389,54 @@ describe('LoopService', () => {
     expect(sent.filter((payload) => payload.kind === 'loop.changed').at(-1)).toMatchObject({
       loop: { status: 'stopped' },
     });
+  });
+
+  it('keeps owner interruption out of the durable loop outcome and waits for session cleanup', async () => {
+    const { transport } = recordingTransport();
+    const store = new InMemoryLoopStore();
+    const driver = new FakeSessionDriver();
+    let promptStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      promptStarted = resolve;
+    });
+    driver.prompt = (sessionId: SessionId) => {
+      driver.calls.push({ op: 'prompt', sessionId });
+      promptStarted();
+      return new Promise<TurnResult>(noop);
+    };
+    let releaseCleanup!: () => void;
+    const cleanupReleased = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const stopSession = driver.stopSession.bind(driver);
+    driver.stopSession = async (sessionId: SessionId) => {
+      await stopSession(sessionId);
+      await cleanupReleased;
+    };
+    const service = new LoopService(transport, store, driver, { now });
+    let loopFiber!: Fiber.Fiber<void>;
+    service.bindRuntime((effect) => {
+      loopFiber = Effect.runFork(effect);
+      return loopFiber;
+    });
+    const loop = await service.startLoop(baseSpec());
+    await started;
+
+    let interruptionSettled = false;
+    const interruption = Effect.runPromise(Fiber.interrupt(loopFiber)).then(() => {
+      interruptionSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(driver.calls.filter((call) => call.op === 'stop')).toHaveLength(1);
+    expect(interruptionSettled).toBe(false);
+
+    releaseCleanup();
+    await interruption;
+
+    expect(service.list().find((item) => item.loopId === loop.loopId)?.status).toBe('running');
+    expect((await store.loadIterations(loop.loopId))[0]?.endedAt).toBe(clock);
+    expect(driver.records).toHaveLength(0);
   });
 
   it('shutdown waits for accepted admission and prevents it from launching', async () => {
