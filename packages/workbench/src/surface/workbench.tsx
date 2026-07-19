@@ -61,6 +61,7 @@ import { useWorkspaces } from '../workspace/hooks';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
+import { newlyConfirmedStartupSelection, reflectedStartupSelection } from './startup-selection';
 import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
@@ -295,16 +296,31 @@ function WorkbenchSessionSurface({
     const sessionId = await sessions.create({
       kind: submission.kind,
       cwd: submission.cwd,
-      model: submission.model,
-      effort: submission.effort,
+      model: submission.model ?? undefined,
+      effort: submission.effort ?? undefined,
       modeId: submission.modeId,
     });
-    rememberNewSessionDefaults(submission.kind, submission.workspaceId, {
-      model: submission.model,
-      effort: submission.effort,
-    });
+    const startupSelection = reflectedStartupSelection(
+      submission,
+      sdkClient.raw.eventsSnapshot(sessionId),
+    );
+    rememberNewSessionDefaults(submission.kind, submission.workspaceId, startupSelection);
     // The first input rides behind the started session, like any conversation send.
-    void inputMutation.trigger({ sessionId, input: submission.input }).catch(noop);
+    void inputMutation
+      .trigger({ sessionId, input: submission.input })
+      .then(() => {
+        // Some process-per-turn adapters can confirm a startup override only after their first
+        // successful run. Promote only a positive late match: replaying a mismatch here could erase
+        // a newer live selection made while that turn was running.
+        const newlyConfirmed = newlyConfirmedStartupSelection(
+          submission,
+          startupSelection,
+          sdkClient.raw.eventsSnapshot(sessionId),
+        );
+        if (newlyConfirmed.model === undefined && newlyConfirmed.effort === undefined) return;
+        rememberSelection(submission.kind, newlyConfirmed);
+      })
+      .catch(noop);
   }
 
   async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {

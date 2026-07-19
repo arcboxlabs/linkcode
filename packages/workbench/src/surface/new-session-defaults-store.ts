@@ -15,8 +15,10 @@ const PersistedNewSessionDefaultsSchema = z
 type PersistedNewSessionDefaults = z.infer<typeof PersistedNewSessionDefaultsSchema>;
 
 export interface NewSessionSelection {
-  model?: string;
-  effort?: EffortLevel;
+  /** Null clears a remembered selection after an explicit reset or rejected reflection. */
+  model?: string | null;
+  /** Null clears a remembered selection after an explicit reset or rejected reflection. */
+  effort?: EffortLevel | null;
 }
 
 export interface NewSessionDefaultsState {
@@ -37,15 +39,23 @@ function selectionPatch(
   provider: AgentKind,
   selection: NewSessionSelection,
 ): Pick<NewSessionDefaultsState, 'modelsByProvider' | 'effortsByProvider'> {
+  let modelsByProvider = state.modelsByProvider;
+  if (selection.model !== undefined) {
+    modelsByProvider = { ...modelsByProvider };
+    if (selection.model === null) Reflect.deleteProperty(modelsByProvider, provider);
+    else modelsByProvider[provider] = selection.model;
+  }
+
+  let effortsByProvider = state.effortsByProvider;
+  if (selection.effort !== undefined) {
+    effortsByProvider = { ...effortsByProvider };
+    if (selection.effort === null) Reflect.deleteProperty(effortsByProvider, provider);
+    else effortsByProvider[provider] = selection.effort;
+  }
+
   return {
-    modelsByProvider:
-      selection.model === undefined
-        ? state.modelsByProvider
-        : { ...state.modelsByProvider, [provider]: selection.model },
-    effortsByProvider:
-      selection.effort === undefined
-        ? state.effortsByProvider
-        : { ...state.effortsByProvider, [provider]: selection.effort },
+    modelsByProvider,
+    effortsByProvider,
   };
 }
 

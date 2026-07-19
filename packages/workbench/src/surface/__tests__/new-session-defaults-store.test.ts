@@ -41,6 +41,18 @@ describe('new-session defaults', () => {
     expect(store.getState().effortsByProvider).toEqual({ 'claude-code': 'medium', codex: 'low' });
   });
 
+  it('clears an explicitly rejected selection without disturbing the other axis', async () => {
+    const store = await loadStore();
+    store
+      .getState()
+      .remember('claude-code', WORKSPACE_ID, { model: 'claude-opus-4-8', effort: 'ultracode' });
+
+    store.getState().remember('claude-code', WORKSPACE_ID, { effort: null });
+
+    expect(store.getState().modelsByProvider).toEqual({ 'claude-code': 'claude-opus-4-8' });
+    expect(store.getState().effortsByProvider).toEqual({});
+  });
+
   it('rehydrates model and effort choices after a renderer restart', async () => {
     const first = await loadStore();
     first.getState().remember('grok-build', WORKSPACE_ID, { model: 'grok-4.5', effort: 'medium' });
