@@ -1,5 +1,11 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
-import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
+import {
+  getAccounts,
+  getAgentCatalog,
+  getProviderConfig,
+  setAccounts,
+  setProviderConfig,
+} from '@linkcode/sdk';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
@@ -26,6 +32,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   } = useData(getAccounts, {});
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: runtimes } = useAgentRuntimes();
+  // Read-only local-provider cards under the pool (pi's models.json custom providers).
+  const { data: piCatalog } = useData(getAgentCatalog, { agentKind: 'pi' });
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
 
@@ -58,6 +66,14 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     await saveAccounts.trigger({ accounts: [...pool, account] });
     void mutateAccounts();
     select(account.id);
+  };
+
+  // One pool write for a whole models.json import — sequential handleAdd calls would race on `pool`.
+  const handleAddMany = async (accounts: Account[]): Promise<void> => {
+    if (accounts.length === 0) return;
+    await saveAccounts.trigger({ accounts: [...pool, ...accounts] });
+    void mutateAccounts();
+    select(accounts[0].id);
   };
 
   // One-click adoption of a detected CLI login: same account the oauth form would create.
@@ -97,6 +113,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           loading={accountsLoading}
           providers={providers}
           runtimes={runtimes}
+          localProviders={piCatalog?.localProviders}
           selectedId={selected?.id}
           onSelect={select}
           onAdd={startAdd}
@@ -111,6 +128,9 @@ export function ProvidersSettingsPanel(): React.ReactNode {
               onBack={backToCatalog}
               onSubmit={(account) => {
                 void handleAdd(account);
+              }}
+              onSubmitMany={(accounts) => {
+                void handleAddMany(accounts);
               }}
             />
           ) : effectiveView.kind === 'add-catalog' ? (

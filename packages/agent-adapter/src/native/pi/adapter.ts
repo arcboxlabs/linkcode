@@ -26,6 +26,7 @@ import type {
   StopReason,
   ToolKind,
 } from '@linkcode/schema';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -36,6 +37,7 @@ import {
   locationsFromToolInput,
   toolKindFromName,
 } from '../../util';
+import { customProviderRegistration, readCustomProvider } from './custom-provider';
 import {
   findPiSessionFile,
   importPiSdk,
@@ -44,6 +46,7 @@ import {
   piAgentDir,
   readPiHistory,
 } from './history';
+import { piLocalProviders } from './local-providers';
 import { createPiUiContext } from './ui-bridge';
 
 type PiModel = NonNullable<CreateAgentSessionOptions['model']>;
@@ -158,8 +161,12 @@ export class PiAdapter extends BaseAgentAdapter {
   private readonly sessionAllowedTools = new Set<string>();
   private modelRegistry: PiModelRegistry | null = null;
   /** Set when a per-account credential was injected at start — the injection is start-time-only
-   * and scoped to one provider, so live model switches must stay inside it (opencode parity). */
+   * and scoped to one provider, so live model switches must stay inside it (opencode parity) or
+   * inside {@link locallyAuthedProviders}, whose auth does not depend on the injection. */
   private credentialProviderId: string | null = null;
+  /** Providers usable WITHOUT the injected credential (models.json inline keys, auth.json
+   * logins), snapshotted before injection: credential scoping must not hide or reject them. */
+  private locallyAuthedProviders: ReadonlySet<string> = new Set();
 
   override async startCatalog(_opts: { cwd?: string }): Promise<AgentStartCatalog> {
     // Plain import on a never-started instance (the history precedent). The catalog reflects the
@@ -167,10 +174,12 @@ export class PiAdapter extends BaseAgentAdapter {
     // appear pre-session only when local auth also covers them.
     const pi = await importPiSdk();
     const registry = pi.ModelRegistry.create(pi.AuthStorage.create());
+    const localProviders = piLocalProviders(pi, registry);
     return {
       models: piModelOptions(registry.getAvailable()),
       policies: [...APPROVAL_POLICIES],
       defaultPolicyId: INITIAL_POLICY_ID,
+      ...(localProviders.length > 0 && { localProviders }),
     };
   }
 
@@ -228,16 +237,46 @@ export class PiAdapter extends BaseAgentAdapter {
       throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
     }
 
+    this.locallyAuthedProviders = new Set(modelRegistry.getAvailable().map((m) => m.provider));
+
     // Pi resolves auth through AuthStorage; inject the account's key as a runtime override for the
     // session's provider so it takes precedence over ~/.pi/agent/auth.json and env vars. A
-    // gateway account's base URL is registered on the model registry (it overrides the provider's URL).
-    const provider =
-      explicitRef?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
+    // gateway account's base URL is registered on the model registry (it overrides the provider's
+    // URL) — except onto a models.json local provider, which owns its endpoint: the account may
+    // override its key, but replacing its base URL would corrupt the routing whenever the bound
+    // account actually belongs to another provider. An account that DEFINES its provider
+    // (customProvider) names the injection target itself and registers with its full model list.
+    const custom = readCustomProvider(opts.config);
     const cred = readAgentCredential(opts.config);
     const key = cred.apiKey ?? cred.authToken;
+    const provider =
+      custom?.name ??
+      explicitRef?.provider ??
+      savedProvider ??
+      modelRegistry.getAvailable()[0]?.provider;
     if (provider && (key || cred.baseUrl)) {
       if (key) authStorage.setRuntimeApiKey(provider, key);
-      if (cred.baseUrl) {
+      if (custom) {
+        const registration = customProviderRegistration(custom, opts.config, key, cred.baseUrl);
+        if (registration) {
+          try {
+            modelRegistry.registerProvider(provider, registration);
+          } catch (err) {
+            // A rejected definition degrades (models unavailable) instead of failing the session,
+            // matching the stale-model posture below.
+            this.emitError(
+              `pi: custom provider '${provider}' was rejected — ${extractErrorMessage(err)}`,
+            );
+          }
+        } else {
+          this.emitError(
+            `pi: custom provider '${provider}' needs an endpoint URL, a key, and a protocol — its models are unavailable`,
+          );
+        }
+      } else if (
+        cred.baseUrl &&
+        !piLocalProviders(pi, modelRegistry).some((p) => p.id === provider)
+      ) {
         modelRegistry.registerProvider(provider, {
           baseUrl: cred.baseUrl,
           ...(key && { apiKey: key }),
@@ -264,7 +303,13 @@ export class PiAdapter extends BaseAgentAdapter {
         }
       }
     }
-    if (!model && !this.resumeFrom) model = modelRegistry.getAvailable()[0];
+    if (!model && !this.resumeFrom) {
+      // An account-defined provider is the session's reason for being — default inside it.
+      model = custom
+        ? (modelRegistry.getAvailable().find((m) => m.provider === custom.name) ??
+          modelRegistry.getAvailable()[0])
+        : modelRegistry.getAvailable()[0];
+    }
 
     // A resumed session runs in its own recorded cwd, not the caller's.
     const cwd = sessionManager?.getCwd() ?? opts.cwd;
@@ -357,7 +402,11 @@ export class PiAdapter extends BaseAgentAdapter {
     if (!ref) {
       throw new Error(`pi: model must be 'provider/modelId' (got '${model}')`);
     }
-    if (this.credentialProviderId && ref.provider !== this.credentialProviderId) {
+    if (
+      this.credentialProviderId &&
+      ref.provider !== this.credentialProviderId &&
+      !this.locallyAuthedProviders.has(ref.provider)
+    ) {
       throw new Error(
         `pi: this session's credential is scoped to '${this.credentialProviderId}' — start a new session to use provider '${ref.provider}'`,
       );
@@ -421,7 +470,13 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private emitModelCatalog(registry: PiModelRegistry): void {
     const models = this.credentialProviderId
-      ? registry.getAvailable().filter((m) => m.provider === this.credentialProviderId)
+      ? registry
+          .getAvailable()
+          .filter(
+            (m) =>
+              m.provider === this.credentialProviderId ||
+              this.locallyAuthedProviders.has(m.provider),
+          )
       : registry.getAvailable();
     if (models.length === 0) return;
     this.emitModels(piModelOptions(models));

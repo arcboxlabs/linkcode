@@ -31,6 +31,47 @@ export const AccountEndpointSchema = z.object({
 });
 export type AccountEndpoint = z.infer<typeof AccountEndpointSchema>;
 
+/** Cost rates in USD per million tokens (pi `Model['cost']` shape, tiers omitted). */
+export const AccountModelCostSchema = z.object({
+  input: z.number().nonnegative(),
+  output: z.number().nonnegative(),
+  cacheRead: z.number().nonnegative(),
+  cacheWrite: z.number().nonnegative(),
+});
+
+/** One model a custom-provider account defines; mirrors pi's `registerProvider` model input.
+ * `cost`/`input` default so the form can stay minimal; `name` falls back to `id` downstream. */
+export const AccountCustomModelSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).optional(),
+  reasoning: z.boolean().default(false),
+  input: z.array(z.enum(['text', 'image'])).default(['text']),
+  cost: AccountModelCostSchema.default({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }),
+  contextWindow: z.number().int().positive(),
+  maxTokens: z.number().int().positive(),
+  /** pi thinking-level overrides; `null` marks a level unsupported. */
+  thinkingLevelMap: z.record(z.string(), z.string().nullable()).optional(),
+});
+export type AccountCustomModel = z.infer<typeof AccountCustomModelSchema>;
+
+/**
+ * A provider this account DEFINES rather than merely authenticates against: the endpoint plus the
+ * models it serves. pi-only for now — pi is the one agent whose registry accepts runtime provider
+ * registration (`registerProvider` with models); the other adapters ignore this field. Requires
+ * `endpoint` (the wire `api` is derived from its `protocol`) and a key credential.
+ */
+export const AccountCustomProviderSchema = z.object({
+  /** Registry provider id (e.g. `banned`); models are addressed as `<name>/<model id>`, and the
+   * FIRST slash splits provider from model id — so the name itself must be slash-free (model ids
+   * may contain slashes; the provider segment must stay unambiguous). */
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[^/]+$/, 'provider name must not contain "/"'),
+  models: z.array(AccountCustomModelSchema).min(1),
+});
+export type AccountCustomProvider = z.infer<typeof AccountCustomProviderSchema>;
+
 export const AccountSchema = z.object({
   /** Stable id referenced by `providers[kind].activeAccountId` and `StartOptions.config.accountId`. */
   id: z.string().min(1),
@@ -42,6 +83,9 @@ export const AccountSchema = z.object({
   service: z.string().optional(),
   credential: AccountCredentialSchema,
   endpoint: AccountEndpointSchema.optional(),
+  /** Set when this account defines its own provider (endpoint + model list); see
+   * {@link AccountCustomProviderSchema}. */
+  customProvider: AccountCustomProviderSchema.optional(),
   /** Per-account default model (vendor-specific), overriding the provider default when set. */
   model: z.string().optional(),
   /** Extra environment injected into the agent process (escape hatch, e.g. gateway flags). */

@@ -672,6 +672,7 @@ export const en = {
       copySecret: 'Copy',
       endpoint: 'Endpoint',
       accountModel: 'Default model',
+      customProviderModels: 'Models ({name})',
       loginState: 'Login',
       loggedIn: 'Signed in',
       loggedOut: 'Signed out',
@@ -711,6 +712,7 @@ export const en = {
         'vercel-gateway': 'Vercel AI Gateway',
         'cloudflare-gateway': 'Cloudflare AI Gateway',
         custom: 'Custom endpoint',
+        'pi-models-json': 'Import models.json',
       },
       serviceHint: {
         'claude-sub': 'Claude Code login, Pro / Max plans',
@@ -722,6 +724,7 @@ export const en = {
         'vercel-gateway': 'Server-side translation, both protocol shapes',
         'cloudflare-gateway': 'Pass-through gateway, needs Account / Gateway ID',
         custom: 'Any base URL + protocol',
+        'pi-models-json': 'Whole-file import as custom-provider accounts',
       },
       variantName: {
         anthropic: 'Anthropic endpoint',
@@ -736,6 +739,22 @@ export const en = {
       oauthLoggedOutHint:
         'No CLI login detected — you can still add it; sessions will prompt for login.',
       oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
+      localProviders: {
+        source: 'pi · models.json',
+      },
+      import: {
+        hint: 'Pick a pi models.json file; each custom provider becomes one account, with model definitions (cost and thinking-level map included) preserved in full. Plain JSON only (no comments).',
+        parseError: 'Cannot parse: {message}',
+        modelCount: '{count} models',
+        submit: 'Import {count} accounts',
+        reason: {
+          'no-models': 'No model list (built-in provider override)',
+          'missing-base-url': 'Missing endpoint URL',
+          'missing-api-key': 'Missing API key',
+          'unsupported-api': 'Unsupported api kind',
+          'invalid-name': 'Provider name must not contain "/"',
+        },
+      },
       form: {
         label: 'Name',
         variant: 'Protocol shape',
@@ -746,6 +765,17 @@ export const en = {
         baseUrl: 'Endpoint URL (optional)',
         protocol: 'Protocol (optional)',
         protocolNone: 'Default',
+        customProviderTitle: 'Custom provider (pi)',
+        customProviderHint:
+          'Define the models this endpoint serves for pi; endpoint URL and protocol become required. Other agents ignore this section.',
+        providerName: 'Provider name',
+        addModel: 'Add model',
+        modelId: 'Model ID',
+        modelName: 'Display name (optional)',
+        contextWindow: 'Context window',
+        maxTokens: 'Max output tokens',
+        reasoning: 'Reasoning model',
+        removeModel: 'Remove',
       },
     },
     notifications: {

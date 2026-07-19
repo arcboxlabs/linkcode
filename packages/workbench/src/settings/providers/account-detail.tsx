@@ -173,6 +173,20 @@ export function AccountDetail({
               </span>
             </DetailRow>
           ) : null}
+          {account.customProvider ? (
+            <DetailRow label={t('customProviderModels', { name: account.customProvider.name })}>
+              <span className="flex min-w-0 flex-1 flex-wrap gap-1">
+                {account.customProvider.models.map((model) => (
+                  <span
+                    key={model.id}
+                    className="rounded-full border border-border bg-background px-1.5 font-mono text-[10px] leading-4"
+                  >
+                    {model.id}
+                  </span>
+                ))}
+              </span>
+            </DetailRow>
+          ) : null}
         </div>
       </section>
 

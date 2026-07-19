@@ -1,4 +1,10 @@
-import type { Account, Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
+import type {
+  Account,
+  Accounts,
+  AgentLocalProvider,
+  AgentRuntimes,
+  ProvidersConfig,
+} from '@linkcode/schema';
 import { ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Input } from 'coss-ui/components/input';
@@ -15,6 +21,7 @@ export function AccountMasterList({
   loading,
   providers,
   runtimes,
+  localProviders,
   selectedId,
   onSelect,
   onAdd,
@@ -24,6 +31,9 @@ export function AccountMasterList({
   loading: boolean;
   providers: ProvidersConfig | undefined;
   runtimes: AgentRuntimes | undefined;
+  /** Custom providers scanned from pi's own models.json — read-only cards below the pool: their
+   * models are already usable, and the definition is edited in that file, never here. */
+  localProviders: AgentLocalProvider[] | undefined;
   selectedId: string | undefined;
   onSelect: (id: string) => void;
   onAdd: () => void;
@@ -148,6 +158,39 @@ export function AccountMasterList({
                   </span>
                   <PlusIcon className="size-4 shrink-0 text-muted-foreground" />
                 </button>
+              </li>
+            ))
+          : null}
+        {needle === ''
+          ? localProviders?.map((provider) => (
+              <li
+                key={provider.id}
+                className="flex items-start gap-2.5 rounded-lg border border-border border-dashed p-2.5"
+              >
+                <ServiceIcon service={undefined} label={provider.id} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate font-medium text-sm">{provider.id}</span>
+                    <span className="rounded-full border border-border px-1.5 text-[10px] text-muted-foreground leading-4">
+                      {t('localProviders.source')}
+                    </span>
+                  </span>
+                  {provider.baseUrl === undefined ? null : (
+                    <span className="block truncate text-muted-foreground text-xs">
+                      {provider.baseUrl}
+                    </span>
+                  )}
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    {provider.models.map((model) => (
+                      <span
+                        key={model}
+                        className="max-w-full truncate rounded-full border border-border bg-background px-1.5 font-mono text-[10px] leading-4"
+                      >
+                        {model}
+                      </span>
+                    ))}
+                  </span>
+                </span>
               </li>
             ))
           : null}
