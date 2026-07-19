@@ -339,6 +339,41 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     );
   });
 
+  it('backs off streams that close after only the connection greeting', async () => {
+    vi.useFakeTimers();
+    const { adapter } = await makeAdapter();
+    try {
+      client.stream.push({ id: 'e-connected-1', type: 'server.connected', properties: {} });
+      client.stream.end();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(client.event.subscribe).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(99);
+      expect(client.event.subscribe).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(2);
+
+      client.stream.push({ id: 'e-connected-2', type: 'server.connected', properties: {} });
+      client.stream.end();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(3);
+
+      client.stream.push({
+        id: 'e-other-session',
+        type: 'session.idle',
+        properties: { sessionID: 'other' },
+      });
+      client.stream.end();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(4);
+    } finally {
+      await adapter.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it('treats the stream closing while a turn is still active as a fatal error and stops the session', async () => {
     const { adapter, events } = await makeAdapter();
     events.length = 0;
