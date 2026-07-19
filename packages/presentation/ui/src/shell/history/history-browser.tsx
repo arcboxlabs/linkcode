@@ -1,4 +1,12 @@
 import type { AgentHistoryId } from '@linkcode/schema';
+import {
+  AlertDialog,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from 'coss-ui/components/alert-dialog';
 import { Button } from 'coss-ui/components/button';
 import {
   Empty,
@@ -49,6 +57,71 @@ export interface HistoryBrowserListProps {
   onOpen: (historyId: AgentHistoryId) => void;
   /** Backs the error state's Retry; the primary refresh control lives in the host's chrome. */
   onRefresh: () => void;
+}
+
+export interface HistoryImportAllDialogProps {
+  open: boolean;
+  importableCount: number;
+  scanFailedCount: number;
+  importing: boolean;
+  result: { importedCount: number; failedCount: number } | null;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}
+
+export function HistoryImportAllDialog({
+  open,
+  importableCount,
+  scanFailedCount,
+  importing,
+  result,
+  onOpenChange,
+  onConfirm,
+}: HistoryImportAllDialogProps): React.ReactNode {
+  const t = useTranslations('settings.historyImport');
+  const completed = result !== null;
+  const partial = (result?.failedCount ?? 0) > 0;
+
+  return (
+    <AlertDialog open={open} onOpenChange={(next) => !importing && onOpenChange(next)}>
+      <AlertDialogPopup>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {completed
+              ? t(partial ? 'importAllPartialTitle' : 'importAllCompleteTitle')
+              : t('importAllTitle')}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {completed
+              ? t(partial ? 'importAllPartialResult' : 'importAllCompleteResult', {
+                  imported: result.importedCount,
+                  failed: result.failedCount,
+                })
+              : t('importAllDescription', { count: importableCount })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {!completed && scanFailedCount > 0 && (
+          <p className="px-6 pb-2 text-muted-foreground text-xs">
+            {t('importAllScanWarning', { count: scanFailedCount })}
+          </p>
+        )}
+        <AlertDialogFooter>
+          {completed ? (
+            <Button onClick={() => onOpenChange(false)}>{t('importAllClose')}</Button>
+          ) : (
+            <>
+              <Button variant="outline" disabled={importing} onClick={() => onOpenChange(false)}>
+                {t('importAllCancel')}
+              </Button>
+              <Button loading={importing} onClick={onConfirm}>
+                {t('importAllConfirm', { count: importableCount })}
+              </Button>
+            </>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogPopup>
+    </AlertDialog>
+  );
 }
 
 /** One provider's importable conversation rows (settings portal main pane). */

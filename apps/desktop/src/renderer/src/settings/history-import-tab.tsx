@@ -1,11 +1,25 @@
 import type { AgentKind } from '@linkcode/schema';
 import type { HistorySortOrder } from '@linkcode/ui';
-import { AGENT_LABELS, HistoryBrowserList, HistorySortSelect, ShellIconButton } from '@linkcode/ui';
-import { useHistoryImportSurface } from '@linkcode/workbench';
+import {
+  AGENT_LABELS,
+  HistoryBrowserList,
+  HistoryImportAllDialog,
+  HistorySortSelect,
+  ShellIconButton,
+} from '@linkcode/ui';
+import {
+  historyImportOnboardingAction,
+  useBulkHistoryImport,
+  useHistoryImportSurface,
+} from '@linkcode/workbench';
+import { Button } from 'coss-ui/components/button';
+import { noop } from 'foxact/noop';
+import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { DesktopChromePortal } from '../shell/chrome/chrome';
+import { useDesktopSettingsStore } from './store';
 
 /**
  * Settings "Import chat history" panel for one provider. Its header lives in the window chrome via
@@ -15,7 +29,41 @@ import { DesktopChromePortal } from '../shell/chrome/chrome';
 export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode {
   const t = useTranslations('settings.historyImport');
   const [sort, setSort] = useState<HistorySortOrder>('latest');
+  const [manualImportOpen, setManualImportOpen] = useState(false);
   const surface = useHistoryImportSurface(kind, sort);
+  const bulk = useBulkHistoryImport();
+  const onboardingHandled = useDesktopSettingsStore(
+    (state) => state.historyImportOnboardingHandled,
+  );
+  const markOnboardingHandled = useDesktopSettingsStore(
+    (state) => state.markHistoryImportOnboardingHandled,
+  );
+  const onboardingAction = historyImportOnboardingAction({
+    handled: onboardingHandled,
+    scansComplete: bulk.scanComplete,
+    importableCount: bulk.importableCount,
+  });
+
+  useAbortableEffect(() => {
+    if (onboardingAction !== 'complete') return;
+    void markOnboardingHandled().catch(noop);
+  }, [onboardingAction, markOnboardingHandled]);
+
+  function setImportAllOpen(open: boolean): void {
+    if (open) {
+      bulk.resetResult();
+      setManualImportOpen(true);
+      return;
+    }
+    setManualImportOpen(false);
+    if (!onboardingHandled) void markOnboardingHandled().catch(noop);
+  }
+
+  function confirmImportAll(): void {
+    setManualImportOpen(true);
+    if (!onboardingHandled) void markOnboardingHandled().catch(noop);
+    void bulk.importAll();
+  }
 
   return (
     <>
@@ -34,6 +82,11 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
         position="right"
         className="gap-1.5 [-webkit-app-region:no-drag]"
       >
+        {!bulk.isScanning && bulk.importableCount > 0 && (
+          <Button size="xs" variant="outline" onClick={() => setImportAllOpen(true)}>
+            {t('importAllAction', { count: bulk.importableCount })}
+          </Button>
+        )}
         <ShellIconButton label={t('refresh')} onClick={surface.refresh}>
           <RotateCwIcon className="size-3.5" />
         </ShellIconButton>
@@ -54,6 +107,15 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
         onImportGroup={surface.importGroup}
         onOpen={surface.openEntry}
         onRefresh={surface.refresh}
+      />
+      <HistoryImportAllDialog
+        open={manualImportOpen || onboardingAction === 'offer'}
+        importableCount={bulk.importableCount}
+        scanFailedCount={bulk.scanFailedCount}
+        importing={bulk.isImporting}
+        result={bulk.result}
+        onOpenChange={setImportAllOpen}
+        onConfirm={confirmImportAll}
       />
     </>
   );

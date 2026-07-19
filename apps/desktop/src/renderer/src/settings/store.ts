@@ -28,12 +28,14 @@ export interface DesktopSettingsState {
   localeOverride: string | null;
   /** Stored override, or null to discover the local daemon automatically. */
   daemonUrlOverride: string | null;
+  historyImportOnboardingHandled: boolean;
   settingsCategory: SettingsCategory;
   historyImportProvider: AgentKind;
   setTheme: (theme: ThemePreference) => void;
   setLocaleOverride: (locale: string | null) => void;
   /** Pass null to clear the override and fall back to auto-discovery. */
   setDaemonUrl: (url: string | null) => Promise<void>;
+  markHistoryImportOnboardingHandled: () => Promise<void>;
   setSettingsCategory: (category: SettingsCategory) => void;
   setHistoryImportProvider: (provider: AgentKind) => void;
 }
@@ -44,6 +46,7 @@ export const useDesktopSettingsStore = create<DesktopSettingsState>()((set) => (
   theme: initial.theme,
   localeOverride: initial.locale,
   daemonUrlOverride: initial.daemonUrl,
+  historyImportOnboardingHandled: initial.historyImportOnboardingHandled,
   settingsCategory: 'general',
   historyImportProvider: 'claude-code',
 
@@ -62,6 +65,11 @@ export const useDesktopSettingsStore = create<DesktopSettingsState>()((set) => (
     // resolveUrl snapshot and the renderer mirror cannot disagree about which endpoint to dial.
     const next = await systemBridge.settings.set({ daemonUrl: url });
     set({ daemonUrlOverride: next.daemonUrl });
+  },
+
+  async markHistoryImportOnboardingHandled() {
+    const next = await systemBridge.settings.set({ historyImportOnboardingHandled: true });
+    set({ historyImportOnboardingHandled: next.historyImportOnboardingHandled });
   },
 
   setSettingsCategory: (category) => set({ settingsCategory: category }),
