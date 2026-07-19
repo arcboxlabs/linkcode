@@ -57,6 +57,44 @@ class RejectingStopAdapter extends FakeAdapter {
 }
 
 describe('engine session lifecycle', () => {
+  it('reports a running session resume as a conflict', async () => {
+    const h = harness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'start');
+
+    await h.inject({ kind: 'session.resume', clientReqId: 'resume', sessionId });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'resume',
+      code: 'conflict',
+      message: `Session is already running: ${sessionId}`,
+    });
+  });
+
+  it('reports an unknown session resume as not found', async () => {
+    const h = harness();
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'session.resume',
+      clientReqId: 'resume',
+      sessionId: 'sess-missing' as SessionId,
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'resume',
+      code: 'not_found',
+      message: 'Unknown session: sess-missing',
+    });
+  });
+
   it('deletes a live session: stops the adapter and drops the record', async () => {
     const store = new InMemorySessionStore();
     const { engine, sent, inject, adapters } = harness(store);

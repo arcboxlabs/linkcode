@@ -113,6 +113,20 @@ class FakeHistoryAdapter extends BaseAgentAdapter {
   }
 }
 
+class UnsupportedHistoryAdapter extends FakeHistoryAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: false,
+    resume: false,
+  };
+}
+
+class RejectingHistoryAdapter extends FakeHistoryAdapter {
+  override readHistory(): Promise<AgentHistoryReadResult> {
+    return Promise.reject(new Error('secret provider transcript path'));
+  }
+}
+
 function fakeFactory(state: FakeState): AdapterFactory {
   return (kind) => new FakeHistoryAdapter(kind, state);
 }
@@ -150,6 +164,101 @@ describe('HistoryService', () => {
 });
 
 describe('Engine history wire API', () => {
+  it('reports unsupported history listing without an internal error', async () => {
+    const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+    const [clientTransport, engineTransport] = createLocalTransportPair();
+    const engine = createTestEngine(engineTransport, {
+      factory: (kind) => new UnsupportedHistoryAdapter(kind, state),
+    });
+    const received: WireMessage[] = [];
+    clientTransport.onMessage((msg) => received.push(msg));
+    await clientTransport.connect();
+    await engine.start();
+
+    clientTransport.send(
+      createWireMessage({
+        kind: 'history.list',
+        clientReqId: 'list',
+        agentKind: 'codex',
+        opts: {},
+      }),
+    );
+
+    expect(await waitForPayload(received, 'request.failed')).toEqual({
+      kind: 'request.failed',
+      replyTo: 'list',
+      code: 'unsupported',
+      message: 'codex: history list is not supported',
+    });
+    await engine.stop();
+    clientTransport.close();
+  });
+
+  it('redacts adapter history failures behind a safe operation message', async () => {
+    const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+    const [clientTransport, engineTransport] = createLocalTransportPair();
+    const engine = createTestEngine(engineTransport, {
+      factory: (kind) => new RejectingHistoryAdapter(kind, state),
+    });
+    const received: WireMessage[] = [];
+    clientTransport.onMessage((msg) => received.push(msg));
+    await clientTransport.connect();
+    await engine.start();
+
+    clientTransport.send(
+      createWireMessage({
+        kind: 'history.read',
+        clientReqId: 'read',
+        agentKind: 'codex',
+        opts: { historyId, limit: 1 },
+      }),
+    );
+
+    expect(await waitForPayload(received, 'request.failed')).toEqual({
+      kind: 'request.failed',
+      replyTo: 'read',
+      code: 'operation_failed',
+      message: 'Failed to read agent history',
+    });
+    expect(received.some((message) => JSON.stringify(message).includes('secret provider'))).toBe(
+      false,
+    );
+    await engine.stop();
+    clientTransport.close();
+  });
+
+  it('reports unsupported history resume without starting a session', async () => {
+    const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+    const [clientTransport, engineTransport] = createLocalTransportPair();
+    const engine = createTestEngine(engineTransport, {
+      factory: (kind) => new UnsupportedHistoryAdapter(kind, state),
+    });
+    const received: WireMessage[] = [];
+    clientTransport.onMessage((msg) => received.push(msg));
+    await clientTransport.connect();
+    await engine.start();
+
+    clientTransport.send(
+      createWireMessage({
+        kind: 'history.resume',
+        clientReqId: 'resume',
+        agentKind: 'codex',
+        historyId,
+        startOpts: { kind: 'codex', cwd: '/repo' },
+      }),
+    );
+
+    expect(await waitForPayload(received, 'request.failed')).toEqual({
+      kind: 'request.failed',
+      replyTo: 'resume',
+      code: 'unsupported',
+      message: 'codex: history resume is not supported',
+    });
+    expect(received.some((message) => message.payload.kind === 'session.started')).toBe(false);
+    await engine.stop();
+    clientTransport.close();
+  });
+
   it('lists, reads, and resumes history over transport', async () => {
     const state = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
     const [clientTransport, engineTransport] = createLocalTransportPair();
