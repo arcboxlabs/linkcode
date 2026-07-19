@@ -175,10 +175,7 @@ export class SessionOrchestrator {
       // A start can land before the boot probe settles. Register first so delete can tear it down,
       // then wait and re-check identity before and after adapter startup to prevent resurrection.
       const start = Effect.gen(function* () {
-        yield* Effect.tryPromise({
-          try: () => runtimes.awaitReady(),
-          catch: (e) => e,
-        });
+        yield* runtimes.awaitReady();
         if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
         yield* Effect.tryPromise({
           try: () => startAdapter(adapter),

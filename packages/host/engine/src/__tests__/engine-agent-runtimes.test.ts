@@ -1,10 +1,12 @@
 import type { AgentRuntimes, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect, Fiber } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AgentRuntimeService } from '../agent/runtime-service';
 import { createTestEngine } from './fixtures/test-engine';
 
 function harness(
@@ -261,5 +263,25 @@ describe('boot probe seeding (CODE-225)', () => {
 
     expect(sent.filter((payload) => payload.kind === 'agent-runtime.changed')).toEqual([]);
     expect(sent.filter((payload) => payload.kind === 'agent-runtime.listed')).toEqual([]);
+  });
+
+  it('does not commit an accepted boot probe after the service closes', async () => {
+    let resolveProbe!: (runtimes: AgentRuntimes) => void;
+    const ready = new Promise<AgentRuntimes>((resolve) => {
+      resolveProbe = resolve;
+    });
+    const onChanged = vi.fn();
+    let probeFiber: Fiber.Fiber<unknown> | undefined;
+    const service = await Effect.runPromise(
+      AgentRuntimeService.make({ ready, onChanged }, (effect) => {
+        probeFiber = Effect.runFork(effect);
+      }),
+    );
+
+    await Effect.runPromise(service.close());
+    resolveProbe(probed);
+    await Effect.runPromise(Fiber.await(nullthrow(probeFiber)));
+
+    expect(onChanged).not.toHaveBeenCalled();
   });
 });

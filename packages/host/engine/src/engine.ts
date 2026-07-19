@@ -62,18 +62,24 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
 ) {
   const responder = new WireResponder(transport);
   const scope = yield* Effect.scope;
+  const taskSet = yield* FiberSet.make();
+  const runTask = yield* FiberSet.runtime(taskSet)();
+  const runEffect = yield* FiberSet.runtimePromise(taskSet)();
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
   const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
   const history = new HistoryService(factory);
-  const runtimes = yield* AgentRuntimeService.make({
-    initial: deps.agentRuntimes,
-    ready: deps.agentRuntimesReady,
-    collect: deps.collectAgentRuntimes,
-    onChanged(next) {
-      transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes: next }));
+  const runtimes = yield* AgentRuntimeService.make(
+    {
+      initial: deps.agentRuntimes,
+      ready: deps.agentRuntimesReady,
+      collect: deps.collectAgentRuntimes,
+      onChanged(next) {
+        transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes: next }));
+      },
     },
-  });
+    runTask,
+  );
   let terminals: TerminalService | undefined;
   const sessions = new SessionOrchestrator(
     transport,
@@ -169,9 +175,6 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
 
   return {
     start: Effect.gen(function* () {
-      const taskSet = yield* FiberSet.make();
-      const runTask = yield* FiberSet.runtime(taskSet)();
-      const runEffect = yield* FiberSet.runtimePromise(taskSet)();
       sessionLifecycle.bindRuntime(runEffect);
       scheduler.bindRuntime(runTask);
       loops.bindRuntime(runTask);

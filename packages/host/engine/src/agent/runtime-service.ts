@@ -1,6 +1,5 @@
 import type { AgentRuntimes } from '@linkcode/schema';
-import type { Scope } from 'effect';
-import { Clock, Deferred, Effect, FiberSet, Semaphore } from 'effect';
+import { Clock, Deferred, Effect, Semaphore } from 'effect';
 import { OperationError } from '../failure';
 import { jsonValueEqual } from '../json-equal';
 
@@ -24,9 +23,7 @@ export class AgentRuntimeService {
     private readonly options: AgentRuntimeServiceOptions,
     private readonly readySignal: Deferred.Deferred<void>,
     private readonly semaphore: Semaphore.Semaphore,
-    private readonly fibers: FiberSet.FiberSet<unknown, never>,
     private readonly run: (effect: Effect.Effect<unknown>) => void,
-    private readonly runPromise: (effect: Effect.Effect<void>) => Promise<void>,
   ) {
     this.runtimes = options.initial ?? {};
     if (options.ready) this.startSeed(options.ready);
@@ -35,25 +32,14 @@ export class AgentRuntimeService {
   static make(
     this: void,
     options: AgentRuntimeServiceOptions,
-  ): Effect.Effect<AgentRuntimeService, never, Scope.Scope> {
+    run: (effect: Effect.Effect<unknown>) => void,
+  ): Effect.Effect<AgentRuntimeService> {
     return Effect.gen(function* () {
       const readySignal = yield* Deferred.make<void>();
       const semaphore = yield* Semaphore.make(1);
-      const fibers = yield* FiberSet.make<unknown, never>();
-      const runFork = yield* FiberSet.runtime(fibers)();
-      const runPromise = yield* FiberSet.runtimePromise(fibers)();
       if (!options.ready) yield* Deferred.succeed(readySignal, undefined);
 
-      return new AgentRuntimeService(
-        options,
-        readySignal,
-        semaphore,
-        fibers,
-        (effect) => {
-          runFork(effect);
-        },
-        runPromise,
-      );
+      return new AgentRuntimeService(options, readySignal, semaphore, run);
     });
   }
 
@@ -82,17 +68,14 @@ export class AgentRuntimeService {
     });
   }
 
-  awaitReady(): Promise<void> {
-    return this.runPromise(Deferred.await(this.readySignal));
+  awaitReady(): Effect.Effect<void> {
+    return Deferred.await(this.readySignal);
   }
 
   close(): Effect.Effect<void> {
     return Effect.sync(() => {
       this.closed = true;
-    }).pipe(
-      Effect.andThen(Deferred.interrupt(this.readySignal)),
-      Effect.andThen(FiberSet.clear(this.fibers)),
-    );
+    }).pipe(Effect.andThen(Deferred.interrupt(this.readySignal)));
   }
 
   private startSeed(ready: Promise<AgentRuntimes>): void {
@@ -135,11 +118,12 @@ export class AgentRuntimeService {
   }
 
   private commit(next: AgentRuntimes, pushUnchanged: boolean): Effect.Effect<void, OperationError> {
-    const changed = !jsonValueEqual(next, this.runtimes);
     return Clock.currentTimeMillis.pipe(
       Effect.flatMap((collectedAt) =>
         Effect.try({
           try: () => {
+            if (this.closed) return;
+            const changed = !jsonValueEqual(next, this.runtimes);
             this.runtimes = next;
             this.collectedAt = collectedAt;
             if (changed || pushUnchanged) this.options.onChanged(next);
