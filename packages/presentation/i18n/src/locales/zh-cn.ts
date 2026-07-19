@@ -252,7 +252,7 @@ export const zhCN = {
       badgeDownloading: '下载中',
       badgeFailed: '下载失败',
       badgeUnverified: '未验证',
-      badgeNeedsLogin: '需登录',
+      badgeNeedsLogin: '未登录',
       needsLoginTitle: '{agent} 需要登录',
       needsLoginBody: '登录你的 {agent} 账号后即可开始使用。',
       login: '登录 {agent}',

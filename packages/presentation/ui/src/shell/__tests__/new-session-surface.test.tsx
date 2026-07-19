@@ -91,6 +91,26 @@ describe('NewSessionSurface', () => {
     expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
   });
 
+  it('names the model selector with its agent, model, and reasoning effort', () => {
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        workspaces={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Claude Code, Sonnet 5, reasoning: effortDefault',
+      }),
+    ).toBeTruthy();
+  });
+
   it.each([
     'codex',
     'opencode',

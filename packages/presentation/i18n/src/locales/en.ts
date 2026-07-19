@@ -260,7 +260,7 @@ export const en = {
       badgeDownloading: 'Downloading',
       badgeFailed: 'Download failed',
       badgeUnverified: 'Unverified',
-      badgeNeedsLogin: 'Sign in',
+      badgeNeedsLogin: 'Signed out',
       needsLoginTitle: '{agent} needs you to sign in',
       needsLoginBody: 'Sign in to your {agent} account to get started.',
       login: 'Sign in to {agent}',
