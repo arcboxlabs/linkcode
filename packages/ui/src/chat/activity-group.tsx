@@ -47,6 +47,7 @@ export function ActivityGroup({
     (count, item) => count + (item.toolCall.status === 'failed' ? 1 : 0),
     0,
   );
+  const failedLabel = failedCount > 0 ? t('failed', { count: failedCount }) : undefined;
   const diffTotals = group.bucket === 'files' ? sumGroupDiffStats(group) : null;
   const summaries = group.items.map((item) => toolCallHeaderSummary(item.toolCall));
   const summaryTooltip = summaries.flatMap((summary) =>
@@ -67,8 +68,12 @@ export function ActivityGroup({
           <ActivityBucketIcon bucket={group.bucket} running={hasRunning} />
           <span className="shrink-0 text-foreground">{t(group.bucket)}</span>
           <span className="text-xs bg-secondary rounded-sm px-1 py-0.5">{group.items.length}</span>
-          {failedCount > 0 ? (
-            <span className="text-xs bg-red-500/10 rounded-sm px-1 py-0.5 text-destructive-foreground">
+          {failedLabel ? (
+            <span
+              aria-label={failedLabel}
+              className="rounded-sm bg-red-500/10 px-1 py-0.5 text-destructive-foreground text-xs"
+              title={failedLabel}
+            >
               {failedCount}
             </span>
           ) : null}

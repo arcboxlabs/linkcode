@@ -17,15 +17,13 @@ export function GitPanel({
 }): React.ReactNode {
   const { data: status, isLoading: statusLoading, error: statusError } = useGitStatus(cwd);
   const { data: pullRequest, isLoading: pullRequestLoading } = useGitPullRequestStatus(cwd);
-  const hasRemote = status?.isRepo === true && status.remote !== null;
 
   return (
     // Keyed by `cwd`: switching the working directory resets the mode/diffStyle preference rather
     // than carrying an unrelated directory's stale toggle state forward.
     <GitPanelContent
-      key={`${cwd ?? ''}:${hasRemote ? 'remote' : 'local'}`}
+      key={cwd ?? ''}
       cwd={cwd}
-      initialMode={hasRemote ? 'base' : 'uncommitted'}
       themeType={themeType}
       status={status}
       statusLoading={statusLoading}
@@ -38,7 +36,6 @@ export function GitPanel({
 
 function GitPanelContent({
   cwd,
-  initialMode,
   themeType,
   status,
   statusLoading,
@@ -47,7 +44,6 @@ function GitPanelContent({
   pullRequestLoading,
 }: {
   cwd: string | undefined;
-  initialMode: GitDiffMode;
   themeType: DiffThemeType;
   status: ReturnType<typeof useGitStatus>['data'];
   statusLoading: boolean;
@@ -55,9 +51,11 @@ function GitPanelContent({
   pullRequest: ReturnType<typeof useGitPullRequestStatus>['data'];
   pullRequestLoading: boolean;
 }): React.ReactNode {
-  const [mode, setMode] = useState<GitDiffMode>(initialMode);
+  const [selectedMode, setSelectedMode] = useState<GitDiffMode>();
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split');
   const isRepo = status?.isRepo === true;
+  const hasRemote = isRepo && status.remote !== null;
+  const mode = selectedMode ?? (hasRemote ? 'base' : 'uncommitted');
   const { data: diff, isLoading, error, mutate } = useGitDiff(isRepo ? cwd : undefined, mode);
 
   return (
@@ -72,7 +70,7 @@ function GitPanelContent({
         mode={mode}
         diffStyle={diffStyle}
         stat={diff?.stat ?? { files: 0, additions: 0, deletions: 0 }}
-        onModeChange={setMode}
+        onModeChange={setSelectedMode}
         onToggleDiffStyle={() =>
           setDiffStyle((current) => (current === 'split' ? 'unified' : 'split'))
         }

@@ -3,13 +3,9 @@ import { Button } from 'coss-ui/components/button';
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from 'coss-ui/components/empty';
 import {
   Menu,
-  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
-  MenuSub,
-  MenuSubPopup,
-  MenuSubTrigger,
   MenuTrigger,
 } from 'coss-ui/components/menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
@@ -124,7 +120,7 @@ export function GitOverview({
         <DiffStyleButton diffStyle={diffStyle} onClick={onToggleDiffStyle} />
         <GitPullRequestSection pullRequest={pullRequest} loading={pullRequestLoading} />
       </div>
-      <GitComparisonSummary status={status} pullRequest={pullRequest} mode={mode} />
+      <GitComparisonSummary status={status} mode={mode} />
     </div>
   );
 }
@@ -146,18 +142,10 @@ function GitDiffScopeMenu({
         aria-label={t('scopeMenu')}
         render={<Button className="h-7 px-2 text-sm" size="xs" variant="secondary" />}
       >
-        {t('scope')}
+        {t(mode === 'base' ? 'modeBase' : 'modeUncommitted')}
         <ChevronDownIcon className="size-3.5" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-48" sideOffset={6}>
-        <MenuItem disabled>{t('unstaged')}</MenuItem>
-        <MenuItem disabled>{t('staged')}</MenuItem>
-        <MenuSub>
-          <MenuSubTrigger>{t('commit')}</MenuSubTrigger>
-          <MenuSubPopup className="w-56">
-            <MenuItem disabled>{t('commitUnavailable')}</MenuItem>
-          </MenuSubPopup>
-        </MenuSub>
         <MenuRadioGroup
           value={mode}
           onValueChange={(value) => {
@@ -165,11 +153,10 @@ function GitDiffScopeMenu({
           }}
         >
           <MenuRadioItem disabled={!hasRemote} value="base">
-            {t('branch')}
+            {t('modeBase')}
           </MenuRadioItem>
           <MenuRadioItem value="uncommitted">{t('modeUncommitted')}</MenuRadioItem>
         </MenuRadioGroup>
-        <MenuItem disabled>{t('previousTurn')}</MenuItem>
       </MenuPopup>
     </Menu>
   );
@@ -219,23 +206,14 @@ function DiffStyleButton({
 
 function GitComparisonSummary({
   status,
-  pullRequest,
   mode,
 }: {
   status: Extract<GitStatus, { isRepo: true }>;
-  pullRequest: GitPullRequestStatus | undefined;
   mode: GitDiffMode;
 }): React.ReactNode {
   const t = useTranslations('workbench.git');
-  const pullRequestSummary = pullRequest?.status === 'ok' ? pullRequest.pullRequest : null;
   const comparisonTarget =
-    mode === 'uncommitted'
-      ? 'HEAD'
-      : pullRequestSummary
-        ? `origin/${pullRequestSummary.baseBranch}`
-        : status.remote
-          ? t('origin')
-          : null;
+    mode === 'uncommitted' ? 'HEAD' : status.remote === null ? null : t('remoteDefaultBranch');
 
   return (
     <div className="mt-1 flex min-w-0 items-center gap-2 px-1 text-muted-foreground text-xs">
