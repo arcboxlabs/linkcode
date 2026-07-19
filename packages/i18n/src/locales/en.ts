@@ -712,7 +712,7 @@ export const en = {
         'vercel-gateway': 'Vercel AI Gateway',
         'cloudflare-gateway': 'Cloudflare AI Gateway',
         custom: 'Custom endpoint',
-        'pi-models-json': 'Import models.json',
+        'pi-models-json': 'Import provider config',
       },
       serviceHint: {
         'claude-sub': 'Claude Code login, Pro / Max plans',
@@ -724,7 +724,7 @@ export const en = {
         'vercel-gateway': 'Server-side translation, both protocol shapes',
         'cloudflare-gateway': 'Pass-through gateway, needs Account / Gateway ID',
         custom: 'Any base URL + protocol',
-        'pi-models-json': 'Whole-file import as custom-provider accounts',
+        'pi-models-json': 'pi models.json or opencode.json, imported as accounts',
       },
       variantName: {
         anthropic: 'Anthropic endpoint',
@@ -752,7 +752,12 @@ export const en = {
         addPicked: 'Add selected ({count})',
       },
       import: {
-        hint: 'Pick a pi models.json file; each custom provider becomes one account, with model definitions (cost and thinking-level map included) preserved in full. Plain JSON only (no comments).',
+        hint: 'Pick a pi models.json or an opencode.json; each custom provider becomes one account, with model definitions preserved in full. Plain JSON only (no comments).',
+        detected: 'Detected as {format}',
+        source: {
+          pi: 'pi models.json',
+          opencode: 'opencode.json',
+        },
         parseError: 'Cannot parse: {message}',
         modelCount: '{count} models',
         submit: 'Import {count} accounts',

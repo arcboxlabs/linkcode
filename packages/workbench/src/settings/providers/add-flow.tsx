@@ -27,7 +27,7 @@ import { useMutation } from '../../runtime/tayori';
 import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
 import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
 import type { ImportedProvider, ModelsJsonImport } from './import-models-json';
-import { parseModelsJson } from './import-models-json';
+import { parseProviderImport } from './import-models-json';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 
@@ -222,7 +222,7 @@ function ImportModelsJsonForm({
   const handleFile = async (file: File | undefined): Promise<void> => {
     if (!file) return;
     try {
-      setParsed(parseModelsJson(await file.text()));
+      setParsed(parseProviderImport(await file.text()));
       setParseError(null);
     } catch (err) {
       setParsed(null);
@@ -248,6 +248,9 @@ function ImportModelsJsonForm({
       )}
       {parsed === null ? null : (
         <>
+          <p className="text-muted-foreground text-xs">
+            {t('import.detected', { format: t(`import.source.${parsed.source}`) })}
+          </p>
           <ul className="flex flex-col gap-1">
             {parsed.providers.map((provider) => (
               <li

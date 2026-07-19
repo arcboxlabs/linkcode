@@ -699,7 +699,7 @@ export const zhCN = {
         'vercel-gateway': 'Vercel AI Gateway',
         'cloudflare-gateway': 'Cloudflare AI Gateway',
         custom: '自定义端点',
-        'pi-models-json': '导入 models.json',
+        'pi-models-json': '导入 Provider 配置',
       },
       serviceHint: {
         'claude-sub': 'Claude Code 登录,Pro / Max 计划',
@@ -711,7 +711,7 @@ export const zhCN = {
         'vercel-gateway': '服务端翻译,双协议形态',
         'cloudflare-gateway': '透传网关,需 Account / Gateway ID',
         custom: '任意 Base URL + 协议',
-        'pi-models-json': '整档导入为自定义 Provider 账号',
+        'pi-models-json': 'pi models.json 或 opencode.json,整档导入为账号',
       },
       variantName: {
         anthropic: 'Anthropic 端点',
@@ -737,7 +737,12 @@ export const zhCN = {
         addPicked: '添加所选({count})',
       },
       import: {
-        hint: '选择 pi 的 models.json 文件;每个自定义 provider 导入为一个账号,模型定义(含成本与思考等级映射)完整保留。仅支持纯 JSON(不支持注释)。',
+        hint: '选择 pi 的 models.json 或 opencode.json;每个自定义 provider 导入为一个账号,模型定义完整保留。仅支持纯 JSON(不支持注释)。',
+        detected: '识别为 {format}',
+        source: {
+          pi: 'pi models.json',
+          opencode: 'opencode.json',
+        },
         parseError: '无法解析:{message}',
         modelCount: '{count} 个模型',
         submit: '导入 {count} 个账号',

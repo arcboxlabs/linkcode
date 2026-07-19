@@ -67,12 +67,26 @@ export interface ImportedProvider {
 export interface ModelsJsonImport {
   providers: ImportedProvider[];
   skipped: Array<{ name: string; reason: ImportSkipReason }>;
+  /** Which file format the detection matched. */
+  source: 'pi' | 'opencode';
 }
 
-/** Parse a models.json document; throws with the JSON/schema error message on a malformed file. */
-export function parseModelsJson(text: string): ModelsJsonImport {
-  const document = ModelsJsonSchema.parse(JSON.parse(text));
-  const result: ModelsJsonImport = { providers: [], skipped: [] };
+/**
+ * Parse a provider-config document — pi models.json or opencode.json, detected structurally:
+ * pi keys the map `providers` (models as ARRAYS, `baseUrl`); opencode keys it `provider` (models
+ * as OBJECTS, `options.baseURL`). Throws with the JSON/schema error on a malformed file.
+ */
+export function parseProviderImport(text: string): ModelsJsonImport {
+  const raw: unknown = JSON.parse(text);
+  if (typeof raw === 'object' && raw !== null && 'provider' in raw && !('providers' in raw)) {
+    return parseOpencodeConfig(raw);
+  }
+  return parseModelsJson(raw);
+}
+
+function parseModelsJson(raw: unknown): ModelsJsonImport {
+  const document = ModelsJsonSchema.parse(raw);
+  const result: ModelsJsonImport = { providers: [], skipped: [], source: 'pi' };
   for (const [name, entry] of Object.entries(document.providers)) {
     // Entries without models are built-in overrides (baseUrl/headers only) — nothing an account
     // can represent.
@@ -124,6 +138,84 @@ export function parseModelsJson(text: string): ModelsJsonImport {
           }),
         }),
       ),
+    });
+  }
+  return result;
+}
+
+/** The pi effort levels an opencode `variants` map can express; `max` has no pi level. */
+const EFFORT_VARIANTS = new Set(['low', 'medium', 'high', 'xhigh']);
+
+const OpencodeModelSchema = z.looseObject({
+  name: z.string().optional(),
+  reasoning: z.boolean().optional(),
+  limit: z.looseObject({ context: z.number(), output: z.number() }).optional(),
+  modalities: z.looseObject({ input: z.array(z.string()).optional() }).optional(),
+  variants: z.record(z.string(), z.unknown()).optional(),
+});
+
+const OpencodeProviderSchema = z.looseObject({
+  options: z
+    .looseObject({ baseURL: z.string().optional(), apiKey: z.string().optional() })
+    .optional(),
+  models: z.record(z.string(), OpencodeModelSchema).optional(),
+});
+
+const OpencodeConfigSchema = z.looseObject({
+  provider: z.record(z.string(), OpencodeProviderSchema),
+});
+
+/**
+ * opencode.json → the same account drafts. Mapping notes: `variants` containing an effort level
+ * marks the model reasoning-capable, and an `xhigh` variant unlocks pi's xhigh via an explicit
+ * thinking-level mapping (a `max` variant has no pi level and is dropped); `options.store: false`
+ * is dropped (pi sends store:false by default); the `agent` section is opencode-only. opencode
+ * carries no wire protocol — provider id `anthropic` infers anthropic, everything else defaults
+ * to openai-chat.
+ */
+function parseOpencodeConfig(raw: unknown): ModelsJsonImport {
+  const document = OpencodeConfigSchema.parse(raw);
+  const result: ModelsJsonImport = { providers: [], skipped: [], source: 'opencode' };
+  for (const [name, entry] of Object.entries(document.provider)) {
+    const models = Object.entries(entry.models ?? {});
+    if (models.length === 0) {
+      result.skipped.push({ name, reason: 'no-models' });
+      continue;
+    }
+    if (name.includes('/')) {
+      result.skipped.push({ name, reason: 'invalid-name' });
+      continue;
+    }
+    if (!entry.options?.baseURL) {
+      result.skipped.push({ name, reason: 'missing-base-url' });
+      continue;
+    }
+    if (!entry.options.apiKey) {
+      result.skipped.push({ name, reason: 'missing-api-key' });
+      continue;
+    }
+    result.providers.push({
+      name,
+      baseUrl: entry.options.baseURL,
+      protocol: name === 'anthropic' ? 'anthropic' : 'openai-chat',
+      apiKey: entry.options.apiKey,
+      models: models.map(([id, model]) => {
+        const variants = Object.keys(model.variants ?? {});
+        const reasoning =
+          (model.reasoning ?? false) || variants.some((v) => EFFORT_VARIANTS.has(v));
+        const input = model.modalities?.input?.filter(
+          (m): m is 'text' | 'image' => m === 'text' || m === 'image',
+        );
+        return AccountCustomModelSchema.parse({
+          id,
+          ...(model.name !== undefined && { name: model.name }),
+          reasoning,
+          ...(input && input.length > 0 && { input }),
+          contextWindow: model.limit?.context ?? DEFAULT_CONTEXT_WINDOW,
+          maxTokens: model.limit?.output ?? DEFAULT_MAX_TOKENS,
+          ...(variants.includes('xhigh') && { thinkingLevelMap: { xhigh: 'xhigh' } }),
+        });
+      }),
     });
   }
   return result;

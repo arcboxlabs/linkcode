@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseModelsJson } from '../import-models-json';
+import { parseProviderImport } from '../import-models-json';
 
 const BANNED_FILE = JSON.stringify({
   providers: {
@@ -34,7 +34,7 @@ const BANNED_FILE = JSON.stringify({
 
 describe('parseModelsJson', () => {
   it('maps a custom provider to an account draft with full model fidelity', () => {
-    const result = parseModelsJson(BANNED_FILE);
+    const result = parseProviderImport(BANNED_FILE);
     expect(result.skipped).toEqual([]);
     expect(result.providers).toHaveLength(1);
     const [banned] = result.providers;
@@ -59,7 +59,7 @@ describe('parseModelsJson', () => {
   });
 
   it('fills pi loader defaults for omitted model fields', () => {
-    const result = parseModelsJson(
+    const result = parseProviderImport(
       JSON.stringify({
         providers: {
           mini: {
@@ -83,7 +83,7 @@ describe('parseModelsJson', () => {
   });
 
   it('skips entries an account cannot represent, with a reason each', () => {
-    const result = parseModelsJson(
+    const result = parseProviderImport(
       JSON.stringify({
         providers: {
           override: { baseUrl: 'https://o.test' },
@@ -116,6 +116,86 @@ describe('parseModelsJson', () => {
   });
 
   it('throws on malformed JSON', () => {
-    expect(() => parseModelsJson('{ // comment\n}')).toThrow();
+    expect(() => parseProviderImport('{ // comment\n}')).toThrow();
+  });
+});
+
+describe('parseProviderImport — opencode.json', () => {
+  const OPENCODE_FILE = JSON.stringify({
+    $schema: 'https://opencode.ai/config.json',
+    provider: {
+      openai: {
+        options: { baseURL: 'https://sub.acceled.test/v1', apiKey: 'sk-r' },
+        models: {
+          'gpt-5.6': {
+            name: 'GPT-5.6 (Sol)',
+            limit: { context: 1050000, output: 128000 },
+            options: { store: false },
+            variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {} },
+          },
+          'codex-mini-latest': {
+            name: 'Codex Mini',
+            limit: { context: 200000, output: 100000 },
+            variants: { low: {}, medium: {}, high: {} },
+          },
+        },
+      },
+    },
+    agent: { build: { options: { store: false } } },
+  });
+
+  it('detects the format and maps variants onto reasoning/thinking levels', () => {
+    const result = parseProviderImport(OPENCODE_FILE);
+    expect(result.source).toBe('opencode');
+    expect(result.skipped).toEqual([]);
+    const [p] = result.providers;
+    expect(p).toMatchObject({
+      name: 'openai',
+      baseUrl: 'https://sub.acceled.test/v1',
+      protocol: 'openai-chat',
+      apiKey: 'sk-r',
+    });
+    // xhigh variant unlocks pi's xhigh; the `max` variant has no pi level and is dropped.
+    expect(p.models[0]).toMatchObject({
+      id: 'gpt-5.6',
+      name: 'GPT-5.6 (Sol)',
+      reasoning: true,
+      contextWindow: 1050000,
+      maxTokens: 128000,
+      thinkingLevelMap: { xhigh: 'xhigh' },
+    });
+    // low–high only: reasoning without an xhigh mapping.
+    expect(p.models[1].reasoning).toBe(true);
+    expect(p.models[1].thinkingLevelMap).toBeUndefined();
+  });
+
+  it('infers the anthropic protocol from the provider id', () => {
+    const result = parseProviderImport(
+      JSON.stringify({
+        provider: {
+          anthropic: {
+            options: { baseURL: 'https://relay.test', apiKey: 'k' },
+            models: { 'claude-x': { limit: { context: 200000, output: 64000 } } },
+          },
+        },
+      }),
+    );
+    expect(result.providers[0].protocol).toBe('anthropic');
+    expect(result.providers[0].models[0].reasoning).toBe(false);
+  });
+
+  it('skips opencode entries an account cannot represent', () => {
+    const result = parseProviderImport(
+      JSON.stringify({
+        provider: {
+          keyless: { options: { baseURL: 'https://x.test' }, models: { m: {} } },
+          bare: { models: { m: {} } },
+        },
+      }),
+    );
+    expect(result.skipped).toEqual([
+      { name: 'keyless', reason: 'missing-api-key' },
+      { name: 'bare', reason: 'missing-base-url' },
+    ]);
   });
 });
