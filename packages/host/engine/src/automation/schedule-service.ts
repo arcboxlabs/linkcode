@@ -187,46 +187,95 @@ export class ScheduleService {
     );
   }
 
-  async delete(scheduleId: ScheduleId): Promise<void> {
-    this.schedules.delete(scheduleId);
-    await this.store.delete(scheduleId);
-    this.reporter.removed(scheduleId);
+  delete(scheduleId: ScheduleId): Effect.Effect<void, RequestError | OperationError> {
+    return this.find(scheduleId).pipe(
+      Effect.andThen(
+        storeEffect('schedules.delete', 'Failed to delete schedule', () =>
+          this.store.delete(scheduleId),
+        ),
+      ),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.schedules.delete(scheduleId);
+          this.reporter.removed(scheduleId);
+        }),
+      ),
+    );
   }
 
-  async pause(scheduleId: ScheduleId): Promise<void> {
-    const schedule = this.require(scheduleId);
-    if (schedule.status === 'completed') throw new Error('Schedule is already completed');
-    if (schedule.status === 'paused') return;
-    schedule.status = 'paused';
-    schedule.nextRunAt = undefined;
-    schedule.updatedAt = this.now();
-    await this.store.save(schedule);
-    this.reporter.changed(schedule);
+  pause(scheduleId: ScheduleId): Effect.Effect<void, RequestError | OperationError> {
+    return this.changeStatus(scheduleId, 'paused');
   }
 
-  async resume(scheduleId: ScheduleId): Promise<void> {
-    const schedule = this.require(scheduleId);
-    if (schedule.status === 'completed') throw new Error('Schedule is already completed');
-    if (schedule.status === 'active') return;
-    schedule.status = 'active';
-    schedule.nextRunAt = this.cadence.next(schedule.spec.cadence, this.now());
-    schedule.updatedAt = this.now();
-    await this.store.save(schedule);
-    this.reporter.changed(schedule);
+  resume(scheduleId: ScheduleId): Effect.Effect<void, RequestError | OperationError> {
+    return this.changeStatus(scheduleId, 'active');
   }
 
   /** Fire one manual run now without touching the cadence or `nextRunAt`. */
-  runOnce(scheduleId: ScheduleId): void {
-    if (!this.acceptingRuns) throw new Error('Schedule service is shutting down');
-    const schedule = this.require(scheduleId);
-    if (schedule.status === 'completed') throw new Error('Schedule is already completed');
-    if (this.activeRuns.has(scheduleId)) throw new Error('Schedule run already in progress');
-    this.startRun(schedule, 'manual');
+  runOnce(scheduleId: ScheduleId): Effect.Effect<void, RequestError> {
+    if (!this.acceptingRuns) {
+      return Effect.fail(conflict('Schedule service is shutting down'));
+    }
+    return this.find(scheduleId).pipe(
+      Effect.flatMap((schedule) => {
+        if (schedule.status === 'completed') {
+          return Effect.fail(conflict('Schedule is already completed'));
+        }
+        if (this.activeRuns.has(scheduleId)) {
+          return Effect.fail(conflict('Schedule run already in progress'));
+        }
+        return Effect.sync(() => this.startRun(schedule, 'manual'));
+      }),
+    );
   }
 
-  listRuns(scheduleId: ScheduleId, limit?: number): Promise<ScheduleRun[]> {
-    this.require(scheduleId);
-    return this.store.loadRuns(scheduleId, limit);
+  listRuns(
+    scheduleId: ScheduleId,
+    limit?: number,
+  ): Effect.Effect<ScheduleRun[], RequestError | OperationError> {
+    return this.find(scheduleId).pipe(
+      Effect.andThen(
+        storeEffect('schedule-runs.load', 'Failed to load schedule runs', () =>
+          this.store.loadRuns(scheduleId, limit),
+        ),
+      ),
+    );
+  }
+
+  private changeStatus(
+    scheduleId: ScheduleId,
+    status: 'active' | 'paused',
+  ): Effect.Effect<void, RequestError | OperationError> {
+    return this.find(scheduleId).pipe(
+      Effect.flatMap((current) => {
+        if (current.status === 'completed') {
+          return Effect.fail(conflict('Schedule is already completed'));
+        }
+        if (current.status === status) return Effect.void;
+        return cadenceEffect(() => ({
+          ...current,
+          status,
+          nextRunAt:
+            status === 'active' ? this.cadence.next(current.spec.cadence, this.now()) : undefined,
+          updatedAt: this.now(),
+        })).pipe(
+          Effect.flatMap((schedule) =>
+            storeEffect(
+              'schedules.save',
+              status === 'active' ? 'Failed to resume schedule' : 'Failed to pause schedule',
+              () => this.store.save(schedule),
+            ).pipe(Effect.as(schedule)),
+          ),
+          Effect.tap((schedule) =>
+            Effect.sync(() => {
+              this.schedules.set(scheduleId, schedule);
+              this.reporter.changed(schedule);
+            }),
+          ),
+          Effect.asVoid,
+        );
+      }),
+    );
   }
 
   /** One scheduler pass. Public so tests can drive it deterministically instead of the interval. */
@@ -426,10 +475,6 @@ export class ScheduleService {
     return schedule.spec.maxRuns !== undefined && schedule.runCount >= schedule.spec.maxRuns;
   }
 
-  private require(scheduleId: ScheduleId): Schedule {
-    return nullthrow(this.schedules.get(scheduleId), `Unknown schedule: ${scheduleId}`);
-  }
-
   private find(scheduleId: ScheduleId): Effect.Effect<Schedule, RequestError> {
     const schedule = this.schedules.get(scheduleId);
     if (!schedule) {
@@ -474,4 +519,8 @@ function storeEffect<A>(
     try: run,
     catch: (cause) => new OperationError({ subsystem: 'store', operation, publicMessage, cause }),
   });
+}
+
+function conflict(message: string): RequestError {
+  return new RequestError({ code: 'conflict', message });
 }

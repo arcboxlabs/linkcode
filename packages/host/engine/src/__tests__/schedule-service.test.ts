@@ -173,6 +173,23 @@ describe('ScheduleService', () => {
     ).rejects.toMatchObject({ _tag: 'RequestError', code: 'invalid_request' });
   });
 
+  it('rejects an invalid cadence while a schedule is paused', async () => {
+    const { service, store } = makeService();
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
+    await runEffect(service.pause(schedule.scheduleId));
+
+    await expect(
+      runEffect(
+        service.update(schedule.scheduleId, {
+          cadence: { type: 'cron', expression: 'nope' },
+        }),
+      ),
+    ).rejects.toMatchObject({ _tag: 'RequestError', code: 'invalid_request' });
+
+    expect(service.list()[0]?.spec.cadence).toEqual(INTERVAL_SPEC.cadence);
+    expect((await store.load())[0]?.spec.cadence).toEqual(INTERVAL_SPEC.cadence);
+  });
+
   it('persists and broadcasts an updated misfire policy', async () => {
     const { service, store, sent } = makeService();
     const schedule = await runEffect(service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' }));
@@ -279,7 +296,7 @@ describe('ScheduleService', () => {
     const { service, driver, sent } = makeService();
     const schedule = await runEffect(service.create(INTERVAL_SPEC));
     const armedAt = schedule.nextRunAt;
-    service.runOnce(schedule.scheduleId);
+    await runEffect(service.runOnce(schedule.scheduleId));
     await Effect.runPromise(service.settleAll());
 
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(true);
@@ -288,6 +305,22 @@ describe('ScheduleService', () => {
     const latest = schedulesIn(sent).at(-1);
     expect(latest?.runCount).toBe(0);
     expect(latest?.nextRunAt).toBe(armedAt);
+  });
+
+  it('keeps a schedule paused when its in-flight run settles', async () => {
+    const driver = new BlockingSessionDriver();
+    const { service, store, sent } = makeService(driver);
+    const schedule = await runEffect(service.create(INTERVAL_SPEC));
+    await runEffect(service.runOnce(schedule.scheduleId));
+    await driver.promptStarted;
+
+    await runEffect(service.pause(schedule.scheduleId));
+    driver.releasePrompt({ stopReason: 'end_turn', text: 'done' });
+    await runEffect(service.settleAll());
+
+    expect(service.list()[0]?.status).toBe('paused');
+    expect((await store.load())[0]?.status).toBe('paused');
+    expect(schedulesIn(sent).at(-1)?.status).toBe('paused');
   });
 
   it('completes after maxRuns cadence runs', async () => {
@@ -383,7 +416,7 @@ describe('ScheduleService', () => {
     const driver = new BlockingSessionDriver();
     const { service } = makeService(driver);
     const schedule = await runEffect(service.create(INTERVAL_SPEC));
-    service.runOnce(schedule.scheduleId);
+    await runEffect(service.runOnce(schedule.scheduleId));
     await driver.promptStarted;
 
     let shutdownSettled = false;
@@ -410,12 +443,12 @@ describe('ScheduleService', () => {
     const accepted = await runEffect(service.create(INTERVAL_SPEC));
     const manual = await runEffect(service.create(INTERVAL_SPEC));
     await runEffect(service.create(INTERVAL_SPEC));
-    service.runOnce(accepted.scheduleId);
+    await runEffect(service.runOnce(accepted.scheduleId));
     await driver.promptStarted;
 
     const shutdown = Effect.runPromise(service.shutdown());
     try {
-      service.runOnce(manual.scheduleId);
+      await runEffect(service.runOnce(manual.scheduleId));
     } catch {
       // Rejecting the request synchronously is an acceptable Promise-facing boundary behavior.
     }
@@ -433,7 +466,7 @@ describe('ScheduleService', () => {
     const driver = new BlockingSessionDriver();
     const { service } = makeService(driver);
     const schedule = await runEffect(service.create(INTERVAL_SPEC));
-    service.runOnce(schedule.scheduleId);
+    await runEffect(service.runOnce(schedule.scheduleId));
     await driver.promptStarted;
 
     let firstSettled = false;

@@ -74,30 +74,38 @@ export class AutomationRequestHandler {
       case 'schedule.delete':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.scheduler.delete(payload.scheduleId)).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
+          this.scheduler
+            .delete(payload.scheduleId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       case 'schedule.pause':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.scheduler.pause(payload.scheduleId)).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
+          this.scheduler
+            .pause(payload.scheduleId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       case 'schedule.resume':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.scheduler.resume(payload.scheduleId)).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
+          this.scheduler
+            .resume(payload.scheduleId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       case 'schedule.run-once':
         return this.responder.reply(
           payload.clientReqId,
-          fromSync(() => this.scheduler.runOnce(payload.scheduleId)).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
+          this.scheduler
+            .runOnce(payload.scheduleId)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       case 'schedule.list':
         return Effect.sync(() =>
@@ -112,7 +120,7 @@ export class AutomationRequestHandler {
       case 'schedule.runs.list':
         return this.responder.reply(
           payload.clientReqId,
-          fromPromise(() => this.scheduler.listRuns(payload.scheduleId, payload.limit)).pipe(
+          this.scheduler.listRuns(payload.scheduleId, payload.limit).pipe(
             Effect.flatMap((runs) =>
               Effect.sync(() =>
                 this.transport.send(

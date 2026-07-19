@@ -164,7 +164,7 @@ describe('engine schedule wiring', () => {
     expect(automationSession?.status).toBe('stopped');
   });
 
-  it('reports a safe failure when a synchronous schedule operation rejects', async () => {
+  it('reports an unknown schedule as not found', async () => {
     const h = harness();
     await h.engine.start();
 
@@ -178,8 +178,8 @@ describe('engine schedule wiring', () => {
     expect(h.sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'missing',
-      code: 'internal_error',
-      message: 'Internal engine error',
+      code: 'not_found',
+      message: 'Schedule not found',
     });
   });
 
