@@ -36,7 +36,6 @@ import {
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
-import { contentToText, imageBlocksFrom } from '../../util';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
@@ -355,14 +354,18 @@ export class CodexAdapter extends BaseAgentAdapter {
     // `turn/start`'s image item shape ({type:'image', url:'data:<mime>;base64,<data>'}) was
     // live-verified against codex app-server 0.144.1; nothing documents it (codex has no .d.ts) —
     // verify again if the app-server pin moves.
-    const imageInputItems = imageBlocksFrom(content).map((image) => ({
-      type: 'image' as const,
-      url: `data:${image.mimeType};base64,${image.data}`,
-    }));
-    await this.submitTurnInput([
-      { type: 'text', text: contentToText(content), text_elements: [] },
-      ...imageInputItems,
-    ]);
+    const input: CodexTurnInput[] = [];
+    for (const block of content) {
+      if (block.type === 'text') {
+        const previous = input.at(-1);
+        if (previous?.type === 'text') previous.text += `\n${block.text}`;
+        else input.push({ type: 'text', text: block.text, text_elements: [] });
+      }
+      if (block.type === 'image') {
+        input.push({ type: 'image', url: `data:${block.mimeType};base64,${block.data}` });
+      }
+    }
+    await this.submitTurnInput(input);
   }
 
   /** Codex slash commands are the app-server's manual compaction control or an enabled skill from

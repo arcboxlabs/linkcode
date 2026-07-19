@@ -1,3 +1,4 @@
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
 import { mapCodexHistoryEvents } from '../native/codex/history';
@@ -14,6 +15,12 @@ function toolCalls(events: ReturnType<typeof mapCodexHistoryEvents>) {
   return events.flatMap((event) =>
     event.event.type === 'tool-call' ? [event.event.toolCall] : [],
   );
+}
+
+function base64WithByteLength(bytes: number): string {
+  const groups = Math.floor(bytes / 3);
+  const remainder = bytes % 3;
+  return `${'AAAA'.repeat(groups)}${remainder === 1 ? 'AA==' : remainder === 2 ? 'AAA=' : ''}`;
 }
 
 describe('mapCodexHistoryEvents', () => {
@@ -41,6 +48,171 @@ describe('mapCodexHistoryEvents', () => {
       'agent-message-chunk',
     ]);
     expect(events[0].ts).toBe(Date.parse('2026-07-01T00:00:00Z'));
+  });
+
+  it('replays persisted user images in their text order', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'message',
+        id: 'user-with-image',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: 'before' },
+          { type: 'input_image', image_url: 'data:image/png;base64,cG5n' },
+          { type: 'input_text', text: 'after' },
+        ],
+      }),
+    ]);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toEqual({
+      type: 'user-message',
+      messageId: 'user-with-image',
+      content: [
+        { type: 'text', text: 'before' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+        { type: 'text', text: 'after' },
+      ],
+    });
+  });
+
+  it('hides persisted local-image path markers while retaining their embedded image', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'message',
+        id: 'local-image',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: 'before' },
+          { type: 'input_text', text: '<image name=[Image #1] path="/private/screenshot.png">' },
+          { type: 'input_image', image_url: 'data:image/webp;base64,d2VicA==' },
+          { type: 'input_text', text: '</image>' },
+          { type: 'input_text', text: 'after' },
+        ],
+      }),
+    ]);
+
+    expect(events[0].event).toMatchObject({
+      type: 'user-message',
+      content: [
+        { type: 'text', text: 'before' },
+        { type: 'image', data: 'd2VicA==', mimeType: 'image/webp' },
+        { type: 'text', text: 'after' },
+      ],
+    });
+  });
+
+  it('rescues a marker-prefixed image prompt through its concatenated event echo', () => {
+    const before = '# AGENTS.md instructions shown in my screenshot';
+    const after = 'after';
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'event_msg', payload: { type: 'user_message', message: `${before}${after}` } },
+      responseItem({
+        type: 'message',
+        id: 'marker-image',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: before },
+          { type: 'input_image', image_url: 'data:image/png;base64,cG5n' },
+          { type: 'input_text', text: after },
+        ],
+      }),
+    ]);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toMatchObject({
+      type: 'user-message',
+      content: [
+        { type: 'text', text: before },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+        { type: 'text', text: after },
+      ],
+    });
+  });
+
+  it('does not rescue an injected text-only row through a concatenated prompt echo', () => {
+    const injectedInstructions =
+      '# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>x</INSTRUCTIONS>';
+    const injectedEnvironment = '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>';
+    const concatenated = `${injectedInstructions}${injectedEnvironment}`;
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'event_msg', payload: { type: 'user_message', message: concatenated } },
+      responseItem({
+        type: 'message',
+        id: 'injected-context',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: injectedInstructions },
+          { type: 'input_text', text: injectedEnvironment },
+        ],
+      }),
+      responseItem({
+        type: 'message',
+        id: 'real-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: concatenated }],
+      }),
+    ]);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toEqual({
+      type: 'user-message',
+      messageId: 'real-prompt',
+      content: [{ type: 'text', text: concatenated }],
+    });
+  });
+
+  it('drops individually oversized and aggregate-overflow images but keeps safe text', () => {
+    const individuallyOversized = base64WithByteLength(MAX_ATTACHMENT_BYTES + 1);
+    const first = base64WithByteLength(MAX_ATTACHMENT_TOTAL_BYTES / 2 + 3);
+    const second = base64WithByteLength(MAX_ATTACHMENT_TOTAL_BYTES / 2);
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'message',
+        id: 'oversized-images',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: 'safe text' },
+          { type: 'input_image', image_url: `data:image/png;base64,${individuallyOversized}` },
+          { type: 'input_image', image_url: `data:image/png;base64,${first}` },
+          { type: 'input_image', image_url: `data:image/png;base64,${second}` },
+        ],
+      }),
+    ]);
+
+    expect(events[0].event).toMatchObject({
+      type: 'user-message',
+      content: [
+        { type: 'text', text: 'safe text' },
+        { type: 'image', data: first, mimeType: 'image/png' },
+      ],
+    });
+  });
+
+  it.each([
+    ['a local path', '/private/screenshot.png'],
+    ['a file URL', 'file:///private/screenshot.png'],
+    ['a remote URL', 'https://example.com/screenshot.png'],
+    ['an executable data URL', 'data:text/html;base64,PHNjcmlwdD4='],
+    ['an unsupported image data URL', 'data:image/svg+xml;base64,PHN2Zz4='],
+    ['malformed base64', 'data:image/png;base64,not base64'],
+  ])('does not expose %s as a replayable image', (_label, imageUrl) => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'message',
+        id: 'unsafe-image',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: 'safe text' },
+          { type: 'input_image', image_url: imageUrl },
+        ],
+      }),
+    ]);
+
+    expect(events[0].event).toMatchObject({
+      type: 'user-message',
+      content: [{ type: 'text', text: 'safe text' }],
+    });
   });
 
   it('drops the 0.144 injection row: AGENTS.md prose part glued to <environment_context> (CODE-235)', () => {
