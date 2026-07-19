@@ -1,6 +1,6 @@
 import type { AdapterFactory } from '@linkcode/agent-adapter';
 import { createAdapter } from '@linkcode/agent-adapter';
-import type { AgentRuntimes, WireMessage, WorkspaceRecord } from '@linkcode/schema';
+import type { AgentRuntimes, WorkspaceRecord } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { LoginBinaryResolver } from './agent/login-service';
@@ -39,6 +39,7 @@ import { SessionStartOptionsResolver } from './session/start-options-resolver';
 import type { PtyBackend } from './terminal/pty-backend';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
+import { WireRequestRouter } from './wire/request-router';
 import { WireResponder } from './wire/responder';
 import { FileRequestHandler } from './workspace/file-request-handler';
 import { FileSuggestService } from './workspace/file-suggest-service';
@@ -88,39 +89,27 @@ export interface EngineDeps {
  */
 export class Engine {
   private readonly sessions: SessionOrchestrator;
-  private readonly sessionRequests: SessionRequestHandler;
   private readonly records: SessionRecordRegistry;
-  private readonly historyRequests: HistoryRequestHandler;
   private readonly terminals?: TerminalService;
-  private readonly terminalRequests: TerminalRequestHandler;
-  private readonly responder: WireResponder;
   private readonly workspaces: WorkspaceRegistry;
-  private readonly workspaceRequests: WorkspaceRequestHandler;
-  private readonly providerStore: ProviderConfigStore;
-  private readonly gitRequests: GitRequestHandler;
-  private readonly fileRequests: FileRequestHandler;
   private readonly scripts?: ScriptService;
-  private readonly scriptRequests: ScriptRequestHandler;
   private readonly scheduler: ScheduleService;
   private readonly loops: LoopService;
-  private readonly automationRequests: AutomationRequestHandler;
-  private readonly artifactRequests: ArtifactRequestHandler;
-  private readonly runtimes: AgentRuntimeService;
   private readonly assets: ManagedAssetService;
   private readonly logins?: AgentLoginService;
-  private readonly agentRequests: AgentRequestHandler;
   private readonly translator?: TranslatorService;
+  private readonly requests: WireRequestRouter;
 
   constructor(
     private readonly transport: Transport,
     deps: EngineDeps = {},
   ) {
-    this.responder = new WireResponder(transport);
+    const responder = new WireResponder(transport);
     const factory = deps.factory ?? createAdapter;
-    this.providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
+    const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
     this.records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
     const history = new HistoryService(factory);
-    this.runtimes = new AgentRuntimeService({
+    const runtimes = new AgentRuntimeService({
       initial: deps.agentRuntimes,
       ready: deps.agentRuntimesReady,
       collect: deps.collectAgentRuntimes,
@@ -135,29 +124,21 @@ export class Engine {
       transport,
       factory,
       this.records,
-      this.runtimes,
+      runtimes,
       (sessionId) => this.terminals?.killBySession(sessionId),
     );
     this.terminals = deps.ptyBackend
       ? new TerminalService(deps.ptyBackend, transport, (id) => this.sessions.has(id))
       : undefined;
-    this.terminalRequests = new TerminalRequestHandler(this.terminals, this.responder);
+    const terminalRequests = new TerminalRequestHandler(this.terminals, responder);
     this.workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
-    this.workspaceRequests = new WorkspaceRequestHandler(
-      transport,
-      this.workspaces,
-      this.responder,
-    );
-    this.gitRequests = new GitRequestHandler(
-      transport,
-      deps.git ?? new GitService(),
-      this.responder,
-    );
-    this.fileRequests = new FileRequestHandler(
+    const workspaceRequests = new WorkspaceRequestHandler(transport, this.workspaces, responder);
+    const gitRequests = new GitRequestHandler(transport, deps.git ?? new GitService(), responder);
+    const fileRequests = new FileRequestHandler(
       transport,
       deps.fileSuggest ?? new FileSuggestService(),
       this.workspaces,
-      this.responder,
+      responder,
     );
     const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
     this.scripts = this.terminals
@@ -168,14 +149,14 @@ export class Engine {
           (cwd) => this.workspaces.findByCwd(cwd)?.name,
         )
       : undefined;
-    this.scriptRequests = new ScriptRequestHandler(transport, this.scripts, this.responder);
-    this.artifactRequests = new ArtifactRequestHandler(
+    const scriptRequests = new ScriptRequestHandler(transport, this.scripts, responder);
+    const artifactRequests = new ArtifactRequestHandler(
       transport,
       new ArtifactHostService(routes),
-      this.responder,
+      responder,
     );
     this.translator = deps.translator;
-    const startOptions = new SessionStartOptionsResolver(this.providerStore, this.translator);
+    const startOptions = new SessionStartOptionsResolver(providerStore, this.translator);
     const sessionLifecycle = new SessionLifecycleService(
       this.sessions,
       this.records,
@@ -183,17 +164,17 @@ export class Engine {
       startOptions,
       this.workspaces,
     );
-    this.sessionRequests = new SessionRequestHandler(
+    const sessionRequests = new SessionRequestHandler(
       transport,
       sessionLifecycle,
       this.sessions,
-      this.responder,
+      responder,
     );
-    this.historyRequests = new HistoryRequestHandler(
+    const historyRequests = new HistoryRequestHandler(
       transport,
       history,
       sessionLifecycle,
-      this.responder,
+      responder,
     );
     this.scheduler = new ScheduleService(
       transport,
@@ -205,28 +186,40 @@ export class Engine {
       deps.loopStore ?? new InMemoryLoopStore(),
       sessionLifecycle.driver,
     );
-    this.automationRequests = new AutomationRequestHandler(
+    const automationRequests = new AutomationRequestHandler(
       transport,
       this.scheduler,
       this.loops,
-      this.responder,
+      responder,
     );
     this.assets = new ManagedAssetService(transport, deps.assets, () => {
-      void this.runtimes.refresh();
+      void runtimes.refresh();
     });
     this.logins = deps.resolveLoginBinary
       ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
-          void this.runtimes.refresh();
+          void runtimes.refresh();
         })
       : undefined;
-    this.agentRequests = new AgentRequestHandler(
+    const agentRequests = new AgentRequestHandler(
       transport,
-      this.runtimes,
+      runtimes,
       this.assets,
-      this.providerStore,
+      providerStore,
       this.logins,
-      this.responder,
+      responder,
     );
+    this.requests = new WireRequestRouter(transport, {
+      session: sessionRequests,
+      history: historyRequests,
+      agent: agentRequests,
+      workspace: workspaceRequests,
+      git: gitRequests,
+      file: fileRequests,
+      script: scriptRequests,
+      artifact: artifactRequests,
+      automation: automationRequests,
+      terminal: terminalRequests,
+    });
   }
 
   async start(): Promise<void> {
@@ -241,7 +234,7 @@ export class Engine {
     this.transport.onMessage((msg) => {
       // Per-request failures already reply over the wire via tryReply; this is the last-resort
       // backstop for anything that throws before or outside that path (e.g. a malformed payload).
-      this.handle(msg).catch((err: unknown) => {
+      this.requests.handle(msg).catch((err: unknown) => {
         console.error('Unhandled error while processing message:', err);
       });
     });
@@ -251,108 +244,6 @@ export class Engine {
    * Called once by the daemon at startup, before any client can connect. */
   ensureChatWorkspace(cwd: string): Promise<WorkspaceRecord> {
     return this.workspaces.ensureChatWorkspace(cwd);
-  }
-
-  private async handle(msg: WireMessage): Promise<void> {
-    const p = msg.payload;
-    switch (p.kind) {
-      case 'session.start':
-      case 'agent.input':
-      case 'session.stop':
-      case 'session.delete':
-      case 'session.list':
-      case 'session.resume':
-      case 'session.import':
-      case 'session.attach':
-      case 'session.detach': {
-        await this.sessionRequests.handle(p);
-        break;
-      }
-      case 'history.list':
-      case 'history.read':
-      case 'history.resume': {
-        await this.historyRequests.handle(p);
-        break;
-      }
-      case 'agent-runtime.list':
-      case 'asset.list':
-      case 'asset.ensure':
-      case 'config.get':
-      case 'config.set': {
-        await this.agentRequests.handle(p);
-        break;
-      }
-      case 'workspace.list':
-      case 'workspace.register':
-      case 'workspace.update':
-      case 'workspace.archive': {
-        await this.workspaceRequests.handle(p);
-        break;
-      }
-      case 'git.status.get':
-      case 'git.pr_status.get':
-      case 'git.diff.get': {
-        await this.gitRequests.handle(p);
-        break;
-      }
-      case 'file.read':
-      case 'file.list':
-      case 'file.suggest': {
-        await this.fileRequests.handle(p);
-        break;
-      }
-      case 'script.list':
-      case 'script.start':
-      case 'script.stop': {
-        await this.scriptRequests.handle(p);
-        break;
-      }
-      case 'artifact.host':
-      case 'artifact.revoke': {
-        await this.artifactRequests.handle(p);
-        break;
-      }
-      case 'schedule.create':
-      case 'schedule.update':
-      case 'schedule.delete':
-      case 'schedule.pause':
-      case 'schedule.resume':
-      case 'schedule.run-once':
-      case 'schedule.list':
-      case 'schedule.runs.list':
-      case 'loop.start':
-      case 'loop.stop':
-      case 'loop.delete':
-      case 'loop.list':
-      case 'loop.inspect': {
-        await this.automationRequests.handle(p);
-        break;
-      }
-      case 'terminal.open':
-      case 'terminal.list':
-      case 'terminal.attach':
-      case 'terminal.detach':
-      case 'terminal.input':
-      case 'terminal.ack':
-      case 'terminal.resize':
-      case 'terminal.close': {
-        await this.terminalRequests.handle(p);
-        break;
-      }
-      case 'agent-login.start':
-      case 'agent-login.submit-code':
-      case 'agent-login.cancel': {
-        await this.agentRequests.handle(p);
-        break;
-      }
-      case 'ping': {
-        this.transport.send(createWireMessage({ kind: 'pong' }));
-        break;
-      }
-      // Downstream-only payloads are ignored here.
-      default:
-        break;
-    }
   }
 
   async stop(): Promise<void> {
