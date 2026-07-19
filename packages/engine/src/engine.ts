@@ -50,7 +50,11 @@ import { GitService } from './git/git-service';
 import { HistoryService } from './history-service';
 import { jsonValueEqual } from './json-equal';
 import type { ProviderConfigStore } from './provider-config';
-import { applyProviderDefaults, InMemoryProviderConfigStore } from './provider-config';
+import {
+  applyProviderDefaults,
+  InMemoryProviderConfigStore,
+  withBoundAccountModels,
+} from './provider-config';
 import type { PtyBackend } from './pty-backend';
 import { PreviewRouteRegistry } from './scripts/route-registry';
 import { ScriptService } from './scripts/script-service';
@@ -553,7 +557,17 @@ export class Engine {
         await this.tryReply(p.clientReqId, async () => {
           // A never-started factory instance, the history-read pattern: startCatalog must not
           // touch any start() state, so a throwaway adapter is safe and needs no cleanup.
-          const catalog = await this.factory(p.agentKind).startCatalog({ cwd: p.cwd });
+          const machineScoped = await this.factory(p.agentKind).startCatalog({ cwd: p.cwd });
+          // pi-only enrichment: pi is the one adapter that registers account-defined providers
+          // (Account.customProvider) at session start.
+          const catalog =
+            p.agentKind === 'pi'
+              ? withBoundAccountModels(
+                  machineScoped,
+                  this.providerStore.get()[p.agentKind],
+                  this.providerStore.getAccounts(),
+                )
+              : machineScoped;
           this.transport.send(
             createWireMessage({ kind: 'agent.cataloged', replyTo: p.clientReqId, catalog }),
           );

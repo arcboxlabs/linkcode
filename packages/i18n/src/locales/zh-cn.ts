@@ -659,6 +659,7 @@ export const zhCN = {
       copySecret: '复制',
       endpoint: '端点',
       accountModel: '默认模型',
+      customProviderModels: '模型({name})',
       loginState: '登录状态',
       loggedIn: '已登录',
       loggedOut: '未登录',
@@ -698,6 +699,7 @@ export const zhCN = {
         'vercel-gateway': 'Vercel AI Gateway',
         'cloudflare-gateway': 'Cloudflare AI Gateway',
         custom: '自定义端点',
+        'pi-models-json': '导入 models.json',
       },
       serviceHint: {
         'claude-sub': 'Claude Code 登录,Pro / Max 计划',
@@ -709,6 +711,7 @@ export const zhCN = {
         'vercel-gateway': '服务端翻译,双协议形态',
         'cloudflare-gateway': '透传网关,需 Account / Gateway ID',
         custom: '任意 Base URL + 协议',
+        'pi-models-json': '整档导入为自定义 Provider 账号',
       },
       variantName: {
         anthropic: 'Anthropic 端点',
@@ -726,6 +729,19 @@ export const zhCN = {
         source: 'pi · models.json',
         modelCount: '{count} 个模型',
       },
+      import: {
+        hint: '选择 pi 的 models.json 文件;每个自定义 provider 导入为一个账号,模型定义(含成本与思考等级映射)完整保留。仅支持纯 JSON(不支持注释)。',
+        parseError: '无法解析:{message}',
+        modelCount: '{count} 个模型',
+        submit: '导入 {count} 个账号',
+        reason: {
+          'no-models': '无模型清单(内置 provider 覆盖项)',
+          'missing-base-url': '缺少端点 URL',
+          'missing-api-key': '缺少 API 密钥',
+          'unsupported-api': '不支持的 api 类型',
+          'invalid-name': 'provider 名称不能含 "/"',
+        },
+      },
       form: {
         label: '名称',
         variant: '协议形态',
@@ -736,6 +752,17 @@ export const zhCN = {
         baseUrl: '端点 URL(可选)',
         protocol: '协议(可选)',
         protocolNone: '默认',
+        customProviderTitle: '自定义 Provider(pi)',
+        customProviderHint:
+          '为 pi 定义此端点提供的模型;填写后端点 URL 与协议为必填,其他智能体忽略此段。',
+        providerName: 'Provider 名称',
+        addModel: '添加模型',
+        modelId: '模型 ID',
+        modelName: '显示名(可选)',
+        contextWindow: '上下文窗口',
+        maxTokens: '最大输出 token',
+        reasoning: '推理模型',
+        removeModel: '移除',
       },
     },
     notifications: {

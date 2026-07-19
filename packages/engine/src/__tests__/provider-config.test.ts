@@ -1,6 +1,6 @@
 import type { Account, ProvidersConfig, StartOptions } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { applyProviderDefaults } from '../provider-config';
+import { applyProviderDefaults, withBoundAccountModels } from '../provider-config';
 
 const baseOpts: StartOptions = { kind: 'codex', cwd: '/repo' };
 
@@ -107,5 +107,75 @@ describe('applyProviderDefaults account pool', () => {
     };
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oauth_1' } };
     expect(applyProviderDefaults(baseOpts, providers, [oauth]).config).toEqual({});
+  });
+});
+
+describe('withBoundAccountModels', () => {
+  const catalog = {
+    models: [{ id: 'openai/gpt-test', label: 'GPT Test' }],
+    policies: [],
+  };
+  const account: Account = {
+    id: 'acc_banned',
+    label: 'Banned',
+    credential: { type: 'api-key', key: 'gwen' },
+    endpoint: { baseUrl: 'https://banned.test/v1', protocol: 'openai-chat' },
+    customProvider: {
+      name: 'banned',
+      models: [
+        {
+          id: '@cf/glm',
+          name: 'GLM',
+          reasoning: true,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 262144,
+          maxTokens: 16384,
+          thinkingLevelMap: { xhigh: 'xhigh' },
+        },
+        {
+          id: '@cf/kimi',
+          name: 'Kimi',
+          reasoning: false,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 262144,
+          maxTokens: 16384,
+        },
+      ],
+    },
+    createdAt: 0,
+  };
+
+  it('appends the bound account custom models with mapped effort levels', () => {
+    const enriched = withBoundAccountModels(
+      catalog,
+      { enabled: true, activeAccountId: 'acc_banned' },
+      [account],
+    );
+    expect(enriched.models.map((m) => m.id)).toEqual([
+      'openai/gpt-test',
+      'banned/@cf/glm',
+      'banned/@cf/kimi',
+    ]);
+    expect(enriched.models[1].effortLevels).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(enriched.models[2].effortLevels).toEqual([]);
+  });
+
+  it('returns the catalog unchanged when no account is bound or it defines no provider', () => {
+    expect(withBoundAccountModels(catalog, undefined, [account])).toBe(catalog);
+    expect(
+      withBoundAccountModels(catalog, { enabled: true, activeAccountId: 'missing' }, [account]),
+    ).toBe(catalog);
+  });
+
+  it('lets existing catalog entries win on id collisions', () => {
+    const colliding = { models: [{ id: 'banned/@cf/glm', label: 'live' }], policies: [] };
+    const enriched = withBoundAccountModels(
+      colliding,
+      { enabled: true, activeAccountId: 'acc_banned' },
+      [account],
+    );
+    expect(enriched.models.map((m) => m.label)).toEqual(['live', 'Kimi']);
   });
 });

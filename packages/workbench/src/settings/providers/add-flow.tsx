@@ -12,15 +12,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
+import { Switch } from 'coss-ui/components/switch';
 import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
 import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
+import type { ImportedProvider, ModelsJsonImport } from './import-models-json';
+import { parseModelsJson } from './import-models-json';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 
@@ -76,7 +80,30 @@ function customAccount(draft: CustomDraft): Account {
         : { type: 'api-key', key: draft.secret },
     ...(draft.baseUrl.trim() &&
       protocol && { endpoint: { baseUrl: draft.baseUrl.trim(), protocol } }),
+    ...(draft.models.length > 0 && {
+      customProvider: {
+        name: draft.providerName.trim(),
+        models: draft.models.map((model) => ({
+          id: model.id.trim(),
+          ...(model.name.trim() && { name: model.name.trim() }),
+          reasoning: model.reasoning,
+          input: ['text' as const],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: model.contextWindow,
+          maxTokens: model.maxTokens,
+        })),
+      },
+    }),
     ...(draft.model.trim() && { model: draft.model.trim() }),
+  };
+}
+
+function importedAccount(provider: ImportedProvider): Account {
+  return {
+    ...newAccountBase(provider.name),
+    credential: { type: 'api-key', key: provider.apiKey },
+    endpoint: { baseUrl: provider.baseUrl, protocol: provider.protocol },
+    customProvider: { name: provider.name, models: provider.models },
   };
 }
 
@@ -138,12 +165,15 @@ export function AddAccountForm({
   busy,
   onBack,
   onSubmit,
+  onSubmitMany,
 }: {
   serviceId: string;
   runtimes: AgentRuntimes | undefined;
   busy: boolean;
   onBack: () => void;
   onSubmit: (account: Account) => void;
+  /** Batch add (the models.json import) — one pool write, so additions cannot race each other. */
+  onSubmitMany: (accounts: Account[]) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const service = serviceById(serviceId);
@@ -164,8 +194,96 @@ export function AddAccountForm({
         <OauthCreateForm service={service} runtimes={runtimes} busy={busy} onSubmit={onSubmit} />
       ) : service.kind === 'endpoint' ? (
         <CatalogAccountForm service={service} busy={busy} onSubmit={onSubmit} />
+      ) : service.kind === 'import' ? (
+        <ImportModelsJsonForm busy={busy} onSubmitMany={onSubmitMany} />
       ) : (
         <CustomAccountForm busy={busy} onSubmit={onSubmit} />
+      )}
+    </div>
+  );
+}
+
+/** File-driven variant of the custom form: parse a pi models.json, preview the provider entries,
+ * and add every importable one as a custom-provider account in a single pool write. */
+function ImportModelsJsonForm({
+  busy,
+  onSubmitMany,
+}: {
+  busy: boolean;
+  onSubmitMany: (accounts: Account[]) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  const [parsed, setParsed] = useState<ModelsJsonImport | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  const handleFile = async (file: File | undefined): Promise<void> => {
+    if (!file) return;
+    try {
+      setParsed(parseModelsJson(await file.text()));
+      setParseError(null);
+    } catch (err) {
+      setParsed(null);
+      setParseError(extractErrorMessage(err));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-muted-foreground text-xs">{t('import.hint')}</p>
+      <Input
+        type="file"
+        accept="application/json,.json"
+        className="w-full"
+        onChange={(event) => {
+          void handleFile(event.target.files?.[0]);
+        }}
+      />
+      {parseError === null ? null : (
+        <p className="text-destructive text-xs">
+          {t('import.parseError', { message: parseError })}
+        </p>
+      )}
+      {parsed === null ? null : (
+        <>
+          <ul className="flex flex-col gap-1">
+            {parsed.providers.map((provider) => (
+              <li
+                key={provider.name}
+                className="flex items-start gap-2.5 rounded-lg border border-border p-2.5"
+              >
+                <ServiceIcon service={undefined} label={provider.name} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-sm">{provider.name}</span>
+                  <span className="block truncate font-mono text-muted-foreground text-xs">
+                    {provider.baseUrl} · {provider.protocol}
+                  </span>
+                </span>
+                <span className="shrink-0 text-muted-foreground text-xs">
+                  {t('import.modelCount', { count: provider.models.length })}
+                </span>
+              </li>
+            ))}
+            {parsed.skipped.map((entry) => (
+              <li
+                key={entry.name}
+                className="flex items-center gap-2.5 rounded-lg border border-border border-dashed p-2.5 text-muted-foreground"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm">{entry.name}</span>
+                <span className="shrink-0 text-xs">{t(`import.reason.${entry.reason}`)}</span>
+              </li>
+            ))}
+          </ul>
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy || parsed.providers.length === 0}
+              onClick={() => onSubmitMany(parsed.providers.map((p) => importedAccount(p)))}
+            >
+              {t('import.submit', { count: parsed.providers.length })}
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -356,14 +474,38 @@ function CatalogAccountForm({
   );
 }
 
-const CustomDraftSchema = z.object({
-  label: z.string().min(1),
-  type: z.enum(['api-key', 'auth-token']),
-  secret: z.string().min(1),
-  baseUrl: z.string(),
-  protocol: z.string(),
-  model: z.string(),
+const CustomModelDraftSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  reasoning: z.boolean(),
+  contextWindow: z.coerce.number<number>().int().positive(),
+  maxTokens: z.coerce.number<number>().int().positive(),
 });
+
+const CustomDraftSchema = z
+  .object({
+    label: z.string().min(1),
+    type: z.enum(['api-key', 'auth-token']),
+    secret: z.string().min(1),
+    baseUrl: z.string(),
+    protocol: z.string(),
+    model: z.string(),
+    providerName: z.string(),
+    models: z.array(CustomModelDraftSchema),
+  })
+  .superRefine((draft, ctx) => {
+    // A model list turns the account into a provider definition (pi registerProvider), which
+    // needs a provider id and a complete endpoint (the api is derived from the protocol).
+    if (draft.models.length === 0) return;
+    if (!draft.providerName.trim() || draft.providerName.includes('/')) {
+      // Slash-free: the first '/' in a model ref splits provider from model id (schema rule).
+      ctx.addIssue({ code: 'custom', path: ['providerName'], message: 'required' });
+    }
+    if (!draft.baseUrl.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['baseUrl'], message: 'required' });
+    }
+    if (!draft.protocol) ctx.addIssue({ code: 'custom', path: ['protocol'], message: 'required' });
+  });
 type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
 /** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
@@ -382,8 +524,18 @@ function CustomAccountForm({
     formState: { isSubmitting },
   } = useForm<CustomDraft>({
     resolver: zodResolver(CustomDraftSchema),
-    defaultValues: { label: '', type: 'api-key', secret: '', baseUrl: '', protocol: '', model: '' },
+    defaultValues: {
+      label: '',
+      type: 'api-key',
+      secret: '',
+      baseUrl: '',
+      protocol: '',
+      model: '',
+      providerName: '',
+      models: [],
+    },
   });
+  const modelRows = useFieldArray({ control, name: 'models' });
 
   const typeItems = [
     { value: 'api-key', label: t('credentialApiKey') },
@@ -442,6 +594,107 @@ function CustomAccountForm({
         <FieldLabel>{t('form.model')}</FieldLabel>
         <Input className="w-full" autoComplete="off" {...register('model')} />
       </Field>
+      <div className="flex flex-col gap-2 rounded-lg border border-border border-dashed p-3">
+        <div className="flex items-center justify-between">
+          <span className="font-medium text-sm">{t('form.customProviderTitle')}</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              modelRows.append({
+                id: '',
+                name: '',
+                reasoning: false,
+                contextWindow: 131072,
+                maxTokens: 8192,
+              })
+            }
+          >
+            {t('form.addModel')}
+          </Button>
+        </div>
+        <p className="text-muted-foreground text-xs">{t('form.customProviderHint')}</p>
+        {modelRows.fields.length > 0 ? (
+          <Field>
+            <FieldLabel>{t('form.providerName')}</FieldLabel>
+            <Input
+              className="w-full"
+              autoComplete="off"
+              placeholder="my-gateway"
+              {...register('providerName')}
+            />
+          </Field>
+        ) : null}
+        {modelRows.fields.map((row, index) => (
+          <div key={row.id} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.modelId')}</FieldLabel>
+                  <Input
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.id`)}
+                  />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.modelName')}</FieldLabel>
+                  <Input
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.name`)}
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.contextWindow')}</FieldLabel>
+                  <Input
+                    type="number"
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.contextWindow`)}
+                  />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field>
+                  <FieldLabel>{t('form.maxTokens')}</FieldLabel>
+                  <Input
+                    type="number"
+                    className="w-full"
+                    autoComplete="off"
+                    {...register(`models.${index}.maxTokens`)}
+                  />
+                </Field>
+              </div>
+              <label className="flex h-9 shrink-0 items-center gap-2 text-sm">
+                <Controller
+                  control={control}
+                  name={`models.${index}.reasoning`}
+                  render={({ field }) => (
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  )}
+                />
+                {t('form.reasoning')}
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => modelRows.remove(index)}
+              >
+                {t('form.removeModel')}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
       <div>
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {t('form.submit')}
