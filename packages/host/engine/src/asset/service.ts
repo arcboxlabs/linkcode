@@ -22,15 +22,17 @@ const PROGRESS_INTERVAL_MS = 150;
 
 export class ManagedAssetService {
   private readonly progressSentAt = new Map<ManagedAssetId, number>();
-  private readonly unsubscribe?: Unsubscribe;
+  private unsubscribe?: Unsubscribe;
 
   constructor(
     private readonly transport: Transport,
     private readonly assets: AssetService | undefined,
     private readonly onAgentInstalled: () => void,
     private readonly responder: WireResponder,
-  ) {
-    this.unsubscribe = assets?.subscribe((event) => this.onInstallEvent(event));
+  ) {}
+
+  start(): void {
+    this.unsubscribe ??= this.assets?.subscribe((event) => this.onInstallEvent(event));
   }
 
   list(replyTo: string): void {
@@ -91,6 +93,7 @@ export class ManagedAssetService {
 
   close(): void {
     this.unsubscribe?.();
+    this.unsubscribe = undefined;
   }
 
   private onInstallEvent(event: AssetInstallEvent): void {

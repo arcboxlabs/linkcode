@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Transport } from '@linkcode/transport';
-import { Effect, ManagedRuntime } from 'effect';
+import { Effect, Logger as EffectLogger, Layer, ManagedRuntime } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { TranslatorService } from '../agent/translator';
@@ -65,6 +65,7 @@ describe('engine service', () => {
     const runningScheduleLoad = schedules.loadRunningRuns.bind(schedules);
     const loopLoad = loops.load.bind(loops);
     const runningLoopLoad = loops.loadRunning.bind(loops);
+    const unsubscribeTransport = vi.fn();
     vi.spyOn(sessions, 'load').mockImplementation(() => {
       events.push('sessions.load');
       return sessionLoad();
@@ -103,7 +104,7 @@ describe('engine service', () => {
       },
       closeAll() {
         events.push('translator.close');
-        return Promise.resolve();
+        return Promise.reject(new Error('translator shutdown failed'));
       },
     };
     const transport: Transport = {
@@ -112,22 +113,22 @@ describe('engine service', () => {
         return Promise.resolve();
       },
       send: noop,
-      onMessage: () => noop,
+      onMessage: () => unsubscribeTransport,
       onClose: () => noop,
       close() {
+        expect(unsubscribeTransport).toHaveBeenCalledOnce();
         events.push('transport.close');
       },
     };
-    const runtime = ManagedRuntime.make(
-      makeEngineLayer(transport, {
-        sessionStore: sessions,
-        workspaceStore: workspaces,
-        scheduleStore: schedules,
-        loopStore: loops,
-        ptyBackend,
-        translator,
-      }),
-    );
+    const engineLayer = makeEngineLayer(transport, {
+      sessionStore: sessions,
+      workspaceStore: workspaces,
+      scheduleStore: schedules,
+      loopStore: loops,
+      ptyBackend,
+      translator,
+    }).pipe(Layer.provide(EffectLogger.layer([EffectLogger.make(noop)])));
+    const runtime = ManagedRuntime.make(engineLayer);
 
     await runtime.runPromise(Effect.service(EngineService));
     await runtime.dispose();
@@ -144,5 +145,56 @@ describe('engine service', () => {
       'translator.close',
       'transport.close',
     ]);
+  });
+
+  it('releases partially started resources when transport connection fails', async () => {
+    const events: string[] = [];
+    const ptyBackend: PtyBackend = {
+      open() {
+        return Promise.reject(new Error('not used'));
+      },
+      shutdown() {
+        events.push('pty.shutdown');
+      },
+    };
+    const translator: TranslatorService = {
+      ensure() {
+        return Promise.reject(new Error('not used'));
+      },
+      closeAll() {
+        events.push('translator.close');
+        return Promise.resolve();
+      },
+    };
+    const transport: Transport = {
+      connect() {
+        events.push('transport.connect');
+        return Promise.reject(new Error('socket unavailable'));
+      },
+      send: noop,
+      onMessage: () => noop,
+      onClose: () => noop,
+      close() {
+        events.push('transport.close');
+      },
+    };
+    const runtime = ManagedRuntime.make(makeEngineLayer(transport, { ptyBackend, translator }));
+
+    try {
+      await expect(runtime.runPromise(Effect.service(EngineService))).rejects.toMatchObject({
+        _tag: 'OperationError',
+        subsystem: 'transport',
+        operation: 'transport.connect',
+      });
+
+      expect(events).toEqual([
+        'transport.connect',
+        'pty.shutdown',
+        'translator.close',
+        'transport.close',
+      ]);
+    } finally {
+      await runtime.dispose();
+    }
   });
 });

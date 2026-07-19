@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { OperationError, OperationTimeout, RequestError, toRequestFailure } from '../failure';
+import {
+  OperationError,
+  OperationTimeout,
+  RequestError,
+  toOperationFailure,
+  toRequestFailure,
+} from '../failure';
 
 describe('engine request failures', () => {
   it('keeps a request error safe for direct presentation', () => {
@@ -39,5 +45,36 @@ describe('engine request failures', () => {
     const failure = toRequestFailure(new Error('attachmentSecret=secret-value'));
 
     expect(failure).toEqual({ code: 'internal_error', message: 'Internal engine error' });
+  });
+
+  it('preserves an existing typed failure at an operation boundary', () => {
+    const requestError = new RequestError({ code: 'conflict', message: 'Session is busy' });
+
+    const failure = toOperationFailure(requestError, {
+      subsystem: 'agent',
+      operation: 'session.start',
+      publicMessage: 'Agent failed to start',
+    });
+
+    expect(failure).toBe(requestError);
+  });
+
+  it('wraps a foreign failure with operation context', () => {
+    const cause = new Error('ECONNRESET');
+
+    const failure = toOperationFailure(cause, {
+      subsystem: 'transport',
+      operation: 'transport.connect',
+      publicMessage: 'Failed to connect transport',
+    });
+
+    expect(failure).toEqual(
+      new OperationError({
+        subsystem: 'transport',
+        operation: 'transport.connect',
+        publicMessage: 'Failed to connect transport',
+        cause,
+      }),
+    );
   });
 });

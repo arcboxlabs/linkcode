@@ -38,6 +38,26 @@ export class OperationTimeout extends Data.TaggedError('OperationTimeout')<{
   readonly publicMessage: string;
 }> {}
 
+export type EngineFailure = RequestError | OperationError | OperationTimeout;
+
+export function toOperationFailure(
+  cause: unknown,
+  context: {
+    readonly subsystem: OperationSubsystem;
+    readonly operation: string;
+    readonly publicMessage: string;
+  },
+): EngineFailure {
+  if (
+    cause instanceof RequestError ||
+    cause instanceof OperationError ||
+    cause instanceof OperationTimeout
+  ) {
+    return cause;
+  }
+  return new OperationError({ ...context, cause });
+}
+
 export type RequestFailureCode =
   | RequestErrorCode
   | 'operation_failed'

@@ -1,7 +1,9 @@
 import { createAdapter } from '@linkcode/agent-adapter';
 import type { WorkspaceRecord } from '@linkcode/schema';
-import type { Transport } from '@linkcode/transport';
+import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import type { Scope } from 'effect';
+import { Cause, Effect, FiberSet } from 'effect';
 import { AgentLoginService } from './agent/login-service';
 import { InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
@@ -15,6 +17,8 @@ import {
 } from './automation';
 import { AutomationRequestHandler } from './automation/request-handler';
 import type { EngineDeps } from './deps';
+import type { EngineFailure, OperationSubsystem } from './failure';
+import { toOperationFailure } from './failure';
 import { GitService } from './git/git-service';
 import { GitRequestHandler } from './git/request-handler';
 import { ArtifactHostService } from './preview/artifact-host-service';
@@ -47,9 +51,9 @@ import { InMemoryWorkspaceStore } from './workspace/workspace-store';
  * by id: a request's `clientReqId` echoes back as `replyTo` on the matching reply.
  */
 export interface EngineRuntime {
-  readonly start: () => Promise<void>;
-  readonly ensureChatWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
-  readonly stop: () => Promise<void>;
+  readonly start: Effect.Effect<void, EngineFailure, Scope.Scope>;
+  readonly ensureChatWorkspace: (cwd: string) => Effect.Effect<WorkspaceRecord, EngineFailure>;
+  readonly stop: Effect.Effect<void>;
 }
 
 export function createEngineRuntime(transport: Transport, deps: EngineDeps = {}): EngineRuntime {
@@ -161,39 +165,111 @@ export function createEngineRuntime(transport: Transport, deps: EngineDeps = {})
     automation: automationRequests,
     terminal: terminalRequests,
   });
+  let unsubscribeRequests: Unsubscribe | undefined;
 
   return {
-    async start() {
-      await records.load();
-      await workspaces.start();
+    start: Effect.gen(function* () {
+      yield* tryOperation('store', 'session-records.load', 'Failed to load session records', () =>
+        records.load(),
+      );
+      yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
+        workspaces.start(),
+      );
       // After the session records are loaded (the schedule orphan-sweep reads them) and before the
       // transport connects, so the first tick can't race an unconnected transport.
-      await scheduler.start();
+      yield* tryOperation('store', 'schedules.recover', 'Failed to recover schedules', () =>
+        scheduler.start(),
+      );
       // Loops don't resume across a restart; start() only sweeps interrupted loops to `stopped`.
-      await loops.start();
-      await transport.connect();
-      transport.onMessage((msg) => {
-        // Per-request failures already reply over the wire via tryReply; this is the last-resort
-        // backstop for anything that throws before or outside that path (e.g. a malformed payload).
-        requests.handle(msg).catch((err: unknown) => {
-          console.error('Unhandled error while processing message:', err);
-        });
+      yield* tryOperation('store', 'loops.recover', 'Failed to recover loops', () => loops.start());
+      yield* trySyncOperation(
+        'asset',
+        'assets.subscribe',
+        'Failed to subscribe to asset events',
+        () => assets.start(),
+      );
+      yield* tryOperation('transport', 'transport.connect', 'Failed to connect transport', () =>
+        transport.connect(),
+      );
+      const runRequest = yield* FiberSet.makeRuntime<never, void, never>();
+      yield* trySyncOperation(
+        'transport',
+        'transport.subscribe',
+        'Failed to subscribe to transport messages',
+        () => {
+          unsubscribeRequests = transport.onMessage((msg) => {
+            runRequest(
+              Effect.tryPromise({ try: () => requests.handle(msg), catch: (cause) => cause }).pipe(
+                Effect.catchCause((cause) =>
+                  Cause.hasInterruptsOnly(cause)
+                    ? Effect.void
+                    : Effect.logError(
+                        'Unhandled error while processing engine request',
+                        Cause.squash(cause),
+                      ),
+                ),
+              ),
+            );
+          });
+        },
+      );
+    }).pipe(Effect.withSpan('Engine.start')),
+    ensureChatWorkspace: Effect.fn('Engine.ensureChatWorkspace')(function* (cwd: string) {
+      return yield* tryOperation(
+        'store',
+        'workspace.ensure-chat',
+        'Failed to ensure the chat workspace',
+        () => workspaces.ensureChatWorkspace(cwd),
+      );
+    }),
+    stop: Effect.gen(function* () {
+      // Stop launching new automation sessions before the session-teardown sweep runs. Each step
+      // logs and continues so one broken collaborator cannot leak every resource after it.
+      yield* finalize('transport.unsubscribe', () => {
+        unsubscribeRequests?.();
+        unsubscribeRequests = undefined;
       });
-    },
-    ensureChatWorkspace(cwd) {
-      return workspaces.ensureChatWorkspace(cwd);
-    },
-    async stop() {
-      // Stop launching new automation sessions before the session-teardown sweep runs.
-      scheduler.shutdown();
-      loops.shutdown();
-      await sessions.shutdown();
-      scripts?.shutdown();
-      terminals?.closeAll();
-      logins?.closeAll();
-      await translator?.closeAll();
-      assets.close();
-      transport.close();
-    },
+      yield* finalize('schedules.shutdown', () => scheduler.shutdown());
+      yield* finalize('loops.shutdown', () => loops.shutdown());
+      yield* finalize('sessions.shutdown', () => sessions.shutdown());
+      yield* finalize('scripts.shutdown', () => scripts?.shutdown());
+      yield* finalize('terminals.shutdown', () => terminals?.closeAll());
+      yield* finalize('agent-login.shutdown', () => logins?.closeAll());
+      yield* finalize('translator.shutdown', () => translator?.closeAll());
+      yield* finalize('assets.shutdown', () => assets.close());
+      yield* finalize('transport.close', () => transport.close());
+    }).pipe(Effect.withSpan('Engine.stop')),
   };
+}
+
+function tryOperation<A>(
+  subsystem: OperationSubsystem,
+  operation: string,
+  publicMessage: string,
+  run: () => PromiseLike<A>,
+): Effect.Effect<A, EngineFailure> {
+  return Effect.tryPromise({
+    try: () => run(),
+    catch: (cause) => toOperationFailure(cause, { subsystem, operation, publicMessage }),
+  });
+}
+
+function trySyncOperation<A>(
+  subsystem: OperationSubsystem,
+  operation: string,
+  publicMessage: string,
+  run: () => A,
+): Effect.Effect<A, EngineFailure> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem, operation, publicMessage }),
+  });
+}
+
+function finalize(operation: string, run: () => void | PromiseLike<void>): Effect.Effect<void> {
+  return Effect.tryPromise({ try: async () => run(), catch: (cause) => cause }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logError('Engine shutdown step failed', { operation }, Cause.squash(cause)),
+    ),
+  );
 }
