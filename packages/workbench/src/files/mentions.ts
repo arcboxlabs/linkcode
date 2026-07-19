@@ -65,6 +65,11 @@ export function useFileMentionSource(): FileMentionSource {
     live.cwd === undefined || effectiveQuery === null
       ? null
       : { cwd: live.cwd, query: effectiveQuery, limit: MENTION_SUGGEST_LIMIT },
+    {
+      // A suggestion belongs to its request cwd. Global keepPreviousData would briefly expose the
+      // previous workspace's paths after a draft/session switch, where they could be inserted.
+      keepPreviousData: false,
+    },
   );
 
   const mentionItems = useMemo<MentionItem[]>(
