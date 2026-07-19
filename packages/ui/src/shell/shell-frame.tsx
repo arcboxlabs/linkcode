@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  EffortLevel,
   QuestionOutcome,
   SessionId,
   SessionInfo,
@@ -46,6 +47,8 @@ export interface ShellFrameProps
   attachmentSupport?: AttachmentSupportByAgent;
   /** Effective daemon-configured default models for new sessions. */
   newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>>;
+  /** Last successfully applied effort per provider for new sessions. */
+  newSessionDefaultEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
@@ -108,6 +111,7 @@ export function ShellFrame({
   runtimeCues,
   attachmentSupport,
   newSessionDefaultModels,
+  newSessionDefaultEfforts,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -192,6 +196,7 @@ export function ShellFrame({
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
             defaultModels={newSessionDefaultModels}
+            defaultEfforts={newSessionDefaultEfforts}
             mentionItems={mentionItems}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}

@@ -75,6 +75,8 @@ export interface NewSessionSurfaceProps {
   attachmentSupport?: AttachmentSupportByAgent;
   /** Effective user-configured model defaults. Built-in provider defaults fill missing kinds. */
   defaultModels?: Readonly<Partial<Record<AgentKind, string>>>;
+  /** Last successfully applied effort per provider. Missing kinds retain the provider default. */
+  defaultEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   /** Ranked files for the active draft workspace's `@` query. */
   mentionItems: MentionItem[];
   /** Queries files in the draft's currently selected workspace. */
@@ -113,6 +115,7 @@ export function NewSessionSurface({
   runtimeCues,
   attachmentSupport,
   defaultModels,
+  defaultEfforts,
   mentionItems,
   onMentionQueryChange,
   onDownloadAgent,
@@ -142,7 +145,7 @@ export function NewSessionSurface({
   const selectedModel = selectedModels[provider] ?? null;
   const displayedModel =
     selectedModels[provider] ?? defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null;
-  const effort = selectedEfforts[provider] ?? null;
+  const effort = selectedEfforts[provider] ?? defaultEfforts?.[provider] ?? null;
 
   function submit(input: NewSessionSubmission['input']): void {
     if (!selected) return;

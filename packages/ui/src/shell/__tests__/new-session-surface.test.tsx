@@ -192,6 +192,33 @@ describe('NewSessionSurface', () => {
     );
   });
 
+  it('shows and submits the last successful provider effort without reselection', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultEfforts={{ 'claude-code': 'medium' }}
+        draft={{
+          initialProvider: 'claude-code',
+          initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
+        }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /Medium/ })).toBeTruthy();
+    typeInComposer('hello again');
+    await pressInComposer('Enter');
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ effort: 'medium' })),
+    );
+  });
+
   it('shows a configured model without turning the default into an explicit override', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(

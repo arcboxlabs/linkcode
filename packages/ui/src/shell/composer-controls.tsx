@@ -25,6 +25,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
+import { EFFORT_OPTIONS_BY_ID } from './agent-efforts';
 import type { ModelOption } from './agent-models';
 import { groupModelsByProvider, resolveModel } from './agent-models';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
@@ -216,7 +217,9 @@ export function ModelSelectorMenu({
   const t = useTranslations('workbench.composer');
   const selectedModel = resolveModel(modelOptions, selectedModelId);
   const providerGroups = groupModelsByProvider(modelOptions);
-  const selectedEffort = optionById(effortOptions, selectedEffortId);
+  const selectedEffort =
+    optionById(effortOptions, selectedEffortId) ??
+    (selectedEffortId ? EFFORT_OPTIONS_BY_ID[selectedEffortId] : undefined);
   const providers = selectableProviders ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
   const hasModels = Boolean(modelOptions?.length);

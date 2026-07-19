@@ -101,6 +101,11 @@ describe('ConversationSurface prompt card', () => {
     expect(screen.getByRole('button', { name: /Opus 4.8/ })).toBeTruthy();
   });
 
+  it('shows any reflected normalized effort even when the adapter does not offer it', () => {
+    render(surface(undefined, { ...EMPTY_CONVERSATION, currentEffort: 'max' }));
+    expect(screen.getByRole('button', { name: /Max/ })).toBeTruthy();
+  });
+
   it('hides the composer while a prompt card is visible and preserves its draft', () => {
     const pendingConversation: ConversationViewModel = {
       ...EMPTY_CONVERSATION,

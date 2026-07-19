@@ -213,8 +213,10 @@ function WorkbenchSessionSurface({
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
   const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
+  const newSessionDefaultEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
+  const rememberEffort = useNewSessionDefaultsStore((state) => state.rememberEffort);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
     const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
@@ -296,7 +298,7 @@ function WorkbenchSessionSurface({
       effort: submission.effort,
       modeId: submission.modeId,
     });
-    rememberNewSessionDefaults(submission.kind, submission.workspaceId);
+    rememberNewSessionDefaults(submission.kind, submission.workspaceId, submission.effort);
     // The first input rides behind the started session, like any conversation send.
     void inputMutation.trigger({ sessionId, input: submission.input }).catch(noop);
   }
@@ -354,7 +356,10 @@ function WorkbenchSessionSurface({
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
     // Same contract as handleModelChange: the composer awaits the rejection to keep the old pick.
-    return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(noop);
+    const provider = active?.kind;
+    return effortMutation.trigger({ sessionId: sessions.activeId, effort }).then(() => {
+      if (provider) rememberEffort(provider, effort);
+    });
   }
 
   const directiveControls: ComposerDirectiveControls = {
@@ -523,6 +528,7 @@ function WorkbenchSessionSurface({
       activeSession={active}
       draft={draft}
       newSessionDefaultModels={newSessionDefaultModels}
+      newSessionDefaultEfforts={newSessionDefaultEfforts}
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}

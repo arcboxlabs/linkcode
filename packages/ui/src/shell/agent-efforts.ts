@@ -6,6 +6,17 @@ export interface EffortOption {
   shortLabel: string;
 }
 
+/** Labels for every normalized effort value, independent of which adapter currently offers it.
+ * A provider-reflected value can therefore remain truthful even when it is not selectable there. */
+export const EFFORT_OPTIONS_BY_ID: Readonly<Record<EffortLevel, EffortOption>> = {
+  low: { id: 'low', label: 'Low', shortLabel: 'L' },
+  medium: { id: 'medium', label: 'Medium', shortLabel: 'M' },
+  high: { id: 'high', label: 'High', shortLabel: 'H' },
+  xhigh: { id: 'xhigh', label: 'xHigh', shortLabel: 'xH' },
+  max: { id: 'max', label: 'Max', shortLabel: 'Max' },
+  ultracode: { id: 'ultracode', label: 'Ultracode', shortLabel: 'UC' },
+};
+
 /**
  * Reasoning-effort choices, keyed by adapter — same discipline as `AGENT_MODEL_OPTIONS`: only
  * adapters with a verified live effort switch get an entry.
@@ -18,23 +29,19 @@ export interface EffortOption {
  */
 export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = {
   'claude-code': [
-    { id: 'low', label: 'Low', shortLabel: 'L' },
-    { id: 'medium', label: 'Medium', shortLabel: 'M' },
-    { id: 'high', label: 'High', shortLabel: 'H' },
-    { id: 'xhigh', label: 'xHigh', shortLabel: 'xH' },
-    { id: 'max', label: 'Max', shortLabel: 'Max' },
-    { id: 'ultracode', label: 'Ultracode', shortLabel: 'UC' },
+    EFFORT_OPTIONS_BY_ID.low,
+    EFFORT_OPTIONS_BY_ID.medium,
+    EFFORT_OPTIONS_BY_ID.high,
+    EFFORT_OPTIONS_BY_ID.xhigh,
+    EFFORT_OPTIONS_BY_ID.max,
+    EFFORT_OPTIONS_BY_ID.ultracode,
   ],
   codex: [
-    { id: 'low', label: 'Low', shortLabel: 'L' },
-    { id: 'medium', label: 'Medium', shortLabel: 'M' },
-    { id: 'high', label: 'High', shortLabel: 'H' },
-    { id: 'xhigh', label: 'xHigh', shortLabel: 'xH' },
+    EFFORT_OPTIONS_BY_ID.low,
+    EFFORT_OPTIONS_BY_ID.medium,
+    EFFORT_OPTIONS_BY_ID.high,
+    EFFORT_OPTIONS_BY_ID.xhigh,
   ],
   // Grok Build headless: `--reasoning-effort` high|medium|low (verified 0.2.102).
-  'grok-build': [
-    { id: 'low', label: 'Low', shortLabel: 'L' },
-    { id: 'medium', label: 'Medium', shortLabel: 'M' },
-    { id: 'high', label: 'High', shortLabel: 'H' },
-  ],
+  'grok-build': [EFFORT_OPTIONS_BY_ID.low, EFFORT_OPTIONS_BY_ID.medium, EFFORT_OPTIONS_BY_ID.high],
 };
