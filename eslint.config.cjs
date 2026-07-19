@@ -37,7 +37,6 @@ module.exports = require('eslint-config-sukka').sukka(
     stylistic: false,
     ts: {
       allowDefaultProject: [
-        '*.config.ts',
         // apps/daemon/drizzle.config.ts is intentionally absent: it is included by the daemon's
         // tsconfig (project service), and a file must not appear in both.
         'apps/*/vite.config.ts',
