@@ -3,6 +3,7 @@ import type { AgentCliProbe, DetectedAgentRuntime, ProbeableKind } from './base'
 import { ClaudeCodeProbe } from './claude-code';
 import { CodexProbe } from './codex';
 import { GrokBuildProbe } from './grok-build';
+import { OpencodeProbe } from './opencode';
 import { piSdkPresent } from './pi';
 
 export type DetectedAgentRuntimes = Partial<Record<AgentKind, DetectedAgentRuntime>>;
@@ -28,6 +29,7 @@ export class AgentRuntimeProber {
       new ClaudeCodeProbe(),
       new CodexProbe(),
       new GrokBuildProbe(),
+      new OpencodeProbe(),
     ],
   ) {}
 
@@ -87,8 +89,8 @@ export class AgentRuntimeProber {
 
   /**
    * Availability of every evaluated agent runtime, for the `agent-runtime.list` wire resource;
-   * re-runs the detection probe. opencode is absent until it moves off PATH-spawning (CODE-76);
-   * `source: 'sdk'` entries carry no binary facts (SDK resolution happens only at session start).
+   * re-runs the detection probe. `source: 'sdk'` entries carry no binary facts (SDK resolution
+   * happens only at session start).
    */
   async collect(): Promise<AgentRuntimes> {
     const detected = await this.probe();

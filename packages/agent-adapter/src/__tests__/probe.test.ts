@@ -7,6 +7,7 @@ import {
   ClaudeCodeProbe,
   CodexProbe,
   GrokBuildProbe,
+  OpencodeProbe,
   parseClaudeAuthStatus,
   parseCodexLoginStatus,
 } from '../probe';
@@ -49,6 +50,11 @@ describe('version parsers', () => {
     expect(codex.parseVersion('0.142.4')).toBeUndefined();
     expect(grok.parseVersion('grok 0.2.102 (ab5ebf69acec)\n')).toBe('0.2.102');
     expect(grok.parseVersion('0.2.102')).toBeUndefined();
+    // opencode prints a bare semver — the anchored whole-output shape is the only marker.
+    const opencode = new OpencodeProbe();
+    expect(opencode.parseVersion('1.18.2\n')).toBe('1.18.2');
+    expect(opencode.parseVersion('opencode 1.18.2')).toBeUndefined();
+    expect(opencode.parseVersion('not a version')).toBeUndefined();
   });
 });
 
@@ -211,6 +217,16 @@ describe('AgentCliProbe.knownLocations', () => {
     await expect(new GrokBuildProbe().detect()).resolves.toEqual({
       path: real,
       version: '0.2.102',
+    });
+  });
+
+  it('detects opencode through PATH before its vendor-specific fallbacks', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const real = fakeCli(dir, 'opencode', '1.18.2');
+    vi.stubEnv('PATH', dir);
+    await expect(new OpencodeProbe().detect()).resolves.toEqual({
+      path: real,
+      version: '1.18.2',
     });
   });
 });
