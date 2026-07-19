@@ -8,3 +8,4 @@ export * from './keyboard';
 export { cn } from './lib/cn';
 export * from './render-prefs';
 export * from './shell';
+export * from './thread-groups';

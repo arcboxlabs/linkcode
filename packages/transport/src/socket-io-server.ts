@@ -32,7 +32,7 @@ export interface SocketIoServer extends TransportServer {
 
 class SocketIoServerConnection extends WireConnection {
   constructor(private readonly socket: Socket) {
-    super('SocketIoServer');
+    super();
     // The Socket.IO connection is already live when handed to us, so emitClosed is armed up front.
     this.armClosedListener();
 

@@ -267,6 +267,9 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Streamed text length per item id: converts `item/completed` full texts into the missing
    * remainder (delta backstop), and suppresses re-emitting reasoning that already streamed. */
   private readonly streamedTextLen = new Map<string, number>();
+  /** The contextCompaction item announced by item/started but not yet settled by item/completed.
+   * Teardown settles it so an interrupted turn never strands a live "compacting…" row. */
+  private pendingCompactionId: string | null = null;
   /** Latched on the first 401; cleared when a fresh server spawns. The process caches credentials
    * for its whole lifetime (verified live — an `auth.json` written after spawn is never re-read),
    * so the flag both dedupes the retry storm's banners and marks this server unrecoverable in place. */
@@ -961,9 +964,31 @@ export class CodexAdapter extends BaseAgentAdapter {
         if (text) this.emitAssistantText(text, asMessageId(id));
         break;
       }
+      case 'contextCompaction': {
+        // The item carries only its id (ThreadItem::ContextCompaction — no tokens or summary),
+        // so started vs completed is the whole payload; consumers merge by compactionId.
+        this.pendingCompactionId = completed ? null : id;
+        this.emit({
+          type: 'compaction',
+          compactionId: id,
+          status: completed ? 'completed' : 'in_progress',
+        });
+        break;
+      }
       default:
         break;
     }
+  }
+
+  protected override teardown(): void {
+    // item/completed can be lost to an interrupt or server death mid-compaction; settle the
+    // marker rather than stranding a live "compacting…" row past the turn.
+    const pending = this.pendingCompactionId;
+    if (pending !== null) {
+      this.pendingCompactionId = null;
+      this.emit({ type: 'compaction', compactionId: pending, status: 'completed' });
+    }
+    super.teardown();
   }
 
   /** Answer an approval request through the shared permission round-trip. The tool card with the

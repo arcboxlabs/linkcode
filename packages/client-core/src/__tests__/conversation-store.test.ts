@@ -1,4 +1,4 @@
-import type { AgentEvent, SessionId } from '@linkcode/schema';
+import type { AgentEvent, MessageId, SessionId } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
 import { createConversationStore } from '../conversation-store';
@@ -106,6 +106,61 @@ describe('createConversationStore', () => {
     // No duplicates either: the seedable prompt/announce inside the cut fold only from the seed.
     expect(conversation.items.filter((i) => i.kind === 'message')).toHaveLength(1);
     expect(conversation.items.filter((i) => i.kind === 'tool')).toHaveLength(1);
+    close();
+  });
+
+  // CODE-272: mid-turn, the transcript lags the live stream — the in-flight reply has no
+  // transcript row yet, so a reseed (focus/reconnect revalidation) must keep its live chunks
+  // even though they fall inside the cut, or the rendered answer collapses to a suffix.
+  it('keeps live chunks of a streaming message the snapshot has not flushed yet', async () => {
+    const { client, send, close } = await harness();
+    const chunk = (text: string): AgentEvent => ({
+      type: 'agent-message-chunk',
+      messageId: 'm1' as MessageId,
+      content: { type: 'text', text },
+    });
+    send(userText('tell a story'));
+    send({ type: 'status', status: 'running' });
+    send(chunk('Once upon '));
+    send(chunk('a time'));
+    await tick();
+
+    // Read resolved mid-turn: the snapshot has the prompt, not the streaming reply.
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('tell a story') }],
+      uptoSeq: 4,
+    });
+    send(chunk(', the end.'));
+    await tick();
+
+    const messages = store.getSnapshot().items.filter((i) => i.kind === 'message');
+    expect(messages).toHaveLength(2);
+    expect(messages[1].blocks).toEqual([{ type: 'text', text: 'Once upon a time, the end.' }]);
+    close();
+  });
+
+  it('keeps an in-flight tool call the snapshot has not flushed yet', async () => {
+    const { client, send, close } = await harness();
+    const announce: AgentEvent = {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 't1',
+        title: 'Bash',
+        kind: 'execute',
+        status: 'in_progress',
+        content: [],
+      },
+    };
+    send(userText('run echo'));
+    send(announce);
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('run echo') }],
+      uptoSeq: 2,
+    });
+    const items = store.getSnapshot().items;
+    expect(items.filter((i) => i.kind === 'tool')).toHaveLength(1);
     close();
   });
 

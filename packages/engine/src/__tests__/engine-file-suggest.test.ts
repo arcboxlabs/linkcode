@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { AgentAdapter } from '@linkcode/agent-adapter';
-import type { SessionId, WireMessage, WirePayload } from '@linkcode/schema';
+import type { SessionId, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
@@ -38,10 +38,10 @@ function fakeAdapter(): AgentAdapter {
 
 function harness(store: SessionStore = new InMemorySessionStore()) {
   const sent: WirePayload[] = [];
-  let handler: ((msg: WireMessage) => void) | null = null;
+  let handler: ((msg: ValidatedWireMessage) => void) | null = null;
   const transport: Transport = {
     connect: () => Promise.resolve(),
-    send(msg: WireMessage) {
+    send(msg: ValidatedWireMessage) {
       sent.push(msg.payload);
     },
     onMessage(cb) {

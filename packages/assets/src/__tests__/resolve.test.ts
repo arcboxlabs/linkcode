@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { AssetDescriptor } from '../catalog';
-import { CATALOG } from '../catalog';
+import { CATALOG, isClosureDescriptor } from '../catalog';
 import { UnsupportedPlatformError } from '../errors';
 import { resolveArtifact } from '../resolve';
 import { startLocalServer } from './helpers/local-server';
 
+const tectonic = CATALOG['tool:tectonic'];
+if (isClosureDescriptor(tectonic)) throw new Error('expected a binary descriptor');
+
 describe('resolveArtifact', () => {
   it('passes baked artifacts through untouched', async () => {
-    const artifact = await resolveArtifact(CATALOG['tool:tectonic'], '0.16.9', {
+    const artifact = await resolveArtifact(tectonic, '0.16.9', {
       platform: 'darwin-arm64',
     });
     expect(artifact.urls).toHaveLength(1);
@@ -57,8 +60,8 @@ describe('resolveArtifact', () => {
   });
 
   it('rejects platforms the asset does not describe', async () => {
-    await expect(
-      resolveArtifact(CATALOG['tool:tectonic'], '0.16.9', { platform: 'win32-arm64' }),
-    ).rejects.toThrow(UnsupportedPlatformError);
+    await expect(resolveArtifact(tectonic, '0.16.9', { platform: 'win32-arm64' })).rejects.toThrow(
+      UnsupportedPlatformError,
+    );
   });
 });

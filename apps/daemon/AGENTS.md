@@ -65,7 +65,9 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   it subscribes to the AssetManager and forwards install progress to clients
   (`asset.progress`/`asset.settled`), re-probing and pushing `agent-runtime.changed` when an
   agent install completes (CODE-112). opencode self-spawns the `opencode` command via PATH
-  (CODE-76); pi runs in-process and spawns nothing.
+  (CODE-76); pi runs in-process and spawns nothing — its SDK is a managed npm-closure download
+  (CODE-219): packaged apps exclude the closure from node_modules and the adapter imports the
+  store's installed entry (`agentRuntimeProber.resolveEntry`), same consent/refresh rules.
 - **PTY sidecar** is a Rust binary (`linkcode-pty`, `pnpm -F @linkcode/daemon run build:rust`);
   the resolution order and degradation strings live in `docs/DEVELOPMENT.md` (Rust PTY sidecar +
   terminal triage). Treat the framed-stdio protocol as hostile; its design lives in
@@ -84,7 +86,10 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   own `node_modules`, runnable anywhere as `node --import ./dist/instrument.js dist/index.js`. This is
   distinct from the desktop bundle: it targets **plain Node** (better-sqlite3 keeps its prebuild-install
   binary — a **same-platform** artifact, build per target), and it prunes the host-arch agent CLI
-  platform packages (the daemon downloads them at runtime via `@linkcode/assets`, as the desktop does).
+  platform packages (the daemon downloads them at runtime via `@linkcode/assets`, as the desktop
+  does). The pi npm closure needs no prune (CODE-219): its SDK is a devDependency of
+  agent-adapter, so the `--prod` deploy never materializes it — the daemon downloads the managed
+  closure on first use.
   Terminals need `LINKCODE_PTY_SIDECAR_PATH` pointed at a built `linkcode-pty`, else they degrade.
   The package `files: ["dist", "drizzle"]` keeps the deploy (and any pack) to runtime files only —
   no `src`/configs — while the `dependencies` field still drives the full runtime closure; this is

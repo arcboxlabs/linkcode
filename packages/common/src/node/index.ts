@@ -10,6 +10,9 @@ import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime-const
  * bundles. The tsconfig base sets `types: []` — the reference above opts in the Node globals.
  */
 
+export { executableSearchLocations } from './executable-locations';
+export * from './windows-path';
+
 /** Parse a JSON file, or `null` when it is missing, unreadable, or malformed. */
 export function readJsonFileSync(path: string): unknown {
   try {

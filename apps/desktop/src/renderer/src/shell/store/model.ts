@@ -100,10 +100,12 @@ export const BOTTOM_PANEL_MIN_SIZE = 150;
 export const BOTTOM_PANEL_MAX_SIZE = 560;
 export const MIN_MAIN_SIZE = 360;
 
+/* 8px grid; sidebarW + the 824px chat column (max-w-3xl + px-7) + rightW is the first-launch
+ * window width cap (1560) in main/window-state.ts. */
 export const DEFAULT_LAYOUT: LayoutState = {
-  sidebarW: 286,
+  sidebarW: 288,
   rightW: 440,
-  bottomH: 230,
+  bottomH: 240,
 };
 
 export const PANEL_EXPANSION_TARGET: Record<PanelSide, PanelExpansionTarget> = {
@@ -184,6 +186,27 @@ export function createTab(type: PanelWindowType): PanelTab {
 export function createRightTerminalTab(): PanelSectionTab {
   tabSequence += 1;
   return { id: `right-terminal-${tabSequence}` };
+}
+
+/** The terminal section never comes forward empty: seed a first PTY tab (same as pressing +). */
+export function seedTerminalSection(terminal: RightPanelTerminalState): RightPanelTerminalState {
+  if (terminal.tabs.length > 0) return terminal;
+  const tab = createRightTerminalTab();
+  return { tabs: [tab], activeTabId: tab.id };
+}
+
+/** Brings `section` forward, seeding the terminal section's first tab when it becomes visible. */
+export function revealSectionState(
+  panel: RightPanelState,
+  section: PanelSection,
+  open: boolean,
+): RightPanelState {
+  return {
+    ...panel,
+    open,
+    activeSection: section,
+    terminal: open && section === 'terminal' ? seedTerminalSection(panel.terminal) : panel.terminal,
+  };
 }
 
 export function createRightFileTab(path: string): FileSectionTab {
@@ -399,14 +422,15 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
           .map((path) => createRightFileTab(path));
         const activeFileIndex =
           fileTabs.length > 0 ? clamp(activeFileTabIndex, 0, fileTabs.length - 1) : 0;
+        const terminal = {
+          tabs,
+          activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
+        };
 
         return {
           open,
           activeSection,
-          terminal: {
-            tabs,
-            activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
-          },
+          terminal: open && activeSection === 'terminal' ? seedTerminalSection(terminal) : terminal,
           files: {
             tabs: fileTabs,
             activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,

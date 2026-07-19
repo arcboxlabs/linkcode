@@ -18,6 +18,7 @@ import type {
   SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { MessageParam } from '@anthropic-ai/sdk/resources';
+import { toHostPath } from '@linkcode/common/node';
 import type {
   AgentCommand,
   AgentEvent,
@@ -41,6 +42,7 @@ import type {
   SupportedAttachmentImageMimeType,
   ToolCall,
   ToolCallContent,
+  ToolCallLocation,
   UsageRateLimitWindow,
   UsageReport,
 } from '@linkcode/schema';
@@ -69,6 +71,7 @@ import {
   numberField,
   stringField,
   textHistoryEvent,
+  thoughtHistoryEvent,
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
@@ -650,6 +653,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
         // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
         forwardSubagentText: true,
+        // Opus 4.6+ models default `thinking.display` to 'omitted' at the API — thinking blocks
+        // arrive with EMPTY text (signature only), so no thought event would ever carry content
+        // (CODE-273). The TUI shows thinking because interactive mode requests summaries; SDK mode
+        // must ask explicitly. Ride the raw `--thinking-display` flag rather than the typed
+        // `options.thinking`, which would also pin `--thinking adaptive` and override the CLI's
+        // per-model thinking resolution (verified live on the 0.3.206 × 2.1.212 pair).
+        extraArgs: { 'thinking-display': 'summarized' },
         // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
         hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
         canUseTool: this.canUseTool,
@@ -1085,7 +1095,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           status: 'in_progress',
           content: diff,
           rawInput: block.input,
-          locations: locationsFromToolInput(block.input),
+          locations: hostLocationsFromToolInput(block.input),
         });
         calledTool = true;
       }
@@ -1115,7 +1125,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           status: 'in_progress',
           content: diff,
           rawInput: block.input,
-          locations: locationsFromToolInput(block.input),
+          locations: hostLocationsFromToolInput(block.input),
         });
       } else if (block.type === 'text') {
         this.emitAssistantText(block.text, asMessageId(uuid), parent);
@@ -1188,6 +1198,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 }
 
+/** `locationsFromToolInput` with the CLI's MSYS drive-form spellings (`/c/…`, reported when it
+ * routes through Git Bash on Windows) rewritten to native form. Claude-scoped on purpose: no
+ * other adapter is confirmed to emit the form. */
+function hostLocationsFromToolInput(input: unknown): ToolCallLocation[] | undefined {
+  return locationsFromToolInput(input)?.map((location) => ({
+    ...location,
+    path: toHostPath(location.path),
+  }));
+}
+
 /**
  * Surface Edit/Write inputs (which carry the exact patch) as structured diff content so the UI
  * renders a diff instead of raw input JSON; Write has no oldText (whole-file, renders all-added).
@@ -1200,12 +1220,13 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
     if (typeof path !== 'string' || typeof oldText !== 'string' || typeof newText !== 'string') {
       return undefined;
     }
-    return [{ type: 'diff', path, oldText, newText }];
+    // The CLI on Windows reports MSYS drive-form paths (`/c/…`) — rewrite to native form.
+    return [{ type: 'diff', path: toHostPath(path), oldText, newText }];
   }
   if (toolName === 'Write') {
     const { file_path: path, content: newText } = input;
     if (typeof path !== 'string' || typeof newText !== 'string') return undefined;
-    return [{ type: 'diff', path, newText }];
+    return [{ type: 'diff', path: toHostPath(path), newText }];
   }
   return undefined;
 }
@@ -1524,6 +1545,20 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
+      // Thinking replays as thought chunks under `${uuid}:think` — the id the live subagent path
+      // already emits, so live-forwarded and cold-replayed thinking converge. Pre-CODE-273
+      // transcripts store empty thinking text; the helper's empty-drop rule skips those.
+      for (const block of blocks) {
+        if (!isThinkingBlock(block)) continue;
+        const thought = thoughtHistoryEvent(
+          historyId,
+          `${message.uuid}:think`,
+          block.thinking,
+          ts,
+          parent,
+        );
+        if (thought) events.push(thought);
+      }
       const text = textHistoryEvent(
         historyId,
         'assistant',
@@ -1596,6 +1631,11 @@ interface ClaudeToolResultBlock {
   content?: unknown;
 }
 
+interface ClaudeThinkingBlock {
+  type: 'thinking';
+  thinking: string;
+}
+
 function messageContentBlocks(message: unknown): unknown[] {
   if (!isRecord(message)) return [];
   const content = message.content;
@@ -1620,4 +1660,8 @@ function isToolResultBlock(block: unknown): block is ClaudeToolResultBlock {
     typeof block.tool_use_id === 'string' &&
     block.tool_use_id.length > 0
   );
+}
+
+function isThinkingBlock(block: unknown): block is ClaudeThinkingBlock {
+  return isRecord(block) && block.type === 'thinking' && typeof block.thinking === 'string';
 }

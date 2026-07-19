@@ -12,7 +12,7 @@ import {
   PINNED_THREAD_GROUP_KEY,
   UNREGISTERED_THREAD_GROUP_KEY,
   withoutAutomationSessions,
-} from '../group-threads';
+} from '../thread-groups';
 
 describe('groupThreadsByWorkspace', () => {
   it('aligns sessions to workspaces via normalizeCwdKey, ignoring a trailing separator', () => {

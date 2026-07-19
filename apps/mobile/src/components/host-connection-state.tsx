@@ -21,11 +21,11 @@ export function HostConnectionState({
       {status === 'connecting' ? (
         <>
           <Spinner />
-          <Text className="text-[15px] text-muted">{t('connecting')}</Text>
+          <Text className="text-body text-muted">{t('connecting')}</Text>
         </>
       ) : (
         <>
-          <Text className="text-center text-[15px] text-foreground">{t('error', { url })}</Text>
+          <Text className="text-center text-body text-foreground">{t('error', { url })}</Text>
           <Button onPress={onRetry}>
             <Button.Label>{t('retry')}</Button.Label>
           </Button>

@@ -16,7 +16,7 @@ export const TERMINAL_FONT_SUGGESTIONS = [
 ] as const;
 export const DEFAULT_TERMINAL_FONT_FAMILY = '';
 
-/** Terminal font size in CSS pixels. */
+/** Terminal glyph em size in CSS pixels (restty runs in `fontSizeMode: 'em'`). */
 export const TERMINAL_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20] as const;
 export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
 export const DEFAULT_TERMINAL_FONT_SIZE = 13;

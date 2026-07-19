@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { SessionEntry, SessionInfo } from '@earendil-works/pi-coding-agent';
 import type {
   AgentHistoryEvent,
@@ -24,6 +25,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
+import { agentRuntimeProber } from '../../probe';
 import { locationsFromToolInput, toolKindFromName } from '../../util';
 
 /**
@@ -37,9 +39,15 @@ export type PiSdk = typeof import('@earendil-works/pi-coding-agent');
 
 /** Plain import, not `loadSdk`: history calls run on never-started adapter instances where the
  * sdk-unavailable error event has no listeners — the rejection reaching HistoryService is the
- * whole story. */
+ * whole story. Resolves the managed closure entry first (the packaged source, CODE-219), then
+ * node_modules self-resolution (dev/standalone). The entry import is type-erased by the dynamic
+ * path; the closure manifest is lockfile-generated, so its bytes match the compiled-against
+ * types. */
 export function importPiSdk(): Promise<PiSdk> {
-  return import('@earendil-works/pi-coding-agent');
+  const managed = agentRuntimeProber.resolveEntry('pi');
+  return (
+    managed ? import(pathToFileURL(managed.path).href) : import('@earendil-works/pi-coding-agent')
+  ) as Promise<PiSdk>;
 }
 
 export async function listPiHistory(

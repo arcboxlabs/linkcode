@@ -524,6 +524,7 @@ export function DesktopShell({
       style={shellStyle}
       data-shell-horizontal-animating={horizontalAnimating ? '' : undefined}
       data-shell-vertical-animating={verticalAnimating ? '' : undefined}
+      data-shell-seam={sidebarTransition.paneVisible ? '' : undefined}
     >
       <DesktopChrome
         header={header}

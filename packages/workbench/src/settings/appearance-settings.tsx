@@ -29,6 +29,8 @@ export function AppearanceSettingsContainer({
   const setUiFont = useAppearancePrefsStore((state) => state.setUiFont);
   const codeFont = useAppearancePrefsStore((state) => state.codeFont);
   const setCodeFont = useAppearancePrefsStore((state) => state.setCodeFont);
+  const filesTreeSide = useAppearancePrefsStore((state) => state.filesTreeSide);
+  const setFilesTreeSide = useAppearancePrefsStore((state) => state.setFilesTreeSide);
 
   return (
     <AppearanceSettingsPanel
@@ -46,6 +48,8 @@ export function AppearanceSettingsContainer({
       onUiFontChange={setUiFont}
       codeFont={codeFont}
       onCodeFontChange={setCodeFont}
+      filesTreeSide={filesTreeSide}
+      onFilesTreeSideChange={setFilesTreeSide}
     />
   );
 }

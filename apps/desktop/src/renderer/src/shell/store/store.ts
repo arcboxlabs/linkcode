@@ -22,6 +22,8 @@ import {
   PersistedDesktopShellStateSchema,
   pushExpandedPanel,
   removeExpandedPanel,
+  revealSectionState,
+  seedTerminalSection,
   serializeDesktopShellState,
 } from './model';
 
@@ -102,7 +104,14 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
                 expansionStack: open
                   ? current.expansionStack
                   : removeExpandedPanel(current.expansionStack, side),
-                rightPanel: { ...current.rightPanel, open },
+                rightPanel: {
+                  ...current.rightPanel,
+                  open,
+                  terminal:
+                    open && current.rightPanel.activeSection === 'terminal'
+                      ? seedTerminalSection(current.rightPanel.terminal)
+                      : current.rightPanel.terminal,
+                },
               };
             }
 
@@ -201,14 +210,14 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
         setActiveSection(section) {
           updateShellState((current) => ({
             ...current,
-            rightPanel: { ...current.rightPanel, activeSection: section },
+            rightPanel: revealSectionState(current.rightPanel, section, current.rightPanel.open),
           }));
         },
 
         openRightPanelSection(section) {
           updateShellState((current) => ({
             ...current,
-            rightPanel: { ...current.rightPanel, open: true, activeSection: section },
+            rightPanel: revealSectionState(current.rightPanel, section, true),
           }));
         },
 

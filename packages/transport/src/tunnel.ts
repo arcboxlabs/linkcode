@@ -1,4 +1,4 @@
-import type { WireMessage } from '@linkcode/schema';
+import type { ValidatedWireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
 import { Listeners } from './transport';
@@ -17,7 +17,7 @@ export type TunnelTransportServerOptions = Omit<TunnelClientOptions, 'role'>;
  */
 export class TunnelTransport implements Transport {
   private readonly client: TunnelClient;
-  private readonly inbound = new Listeners<WireMessage>();
+  private readonly inbound = new Listeners<ValidatedWireMessage>();
 
   constructor(opts: TunnelTransportOptions) {
     this.client = new TunnelClient(opts);
@@ -48,15 +48,11 @@ export class TunnelTransport implements Transport {
     return this.client.connect();
   }
 
-  send(msg: WireMessage): void {
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`TunnelTransport: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.client.send(JSON.stringify(parsed.data));
+  send(msg: ValidatedWireMessage): void {
+    this.client.send(JSON.stringify(msg));
   }
 
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe {
     return this.inbound.add(cb);
   }
 
@@ -70,7 +66,7 @@ export class TunnelTransport implements Transport {
 }
 
 class TunnelPeerTransport implements Transport {
-  private readonly inbound = new Listeners<WireMessage>();
+  private readonly inbound = new Listeners<ValidatedWireMessage>();
   private readonly closed = new Listeners<void>();
   private ended = false;
 
@@ -92,15 +88,11 @@ class TunnelPeerTransport implements Transport {
     return Promise.resolve();
   }
 
-  send(msg: WireMessage): void {
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`TunnelPeerTransport: invalid WireMessage: ${parsed.error.message}`);
-    }
-    this.peer.send(JSON.stringify(parsed.data));
+  send(msg: ValidatedWireMessage): void {
+    this.peer.send(JSON.stringify(msg));
   }
 
-  onMessage(cb: (msg: WireMessage) => void): Unsubscribe {
+  onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe {
     return this.inbound.add(cb);
   }
 

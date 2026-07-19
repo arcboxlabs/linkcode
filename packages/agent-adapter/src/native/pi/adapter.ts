@@ -191,10 +191,7 @@ export class PiAdapter extends BaseAgentAdapter {
   }
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    const pi = await this.loadSdk(
-      '@earendil-works/pi-coding-agent',
-      () => import('@earendil-works/pi-coding-agent'),
-    );
+    const pi = await this.loadSdk('@earendil-works/pi-coding-agent', importPiSdk);
     // Initial picks from the new-session surface; invalid values degrade with an error event
     // rather than failing session creation (same posture as a stale explicit model below).
     if (opts.approvalPolicyId) {

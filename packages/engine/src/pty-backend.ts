@@ -18,6 +18,8 @@ export interface PtyOpenOptions {
   args?: string[];
   /** Extra environment merged over the inherited one (engine-internal, e.g. the script env contract). */
   env?: Record<string, string>;
+  /** Initial PTY read-credit budget in bytes; unset spawns an unthrottled terminal. */
+  credit?: number;
 }
 
 /** A live PTY. Data crosses this boundary as UTF-8 strings — the backend owns the streaming
@@ -29,6 +31,9 @@ export interface PtyProcess {
   onExit(cb: (exitCode: number | null) => void): Unsubscribe;
   write(data: string): void;
   resize(cols: number, rows: number): void;
+  /** Grant additional read budget to a terminal opened with `credit` (no-op otherwise). A backend
+   * with no flow control may implement this as a no-op; output then flows unthrottled. */
+  grantRead(bytes: number): void;
   kill(): void;
 }
 
