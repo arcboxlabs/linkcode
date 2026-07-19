@@ -14,7 +14,7 @@ import {
 } from 'lexical';
 import { createRef } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ComposerHandle } from '../composer';
+import type { ComposerDirectiveControls, ComposerHandle } from '../composer';
 import { Composer } from '../composer';
 import {
   composerLexicalEditor,
@@ -67,18 +67,25 @@ function composer({
 } = {}): React.ReactNode {
   return (
     <Composer
-      agentCapabilities={{ shellCommand: false, slashCommands: true }}
-      agentCommands={COMMANDS}
       agentKind={agentKind}
       attachmentsSupported={agentKind !== undefined}
       availableModes={MODES}
       currentModeId={null}
       contextBar={contextBar}
       disabled={disabled}
+      directiveControls={
+        {
+          shell: { state: 'unsupported' },
+          slash: {
+            commands: COMMANDS,
+            onInvokeCommand: onInvokeCommand ?? vi.fn(),
+            state: 'ready',
+          },
+        } satisfies ComposerDirectiveControls
+      }
       handleRef={handleRef}
       isRunning={false}
       mentionItems={mentionItems}
-      onInvokeCommand={onInvokeCommand}
       onMentionQueryChange={onMentionQueryChange}
       onModeChange={vi.fn().mockResolvedValue(undefined)}
       onSend={onSend}

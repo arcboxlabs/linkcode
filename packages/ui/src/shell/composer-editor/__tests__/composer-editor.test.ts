@@ -1,4 +1,5 @@
 import { createHeadlessEditor } from '@lexical/headless';
+import { noop } from 'foxts/noop';
 import type { LexicalEditor, NodeKey } from 'lexical';
 import {
   $createLineBreakNode,
@@ -10,7 +11,7 @@ import {
   HISTORIC_TAG,
 } from 'lexical';
 import { describe, expect, it } from 'vitest';
-import type { ComposerDirectiveState } from '../directive-state';
+import type { ComposerDirectiveControls, ComposerDirectiveState } from '../directive-state';
 import {
   $createCommandNode,
   $createMentionNode,
@@ -31,10 +32,14 @@ import {
 import { $normalizeDirectiveTokens, registerDirectiveTokenizer } from '../tokenize';
 
 const COMMANDS = [{ aliases: ['cost'], name: 'usage' }, { name: 'review' }];
+const READY_DIRECTIVE_CONTROLS: ComposerDirectiveControls = {
+  shell: { state: 'ready', onRunShellCommand: noop },
+  slash: { state: 'ready', commands: COMMANDS, onInvokeCommand: noop },
+};
 
 function createEditor(
-  getState: () => Pick<ComposerDirectiveState, 'commands' | 'suppressed'> = () => ({
-    commands: COMMANDS,
+  getState: () => Pick<ComposerDirectiveState, 'directiveControls' | 'suppressed'> = () => ({
+    directiveControls: READY_DIRECTIVE_CONTROLS,
     suppressed: new Set(),
   }),
 ): LexicalEditor {
@@ -90,17 +95,10 @@ function triggerAtEnd(editor: LexicalEditor, draft: string): void {
 }
 
 function directiveState(
-  over: Partial<ComposerDirectiveState> = {},
-): Pick<
-  ComposerDirectiveState,
-  'commands' | 'commandsSupported' | 'deferCommandValidation' | 'shellEnabled'
-> {
+  over: Partial<ComposerDirectiveControls> = {},
+): Pick<ComposerDirectiveState, 'directiveControls'> {
   return {
-    commands: COMMANDS,
-    commandsSupported: true,
-    deferCommandValidation: false,
-    shellEnabled: true,
-    ...over,
+    directiveControls: { ...READY_DIRECTIVE_CONTROLS, ...over },
   };
 }
 
@@ -123,7 +121,10 @@ describe('directive tokenizer', () => {
 
     editor.update(
       () =>
-        $normalizeDirectiveTokens({ commands: COMMANDS, suppressed: new Set() }, { force: true }),
+        $normalizeDirectiveTokens(
+          { directiveControls: READY_DIRECTIVE_CONTROLS, suppressed: new Set() },
+          { force: true },
+        ),
       { discrete: true },
     );
     expect(draftShape(editor)).toEqual(['composer-command']);
@@ -178,10 +179,17 @@ describe('directive tokenizer', () => {
 
   it('keeps converted directive occurrences editable without suppressing later tokens', () => {
     const suppressed = new Set<NodeKey>();
-    const editor = createEditor(() => ({ commands: COMMANDS, suppressed }));
+    const editor = createEditor(() => ({
+      directiveControls: READY_DIRECTIVE_CONTROLS,
+      suppressed,
+    }));
     setDraft(editor, '/typo');
     editor.update(
-      () => $normalizeDirectiveTokens({ commands: COMMANDS, suppressed }, { force: true }),
+      () =>
+        $normalizeDirectiveTokens(
+          { directiveControls: READY_DIRECTIVE_CONTROLS, suppressed },
+          { force: true },
+        ),
       { discrete: true },
     );
     editor.update(
@@ -223,7 +231,10 @@ describe('directive tokenizer', () => {
 
   it('keeps more than one converted occurrence as prose', () => {
     const suppressed = new Set<NodeKey>();
-    const editor = createEditor(() => ({ commands: COMMANDS, suppressed }));
+    const editor = createEditor(() => ({
+      directiveControls: READY_DIRECTIVE_CONTROLS,
+      suppressed,
+    }));
     editor.update(
       () => {
         const paragraph = $createParagraphNode();
@@ -245,7 +256,10 @@ describe('directive tokenizer', () => {
           const converted = $convertDirectiveToText(child.getKey());
           if (converted) suppressed.add(converted);
         }
-        $normalizeDirectiveTokens({ commands: COMMANDS, suppressed }, { force: true });
+        $normalizeDirectiveTokens(
+          { directiveControls: READY_DIRECTIVE_CONTROLS, suppressed },
+          { force: true },
+        );
       },
       { discrete: true },
     );
@@ -375,14 +389,23 @@ describe('$draftDirective', () => {
     expect(directive).toMatchObject({ kind: 'command', name: 'cost', status: 'supported' });
   });
 
-  it('marks unknown and unsupported commands', () => {
+  it('distinguishes loading, authoritative unknown, and unsupported commands', () => {
     const editor = createEditor();
     setDraft(editor, '/typo x');
     expect(editor.read(() => $draftDirective(directiveState()))).toMatchObject({
       status: 'unknown',
     });
     expect(
-      editor.read(() => $draftDirective(directiveState({ commandsSupported: false }))),
+      editor.read(() =>
+        $draftDirective(
+          directiveState({
+            slash: { state: 'loading', onInvokeCommand: noop },
+          }),
+        ),
+      ),
+    ).toMatchObject({ status: 'supported' });
+    expect(
+      editor.read(() => $draftDirective(directiveState({ slash: { state: 'unsupported' } }))),
     ).toMatchObject({ status: 'unsupported' });
   });
 
@@ -395,7 +418,7 @@ describe('$draftDirective', () => {
       status: 'supported',
     });
     expect(
-      editor.read(() => $draftDirective(directiveState({ shellEnabled: false }))),
+      editor.read(() => $draftDirective(directiveState({ shell: { state: 'unsupported' } }))),
     ).toMatchObject({ status: 'unsupported' });
   });
 

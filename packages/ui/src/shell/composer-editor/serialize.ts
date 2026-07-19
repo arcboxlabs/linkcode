@@ -331,10 +331,7 @@ type DraftDirective =
  * no silent string-prefix parsing path anymore.
  */
 export function $draftDirective(
-  state: Pick<
-    ComposerDirectiveState,
-    'commands' | 'commandsSupported' | 'deferCommandValidation' | 'shellEnabled'
-  >,
+  state: Pick<ComposerDirectiveState, 'directiveControls'>,
 ): DraftDirective {
   const root = $getRoot();
   const text = root.getTextContent();
@@ -353,11 +350,15 @@ export function $draftDirective(
       args: text.slice(leading.name.length + 1).trim(),
       kind: 'command',
       name: leading.name,
-      status: commandStatus(leading.name, state),
+      status: commandStatus(leading.name, state.directiveControls.slash),
     };
   }
   if (leading?.kind === 'shell') {
-    return { command: text.slice(1).trim(), kind: 'shell', status: shellStatus(state) };
+    return {
+      command: text.slice(1).trim(),
+      kind: 'shell',
+      status: shellStatus(state.directiveControls.shell),
+    };
   }
   return { kind: 'text', text: text.trim() };
 }

@@ -60,8 +60,14 @@ import {
 } from './composer-controls';
 import type { ComposerDirectiveIssue } from './composer-editor/directive-hint';
 import { ComposerDirectiveHint } from './composer-editor/directive-hint';
-import type { DirectiveStatus } from './composer-editor/directive-state';
-import { commandStatus, directiveStateFor, shellStatus } from './composer-editor/directive-state';
+import type { ComposerDirectiveControls, DirectiveStatus } from './composer-editor/directive-state';
+import {
+  commandCatalog,
+  commandStatus,
+  directiveStateFor,
+  shellStatus,
+  UNSUPPORTED_COMPOSER_DIRECTIVES,
+} from './composer-editor/directive-state';
 import type { ComposerDraftSnapshot } from './composer-editor/editor';
 import { ComposerEditor, EMPTY_DRAFT_SNAPSHOT } from './composer-editor/editor';
 import { $createCommandNode, $createMentionNode } from './composer-editor/nodes';
@@ -80,17 +86,20 @@ import { movePlusCommandStart } from './composer-plus-search';
 import { DEFAULT_MODE_ID, STUB_SESSION_MODES } from './session-modes';
 
 export type { MentionItem } from './composer-command';
+export type {
+  ComposerDirectiveControls,
+  ComposerShellCommandControls,
+  ComposerSlashCommandControls,
+} from './composer-editor/directive-state';
+export { UNSUPPORTED_COMPOSER_DIRECTIVES } from './composer-editor/directive-state';
 
 function liveDirectiveStatus(
   directive: EditorDirective,
-  commands: readonly AgentCommand[],
-  commandsSupported: boolean,
-  deferCommandValidation: boolean,
-  shellEnabled: boolean,
+  directiveControls: ComposerDirectiveControls,
 ): DirectiveStatus {
   return directive.kind === 'command'
-    ? commandStatus(directive.name, { commands, commandsSupported, deferCommandValidation })
-    : shellStatus({ shellEnabled });
+    ? commandStatus(directive.name, directiveControls.slash)
+    : shellStatus(directiveControls.shell);
 }
 
 /** Imperative surface for callers outside the composer tree (e.g. artifact
@@ -134,24 +143,20 @@ export interface ComposerProps {
   /** The reasoning-effort level the session is running at, reflected from `effort-update`; same
    * placeholder rule as `currentModel`. */
   currentEffort?: EffortLevel | null;
-  /** Slash-command catalog reflected from `available-commands-update`. Empty or absent → the `/`
-   * menu offers no command entries and a typed leading `/name` chips as unknown/unsupported,
-   * blocking send until corrected or explicitly converted to text. */
+  /** Executable directive contract. Loading slash catalogs accept typed commands for host-side
+   * validation; ready catalogs are authoritative, including an empty catalog. */
+  directiveControls?: ComposerDirectiveControls;
+  /** Legacy migration inputs; shells should pass `directiveControls` as one executable contract. */
   agentCommands?: AgentCommand[] | null;
+  agentCapabilities?: AgentCapabilities | null;
+  deferCommandValidation?: boolean;
+  onInvokeCommand?: (name: string, args?: string) => void;
+  onRunShellCommand?: (command: string) => void;
   /** The session's adapter-advertised model catalog, reflected from `available-models-update`
    * (install-dependent agents like opencode). Takes precedence over the static per-kind table;
    * empty or absent falls back to that table. */
   agentModels?: AgentModelOption[] | null;
-  /** Stable input features advertised by the live adapter session. */
-  agentCapabilities?: AgentCapabilities | null;
-  /** A new session has no command catalog yet; defer validation to the host after creation. */
-  deferCommandValidation?: boolean;
   onSend: (content: ContentBlock[]) => void;
-  /** Sends a catalog command invocation; absent, a command draft cannot submit (directives never
-   * silently degrade to `onSend` text). */
-  onInvokeCommand?: (name: string, args?: string) => void;
-  /** Sends a `$`-prefixed shell passthrough when the session advertises it. */
-  onRunShellCommand?: (command: string) => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
@@ -178,7 +183,6 @@ export interface ComposerProps {
 }
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
-const EMPTY_AGENT_COMMANDS: AgentCommand[] = [];
 
 function attachmentPayloadBytes(attachments: readonly ComposerAttachment[]): number {
   return attachments.reduce(
@@ -202,10 +206,10 @@ export function Composer({
   approvalPolicy,
   currentModel,
   currentEffort,
+  directiveControls,
   agentCommands,
-  agentModels,
   agentCapabilities,
-  deferCommandValidation = false,
+  agentModels,
   onSend,
   onInvokeCommand,
   onRunShellCommand,
@@ -240,11 +244,21 @@ export function Composer({
     (attachment) => attachment.status === 'ready' && attachment.block !== undefined,
   );
 
-  const catalog = agentCapabilities?.slashCommands
-    ? (agentCommands ?? EMPTY_AGENT_COMMANDS)
-    : EMPTY_AGENT_COMMANDS;
-  const commandsSupported = Boolean(agentCapabilities?.slashCommands && onInvokeCommand);
-  const shellEnabled = Boolean(agentCapabilities?.shellCommand && onRunShellCommand);
+  const legacyDirectiveControls: ComposerDirectiveControls = {
+    slash:
+      agentCapabilities?.slashCommands && onInvokeCommand
+        ? agentCommands == null
+          ? { state: 'loading', onInvokeCommand }
+          : { state: 'ready', commands: agentCommands, onInvokeCommand }
+        : UNSUPPORTED_COMPOSER_DIRECTIVES.slash,
+    shell:
+      agentCapabilities?.shellCommand && onRunShellCommand
+        ? { state: 'ready', onRunShellCommand }
+        : UNSUPPORTED_COMPOSER_DIRECTIVES.shell,
+  };
+  const resolvedDirectiveControls = directiveControls ?? legacyDirectiveControls;
+
+  const catalog = commandCatalog(resolvedDirectiveControls.slash);
   // A draft led by the shell chip is one shell command; slash/mention menus must stay out of
   // the way (a path like /tmp inside the command must not pop the command menu).
   const shellActive = snapshot.directive?.kind === 'shell';
@@ -254,13 +268,7 @@ export function Composer({
   } | null = (() => {
     if (snapshot.composition.kind === 'none') return null;
     const directive = snapshot.composition.directive;
-    const status = liveDirectiveStatus(
-      directive,
-      catalog,
-      commandsSupported,
-      deferCommandValidation,
-      shellEnabled,
-    );
+    const status = liveDirectiveStatus(directive, resolvedDirectiveControls);
     if (status !== 'supported') return { directive, issue: status };
     return snapshot.composition.kind === 'blocked'
       ? { directive, issue: snapshot.composition.issue }
@@ -334,7 +342,7 @@ export function Composer({
   const commandOpen =
     !disabled &&
     Boolean(commandSource) &&
-    (!deferCommandValidation || commandSource !== 'slash' || catalog.length !== 0);
+    (resolvedDirectiveControls.slash.state !== 'loading' || commandSource !== 'slash');
   const frameVisible = commandOpen || blockedDirective !== null || contextBar != null;
   const emptyCommandLabel = commandSource === 'mention' ? t('noMentions') : t('noCommands');
   const [exitCommandGroups, setExitCommandGroups] = useState(() => commandGroups);
@@ -384,23 +392,32 @@ export function Composer({
       discrete: true,
     });
     const directive = editor.read(() =>
-      $draftDirective({
-        commands: catalog,
-        commandsSupported,
-        deferCommandValidation,
-        shellEnabled,
-      }),
+      $draftDirective({ directiveControls: resolvedDirectiveControls }),
     );
     switch (directive.kind) {
       case 'command': {
         // Unknown/unsupported chips visibly error and block here — never silently model chat.
-        if (directive.status !== 'supported' || !onInvokeCommand) return;
-        onInvokeCommand(directive.name, directive.args || undefined);
+        if (
+          directive.status !== 'supported' ||
+          resolvedDirectiveControls.slash.state === 'unsupported'
+        ) {
+          return;
+        }
+        resolvedDirectiveControls.slash.onInvokeCommand(
+          directive.name,
+          directive.args || undefined,
+        );
         break;
       }
       case 'shell': {
-        if (directive.status !== 'supported' || !directive.command || !onRunShellCommand) return;
-        onRunShellCommand(directive.command);
+        if (
+          directive.status !== 'supported' ||
+          !directive.command ||
+          resolvedDirectiveControls.shell.state === 'unsupported'
+        ) {
+          return;
+        }
+        resolvedDirectiveControls.shell.onRunShellCommand(directive.command);
         break;
       }
       case 'invalid': {
@@ -851,10 +868,8 @@ export function Composer({
                 ) : null}
                 <ComposerEditor
                   className="max-h-48 min-h-20.5 overflow-y-auto whitespace-pre-wrap break-words px-3.5 pt-3 pb-1.5 max-sm:min-h-23.5"
-                  commands={catalog}
-                  commandsSupported={commandsSupported}
-                  deferCommandValidation={deferCommandValidation}
                   disabled={disabled}
+                  directiveControls={resolvedDirectiveControls}
                   editorRef={editorRef}
                   menuHasItems={hasCommandItems}
                   menuOpen={commandOpen}
@@ -864,7 +879,6 @@ export function Composer({
                       : t('placeholder', { agent: placeholderAgent })
                   }
                   relayRef={relayRef}
-                  shellEnabled={shellEnabled}
                   onDraftChange={handleDraftChange}
                   onPasteFiles={ingestFiles}
                   onSubmit={submit}

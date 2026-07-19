@@ -10,16 +10,40 @@ export type DirectiveStatus = 'supported' | 'unknown' | 'unsupported';
 /** Why structurally valid directive tokens cannot form one executable agent input. */
 export type DirectivePlacementIssue = 'misplaced' | 'multiple';
 
+type InvokeCommand = (name: string, args?: string) => void;
+
+/** Slash commands are either unavailable, waiting for their live catalog, or backed by an
+ * authoritative catalog. Every executable state carries the handler needed to submit one. */
+export type ComposerSlashCommandControls =
+  | { state: 'unsupported' }
+  | { state: 'loading'; onInvokeCommand: InvokeCommand }
+  | {
+      state: 'ready';
+      commands: readonly AgentCommand[];
+      onInvokeCommand: InvokeCommand;
+    };
+
+/** Shell passthrough has no catalog: the ready state only needs its required execution handler. */
+export type ComposerShellCommandControls =
+  | { state: 'unsupported' }
+  | { state: 'ready'; onRunShellCommand: (command: string) => void };
+
+/** Complete executable-directive contract for a composer instance. */
+export interface ComposerDirectiveControls {
+  slash: ComposerSlashCommandControls;
+  shell: ComposerShellCommandControls;
+}
+
+export const UNSUPPORTED_COMPOSER_DIRECTIVES: ComposerDirectiveControls = {
+  shell: { state: 'unsupported' },
+  slash: { state: 'unsupported' },
+};
+
+const EMPTY_COMMANDS: readonly AgentCommand[] = [];
+
 export interface ComposerDirectiveState {
-  /** Capability-gated slash-command catalog (empty when the agent advertises none). */
-  commands: readonly AgentCommand[];
-  /** Whether slash-command invocation is currently available (capability + handler) — distinguishes
-   * an unknown command (catalog miss) from a composer that cannot execute commands. */
-  commandsSupported: boolean;
-  /** Pre-session commands have no catalog yet; the host validates them after creating the session. */
-  deferCommandValidation: boolean;
-  /** Whether shell passthrough is currently available (capability + handler present). */
-  shellEnabled: boolean;
+  /** Live directive availability and the handlers that make executable states complete. */
+  directiveControls: ComposerDirectiveControls;
   /** Mirrors the editor's disabled state for interactive decorator buttons. */
   disabled: boolean;
   /** Placement issues keyed by chip node, mirrored from the current editor analysis. */
@@ -38,12 +62,9 @@ export function directiveStateFor(editor: LexicalEditor): DirectiveStateStore {
   let store = stores.get(editor);
   if (!store) {
     store = createStore<ComposerDirectiveState>(() => ({
-      commands: [],
-      commandsSupported: false,
-      deferCommandValidation: false,
       disabled: false,
+      directiveControls: UNSUPPORTED_COMPOSER_DIRECTIVES,
       placementIssues: {},
-      shellEnabled: false,
       suppressed: new Set(),
     }));
     stores.set(editor, store);
@@ -55,15 +76,19 @@ export function directiveStateFor(editor: LexicalEditor): DirectiveStateStore {
  * after the draft was typed re-labels existing chips. */
 export function commandStatus(
   name: string,
-  state: Pick<ComposerDirectiveState, 'commands' | 'commandsSupported' | 'deferCommandValidation'>,
+  controls: ComposerSlashCommandControls,
 ): DirectiveStatus {
-  if (!state.commandsSupported) return 'unsupported';
-  if (state.deferCommandValidation) return 'supported';
-  return state.commands.some((command) => agentCommandMatches(command, name))
+  if (controls.state === 'unsupported') return 'unsupported';
+  if (controls.state === 'loading') return 'supported';
+  return controls.commands.some((command) => agentCommandMatches(command, name))
     ? 'supported'
     : 'unknown';
 }
 
-export function shellStatus(state: Pick<ComposerDirectiveState, 'shellEnabled'>): DirectiveStatus {
-  return state.shellEnabled ? 'supported' : 'unsupported';
+export function commandCatalog(controls: ComposerSlashCommandControls): readonly AgentCommand[] {
+  return controls.state === 'ready' ? controls.commands : EMPTY_COMMANDS;
+}
+
+export function shellStatus(controls: ComposerShellCommandControls): DirectiveStatus {
+  return controls.state === 'ready' ? 'supported' : 'unsupported';
 }

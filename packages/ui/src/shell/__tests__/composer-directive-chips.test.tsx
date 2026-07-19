@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { AgentCapabilities, AgentCommand } from '@linkcode/schema';
+import type { AgentCommand } from '@linkcode/schema';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LexicalEditor, NodeKey } from 'lexical';
@@ -14,6 +14,7 @@ import {
   HISTORIC_TAG,
 } from 'lexical';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ComposerDirectiveControls } from '../composer';
 import { Composer } from '../composer';
 import { $createCommandNode, $createMentionNode, $createShellNode } from '../composer-editor/nodes';
 import {
@@ -41,7 +42,6 @@ const COMMANDS: AgentCommand[] = [
   { name: 'review', description: 'Review the changes' },
 ];
 const RE_COMPACT_COMMAND = /\/compact/;
-const SLASH_CAPABILITIES: AgentCapabilities = { shellCommand: false, slashCommands: true };
 const CHIP_CASES = [
   ['command', () => $createCommandNode('review')],
   ['shell', () => $createShellNode()],
@@ -68,32 +68,40 @@ function expectCaret(editor: LexicalEditor, nodeKey: NodeKey, offset: number): v
 }
 
 interface ComposerFixtureProps {
-  agentCapabilities?: AgentCapabilities;
   agentCommands?: AgentCommand[];
   disabled?: boolean;
   onInvokeCommand?: (name: string, args?: string) => void;
   onRunShellCommand?: (command: string) => void;
   onSend?: React.ComponentProps<typeof Composer>['onSend'];
+  shellSupported?: boolean;
+  slashState?: ComposerDirectiveControls['slash']['state'];
 }
 
 function composer({
-  agentCapabilities = SLASH_CAPABILITIES,
   agentCommands = COMMANDS,
   disabled = false,
   onInvokeCommand = vi.fn(),
   onRunShellCommand,
   onSend = vi.fn(),
+  shellSupported = false,
+  slashState = 'ready',
 }: ComposerFixtureProps = {}): React.ReactNode {
+  const slash: ComposerDirectiveControls['slash'] =
+    slashState === 'unsupported'
+      ? { state: 'unsupported' }
+      : slashState === 'loading'
+        ? { state: 'loading', onInvokeCommand }
+        : { commands: agentCommands, state: 'ready', onInvokeCommand };
+  const shell: ComposerDirectiveControls['shell'] = shellSupported
+    ? { state: 'ready', onRunShellCommand: onRunShellCommand ?? vi.fn() }
+    : { state: 'unsupported' };
   return (
     <Composer
-      agentCapabilities={agentCapabilities}
-      agentCommands={agentCommands}
       attachmentsSupported={false}
       currentModeId={null}
       disabled={disabled}
+      directiveControls={{ shell, slash }}
       isRunning={false}
-      onInvokeCommand={onInvokeCommand}
-      onRunShellCommand={onRunShellCommand}
       onSend={onSend}
       onStop={vi.fn()}
     />
@@ -168,6 +176,18 @@ describe('Composer directive chips', () => {
     await pressInComposer('Enter');
     expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', undefined);
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('accepts a typed command while its catalog is loading', async () => {
+    const onInvokeCommand = vi.fn();
+    render(composer({ onInvokeCommand, slashState: 'loading' }));
+
+    typeInComposer('/review ');
+
+    expect(screen.getByRole('button', { name: '/review' }).getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByRole('listbox')).toBeNull();
+    await pressInComposer('Enter');
+    expect(onInvokeCommand).toHaveBeenCalledExactlyOnceWith('review', undefined);
   });
 
   it('keeps chip Enter out of submit and opens its action menu', async () => {
@@ -336,6 +356,16 @@ describe('Composer directive chips', () => {
     expect(onRunShellCommand).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
     expect(composerText()).toBe('$ ls -la');
+  });
+
+  it('runs a shell directive only through ready shell controls', async () => {
+    const onRunShellCommand = vi.fn();
+    render(composer({ onRunShellCommand, shellSupported: true }));
+
+    typeInComposer('$ ls -la');
+    await pressInComposer('Enter');
+
+    expect(onRunShellCommand).toHaveBeenCalledExactlyOnceWith('ls -la');
   });
 
   it('disables chip and recovery actions with the composer', () => {

@@ -12,11 +12,12 @@ import {
   TextNode,
 } from 'lexical';
 import type { ComposerDirectiveState } from './directive-state';
+import { commandCatalog } from './directive-state';
 import { $createCommandNode, $createShellNode, $isCommandNode, $isShellNode } from './nodes';
 
 const WHITESPACE_RE = /\s/;
 
-type TokenizerState = Pick<ComposerDirectiveState, 'commands' | 'suppressed'>;
+type TokenizerState = Pick<ComposerDirectiveState, 'directiveControls' | 'suppressed'>;
 
 type DirectiveCandidate =
   | { end: number; kind: 'command'; name: string; start: number }
@@ -57,6 +58,7 @@ function $findDirectiveCandidate(
 ): DirectiveCandidate | null {
   const content = node.getTextContent();
   const suppressInitialToken = state.suppressed.has(node.getKey());
+  const commands = commandCatalog(state.directiveControls.slash);
 
   for (let start = 0; start < content.length; start++) {
     if (!$hasBoundaryBefore(node, start)) continue;
@@ -73,7 +75,7 @@ function $findDirectiveCandidate(
     const name = content.slice(start + 1, end);
     if (!name) continue;
     if (start === 0 && suppressInitialToken) continue;
-    const known = state.commands.some((command) => agentCommandMatches(command, name));
+    const known = commands.some((command) => agentCommandMatches(command, name));
     if ((!leading && !known) || (!$hasBoundaryAfter(node, end) && !force)) continue;
     return { end, kind: 'command', name, start };
   }

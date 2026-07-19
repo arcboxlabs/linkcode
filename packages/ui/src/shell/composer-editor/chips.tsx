@@ -145,7 +145,7 @@ export function CommandChip({
   name: string;
   nodeKey: NodeKey;
 }): React.ReactNode {
-  const status = useDirectiveState((state) => commandStatus(name, state));
+  const status = useDirectiveState((state) => commandStatus(name, state.directiveControls.slash));
   const placement = useDirectiveState((state) => state.placementIssues[nodeKey]);
   const t = useTranslations('workbench.composer');
   const statusReason =
@@ -174,7 +174,7 @@ export function CommandChip({
 }
 
 export function ShellChip({ nodeKey }: { nodeKey: NodeKey }): React.ReactNode {
-  const status = useDirectiveState(shellStatus);
+  const status = useDirectiveState((state) => shellStatus(state.directiveControls.shell));
   const placement = useDirectiveState((state) => state.placementIssues[nodeKey]);
   const t = useTranslations('workbench.composer');
   const reason =

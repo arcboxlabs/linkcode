@@ -8,7 +8,6 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
 import { $isParentRTL } from '@lexical/selection';
 import { mergeRegister } from '@lexical/utils';
-import type { AgentCommand } from '@linkcode/schema';
 import type { EditorState, LexicalEditor } from 'lexical';
 import {
   $getSelection,
@@ -25,7 +24,7 @@ import {
 } from 'lexical';
 import { useEffect } from 'react';
 import { cn } from '../../lib/cn';
-import type { DirectivePlacementIssue } from './directive-state';
+import type { ComposerDirectiveControls, DirectivePlacementIssue } from './directive-state';
 import { directiveStateFor } from './directive-state';
 import { COMPOSER_EDITOR_NODES } from './nodes';
 import type { DirectiveComposition, EditorDirective, EditorTrigger } from './serialize';
@@ -64,10 +63,7 @@ interface ComposerEditorProps {
   placeholder: string;
   disabled: boolean;
   /** Live directive inputs, mirrored into the per-editor store for chips and the tokenizer. */
-  commands: readonly AgentCommand[];
-  commandsSupported: boolean;
-  deferCommandValidation: boolean;
-  shellEnabled: boolean;
+  directiveControls: ComposerDirectiveControls;
   onDraftChange: (snapshot: ComposerDraftSnapshot) => void;
   /** Image files pasted into the editor; text paste stays internal. */
   onPasteFiles: (files: File[]) => void;
@@ -82,24 +78,18 @@ interface ComposerEditorProps {
 }
 
 function DirectiveStatePlugin({
-  commands,
-  commandsSupported,
-  deferCommandValidation,
+  directiveControls,
   disabled,
-  shellEnabled,
-}: Pick<
-  ComposerEditorProps,
-  'commands' | 'commandsSupported' | 'deferCommandValidation' | 'disabled' | 'shellEnabled'
->): null {
+}: Pick<ComposerEditorProps, 'directiveControls' | 'disabled'>): null {
   const [editor] = useLexicalComposerContext();
   // Prop → external-store sync for the chip portals (they can't receive props through Lexical's
   // decorator boundary); not a state watcher.
   useEffect(() => {
     const store = directiveStateFor(editor);
-    store.setState({ commands, commandsSupported, deferCommandValidation, disabled, shellEnabled });
+    store.setState({ directiveControls, disabled });
     // A late catalog can prove that already-typed mid-line `/name` text is a real command.
     editor.update(() => $normalizeDirectiveTokens(store.getState()), { discrete: true });
-  }, [editor, commands, commandsSupported, deferCommandValidation, disabled, shellEnabled]);
+  }, [editor, directiveControls, disabled]);
   return null;
 }
 
@@ -278,10 +268,7 @@ export function ComposerEditor({
   className,
   placeholder,
   disabled,
-  commands,
-  commandsSupported,
-  deferCommandValidation,
-  shellEnabled,
+  directiveControls,
   onDraftChange,
   onPasteFiles,
   onSubmit,
@@ -352,13 +339,7 @@ export function ComposerEditor({
       <HistoryPlugin />
       <OnChangePlugin onChange={handleChange} />
       <EditorRefPlugin editorRef={editorRef} />
-      <DirectiveStatePlugin
-        commands={commands}
-        commandsSupported={commandsSupported}
-        deferCommandValidation={deferCommandValidation}
-        disabled={disabled}
-        shellEnabled={shellEnabled}
-      />
+      <DirectiveStatePlugin disabled={disabled} directiveControls={directiveControls} />
       <TokenizerPlugin />
       <EditablePlugin disabled={disabled} />
       <KeyboardPlugin
