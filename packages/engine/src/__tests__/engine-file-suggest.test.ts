@@ -11,9 +11,9 @@ import { noop } from 'foxts/noop';
 import { waitFor } from 'foxts/wait-for';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Engine } from '../engine';
-import { FileSuggestService } from '../file-suggest-service';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
+import { FileSuggestService } from '../workspace/file-suggest-service';
 
 const tempRoots: string[] = [];
 afterAll(() => {

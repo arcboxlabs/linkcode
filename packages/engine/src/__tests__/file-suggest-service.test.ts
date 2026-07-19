@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { FileSuggestService } from '../file-suggest-service';
+import { FileSuggestService } from '../workspace/file-suggest-service';
 
 /** Fresh service per call: no TTL-cached file list leaks between tests. */
 function suggest(cwd: string, query: string, limit?: number) {

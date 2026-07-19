@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { readWorkspaceFile } from '../file-service';
+import { readWorkspaceFile } from '../workspace/file-service';
 
 const roots: string[] = [];
 

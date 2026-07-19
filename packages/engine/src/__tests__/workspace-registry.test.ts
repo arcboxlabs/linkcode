@@ -4,8 +4,8 @@ import { join, resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
 import { normalizeCwdKey } from '@linkcode/schema';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WorkspaceRegistry } from '../workspace-registry';
-import { InMemoryWorkspaceStore } from '../workspace-store';
+import { WorkspaceRegistry } from '../workspace/workspace-registry';
+import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
 
 function makeRecord(value: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
   return {
