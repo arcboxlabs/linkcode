@@ -3,7 +3,6 @@ import type {
   LoopIteration,
   LoopLogEntry,
   LoopLogLevel,
-  LoopLogSource,
   LoopRecord,
   LoopSpec,
   LoopVerdict,
@@ -11,18 +10,15 @@ import type {
 } from '@linkcode/schema';
 import { LoopVerdictSchema } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { LoopReporter } from './loop-reporter';
 import type { LoopStore } from './loop-store';
-import { RingBuffer } from './ring-buffer';
 import type { SessionDriver } from './session-driver';
 import { runShellCheck } from './shell-exec';
 import { promptForStructured } from './structured-response';
 
-const LOG_RING_CAPACITY = 500;
-const LOG_LINE_MAX_CHARS = 2000;
 const SUMMARY_MAX_CHARS = 2000;
 const WORKER_FEEDBACK_MAX_CHARS = 2000;
 
@@ -42,20 +38,20 @@ export interface LoopServiceOptions {
 export class LoopService {
   private readonly loops = new Map<LoopId, LoopRecord>();
   private readonly controllers = new Map<LoopId, AbortController>();
-  private readonly logs = new Map<LoopId, RingBuffer<LoopLogEntry>>();
-  private readonly logSeq = new Map<LoopId, number>();
   /** In-flight loop promises, kept only so {@link settleAll} can await them in tests. */
   private readonly inFlight = new Map<LoopId, Promise<void>>();
   private readonly now: () => number;
+  private readonly reporter: LoopReporter;
   private seq = 0;
 
   constructor(
-    private readonly transport: Transport,
+    transport: Transport,
     private readonly store: LoopStore,
     private readonly driver: SessionDriver,
     options: LoopServiceOptions = {},
   ) {
     this.now = options.now ?? Date.now;
+    this.reporter = new LoopReporter(transport, this.now);
   }
 
   async start(): Promise<void> {
@@ -87,7 +83,7 @@ export class LoopService {
   ): Promise<{ loop: LoopRecord; iterations: LoopIteration[]; logs: LoopLogEntry[] }> {
     const loop = this.require(loopId);
     const iterations = await this.store.loadIterations(loopId);
-    return { loop, iterations, logs: this.logs.get(loopId)?.snapshot() ?? [] };
+    return { loop, iterations, logs: this.reporter.snapshot(loopId) };
   }
 
   async startLoop(spec: LoopSpec): Promise<LoopRecord> {
@@ -101,10 +97,10 @@ export class LoopService {
       updatedAt: now,
     };
     this.loops.set(loop.loopId, loop);
-    this.logs.set(loop.loopId, new RingBuffer<LoopLogEntry>(LOG_RING_CAPACITY));
+    this.reporter.start(loop.loopId);
     await this.store.save(loop);
-    this.broadcastLoop(loop);
-    this.log(loop, 'info', 'system', 'loop started');
+    this.reporter.changed(loop);
+    this.reporter.log(loop.loopId, 'info', 'system', 'loop started');
 
     const controller = new AbortController();
     this.controllers.set(loop.loopId, controller);
@@ -122,10 +118,8 @@ export class LoopService {
     const loop = this.require(loopId);
     if (loop.status === 'running') throw new Error('stop the loop before deleting it');
     this.loops.delete(loopId);
-    this.logs.delete(loopId);
-    this.logSeq.delete(loopId);
     await this.store.delete(loopId);
-    this.broadcastRemoved(loopId);
+    this.reporter.remove(loopId);
   }
 
   /** Resolves once no loop is in flight. Test-only seam — nothing else awaits the runners. */
@@ -169,7 +163,7 @@ export class LoopService {
         loop.iterationCount = index + 1;
         loop.updatedAt = this.now();
         await this.store.save(loop);
-        this.broadcastLoop(loop);
+        this.reporter.changed(loop);
 
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- `signal.aborted` is a mutable getter; the loop-top narrowing doesn't survive the awaited iteration, and catching an abort here (vs. next loop turn) settles the final iteration as stopped rather than mislabeling it failed.
         if (signal.aborted) return await this.finish(loop, 'stopped', 'stopped by user');
@@ -206,7 +200,7 @@ export class LoopService {
       startedAt: this.now(),
     };
     await this.saveIteration(iteration);
-    this.log(loop, 'info', 'system', `iteration ${index + 1} started`, index);
+    this.reporter.log(loop.loopId, 'info', 'system', `iteration ${index + 1} started`, index);
 
     let workerText = '';
     try {
@@ -222,7 +216,7 @@ export class LoopService {
     } catch (err) {
       iteration.status = 'failed';
       iteration.error = extractErrorMessage(err, false) ?? 'iteration failed';
-      this.log(loop, 'error', 'system', iteration.error, index);
+      this.reporter.log(loop.loopId, 'error', 'system', iteration.error, index);
     }
     iteration.endedAt = this.now();
     await this.saveIteration(iteration);
@@ -250,7 +244,7 @@ export class LoopService {
       const result = await this.driver.prompt(sessionId, prompt, {
         timeoutMs: loop.spec.turnTimeoutMs,
       });
-      this.log(loop, 'info', 'worker', truncate(result.text, LOG_LINE_MAX_CHARS), iteration.index);
+      this.reporter.log(loop.loopId, 'info', 'worker', result.text, iteration.index);
       return result.text;
     });
   }
@@ -270,8 +264,8 @@ export class LoopService {
       });
       iteration.checks.push({ command, ...result });
       await this.saveIteration(iteration);
-      this.log(
-        loop,
+      this.reporter.log(
+        loop.loopId,
         result.exitCode === 0 ? 'info' : 'warn',
         'check',
         `${command} → exit ${result.exitCode}`,
@@ -304,7 +298,13 @@ export class LoopService {
       const verdict = await promptForStructured(this.driver, sessionId, prompt, LoopVerdictSchema, {
         timeoutMs: loop.spec.turnTimeoutMs,
       });
-      this.log(loop, verdict.passed ? 'info' : 'warn', 'verifier', verdict.reason, iteration.index);
+      this.reporter.log(
+        loop.loopId,
+        verdict.passed ? 'info' : 'warn',
+        'verifier',
+        verdict.reason,
+        iteration.index,
+      );
       return verdict;
     });
   }
@@ -344,10 +344,10 @@ export class LoopService {
     loop.updatedAt = this.now();
     this.controllers.delete(loop.loopId);
     await this.store.save(loop);
-    this.broadcastLoop(loop);
+    this.reporter.changed(loop);
     const level: LoopLogLevel =
       status === 'succeeded' ? 'info' : status === 'failed' ? 'error' : 'warn';
-    this.log(loop, level, 'system', `loop ${status}${error ? `: ${error}` : ''}`);
+    this.reporter.log(loop.loopId, level, 'system', `loop ${status}${error ? `: ${error}` : ''}`);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -370,35 +370,9 @@ export class LoopService {
     return trimmed.length > SUMMARY_MAX_CHARS ? trimmed.slice(0, SUMMARY_MAX_CHARS) : trimmed;
   }
 
-  private log(
-    loop: LoopRecord,
-    level: LoopLogLevel,
-    source: LoopLogSource,
-    message: string,
-    iteration?: number,
-  ): void {
-    const seq = this.logSeq.get(loop.loopId) ?? 0;
-    this.logSeq.set(loop.loopId, seq + 1);
-    const entry: LoopLogEntry = {
-      seq,
-      ts: this.now(),
-      level,
-      source,
-      message: truncate(message, LOG_LINE_MAX_CHARS),
-      iteration,
-    };
-    let ring = this.logs.get(loop.loopId);
-    if (!ring) {
-      ring = new RingBuffer<LoopLogEntry>(LOG_RING_CAPACITY);
-      this.logs.set(loop.loopId, ring);
-    }
-    ring.push(entry);
-    this.transport.send(createWireMessage({ kind: 'loop.log', loopId: loop.loopId, entry }));
-  }
-
   private async saveIteration(iteration: LoopIteration): Promise<void> {
     await this.store.saveIteration(iteration);
-    this.transport.send(createWireMessage({ kind: 'loop.iteration', iteration }));
+    this.reporter.iteration(iteration);
   }
 
   private require(loopId: LoopId): LoopRecord {
@@ -419,14 +393,6 @@ export class LoopService {
   private mintLoopId(): LoopId {
     this.seq += 1;
     return `loop-${this.now().toString(36)}-${this.seq.toString(36)}` as LoopId;
-  }
-
-  private broadcastLoop(loop: LoopRecord): void {
-    this.transport.send(createWireMessage({ kind: 'loop.changed', loop }));
-  }
-
-  private broadcastRemoved(loopId: LoopId): void {
-    this.transport.send(createWireMessage({ kind: 'loop.removed', loopId }));
   }
 }
 
