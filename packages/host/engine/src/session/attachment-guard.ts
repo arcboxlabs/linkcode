@@ -4,6 +4,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENT_TOTAL_BYTES,
 } from '@linkcode/schema';
+import { RequestError } from '../failure';
 
 /** Raw byte count of a base64 payload, kept exactly aligned with clients' pre-encode `File.size`
  * checks; clamped at zero so malformed non-base64 input can't erode the aggregate accounting. */
@@ -25,17 +26,26 @@ export function assertAttachmentContentAllowed(content: ContentBlock[]): void {
   let totalBytes = 0;
   for (const block of content) {
     if (block.type === 'image' && !isSupportedAttachmentImageMimeType(block.mimeType)) {
-      throw new Error(`Unsupported image attachment type: ${block.mimeType}`);
+      throw new RequestError({
+        code: 'invalid_request',
+        message: `Unsupported image attachment type: ${block.mimeType}`,
+      });
     }
     const data = attachmentData(block);
     if (data === undefined) continue;
     const bytes = base64RawByteLength(data);
     if (bytes > MAX_ATTACHMENT_BYTES) {
-      throw new Error('Attachment exceeds the maximum allowed size');
+      throw new RequestError({
+        code: 'limit_exceeded',
+        message: 'Attachment exceeds the maximum allowed size',
+      });
     }
     totalBytes += bytes;
     if (totalBytes > MAX_ATTACHMENT_TOTAL_BYTES) {
-      throw new Error('Attachments exceed the maximum allowed total size');
+      throw new RequestError({
+        code: 'limit_exceeded',
+        message: 'Attachments exceed the maximum allowed total size',
+      });
     }
   }
 }

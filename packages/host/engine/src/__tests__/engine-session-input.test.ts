@@ -1,5 +1,5 @@
 import type { AgentEvent, AgentInput, WirePayload } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
@@ -38,6 +38,83 @@ async function startedHarness() {
 }
 
 describe('engine session input', () => {
+  it('reports an unsupported attachment MIME type as an invalid request', async () => {
+    const h = await startedHarness();
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId: h.sessionId,
+      input: {
+        type: 'prompt',
+        content: [{ type: 'image', mimeType: 'image/svg+xml', data: 'AA==' }],
+      },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'invalid_request',
+      message: 'Unsupported image attachment type: image/svg+xml',
+    });
+  });
+
+  it('reports an oversized attachment as a limit violation', async () => {
+    const h = await startedHarness();
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId: h.sessionId,
+      input: {
+        type: 'prompt',
+        content: [
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            data: Buffer.alloc(MAX_ATTACHMENT_BYTES + 1).toString('base64'),
+          },
+        ],
+      },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'limit_exceeded',
+      message: 'Attachment exceeds the maximum allowed size',
+    });
+  });
+
+  it('reports oversized aggregate attachments as a limit violation', async () => {
+    const h = await startedHarness();
+    const half = MAX_ATTACHMENT_TOTAL_BYTES / 2;
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId: h.sessionId,
+      input: {
+        type: 'prompt',
+        content: [
+          { type: 'image', mimeType: 'image/png', data: Buffer.alloc(half).toString('base64') },
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            data: Buffer.alloc(half + 3).toString('base64'),
+          },
+        ],
+      },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'limit_exceeded',
+      message: 'Attachments exceed the maximum allowed total size',
+    });
+  });
+
   it('echoes command and shell inputs as the text the user typed', async () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({
