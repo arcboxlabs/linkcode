@@ -46,6 +46,16 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
     // Reflect the verified CLI default without turning it into a `-m` override. An explicit model
     // is reflected only after a successful headless run proves the CLI accepted its `-m` value.
     if (!this.model) this.emitModel(DEFAULT_GROK_MODEL);
+    this.emitApprovalPolicy({
+      availablePolicies: [
+        {
+          policyId: 'bypassPermissions',
+          name: 'Bypass permissions',
+          description: 'All tools run without approval prompts; this adapter cannot change it.',
+        },
+      ],
+      currentPolicyId: 'bypassPermissions',
+    });
     this.emitEffort(this.effort);
     return Promise.resolve();
   }
