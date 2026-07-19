@@ -2,12 +2,15 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Effect } from 'effect';
 import { afterAll, describe, expect, it } from 'vitest';
 import { FileSuggestService } from '../workspace/file-suggest-service';
 
 /** Fresh service per call: no TTL-cached file list leaks between tests. */
 function suggest(cwd: string, query: string, limit?: number) {
-  return new FileSuggestService().suggest(cwd, query, limit);
+  return Effect.runPromise(
+    FileSuggestService.make().pipe(Effect.flatMap((service) => service.suggest(cwd, query, limit))),
+  );
 }
 
 const roots: string[] = [];
@@ -115,7 +118,9 @@ describe('FileSuggestService', () => {
       writeFileSync(join(dir, `file-${String(i).padStart(2, '0')}.txt`), '');
     }
 
-    const files = await new FileSuggestService().list(dir);
+    const files = await Effect.runPromise(
+      FileSuggestService.make().pipe(Effect.flatMap((service) => service.list(dir))),
+    );
     expect(files).toHaveLength(61); // 60 files + .gitignore; no DEFAULT_SUGGEST_LIMIT cap.
     expect(files).not.toContain('ignored.log');
   });

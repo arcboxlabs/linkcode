@@ -2,7 +2,7 @@ import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
-import { RequestError, toOperationFailure } from '../failure';
+import { RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import { readWorkspaceFile } from './file-service';
 import type { FileSuggestService } from './file-suggest-service';
@@ -41,9 +41,8 @@ export class FileRequestHandler {
       case 'file.list':
         return this.responder.reply(
           payload.clientReqId,
-          fileOperation('file.list', 'Failed to list workspace files', () =>
-            this.files.list(this.registeredWorkspace(payload.cwd).cwd),
-          ).pipe(
+          this.registeredWorkspace(payload.cwd).pipe(
+            Effect.flatMap((workspace) => this.files.list(workspace.cwd)),
             Effect.flatMap((files) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -60,10 +59,10 @@ export class FileRequestHandler {
       case 'file.suggest':
         return this.responder.reply(
           payload.clientReqId,
-          fileOperation('file.suggest', 'Failed to suggest workspace files', () => {
-            const workspace = this.registeredWorkspace(payload.cwd);
-            return this.files.suggest(workspace.cwd, payload.query, payload.limit);
-          }).pipe(
+          this.registeredWorkspace(payload.cwd).pipe(
+            Effect.flatMap((workspace) =>
+              this.files.suggest(workspace.cwd, payload.query, payload.limit),
+            ),
             Effect.flatMap((suggestions) =>
               Effect.sync(() =>
                 this.transport.send(
@@ -82,22 +81,12 @@ export class FileRequestHandler {
     }
   }
 
-  private registeredWorkspace(cwd: string) {
+  private registeredWorkspace(cwd: string): Effect.Effect<{ cwd: string }, RequestError> {
     // Opened-roots scoping, not a hard boundary: callers may only enumerate roots known from a
     // session or explicit registration, and the read runs under the record's canonical cwd.
     const workspace = this.workspaces.findByCwd(cwd);
-    // eslint-disable-next-line sukka/prefer-nullthrow -- The wire boundary requires a typed, safely presentable error instead of nullthrow's TypeError.
-    if (!workspace) {
-      throw new RequestError({ code: 'not_found', message: `Unknown workspace: ${cwd}` });
-    }
-    return workspace;
+    return workspace
+      ? Effect.succeed(workspace)
+      : Effect.fail(new RequestError({ code: 'not_found', message: `Unknown workspace: ${cwd}` }));
   }
-}
-
-function fileOperation<A>(operation: string, publicMessage: string, run: () => Promise<A>) {
-  return Effect.tryPromise({
-    try: run,
-    catch: (cause) =>
-      toOperationFailure(cause, { subsystem: 'filesystem', operation, publicMessage }),
-  });
 }

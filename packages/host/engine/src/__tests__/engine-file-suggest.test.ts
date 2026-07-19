@@ -6,6 +6,7 @@ import type { AgentAdapter } from '@linkcode/agent-adapter';
 import type { SessionId, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { waitFor } from 'foxts/wait-for';
@@ -35,7 +36,7 @@ function fakeAdapter(): AgentAdapter {
   };
 }
 
-function harness(store: SessionStore = new InMemorySessionStore()) {
+async function harness(store: SessionStore = new InMemorySessionStore()) {
   const sent: WirePayload[] = [];
   let handler: ((msg: ValidatedWireMessage) => void) | null = null;
   const transport: Transport = {
@@ -50,9 +51,13 @@ function harness(store: SessionStore = new InMemorySessionStore()) {
     onClose: () => noop,
     close: noop,
   };
-  const fileSuggest = new FileSuggestService();
-  const suggest = vi.spyOn(fileSuggest, 'suggest').mockResolvedValue([{ path: 'src/index.ts' }]);
-  const list = vi.spyOn(fileSuggest, 'list').mockResolvedValue(['src/index.ts', 'README.md']);
+  const fileSuggest = await Effect.runPromise(FileSuggestService.make());
+  const suggest = vi
+    .spyOn(fileSuggest, 'suggest')
+    .mockReturnValue(Effect.succeed([{ path: 'src/index.ts' }]));
+  const list = vi
+    .spyOn(fileSuggest, 'list')
+    .mockReturnValue(Effect.succeed(['src/index.ts', 'README.md']));
   const engine = createTestEngine(transport, {
     factory: fakeAdapter,
     fileSuggest,
@@ -79,7 +84,7 @@ function suggestions(sent: WirePayload[], replyTo: string) {
 
 describe('engine file.suggest', () => {
   it('rejects a cwd that is not a registered workspace, without touching the service', async () => {
-    const { engine, sent, inject, suggest } = harness();
+    const { engine, sent, inject, suggest } = await harness();
     await engine.start();
 
     await inject({ kind: 'file.suggest', clientReqId: 'r1', cwd: '/etc', query: '' });
@@ -93,7 +98,7 @@ describe('engine file.suggest', () => {
   });
 
   it('serves a session-touched workspace under its canonical registered root', async () => {
-    const { engine, sent, inject, suggest } = harness();
+    const { engine, sent, inject, suggest } = await harness();
     await engine.start();
     await inject({
       kind: 'session.start',
@@ -116,7 +121,7 @@ describe('engine file.suggest', () => {
   });
 
   it('serves an explicitly registered workspace', async () => {
-    const { engine, sent, inject } = harness();
+    const { engine, sent, inject } = await harness();
     await engine.start();
     const dir = await mkdtemp(path.join(tmpdir(), 'lc-suggest-'));
     tempRoots.push(dir);
@@ -129,7 +134,7 @@ describe('engine file.suggest', () => {
 
   it('re-registers a resumed session cwd the registry no longer knows', async () => {
     const store = new InMemorySessionStore();
-    const first = harness(store);
+    const first = await harness(store);
     await first.engine.start();
     await first.inject({
       kind: 'session.start',
@@ -142,7 +147,7 @@ describe('engine file.suggest', () => {
 
     // A fresh engine over the same session store has an empty workspace registry: resuming the
     // session must re-register its cwd for the @-mention path.
-    const second = harness(store);
+    const second = await harness(store);
     await second.engine.start();
     await second.inject({ kind: 'session.resume', clientReqId: 'r2', sessionId });
 
@@ -154,7 +159,7 @@ describe('engine file.suggest', () => {
 
 describe('engine file.list', () => {
   it('rejects a cwd that is not a registered workspace, without touching the service', async () => {
-    const { engine, sent, inject, list } = harness();
+    const { engine, sent, inject, list } = await harness();
     await engine.start();
 
     await inject({ kind: 'file.list', clientReqId: 'r1', cwd: '/etc' });
@@ -167,7 +172,7 @@ describe('engine file.list', () => {
   });
 
   it('serves a session-touched workspace under its canonical registered root', async () => {
-    const { engine, sent, inject, list } = harness();
+    const { engine, sent, inject, list } = await harness();
     await engine.start();
     await inject({
       kind: 'session.start',

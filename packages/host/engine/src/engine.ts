@@ -88,12 +88,8 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
   const git = deps.git ?? (yield* GitService.make());
   const gitRequests = new GitRequestHandler(transport, git, responder);
-  const fileRequests = new FileRequestHandler(
-    transport,
-    deps.fileSuggest ?? new FileSuggestService(),
-    workspaces,
-    responder,
-  );
+  const fileSuggest = deps.fileSuggest ?? (yield* FileSuggestService.make());
+  const fileRequests = new FileRequestHandler(transport, fileSuggest, workspaces, responder);
   const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
   const scripts = terminals
     ? new ScriptService(transport, terminals, routes, (cwd) => workspaces.findByCwd(cwd)?.name)
