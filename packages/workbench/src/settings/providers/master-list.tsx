@@ -181,9 +181,14 @@ export function AccountMasterList({
                     </span>
                   )}
                   <span className="mt-1 flex flex-wrap gap-1">
-                    <span className="rounded-full border border-border bg-background px-1.5 text-[10px] leading-4">
-                      {t('localProviders.modelCount', { count: provider.models.length })}
-                    </span>
+                    {provider.models.map((model) => (
+                      <span
+                        key={model}
+                        className="max-w-full truncate rounded-full border border-border bg-background px-1.5 font-mono text-[10px] leading-4"
+                      >
+                        {model}
+                      </span>
+                    ))}
                   </span>
                 </span>
               </li>

@@ -741,7 +741,6 @@ export const en = {
       oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
       localProviders: {
         source: 'pi · models.json',
-        modelCount: '{count} models',
       },
       import: {
         hint: 'Pick a pi models.json file; each custom provider becomes one account, with model definitions (cost and thinking-level map included) preserved in full. Plain JSON only (no comments).',

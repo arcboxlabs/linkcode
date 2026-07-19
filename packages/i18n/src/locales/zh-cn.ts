@@ -727,7 +727,6 @@ export const zhCN = {
       oauthUnprobedHint: '登录状态未知——以 CLI 自身的登录态为准。',
       localProviders: {
         source: 'pi · models.json',
-        modelCount: '{count} 个模型',
       },
       import: {
         hint: '选择 pi 的 models.json 文件;每个自定义 provider 导入为一个账号,模型定义(含成本与思考等级映射)完整保留。仅支持纯 JSON(不支持注释)。',
