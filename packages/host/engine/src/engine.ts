@@ -175,6 +175,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       sessionLifecycle.bindRuntime(runEffect);
       scheduler.bindRuntime(runTask);
       loops.bindRuntime(runTask);
+      scripts?.bindRuntime(runTask);
       yield* records.start((effect) => {
         runTask(effect);
       });
@@ -240,7 +241,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalizeEffect('loops.shutdown', loops.shutdown());
       yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* runtimes.close();
-      yield* finalize('scripts.shutdown', () => scripts?.shutdown());
+      yield* finalizeEffect('scripts.shutdown', scripts?.shutdown() ?? Effect.void);
       yield* finalize('artifacts.shutdown', () => artifacts.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());

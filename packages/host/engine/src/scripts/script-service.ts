@@ -4,7 +4,10 @@ import type { ScriptHealth, ScriptLifecycle, WirePayload, WorkspaceScript } from
 import { normalizeCwdKey } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { RequestError } from '../failure';
+import { Effect, Fiber } from 'effect';
+import { nullthrow } from 'foxts/guard';
+import type { EngineFailure } from '../failure';
+import { RequestError, toOperationFailure } from '../failure';
 import type { PreviewRouteRegistry } from '../preview/route-registry';
 import type { TerminalService } from '../terminal/service';
 import type { ScriptDeclaration } from './config';
@@ -20,6 +23,12 @@ const HEALTH_FAILURES_FOR_UNHEALTHY = 2;
 const SERVICE_PTY_COLS = 160;
 const SERVICE_PTY_ROWS = 48;
 
+type RunTask = <A, E>(effect: Effect.Effect<A, E>) => Fiber.Fiber<A, E>;
+
+interface StartingHandle {
+  fiber?: Fiber.Fiber<void, EngineFailure>;
+}
+
 interface RunningScript {
   terminalId: string;
   lifecycle: Extract<ScriptLifecycle, 'running'>;
@@ -33,6 +42,7 @@ interface RunningScript {
 interface WorkspaceScriptsState {
   /** Planned ports for every declared service, allocated together on first need. */
   plan: Map<string, number>;
+  starting: Map<string, StartingHandle>;
   running: Map<string, RunningScript>;
   stopped: Map<string, { terminalId: string; exitCode: number | null }>;
 }
@@ -44,6 +54,8 @@ interface WorkspaceScriptsState {
  */
 export class ScriptService {
   private readonly workspaces = new Map<string, WorkspaceScriptsState>();
+  private runTask: RunTask | undefined;
+  private accepting = true;
 
   constructor(
     private readonly transport: Transport,
@@ -53,14 +65,70 @@ export class ScriptService {
     private readonly workspaceName: (cwd: string) => string | undefined,
   ) {}
 
-  async list(cwd: string): Promise<WorkspaceScript[]> {
-    const declarations = readWorkspaceScripts(cwd);
-    const state = this.stateFor(cwd);
-    await this.ensurePortPlan(declarations, state);
-    return declarations.map((decl) => this.describe(cwd, decl, state));
+  bindRuntime(runTask: RunTask): void {
+    this.runTask = runTask;
   }
 
-  async start(cwd: string, scriptName: string): Promise<void> {
+  list(cwd: string): Effect.Effect<WorkspaceScript[], EngineFailure> {
+    return Effect.tryPromise({
+      try: async () => {
+        this.ensureAccepting();
+        const declarations = readWorkspaceScripts(cwd);
+        const state = this.stateFor(cwd);
+        await this.ensurePortPlan(declarations, state);
+        this.ensureAccepting();
+        return declarations.map((decl) => this.describe(cwd, decl, state));
+      },
+      catch: (cause) => scriptFailure(cause, 'script.list', 'Failed to list workspace scripts'),
+    });
+  }
+
+  start(cwd: string, scriptName: string): Effect.Effect<void, EngineFailure> {
+    return Effect.try({
+      try: () => this.launchStart(cwd, scriptName),
+      catch: (cause) => scriptFailure(cause, 'script.start', 'Failed to start workspace script'),
+    }).pipe(
+      Effect.flatMap((fiber) =>
+        Fiber.join(fiber).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber))),
+      ),
+    );
+  }
+
+  stop(cwd: string, scriptName: string): Effect.Effect<void, EngineFailure> {
+    return Effect.try({
+      try: () => {
+        this.ensureAccepting();
+        const run = this.stateFor(cwd).running.get(scriptName);
+        if (!run) {
+          throw new RequestError({
+            code: 'conflict',
+            message: `Script not running: ${scriptName}`,
+          });
+        }
+        // Cleanup and the status broadcast follow from the PTY exit event.
+        this.terminals.closeManaged(run.terminalId);
+      },
+      catch: (cause) => scriptFailure(cause, 'script.stop', 'Failed to stop workspace script'),
+    });
+  }
+
+  /** Close admission, release routes and terminals, then drain Engine-owned script fibers. */
+  shutdown(): Effect.Effect<void> {
+    return Effect.sync(() => this.beginShutdown()).pipe(
+      Effect.flatMap((fibers) => Fiber.interruptAll(fibers)),
+      Effect.andThen(
+        Effect.sync(() => {
+          for (const state of this.workspaces.values()) {
+            state.starting.clear();
+            state.running.clear();
+          }
+        }),
+      ),
+    );
+  }
+
+  private launchStart(cwd: string, scriptName: string): Fiber.Fiber<void, EngineFailure> {
+    this.ensureAccepting();
     const declarations = readWorkspaceScripts(cwd);
     const decl = declarations.find((d) => d.name === scriptName);
     if (!decl) {
@@ -71,15 +139,40 @@ export class ScriptService {
     }
 
     const state = this.stateFor(cwd);
-    if (state.running.has(scriptName)) {
+    if (state.starting.has(scriptName) || state.running.has(scriptName)) {
       throw new RequestError({
         code: 'conflict',
         message: `Script already running: ${scriptName}`,
       });
     }
-    await this.ensurePortPlan(declarations, state);
+    const run = nullthrow(this.runTask, 'Script runtime has not started');
+    const handle: StartingHandle = {};
+    state.starting.set(scriptName, handle);
+    const fiber = run(
+      Effect.tryPromise({
+        try: (signal) => this.openScriptAsync(cwd, decl, declarations, state, signal),
+        catch: (cause) => scriptFailure(cause, 'script.start', 'Failed to start workspace script'),
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (state.starting.get(scriptName) === handle) state.starting.delete(scriptName);
+          }),
+        ),
+      ),
+    );
+    handle.fiber = fiber;
+    return fiber;
+  }
 
-    let registered = false;
+  private async openScriptAsync(
+    cwd: string,
+    decl: ScriptDeclaration,
+    declarations: ScriptDeclaration[],
+    state: WorkspaceScriptsState,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.ensurePortPlan(declarations, state);
+    let running: RunningScript | undefined;
     let pendingExit: { exitCode: number | null } | undefined;
     const terminalId = await this.terminals.openManaged(
       {
@@ -91,65 +184,50 @@ export class ScriptService {
         env: this.scriptEnv(cwd, decl, declarations, state),
       },
       (exitCode) => {
-        if (registered) this.onScriptExit(cwd, scriptName, exitCode);
+        if (running) this.onScriptExit(cwd, decl.name, running, exitCode);
         else pendingExit = { exitCode };
       },
+      signal,
     );
-
-    const run: RunningScript = {
+    if (!this.accepting) {
+      this.terminals.closeManaged(terminalId);
+      throw shuttingDown();
+    }
+    running = {
       terminalId,
       lifecycle: 'running',
       health: decl.type === 'service' ? 'unhealthy' : 'unknown',
       startedAt: Date.now(),
       consecutiveProbeFailures: 0,
     };
-    state.running.set(scriptName, run);
-    state.stopped.delete(scriptName);
-    registered = true;
+    state.running.set(decl.name, running);
+    state.stopped.delete(decl.name);
     if (pendingExit) {
-      this.onScriptExit(cwd, scriptName, pendingExit.exitCode);
+      this.onScriptExit(cwd, decl.name, running, pendingExit.exitCode);
       return;
     }
 
     if (decl.type === 'service') {
-      const port = state.plan.get(scriptName)!;
-      run.hostname = this.hostnameFor(cwd, scriptName);
-      this.routes.register(run.hostname, { port }, ownerKey(cwd, scriptName));
-      run.probeTimer = setInterval(() => {
-        void this.probe(cwd, decl, run, port);
+      const port = nullthrow(state.plan.get(decl.name));
+      running.hostname = this.hostnameFor(cwd, decl.name);
+      this.routes.register(running.hostname, { port }, ownerKey(cwd, decl.name));
+      running.probeTimer = setInterval(() => {
+        void this.probe(cwd, decl, running, port);
       }, HEALTH_PROBE_INTERVAL_MS);
-      run.probeTimer.unref();
+      running.probeTimer.unref();
     }
 
     this.broadcast(cwd, this.describe(cwd, decl, state));
   }
 
-  stop(cwd: string, scriptName: string): void {
-    const run = this.stateFor(cwd).running.get(scriptName);
-    if (!run) {
-      throw new RequestError({
-        code: 'conflict',
-        message: `Script not running: ${scriptName}`,
-      });
-    }
-    // Cleanup and the status broadcast follow from the PTY exit event.
-    this.terminals.closeManaged(run.terminalId);
-  }
-
-  /** Stop probes and kill script PTYs (engine shutdown; TerminalService reaps the processes). */
-  shutdown(): void {
-    for (const state of this.workspaces.values()) {
-      for (const run of state.running.values()) {
-        if (run.probeTimer) clearInterval(run.probeTimer);
-        this.terminals.closeManaged(run.terminalId);
-      }
-    }
-  }
-
-  private onScriptExit(cwd: string, scriptName: string, exitCode: number | null): void {
+  private onScriptExit(
+    cwd: string,
+    scriptName: string,
+    run: RunningScript,
+    exitCode: number | null,
+  ): void {
     const state = this.stateFor(cwd);
-    const run = state.running.get(scriptName);
-    if (!run) return;
+    if (state.running.get(scriptName) !== run) return;
     if (run.probeTimer) clearInterval(run.probeTimer);
     if (run.hostname) this.routes.unregister(run.hostname, ownerKey(cwd, scriptName));
     state.running.delete(scriptName);
@@ -174,6 +252,8 @@ export class ScriptService {
     port: number,
   ): Promise<void> {
     const reachable = await probeTcp(port);
+    const state = this.stateFor(cwd);
+    if (!this.accepting || state.running.get(decl.name) !== run) return;
     let next: ScriptHealth = run.health;
     if (reachable) {
       run.consecutiveProbeFailures = 0;
@@ -184,7 +264,7 @@ export class ScriptService {
     }
     if (next !== run.health) {
       run.health = next;
-      this.broadcast(cwd, this.describe(cwd, decl, this.stateFor(cwd)));
+      this.broadcast(cwd, this.describe(cwd, decl, state));
     }
   }
 
@@ -262,10 +342,33 @@ export class ScriptService {
     const key = normalizeCwdKey(cwd);
     let state = this.workspaces.get(key);
     if (!state) {
-      state = { plan: new Map(), running: new Map(), stopped: new Map() };
+      state = { plan: new Map(), starting: new Map(), running: new Map(), stopped: new Map() };
       this.workspaces.set(key, state);
     }
     return state;
+  }
+
+  private ensureAccepting(): void {
+    if (!this.accepting) throw shuttingDown();
+  }
+
+  private beginShutdown(): Array<Fiber.Fiber<unknown, unknown>> {
+    const fibers: Array<Fiber.Fiber<unknown, unknown>> = [];
+    for (const state of this.workspaces.values()) {
+      for (const handle of state.starting.values()) {
+        if (handle.fiber) fibers.push(handle.fiber);
+      }
+    }
+    if (!this.accepting) return fibers;
+    this.accepting = false;
+    for (const [cwd, state] of this.workspaces) {
+      for (const [scriptName, run] of state.running) {
+        if (run.probeTimer) clearInterval(run.probeTimer);
+        if (run.hostname) this.routes.unregister(run.hostname, ownerKey(cwd, scriptName));
+        this.terminals.closeManaged(run.terminalId);
+      }
+    }
+    return fibers;
   }
 
   private broadcast(cwd: string, script: WorkspaceScript): void {
@@ -291,4 +394,12 @@ function probeTcp(port: number): Promise<boolean> {
     socket.once('error', () => done(false));
     socket.connect(port, '127.0.0.1');
   });
+}
+
+function scriptFailure(cause: unknown, operation: string, publicMessage: string): EngineFailure {
+  return toOperationFailure(cause, { subsystem: 'script', operation, publicMessage });
+}
+
+function shuttingDown(): RequestError {
+  return new RequestError({ code: 'cancelled', message: 'Script service is shutting down' });
 }

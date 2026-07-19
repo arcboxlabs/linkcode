@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { Effect } from 'effect';
+import { Cause, Effect, Exit } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PreviewRouteRegistry } from '../preview/route-registry';
@@ -91,6 +91,34 @@ class SyncExitPtyBackend extends FakePtyBackend {
   }
 }
 
+class PendingPtyBackend extends FakePtyBackend {
+  readonly opened: Promise<void>;
+  readonly process = new FakePtyProcess();
+  private readonly pending: Promise<PtyProcess>;
+  private resolveOpen: () => void = noop;
+  private resolveProcess: (process: PtyProcess) => void = noop;
+
+  constructor() {
+    super();
+    this.opened = new Promise((resolve) => {
+      this.resolveOpen = resolve;
+    });
+    this.pending = new Promise((resolve) => {
+      this.resolveProcess = resolve;
+    });
+  }
+
+  override open(_terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
+    this.opens.push({ opts, process: this.process });
+    this.resolveOpen();
+    return this.pending;
+  }
+
+  release(): void {
+    this.resolveProcess(this.process);
+  }
+}
+
 function recordingTransport(): { transport: Transport; sent: WirePayload[] } {
   const sent: WirePayload[] = [];
   const transport: Transport = {
@@ -117,6 +145,7 @@ function makeService(backend = new FakePtyBackend()): {
   const routes = new PreviewRouteRegistry();
   routes.proxyPort = 19523;
   const service = new ScriptService(transport, terminals, routes, () => 'app');
+  service.bindRuntime(Effect.runFork);
   return { service, terminals, backend, routes, sent };
 }
 
@@ -163,7 +192,7 @@ describe('ScriptService', () => {
     });
     const { service, backend, routes, sent } = makeService();
 
-    await service.start(cwd, 'web');
+    await Effect.runPromise(service.start(cwd, 'web'));
 
     const { opts } = backend.opens[0];
     expect(opts.shell).toBe('/bin/sh');
@@ -188,12 +217,12 @@ describe('ScriptService', () => {
     });
     const { service, backend, routes, sent } = makeService();
 
-    await service.start(cwd, 'web');
+    await Effect.runPromise(service.start(cwd, 'web'));
     const hostname = [...sent]
       .map((p) => (p.kind === 'script.status' ? p.script.hostname : undefined))
       .find(Boolean)!;
 
-    service.stop(cwd, 'web');
+    await Effect.runPromise(service.stop(cwd, 'web'));
     expect(backend.opens[0].process.killed).toBe(true);
     expect(routes.lookup(hostname)).toBeNull();
 
@@ -201,7 +230,7 @@ describe('ScriptService', () => {
     expect(last?.kind === 'script.status' && last.script.lifecycle).toBe('stopped');
     expect(last?.kind === 'script.status' && last.script.exitCode).toBe(0);
 
-    const listed = await service.list(cwd);
+    const listed = await Effect.runPromise(service.list(cwd));
     expect(listed[0].lifecycle).toBe('stopped');
     expect(listed[0].terminalId).toBe(
       last?.kind === 'script.status' ? last.script.terminalId : null,
@@ -212,16 +241,16 @@ describe('ScriptService', () => {
     const cwd = makeWorkspace({ scripts: { build: { command: 'printf done' } } });
     const { service, terminals, sent } = makeService(new SyncExitPtyBackend());
 
-    await service.start(cwd, 'build');
+    await Effect.runPromise(service.start(cwd, 'build'));
 
-    const [script] = await service.list(cwd);
+    const [script] = await Effect.runPromise(service.list(cwd));
     expect(script).toMatchObject({
       lifecycle: 'stopped',
       health: 'unknown',
       exitCode: 7,
       terminalId: expect.stringMatching(RE_TERMINAL_ID),
     });
-    expect(() => service.stop(cwd, 'build')).toThrow('not running');
+    await expect(Effect.runPromise(service.stop(cwd, 'build'))).rejects.toThrow('not running');
     const status = sent.findLast((payload) => payload.kind === 'script.status');
     expect(status).toMatchObject({
       kind: 'script.status',
@@ -251,16 +280,52 @@ describe('ScriptService', () => {
   it('rejects starting an unknown or already-running script', async () => {
     const cwd = makeWorkspace({ scripts: { web: { type: 'service', command: 'x', port: 4646 } } });
     const { service } = makeService();
-    await expect(service.start(cwd, 'nope')).rejects.toThrow('not declared');
-    await service.start(cwd, 'web');
-    await expect(service.start(cwd, 'web')).rejects.toThrow('already running');
+    await expect(Effect.runPromise(service.start(cwd, 'nope'))).rejects.toThrow('not declared');
+    await Effect.runPromise(service.start(cwd, 'web'));
+    await expect(Effect.runPromise(service.start(cwd, 'web'))).rejects.toThrow('already running');
+  });
+
+  it('admits only one concurrent start for a script', async () => {
+    const cwd = makeWorkspace({ scripts: { web: { command: 'sleep 999' } } });
+    const backend = new PendingPtyBackend();
+    const { service } = makeService(backend);
+    const first = Effect.runPromise(service.start(cwd, 'web'));
+    await backend.opened;
+
+    await expect(Effect.runPromise(service.start(cwd, 'web'))).rejects.toThrow('already running');
+    expect(backend.opens).toHaveLength(1);
+
+    backend.release();
+    await first;
+  });
+
+  it('shutdown interrupts a pending start and closes admission', async () => {
+    const cwd = makeWorkspace({ scripts: { web: { command: 'sleep 999' } } });
+    const backend = new PendingPtyBackend();
+    const { service, terminals, sent } = makeService(backend);
+    const startExit = Effect.runPromiseExit(service.start(cwd, 'web'));
+    await backend.opened;
+
+    await Promise.all([
+      Effect.runPromise(service.shutdown()),
+      Effect.runPromise(service.shutdown()),
+    ]);
+
+    const exit = await startExit;
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    await expect(Effect.runPromise(service.start(cwd, 'web'))).rejects.toThrow('shutting down');
+    expect(sent.filter((payload) => payload.kind === 'script.status')).toEqual([]);
+
+    backend.release();
+    await Effect.runPromise(terminals.shutdown());
+    expect(backend.process.killed).toBe(true);
   });
 
   it('list keeps planned ports stable across calls', async () => {
     const cwd = makeWorkspace({ scripts: { api: { type: 'service', command: 'x' } } });
     const { service } = makeService();
-    const [first] = await service.list(cwd);
-    const [second] = await service.list(cwd);
+    const [first] = await Effect.runPromise(service.list(cwd));
+    const [second] = await Effect.runPromise(service.list(cwd));
     expect(first.port).toBeGreaterThan(0);
     expect(second.port).toBe(first.port);
     expect(first.localProxyUrl).toBe(`http://${first.hostname}:19523`);

@@ -57,6 +57,7 @@ describe('Effect request handlers', () => {
     const { transport, responder, sent } = harness();
     const terminals = new TerminalService(new RejectingPtyBackend(), transport);
     const scripts = new ScriptService(transport, terminals, new PreviewRouteRegistry(), noop);
+    scripts.bindRuntime(Effect.runFork);
     const handler = new ScriptRequestHandler(transport, scripts, responder);
 
     await Effect.runPromise(
