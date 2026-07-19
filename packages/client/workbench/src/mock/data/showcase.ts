@@ -233,12 +233,11 @@ const SHOWCASE_STATIC_EXEC_COMMAND =
   'fd -e ts -e tsx --exclude node_modules --exclude coss-ui --exclude target . apps packages | xargs wc -l';
 
 const SHOWCASE_STATIC_EXEC_OUTPUT = [
-  '74646 total',
+  '74570 total',
   '---per-dir---',
   'apps/daemon: 2953',
   'apps/desktop: 6804',
   'apps/mobile: 1088',
-  'apps/server: 76',
   'apps/webview: 2246',
   'packages/host/agent-adapter: 11884',
   'packages/host/assets: 1737',

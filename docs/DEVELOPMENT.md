@@ -40,7 +40,7 @@ pnpm -F @linkcode/daemon run build:rust
 pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev
 ```
 
-Root `pnpm dev` (= `turbo run dev`) is different: it starts **all four** persistent dev servers at once — daemon, desktop, `@linkcode/server`, and webview. Use `-F`/`--filter` to run a subset. `apps/mobile` and the `packages/*/*` have no `dev` script.
+Root `pnpm dev` (= `turbo run dev`) is different: it starts the three persistent dev tasks at once — daemon, desktop, and webview. Use `-F`/`--filter` to run a subset. `apps/mobile` and the `packages/*/*` have no `dev` script.
 
 ### Daemon only
 

@@ -84,7 +84,6 @@ module.exports = require('eslint-config-sukka').sukka(
     files: [
       'apps/daemon/src/index.ts',
       'apps/desktop/src/main/index.ts',
-      'apps/server/src/index.ts',
       'packages/client/core/src/react.tsx',
       'packages/client/workbench/src/runtime.tsx',
     ],

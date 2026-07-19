@@ -10,7 +10,6 @@
     { "path": "packages/vendor/coss-ui" },
     { "path": "apps/daemon" },
     { "path": "apps/mobile" },
-    { "path": "apps/server" },
     { "path": "packages/client/core" },
     { "path": "packages/client/sdk" },
     { "path": "packages/client/workbench" },

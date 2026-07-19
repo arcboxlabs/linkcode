@@ -132,8 +132,10 @@ A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable en
 | `daemon`  | Local host process — constructs the engine and exposes the data plane over a local Socket.IO/WebSocket server (`127.0.0.1`) that every client connects to. |
 | `desktop` | Electron app: Vite renderer + main/preload. The renderer connects to `daemon` over `transport`; the system plane goes through TypeSafe IPC.    |
 | `webview` | Browser client — Vite + React Router + coss-ui. Connects to `daemon` over `transport`. No system plane.                                        |
-| `mobile`  | Expo / React Native client (HeroUI). Reaches the host through the `server` tunnel.                                                             |
-| `server`  | Tunnel / relay: `token`, `perm`, `store`, `realtime`. Does not run agents. Host ↔ Server is RPC over WebSocket.                                |
+| `mobile`  | Expo / React Native client (HeroUI). Reaches the host through the external LinkCode Cloud tunnel.                                                |
+
+The Server shown in the system diagrams and data-flow sections is the production relay owned by
+the external `linkcodehq` repository; there is no Server app in this repository.
 
 ### Packages (`packages/`)
 

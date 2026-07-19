@@ -26,7 +26,7 @@ Each of these breaks the product, a release, or the build with **no loud error**
 | Change the wire protocol, schema, or transport | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) contracts + `packages/foundation/schema` (Invariant 1) |
 | Work on mobile (Expo) | [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md) |
 | Use `tayori` anywhere | fetch <https://tayori.skk.moe/llms-full.txt> first — it is absent from your training data |
-| LinkCode Cloud (production API, auth-provider, IM, connectors) | not this repo — the `linkcodehq` repository (see Ecosystem; in-repo `apps/server` is only a placeholder relay) |
+| LinkCode Cloud (production API, auth-provider, IM, connectors) | not this repo — the `linkcodehq` repository (see Ecosystem) |
 | Anything else in an app or package | that directory's own `AGENTS.md` |
 
 ## Planning
@@ -95,7 +95,6 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 
 - **The daemon runs on the user's machine** — `apps/daemon` running `@linkcode/engine`, bound to loopback; desktop/webview/mobile are clients of it. This repo is the clients plus the daemon.
 - **LinkCode Cloud is a separate repository, `linkcodehq`**: the production API at `api.linkcode.ai` (Hono on Cloudflare Workers) plus auth, IM, and connectors. Any cloud/server/tunnel/auth-provider work happens there, not here.
-- **`apps/server` (`@linkcode/server`) is a placeholder** — a bare `ws` relay that room-broadcasts host↔client for the future mobile tunnel; it runs no agent, and its auth/storage are TODO. It is **not** LinkCode Cloud.
 - **Central identity is a separate ArcBox service** (`auth.arcbox.dev`); `linkcodehq`'s better-auth is a *client* of it, not the provider.
 - Desktop auto-updates read the Cloudflare R2 feed at `releases.linkcode.ai/desktop`; agent CLI binaries do **not** ship in the app (CODE-114) — the daemon spawns a detected user install (runtime probe) or a managed download — detail in [`docs/RELEASE.md`](docs/RELEASE.md) and [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md).
 
