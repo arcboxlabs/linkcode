@@ -20,10 +20,15 @@ const SUMMARY_MAX_CHARS = 2000;
 type RunTask = (effect: Effect.Effect<void>) => Fiber.Fiber<void>;
 
 interface LoopHandle {
-  readonly controller: AbortController;
+  readonly control: LoopControl;
   readonly fiber: Fiber.Fiber<void>;
 }
 
+interface LoopControl {
+  admitted: boolean;
+  stopError?: string;
+  terminalStarted: boolean;
+}
 export interface LoopServiceOptions {
   /** Injectable clock for deterministic tests. */
   now?: () => number;
@@ -82,8 +87,11 @@ export class LoopService {
   shutdown(): Effect.Effect<void> {
     return Effect.sync(() => {
       this.acceptingLoops = false;
-      for (const handle of this.handles.values()) handle.controller.abort();
-    }).pipe(Effect.andThen(this.settleAll()));
+      for (const handle of this.handles.values()) {
+        handle.control.stopError ??= 'engine shutting down';
+        if (handle.control.admitted) handle.fiber.interruptUnsafe();
+      }
+    }).pipe(Effect.andThen(Effect.suspend(() => this.settleAll())));
   }
 
   list(): LoopRecord[] {
@@ -110,33 +118,32 @@ export class LoopService {
       updatedAt: now,
     };
     this.loops.set(loop.loopId, loop);
-    const controller = new AbortController();
-    let admissionSettled = false;
+    const control: LoopControl = { admitted: false, terminalStarted: false };
     let resolveAdmission: (record: LoopRecord) => void;
     let rejectAdmission: (cause: unknown) => void;
     const admission = new Promise<LoopRecord>((resolve, reject) => {
       resolveAdmission = resolve;
       rejectAdmission = reject;
     });
-    const finish = (error: string) => this.finish(loop, 'stopped', error);
-    const runLoop = () => this.runLoop(loop, controller.signal);
+    const finish = (error: string) => this.finish(loop, control, 'stopped', error);
+    const runLoop = () => this.runLoop(loop, control);
     const { reporter, store } = this;
     const effect = Effect.gen(function* () {
       yield* fromPromise(() => store.save(loop));
       reporter.start(loop.loopId);
-      admissionSettled = true;
+      control.admitted = true;
       resolveAdmission(loop);
-      if (controller.signal.aborted) {
-        yield* fromPromise(() => finish('engine shutting down'));
+      if (control.stopError !== undefined) {
+        yield* finish(control.stopError);
         return;
       }
       reporter.changed(loop);
       reporter.log(loop.loopId, 'info', 'system', 'loop started');
-      yield* fromPromise(runLoop);
+      yield* runLoop();
     }).pipe(
       Effect.onExit((exit) =>
         Effect.sync(() => {
-          if (admissionSettled) return;
+          if (control.admitted) return;
           this.loops.delete(loop.loopId);
           rejectAdmission(
             Exit.isFailure(exit) ? Cause.squash(exit.cause) : new Error('Loop stopped'),
@@ -144,14 +151,17 @@ export class LoopService {
         }),
       ),
     );
-    this.track(loop.loopId, controller, effect);
+    this.track(loop.loopId, control, effect);
     return admission;
   }
 
   /** Signal a running loop to stop; it settles to `stopped` after the current turn unwinds. */
   stopLoop(loopId: LoopId): void {
     this.require(loopId);
-    this.handles.get(loopId)?.controller.abort();
+    const handle = this.handles.get(loopId);
+    if (!handle) return;
+    handle.control.stopError ??= 'stopped by user';
+    if (handle.control.admitted) handle.fiber.interruptUnsafe();
   }
 
   async deleteLoop(loopId: LoopId): Promise<void> {
@@ -171,79 +181,88 @@ export class LoopService {
 
   // ── The loop runner ──────────────────────────────────────────────────────
 
-  private async runLoop(loop: LoopRecord, signal: AbortSignal): Promise<void> {
+  private runLoop(loop: LoopRecord, control: LoopControl): Effect.Effect<void, unknown> {
     const spec = loop.spec;
+    const { iterationRunner, now, reporter, store } = this;
+    const finish = this.finish.bind(this, loop, control);
+    const summarize = (text: string) => this.summarize(text);
     let lastFailure: string | undefined;
-    const budgetController = new AbortController();
     const budgetRemaining =
       spec.maxTimeMs === undefined
         ? undefined
-        : Math.max(0, spec.maxTimeMs - (this.now() - loop.startedAt));
-    const budgetTimer =
-      budgetRemaining === undefined
-        ? undefined
-        : setTimeout(() => budgetController.abort(), budgetRemaining);
-    budgetTimer?.unref();
-    const runSignal =
-      budgetTimer === undefined ? signal : AbortSignal.any([signal, budgetController.signal]);
-    const budgetExceeded = (): boolean =>
-      budgetController.signal.aborted ||
-      (spec.maxTimeMs !== undefined && this.now() - loop.startedAt >= spec.maxTimeMs);
-    try {
+        : Math.max(0, spec.maxTimeMs - (now() - loop.startedAt));
+    const run = Effect.gen(function* () {
       for (let index = 0; index < spec.maxIterations; index += 1) {
-        if (signal.aborted) return await this.finish(loop, 'stopped', 'stopped by user');
-        if (budgetExceeded()) {
-          return await this.finish(loop, 'failed', 'time budget exceeded');
-        }
-
-        const { iteration, workerText, failureFeedback } = await this.iterationRunner.run(
+        const { iteration, workerText, failureFeedback } = yield* iterationRunner.run(
           loop,
           index,
           lastFailure,
-          runSignal,
         );
         loop.iterationCount = index + 1;
-        loop.updatedAt = this.now();
-        await this.store.save(loop);
-        this.reporter.changed(loop);
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- `signal.aborted` is a mutable getter; the loop-top narrowing doesn't survive the awaited iteration, and catching an abort here (vs. next loop turn) settles the final iteration as stopped rather than mislabeling it failed.
-        if (signal.aborted) return await this.finish(loop, 'stopped', 'stopped by user');
-        if (budgetExceeded()) return await this.finish(loop, 'failed', 'time budget exceeded');
+        loop.updatedAt = now();
+        yield* fromPromise(() => store.save(loop));
+        reporter.changed(loop);
         if (iteration.status === 'passed') {
-          return await this.finish(loop, 'succeeded', undefined, this.summarize(workerText));
+          yield* finish('succeeded', undefined, summarize(workerText));
+          return;
         }
-
         lastFailure = failureFeedback;
-        if (spec.sleepMs > 0) await sleep(spec.sleepMs, runSignal);
+        if (spec.sleepMs > 0) yield* Effect.sleep(spec.sleepMs);
       }
-      await this.finish(loop, 'failed', 'max iterations reached without passing verification');
-    } catch (err) {
-      const message = extractErrorMessage(err, false) ?? 'loop failed';
-      if (signal.aborted) await this.finish(loop, 'stopped', 'stopped by user');
-      else if (budgetExceeded()) await this.finish(loop, 'failed', 'time budget exceeded');
-      else await this.finish(loop, 'failed', message);
-    } finally {
-      if (budgetTimer) clearTimeout(budgetTimer);
-    }
+      yield* finish('failed', 'max iterations reached without passing verification');
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause) || control.terminalStarted
+          ? Effect.failCause(cause)
+          : finish('failed', extractErrorMessage(Cause.squash(cause), false) ?? 'loop failed'),
+      ),
+      Effect.onInterrupt(() =>
+        control.stopError === undefined ? Effect.void : finish('stopped', control.stopError),
+      ),
+    );
+    return budgetRemaining === undefined
+      ? run
+      : run.pipe(
+          Effect.timeoutOrElse({
+            duration: budgetRemaining,
+            orElse: () => finish('failed', 'time budget exceeded'),
+          }),
+        );
   }
 
-  private async finish(
+  private finish(
     loop: LoopRecord,
+    control: LoopControl,
     status: LoopRecord['status'],
     error?: string,
     summary?: string,
-  ): Promise<void> {
-    loop.status = status;
-    loop.error = error;
-    if (summary !== undefined) loop.summary = summary;
-    loop.endedAt = this.now();
-    loop.updatedAt = this.now();
-    await this.store.save(loop);
-    this.reporter.changed(loop);
-    const level: LoopLogLevel =
-      status === 'succeeded' ? 'info' : status === 'failed' ? 'error' : 'warn';
-    this.reporter.log(loop.loopId, level, 'system', `loop ${status}${error ? `: ${error}` : ''}`);
+  ): Effect.Effect<void, unknown> {
+    return Effect.suspend(() => {
+      if (control.terminalStarted) return Effect.void;
+      control.terminalStarted = true;
+      return Effect.sync(() => {
+        loop.status = status;
+        loop.error = error;
+        if (summary !== undefined) loop.summary = summary;
+        loop.endedAt = this.now();
+        loop.updatedAt = this.now();
+      }).pipe(
+        Effect.andThen(fromPromise(() => this.store.save(loop))),
+        Effect.andThen(
+          Effect.sync(() => {
+            this.reporter.changed(loop);
+            const level: LoopLogLevel =
+              status === 'succeeded' ? 'info' : status === 'failed' ? 'error' : 'warn';
+            this.reporter.log(
+              loop.loopId,
+              level,
+              'system',
+              `loop ${status}${error ? `: ${error}` : ''}`,
+            );
+          }),
+        ),
+      );
+    }).pipe(Effect.uninterruptible);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -258,11 +277,7 @@ export class LoopService {
     return nullthrow(this.loops.get(loopId), `Unknown loop: ${loopId}`);
   }
 
-  private track(
-    loopId: LoopId,
-    controller: AbortController,
-    effect: Effect.Effect<void, unknown>,
-  ): void {
+  private track(loopId: LoopId, control: LoopControl, effect: Effect.Effect<void, unknown>): void {
     const run = nullthrow(this.runTask, 'Loop runtime has not started');
     const fiber = run(
       effect.pipe(
@@ -273,7 +288,7 @@ export class LoopService {
         ),
       ),
     );
-    const handle = { controller, fiber };
+    const handle = { control, fiber };
     this.handles.set(loopId, handle);
     fiber.addObserver(() => {
       if (this.handles.get(loopId) === handle) this.handles.delete(loopId);
@@ -288,21 +303,4 @@ export class LoopService {
 
 function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: run, catch: (cause) => cause });
-}
-
-/** Resolve after `ms`, or immediately when `signal` aborts. */
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    let timer: ReturnType<typeof setTimeout>;
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
 }
