@@ -1,0 +1,23 @@
+services:
+  linkcode-daemon:
+    command: >-
+      export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH";
+      export LINKCODE_PROFILE=orb;
+      export LINKCODE_PTY_SIDECAR_PATH="$PWD/target/release/linkcode-pty";
+      exec pnpm -F @linkcode/daemon run dev
+
+  linkcode-desktop-vnc:
+    command: exec .agents/orb/desktop-vnc
+    access: same-as-thread
+    portal:
+      title: LinkCode Electron Desktop
+      description: Interactive 1440x900 Electron desktop with high-quality noVNC scaling.
+
+  linkcode-devtools:
+    command: >-
+      export PATH="$HOME/.local/bin:$PATH";
+      exec node .agents/orb/cdp-proxy.cjs
+    access: same-as-thread
+    portal:
+      title: LinkCode DevTools
+      description: Chrome DevTools for the Electron renderer.

@@ -6,7 +6,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 echo "==> Installing native build prerequisites"
 sudo apt-get update -qq
-sudo apt-get install -y -qq \
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   build-essential \
   ca-certificates \
   curl \
@@ -19,21 +19,24 @@ sudo apt-get install -y -qq \
   libnss3 \
   libxkbcommon0 \
   libxss1 \
+  novnc \
   pkg-config \
   python3 \
+  websockify \
+  x11vnc \
   xauth \
   xz-utils \
   xvfb
 
 node_major="$(tr -d '[:space:]' < .nvmrc)"
+case "$(uname -m)" in
+  x86_64) node_arch="x64" ;;
+  aarch64 | arm64) node_arch="arm64" ;;
+  *) echo "Unsupported CPU architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(`.`)[0]')" != "$node_major" ]; then
   echo "==> Installing Node.js ${node_major}"
-  case "$(uname -m)" in
-    x86_64) node_arch="x64" ;;
-    aarch64 | arm64) node_arch="arm64" ;;
-    *) echo "Unsupported CPU architecture: $(uname -m)" >&2; exit 1 ;;
-  esac
-
   node_version="$(curl -fsSL "https://nodejs.org/dist/latest-v${node_major}.x/SHASUMS256.txt" | sed -nE '1{s/.*node-(v[^-]+)-.*/\1/;p;}')"
   node_archive="node-${node_version}-linux-${node_arch}.tar.xz"
   node_root="$HOME/.local/share/node-${node_version}-linux-${node_arch}"
@@ -69,17 +72,18 @@ if ! command -v pnpm >/dev/null 2>&1 || [ "$(pnpm --version 2>/dev/null || true)
   hash -r
 fi
 
-if ! command -v rustup >/dev/null 2>&1; then
+if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
   echo "==> Installing stable Rust"
   curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
 fi
 
 echo "==> Installing the stable Rust toolchain"
-rustup toolchain install stable --profile minimal --component clippy,rustfmt
-rustup default stable
+"$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal --component clippy,rustfmt
+"$HOME/.cargo/bin/rustup" default stable
 
 mkdir -p "$HOME/.local/bin"
 for executable in cargo cargo-clippy cargo-fmt clippy-driver rustc rustdoc rustfmt rustup; do
+  [ -x "$HOME/.cargo/bin/$executable" ] || continue
   ln -sfn "$HOME/.cargo/bin/$executable" "$HOME/.local/bin/$executable"
 done
 
@@ -91,5 +95,11 @@ pnpm exec electron --version >/dev/null
 
 echo "==> Fetching Rust dependencies"
 cargo fetch --locked
+
+echo "==> Building the terminal PTY sidecar"
+pnpm -F @linkcode/daemon run build:rust
+
+echo "==> Starting supervised Orb development services"
+amp orb services ensure
 
 echo "==> Orb setup complete"

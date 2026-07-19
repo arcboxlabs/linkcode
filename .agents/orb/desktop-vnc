@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+export LINKCODE_PROFILE=orb
+
+display=:99
+runtime_dir="$PWD/.amp/runtime"
+auth_file="$runtime_dir/Xauthority"
+webroot="$runtime_dir/novnc-web"
+
+mkdir -p "$runtime_dir" "$webroot"
+rm -f "$auth_file"
+touch "$auth_file"
+xauth -f "$auth_file" add "$display" . "$(mcookie)"
+
+find "$webroot" -mindepth 1 -maxdepth 1 -delete
+find /usr/share/novnc -mindepth 1 -maxdepth 1 -exec ln -s {} "$webroot"/ \;
+printf '%s\n' '<!doctype html><meta charset=utf-8><title>LinkCode Electron Desktop</title><script>location.replace("vnc.html?autoconnect=1&resize=scale&quality=9&compression=0")</script>' >"$webroot/index.html"
+
+Xvfb "$display" -screen 0 1440x900x24 -nolisten tcp -auth "$auth_file" &
+xvfb_pid=$!
+while [ ! -S /tmp/.X11-unix/X99 ]; do
+  kill -0 "$xvfb_pid"
+  sleep 0.1
+done
+
+export DISPLAY="$display"
+export XAUTHORITY="$auth_file"
+dbus-run-session -- pnpm -F @linkcode/desktop run dev \
+  --remote-debugging-port=9222 \
+  --ignore-gpu-blocklist \
+  --enable-unsafe-swiftshader \
+  --use-angle=swiftshader &
+desktop_pid=$!
+
+x11vnc -display "$display" -auth "$auth_file" -rfbport 5900 \
+  -localhost -forever -shared -nopw -quiet &
+vnc_pid=$!
+
+websockify --web="$webroot" "127.0.0.1:$PORT" 127.0.0.1:5900 &
+proxy_pid=$!
+
+trap 'kill "$proxy_pid" "$vnc_pid" "$desktop_pid" "$xvfb_pid" 2>/dev/null || true' EXIT INT TERM
+wait -n "$proxy_pid" "$vnc_pid" "$desktop_pid" "$xvfb_pid"

@@ -34,4 +34,5 @@ if ! cargo clippy --version >/dev/null 2>&1 || [[ "$(rustup show active-toolchai
   exit 1
 fi
 
-echo "Orb toolchains are ready; no persistent services require repair"
+echo "Ensuring supervised Orb development services are running"
+amp orb services ensure
