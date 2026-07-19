@@ -143,6 +143,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Monotonic flag-ownership counter, bumped by every prompt AND every cancel — a straggling
    * abort settlement from an earlier cancel may clear `cancelling` only if it still owns the epoch. */
   private turnEpoch = 0;
+  /** Accepted next-turn model selections advance this revision. A turn keeps the revision it began
+   * with so late frames from it cannot overwrite a newer selection before the next turn starts. */
+  private modelSelectionRevision = 0;
+  private turnModelSelectionRevision: number | null = null;
   /** Tool part id by provider `callID`: asks cite tools via `tool.callID` but the card was
    * announced under the PART id — this map re-joins them. Cleared at each turn settle. */
   private readonly toolPartIdByCallId = new Map<string, string>();
@@ -216,6 +220,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.client = started.client;
     this.closeServer = () => started.server.close();
     let resumedAgent: string | null = null;
+    let resumedModel: string | undefined;
     if (this.resumeFrom) {
       // Adopt the existing provider session and announce its id right away — a resumed session's
       // transcript is real, so the seed read is safe immediately (unlike the fresh path below).
@@ -228,9 +233,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // A resumed session continues under its recorded control state unless the caller overrode
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
-      if (!opts.model && got.data.model) {
-        opts.model = `${got.data.model.providerID}/${got.data.model.id}`;
-      }
+      if (got.data.model) resumedModel = `${got.data.model.providerID}/${got.data.model.id}`;
+      if (!opts.model && resumedModel) opts.model = resumedModel;
       resumedAgent = got.data.agent ?? null;
       this.emitSessionRef(asHistoryId(got.data.id));
     } else {
@@ -246,35 +250,40 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
     // list must not fail session start. They are independent reads of the same local server, so
     // they run concurrently.
-    await Promise.all([
+    const [availableModels] = await Promise.all([
+      this.fetchModelCatalog(),
       this.fetchCommandCatalog(),
       this.fetchAgentCatalog(resumedAgent),
-      this.fetchModelCatalog(),
     ]);
-    // Reflect the model the session will prompt with (configured, or adopted from the resumed
-    // session above) so the client chip is right before the first turn.
-    if (opts.model) this.emitModel(opts.model);
+    // A resumed session record confirms its current model. A fresh override is confirmed only when
+    // the running server advertises that exact ref; a request or failed catalog is not acceptance.
+    if (opts.model && (opts.model === resumedModel || availableModels?.has(opts.model))) {
+      this.emitModel(opts.model);
+    }
     void this.consumeEvents();
   }
 
-  /** Best-effort slash-command catalog fetch — swallows every failure (see `onStart`). */
+  /** Best-effort slash-command catalog fetch. Failure publishes an authoritative empty catalog so
+   * host validation does not remain in its pre-catalog window indefinitely. */
   private async fetchCommandCatalog(): Promise<void> {
     if (!this.client) return;
     try {
       const listed = await this.client.command.list({ directory: this.directory });
-      if (listed.error === undefined) {
-        this.emitCommands(
-          listed.data.map(
-            (c): AgentCommand => ({
-              name: c.name,
-              description: c.description,
-              argumentHint: c.hints.join(' ') || undefined,
-            }),
-          ),
-        );
+      if (listed.error !== undefined) {
+        this.emitCommands([]);
+        return;
       }
+      this.emitCommands(
+        listed.data.map(
+          (c): AgentCommand => ({
+            name: c.name,
+            description: c.description,
+            argumentHint: c.hints.join(' ') || undefined,
+          }),
+        ),
+      );
     } catch {
-      // Non-fatal — see onStart.
+      this.emitCommands([]);
     }
   }
 
@@ -282,8 +291,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * `set-model` can actually reach: every connected (or key-less `api`-source) provider's models,
    * narrowed to the credential-injected provider when one is in play — the cross-provider guard
    * in `onSetModel` would reject everything else anyway. */
-  private async fetchModelCatalog(): Promise<void> {
-    if (!this.client) return;
+  private async fetchModelCatalog(): Promise<ReadonlySet<string> | undefined> {
+    if (!this.client) return undefined;
     try {
       const listed = await this.client.provider.list({ directory: this.directory });
       if (listed.error !== undefined) return;
@@ -304,8 +313,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         }
       }
       if (models.length > 0) this.emitModels(models);
+      return new Set(models.map((model) => model.id));
     } catch {
       // Non-fatal — see onStart.
+      return undefined;
     }
   }
 
@@ -328,6 +339,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       throw new Error('opencode: session is busy');
     }
     this.turnEpoch += 1;
+    this.turnModelSelectionRevision = this.modelSelectionRevision;
     this.turnActive = true;
     this.turnStarted = false;
     this.cancelling = false;
@@ -601,6 +613,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       );
     }
     this.opts.model = model;
+    this.modelSelectionRevision += 1;
     // Reflect the pick now; it applies from the next prompt.
     this.emitModel(model);
     return Promise.resolve();
@@ -698,9 +711,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
             const { info } = ev.properties;
             if (info.role === 'user') {
               this.userMessageIds.add(info.id);
-              this.emitModel(`${info.model.providerID}/${info.model.modelID}`);
+              this.reflectTurnModel(`${info.model.providerID}/${info.model.modelID}`);
             } else {
-              this.emitModel(`${info.providerID}/${info.modelID}`);
+              this.reflectTurnModel(`${info.providerID}/${info.modelID}`);
             }
           }
           break;
@@ -757,6 +770,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     } catch (err) {
       this.emitError(extractErrorMessage(err) ?? `opencode: failed to handle event (${ev.type})`);
     }
+  }
+
+  private reflectTurnModel(model: string): void {
+    if (
+      this.turnModelSelectionRevision !== null &&
+      this.turnModelSelectionRevision !== this.modelSelectionRevision
+    ) {
+      return;
+    }
+    this.emitModel(model);
   }
 
   /** Turn settle on `session.idle`, guarded on liveness AND `turnStarted`: an abort's duplicate
