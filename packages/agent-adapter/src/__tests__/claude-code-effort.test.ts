@@ -37,6 +37,7 @@ class FakeQuery {
   readonly setModel = vi.fn<(model: string) => Promise<void>>(asyncNoop);
   readonly applyFlagSettings =
     vi.fn<(settings: Record<string, unknown>) => Promise<void>>(asyncNoop);
+  readonly interrupt = vi.fn<() => Promise<void>>(asyncNoop);
   readonly close = vi.fn(() => {
     this.push(null);
   });
@@ -538,6 +539,82 @@ describe('ClaudeCodeAdapter turn lifecycle', () => {
     });
     await waitIdle(events);
     expect(events).toContainEqual({ type: 'stop', stopReason: 'end_turn' });
+  });
+
+  it("does not let a cancelled Query's late result settle its replacement turn", async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    const cancelled = queries[0];
+    cancelled.push({ type: 'system', session_id: 'sess-cancelled' });
+    await vi.waitFor(() => {
+      expect(events.some((event) => event.type === 'session-ref')).toBe(true);
+    });
+    // Keep the detached fake stream alive to model a terminal result already in flight when the
+    // real Query is closed.
+    cancelled.close.mockImplementationOnce(noop);
+
+    await adapter.send({ type: 'cancel' });
+
+    expect(cancelled.interrupt).toHaveBeenCalledOnce();
+    expect(cancelled.close).toHaveBeenCalledOnce();
+    events.length = 0;
+    await prompt(adapter);
+    const replacement = queries[1];
+    expect(replacement.options.resume).toBe('sess-cancelled');
+    events.length = 0;
+
+    cancelled.push({
+      type: 'result',
+      subtype: 'success',
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: {},
+    });
+    await wait(0);
+    expect(events).toHaveLength(0);
+
+    replacement.push({
+      type: 'result',
+      subtype: 'success',
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: {},
+    });
+    await waitIdle(events);
+    expect(events).toContainEqual({ type: 'stop', stopReason: 'end_turn' });
+  });
+
+  it('keeps the Query when its cancelled turn settles before interrupt returns', async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    const query = queries[0];
+    let resolveInterrupt!: () => void;
+    query.interrupt.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInterrupt = resolve;
+        }),
+    );
+    events.length = 0;
+
+    const cancelling = adapter.send({ type: 'cancel' });
+    await vi.waitFor(() => expect(query.interrupt).toHaveBeenCalledOnce());
+    query.push({
+      type: 'result',
+      subtype: 'error_during_execution',
+      errors: ['Interrupted'],
+    });
+    await wait(0);
+    expect(events.some((event) => event.type === 'status' && event.status === 'idle')).toBe(false);
+    resolveInterrupt();
+    await cancelling;
+
+    expect(query.close).not.toHaveBeenCalled();
+    expect(events.some((event) => event.type === 'error')).toBe(false);
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+    await prompt(adapter);
+    await vi.waitFor(() => expect(query.received).toHaveLength(2));
+    expect(queries).toHaveLength(1);
   });
 
   it('preserves structured diagnostics from a non-success result', async () => {
