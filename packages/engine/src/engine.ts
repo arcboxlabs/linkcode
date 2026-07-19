@@ -48,6 +48,7 @@ import { TerminalService } from './terminal/service';
 import { WireResponder } from './wire/responder';
 import { FileRequestHandler } from './workspace/file-request-handler';
 import { FileSuggestService } from './workspace/file-suggest-service';
+import { WorkspaceRequestHandler } from './workspace/request-handler';
 import { WorkspaceRegistry } from './workspace/workspace-registry';
 import type { WorkspaceStore } from './workspace/workspace-store';
 import { InMemoryWorkspaceStore } from './workspace/workspace-store';
@@ -99,6 +100,7 @@ export class Engine {
   private readonly terminalRequests: TerminalRequestHandler;
   private readonly responder: WireResponder;
   private readonly workspaces: WorkspaceRegistry;
+  private readonly workspaceRequests: WorkspaceRequestHandler;
   private readonly providerStore: ProviderConfigStore;
   private readonly gitRequests: GitRequestHandler;
   private readonly fileRequests: FileRequestHandler;
@@ -146,6 +148,11 @@ export class Engine {
       : undefined;
     this.terminalRequests = new TerminalRequestHandler(this.terminals, this.responder);
     this.workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
+    this.workspaceRequests = new WorkspaceRequestHandler(
+      transport,
+      this.workspaces,
+      this.responder,
+    );
     this.gitRequests = new GitRequestHandler(
       transport,
       deps.git ?? new GitService(),
@@ -405,43 +412,11 @@ export class Engine {
         });
         break;
       }
-      case 'workspace.list': {
-        this.transport.send(
-          createWireMessage({
-            kind: 'workspace.listed',
-            replyTo: p.clientReqId,
-            workspaces: this.workspaces.list(),
-          }),
-        );
-        break;
-      }
-      case 'workspace.register': {
-        await this.tryReply(p.clientReqId, async () => {
-          const record = await this.workspaces.register({
-            cwd: p.cwd,
-            name: p.name,
-            kind: p.workspaceKind,
-          });
-          this.transport.send(
-            createWireMessage({ kind: 'workspace.registered', replyTo: p.clientReqId, record }),
-          );
-        });
-        break;
-      }
-      case 'workspace.update': {
-        await this.tryReply(p.clientReqId, () => {
-          this.workspaces.update(p.workspaceId, p.name);
-          this.sendSuccess(p.clientReqId);
-          return Promise.resolve();
-        });
-        break;
-      }
+      case 'workspace.list':
+      case 'workspace.register':
+      case 'workspace.update':
       case 'workspace.archive': {
-        await this.tryReply(p.clientReqId, () => {
-          this.workspaces.archive(p.workspaceId);
-          this.sendSuccess(p.clientReqId);
-          return Promise.resolve();
-        });
+        await this.workspaceRequests.handle(p);
         break;
       }
       case 'git.status.get':
