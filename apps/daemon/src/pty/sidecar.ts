@@ -67,10 +67,12 @@ export class SidecarPtyBackend implements PtyBackend {
   private readonly decoder = new FrameDecoder();
   private readonly terminals = new Map<string, LiveTerminal>();
   private readonly pending = new Map<string, PendingOpen>();
+  private closed = false;
 
   constructor(private readonly binaryPath: string) {}
 
   open(terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
+    if (this.closed) return Promise.reject(new Error('pty backend shutdown'));
     // Unconfigured binary (see `resolveSidecarPath`): fail with a clear, stable message instead of
     // `spawn('')`, which would surface as a confusing "sidecar exited" error on every open.
     if (!this.binaryPath) {
@@ -111,6 +113,8 @@ export class SidecarPtyBackend implements PtyBackend {
   }
 
   shutdown(): void {
+    if (this.closed) return;
+    this.closed = true;
     const child = this.child;
     this.child = null;
     this.decoder.reset();

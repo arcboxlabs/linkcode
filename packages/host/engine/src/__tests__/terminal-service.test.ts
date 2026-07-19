@@ -1,5 +1,6 @@
 import type { SessionId, WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
+import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../terminal/pty-backend';
@@ -52,6 +53,7 @@ class FakePtyProcess implements PtyProcess {
 
 class FakePtyBackend implements PtyBackend {
   shutdownCalled = false;
+  shutdownCalls = 0;
   readonly opened: FakePtyProcess[] = [];
   readonly openOpts: PtyOpenOptions[] = [];
 
@@ -63,6 +65,34 @@ class FakePtyBackend implements PtyBackend {
   }
   shutdown(): void {
     this.shutdownCalled = true;
+    this.shutdownCalls += 1;
+  }
+}
+
+class PendingPtyBackend extends FakePtyBackend {
+  readonly process = new FakePtyProcess();
+  private resolveOpen?: (process: PtyProcess) => void;
+  private rejectOpen?: (error: Error) => void;
+
+  constructor(private readonly rejectOnShutdown = false) {
+    super();
+  }
+
+  override open(_terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
+    this.openOpts.push(opts);
+    return new Promise((resolve, reject) => {
+      this.resolveOpen = resolve;
+      this.rejectOpen = reject;
+    });
+  }
+
+  override shutdown(): void {
+    super.shutdown();
+    if (this.rejectOnShutdown) this.rejectOpen?.(new Error('pty backend shutdown'));
+  }
+
+  resolve(): void {
+    this.resolveOpen?.(this.process);
   }
 }
 
@@ -494,7 +524,96 @@ describe('TerminalService', () => {
     expect(exits).toEqual([{ kind: 'terminal.exit', terminalId: idA, exitCode: 0 }]);
   });
 
-  it('closeAll kills every terminal and shuts the backend down silently', async () => {
+  it('shutdown waits for a pending open, cancels its late process, and leaves no live terminal', async () => {
+    const { transport, sent } = recordingTransport();
+    const backend = new PendingPtyBackend();
+    const service = new TerminalService(backend, transport);
+    const open = service.open('req-open', opts, desktop);
+    await vi.waitFor(() => expect(backend.openOpts).toHaveLength(1));
+
+    let shutdownsFinished = 0;
+    const shutdown = Effect.runPromise(service.shutdown()).then(() => {
+      shutdownsFinished += 1;
+    });
+    const secondShutdown = Effect.runPromise(service.shutdown()).then(() => {
+      shutdownsFinished += 1;
+    });
+    await vi.waitFor(() => expect(backend.shutdownCalled).toBe(true));
+    expect(shutdownsFinished).toBe(0);
+    expect(backend.shutdownCalls).toBe(1);
+
+    backend.resolve();
+    await expect(open).rejects.toMatchObject({ code: 'cancelled' });
+    await Promise.all([shutdown, secondShutdown]);
+    expect(shutdownsFinished).toBe(2);
+    service.list('req-list');
+
+    expect(backend.process.killed).toBe(true);
+    expect(sent.some((payload) => payload.kind === 'terminal.opened')).toBe(false);
+    expect(sent.find((payload) => payload.kind === 'terminal.listed')).toMatchObject({
+      terminals: [],
+    });
+  });
+
+  it('maps a backend shutdown rejection to cancellation', async () => {
+    const { transport } = recordingTransport();
+    const backend = new PendingPtyBackend(true);
+    const service = new TerminalService(backend, transport);
+    const open = service.open('req-open', opts, desktop);
+    await vi.waitFor(() => expect(backend.openOpts).toHaveLength(1));
+
+    const rejected = expect(open).rejects.toMatchObject({ code: 'cancelled' });
+    await Promise.all([Effect.runPromise(service.shutdown()), rejected]);
+  });
+
+  it('cancels a managed terminal admitted before shutdown without reporting an exit', async () => {
+    const { transport } = recordingTransport();
+    const backend = new PendingPtyBackend();
+    const service = new TerminalService(backend, transport);
+    const onExit = vi.fn();
+    const open = service.openManaged(opts, onExit);
+    await vi.waitFor(() => expect(backend.openOpts).toHaveLength(1));
+
+    const shutdown = Effect.runPromise(service.shutdown());
+    backend.resolve();
+
+    await expect(open).rejects.toMatchObject({ code: 'cancelled' });
+    await shutdown;
+    expect(backend.process.killed).toBe(true);
+    expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it('discards a pending terminal when its request is interrupted', async () => {
+    const { transport, sent } = recordingTransport();
+    const backend = new PendingPtyBackend();
+    const service = new TerminalService(backend, transport);
+    const controller = new AbortController();
+    const open = service.open('req-open', opts, desktop, controller.signal);
+    await vi.waitFor(() => expect(backend.openOpts).toHaveLength(1));
+
+    controller.abort();
+    backend.resolve();
+
+    await expect(open).rejects.toMatchObject({ code: 'cancelled' });
+    expect(backend.process.killed).toBe(true);
+    expect(sent.some((payload) => payload.kind === 'terminal.opened')).toBe(false);
+    await Effect.runPromise(service.shutdown());
+  });
+
+  it('rejects opens after shutdown without opening the backend', async () => {
+    const { transport } = recordingTransport();
+    const backend = new FakePtyBackend();
+    const service = new TerminalService(backend, transport);
+
+    await Effect.runPromise(service.shutdown());
+
+    await expect(service.open('req-open', opts, desktop)).rejects.toMatchObject({
+      code: 'cancelled',
+    });
+    expect(backend.openOpts).toEqual([]);
+  });
+
+  it('shutdown kills every terminal and shuts the backend down silently', async () => {
     vi.useFakeTimers();
     const { transport, sent } = recordingTransport();
     const backend = new FakePtyBackend();
@@ -506,7 +625,7 @@ describe('TerminalService', () => {
     const exitsBeforeShutdown = sent.filter((payload) => payload.kind === 'terminal.exit').length;
     expect(vi.getTimerCount()).toBe(1);
 
-    service.closeAll();
+    await Effect.runPromise(service.shutdown());
 
     expect(backend.opened.every((p) => p.killed)).toBe(true);
     expect(backend.shutdownCalled).toBe(true);

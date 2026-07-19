@@ -7,6 +7,8 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
+import { noop } from 'foxts/noop';
 import { RequestError } from '../failure';
 import type { TerminalFlow } from './flow';
 import type { PtyBackend, PtyOpenOptions } from './pty-backend';
@@ -42,7 +44,9 @@ const EXITED_TERMINAL_RETENTION_MS = 60000;
 export class TerminalService {
   private readonly terminals = new Map<string, TerminalEntry>();
   private readonly exitedTerminals = new Map<string, ExitedTerminalEntry>();
+  private readonly opening = new Set<Promise<unknown>>();
   private readonly spawner: TerminalSpawner;
+  private acceptingOpens = true;
   private seq = 0;
 
   constructor(
@@ -55,6 +59,7 @@ export class TerminalService {
       this.backend,
       {
         register: (entry) => this.terminals.set(entry.metadata.terminalId, entry),
+        discard: (terminalId) => this.discardSpawn(terminalId),
         retainExited: (entry, exitCode, finishExit) =>
           this.retainExited(entry, exitCode, finishExit),
         send: (payload) => this.send(payload),
@@ -64,20 +69,38 @@ export class TerminalService {
   }
 
   /** Spawn a terminal with its initial controller already attached. */
-  async open(
+  open(
     clientReqId: string,
     opts: PtyOpenOptions & { sessionId?: SessionId },
     attachment: TerminalAttachmentCredentials,
+    signal?: AbortSignal,
   ): Promise<void> {
-    const spawned = await this.spawner.spawn(this.nextTerminalId(), opts, {
-      sessionId: opts.sessionId,
-      attachment,
-    });
-    const entry = this.terminals.get(spawned.terminalId);
-    entry?.flushOutput();
-    const record = entry ?? this.exitedTerminals.get(spawned.terminalId);
-    if (!record) throw new Error(`terminal ${spawned.terminalId} disappeared while opening`);
+    return this.trackOpen(this.openTerminal(clientReqId, opts, attachment, signal));
+  }
+
+  private async openTerminal(
+    clientReqId: string,
+    opts: PtyOpenOptions & { sessionId?: SessionId },
+    attachment: TerminalAttachmentCredentials,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    this.ensureAccepting(signal);
+    const spawned = await this.spawner.spawn(
+      this.nextTerminalId(),
+      opts,
+      {
+        sessionId: opts.sessionId,
+        attachment,
+      },
+      () => this.acceptingOpens,
+      signal,
+    );
     try {
+      this.ensureAccepting(signal);
+      const entry = this.terminals.get(spawned.terminalId);
+      entry?.flushOutput();
+      const record = entry ?? this.exitedTerminals.get(spawned.terminalId);
+      if (!record) throw new Error(`terminal ${spawned.terminalId} disappeared while opening`);
       // A live terminal replies with the flow snapshot (baseline for this attachment's acks); a
       // terminal that already exited mid-open has no live stream, so it gets the full journal.
       const attach = entry ? entry.flow.attach(attachment.attachmentId) : undefined;
@@ -90,8 +113,10 @@ export class TerminalService {
         truncated: record.replay.truncated,
       });
       if (entry) this.sendController(entry);
-    } finally {
       spawned.releaseExit();
+    } catch (error) {
+      this.discardSpawn(spawned.terminalId);
+      throw error;
     }
   }
 
@@ -200,16 +225,12 @@ export class TerminalService {
 
   /** Spawn an engine-owned terminal (e.g. a workspace script): no `terminal.opened` reply, exempt
    * from detached host-terminal reaping; output/exit use the normal attachment-routed stream. */
-  async openManaged(
+  openManaged(
     opts: PtyOpenOptions,
     onExit?: (exitCode: number | null) => void,
+    signal?: AbortSignal,
   ): Promise<string> {
-    const spawned = await this.spawner.spawn(this.nextTerminalId(), opts, {
-      managed: true,
-      onExit,
-    });
-    spawned.releaseExit();
-    return spawned.terminalId;
+    return this.trackOpen(this.openManagedTerminal(opts, onExit, signal));
   }
 
   input(terminalId: string, attachment: TerminalAttachmentCredentials, data: string): void {
@@ -253,15 +274,19 @@ export class TerminalService {
     }
   }
 
-  /** Tear down all terminals and the backend (engine shutdown). */
-  closeAll(): void {
+  /** Close admission, tear down live terminals, and drain every accepted pending spawn. */
+  shutdown(): Effect.Effect<void> {
+    return Effect.sync(() => this.beginShutdown()).pipe(
+      Effect.flatMap((opening) => Effect.promise(() => Promise.allSettled(opening))),
+      Effect.asVoid,
+    );
+  }
+
+  private beginShutdown(): Array<Promise<unknown>> {
+    if (!this.acceptingOpens) return [...this.opening];
+    this.acceptingOpens = false;
     for (const entry of this.terminals.values()) {
-      entry.disposed = true;
-      this.cancelReap(entry);
-      entry.unsubData();
-      entry.unsubExit();
-      entry.headless.dispose();
-      entry.process.kill();
+      this.disposeLive(entry);
     }
     this.terminals.clear();
     for (const entry of this.exitedTerminals.values()) {
@@ -269,6 +294,59 @@ export class TerminalService {
     }
     this.exitedTerminals.clear();
     this.backend.shutdown();
+    return [...this.opening];
+  }
+
+  private async openManagedTerminal(
+    opts: PtyOpenOptions,
+    onExit?: (exitCode: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    this.ensureAccepting(signal);
+    const spawned = await this.spawner.spawn(
+      this.nextTerminalId(),
+      opts,
+      { managed: true, onExit },
+      () => this.acceptingOpens,
+      signal,
+    );
+    try {
+      this.ensureAccepting(signal);
+      spawned.releaseExit();
+      return spawned.terminalId;
+    } catch (error) {
+      this.discardSpawn(spawned.terminalId);
+      throw error;
+    }
+  }
+
+  private trackOpen<A>(opening: Promise<A>): Promise<A> {
+    this.opening.add(opening);
+    void opening.finally(() => this.opening.delete(opening)).catch(noop);
+    return opening;
+  }
+
+  private ensureAccepting(signal?: AbortSignal): void {
+    if (this.acceptingOpens && !signal?.aborted) return;
+    throw new RequestError({ code: 'cancelled', message: 'Terminal service is shutting down' });
+  }
+
+  private discardSpawn(terminalId: string): void {
+    const entry = this.terminals.get(terminalId);
+    if (entry) this.disposeLive(entry);
+    const exited = this.exitedTerminals.get(terminalId);
+    if (exited?.expiryTimer) clearTimeout(exited.expiryTimer);
+    this.exitedTerminals.delete(terminalId);
+  }
+
+  private disposeLive(entry: TerminalEntry): void {
+    entry.disposed = true;
+    this.cancelReap(entry);
+    entry.unsubData();
+    entry.unsubExit();
+    entry.headless.dispose();
+    this.terminals.delete(entry.metadata.terminalId);
+    entry.process.kill();
   }
 
   private retainExited(

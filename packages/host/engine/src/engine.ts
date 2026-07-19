@@ -244,7 +244,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* runtimes.close();
       yield* finalize('scripts.shutdown', () => scripts?.shutdown());
-      yield* finalize('terminals.shutdown', () => terminals?.closeAll());
+      yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());
       yield* finalize('assets.shutdown', () => assets.close());

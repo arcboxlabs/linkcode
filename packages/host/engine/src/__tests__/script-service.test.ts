@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
+import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PreviewRouteRegistry } from '../preview/route-registry';
@@ -244,7 +245,7 @@ describe('ScriptService', () => {
       },
       { kind: 'terminal.exit', terminalId: script.terminalId, exitCode: 7 },
     ]);
-    terminals.closeAll();
+    await Effect.runPromise(terminals.shutdown());
   });
 
   it('rejects starting an unknown or already-running script', async () => {

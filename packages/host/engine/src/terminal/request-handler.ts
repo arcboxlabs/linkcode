@@ -40,8 +40,8 @@ export class TerminalRequestHandler {
     switch (payload.kind) {
       case 'terminal.open':
         return this.withTerminals(payload.clientReqId, (terminals) =>
-          terminalOperation('terminal.open', 'Failed to open terminal', () =>
-            terminals.open(payload.clientReqId, payload.opts, attachment(payload)),
+          terminalOperation('terminal.open', 'Failed to open terminal', (signal) =>
+            terminals.open(payload.clientReqId, payload.opts, attachment(payload), signal),
           ),
         );
       case 'terminal.list':
@@ -106,7 +106,7 @@ export class TerminalRequestHandler {
 function terminalOperation(
   operation: string,
   publicMessage: string,
-  run: () => PromiseLike<void>,
+  run: (signal: AbortSignal) => PromiseLike<void>,
 ): Effect.Effect<void, EngineFailure> {
   return Effect.tryPromise({
     try: run,

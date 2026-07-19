@@ -40,6 +40,7 @@ interface TerminalOwner {
 
 interface TerminalSpawnerHooks {
   register: (entry: TerminalEntry) => void;
+  discard: (terminalId: string) => void;
   retainExited: (
     entry: TerminalEntry,
     exitCode: number | null,
@@ -59,10 +60,28 @@ export class TerminalSpawner {
     private readonly isSessionActive?: (sessionId: SessionId) => boolean,
   ) {}
 
-  async spawn(terminalId: string, opts: PtyOpenOptions, owner: TerminalOwner) {
+  async spawn(
+    terminalId: string,
+    opts: PtyOpenOptions,
+    owner: TerminalOwner,
+    accepting: () => boolean,
+    signal?: AbortSignal,
+  ) {
+    this.ensureAccepted(terminalId, accepting, signal);
+    let wasm: ResttyWasm;
+    try {
+      wasm = await (this.wasm ??= loadResttyWasm());
+    } catch (error) {
+      throw new OperationError({
+        subsystem: 'pty',
+        operation: 'terminal.initialize',
+        publicMessage: 'Terminal failed to open',
+        cause: error,
+      });
+    }
+    this.ensureAccepted(terminalId, accepting, signal);
     let headless: ResttyHeadlessTerminal;
     try {
-      const wasm = await (this.wasm ??= loadResttyWasm());
       headless = await createHeadlessTerminal({
         cols: opts.cols,
         rows: opts.rows,
@@ -78,6 +97,10 @@ export class TerminalSpawner {
         cause: error,
       });
     }
+    if (!accepting() || signal?.aborted) {
+      headless.dispose();
+      throw cancelledOpen(terminalId);
+    }
     let process: PtyProcess;
     try {
       process = await this.backend.open(terminalId, {
@@ -86,6 +109,7 @@ export class TerminalSpawner {
       });
     } catch (error) {
       headless.dispose();
+      if (!accepting() || signal?.aborted) throw cancelledOpen(terminalId);
       throw new OperationError({
         subsystem: 'pty',
         operation: 'terminal.open',
@@ -94,6 +118,11 @@ export class TerminalSpawner {
       });
     }
 
+    if (!accepting() || signal?.aborted) {
+      process.kill();
+      headless.dispose();
+      throw cancelledOpen(terminalId);
+    }
     if (owner.sessionId && this.isSessionActive?.(owner.sessionId) === false) {
       process.kill();
       headless.dispose();
@@ -154,7 +183,6 @@ export class TerminalSpawner {
       unsubData: noop,
       unsubExit: noop,
     };
-    this.hooks.register(entry);
 
     let pending = '';
     let scheduled = false;
@@ -168,18 +196,6 @@ export class TerminalSpawner {
     };
     entry.flushOutput = flush;
 
-    entry.unsubData = process.onData((data) => {
-      pending += data;
-      headless.write(data);
-      const reply = headless.drainOutput();
-      if (reply.length > 0) process.write(reply);
-      if (pending.length >= OUTPUT_FLUSH_CAP) {
-        flush();
-      } else if (!scheduled) {
-        scheduled = true;
-        queueMicrotask(flush);
-      }
-    });
     let released = false;
     let exitAnnounced = false;
     let exitResult: { exitCode: number | null } | undefined;
@@ -191,15 +207,45 @@ export class TerminalSpawner {
       this.hooks.send({ kind: 'terminal.exit', terminalId, exitCode: exitResult.exitCode });
       owner.onExit?.(exitResult.exitCode);
     };
-    const unsubExit = process.onExit((exitCode) => {
-      if (entry.disposed) return;
-      flush();
-      exitResult = { exitCode };
-      this.hooks.retainExited(entry, exitCode, finishExit);
-      finishExit(false);
-    });
-    if (entry.disposed) unsubExit();
-    else entry.unsubExit = unsubExit;
+    try {
+      entry.unsubData = process.onData((data) => {
+        pending += data;
+        headless.write(data);
+        const reply = headless.drainOutput();
+        if (reply.length > 0) process.write(reply);
+        if (pending.length >= OUTPUT_FLUSH_CAP) {
+          flush();
+        } else if (!scheduled) {
+          scheduled = true;
+          queueMicrotask(flush);
+        }
+      });
+      const unsubExit = process.onExit((exitCode) => {
+        if (entry.disposed) return;
+        flush();
+        exitResult = { exitCode };
+        this.hooks.retainExited(entry, exitCode, finishExit);
+        finishExit(false);
+      });
+      if (entry.disposed) unsubExit();
+      else {
+        entry.unsubExit = unsubExit;
+        this.ensureAccepted(terminalId, accepting, signal);
+        // Publish only after both listeners are installed, so service operations never observe a
+        // partially initialized terminal.
+        this.hooks.register(entry);
+      }
+    } catch (error) {
+      if (!entry.disposed) {
+        entry.disposed = true;
+        entry.unsubData();
+        entry.unsubExit();
+        entry.headless.dispose();
+        entry.process.kill();
+      }
+      this.hooks.discard(terminalId);
+      throw error;
+    }
     return {
       terminalId,
       releaseExit() {
@@ -208,4 +254,15 @@ export class TerminalSpawner {
       },
     };
   }
+
+  private ensureAccepted(terminalId: string, accepting: () => boolean, signal?: AbortSignal): void {
+    if (!accepting() || signal?.aborted) throw cancelledOpen(terminalId);
+  }
+}
+
+function cancelledOpen(terminalId: string): RequestError {
+  return new RequestError({
+    code: 'cancelled',
+    message: `Terminal ${terminalId} was cancelled before it opened`,
+  });
 }
