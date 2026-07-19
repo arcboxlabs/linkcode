@@ -27,6 +27,7 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
 
   private binaryPath: string | null = null;
   private model: string | undefined;
+  private modelSelectionRevision = 0;
   private effort: GrokEffort = 'high';
   private resumeSessionId: string | null = null;
   private activeRun: GrokHeadlessRun | null = null;
@@ -42,8 +43,9 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
     }
     this.binaryPath = resolved;
     this.model = opts.model;
-    // Reflect the verified CLI default without turning it into a `-m` override.
-    this.emitModel(this.model ?? DEFAULT_GROK_MODEL);
+    // Reflect the verified CLI default without turning it into a `-m` override. An explicit model
+    // is reflected only after a successful headless run proves the CLI accepted its `-m` value.
+    if (!this.model) this.emitModel(DEFAULT_GROK_MODEL);
     this.emitEffort(this.effort);
     return Promise.resolve();
   }
@@ -100,6 +102,7 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
 
   protected override onSetModel(model: string): Promise<void> {
     this.model = model;
+    this.modelSelectionRevision += 1;
     this.emitModel(model);
     return Promise.resolve();
   }
@@ -120,12 +123,14 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
     const opts = this.opts;
     if (!binaryPath || !opts) throw new Error('grok-build: session not started');
     let sawEnd = false;
+    const model = this.model;
+    const modelSelectionRevision = this.modelSelectionRevision;
 
     const run = runGrokHeadless({
       binaryPath,
       cwd: opts.cwd,
       prompt: input.prompt,
-      model: this.model,
+      model,
       effort: this.effort,
       resumeSessionId: input.resumeSessionId,
       env: input.env,
@@ -157,6 +162,7 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
         }
         throw new Error(message);
       }
+      if (model && modelSelectionRevision === this.modelSelectionRevision) this.emitModel(model);
       if (!sawEnd) this.emitStop('end_turn');
       this.teardown();
       this.emitStatus('idle');

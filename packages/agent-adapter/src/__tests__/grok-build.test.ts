@@ -173,6 +173,56 @@ describe('GrokBuildAdapter', () => {
     ).rejects.toThrow("grok-build: effort 'xhigh' is not supported");
   });
 
+  it('reflects an explicit model only after a successful headless run validates it', async () => {
+    vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
+    const { child, exit, close } = fakeChild();
+    vi.mocked(grokProcess.runGrokHeadless).mockImplementation((opts: GrokHeadlessRunOptions) => {
+      const run = grokProcess.attachGrokHeadlessChild(child as never, opts.onEvent);
+      queueMicrotask(() => {
+        exit(0);
+        close(0);
+      });
+      return run;
+    });
+    const adapter = new GrokBuildAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start({ kind: 'grok-build', cwd: '/tmp', model: 'grok-next' });
+    expect(events).not.toContainEqual({ type: 'model-update', model: 'grok-next' });
+
+    await adapter.send({ type: 'prompt', content: textPrompt('hi') });
+    expect(events).toContainEqual({ type: 'model-update', model: 'grok-next' });
+  });
+
+  it('does not let a completed turn overwrite a newer next-turn model', async () => {
+    vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
+    const { child, exit, close } = fakeChild();
+    vi.mocked(grokProcess.runGrokHeadless).mockImplementation((opts: GrokHeadlessRunOptions) =>
+      grokProcess.attachGrokHeadlessChild(child as never, opts.onEvent),
+    );
+    const adapter = new GrokBuildAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ kind: 'grok-build', cwd: '/tmp', model: 'grok-turn' });
+
+    const turn = adapter.send({ type: 'prompt', content: textPrompt('hi') });
+    await vi.waitFor(() => {
+      expect(grokProcess.runGrokHeadless).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'grok-turn' }),
+      );
+    });
+    await adapter.send({ type: 'set-model', model: 'grok-next' });
+    exit(0);
+    close(0);
+    await turn;
+
+    const reflected = events.flatMap((event) =>
+      event.type === 'model-update' ? [event.model] : [],
+    );
+    expect(reflected).toEqual(['grok-next']);
+  });
+
   it('streams thought/text and settles with session-ref + usage', async () => {
     vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue('/usr/bin/grok');
     const { child, pushStdout, exit, close } = fakeChild();

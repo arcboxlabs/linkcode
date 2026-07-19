@@ -299,9 +299,8 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model;
-    // Reflect an explicit new-session choice immediately. With no override, openThread queries the
-    // app-server's effective default without pinning that presentation value into thread/start.
-    if (this.model) this.emitModel(this.model);
+    // openThread reflects the app-server's effective model after thread/start accepts or corrects
+    // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();
   }
 

@@ -124,6 +124,26 @@ describe('CodexAdapter shell-command passthrough', () => {
     });
   });
 
+  it('does not reflect a requested startup model that thread/start corrects', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1' },
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'low',
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start({ ...start, model: 'unavailable-model' });
+
+    expect(events).not.toContainEqual({ type: 'model-update', model: 'unavailable-model' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'gpt-5.6-sol' });
+    expect(adapter.fakeServers[0].requests).toContainEqual({
+      method: 'thread/start',
+      params: expect.objectContaining({ model: 'unavailable-model' }),
+    });
+  });
+
   it('prefers a configured thread effort over the selected model default', async () => {
     const adapter = new TestCodex();
     adapter.threadResponse = {
