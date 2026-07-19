@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { HostedArtifact } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
-import type { PreviewRouteRegistry } from '../scripts/route-registry';
+import type { PreviewRouteRegistry } from './route-registry';
 
 /** LRU cap on hosted artifacts — a runaway conversation can't grow daemon memory unbounded. */
 const MAX_HOSTED_ARTIFACTS = 128;

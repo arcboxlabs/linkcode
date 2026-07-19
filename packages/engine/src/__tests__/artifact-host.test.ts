@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ArtifactHostService } from '../artifacts/host-service';
-import { PreviewRouteRegistry } from '../scripts/route-registry';
+import { ArtifactHostService } from '../preview/artifact-host-service';
+import { PreviewRouteRegistry } from '../preview/route-registry';
 
 function makeService(): { service: ArtifactHostService; routes: PreviewRouteRegistry } {
   const routes = new PreviewRouteRegistry();

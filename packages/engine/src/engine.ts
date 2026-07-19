@@ -36,7 +36,6 @@ import type { ProviderConfigStore } from './agent/provider-config';
 import { applyProviderDefaults, InMemoryProviderConfigStore } from './agent/provider-config';
 import type { TranslatorService } from './agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from './agent/translator';
-import { ArtifactHostService } from './artifacts/host-service';
 import type { LoopStore, ScheduleStore, SessionDriver } from './automation';
 import {
   InMemoryLoopStore,
@@ -47,8 +46,9 @@ import {
 } from './automation';
 import { GitService } from './git/git-service';
 import { jsonValueEqual } from './json-equal';
+import { ArtifactHostService } from './preview/artifact-host-service';
+import { PreviewRouteRegistry } from './preview/route-registry';
 import type { PtyBackend } from './pty-backend';
-import { PreviewRouteRegistry } from './scripts/route-registry';
 import { ScriptService } from './scripts/script-service';
 import type { AskEvent, AskResolutionEvent, AskResponseInput } from './session/ask-response';
 import { sessionCancellation, userResolution, validateAskResponse } from './session/ask-response';
