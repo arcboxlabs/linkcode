@@ -53,7 +53,7 @@ export class LoopIterationRunner {
       return yield* Effect.gen(function* () {
         yield* Effect.gen(function* () {
           workerText = yield* runWorkerTurn(loop, iteration, lastFailure);
-          const checksPassed = yield* driverCall((signal) => runChecks(loop, iteration, signal));
+          const checksPassed = yield* runChecks(loop, iteration);
           let verifierPassed = true;
           if (checksPassed && loop.spec.verifier) {
             const verdict = yield* runVerifierTurn(loop, iteration, workerText);
@@ -119,30 +119,28 @@ export class LoopIterationRunner {
   }
 
   /** Run the shell checks in order, failing fast; each result is appended and streamed. */
-  private async runChecks(
-    loop: LoopRecord,
-    iteration: LoopIteration,
-    signal: AbortSignal,
-  ): Promise<boolean> {
-    for (const command of loop.spec.verifyChecks) {
-      if (signal.aborted) return false;
-      const result = await runShellCheck(command, {
-        cwd: loop.spec.cwd,
-        timeoutMs: loop.spec.turnTimeoutMs,
-        signal,
-      });
-      iteration.checks.push({ command, ...result });
-      await this.save(iteration);
-      this.reporter.log(
-        loop.loopId,
-        result.exitCode === 0 ? 'info' : 'warn',
-        'check',
-        `${command} → exit ${result.exitCode}`,
-        iteration.index,
-      );
-      if (result.exitCode !== 0) return false;
-    }
-    return true;
+  private runChecks(loop: LoopRecord, iteration: LoopIteration): Effect.Effect<boolean, unknown> {
+    const { reporter } = this;
+    const saveEffect = this.saveEffect.bind(this);
+    return Effect.gen(function* () {
+      for (const command of loop.spec.verifyChecks) {
+        const result = yield* runShellCheck(command, {
+          cwd: loop.spec.cwd,
+          timeoutMs: loop.spec.turnTimeoutMs,
+        });
+        iteration.checks.push({ command, ...result });
+        yield* saveEffect(iteration);
+        reporter.log(
+          loop.loopId,
+          result.exitCode === 0 ? 'info' : 'warn',
+          'check',
+          `${command} → exit ${result.exitCode}`,
+          iteration.index,
+        );
+        if (result.exitCode !== 0) return false;
+      }
+      return true;
+    });
   }
 
   private runVerifierTurn(
@@ -193,11 +191,6 @@ export class LoopIterationRunner {
     return fromPromise(() => this.store.saveIteration(iteration)).pipe(
       Effect.andThen(Effect.sync(() => this.reporter.iteration(iteration))),
     );
-  }
-
-  private async save(iteration: LoopIteration): Promise<void> {
-    await this.store.saveIteration(iteration);
-    this.reporter.iteration(iteration);
   }
 }
 

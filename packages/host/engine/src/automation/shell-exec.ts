@@ -1,16 +1,18 @@
 import { spawn } from 'node:child_process';
+import { Effect } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { noop } from 'foxts/noop';
 
 /** Tail of combined stdout+stderr kept per check (matches LoopCheckResult.outputTail). */
 const OUTPUT_TAIL_MAX = 4096;
-/** SIGTERM → wait → SIGKILL grace for a check that overran its timeout or was aborted. */
+/** SIGTERM → wait → SIGKILL grace for a check that overran its timeout or was interrupted. */
 const KILL_GRACE_MS = 5000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 /** GNU `timeout`'s convention: a command killed for overrunning exits 124. */
 const TIMEOUT_EXIT_CODE = 124;
 
 export interface ShellCheckResult {
-  /** Process exit code; a timeout/abort kill surfaces as a non-zero code with `timedOut` set. */
+  /** Process exit code; a timeout kill surfaces as a non-zero code with `timedOut` set. */
   exitCode: number;
   timedOut: boolean;
   /** Tail of combined stdout+stderr, capped at ~4 KB. */
@@ -20,8 +22,6 @@ export interface ShellCheckResult {
 export interface ShellCheckOptions {
   cwd: string;
   timeoutMs?: number;
-  /** Aborting kills the process (SIGTERM → SIGKILL) and settles with a non-zero code. */
-  signal?: AbortSignal;
 }
 
 /**
@@ -29,8 +29,11 @@ export interface ShellCheckOptions {
  * `cwd`, capturing the tail of its combined output. Never rejects — a spawn error or non-zero exit
  * is a normal check result.
  */
-export function runShellCheck(command: string, opts: ShellCheckOptions): Promise<ShellCheckResult> {
-  return new Promise<ShellCheckResult>((resolve) => {
+export function runShellCheck(
+  command: string,
+  opts: ShellCheckOptions,
+): Effect.Effect<ShellCheckResult> {
+  return Effect.callback<ShellCheckResult>((resume) => {
     const child = spawn(command, {
       cwd: opts.cwd,
       env: process.env,
@@ -40,6 +43,8 @@ export function runShellCheck(command: string, opts: ShellCheckOptions): Promise
 
     let output = '';
     let timedOut = false;
+    let settled = false;
+    let terminating = false;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
 
     const append = (chunk: string): void => {
@@ -52,6 +57,8 @@ export function runShellCheck(command: string, opts: ShellCheckOptions): Promise
     child.stderr.on('data', append);
 
     const escalate = (): void => {
+      if (terminating) return;
+      terminating = true;
       child.kill('SIGTERM');
       killTimer = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS);
       killTimer.unref();
@@ -63,28 +70,43 @@ export function runShellCheck(command: string, opts: ShellCheckOptions): Promise
     }, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     timer.unref();
 
-    const onAbort = (): void => {
-      timedOut = true;
-      escalate();
-    };
-    if (opts.signal?.aborted) onAbort();
-    else opts.signal?.addEventListener('abort', onAbort, { once: true });
-
     const cleanup = (): void => {
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      opts.signal?.removeEventListener('abort', onAbort);
     };
 
-    child.on('error', (err: unknown) => {
+    const onError = (err: unknown): void => {
+      if (settled) return;
+      settled = true;
       cleanup();
       append(`\n${extractErrorMessage(err) ?? 'failed to spawn'}`);
-      resolve({ exitCode: 127, timedOut, outputTail: output });
-    });
-    child.on('close', (code: number | null) => {
+      resume(Effect.succeed({ exitCode: 127, timedOut, outputTail: output }));
+    };
+    const onClose = (code: number | null): void => {
+      if (settled) return;
+      settled = true;
       cleanup();
       const exitCode = code ?? (timedOut ? TIMEOUT_EXIT_CODE : 1);
-      resolve({ exitCode, timedOut, outputTail: output });
+      resume(Effect.succeed({ exitCode, timedOut, outputTail: output }));
+    };
+    child.on('error', onError);
+    child.on('close', onClose);
+
+    return Effect.callback<void>((done) => {
+      if (settled) {
+        cleanup();
+        done(Effect.void);
+        return;
+      }
+      clearTimeout(timer);
+      child.off('error', onError);
+      child.off('close', onClose);
+      child.on('error', noop);
+      child.once('close', () => {
+        cleanup();
+        done(Effect.void);
+      });
+      if (child.exitCode === null && child.signalCode === null) escalate();
     });
   });
 }
