@@ -1,15 +1,20 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
-import { AccountDetail } from '@linkcode/ui';
+import { AccountDetail, AccountMasterList } from '@linkcode/ui';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
-import { AccountMasterList } from './master-list';
 import { useProvidersSettingsStore } from './store';
-import { providerAccountDetailViewModel, withBinding, withModel, withoutAccount } from './view';
+import {
+  providerAccountDetailViewModel,
+  providerAccountListViewModel,
+  withBinding,
+  withModel,
+  withoutAccount,
+} from './view';
 
 /**
  * The Providers settings page: the global account pool (master list) plus per-account credential
@@ -44,6 +49,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     selected === undefined
       ? undefined
       : providerAccountDetailViewModel(selected, pool, providers, runtimes);
+  const accountList = providerAccountListViewModel(pool, providers, runtimes);
 
   const applyProviders = async (next: ProvidersConfig): Promise<void> => {
     await saveProviders.trigger({ providers: next });
@@ -97,10 +103,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
       </div>
       <div className="flex gap-6">
         <AccountMasterList
-          accounts={pool}
+          {...accountList}
           loading={accountsLoading}
-          providers={providers}
-          runtimes={runtimes}
           selectedId={selected?.id}
           onSelect={select}
           onAdd={startAdd}

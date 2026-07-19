@@ -1,9 +1,10 @@
-import type { ProvidersConfig } from '@linkcode/schema';
+import type { Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import {
   accountConfigSnippet,
   boundAgentKinds,
   maskSecret,
+  providerAccountListViewModel,
   withBinding,
   withModel,
   withoutAccount,
@@ -64,5 +65,58 @@ describe('view helpers', () => {
   it('masks short secrets entirely and long ones tail-anchored', () => {
     expect(maskSecret('short')).toBe('••••••••');
     expect(maskSecret('sk-or-v1-9f2c7ae841b0d63f5e2a')).toBe('sk-or-…5e2a');
+  });
+
+  it('prepares account rows and unrepresented CLI logins for presentation', () => {
+    const accounts: Accounts = [
+      {
+        id: 'acc_a',
+        label: 'Primary API',
+        createdAt: 1,
+        service: 'openai-api',
+        endpoint: { baseUrl: 'https://api.openai.com/v1', protocol: 'openai-chat' },
+        credential: { type: 'api-key', key: 'secret' },
+      },
+      {
+        id: 'acc_b',
+        label: 'Claude subscription',
+        createdAt: 2,
+        service: 'claude-sub',
+        credential: { type: 'oauth', agent: 'claude-code' },
+      },
+    ];
+    const runtimes: AgentRuntimes = {
+      'claude-code': {
+        status: 'available',
+        auth: { loggedIn: true, email: 'claude@example.com' },
+      },
+      codex: { status: 'available', auth: { loggedIn: true, email: 'codex@example.com' } },
+    };
+
+    const view = providerAccountListViewModel(accounts, providers, runtimes);
+
+    expect(view).toEqual({
+      accounts: [
+        {
+          id: 'acc_a',
+          label: 'Primary API',
+          service: 'openai-api',
+          serviceLabel: 'OpenAI API',
+          endpoint: 'https://api.openai.com/v1',
+          boundAgents: ['claude-code'],
+        },
+        {
+          id: 'acc_b',
+          label: 'Claude subscription',
+          service: 'claude-sub',
+          serviceLabel: 'Claude',
+          auth: { loggedIn: true, email: 'claude@example.com' },
+          boundAgents: ['codex'],
+        },
+      ],
+      detectedLogins: [{ service: 'chatgpt-sub', label: 'ChatGPT', email: 'codex@example.com' }],
+      bindingCount: 2,
+      agentCount: 5,
+    });
   });
 });

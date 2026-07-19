@@ -8,12 +8,14 @@ import type {
 import { AgentKindSchema } from '@linkcode/schema';
 import type {
   ProviderAccountDetailViewModel,
+  ProviderAccountListItem,
+  ProviderAccountListViewModel,
   ProviderBindingStatus,
   ProviderBindingViewModel,
   ProviderCredentialViewModel,
 } from '@linkcode/ui';
 import { bindingAvailability } from './capability';
-import { serviceById } from './catalog';
+import { detectedLoginSuggestions, serviceById } from './catalog';
 
 /** Pure view helpers for the Providers page — no hooks, unit-testable. */
 
@@ -149,6 +151,49 @@ export function providerAccountDetailViewModel(
     ...(!(boundAgents.length === 0) && {
       configPreview: accountConfigSnippet(providers, account.id),
     }),
+  };
+}
+
+function providerAccountListItem(
+  account: Account,
+  providers: ProvidersConfig | undefined,
+  runtimes: AgentRuntimes | undefined,
+): ProviderAccountListItem {
+  const serviceLabel = serviceById(account.service)?.label;
+  const auth =
+    account.credential.type === 'oauth' ? runtimes?.[account.credential.agent]?.auth : undefined;
+  return {
+    id: account.id,
+    label: account.label,
+    boundAgents: boundAgentKinds(providers, account.id),
+    ...(account.service !== undefined && { service: account.service }),
+    ...(serviceLabel !== undefined && { serviceLabel }),
+    ...(account.endpoint !== undefined && { endpoint: account.endpoint.baseUrl }),
+    ...(auth !== undefined && {
+      auth: {
+        loggedIn: auth.loggedIn,
+        ...(auth.email !== undefined && { email: auth.email }),
+      },
+    }),
+  };
+}
+
+/** Precomputed account rows and detected-login suggestions for the presentation-only list. */
+export function providerAccountListViewModel(
+  accounts: Accounts,
+  providers: ProvidersConfig | undefined,
+  runtimes: AgentRuntimes | undefined,
+): ProviderAccountListViewModel {
+  return {
+    accounts: accounts.map((account) => providerAccountListItem(account, providers, runtimes)),
+    detectedLogins: detectedLoginSuggestions(accounts, runtimes).map(({ service, auth }) => ({
+      service: service.id,
+      label: service.label,
+      ...(auth.email !== undefined && { email: auth.email }),
+    })),
+    bindingCount: AGENT_KINDS.filter((kind) => providers?.[kind]?.activeAccountId !== undefined)
+      .length,
+    agentCount: AGENT_KINDS.length,
   };
 }
 
