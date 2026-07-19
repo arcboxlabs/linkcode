@@ -1,5 +1,6 @@
 import type { Conversation } from '@linkcode/client-core';
 import type {
+  AgentInput,
   ContentBlock,
   EffortLevel,
   QuestionOutcome,
@@ -58,6 +59,7 @@ import { useSidebarPinStore } from '../sidebar/pin-store';
 import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
+import { submitActiveSessionInput } from './active-session-input';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
@@ -255,12 +257,14 @@ function WorkbenchSessionSurface({
     previewExpandedKeys,
   ]);
 
-  function handleSend(content: ContentBlock[]): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    void inputMutation
-      .trigger({ sessionId: sessions.activeId, input: { type: 'prompt', content } })
-      .catch(noop);
+  function submitActiveInput(input: AgentInput): Promise<void> {
+    const sessionId = sessions.activeId;
+    if (sessionId) onClearError();
+    return submitActiveSessionInput(sessionId, input, inputMutation.trigger);
+  }
+
+  function handleSend(content: ContentBlock[]): Promise<void> {
+    return submitActiveInput({ type: 'prompt', content });
   }
 
   function handleStopTurn(): void {
@@ -269,25 +273,12 @@ function WorkbenchSessionSurface({
     void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
   }
 
-  // Command/shell directives fire-and-forget like handleSend: the invocation echoes back as a
-  // user-message and results stream as normal events; failures land in the error banner.
-  function handleInvokeCommand(name: string, args?: string): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    void inputMutation
-      .trigger({
-        sessionId: sessions.activeId,
-        input: { type: 'command', name, arguments: args },
-      })
-      .catch(noop);
+  function handleInvokeCommand(name: string, args?: string): Promise<void> {
+    return submitActiveInput({ type: 'command', name, arguments: args });
   }
 
-  function handleRunShellCommand(command: string): void {
-    if (!sessions.activeId) return;
-    onClearError();
-    void inputMutation
-      .trigger({ sessionId: sessions.activeId, input: { type: 'shell-command', command } })
-      .catch(noop);
+  function handleRunShellCommand(command: string): Promise<void> {
+    return submitActiveInput({ type: 'shell-command', command });
   }
 
   async function handleSubmitDraft(submission: NewSessionSubmission): Promise<void> {

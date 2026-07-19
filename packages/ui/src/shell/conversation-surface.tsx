@@ -16,7 +16,8 @@ import { ConversationPromptDock } from './conversation-prompt-dock';
 /** Composer behavior that every app shell must carry as one unit. Keeping the complete controller
  * required prevents a custom shell from silently dropping only mode, slash, or shell actions. */
 export interface ConversationComposerController {
-  onSend: (content: ContentBlock[]) => void;
+  /** Resolves only after the active session accepts the correlated input request. */
+  onSend: (content: ContentBlock[]) => Promise<void>;
   onStop: () => void;
   directiveControls: ComposerDirectiveControls;
   onModeChange?: (modeId: string) => Promise<void>;
