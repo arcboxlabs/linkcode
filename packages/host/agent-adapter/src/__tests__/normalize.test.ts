@@ -650,6 +650,43 @@ describe('CodexAdapter sandbox deferral to config.toml', () => {
   });
 });
 
+describe('CodexAdapter image prompts', () => {
+  it('sends text and images to app-server in the original block order', async () => {
+    const adapter = new TestCodex();
+    await adapter.start({ kind: 'codex', cwd: '/repo' });
+    await adapter.send({
+      type: 'prompt',
+      content: [
+        { type: 'text', text: 'before' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+        { type: 'text', text: 'after' },
+      ],
+    });
+
+    expect(adapter.turnStarts()[0].input).toEqual([
+      { type: 'text', text: 'before', text_elements: [] },
+      { type: 'image', url: 'data:image/png;base64,cG5n' },
+      { type: 'text', text: 'after', text_elements: [] },
+    ]);
+  });
+
+  it('keeps the existing newline join for pure-text prompts', async () => {
+    const adapter = new TestCodex();
+    await adapter.start({ kind: 'codex', cwd: '/repo' });
+    await adapter.send({
+      type: 'prompt',
+      content: [
+        { type: 'text', text: 'hello' },
+        { type: 'text', text: 'world' },
+      ],
+    });
+
+    expect(adapter.turnStarts()[0].input).toEqual([
+      { type: 'text', text: 'hello\nworld', text_elements: [] },
+    ]);
+  });
+});
+
 describe('CodexAdapter turn queueing', () => {
   const start: StartOptions = { kind: 'codex', cwd: '/repo' };
   const prompt: AgentInput = { type: 'prompt', content: [{ type: 'text', text: 'hi' }] };
