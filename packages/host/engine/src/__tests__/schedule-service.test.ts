@@ -269,7 +269,7 @@ describe('ScheduleService', () => {
 
     const run = runsIn(sent).at(-1);
     expect(run?.status).toBe('failed');
-    expect(run?.error).toBe('session busy');
+    expect(run?.error).toBe('automation target is busy');
     expect(driver.calls.some((c) => c.op === 'prompt')).toBe(false);
   });
 

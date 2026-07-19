@@ -1,5 +1,8 @@
 import type { Schedule, ScheduleRun, SessionId } from '@linkcode/schema';
 import { Effect } from 'effect';
+import { OperationError } from '../failure';
+import type { AutomationFailure } from './failure';
+import { AutomationBusy, AutomationDispatchFailure, AutomationTargetGone } from './failure';
 import type { ScheduleReporter } from './schedule-reporter';
 import type { ScheduleStore } from './schedule-store';
 import type { SessionDriver } from './session-driver';
@@ -7,12 +10,7 @@ import type { SessionDriver } from './session-driver';
 const SUMMARY_MAX_CHARS = 2000;
 
 /** A run whose target no longer exists: the owning schedule can never fire again. */
-export class ScheduleTargetGoneError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'ScheduleTargetGoneError';
-  }
-}
+export { AutomationTargetGone as ScheduleTargetGoneError };
 
 export interface ScheduleRunOutcome {
   sessionId: SessionId;
@@ -27,19 +25,20 @@ export class ScheduleRunExecutor {
     private readonly reporter: ScheduleReporter,
   ) {}
 
-  execute(schedule: Schedule, run: ScheduleRun): Effect.Effect<ScheduleRunOutcome, unknown> {
+  execute(
+    schedule: Schedule,
+    run: ScheduleRun,
+  ): Effect.Effect<ScheduleRunOutcome, AutomationFailure | OperationError> {
     const { driver } = this;
     const linkSession = (sessionId: SessionId) => this.linkSession(run, sessionId);
     return Effect.gen(function* () {
       const target = schedule.spec.target;
       if (target.type === 'session') {
         if (!driver.hasRecord(target.sessionId)) {
-          return yield* Effect.fail(
-            new ScheduleTargetGoneError(`target session no longer exists: ${target.sessionId}`),
-          );
+          return yield* Effect.fail(new AutomationTargetGone({}));
         }
         if (driver.isBusy(target.sessionId)) {
-          return yield* Effect.fail(new Error('session busy'));
+          return yield* Effect.fail(new AutomationBusy({}));
         }
         yield* driverCall((signal) => driver.ensureLive(target.sessionId, signal));
         yield* linkSession(target.sessionId);
@@ -73,18 +72,34 @@ export class ScheduleRunExecutor {
     });
   }
 
-  private linkSession(run: ScheduleRun, sessionId: SessionId): Effect.Effect<void, unknown> {
+  private linkSession(run: ScheduleRun, sessionId: SessionId): Effect.Effect<void, OperationError> {
     return Effect.sync(() => {
       run.sessionId = sessionId;
     }).pipe(
-      Effect.andThen(driverCall(() => this.store.saveRun(run))),
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => this.store.saveRun(run),
+          catch: (cause) =>
+            new OperationError({
+              subsystem: 'store',
+              operation: 'schedule-runs.save',
+              publicMessage: 'Failed to save schedule run',
+              cause,
+            }),
+        }),
+      ),
       Effect.andThen(Effect.sync(() => this.reporter.runChanged(run))),
     );
   }
 }
 
-function driverCall<A>(run: (signal: AbortSignal) => PromiseLike<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (cause) => cause });
+function driverCall<A>(
+  run: (signal: AbortSignal) => PromiseLike<A>,
+): Effect.Effect<A, AutomationDispatchFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => new AutomationDispatchFailure({ cause }),
+  });
 }
 
 function summarize(text: string): string | undefined {

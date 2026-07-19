@@ -10,9 +10,9 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { Cause, Effect, Fiber, Semaphore } from 'effect';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { OperationError, RequestError } from '../failure';
+import { automationFailureMessage } from './failure';
 import { ScheduleCadenceCalculator } from './schedule-cadence';
 import { ScheduleReporter } from './schedule-reporter';
 import { ScheduleRunExecutor, ScheduleTargetGoneError } from './schedule-run-executor';
@@ -241,10 +241,12 @@ export class ScheduleService {
     scheduleId: ScheduleId,
     limit?: number,
   ): Effect.Effect<ScheduleRun[], RequestError | OperationError> {
-    return this.find(scheduleId).pipe(
-      Effect.andThen(
-        storeEffect('schedule-runs.load', 'Failed to load schedule runs', () =>
-          this.store.loadRuns(scheduleId, limit),
+    return Effect.suspend(() =>
+      this.find(scheduleId).pipe(
+        Effect.andThen(
+          storeEffect('schedule-runs.load', 'Failed to load schedule runs', () =>
+            this.store.loadRuns(scheduleId, limit),
+          ),
         ),
       ),
     );
@@ -374,12 +376,22 @@ export class ScheduleService {
             onFailure: (error) => {
               run.status = 'failed';
               // Bare message (no `Error:` prefix) — this string is shown in the run history.
-              run.error = extractErrorMessage(error, false) ?? 'run failed';
-              if (!(error instanceof ScheduleTargetGoneError)) return Effect.void;
+              run.error = automationFailureMessage(error);
+              const diagnostic = Effect.logError(
+                'Schedule run failed',
+                {
+                  scheduleId,
+                  runId: run.runId,
+                  operation: 'automation.schedule.run',
+                },
+                error,
+              );
+              if (!(error instanceof ScheduleTargetGoneError)) return diagnostic;
               const current = this.schedules.get(scheduleId);
-              return current
+              const completion = current
                 ? fromPromise(() => this.complete(current, 'targetGone'))
                 : Effect.void;
+              return diagnostic.pipe(Effect.andThen(completion));
             },
             onSuccess: (outcome) =>
               Effect.sync(() => {
