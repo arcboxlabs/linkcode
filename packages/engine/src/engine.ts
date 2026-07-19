@@ -49,10 +49,9 @@ import { jsonValueEqual } from './json-equal';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { PreviewRouteRegistry } from './preview/route-registry';
 import { ScriptService } from './scripts/script-service';
-import type { AskEvent, AskResolutionEvent, AskResponseInput } from './session/ask-response';
-import { sessionCancellation, userResolution, validateAskResponse } from './session/ask-response';
 import { assertAttachmentContentAllowed } from './session/attachment-guard';
 import { HistoryService } from './session/history-service';
+import { InteractiveRequests } from './session/interactive-requests';
 import type { SessionStore } from './session/session-store';
 import { InMemorySessionStore } from './session/session-store';
 import type { PtyBackend } from './terminal/pty-backend';
@@ -67,18 +66,13 @@ interface Session {
   adapter: AgentAdapter;
   unsub: Unsubscribe;
   status: SessionInfo['status'];
-  /** Set before Engine-initiated stop/delete teardown so suspended input handlers cannot reopen it. */
-  closed: boolean;
   /** Engine-owned input gate: adapters differ in whether send() blocks for dispatch or a full turn,
    * so the host serializes turn-initiating inputs until the adapter reports idle/stopped. */
   turnInputActive: boolean;
   /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
    * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
   approvalPolicy?: ApprovalPolicyState;
-  /** Interactive asks and their response lifecycle. Attach replays unresolved requests (plus an
-   * in-flight status) or the latest turn's resolved outcomes. A new turn drops resolved tombstones
-   * so this live-state cache cannot grow with session history. */
-  asks: Map<string, AskRecord>;
+  interactions: InteractiveRequests;
   /** Latest model/effort the adapter reported, replayed to freshly-attached clients for the same
    * reason as `approvalPolicy` — a reconnecting client missed the emit and would otherwise show a
    * placeholder instead of the value the session is actually running on. */
@@ -93,11 +87,6 @@ interface Session {
   /** Stable adapter input surface, replayed on attach so clients never infer it from agent kind. */
   capabilities: AgentCapabilities;
 }
-
-type AskRecord =
-  | { request: AskEvent; state: 'open' }
-  | { request: AskEvent; state: 'responding'; invalidated: boolean }
-  | { request: AskEvent; state: 'resolved'; resolution: AskResolutionEvent };
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
@@ -376,13 +365,25 @@ export class Engine {
               ? p.input
               : undefined;
           const respondingAsk = responseInput
-            ? this.beginAskResponse(p.sessionId, session, responseInput)
+            ? session.interactions.beginResponse(responseInput)
             : undefined;
+          if (responseInput && respondingAsk) {
+            this.broadcastSessionEvents(p.sessionId, [
+              {
+                type: 'prompt-response-status',
+                requestId: responseInput.requestId,
+                status: 'responding',
+              },
+            ]);
+          }
           try {
             await session.adapter.send(p.input);
           } catch (err) {
             if (responseInput && respondingAsk) {
-              this.restoreAsk(p.sessionId, session, responseInput.requestId, respondingAsk);
+              this.broadcastSessionEvents(
+                p.sessionId,
+                session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
+              );
             }
             if (startsTurn && session.status !== 'running') session.turnInputActive = false;
             if (startsTurn) {
@@ -394,7 +395,8 @@ export class Engine {
             throw err;
           }
           if (responseInput && respondingAsk) {
-            this.resolveUserAsk(p.sessionId, session, responseInput, respondingAsk);
+            const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
+            if (resolution) this.broadcastSessionEvents(p.sessionId, [resolution]);
           }
           // Synchronous controls such as Codex /compact may not produce lifecycle events. A real
           // turn has reported running by this point — BaseAgentAdapter's turn contract requires
@@ -909,20 +911,7 @@ export class Engine {
         if (attached.availableModels) {
           replay({ type: 'available-models-update', models: attached.availableModels });
         }
-        for (const ask of attached.asks.values()) {
-          if (ask.state === 'resolved') {
-            replay(ask.resolution);
-          } else {
-            replay(ask.request);
-            if (ask.state === 'responding') {
-              replay({
-                type: 'prompt-response-status',
-                requestId: ask.request.requestId,
-                status: 'responding',
-              });
-            }
-          }
-        }
+        for (const event of attached.interactions.replay()) replay(event);
         break;
       }
       case 'session.detach': {
@@ -1070,9 +1059,8 @@ export class Engine {
       adapter,
       unsub: noop,
       status: 'starting',
-      closed: false,
       turnInputActive: false,
-      asks: new Map(),
+      interactions: new InteractiveRequests(sessionId),
       capabilities: adapter.capabilities,
     };
     session.unsub = adapter.onEvent((event) => {
@@ -1082,9 +1070,7 @@ export class Engine {
         switch (event.type) {
           case 'status':
             if (event.status === 'running' && session.status !== 'running') {
-              for (const [requestId, ask] of session.asks) {
-                if (ask.state === 'resolved') session.asks.delete(requestId);
-              }
+              session.interactions.beginTurn();
             }
             session.status = event.status;
             if (event.status === 'running') session.turnInputActive = true;
@@ -1094,7 +1080,7 @@ export class Engine {
             // A turn boundary invalidates every unanswered ask. Keep a canonical cancellation
             // record so attached clients converge instead of merely making the card disappear.
             if (event.status === 'idle' || event.status === 'stopped') {
-              this.cancelOpenAsks(sessionId, session);
+              this.broadcastSessionEvents(sessionId, session.interactions.cancelOpen());
             }
             if (event.status === 'stopped') this.sealCurrentRun(sessionId);
             break;
@@ -1106,15 +1092,16 @@ export class Engine {
             break;
           case 'permission-request':
           case 'question-request':
-            if (!session.asks.has(event.requestId)) {
-              session.asks.set(event.requestId, { request: event, state: 'open' });
-            }
+            session.interactions.open(event);
             break;
           case 'tool-call':
             // A terminal tool invalidates any still-open ask (also catches teardown's forced-failed
             // sweep on cancel), producing the explicit resolution clients use for pending state.
             if (event.toolCall.status === 'completed' || event.toolCall.status === 'failed') {
-              this.cancelOpenAsks(sessionId, session, event.toolCall.toolCallId);
+              this.broadcastSessionEvents(
+                sessionId,
+                session.interactions.cancelOpen(event.toolCall.toolCallId),
+              );
             }
             break;
           case 'model-update':
@@ -1315,110 +1302,12 @@ export class Engine {
     if (record.cwd) this.workspaces.touch(record.cwd);
   }
 
-  private beginAskResponse(
-    sessionId: SessionId,
-    session: Session,
-    input: AskResponseInput,
-  ): AskEvent {
-    if (session.closed) throw new Error(`Session is closed: ${sessionId}`);
-    const ask = session.asks.get(input.requestId);
-    if (!ask) throw new Error(`Unknown interactive request: ${input.requestId}`);
-    if (ask.state === 'responding') {
-      throw new Error(`Response already in flight: ${input.requestId}`);
-    }
-    if (ask.state === 'resolved') {
-      throw new Error(`Interactive request already resolved: ${input.requestId}`);
-    }
-    validateAskResponse(ask.request, input);
-    session.asks.set(input.requestId, {
-      request: ask.request,
-      state: 'responding',
-      invalidated: false,
-    });
-    this.transport.send(
-      createWireMessage({
-        kind: 'agent.event',
-        sessionId,
-        event: {
-          type: 'prompt-response-status',
-          requestId: input.requestId,
-          status: 'responding',
-        },
-      }),
-    );
-    return ask.request;
-  }
-
-  private restoreAsk(
-    sessionId: SessionId,
-    session: Session,
-    requestId: string,
-    request: AskEvent,
-  ): void {
-    if (session.closed) return;
-    const ask = session.asks.get(requestId);
-    if (ask?.state !== 'responding' || ask.request !== request) return;
-    if (ask.invalidated) {
-      const resolution = sessionCancellation(request);
-      session.asks.set(requestId, { request, state: 'resolved', resolution });
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: resolution }));
-      return;
-    }
-    session.asks.set(requestId, { request, state: 'open' });
-    this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: request }));
-    this.transport.send(
-      createWireMessage({
-        kind: 'agent.event',
-        sessionId,
-        event: { type: 'prompt-response-status', requestId, status: 'open' },
-      }),
-    );
-  }
-
-  private resolveUserAsk(
-    sessionId: SessionId,
-    session: Session,
-    input: AskResponseInput,
-    request: AskEvent,
-  ): void {
-    // A session.stop/delete that raced the in-flight send has already cancelled every ask and
-    // broadcast the resolutions; the adapter accepted the answer, so the send stays successful.
-    if (session.closed) return;
-    const ask = session.asks.get(input.requestId);
-    if (ask?.state !== 'responding' || ask.request !== request) {
-      throw new Error(`Interactive request changed while responding: ${input.requestId}`);
-    }
-    const resolution = userResolution(input);
-    session.asks.set(input.requestId, { request, state: 'resolved', resolution });
-    this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: resolution }));
-  }
-
-  private cancelOpenAsks(sessionId: SessionId, session: Session, toolCallId?: string): void {
-    for (const [requestId, ask] of session.asks) {
-      if (toolCallId !== undefined && ask.request.toolCall.toolCallId !== toolCallId) continue;
-      if (ask.state === 'responding') {
-        session.asks.set(requestId, { ...ask, invalidated: true });
-      } else if (ask.state === 'open') {
-        const resolution = sessionCancellation(ask.request);
-        session.asks.set(requestId, { request: ask.request, state: 'resolved', resolution });
-        this.transport.send(
-          createWireMessage({ kind: 'agent.event', sessionId, event: resolution }),
-        );
-      }
-    }
-  }
-
   private closeSessionInteractions(sessionId: SessionId, session: Session): void {
-    if (session.closed) return;
-    session.closed = true;
+    const resolutions = session.interactions.close();
+    if (!resolutions) return;
     session.status = 'stopped';
     session.turnInputActive = false;
-    for (const [requestId, ask] of session.asks) {
-      if (ask.state === 'resolved') continue;
-      const resolution = sessionCancellation(ask.request);
-      session.asks.set(requestId, { request: ask.request, state: 'resolved', resolution });
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event: resolution }));
-    }
+    this.broadcastSessionEvents(sessionId, resolutions);
     this.transport.send(
       createWireMessage({
         kind: 'agent.event',
@@ -1426,6 +1315,12 @@ export class Engine {
         event: { type: 'status', status: 'stopped' },
       }),
     );
+  }
+
+  private broadcastSessionEvents(sessionId: SessionId, events: Iterable<AgentEvent>): void {
+    for (const event of events) {
+      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+    }
   }
 
   private broadcastInputRejected(sessionId: SessionId, message: string): void {
