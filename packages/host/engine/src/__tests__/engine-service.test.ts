@@ -1,18 +1,24 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { InstalledAsset, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
 import { Effect, Logger as EffectLogger, Layer, ManagedRuntime } from 'effect';
 import { asyncNoop, noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { TranslatorService } from '../agent/translator';
+import type { AssetService } from '../asset/service';
 import { InMemoryLoopStore } from '../automation/loop-store';
 import { InMemoryScheduleStore } from '../automation/schedule-store';
+import { createEngineRuntime } from '../engine';
 import { EngineService, makeEngineLayer } from '../service';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import type { PtyBackend } from '../terminal/pty-backend';
+import type { WorkspaceStore } from '../workspace/workspace-store';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
+import { FakeAdapter } from './fixtures/session-harness';
 
 describe('engine service', () => {
   it('owns the engine lifecycle and exposes workspace orchestration', async () => {
@@ -226,5 +232,127 @@ describe('engine service', () => {
     } finally {
       await runtime.dispose();
     }
+  });
+
+  it('direct stop rejects late requests and interrupts accepted requests without replying', async () => {
+    const sent: WirePayload[] = [];
+    const unsubscribe = vi.fn();
+    let handler: ((message: ValidatedWireMessage) => void) | undefined;
+    let markEnsureStarted: () => void = noop;
+    let settleEnsure: (asset: InstalledAsset) => void = noop;
+    const ensureStarted = new Promise<void>((resolve) => {
+      markEnsureStarted = resolve;
+    });
+    const pendingEnsure = new Promise<InstalledAsset>((resolve) => {
+      settleEnsure = resolve;
+    });
+    const ensure = vi.fn(() => {
+      markEnsureStarted();
+      return pendingEnsure;
+    });
+    const assets: AssetService = {
+      statuses: () => [],
+      ensure,
+      subscribe: () => noop,
+    };
+    const transport: Transport = {
+      connect: asyncNoop,
+      send(message) {
+        sent.push(message.payload);
+      },
+      onMessage(callback) {
+        handler = callback;
+        return unsubscribe;
+      },
+      onClose: () => noop,
+      close: noop,
+    };
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const engine = yield* createEngineRuntime(transport, { assets });
+          yield* engine.start;
+          const inject = (clientReqId: string): void => {
+            handler?.(createWireMessage({ kind: 'asset.ensure', clientReqId, id: 'agent:codex' }));
+          };
+
+          inject('accepted');
+          yield* Effect.promise(() => ensureStarted);
+          yield* engine.stop;
+
+          expect(unsubscribe).toHaveBeenCalledOnce();
+          expect(sent).toEqual([]);
+          inject('late');
+          expect(ensure).toHaveBeenCalledOnce();
+
+          settleEnsure({ id: 'agent:codex', version: '1.0.0', path: '/bin/codex' });
+          yield* Effect.yieldNow;
+          expect(sent).toEqual([]);
+        }),
+      ),
+    );
+  });
+
+  it('direct stop prevents an accepted session start from registering after the shutdown sweep', async () => {
+    const sent: WirePayload[] = [];
+    let handler: ((message: ValidatedWireMessage) => void) | undefined;
+    let markSaveStarted: () => void = noop;
+    let settleSave: () => void = noop;
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve;
+    });
+    const pendingSave = new Promise<void>((resolve) => {
+      settleSave = resolve;
+    });
+    const save = vi.fn(() => {
+      markSaveStarted();
+      return pendingSave;
+    });
+    const workspaceStore: WorkspaceStore = {
+      load: () => Promise.resolve([]),
+      save,
+      delete: asyncNoop,
+    };
+    const factory = vi.fn(() => new FakeAdapter());
+    const transport: Transport = {
+      connect: asyncNoop,
+      send(message) {
+        sent.push(message.payload);
+      },
+      onMessage(callback) {
+        handler = callback;
+        return noop;
+      },
+      onClose: () => noop,
+      close: noop,
+    };
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const engine = yield* createEngineRuntime(transport, { factory, workspaceStore });
+          yield* engine.start;
+          handler?.(
+            createWireMessage({
+              kind: 'session.start',
+              clientReqId: 'start',
+              opts: { kind: 'claude-code', cwd: '/repo' },
+            }),
+          );
+          yield* Effect.promise(() => saveStarted);
+
+          yield* engine.stop;
+          expect(save).toHaveBeenCalledOnce();
+          expect(factory).not.toHaveBeenCalled();
+          expect(sent).toEqual([]);
+
+          settleSave();
+          yield* Effect.yieldNow;
+          expect(factory).not.toHaveBeenCalled();
+          expect(sent).toEqual([]);
+        }),
+      ),
+    );
   });
 });

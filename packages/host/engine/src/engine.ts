@@ -171,6 +171,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     automation: automationRequests,
     terminal: terminalRequests,
   });
+  let acceptingRequests = false;
   let unsubscribeRequests: Unsubscribe | undefined;
 
   return {
@@ -206,7 +207,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         'transport.subscribe',
         'Failed to subscribe to transport messages',
         () => {
+          acceptingRequests = true;
           unsubscribeRequests = transport.onMessage((msg) => {
+            if (!acceptingRequests) return;
             runTask(
               requests
                 .handle(msg)
@@ -234,22 +237,30 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       );
     }),
     stop: Effect.gen(function* () {
-      // Stop launching new automation sessions before the session-teardown sweep runs. Each step
-      // logs and continues so one broken collaborator cannot leak every resource after it.
+      // Close request admission before yielding so a transport callback already in flight cannot
+      // launch work after the teardown sweep starts. Each step logs and continues so one broken
+      // collaborator cannot leak every resource after it.
+      acceptingRequests = false;
       yield* finalize('transport.unsubscribe', () => {
         unsubscribeRequests?.();
         unsubscribeRequests = undefined;
       });
       yield* finalizeEffect('schedules.shutdown', scheduler.shutdown());
       yield* finalizeEffect('loops.shutdown', loops.shutdown());
-      yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* runtimes.close();
       yield* finalizeEffect('scripts.shutdown', scripts?.shutdown() ?? Effect.void);
+      // Interrupt accepted requests before taking the live-session snapshot. Scope disposal closes
+      // the set as a final backstop; clear gives direct EngineRuntime.stop callers the same drain.
+      yield* FiberSet.clear(taskSet);
+      yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* finalize('artifacts.shutdown', () => artifacts.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());
       yield* finalize('assets.shutdown', () => assets.close());
+      // Session teardown can enqueue best-effort record persistence into the root set. All
+      // producers are closed now, so a final clear leaves no Engine-owned fibers behind.
+      yield* FiberSet.clear(taskSet);
       yield* finalize('transport.close', () => transport.close());
     }).pipe(Effect.withSpan('Engine.stop')),
   };
