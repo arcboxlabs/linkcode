@@ -34,4 +34,22 @@ describe('createSessionPtyTransport', () => {
     expect(transport.isConnected()).toBe(false);
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
+
+  it('prevents a secondary view from sending input or resize', () => {
+    const sendInput = vi.fn();
+    const resize = vi.fn();
+    const session = {
+      ...createSession(() => noop),
+      canControl: () => true,
+      sendInput,
+      resize,
+    };
+    const transport = createSessionPtyTransport(session, noop, false);
+
+    transport.sendInput('echo secondary');
+    transport.resize(120, 40);
+
+    expect(sendInput).not.toHaveBeenCalled();
+    expect(resize).not.toHaveBeenCalled();
+  });
 });

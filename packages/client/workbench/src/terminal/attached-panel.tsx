@@ -15,9 +15,14 @@ import { createTransportTerminalSession } from './transport-session';
  */
 export function AttachedTerminalPanel({
   terminalId,
+  interactive,
+  primary = true,
   suspended,
 }: {
   terminalId: string;
+  interactive?: boolean;
+  /** Exactly one duplicate surface attaches/detaches the daemon capability. */
+  primary?: boolean;
   suspended?: boolean;
 }): React.ReactNode {
   const t = useTranslations('workbench.panel');
@@ -58,6 +63,7 @@ export function AttachedTerminalPanel({
 
   useAbortableEffect(
     (signal) => {
+      if (!primary) return;
       let attached = false;
       void client
         .attachTerminal(terminalId)
@@ -73,8 +79,22 @@ export function AttachedTerminalPanel({
         if (attached) client.detachTerminal(terminalId);
       };
     },
-    [client, terminalId],
+    [client, terminalId, primary],
   );
+
+  if (!primary) {
+    return (
+      <LiveTerminal
+        session={session}
+        interactive={false}
+        suspended={suspended}
+        fontFamily={fontFamily}
+        fontSize={fontSize}
+        colorScheme={colorScheme}
+        className="h-full w-full"
+      />
+    );
+  }
 
   const current = attachment?.terminalId === terminalId ? attachment : null;
   if (!current || 'failed' in current) {
@@ -96,6 +116,7 @@ export function AttachedTerminalPanel({
     <div className="relative h-full w-full">
       <LiveTerminal
         session={session}
+        interactive={interactive}
         suspended={suspended}
         fontFamily={fontFamily}
         fontSize={fontSize}

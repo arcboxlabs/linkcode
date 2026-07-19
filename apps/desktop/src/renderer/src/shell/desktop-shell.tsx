@@ -23,6 +23,7 @@ import {
   TerminalPanel,
   useCloudHosts,
   useSelectedHostStore,
+  useTerminalTabsStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
@@ -122,10 +123,10 @@ export function DesktopShell({
       bottomPanel: state.bottomPanel,
       updateSidebarOpen: state.updateSidebarOpen,
       updateLayout: state.updateLayout,
-      updatePanel: state.updatePanel,
       togglePanel: state.togglePanel,
       closePanel: state.closePanel,
       addWindow: state.addWindow,
+      setActiveBottomTab: state.setActiveBottomTab,
       closeTab: state.closeTab,
       toggleMaxPanel: state.toggleMaxPanel,
       setActiveSection: state.setActiveSection,
@@ -142,6 +143,9 @@ export function DesktopShell({
       resetRightPanelSize: state.resetRightPanelSize,
       resetBottomPanelSize: state.resetBottomPanelSize,
     })),
+  );
+  const terminalTabs = useTerminalTabsStore(
+    useShallow((state) => ({ tabs: state.tabs, activeTabId: state.activeTabId })),
   );
   const cloudAuth = useCloudAccount();
   const remoteHosts = useCloudHosts(cloudAuth.account?.email ?? null);
@@ -191,6 +195,17 @@ export function DesktopShell({
     setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size);
   }, []);
   const { sidebarOpen, layout, expansionStack, rightPanel, bottomPanel } = shellState;
+  const rightPanelView = { ...rightPanel, terminal: terminalTabs };
+  const bottomPanelView = {
+    ...bottomPanel,
+    tabs: [
+      ...terminalTabs.tabs.map((tab) => ({ ...tab, type: 'terminal' as const })),
+      ...bottomPanel.tabs,
+    ],
+    activeTabId: bottomPanel.activeTabId ?? terminalTabs.activeTabId,
+  };
+  const rightOwnsTerminal = rightPanel.open && rightPanel.activeSection === 'terminal';
+  const bottomOwnsTerminal = bottomPanel.open && !rightOwnsTerminal;
   const sidebarTransition = usePaneTransition({
     open: sidebarOpen,
     size: layout.sidebarW,
@@ -241,10 +256,10 @@ export function DesktopShell({
   const {
     updateSidebarOpen,
     updateLayout,
-    updatePanel,
     togglePanel,
     closePanel,
     addWindow,
+    setActiveBottomTab,
     closeTab,
     toggleMaxPanel,
     setActiveSection,
@@ -390,7 +405,7 @@ export function DesktopShell({
   }): React.ReactNode {
     return (
       <DesktopRightPanelRegion
-        panel={rightPanel}
+        panel={rightPanelView}
         cwd={active?.cwd}
         themeType={themeType}
         maximized={options.maximized}
@@ -418,13 +433,13 @@ export function DesktopShell({
     return (
       <DesktopPanelRegion
         side="bottom"
-        panel={bottomPanel}
+        panel={bottomPanelView}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
         contentTargetRef={setBottomContentTarget}
-        onSelectTab={(id) => updatePanel((current) => ({ ...current, activeTabId: id }))}
+        onSelectTab={setActiveBottomTab}
         onCloseTab={(id) => closeTab(id)}
         onAddWindow={(type) => addWindow(type)}
         onToggleMax={() => toggleMaxPanel('bottom')}
@@ -439,18 +454,21 @@ export function DesktopShell({
   // shell spawns for a never-shown panel; Diff/Browser content is stateless and stays inline.
   function renderRightPanelContents(host: HTMLDivElement): React.ReactNode {
     const activeIsTerminal = rightPanel.activeSection === 'terminal';
-    const items = rightPanel.terminal.tabs.map((tab) => ({
+    const items = terminalTabs.tabs.map((tab) => ({
       id: tab.id,
-      active: activeIsTerminal && tab.id === rightPanel.terminal.activeTabId,
+      active: activeIsTerminal && tab.id === terminalTabs.activeTabId,
       node: tab.id.startsWith('attach:') ? (
         <AttachedTerminalPanel
           terminalId={tab.id.slice('attach:'.length)}
+          interactive={rightOwnsTerminal}
+          primary={rightOwnsTerminal}
           suspended={rightTransition.phase !== 'open' || shellAnimating}
         />
       ) : (
         <TerminalPanel
           sessionKey={tab.id}
           cwd={active?.cwd}
+          interactive={rightOwnsTerminal}
           suspended={rightTransition.phase !== 'open' || shellAnimating}
         />
       ),
@@ -467,16 +485,26 @@ export function DesktopShell({
 
   // Same portal treatment for the bottom panel's flat tab strip.
   function renderBottomPanelContents(host: HTMLDivElement): React.ReactNode {
-    const items = bottomPanel.tabs.map((tab) => ({
+    const items = bottomPanelView.tabs.map((tab) => ({
       id: tab.id,
-      active: tab.id === bottomPanel.activeTabId,
+      active: tab.id === bottomPanelView.activeTabId,
       node:
         tab.type === 'terminal' ? (
-          <TerminalPanel
-            sessionKey={tab.id}
-            cwd={active?.cwd}
-            suspended={bottomTransition.phase !== 'open' || shellAnimating}
-          />
+          tab.id.startsWith('attach:') ? (
+            <AttachedTerminalPanel
+              terminalId={tab.id.slice('attach:'.length)}
+              interactive={bottomOwnsTerminal}
+              primary={bottomOwnsTerminal}
+              suspended={bottomTransition.phase !== 'open' || shellAnimating}
+            />
+          ) : (
+            <TerminalPanel
+              sessionKey={tab.id}
+              cwd={active?.cwd}
+              interactive={bottomOwnsTerminal}
+              suspended={bottomTransition.phase !== 'open' || shellAnimating}
+            />
+          )
         ) : (
           <PanelStubContent type={tab.type} />
         ),

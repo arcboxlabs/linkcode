@@ -1,6 +1,7 @@
 import type { ThemePreference } from '@linkcode/ipc';
 import type { ChromeSurface, PanelSection } from '@linkcode/ui/shell/panels';
 import { SectionPanelRegion } from '@linkcode/ui/shell/panels';
+import type { TerminalTabsState } from '@linkcode/workbench';
 import { FilesPanel, GitPanel } from '@linkcode/workbench';
 import { DesktopChromePortal } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
@@ -30,7 +31,7 @@ export function DesktopRightPanelRegion({
   onOpenFileTab,
   onToggleMax,
 }: {
-  panel: RightPanelState;
+  panel: RightPanelState & { terminal: TerminalTabsState };
   cwd: string | undefined;
   themeType: ThemePreference;
   maximized: boolean;

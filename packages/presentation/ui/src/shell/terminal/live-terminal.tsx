@@ -52,6 +52,7 @@ function subscribeThemeChange(listener: () => void): () => void {
 export function createSessionPtyTransport(
   session: TerminalSession,
   applyHostResize: (cols: number, rows: number) => void,
+  interactive = true,
 ): PtyTransport {
   let unsubscribe: (() => void) | null = null;
   let connected = false;
@@ -95,11 +96,11 @@ export function createSessionPtyTransport(
     disconnect: close,
     destroy: close,
     sendInput(data) {
-      if (session.canControl()) session.sendInput(data);
+      if (interactive && session.canControl()) session.sendInput(data);
       return true;
     },
     resize(cols, rows) {
-      if (!applyingHostResize && session.canControl()) session.resize(cols, rows);
+      if (interactive && !applyingHostResize && session.canControl()) session.resize(cols, rows);
       return true;
     },
     isConnected: () => connected,
@@ -114,6 +115,7 @@ export function createSessionPtyTransport(
  */
 export function LiveTerminal({
   session,
+  interactive = true,
   suspended = false,
   className,
   fontFamily = DEFAULT_TERMINAL_FONT_FAMILY,
@@ -121,6 +123,8 @@ export function LiveTerminal({
   colorScheme = DEFAULT_TERMINAL_COLOR_SCHEME,
 }: {
   session: TerminalSession;
+  /** Whether this renderer owns local input and PTY resize when the same session has two views. */
+  interactive?: boolean;
   suspended?: boolean;
   className?: string;
   fontFamily?: string;
@@ -192,9 +196,11 @@ export function LiveTerminal({
             forwardTerminalReplies: false,
           },
           services: {
-            beforeInput: () => (session.canControl() ? undefined : null),
-            ptyTransport: createSessionPtyTransport(session, (cols, rows) =>
-              hostResize.apply(cols, rows),
+            beforeInput: () => (interactive && session.canControl() ? undefined : null),
+            ptyTransport: createSessionPtyTransport(
+              session,
+              (cols, rows) => hostResize.apply(cols, rows),
+              interactive,
             ),
           },
         });
@@ -212,14 +218,14 @@ export function LiveTerminal({
         applyTerminalTheme(restty, frame, colorScheme);
         restty.connectPty('session://terminal');
         const containerResize = new ResizeObserver(() => {
-          if (session.canControl()) restty.updateSize();
+          if (interactive && session.canControl()) restty.updateSize();
         });
         containerResize.observe(container);
         disconnectContainerResize = () => containerResize.disconnect();
         unsubscribeController = session.subscribeController((canControl) => {
-          if (canControl) restty.updateSize(true);
+          if (interactive && canControl) restty.updateSize(true);
         });
-        if (session.canControl()) restty.updateSize(true);
+        if (interactive && session.canControl()) restty.updateSize(true);
         // Reveal only once a themed frame can be painted, so the default black frames restty
         // draws while the WASM core boots are never shown.
         revealFrame = requestAnimationFrame(() => {
@@ -238,7 +244,7 @@ export function LiveTerminal({
     // fontFamily/fontSize/colorScheme only seed the initial config (live-synced by the effects
     // below); as deps they would tear the terminal down and rebuild it on every change.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: initial seed only
-    [session],
+    [session, interactive],
   );
 
   // Live-apply appearance prefs without tearing the terminal down; on first mount resttyRef is

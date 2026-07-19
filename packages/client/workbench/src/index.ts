@@ -52,5 +52,6 @@ export * from './surface/workbench';
 export * from './terminal/attached-panel';
 export * from './terminal/block';
 export * from './terminal/panel';
+export * from './terminal/tabs-store';
 export * from './terminal/transport-session';
 export * from './workspace/hooks';

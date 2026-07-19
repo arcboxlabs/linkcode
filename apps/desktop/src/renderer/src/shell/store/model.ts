@@ -1,13 +1,6 @@
-import type {
-  PanelSection,
-  PanelSectionTab,
-  PanelSide,
-  PanelTab,
-  PanelWindowType,
-} from '@linkcode/ui/shell/panels';
+import type { PanelSection, PanelSide, PanelTab, PanelWindowType } from '@linkcode/ui/shell/panels';
 import { PANEL_SECTIONS, PANEL_WINDOW_TYPES } from '@linkcode/ui/shell/panels';
 import { clamp } from 'foxts/clamp';
-import { createFixedArray } from 'foxts/create-fixed-array';
 import { z } from 'zod';
 
 export type { PanelSide } from '@linkcode/ui/shell/panels';
@@ -19,14 +12,9 @@ export interface PanelState {
   activeTabId: string | null;
 }
 
-/** The right panel's terminal section: its own sub-tab strip of PTY instances. */
-export interface RightPanelTerminalState {
-  tabs: PanelSectionTab[];
-  activeTabId: string | null;
-}
-
 /** One open file in the right panel's files section. */
-export interface FileSectionTab extends PanelSectionTab {
+export interface FileSectionTab {
+  id: string;
   path: string;
 }
 
@@ -46,7 +34,6 @@ export interface RightPanelBrowserState {
 export interface RightPanelState {
   open: boolean;
   activeSection: PanelSection;
-  terminal: RightPanelTerminalState;
   files: RightPanelFilesState;
   browser: RightPanelBrowserState;
 }
@@ -66,7 +53,7 @@ export interface DesktopShellState {
 }
 
 export interface PersistedDesktopShellState {
-  version: 2;
+  version: 3;
   sidebarOpen: boolean;
   layout: LayoutState;
   expansionStack: PanelSide[];
@@ -77,8 +64,6 @@ export interface PersistedDesktopShellState {
 export interface PersistedRightPanelState {
   open: boolean;
   activeSection: PanelSection;
-  terminalTabCount: number;
-  activeTerminalTabIndex: number;
   fileTabPaths: string[];
   activeFileTabIndex: number;
   browserUrl: string | null;
@@ -90,7 +75,7 @@ export interface PersistedPanelState {
   activeTabIndex: number;
 }
 
-export const DESKTOP_SHELL_STORAGE_KEY = 'linkcode.desktop.shell-state:v2';
+export const DESKTOP_SHELL_STORAGE_KEY = 'linkcode.desktop.shell-state:v3';
 
 export const SIDEBAR_MIN_SIZE = 240;
 export const SIDEBAR_MAX_SIZE = 520;
@@ -113,12 +98,6 @@ export const PANEL_EXPANSION_TARGET: Record<PanelSide, PanelExpansionTarget> = {
   bottom: 'workbench',
 };
 
-/** The bottom panel's window type when it needs to seed a first tab. */
-const DEFAULT_BOTTOM_WINDOW_TYPE: PanelWindowType = 'terminal';
-
-/** Defensive cap on the terminal tab count restored from persisted state. */
-const MAX_PERSISTED_RIGHT_TERMINAL_TABS = 20;
-
 /** Defensive cap on the file tab count restored from persisted state. */
 const MAX_PERSISTED_RIGHT_FILE_TABS = 20;
 
@@ -127,6 +106,7 @@ let tabSequence = 0;
 const PanelSideSchema = z.enum(['right', 'bottom']);
 const PanelSectionSchema = z.enum(PANEL_SECTIONS);
 const PanelWindowTypeSchema = z.enum(PANEL_WINDOW_TYPES);
+const NonTerminalPanelWindowTypeSchema = PanelWindowTypeSchema.exclude(['terminal']);
 const FiniteNumberSchema = z.number();
 
 const PersistedLayoutSchema = z
@@ -154,7 +134,7 @@ export function createDefaultDesktopShellState(): DesktopShellState {
     layout: DEFAULT_LAYOUT,
     expansionStack: [],
     rightPanel: createDefaultRightPanelState(),
-    bottomPanel: createPanelState(false, DEFAULT_BOTTOM_WINDOW_TYPE),
+    bottomPanel: { open: false, tabs: [], activeTabId: null },
   };
 }
 
@@ -162,7 +142,6 @@ export function createDefaultRightPanelState(): RightPanelState {
   return {
     open: false,
     activeSection: 'diff',
-    terminal: { tabs: [], activeTabId: null },
     files: { tabs: [], activeTabId: null },
     browser: { url: null },
   };
@@ -182,20 +161,7 @@ export function createTab(type: PanelWindowType): PanelTab {
   return { id: `${type}-${tabSequence}`, type };
 }
 
-/** Prefixed so ids never collide with the bottom panel's tabs, which share the same PTY registry. */
-export function createRightTerminalTab(): PanelSectionTab {
-  tabSequence += 1;
-  return { id: `right-terminal-${tabSequence}` };
-}
-
-/** The terminal section never comes forward empty: seed a first PTY tab (same as pressing +). */
-export function seedTerminalSection(terminal: RightPanelTerminalState): RightPanelTerminalState {
-  if (terminal.tabs.length > 0) return terminal;
-  const tab = createRightTerminalTab();
-  return { tabs: [tab], activeTabId: tab.id };
-}
-
-/** Brings `section` forward, seeding the terminal section's first tab when it becomes visible. */
+/** Brings `section` forward. Terminal sessions are owned by the shared workbench store. */
 export function revealSectionState(
   panel: RightPanelState,
   section: PanelSection,
@@ -205,7 +171,6 @@ export function revealSectionState(
     ...panel,
     open,
     activeSection: section,
-    terminal: open && section === 'terminal' ? seedTerminalSection(panel.terminal) : panel.terminal,
   };
 }
 
@@ -215,7 +180,7 @@ export function createRightFileTab(path: string): FileSectionTab {
 }
 
 /** Removes a section sub-tab, falling back the active tab to a neighbor if it was the one closed. */
-export function closeSectionTabState<Tab extends PanelSectionTab>(
+export function closeSectionTabState<Tab extends { id: string }>(
   section: { tabs: Tab[]; activeTabId: string | null },
   id: string,
 ): { tabs: Tab[]; activeTabId: string | null } {
@@ -301,7 +266,7 @@ export function parsePersistedDesktopShellState(value: unknown): DesktopShellSta
 
 export function serializeDesktopShellState(state: DesktopShellState): PersistedDesktopShellState {
   return {
-    version: 2,
+    version: 3,
     sidebarOpen: state.sidebarOpen,
     layout: normalizeLayout(state.layout),
     expansionStack: normalizeExpansionStack(
@@ -321,11 +286,11 @@ function durableBrowserUrl(url: string | null): string | null {
 function createPersistedShellStateSchema(): z.ZodType<DesktopShellState> {
   const fallback = createDefaultDesktopShellState();
   const rightPanelSchema = createPersistedRightPanelSchema();
-  const bottomPanelSchema = createPersistedPanelSchema(DEFAULT_BOTTOM_WINDOW_TYPE, false);
+  const bottomPanelSchema = createPersistedPanelSchema(false);
 
   return z
     .object({
-      version: z.literal(2),
+      version: z.literal(3),
       sidebarOpen: z.boolean().catch(fallback.sidebarOpen),
       layout: PersistedLayoutSchema,
       expansionStack: PersistedExpansionStackSchema,
@@ -345,10 +310,7 @@ function createPersistedShellStateSchema(): z.ZodType<DesktopShellState> {
     }));
 }
 
-function createPersistedPanelSchema(
-  fallbackType: PanelWindowType,
-  fallbackOpen: boolean,
-): z.ZodType<PanelState> {
+function createPersistedPanelSchema(fallbackOpen: boolean): z.ZodType<PanelState> {
   return z
     .object({
       open: z.boolean().catch(fallbackOpen),
@@ -357,7 +319,7 @@ function createPersistedPanelSchema(
         .catch([])
         .transform((items) =>
           items.flatMap((item) => {
-            const parsed = PanelWindowTypeSchema.safeParse(item);
+            const parsed = NonTerminalPanelWindowTypeSchema.safeParse(item);
             return parsed.success ? [parsed.data] : [];
           }),
         ),
@@ -369,14 +331,13 @@ function createPersistedPanelSchema(
       activeTabIndex: 0,
     })
     .transform(({ open, tabs: parsedTypes, activeTabIndex }) => {
-      const types = parsedTypes.length > 0 ? parsedTypes : [fallbackType];
-      const tabs = types.map((type) => createTab(type));
+      const tabs = parsedTypes.map((type) => createTab(type));
       const activeIndex = clamp(activeTabIndex, 0, tabs.length - 1);
 
       return {
         open,
         tabs,
-        activeTabId: tabs[activeIndex].id,
+        activeTabId: activeTabIndex === -1 ? null : (tabs[activeIndex]?.id ?? null),
       };
     });
 }
@@ -388,9 +349,6 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
     .object({
       open: z.boolean().catch(fallback.open),
       activeSection: PanelSectionSchema.catch(fallback.activeSection),
-      terminalTabCount: FiniteNumberSchema.int().nonnegative().catch(0),
-      activeTerminalTabIndex: FiniteNumberSchema.int().catch(0),
-      // Absent in pre-files persisted payloads; the catches make the section start empty.
       fileTabPaths: z.array(z.string().min(1)).catch([]),
       activeFileTabIndex: FiniteNumberSchema.int().catch(0),
       browserUrl: z.string().min(1).nullable().catch(null),
@@ -398,59 +356,32 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
     .catch({
       open: fallback.open,
       activeSection: fallback.activeSection,
-      terminalTabCount: 0,
-      activeTerminalTabIndex: 0,
       fileTabPaths: [],
       activeFileTabIndex: 0,
       browserUrl: null,
     })
-    .transform(
-      ({
+    .transform(({ open, activeSection, fileTabPaths, activeFileTabIndex, browserUrl }) => {
+      const fileTabs = fileTabPaths
+        .slice(0, MAX_PERSISTED_RIGHT_FILE_TABS)
+        .map((path) => createRightFileTab(path));
+      const activeFileIndex =
+        fileTabs.length > 0 ? clamp(activeFileTabIndex, 0, fileTabs.length - 1) : 0;
+      return {
         open,
         activeSection,
-        terminalTabCount,
-        activeTerminalTabIndex,
-        fileTabPaths,
-        activeFileTabIndex,
-        browserUrl,
-      }) => {
-        const tabCount = clamp(terminalTabCount, 0, MAX_PERSISTED_RIGHT_TERMINAL_TABS);
-        const tabs = createFixedArray(tabCount).map(() => createRightTerminalTab());
-        const activeIndex = tabs.length > 0 ? clamp(activeTerminalTabIndex, 0, tabs.length - 1) : 0;
-        const fileTabs = fileTabPaths
-          .slice(0, MAX_PERSISTED_RIGHT_FILE_TABS)
-          .map((path) => createRightFileTab(path));
-        const activeFileIndex =
-          fileTabs.length > 0 ? clamp(activeFileTabIndex, 0, fileTabs.length - 1) : 0;
-        const terminal = {
-          tabs,
-          activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
-        };
-
-        return {
-          open,
-          activeSection,
-          terminal: open && activeSection === 'terminal' ? seedTerminalSection(terminal) : terminal,
-          files: {
-            tabs: fileTabs,
-            activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
-          },
-          browser: { url: durableBrowserUrl(browserUrl) },
-        };
-      },
-    );
+        files: {
+          tabs: fileTabs,
+          activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
+        },
+        browser: { url: durableBrowserUrl(browserUrl) },
+      };
+    });
 }
 
 function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
   return {
     open: panel.open,
     activeSection: panel.activeSection,
-    terminalTabCount: panel.terminal.tabs.length,
-    activeTerminalTabIndex: clamp(
-      panel.terminal.tabs.findIndex((tab) => tab.id === panel.terminal.activeTabId),
-      0,
-      Math.max(0, panel.terminal.tabs.length - 1),
-    ),
     fileTabPaths: panel.files.tabs.map((tab) => tab.path),
     activeFileTabIndex: clamp(
       panel.files.tabs.findIndex((tab) => tab.id === panel.files.activeTabId),
@@ -464,12 +395,15 @@ function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
 function serializePanel(panel: PanelState): PersistedPanelState {
   return {
     open: panel.open,
-    tabs: panel.tabs.map((tab) => tab.type),
-    activeTabIndex: clamp(
-      panel.tabs.findIndex((tab) => tab.id === panel.activeTabId),
-      0,
-      Math.max(0, panel.tabs.length - 1),
-    ),
+    tabs: panel.tabs.flatMap((tab) => (tab.type === 'terminal' ? [] : [tab.type])),
+    activeTabIndex:
+      panel.activeTabId === null
+        ? -1
+        : clamp(
+            panel.tabs.findIndex((tab) => tab.id === panel.activeTabId),
+            0,
+            Math.max(0, panel.tabs.length - 1),
+          ),
   };
 }
 
