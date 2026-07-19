@@ -220,21 +220,23 @@ export class ScheduleService {
   }
 
   /** Fire one manual run now without touching the cadence or `nextRunAt`. */
-  runOnce(scheduleId: ScheduleId): Effect.Effect<void, RequestError> {
-    if (!this.acceptingRuns) {
-      return Effect.fail(conflict('Schedule service is shutting down'));
-    }
-    return this.find(scheduleId).pipe(
-      Effect.flatMap((schedule) => {
-        if (schedule.status === 'completed') {
-          return Effect.fail(conflict('Schedule is already completed'));
-        }
-        if (this.activeRuns.has(scheduleId)) {
-          return Effect.fail(conflict('Schedule run already in progress'));
-        }
-        return Effect.sync(() => this.startRun(schedule, 'manual'));
-      }),
-    );
+  runOnce(scheduleId: ScheduleId): Effect.Effect<void, RequestError | OperationError> {
+    return this.serialized((): Effect.Effect<void, RequestError | OperationError> => {
+      if (!this.acceptingRuns) {
+        return Effect.fail(conflict('Schedule service is shutting down'));
+      }
+      return this.find(scheduleId).pipe(
+        Effect.flatMap((schedule): Effect.Effect<void, RequestError | OperationError> => {
+          if (schedule.status === 'completed') {
+            return Effect.fail(conflict('Schedule is already completed'));
+          }
+          if (this.activeRuns.has(scheduleId)) {
+            return Effect.fail(conflict('Schedule run already in progress'));
+          }
+          return this.startRun(schedule, 'manual');
+        }),
+      );
+    });
   }
 
   listRuns(
@@ -339,13 +341,32 @@ export class ScheduleService {
       }
     }
     if (this.acceptingRuns) {
-      this.startRun(advanced, isMiss ? 'catch-up' : 'cadence');
+      this.track(this.startRun(advanced, isMiss ? 'catch-up' : 'cadence'));
     }
   }
 
-  private startRun(schedule: Schedule, trigger: ScheduleRunTrigger): void {
-    this.activeRuns.add(schedule.scheduleId);
-    this.track(this.launchRun(schedule, trigger));
+  private startRun(
+    schedule: Schedule,
+    trigger: ScheduleRunTrigger,
+  ): Effect.Effect<void, OperationError> {
+    const run: ScheduleRun = {
+      runId: this.mintRunId(),
+      scheduleId: schedule.scheduleId,
+      status: 'running',
+      trigger,
+      startedAt: this.now(),
+    };
+    return storeEffect('schedule-runs.save', 'Failed to save schedule run', () =>
+      this.store.saveRun(run),
+    ).pipe(
+      Effect.tap(() => Effect.sync(() => this.reporter.runChanged(run))),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.activeRuns.add(schedule.scheduleId);
+          this.track(this.launchRun(schedule, run));
+        }),
+      ),
+    );
   }
 
   /** Track Engine-owned schedule work for targeted shutdown without creating another Runtime. */
@@ -364,48 +385,37 @@ export class ScheduleService {
     fiber.addObserver(() => this.inFlight.delete(fiber));
   }
 
-  private launchRun(schedule: Schedule, trigger: ScheduleRunTrigger): Effect.Effect<void, unknown> {
+  private launchRun(schedule: Schedule, run: ScheduleRun): Effect.Effect<void, unknown> {
     const scheduleId = schedule.scheduleId;
-    const run: ScheduleRun = {
-      runId: this.mintRunId(),
-      scheduleId,
-      status: 'running',
-      trigger,
-      startedAt: this.now(),
-    };
-    return fromPromise(() => this.saveRun(run)).pipe(
-      Effect.andThen(
-        this.runExecutor.execute(schedule, run).pipe(
-          Effect.matchEffect({
-            onFailure: (error) => {
-              run.status = 'failed';
-              // Bare message (no `Error:` prefix) — this string is shown in the run history.
-              run.error = automationFailureMessage(error);
-              const diagnostic = Effect.logError(
-                'Schedule run failed',
-                {
-                  scheduleId,
-                  runId: run.runId,
-                  operation: 'automation.schedule.run',
-                },
-                error,
-              );
-              if (!(error instanceof ScheduleTargetGoneError)) return diagnostic;
-              const current = this.schedules.get(scheduleId);
-              const completion = current
-                ? fromPromise(() => this.complete(current, 'targetGone'))
-                : Effect.void;
-              return diagnostic.pipe(Effect.andThen(completion));
+    return this.runExecutor.execute(schedule, run).pipe(
+      Effect.matchEffect({
+        onFailure: (error) => {
+          run.status = 'failed';
+          // Bare message (no `Error:` prefix) — this string is shown in the run history.
+          run.error = automationFailureMessage(error);
+          const diagnostic = Effect.logError(
+            'Schedule run failed',
+            {
+              scheduleId,
+              runId: run.runId,
+              operation: 'automation.schedule.run',
             },
-            onSuccess: (outcome) =>
-              Effect.sync(() => {
-                run.status = 'succeeded';
-                run.sessionId = outcome.sessionId;
-                run.summary = outcome.summary;
-              }),
+            error,
+          );
+          if (!(error instanceof ScheduleTargetGoneError)) return diagnostic;
+          const current = this.schedules.get(scheduleId);
+          const completion = current
+            ? fromPromise(() => this.complete(current, 'targetGone'))
+            : Effect.void;
+          return diagnostic.pipe(Effect.andThen(completion));
+        },
+        onSuccess: (outcome) =>
+          Effect.sync(() => {
+            run.status = 'succeeded';
+            run.sessionId = outcome.sessionId;
+            run.summary = outcome.summary;
           }),
-        ),
-      ),
+      }),
       Effect.andThen(
         Effect.suspend(() => {
           run.endedAt = this.now();
@@ -416,7 +426,7 @@ export class ScheduleService {
       Effect.andThen(
         Effect.suspend(() =>
           fromPromise(() =>
-            this.settleScheduleAfterRun(scheduleId, trigger, nullthrow(run.endedAt)),
+            this.settleScheduleAfterRun(scheduleId, run.trigger, nullthrow(run.endedAt)),
           ),
         ),
       ),
