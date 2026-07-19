@@ -1,18 +1,12 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { AUTH_FAILED_ERROR_CODE, createAdapter } from '@linkcode/agent-adapter';
 import type {
-  AgentCapabilities,
-  AgentCommand,
   AgentEvent,
   AgentKind,
-  AgentModelOption,
   AgentRuntimes,
-  ApprovalPolicyState,
   ContentBlock,
-  EffortLevel,
   SessionAutomation,
   SessionId,
-  SessionInfo,
   SessionNotificationReason,
   SessionRecord,
   StartOptions,
@@ -20,7 +14,7 @@ import type {
   WorkspaceRecord,
 } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
-import type { Transport, Unsubscribe } from '@linkcode/transport';
+import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
@@ -48,7 +42,7 @@ import { PreviewRouteRegistry } from './preview/route-registry';
 import { ScriptService } from './scripts/script-service';
 import { assertAttachmentContentAllowed } from './session/attachment-guard';
 import { HistoryService } from './session/history-service';
-import { InteractiveRequests } from './session/interactive-requests';
+import { LiveSession } from './session/live-session';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import type { SessionStore } from './session/session-store';
 import { InMemorySessionStore } from './session/session-store';
@@ -59,32 +53,6 @@ import { FileSuggestService } from './workspace/file-suggest-service';
 import { WorkspaceRegistry } from './workspace/workspace-registry';
 import type { WorkspaceStore } from './workspace/workspace-store';
 import { InMemoryWorkspaceStore } from './workspace/workspace-store';
-
-interface Session {
-  adapter: AgentAdapter;
-  unsub: Unsubscribe;
-  status: SessionInfo['status'];
-  /** Engine-owned input gate: adapters differ in whether send() blocks for dispatch or a full turn,
-   * so the host serializes turn-initiating inputs until the adapter reports idle/stopped. */
-  turnInputActive: boolean;
-  /** Latest advertised approval-policy state, replayed to freshly-attached clients — the event is
-   * emitted at adapter start / on switches, which a client that (re)connects later has missed. */
-  approvalPolicy?: ApprovalPolicyState;
-  interactions: InteractiveRequests;
-  /** Latest model/effort the adapter reported, replayed to freshly-attached clients for the same
-   * reason as `approvalPolicy` — a reconnecting client missed the emit and would otherwise show a
-   * placeholder instead of the value the session is actually running on. */
-  currentModel?: string;
-  currentEffort?: EffortLevel;
-  /** Latest slash-command catalog the adapter advertised, replayed on attach for the same reason —
-   * without it a reconnecting client's composer loses the command menu. */
-  availableCommands?: AgentCommand[];
-  /** Latest model catalog the adapter advertised (install-dependent agents only), replayed on
-   * attach for the same reason — without it a reconnecting client loses the model picker. */
-  availableModels?: AgentModelOption[];
-  /** Stable adapter input surface, replayed on attach so clients never infer it from agent kind. */
-  capabilities: AgentCapabilities;
-}
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
@@ -126,7 +94,7 @@ export interface EngineDeps {
  * by id: a request's `clientReqId` echoes back as `replyTo` on the matching reply.
  */
 export class Engine {
-  private readonly sessions = new Map<SessionId, Session>();
+  private readonly sessions = new Map<SessionId, LiveSession>();
   private readonly records: SessionRecordRegistry;
   private readonly history: HistoryService;
   private readonly terminals?: TerminalService;
@@ -381,8 +349,8 @@ export class Engine {
             this.sessions.get(p.sessionId),
             `Unknown session: ${p.sessionId}`,
           );
-          this.closeSessionInteractions(p.sessionId, session);
-          session.unsub();
+          this.broadcastSessionEvents(p.sessionId, session.closeInteractions());
+          session.stopListening();
           try {
             await session.adapter.stop();
           } finally {
@@ -400,8 +368,8 @@ export class Engine {
           // another client. Provider-local history stays untouched, so session.import still works.
           const session = this.sessions.get(p.sessionId);
           if (session) {
-            this.closeSessionInteractions(p.sessionId, session);
-            session.unsub();
+            this.broadcastSessionEvents(p.sessionId, session.closeInteractions());
+            session.stopListening();
             try {
               await session.adapter.stop();
             } catch (error) {
@@ -829,29 +797,7 @@ export class Engine {
         // turn. Clients fold this state idempotently and dedupe asks by requestId.
         const attached = this.sessions.get(p.sessionId);
         if (!attached) break;
-        const replay = (event: AgentEvent): void => {
-          this.transport.send(
-            createWireMessage({ kind: 'agent.event', sessionId: p.sessionId, event }),
-          );
-        };
-        replay({ type: 'status', status: attached.status });
-        if (attached.approvalPolicy) {
-          replay({ type: 'approval-policy-update', state: attached.approvalPolicy });
-        }
-        if (attached.currentModel) {
-          replay({ type: 'model-update', model: attached.currentModel });
-        }
-        if (attached.currentEffort) {
-          replay({ type: 'effort-update', effort: attached.currentEffort });
-        }
-        replay({ type: 'capabilities-update', capabilities: attached.capabilities });
-        if (attached.availableCommands) {
-          replay({ type: 'available-commands-update', commands: attached.availableCommands });
-        }
-        if (attached.availableModels) {
-          replay({ type: 'available-models-update', models: attached.availableModels });
-        }
-        for (const event of attached.interactions.replay()) replay(event);
+        this.broadcastSessionEvents(p.sessionId, attached.replay());
         break;
       }
       case 'session.detach': {
@@ -969,7 +915,7 @@ export class Engine {
     this.loops.shutdown();
     await Promise.all(
       Array.from(this.sessions.values(), async (session) => {
-        session.unsub();
+        session.stopListening();
         await session.adapter.stop();
       }),
     );
@@ -996,69 +942,18 @@ export class Engine {
   ): Promise<void> {
     const sessionId = record.sessionId;
     const adapter = this.factory(record.kind);
-    const session: Session = {
-      adapter,
-      unsub: noop,
-      status: 'starting',
-      turnInputActive: false,
-      interactions: new InteractiveRequests(sessionId),
-      capabilities: adapter.capabilities,
-    };
-    session.unsub = adapter.onEvent((event) => {
+    const session = new LiveSession(adapter, sessionId);
+    session.listen((event) => {
       // The adapter invokes this synchronously; an uncaught throw would bubble into whatever
       // triggered the event instead of staying contained to this session.
       try {
+        this.broadcastSessionEvents(sessionId, session.apply(event));
         switch (event.type) {
           case 'status':
-            if (event.status === 'running' && session.status !== 'running') {
-              session.interactions.beginTurn();
-            }
-            session.status = event.status;
-            if (event.status === 'running') session.turnInputActive = true;
-            if (event.status === 'idle' || event.status === 'stopped') {
-              session.turnInputActive = false;
-            }
-            // A turn boundary invalidates every unanswered ask. Keep a canonical cancellation
-            // record so attached clients converge instead of merely making the card disappear.
-            if (event.status === 'idle' || event.status === 'stopped') {
-              this.broadcastSessionEvents(sessionId, session.interactions.cancelOpen());
-            }
             if (event.status === 'stopped') this.records.sealCurrentRun(sessionId);
             break;
           case 'session-ref':
             this.records.bindHistoryId(sessionId, event.historyId);
-            break;
-          case 'approval-policy-update':
-            session.approvalPolicy = event.state;
-            break;
-          case 'permission-request':
-          case 'question-request':
-            session.interactions.open(event);
-            break;
-          case 'tool-call':
-            // A terminal tool invalidates any still-open ask (also catches teardown's forced-failed
-            // sweep on cancel), producing the explicit resolution clients use for pending state.
-            if (event.toolCall.status === 'completed' || event.toolCall.status === 'failed') {
-              this.broadcastSessionEvents(
-                sessionId,
-                session.interactions.cancelOpen(event.toolCall.toolCallId),
-              );
-            }
-            break;
-          case 'model-update':
-            session.currentModel = event.model;
-            break;
-          case 'effort-update':
-            session.currentEffort = event.effort;
-            break;
-          case 'available-commands-update':
-            session.availableCommands = event.commands;
-            break;
-          case 'available-models-update':
-            session.availableModels = event.models;
-            break;
-          case 'capabilities-update':
-            session.capabilities = event.capabilities;
             break;
           case 'error':
             // Signed-out/expired-token turn: re-probe so the runtime snapshot flips to
@@ -1088,7 +983,7 @@ export class Engine {
     try {
       await startAdapter(adapter);
     } catch (err) {
-      session.unsub();
+      session.stopListening();
       this.sessions.delete(sessionId);
       this.records.sealCurrentRun(sessionId);
       await adapter.stop().catch(noop);
@@ -1204,7 +1099,7 @@ export class Engine {
   private async stopSessionById(sessionId: SessionId): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    session.unsub();
+    session.stopListening();
     await session.adapter.stop().catch(noop);
     this.sessions.delete(sessionId);
     this.terminals?.killBySession(sessionId);
@@ -1238,21 +1133,6 @@ export class Engine {
     // so imported records and roots archived since still pass the file.suggest workspace check once
     // their session is live again.
     if (record.cwd) this.workspaces.touch(record.cwd);
-  }
-
-  private closeSessionInteractions(sessionId: SessionId, session: Session): void {
-    const resolutions = session.interactions.close();
-    if (!resolutions) return;
-    session.status = 'stopped';
-    session.turnInputActive = false;
-    this.broadcastSessionEvents(sessionId, resolutions);
-    this.transport.send(
-      createWireMessage({
-        kind: 'agent.event',
-        sessionId,
-        event: { type: 'status', status: 'stopped' },
-      }),
-    );
   }
 
   private broadcastSessionEvents(sessionId: SessionId, events: Iterable<AgentEvent>): void {
