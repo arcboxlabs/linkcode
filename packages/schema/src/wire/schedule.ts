@@ -6,74 +6,75 @@ import {
   ScheduleSpecSchema,
   ScheduleUpdateSchema,
 } from '../model/schedule';
+import { WireRequestIdSchema } from './request';
 
 /**
  * Schedule wire variants. Requests carry `clientReqId`; correlated replies carry `replyTo`;
  * mutations that need no payload back reply with the generic `request.succeeded`/`request.failed`
- * (see wire/history.ts). Broadcasts (no correlation id) carry the routing key inside the record and
+ * (see wire/request.ts). Broadcasts (no correlation id) carry the routing key inside the record and
  * are fanned to every client, which filters by `scheduleId` — the `script.status` pattern.
  */
 export const scheduleWireVariants = [
   z.object({
     kind: z.literal('schedule.create'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     spec: ScheduleSpecSchema,
   }),
   z.object({
     kind: z.literal('schedule.created'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     schedule: ScheduleSchema,
   }),
   z.object({
     kind: z.literal('schedule.update'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     scheduleId: ScheduleIdSchema,
     patch: ScheduleUpdateSchema,
   }),
   z.object({
     kind: z.literal('schedule.updated'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     schedule: ScheduleSchema,
   }),
   /** delete/pause/resume/run-once reply `request.succeeded`/`failed`; state flows via broadcasts. */
   z.object({
     kind: z.literal('schedule.delete'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     scheduleId: ScheduleIdSchema,
   }),
   z.object({
     kind: z.literal('schedule.pause'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     scheduleId: ScheduleIdSchema,
   }),
   z.object({
     kind: z.literal('schedule.resume'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     scheduleId: ScheduleIdSchema,
   }),
   z.object({
     kind: z.literal('schedule.run-once'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     scheduleId: ScheduleIdSchema,
   }),
   z.object({
     kind: z.literal('schedule.list'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
   }),
   z.object({
     kind: z.literal('schedule.listed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     schedules: z.array(ScheduleSchema),
   }),
   z.object({
     kind: z.literal('schedule.runs.list'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     scheduleId: ScheduleIdSchema,
     limit: z.number().int().min(1).max(500).optional(),
   }),
   z.object({
     kind: z.literal('schedule.runs.listed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     runs: z.array(ScheduleRunSchema),
   }),
   /** Broadcast on create/update/pause/resume/complete — whole-record replace by `scheduleId`. */

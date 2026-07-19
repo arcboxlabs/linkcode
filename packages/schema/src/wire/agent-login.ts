@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentKindSchema } from '../model/primitives';
+import { WireRequestIdSchema } from './request';
 
 /**
  * Interactive provider-login wire variants: the host runs the agent CLI's own OAuth login as a
@@ -11,12 +12,12 @@ import { AgentKindSchema } from '../model/primitives';
 export const agentLoginWireVariants = [
   z.object({
     kind: z.literal('agent-login.start'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     agent: AgentKindSchema,
   }),
   z.object({
     kind: z.literal('agent-login.started'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     loginId: z.string().min(1),
   }),
   z.object({ kind: z.literal('agent-login.url'), loginId: z.string().min(1), url: z.url() }),

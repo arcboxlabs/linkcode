@@ -7,6 +7,7 @@ import {
   LoopSpecSchema,
 } from '../model/loop';
 import { LoopIdSchema } from '../model/primitives';
+import { WireRequestIdSchema } from './request';
 
 /**
  * Loop wire variants. Same conventions as wire/schedule.ts: requests carry `clientReqId`; correlated
@@ -19,42 +20,42 @@ import { LoopIdSchema } from '../model/primitives';
 export const loopWireVariants = [
   z.object({
     kind: z.literal('loop.start'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     spec: LoopSpecSchema,
   }),
   z.object({
     kind: z.literal('loop.started'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     loop: LoopRecordSchema,
   }),
   /** stop/delete reply `request.succeeded`/`failed`; state flows via broadcasts. */
   z.object({
     kind: z.literal('loop.stop'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     loopId: LoopIdSchema,
   }),
   z.object({
     kind: z.literal('loop.delete'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     loopId: LoopIdSchema,
   }),
   z.object({
     kind: z.literal('loop.list'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
   }),
   z.object({
     kind: z.literal('loop.listed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     loops: z.array(LoopRecordSchema),
   }),
   z.object({
     kind: z.literal('loop.inspect'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     loopId: LoopIdSchema,
   }),
   z.object({
     kind: z.literal('loop.inspected'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     ...LoopInspectionSchema.shape,
   }),
   /** Broadcast on start/settle and status change — whole-record replace by `loopId`. */

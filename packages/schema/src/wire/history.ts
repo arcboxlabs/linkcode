@@ -7,6 +7,7 @@ import {
   AgentHistoryReadResultSchema,
 } from '../model/history';
 import { AgentHistoryIdSchema, AgentKindSchema } from '../model/primitives';
+import { WireRequestIdSchema } from './request';
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
   forceRefresh: z.boolean().optional(),
@@ -18,46 +19,35 @@ export const AgentHistoryReadWireOptionsSchema = AgentHistoryReadOptionsSchema.e
 });
 export type AgentHistoryReadWireOptions = z.infer<typeof AgentHistoryReadWireOptionsSchema>;
 
-/** Historical-session wire variants, plus the generic correlated-request reply pair
- * (`request.failed` / `request.succeeded`) every request/reply `kind` can resolve to. */
+/** Historical-session wire variants. */
 export const historyWireVariants = [
   z.object({
     kind: z.literal('history.list'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     agentKind: AgentKindSchema,
     opts: AgentHistoryListWireOptionsSchema.optional(),
   }),
   z.object({
     kind: z.literal('history.listed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     result: AgentHistoryListResultSchema,
   }),
   z.object({
     kind: z.literal('history.read'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     agentKind: AgentKindSchema,
     opts: AgentHistoryReadWireOptionsSchema,
   }),
   z.object({
     kind: z.literal('history.read.result'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     result: AgentHistoryReadResultSchema,
   }),
   z.object({
     kind: z.literal('history.resume'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     agentKind: AgentKindSchema,
     historyId: AgentHistoryIdSchema,
     startOpts: StartOptionsSchema,
-  }),
-  z.object({
-    kind: z.literal('request.failed'),
-    replyTo: z.string().min(1),
-    message: z.string(),
-    code: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('request.succeeded'),
-    replyTo: z.string().min(1),
   }),
 ] as const;

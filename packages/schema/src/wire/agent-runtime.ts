@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentRuntimesSchema } from '../model/agent-runtime';
+import { WireRequestIdSchema } from './request';
 
 /**
  * Agent runtime availability wire variants — which agent CLIs the host can actually spawn (see
@@ -7,10 +8,10 @@ import { AgentRuntimesSchema } from '../model/agent-runtime';
  * snapshot as `agent-runtime.changed` (broadcast, no correlation) so boot snapshots don't go stale.
  */
 export const agentRuntimeWireVariants = [
-  z.object({ kind: z.literal('agent-runtime.list'), clientReqId: z.string().min(1) }),
+  z.object({ kind: z.literal('agent-runtime.list'), clientReqId: WireRequestIdSchema }),
   z.object({
     kind: z.literal('agent-runtime.listed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     runtimes: AgentRuntimesSchema,
   }),
   z.object({

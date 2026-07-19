@@ -4,6 +4,7 @@ import {
   ManagedAssetIdSchema,
   ManagedAssetStatusSchema,
 } from '../model/managed-asset';
+import { WireRequestIdSchema } from './request';
 
 /**
  * Managed-asset wire surface (CODE-111/112): pull status, trigger installs, observe progress.
@@ -13,20 +14,20 @@ import {
  * boot-time background installs are as visible as client-triggered ones.
  */
 export const managedAssetWireVariants = [
-  z.object({ kind: z.literal('asset.list'), clientReqId: z.string().min(1) }),
+  z.object({ kind: z.literal('asset.list'), clientReqId: WireRequestIdSchema }),
   z.object({
     kind: z.literal('asset.listed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     assets: z.array(ManagedAssetStatusSchema),
   }),
   z.object({
     kind: z.literal('asset.ensure'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     id: ManagedAssetIdSchema,
   }),
   z.object({
     kind: z.literal('asset.ensured'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     status: ManagedAssetStatusSchema,
   }),
   z.object({

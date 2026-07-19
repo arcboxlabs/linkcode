@@ -9,26 +9,27 @@ import {
   TerminalReplayEventSchema,
   TerminalWinsizeSchema,
 } from '../model/terminal';
+import { WireRequestIdSchema } from './request';
 
 /** Terminal wire variants (data plane): interactive PTYs the host owns; bytes travel as UTF-8
  * strings (host-side decode keeps the JSON wire base64-free). Attachment secrets are capabilities:
  * they only travel client → host and are never echoed in replies or broadcasts. */
 export const terminalWireVariants = [
-  z.object({ kind: z.literal('terminal.list'), clientReqId: z.string().min(1) }),
+  z.object({ kind: z.literal('terminal.list'), clientReqId: WireRequestIdSchema }),
   z.object({
     kind: z.literal('terminal.listed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     terminals: z.array(TerminalMetadataSchema),
   }),
   z.object({
     kind: z.literal('terminal.open'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     opts: TerminalOpenOptionsSchema,
     ...TerminalAttachmentCredentialsSchema.shape,
   }),
   z.object({
     kind: z.literal('terminal.opened'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     terminal: TerminalMetadataSchema,
     replay: z.array(TerminalReplayEventSchema),
     cutoffSeq: z.number().int().nonnegative(),
@@ -36,14 +37,14 @@ export const terminalWireVariants = [
   }),
   z.object({
     kind: z.literal('terminal.attach'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     terminalId: TerminalIdSchema,
     mode: TerminalAttachmentModeSchema,
     ...TerminalAttachmentCredentialsSchema.shape,
   }),
   z.object({
     kind: z.literal('terminal.attached'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     terminal: TerminalMetadataSchema,
     replay: z.array(TerminalReplayEventSchema),
     cutoffSeq: z.number().int().nonnegative(),
