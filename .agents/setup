@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+echo "==> Installing native build prerequisites"
+sudo apt-get update -qq
+sudo apt-get install -y -qq build-essential ca-certificates curl pkg-config python3 xz-utils
+
+node_major="$(tr -d '[:space:]' < .nvmrc)"
+if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(`.`)[0]')" != "$node_major" ]; then
+  echo "==> Installing Node.js ${node_major}"
+  case "$(uname -m)" in
+    x86_64) node_arch="x64" ;;
+    aarch64 | arm64) node_arch="arm64" ;;
+    *) echo "Unsupported CPU architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+
+  node_version="$(curl -fsSL "https://nodejs.org/dist/latest-v${node_major}.x/SHASUMS256.txt" | sed -nE '1{s/.*node-(v[^-]+)-.*/\1/;p;}')"
+  node_archive="node-${node_version}-linux-${node_arch}.tar.xz"
+  node_root="$HOME/.local/share/node-${node_version}-linux-${node_arch}"
+
+  if [ ! -x "$node_root/bin/node" ]; then
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' EXIT
+    curl -fsSL "https://nodejs.org/dist/${node_version}/${node_archive}" -o "$tmp_dir/$node_archive"
+    curl -fsSL "https://nodejs.org/dist/${node_version}/SHASUMS256.txt" -o "$tmp_dir/SHASUMS256.txt"
+    (
+      cd "$tmp_dir"
+      grep "  ${node_archive}$" SHASUMS256.txt | sha256sum --check --status
+    )
+    mkdir -p "$(dirname "$node_root")"
+    tar -xJf "$tmp_dir/$node_archive" -C "$(dirname "$node_root")"
+  fi
+
+  mkdir -p "$HOME/.local/bin"
+  ln -sfn "$node_root/bin/node" "$HOME/.local/bin/node"
+  hash -r
+fi
+
+pnpm_version="$(node -p 'require(`./package.json`).packageManager.split(`@`)[1]')"
+if ! command -v pnpm >/dev/null 2>&1 || [ "$(pnpm --version 2>/dev/null || true)" != "$pnpm_version" ]; then
+  echo "==> Installing pnpm ${pnpm_version}"
+  node_bin_dir="$(dirname "$(readlink -f "$(command -v node)")")"
+  "$node_bin_dir/npm" install --global --prefix "$HOME/.local" "pnpm@${pnpm_version}"
+  hash -r
+fi
+
+if ! command -v rustup >/dev/null 2>&1; then
+  echo "==> Installing stable Rust"
+  curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+fi
+
+echo "==> Installing the stable Rust toolchain"
+rustup toolchain install stable --profile minimal --component clippy,rustfmt
+rustup default stable
+
+echo "==> Installing JavaScript dependencies"
+pnpm install --frozen-lockfile
+
+echo "==> Fetching Rust dependencies"
+cargo fetch --locked
+
+echo "==> Orb setup complete"
