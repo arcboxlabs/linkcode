@@ -19,11 +19,13 @@ const INPUT_LOST_BANNER_MS = 4000;
 export function TerminalPanel({
   sessionKey,
   cwd,
+  interactive,
   suspended,
 }: {
   sessionKey: string;
   /** Working directory for the shell, captured when the terminal first opens (host home if omitted). */
   cwd?: string;
+  interactive?: boolean;
   /** Freeze the terminal's box while the host panel animates shut/open — see {@link LiveTerminal}. */
   suspended?: boolean;
 }): React.ReactNode {
@@ -99,6 +101,7 @@ export function TerminalPanel({
     <div className="relative h-full w-full">
       <LiveTerminal
         session={snapshot.session}
+        interactive={interactive}
         suspended={suspended}
         fontFamily={fontFamily}
         fontSize={fontSize}

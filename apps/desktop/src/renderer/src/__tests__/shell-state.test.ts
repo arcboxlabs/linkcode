@@ -7,7 +7,6 @@ import {
   createDefaultRightPanelState,
   createPanelState,
   createRightFileTab,
-  createRightTerminalTab,
   DEFAULT_LAYOUT,
   openFileTabState,
   parsePersistedDesktopShellState,
@@ -16,7 +15,6 @@ import {
   revealSectionState,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
-  seedTerminalSection,
   serializeDesktopShellState,
 } from '@renderer/shell/store/model';
 import { describe, expect, it } from 'vitest';
@@ -37,7 +35,7 @@ describe('desktop shell state persistence', () => {
     expect(state.sidebarOpen).toBe(true);
     expect(state.expansionStack).toEqual([]);
     expect(state.rightPanel).toEqual(createDefaultRightPanelState());
-    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
+    expect(panelTypes(state.bottomPanel)).toEqual([]);
   });
 
   it('falls back to defaults for a stale v1 payload instead of migrating it', () => {
@@ -53,12 +51,12 @@ describe('desktop shell state persistence', () => {
     expect(state.sidebarOpen).toBe(true);
     expect(state.expansionStack).toEqual([]);
     expect(state.rightPanel).toEqual(createDefaultRightPanelState());
-    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
+    expect(panelTypes(state.bottomPanel)).toEqual([]);
   });
 
   it('clamps latest layout values', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: { sidebarW: 10, rightW: 10000, bottomH: 1 },
       expansionStack: [],
@@ -80,7 +78,7 @@ describe('desktop shell state persistence', () => {
 
   it('rejects invalid bottom tabs and falls back when none remain', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: {
         sidebarW: SIDEBAR_MAX_SIZE,
@@ -97,93 +95,19 @@ describe('desktop shell state persistence', () => {
       bottomPanel: { open: true, tabs: ['invalid'], activeTabIndex: 0 },
     });
 
-    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
-    expect(activeBottomPanelType(state)).toBe('terminal');
-  });
-
-  it('restores the right panel section and terminal tab count, clamping the active index', () => {
-    const state = parsePersistedDesktopShellState({
-      version: 2,
-      sidebarOpen: true,
-      layout: DEFAULT_LAYOUT,
-      expansionStack: [],
-      rightPanel: {
-        open: true,
-        activeSection: 'terminal',
-        terminalTabCount: 3,
-        activeTerminalTabIndex: 99,
-      },
-      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
-    });
-
-    expect(state.rightPanel.open).toBe(true);
-    expect(state.rightPanel.activeSection).toBe('terminal');
-    expect(state.rightPanel.terminal.tabs).toHaveLength(3);
-    expect(state.rightPanel.terminal.activeTabId).toBe(state.rightPanel.terminal.tabs[2].id);
-  });
-
-  it('seeds a first terminal tab when restoring an open panel showing an empty terminal section', () => {
-    const state = parsePersistedDesktopShellState({
-      version: 2,
-      sidebarOpen: true,
-      layout: DEFAULT_LAYOUT,
-      expansionStack: [],
-      rightPanel: {
-        open: true,
-        activeSection: 'terminal',
-        terminalTabCount: 0,
-        activeTerminalTabIndex: 0,
-      },
-      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
-    });
-
-    expect(state.rightPanel.terminal.tabs).toHaveLength(1);
-    expect(state.rightPanel.terminal.activeTabId).toBe(state.rightPanel.terminal.tabs[0].id);
-  });
-
-  it('does not seed a terminal tab when the restored panel is closed or on another section', () => {
-    const closed = parsePersistedDesktopShellState({
-      version: 2,
-      sidebarOpen: true,
-      layout: DEFAULT_LAYOUT,
-      expansionStack: [],
-      rightPanel: {
-        open: false,
-        activeSection: 'terminal',
-        terminalTabCount: 0,
-        activeTerminalTabIndex: 0,
-      },
-      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
-    });
-    expect(closed.rightPanel.terminal.tabs).toEqual([]);
-
-    const otherSection = parsePersistedDesktopShellState({
-      version: 2,
-      sidebarOpen: true,
-      layout: DEFAULT_LAYOUT,
-      expansionStack: [],
-      rightPanel: {
-        open: true,
-        activeSection: 'diff',
-        terminalTabCount: 0,
-        activeTerminalTabIndex: 0,
-      },
-      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
-    });
-    expect(otherSection.rightPanel.terminal.tabs).toEqual([]);
+    expect(panelTypes(state.bottomPanel)).toEqual([]);
+    expect(activeBottomPanelType(state)).toBeUndefined();
   });
 
   it('rejects an invalid right panel section and falls back to diff', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
       rightPanel: {
         open: true,
         activeSection: 'invalid',
-        terminalTabCount: 0,
-        activeTerminalTabIndex: 0,
       },
       bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
     });
@@ -191,35 +115,15 @@ describe('desktop shell state persistence', () => {
     expect(state.rightPanel.activeSection).toBe('diff');
   });
 
-  it('caps a corrupted terminal tab count', () => {
-    const state = parsePersistedDesktopShellState({
-      version: 2,
-      sidebarOpen: true,
-      layout: DEFAULT_LAYOUT,
-      expansionStack: [],
-      rightPanel: {
-        open: true,
-        activeSection: 'terminal',
-        terminalTabCount: 999,
-        activeTerminalTabIndex: 0,
-      },
-      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
-    });
-
-    expect(state.rightPanel.terminal.tabs.length).toBeLessThanOrEqual(20);
-  });
-
   it('filters expansion stack to open panels', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: ['right', 'bottom', 'bottom', 'invalid'],
       rightPanel: {
         open: false,
         activeSection: 'diff',
-        terminalTabCount: 0,
-        activeTerminalTabIndex: 0,
       },
       bottomPanel: { open: true, tabs: ['terminal'], activeTabIndex: 0 },
     });
@@ -232,7 +136,6 @@ describe('desktop shell state persistence', () => {
     const rightPanel: RightPanelState = {
       open: true,
       activeSection: 'browser',
-      terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
       files: { tabs: [fileTab, createRightFileTab('/w/report.pdf')], activeTabId: fileTab.id },
       browser: { url: 'http://web--app-1a2b3c.localhost:19523' },
     };
@@ -240,10 +143,7 @@ describe('desktop shell state persistence', () => {
       sidebarOpen: false,
       layout: { sidebarW: 300, rightW: 500, bottomH: 260 },
       expansionStack: ['right', 'bottom'],
-      rightPanel: {
-        ...rightPanel,
-        terminal: { ...rightPanel.terminal, activeTabId: rightPanel.terminal.tabs[1].id },
-      },
+      rightPanel,
       bottomPanel: createPanelState(true, 'files'),
     };
 
@@ -253,7 +153,6 @@ describe('desktop shell state persistence', () => {
     expect(parsed.layout).toEqual(source.layout);
     expect(parsed.expansionStack).toEqual(['right', 'bottom']);
     expect(parsed.rightPanel.activeSection).toBe('browser');
-    expect(parsed.rightPanel.terminal.tabs).toHaveLength(2);
     expect(parsed.rightPanel.files.tabs.map((tab) => tab.path)).toEqual([
       '/w/PLAN.md',
       '/w/report.pdf',
@@ -261,6 +160,16 @@ describe('desktop shell state persistence', () => {
     expect(parsed.rightPanel.files.activeTabId).toBe(parsed.rightPanel.files.tabs[0].id);
     expect(parsed.rightPanel.browser.url).toBe('http://web--app-1a2b3c.localhost:19523');
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
+  });
+
+  it('round trips a shared terminal as the active bottom tab beside non-terminal tabs', () => {
+    const source = createDefaultDesktopShellState();
+    source.bottomPanel = { ...createPanelState(true, 'files'), activeTabId: null };
+
+    const parsed = parsePersistedDesktopShellState(serializeDesktopShellState(source));
+
+    expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
+    expect(parsed.bottomPanel.activeTabId).toBeNull();
   });
 
   it('drops renderer-scoped blob URLs from persisted browser state', () => {
@@ -283,71 +192,54 @@ describe('desktop shell state persistence', () => {
 
 describe('closeSectionTabState', () => {
   it('falls back the active tab to the neighbor that slides into its slot', () => {
-    const a = createRightTerminalTab();
-    const b = createRightTerminalTab();
-    const c = createRightTerminalTab();
-    const terminal = { tabs: [a, b, c], activeTabId: b.id };
+    const a = createRightFileTab('/a');
+    const b = createRightFileTab('/b');
+    const c = createRightFileTab('/c');
+    const files = { tabs: [a, b, c], activeTabId: b.id };
 
-    const next = closeSectionTabState(terminal, b.id);
+    const next = closeSectionTabState(files, b.id);
 
     expect(next.tabs.map((tab) => tab.id)).toEqual([a.id, c.id]);
     expect(next.activeTabId).toBe(c.id);
   });
 
   it('keeps the active tab untouched when closing an inactive tab', () => {
-    const a = createRightTerminalTab();
-    const b = createRightTerminalTab();
-    const terminal = { tabs: [a, b], activeTabId: a.id };
+    const a = createRightFileTab('/a');
+    const b = createRightFileTab('/b');
+    const files = { tabs: [a, b], activeTabId: a.id };
 
-    const next = closeSectionTabState(terminal, b.id);
+    const next = closeSectionTabState(files, b.id);
 
     expect(next.tabs.map((tab) => tab.id)).toEqual([a.id]);
     expect(next.activeTabId).toBe(a.id);
   });
 
   it('clears the active tab id once the last tab is closed', () => {
-    const a = createRightTerminalTab();
-    const terminal = { tabs: [a], activeTabId: a.id };
+    const a = createRightFileTab('/a');
+    const files = { tabs: [a], activeTabId: a.id };
 
-    const next = closeSectionTabState(terminal, a.id);
+    const next = closeSectionTabState(files, a.id);
 
     expect(next.tabs).toEqual([]);
     expect(next.activeTabId).toBeNull();
   });
 
   it('is a no-op when the tab is not found', () => {
-    const a = createRightTerminalTab();
-    const terminal = { tabs: [a], activeTabId: a.id };
+    const a = createRightFileTab('/a');
+    const files = { tabs: [a], activeTabId: a.id };
 
-    expect(closeSectionTabState(terminal, 'missing')).toBe(terminal);
-  });
-});
-
-describe('seedTerminalSection', () => {
-  it('seeds and focuses a first tab when the section is empty', () => {
-    const seeded = seedTerminalSection({ tabs: [], activeTabId: null });
-
-    expect(seeded.tabs).toHaveLength(1);
-    expect(seeded.activeTabId).toBe(seeded.tabs[0].id);
-  });
-
-  it('is a no-op when tabs already exist', () => {
-    const a = createRightTerminalTab();
-    const terminal = { tabs: [a], activeTabId: a.id };
-
-    expect(seedTerminalSection(terminal)).toBe(terminal);
+    expect(closeSectionTabState(files, 'missing')).toBe(files);
   });
 });
 
 describe('revealSectionState', () => {
-  it('seeds the terminal section when it comes forward on an open panel', () => {
+  it('brings the terminal section forward without owning its tabs', () => {
     const panel = { ...createDefaultRightPanelState(), open: true };
 
     const revealed = revealSectionState(panel, 'terminal', true);
 
     expect(revealed.activeSection).toBe('terminal');
-    expect(revealed.terminal.tabs).toHaveLength(1);
-    expect(revealed.terminal.activeTabId).toBe(revealed.terminal.tabs[0].id);
+    expect(revealed.open).toBe(true);
   });
 
   it('leaves the terminal section untouched when revealing another section', () => {
@@ -356,7 +248,6 @@ describe('revealSectionState', () => {
     const revealed = revealSectionState(panel, 'files', true);
 
     expect(revealed.activeSection).toBe('files');
-    expect(revealed.terminal.tabs).toEqual([]);
   });
 });
 
