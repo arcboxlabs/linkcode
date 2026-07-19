@@ -1,1 +1,1 @@
-export { PiAdapter } from './adapter';
+export { PiAdapter, piCommandCatalog } from './adapter';

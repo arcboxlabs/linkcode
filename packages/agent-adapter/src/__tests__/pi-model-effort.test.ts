@@ -104,6 +104,12 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
       reload() {
         return Promise.resolve();
       }
+      getSkills() {
+        return { skills: [], diagnostics: [] };
+      }
+      getPrompts() {
+        return { prompts: [], diagnostics: [] };
+      }
     },
   };
 });

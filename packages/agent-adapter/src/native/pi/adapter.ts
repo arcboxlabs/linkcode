@@ -4,11 +4,13 @@ import type {
   CreateAgentSessionOptions,
   ExtensionAPI,
   PromptOptions,
+  ResourceLoader,
   SessionManager,
   ToolCallEvent,
   ToolCallEventResult,
 } from '@earendil-works/pi-coding-agent';
 import type {
+  AgentCommand,
   AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -94,6 +96,27 @@ function piModelOptions(models: readonly PiModel[]): AgentModelOption[] {
   }));
 }
 
+/** The `/` catalog pi's own prompt expansion understands: prompt templates by name, skills as
+ * `skill:<name>` (the SDK's registered command form). `disable-model-invocation` skills stay
+ * listed — hiding a skill from the model is exactly what makes it user-invoke-only. Extension
+ * commands are excluded: they run through `ExtensionCommandContext`, not prompt expansion. */
+export function piCommandCatalog(
+  loader: Pick<ResourceLoader, 'getSkills' | 'getPrompts'>,
+): AgentCommand[] {
+  const { prompts } = loader.getPrompts();
+  const { skills } = loader.getSkills();
+  return [
+    ...prompts.map(
+      (p): AgentCommand => ({
+        name: p.name,
+        description: p.description || undefined,
+        argumentHint: p.argumentHint,
+      }),
+    ),
+    ...skills.map((s): AgentCommand => ({ name: `skill:${s.name}`, description: s.description })),
+  ];
+}
+
 /**
  * The approval-policy axis pi advertises — the shared tier ids mapped onto an adapter-local
  * `tool_call` gate (pi itself has no approval concept: its vendor behavior runs every tool,
@@ -144,6 +167,8 @@ function isPiPolicyId(id: string): id is PiPolicyId {
  */
 export class PiAdapter extends BaseAgentAdapter {
   readonly kind = 'pi' as const;
+
+  override readonly capabilities = { slashCommands: true, shellCommand: false } as const;
 
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
@@ -364,11 +389,13 @@ export class PiAdapter extends BaseAgentAdapter {
           'extension-error',
         ),
     });
+    // Snapshot catalog (opencode precedent — no change events; `/reload` is TUI-only). Absence
+    // is itself the no-menu signal, so an empty discovery emits nothing.
+    const commands = piCommandCatalog(resourceLoader);
+    if (commands.length > 0) this.emitCommands(commands);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    invariant(this.session, 'pi: session not started');
-    const text = contentToText(content);
     const images = imageBlocksFrom(content);
     const imageOptions: Pick<PromptOptions, 'images'> | undefined =
       images.length === 0
@@ -380,11 +407,23 @@ export class PiAdapter extends BaseAgentAdapter {
               mimeType: image.mimeType,
             })),
           };
+    await this.runPrompt(contentToText(content), imageOptions);
+  }
+
+  /** Slash commands ride the normal prompt path: pi's `session.prompt` expands `/skill:name` and
+   * `/template` text itself before sending, so an invocation is plain text with a leading slash
+   * and settles through the same agent_end lifecycle as any prompt. */
+  protected override async onCommand(name: string, args?: string): Promise<void> {
+    await this.runPrompt(`/${name}${args ? ` ${args}` : ''}`);
+  }
+
+  private async runPrompt(text: string, options?: Pick<PromptOptions, 'images'>): Promise<void> {
+    invariant(this.session, 'pi: session not started');
     this.emitStatus('running');
     try {
       if (this.session.isStreaming) {
-        await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
-      } else await this.session.prompt(text, imageOptions);
+        await this.session.prompt(text, { ...options, streamingBehavior: 'followUp' });
+      } else await this.session.prompt(text, options);
     } catch (err) {
       // Turn contract (base.ts): a hook that emitted 'running' must emit 'idle' before rejecting,
       // or the engine's input gate never releases. Pi rejects synchronously on preflight failures

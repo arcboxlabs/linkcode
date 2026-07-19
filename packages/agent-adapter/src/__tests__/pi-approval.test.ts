@@ -54,6 +54,12 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
         for (const factory of this.factories) factory(ext);
         return Promise.resolve();
       }
+      getSkills() {
+        return { skills: [], diagnostics: [] };
+      }
+      getPrompts() {
+        return { prompts: [], diagnostics: [] };
+      }
     },
   };
 });
