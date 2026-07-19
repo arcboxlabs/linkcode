@@ -1,11 +1,4 @@
-import type {
-  Account,
-  Accounts,
-  AgentKind,
-  AgentRuntimes,
-  ProvidersConfig,
-} from '@linkcode/schema';
-import { AGENT_MODEL_OPTIONS, AgentIcon, ServiceIcon } from '@linkcode/ui';
+import type { AgentKind } from '@linkcode/schema';
 import {
   AlertDialog,
   AlertDialogClose,
@@ -39,15 +32,52 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { bindingAvailability } from './capability';
-import { serviceById } from './catalog';
-import {
-  AGENT_KINDS,
-  accountConfigSnippet,
-  accountSecret,
-  boundAgentKinds,
-  maskSecret,
-} from './view';
+import { AgentIcon } from '../../chat/agent-icon';
+import { AGENT_MODEL_OPTIONS } from '../agent-models';
+import { ServiceIcon } from '../service-icon';
+
+export type ProviderBindingStatus =
+  | { kind: 'unavailable-oauth'; agent: AgentKind }
+  | { kind: 'unavailable-translation-endpoint' }
+  | { kind: 'unavailable-protocol' }
+  | { kind: 'bound' }
+  | { kind: 'no-provider' }
+  | { kind: 'bound-elsewhere'; accountLabel: string };
+
+export interface ProviderBindingViewModel {
+  kind: AgentKind;
+  tier: 'native' | 'translate' | 'unavailable';
+  status: ProviderBindingStatus;
+  bound: boolean;
+  currentModel: string;
+}
+
+export type ProviderCredentialViewModel =
+  | {
+      kind: 'secret';
+      type: 'api-key' | 'auth-token';
+      value: string;
+      maskedValue: string;
+    }
+  | {
+      kind: 'oauth';
+      agent: AgentKind;
+      auth?: { loggedIn: boolean; details: string[] };
+    };
+
+export interface ProviderAccountDetailViewModel {
+  id: string;
+  service?: string;
+  serviceLabel?: string;
+  label: string;
+  credential: ProviderCredentialViewModel;
+  endpoint?: { baseUrl: string; protocol: string };
+  accountModel?: string;
+  bindings: ProviderBindingViewModel[];
+  boundAgents: AgentKind[];
+  availableBindingCount: number;
+  configPreview?: string;
+}
 
 function DetailRow({
   label,
@@ -67,18 +97,12 @@ function DetailRow({
 /** Right pane of the Providers page: credential, per-agent binding switches, config preview. */
 export function AccountDetail({
   account,
-  accounts,
-  providers,
-  runtimes,
   busy,
   onSetBinding,
   onSetModel,
   onRemove,
 }: {
-  account: Account;
-  accounts: Accounts;
-  providers: ProvidersConfig | undefined;
-  runtimes: AgentRuntimes | undefined;
+  account: ProviderAccountDetailViewModel;
   /** A providers/accounts write is in flight — hold the switches. */
   busy: boolean;
   onSetBinding: (kind: AgentKind, accountId: string | undefined) => void;
@@ -90,13 +114,7 @@ export function AccountDetail({
   const [revealed, setRevealed] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const { copy, copied } = useClipboard();
-
-  const service = serviceById(account.service);
-  const secret = accountSecret(account);
-  const bound = boundAgentKinds(providers, account.id);
-  const available = AGENT_KINDS.filter(
-    (kind) => bindingAvailability(account, kind).tier !== 'unavailable',
-  );
+  const { credential } = account;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-5">
@@ -105,7 +123,7 @@ export function AccountDetail({
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-semibold text-base">{account.label}</h2>
           <p className="text-muted-foreground text-xs">
-            {service?.label ?? t('customService')} · {credentialTypeLabel(t, account)}
+            {account.serviceLabel ?? t('customService')} · {credentialTypeLabel(t, credential)}
           </p>
         </div>
         <Menu>
@@ -130,12 +148,12 @@ export function AccountDetail({
           {t('credential')}
         </h3>
         <div className="rounded-lg border border-border">
-          {account.credential.type === 'oauth' ? (
-            <OauthRows agent={account.credential.agent} runtimes={runtimes} />
+          {credential.kind === 'oauth' ? (
+            <OauthRows credential={credential} />
           ) : (
-            <DetailRow label={credentialTypeLabel(t, account)}>
+            <DetailRow label={credentialTypeLabel(t, credential)}>
               <span className="min-w-0 flex-1 truncate font-mono text-sm">
-                {secret === undefined ? '' : revealed ? secret : maskSecret(secret)}
+                {revealed ? credential.value : credential.maskedValue}
               </span>
               <Button
                 type="button"
@@ -152,7 +170,7 @@ export function AccountDetail({
                 variant="ghost"
                 aria-label={t('copySecret')}
                 onClick={() => {
-                  if (secret !== undefined) void copy(secret);
+                  void copy(credential.value);
                 }}
               >
                 {copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
@@ -166,10 +184,10 @@ export function AccountDetail({
               </span>
             </DetailRow>
           ) : null}
-          {account.model !== undefined && account.model !== '' ? (
+          {account.accountModel !== undefined && account.accountModel !== '' ? (
             <DetailRow label={t('accountModel')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-                {account.model}
+                {account.accountModel}
               </span>
             </DetailRow>
           ) : null}
@@ -182,17 +200,18 @@ export function AccountDetail({
             {t('connections')}
           </h3>
           <span className="text-muted-foreground text-xs">
-            {t('connectionsEnabled', { bound: bound.length, available: available.length })}
+            {t('connectionsEnabled', {
+              bound: account.boundAgents.length,
+              available: account.availableBindingCount,
+            })}
           </span>
         </div>
         <div className="rounded-lg border border-border">
-          {AGENT_KINDS.map((kind) => (
+          {account.bindings.map((binding) => (
             <BindingRow
-              key={kind}
-              kind={kind}
-              account={account}
-              accounts={accounts}
-              providers={providers}
+              key={binding.kind}
+              accountId={account.id}
+              binding={binding}
               busy={busy}
               onSetBinding={onSetBinding}
               onSetModel={onSetModel}
@@ -208,9 +227,7 @@ export function AccountDetail({
         </CollapsibleTrigger>
         <CollapsiblePanel>
           <pre className="mt-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">
-            {bound.length === 0
-              ? t('configPreviewEmpty')
-              : accountConfigSnippet(providers, account.id)}
+            {account.configPreview ?? t('configPreviewEmpty')}
           </pre>
         </CollapsiblePanel>
       </Collapsible>
@@ -220,8 +237,10 @@ export function AccountDetail({
           <AlertDialogHeader>
             <AlertDialogTitle>{t('removeTitle', { label: account.label })}</AlertDialogTitle>
             <AlertDialogDescription>
-              {bound.length > 0
-                ? t('removeInUse', { agents: bound.map((kind) => tAgent(kind)).join('、') })
+              {account.boundAgents.length > 0
+                ? t('removeInUse', {
+                    agents: account.boundAgents.map((kind) => tAgent(kind)).join('、'),
+                  })
                 : t('removeHint')}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -245,37 +264,31 @@ export function AccountDetail({
 
 function credentialTypeLabel(
   t: ReturnType<typeof useTranslations<'settings.providers'>>,
-  account: Account,
+  credential: ProviderCredentialViewModel,
 ): string {
-  if (account.credential.type === 'api-key') return t('credentialApiKey');
-  if (account.credential.type === 'auth-token') return t('credentialAuthToken');
-  return t('credentialOauth');
+  if (credential.kind === 'oauth') return t('credentialOauth');
+  if (credential.type === 'api-key') return t('credentialApiKey');
+  return t('credentialAuthToken');
 }
 
 /** Credential rows for a subscription account: the delegated CLI login and its probed state. */
 function OauthRows({
-  agent,
-  runtimes,
+  credential,
 }: {
-  agent: AgentKind;
-  runtimes: AgentRuntimes | undefined;
+  credential: Extract<ProviderCredentialViewModel, { kind: 'oauth' }>;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
-  const auth = runtimes?.[agent]?.auth;
+  const { auth } = credential;
   return (
     <>
       <DetailRow label={t('credential')}>
-        <span className="text-sm">{t('oauthDelegate', { agent: tAgent(agent) })}</span>
+        <span className="text-sm">{t('oauthDelegate', { agent: tAgent(credential.agent) })}</span>
       </DetailRow>
       {auth ? (
         <DetailRow label={t('loginState')}>
           <span className="text-sm">
-            {auth.loggedIn
-              ? [t('loggedIn'), auth.email, auth.method, auth.subscriptionType]
-                  .filter(Boolean)
-                  .join(' · ')
-              : t('loggedOut')}
+            {auth.loggedIn ? [t('loggedIn'), ...auth.details].join(' · ') : t('loggedOut')}
           </span>
         </DetailRow>
       ) : null}
@@ -283,19 +296,38 @@ function OauthRows({
   );
 }
 
+function bindingStatusLabel(
+  t: ReturnType<typeof useTranslations<'settings.providers'>>,
+  tAgent: ReturnType<typeof useTranslations<'workbench.agentKind'>>,
+  status: ProviderBindingStatus,
+): string {
+  switch (status.kind) {
+    case 'unavailable-oauth':
+      return t('unavailableOauth', { agent: tAgent(status.agent) });
+    case 'unavailable-translation-endpoint':
+      return t('unavailableTranslationEndpoint');
+    case 'unavailable-protocol':
+      return t('unavailableProtocol');
+    case 'bound':
+      return t('boundNote');
+    case 'no-provider':
+      return t('noProvider');
+    case 'bound-elsewhere':
+      return t('boundElsewhere', { label: status.accountLabel });
+    default:
+      return status satisfies never;
+  }
+}
+
 function BindingRow({
-  kind,
-  account,
-  accounts,
-  providers,
+  accountId,
+  binding,
   busy,
   onSetBinding,
   onSetModel,
 }: {
-  kind: AgentKind;
-  account: Account;
-  accounts: Accounts;
-  providers: ProvidersConfig | undefined;
+  accountId: string;
+  binding: ProviderBindingViewModel;
   busy: boolean;
   onSetBinding: (kind: AgentKind, accountId: string | undefined) => void;
   onSetModel: (kind: AgentKind, model: string | undefined) => void;
@@ -303,63 +335,42 @@ function BindingRow({
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
 
-  const availability = bindingAvailability(account, kind);
-  const unavailable = availability.tier === 'unavailable';
-  const boundId = providers?.[kind]?.activeAccountId;
-  const bound = boundId === account.id;
-
-  let note: string;
-  if (availability.tier === 'unavailable') {
-    note =
-      availability.reason === 'oauth-other-agent' && account.credential.type === 'oauth'
-        ? t('unavailableOauth', { agent: tAgent(account.credential.agent) })
-        : availability.reason === 'translation-needs-endpoint'
-          ? t('unavailableTranslationEndpoint')
-          : t('unavailableProtocol');
-  } else {
-    const status = bound
-      ? t('boundNote')
-      : boundId === undefined
-        ? t('noProvider')
-        : t('boundElsewhere', {
-            label: accounts.find((candidate) => candidate.id === boundId)?.label ?? boundId,
-          });
-    note = availability.tier === 'translate' ? `${t('translateNote')} · ${status}` : status;
-  }
-
-  const modelOptions = AGENT_MODEL_OPTIONS[kind];
-  const currentModel = providers?.[kind]?.defaultModel ?? '';
+  const unavailable = binding.tier === 'unavailable';
+  const status = bindingStatusLabel(t, tAgent, binding.status);
+  const note = binding.tier === 'translate' ? `${t('translateNote')} · ${status}` : status;
+  const modelOptions = AGENT_MODEL_OPTIONS[binding.kind];
 
   return (
     <div
       className={`flex items-center gap-3 border-border border-t px-3 py-2.5 first:border-t-0 ${unavailable ? 'opacity-50' : ''}`}
     >
-      <AgentIcon kind={kind} />
+      <AgentIcon kind={binding.kind} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm">{tAgent(kind)}</span>
-          {availability.tier === 'translate' ? (
+          <span className="font-medium text-sm">{tAgent(binding.kind)}</span>
+          {binding.tier === 'translate' ? (
             <Badge variant="outline">{t('translateBadge')}</Badge>
           ) : null}
         </div>
         <p className="truncate text-muted-foreground text-xs">{note}</p>
       </div>
-      {bound && modelOptions ? (
+      {binding.bound && modelOptions ? (
         <ModelSelect
           options={
-            modelOptions.some((option) => option.id === currentModel) || currentModel === ''
+            modelOptions.some((option) => option.id === binding.currentModel) ||
+            binding.currentModel === ''
               ? modelOptions
-              : [...modelOptions, { id: currentModel, label: currentModel }]
+              : [...modelOptions, { id: binding.currentModel, label: binding.currentModel }]
           }
-          value={currentModel}
+          value={binding.currentModel}
           disabled={busy}
-          onChange={(model) => onSetModel(kind, model === '' ? undefined : model)}
+          onChange={(model) => onSetModel(binding.kind, model === '' ? undefined : model)}
         />
       ) : null}
       <Switch
-        checked={bound}
+        checked={binding.bound}
         disabled={unavailable || busy}
-        onCheckedChange={(checked) => onSetBinding(kind, checked ? account.id : undefined)}
+        onCheckedChange={(checked) => onSetBinding(binding.kind, checked ? accountId : undefined)}
       />
     </div>
   );

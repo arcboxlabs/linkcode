@@ -1,15 +1,15 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
+import { AccountDetail } from '@linkcode/ui';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useData, useMutation } from '../../runtime/tayori';
-import { AccountDetail } from './account-detail';
 import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
 import { AccountMasterList } from './master-list';
 import { useProvidersSettingsStore } from './store';
-import { withBinding, withModel, withoutAccount } from './view';
+import { providerAccountDetailViewModel, withBinding, withModel, withoutAccount } from './view';
 
 /**
  * The Providers settings page: the global account pool (master list) plus per-account credential
@@ -38,8 +38,12 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const closeAdd = useProvidersSettingsStore((state) => state.closeAdd);
 
   const pool = accounts ?? [];
-  const selected = pool.find((account) => account.id === selectedId) ?? pool[0];
+  const selected = pool.find((account) => account.id === selectedId) ?? pool.at(0);
   const busy = saveAccounts.isMutating || saveProviders.isMutating;
+  const selectedDetail =
+    selected === undefined
+      ? undefined
+      : providerAccountDetailViewModel(selected, pool, providers, runtimes);
 
   const applyProviders = async (next: ProvidersConfig): Promise<void> => {
     await saveProviders.trigger({ providers: next });
@@ -118,12 +122,9 @@ export function ProvidersSettingsPanel(): React.ReactNode {
               onPick={pickService}
               onCancel={pool.length > 0 ? closeAdd : undefined}
             />
-          ) : selected ? (
+          ) : selectedDetail ? (
             <AccountDetail
-              account={selected}
-              accounts={pool}
-              providers={providers}
-              runtimes={runtimes}
+              account={selectedDetail}
               busy={busy}
               onSetBinding={handleSetBinding}
               onSetModel={handleSetModel}

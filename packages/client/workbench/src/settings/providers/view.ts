@@ -1,16 +1,23 @@
-import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
+import type {
+  Account,
+  Accounts,
+  AgentKind,
+  AgentRuntimes,
+  ProvidersConfig,
+} from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
+import type {
+  ProviderAccountDetailViewModel,
+  ProviderBindingStatus,
+  ProviderBindingViewModel,
+  ProviderCredentialViewModel,
+} from '@linkcode/ui';
+import { bindingAvailability } from './capability';
+import { serviceById } from './catalog';
 
 /** Pure view helpers for the Providers page — no hooks, unit-testable. */
 
 export const AGENT_KINDS = AgentKindSchema.options;
-
-/** The secret string a key/token account holds; undefined for oauth (LinkCode stores none). */
-export function accountSecret(account: Account): string | undefined {
-  if (account.credential.type === 'api-key') return account.credential.key;
-  if (account.credential.type === 'auth-token') return account.credential.token;
-  return undefined;
-}
 
 /** Tail-anchored mask: enough to recognize a key, never enough to reconstruct it. */
 export function maskSecret(secret: string): string {
@@ -36,6 +43,113 @@ export function accountConfigSnippet(
   const slice: Record<string, unknown> = {};
   for (const kind of bound) slice[kind] = providers?.[kind];
   return JSON.stringify({ providers: slice }, null, 2);
+}
+
+function oauthDetails(account: Account, runtimes: AgentRuntimes | undefined): string[] {
+  if (account.credential.type !== 'oauth') return [];
+  const auth = runtimes?.[account.credential.agent]?.auth;
+  if (auth?.loggedIn !== true) return [];
+  return [auth.email, auth.method, auth.subscriptionType].filter((detail): detail is string =>
+    Boolean(detail),
+  );
+}
+
+function credentialViewModel(
+  account: Account,
+  runtimes: AgentRuntimes | undefined,
+): ProviderCredentialViewModel {
+  if (account.credential.type === 'oauth') {
+    const auth = runtimes?.[account.credential.agent]?.auth;
+    return {
+      kind: 'oauth',
+      agent: account.credential.agent,
+      ...(!(auth === undefined) && {
+        auth: { loggedIn: auth.loggedIn, details: oauthDetails(account, runtimes) },
+      }),
+    };
+  }
+  const value =
+    account.credential.type === 'api-key' ? account.credential.key : account.credential.token;
+  return {
+    kind: 'secret',
+    type: account.credential.type,
+    value,
+    maskedValue: maskSecret(value),
+  };
+}
+
+function bindingStatus(
+  account: Account,
+  accountLabels: ReadonlyMap<string, string>,
+  kind: AgentKind,
+  providers: ProvidersConfig | undefined,
+): { bound: boolean; status: ProviderBindingStatus; tier: ProviderBindingViewModel['tier'] } {
+  const availability = bindingAvailability(account, kind);
+  const boundId = providers?.[kind]?.activeAccountId;
+  const bound = boundId === account.id;
+  if (availability.tier === 'unavailable') {
+    if (availability.reason === 'oauth-other-agent' && account.credential.type === 'oauth') {
+      return {
+        bound,
+        tier: availability.tier,
+        status: { kind: 'unavailable-oauth', agent: account.credential.agent },
+      };
+    }
+    return {
+      bound,
+      tier: availability.tier,
+      status: {
+        kind:
+          availability.reason === 'translation-needs-endpoint'
+            ? 'unavailable-translation-endpoint'
+            : 'unavailable-protocol',
+      },
+    };
+  }
+  return {
+    bound,
+    tier: availability.tier,
+    status: bound
+      ? { kind: 'bound' }
+      : boundId === undefined
+        ? { kind: 'no-provider' }
+        : { kind: 'bound-elsewhere', accountLabel: accountLabels.get(boundId) ?? boundId },
+  };
+}
+
+/** Selected account plus precomputed binding rows; UI owns only rendering and local interaction. */
+export function providerAccountDetailViewModel(
+  account: Account,
+  accounts: Accounts,
+  providers: ProvidersConfig | undefined,
+  runtimes: AgentRuntimes | undefined,
+): ProviderAccountDetailViewModel {
+  const accountLabels = new Map(accounts.map((candidate) => [candidate.id, candidate.label]));
+  const bindings = AGENT_KINDS.map((kind): ProviderBindingViewModel => {
+    const binding = bindingStatus(account, accountLabels, kind, providers);
+    return {
+      kind,
+      ...binding,
+      currentModel: providers?.[kind]?.defaultModel ?? '',
+    };
+  });
+  const boundAgents = boundAgentKinds(providers, account.id);
+  const serviceLabel = serviceById(account.service)?.label;
+  return {
+    id: account.id,
+    label: account.label,
+    credential: credentialViewModel(account, runtimes),
+    bindings,
+    boundAgents,
+    availableBindingCount: bindings.filter((binding) => binding.tier !== 'unavailable').length,
+    ...(!(account.service === undefined) && { service: account.service }),
+    ...(!(serviceLabel === undefined) && { serviceLabel }),
+    ...(!(account.endpoint === undefined) && { endpoint: account.endpoint }),
+    ...(!(account.model === undefined) && { accountModel: account.model }),
+    ...(!(boundAgents.length === 0) && {
+      configPreview: accountConfigSnippet(providers, account.id),
+    }),
+  };
 }
 
 /** Bind (or, with undefined, unbind) an agent's active account; other fields survive untouched. */
