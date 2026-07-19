@@ -699,6 +699,7 @@ export const zhCN = {
         'vercel-gateway': 'Vercel AI Gateway',
         'cloudflare-gateway': 'Cloudflare AI Gateway',
         custom: '自定义端点',
+        'pi-models-json': '导入 models.json',
       },
       serviceHint: {
         'claude-sub': 'Claude Code 登录,Pro / Max 计划',
@@ -710,6 +711,7 @@ export const zhCN = {
         'vercel-gateway': '服务端翻译,双协议形态',
         'cloudflare-gateway': '透传网关,需 Account / Gateway ID',
         custom: '任意 Base URL + 协议',
+        'pi-models-json': '整档导入为自定义 Provider 账号',
       },
       variantName: {
         anthropic: 'Anthropic 端点',
@@ -726,6 +728,18 @@ export const zhCN = {
       localProviders: {
         source: 'pi · models.json',
         modelCount: '{count} 个模型',
+      },
+      import: {
+        hint: '选择 pi 的 models.json 文件;每个自定义 provider 导入为一个账号,模型定义(含成本与思考等级映射)完整保留。仅支持纯 JSON(不支持注释)。',
+        parseError: '无法解析:{message}',
+        modelCount: '{count} 个模型',
+        submit: '导入 {count} 个账号',
+        reason: {
+          'no-models': '无模型清单(内置 provider 覆盖项)',
+          'missing-base-url': '缺少端点 URL',
+          'missing-api-key': '缺少 API 密钥',
+          'unsupported-api': '不支持的 api 类型',
+        },
       },
       form: {
         label: '名称',

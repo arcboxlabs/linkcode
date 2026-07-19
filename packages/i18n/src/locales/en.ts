@@ -712,6 +712,7 @@ export const en = {
         'vercel-gateway': 'Vercel AI Gateway',
         'cloudflare-gateway': 'Cloudflare AI Gateway',
         custom: 'Custom endpoint',
+        'pi-models-json': 'Import models.json',
       },
       serviceHint: {
         'claude-sub': 'Claude Code login, Pro / Max plans',
@@ -723,6 +724,7 @@ export const en = {
         'vercel-gateway': 'Server-side translation, both protocol shapes',
         'cloudflare-gateway': 'Pass-through gateway, needs Account / Gateway ID',
         custom: 'Any base URL + protocol',
+        'pi-models-json': 'Whole-file import as custom-provider accounts',
       },
       variantName: {
         anthropic: 'Anthropic endpoint',
@@ -740,6 +742,18 @@ export const en = {
       localProviders: {
         source: 'pi · models.json',
         modelCount: '{count} models',
+      },
+      import: {
+        hint: 'Pick a pi models.json file; each custom provider becomes one account, with model definitions (cost and thinking-level map included) preserved in full. Plain JSON only (no comments).',
+        parseError: 'Cannot parse: {message}',
+        modelCount: '{count} models',
+        submit: 'Import {count} accounts',
+        reason: {
+          'no-models': 'No model list (built-in provider override)',
+          'missing-base-url': 'Missing endpoint URL',
+          'missing-api-key': 'Missing API key',
+          'unsupported-api': 'Unsupported api kind',
+        },
       },
       form: {
         label: 'Name',

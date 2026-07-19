@@ -14,6 +14,7 @@ import {
 } from 'coss-ui/components/select';
 import { Switch } from 'coss-ui/components/switch';
 import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
@@ -22,6 +23,8 @@ import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
 import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
+import type { ImportedProvider, ModelsJsonImport } from './import-models-json';
+import { parseModelsJson } from './import-models-json';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 
@@ -95,6 +98,15 @@ function customAccount(draft: CustomDraft): Account {
   };
 }
 
+function importedAccount(provider: ImportedProvider): Account {
+  return {
+    ...newAccountBase(provider.name),
+    credential: { type: 'api-key', key: provider.apiKey },
+    endpoint: { baseUrl: provider.baseUrl, protocol: provider.protocol },
+    customProvider: { name: provider.name, models: provider.models },
+  };
+}
+
 /** Step one of the add flow: the service directory, grouped, taking over the detail pane. */
 export function ServiceCatalogView({
   onPick,
@@ -153,12 +165,15 @@ export function AddAccountForm({
   busy,
   onBack,
   onSubmit,
+  onSubmitMany,
 }: {
   serviceId: string;
   runtimes: AgentRuntimes | undefined;
   busy: boolean;
   onBack: () => void;
   onSubmit: (account: Account) => void;
+  /** Batch add (the models.json import) — one pool write, so additions cannot race each other. */
+  onSubmitMany: (accounts: Account[]) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const service = serviceById(serviceId);
@@ -179,8 +194,96 @@ export function AddAccountForm({
         <OauthCreateForm service={service} runtimes={runtimes} busy={busy} onSubmit={onSubmit} />
       ) : service.kind === 'endpoint' ? (
         <CatalogAccountForm service={service} busy={busy} onSubmit={onSubmit} />
+      ) : service.kind === 'import' ? (
+        <ImportModelsJsonForm busy={busy} onSubmitMany={onSubmitMany} />
       ) : (
         <CustomAccountForm busy={busy} onSubmit={onSubmit} />
+      )}
+    </div>
+  );
+}
+
+/** File-driven variant of the custom form: parse a pi models.json, preview the provider entries,
+ * and add every importable one as a custom-provider account in a single pool write. */
+function ImportModelsJsonForm({
+  busy,
+  onSubmitMany,
+}: {
+  busy: boolean;
+  onSubmitMany: (accounts: Account[]) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  const [parsed, setParsed] = useState<ModelsJsonImport | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  const handleFile = async (file: File | undefined): Promise<void> => {
+    if (!file) return;
+    try {
+      setParsed(parseModelsJson(await file.text()));
+      setParseError(null);
+    } catch (err) {
+      setParsed(null);
+      setParseError(extractErrorMessage(err));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-muted-foreground text-xs">{t('import.hint')}</p>
+      <Input
+        type="file"
+        accept="application/json,.json"
+        className="w-full"
+        onChange={(event) => {
+          void handleFile(event.target.files?.[0]);
+        }}
+      />
+      {parseError === null ? null : (
+        <p className="text-destructive text-xs">
+          {t('import.parseError', { message: parseError })}
+        </p>
+      )}
+      {parsed === null ? null : (
+        <>
+          <ul className="flex flex-col gap-1">
+            {parsed.providers.map((provider) => (
+              <li
+                key={provider.name}
+                className="flex items-start gap-2.5 rounded-lg border border-border p-2.5"
+              >
+                <ServiceIcon service={undefined} label={provider.name} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-sm">{provider.name}</span>
+                  <span className="block truncate font-mono text-muted-foreground text-xs">
+                    {provider.baseUrl} · {provider.protocol}
+                  </span>
+                </span>
+                <span className="shrink-0 text-muted-foreground text-xs">
+                  {t('import.modelCount', { count: provider.models.length })}
+                </span>
+              </li>
+            ))}
+            {parsed.skipped.map((entry) => (
+              <li
+                key={entry.name}
+                className="flex items-center gap-2.5 rounded-lg border border-border border-dashed p-2.5 text-muted-foreground"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm">{entry.name}</span>
+                <span className="shrink-0 text-xs">{t(`import.reason.${entry.reason}`)}</span>
+              </li>
+            ))}
+          </ul>
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy || parsed.providers.length === 0}
+              onClick={() => onSubmitMany(parsed.providers.map((p) => importedAccount(p)))}
+            >
+              {t('import.submit', { count: parsed.providers.length })}
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );

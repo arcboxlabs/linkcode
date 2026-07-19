@@ -40,7 +40,9 @@ export type ServiceDescriptor =
       secretPlaceholder?: string;
     }
   /** Free-form endpoint — the full account form. */
-  | { id: 'custom'; label: string; group: 'custom'; kind: 'custom' };
+  | { id: 'custom'; label: string; group: 'custom'; kind: 'custom' }
+  /** Whole-file import of pi's models.json — one custom-provider account per entry. */
+  | { id: 'pi-models-json'; label: string; group: 'custom'; kind: 'import' };
 
 export const SERVICE_CATALOG: ServiceDescriptor[] = [
   { id: 'claude-sub', label: 'Claude', group: 'subscription', kind: 'oauth', agent: 'claude-code' },
@@ -155,6 +157,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     ],
   },
   { id: 'custom', label: 'Custom', group: 'custom', kind: 'custom' },
+  { id: 'pi-models-json', label: 'Import models.json', group: 'custom', kind: 'import' },
 ];
 
 export function serviceById(id: string | undefined): ServiceDescriptor | undefined {

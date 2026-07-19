@@ -68,6 +68,14 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     select(account.id);
   };
 
+  // One pool write for a whole models.json import — sequential handleAdd calls would race on `pool`.
+  const handleAddMany = async (accounts: Account[]): Promise<void> => {
+    if (accounts.length === 0) return;
+    await saveAccounts.trigger({ accounts: [...pool, ...accounts] });
+    void mutateAccounts();
+    select(accounts[0].id);
+  };
+
   // One-click adoption of a detected CLI login: same account the oauth form would create.
   const handleAdoptDetected = (serviceId: string): void => {
     const service = serviceById(serviceId);
@@ -120,6 +128,9 @@ export function ProvidersSettingsPanel(): React.ReactNode {
               onBack={backToCatalog}
               onSubmit={(account) => {
                 void handleAdd(account);
+              }}
+              onSubmitMany={(accounts) => {
+                void handleAddMany(accounts);
               }}
             />
           ) : effectiveView.kind === 'add-catalog' ? (
