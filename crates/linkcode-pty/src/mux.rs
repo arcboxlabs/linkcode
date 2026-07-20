@@ -7,6 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+#[cfg(all(unix, not(target_os = "fuchsia")))]
+use nix::sys::signal::{Signal, killpg};
+#[cfg(all(unix, not(target_os = "fuchsia")))]
+use nix::unistd::Pid;
 use portable_pty::{Child, MasterPty, PtySize};
 use serde_json::json;
 
@@ -38,26 +42,23 @@ enum Teardown {
 impl Terminal {
     /// Signal the whole process group, not just the shell: the shell is a `setsid` leader (pid =
     /// group id), so children that inherited the slave — which block master EOF — die with it.
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "fuchsia")))]
     fn signal_group(&self, teardown: Teardown) {
         let signal = match teardown {
-            Teardown::Hangup => libc::SIGHUP,
-            Teardown::Kill => libc::SIGKILL,
+            Teardown::Hangup => Signal::SIGHUP,
+            Teardown::Kill => Signal::SIGKILL,
         };
         // Hold the child lock so `reap` can't `take` (and then `wait`, freeing the pid) underneath
         // us; a live `Some(child)` means the pid is still a valid, un-recycled process-group id.
         let child = self.child.lock().expect("terminal child mutex poisoned");
         if let Some(pid) = child.as_ref().and_then(|c| c.process_id()) {
-            // SAFETY: `killpg` only delivers `signal` to the process group `pid`; it dereferences
-            // no memory. The unreaped child guarded above keeps `pid` a live group id.
-            unsafe {
-                libc::killpg(pid as libc::pid_t, signal);
-            }
+            // Best effort: normal process exit can race signal delivery.
+            let _ = killpg(Pid::from_raw(pid as i32), signal);
         }
     }
 
-    /// Non-Unix fallback: no portable process-group signalling, so just kill the shell itself.
-    #[cfg(not(unix))]
+    /// Fallback where process-group signalling is unavailable: kill only the shell itself.
+    #[cfg(any(not(unix), target_os = "fuchsia"))]
     fn signal_group(&self, _teardown: Teardown) {
         if let Some(child) = self
             .child

@@ -72,7 +72,7 @@ name = "linkcode-pty"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "libc",
+ "nix",
  "portable-pty",
  "serde",
  "serde_json",

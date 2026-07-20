@@ -1118,9 +1118,6 @@ importers:
       coss-ui:
         specifier: workspace:*
         version: link:../../vendor/coss-ui
-      date-fns:
-        specifier: ^4.4.0
-        version: 4.4.0
       dompurify:
         specifier: ^3.4.11
         version: 3.4.11
