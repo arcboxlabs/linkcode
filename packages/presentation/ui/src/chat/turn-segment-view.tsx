@@ -1,8 +1,8 @@
 import type { AgentKind } from '@linkcode/schema';
 import { cn } from '../lib/cn';
-import { ActivityGroup } from './activity-group';
 import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
+import { ActivityRun } from './activity-run';
 import { CompactionMarker } from './compaction-marker';
 import { ContentBlockView } from './content-block-view';
 import { positionalBlockEntries } from './content-derived-keys';
@@ -73,41 +73,46 @@ export function TurnSegmentView({
   const hasAgentTurnContent = agentEntries.length > 0 || edits || replyText;
 
   const renderEntry = (entry: TimelineEntry): React.ReactNode => {
-    if (entry.type === 'task') {
+    if (entry.type === 'run') {
+      return (
+        <ActivityRun
+          key={entry.id}
+          awaitingApproval={awaitingApproval}
+          declined={declined}
+          run={entry}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+    if (entry.type !== 'item') return null;
+
+    const item = entry.item;
+    if (item.kind === 'tool' && item.toolCall.kind === 'task') {
       return (
         <SubagentCard
-          key={entry.item.id}
+          key={item.id}
           awaitingApproval={awaitingApproval}
           childrenByParent={childrenByParent}
           declined={declined}
-          items={childrenByParent.get(entry.item.toolCall.toolCallId) ?? []}
+          items={childrenByParent.get(item.toolCall.toolCallId) ?? []}
           onExpand={onExpandTask}
           TerminalBlockComponent={TerminalBlockComponent}
-          toolCall={entry.item.toolCall}
+          toolCall={item.toolCall}
         />
       );
     }
-    if (entry.type === 'group') {
-      return (
-        <ActivityGroup
-          key={entry.id}
-          group={entry}
-          TerminalBlockComponent={TerminalBlockComponent}
-        />
-      );
-    }
-    if (entry.type === 'single') {
+    if (item.kind === 'tool') {
       return (
         <ToolCallItem
-          key={entry.item.id}
-          awaitingApproval={awaitingApproval.has(entry.item.toolCall.toolCallId)}
-          declined={declined.has(entry.item.toolCall.toolCallId)}
-          toolCall={entry.item.toolCall}
+          key={item.id}
+          awaitingApproval={awaitingApproval.has(item.toolCall.toolCallId)}
+          declined={declined.has(item.toolCall.toolCallId)}
+          toolCall={item.toolCall}
           TerminalBlockComponent={TerminalBlockComponent}
         />
       );
     }
-    const item = entry.item;
+
     switch (item.kind) {
       case 'message':
         if (item.role === 'user') return <UserMessage key={item.id} item={item} />;

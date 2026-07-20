@@ -1,17 +1,12 @@
 import type { ToolCall } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
+import type { ActivityRunItem } from '../chat/activity-groups';
 import {
   activityRunCurrentDescriptor,
   settledActivityRunDescriptor,
 } from '../chat/activity-summary';
-import type { ConversationItem } from '../chat/types';
 
 type ActivityToolKind = Exclude<ToolCall['kind'], 'task'>;
-type ActivityRunItem =
-  | Extract<ConversationItem, { kind: 'reasoning' }>
-  | (Extract<ConversationItem, { kind: 'tool' }> & {
-      toolCall: ToolCall & { kind: ActivityToolKind };
-    });
 type ActivityToolItem = Extract<ActivityRunItem, { kind: 'tool' }>;
 
 let seq = 0;

@@ -1,18 +1,8 @@
+import type { ActivityRunItem } from './activity-groups';
 import { contentPreview } from './content-preview';
 import { toolCallFilePresentation } from './file-tool-presentation';
 import { toolCallFetchUrl, toolCallSearchQuery } from './tool-result-content';
 import { mcpToolName, toolCallCommand, toolCallDisplayTitle } from './tool-utils';
-import type { ConversationItem } from './types';
-
-type ReasoningActivityItem = Extract<ConversationItem, { kind: 'reasoning' }>;
-type ToolActivityItem = Extract<ConversationItem, { kind: 'tool' }>;
-type ActivityRunItem =
-  | ReasoningActivityItem
-  | (ToolActivityItem & {
-      toolCall: ToolActivityItem['toolCall'] & {
-        kind: Exclude<ToolActivityItem['toolCall']['kind'], 'task'>;
-      };
-    });
 
 export type ActivitySummaryCategory =
   | 'failure'
