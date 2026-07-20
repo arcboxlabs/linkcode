@@ -6,7 +6,6 @@ import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
-import { useTerminalTabsStore } from './tabs-store';
 import { createTransportTerminalSession } from './transport-session';
 
 /**
@@ -16,11 +15,14 @@ import { createTransportTerminalSession } from './transport-session';
  */
 export function AttachedTerminalPanel({
   terminalId,
+  onCloseTab,
   interactive,
   primary = true,
   suspended,
 }: {
   terminalId: string;
+  /** Close through the host action so panel selection/open state follows the shared tab store. */
+  onCloseTab: (id: string) => void;
   interactive?: boolean;
   /** Exactly one duplicate surface attaches/detaches the daemon capability. */
   primary?: boolean;
@@ -84,10 +86,10 @@ export function AttachedTerminalPanel({
     (signal) => {
       if (!primary) return;
       return client.subscribeTerminalExit(terminalId, () => {
-        if (!signal.aborted) useTerminalTabsStore.getState().closeTab(`attach:${terminalId}`);
+        if (!signal.aborted) onCloseTab(`attach:${terminalId}`);
       });
     },
-    [client, terminalId, primary],
+    [client, terminalId, onCloseTab, primary],
   );
 
   if (!primary) {

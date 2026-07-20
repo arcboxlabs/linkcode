@@ -25,10 +25,6 @@ vi.mock('@linkcode/ui/shell/terminal', () => ({
   LiveTerminal: () => null,
 }));
 
-vi.mock('../tabs-store', () => ({
-  useTerminalTabsStore: { getState: () => ({ closeTab }) },
-}));
-
 vi.mock('../../settings/terminal-prefs-store', () => ({
   useTerminalPrefsStore: selectTerminalPrefs,
 }));
@@ -66,7 +62,7 @@ describe('AttachedTerminalPanel', () => {
       resizeTerminal: noop,
       takeTerminalControl: () => Promise.resolve(),
     };
-    const view = render(<AttachedTerminalPanel terminalId="term-1" />);
+    const view = render(<AttachedTerminalPanel terminalId="term-1" onCloseTab={closeTab} />);
 
     expect(closeTab).toHaveBeenCalledOnce();
     expect(closeTab).toHaveBeenCalledWith('attach:term-1');
@@ -96,7 +92,9 @@ describe('AttachedTerminalPanel', () => {
       resizeTerminal: noop,
     };
 
-    const view = render(<AttachedTerminalPanel terminalId="term-1" primary={false} />);
+    const view = render(
+      <AttachedTerminalPanel terminalId="term-1" onCloseTab={closeTab} primary={false} />,
+    );
 
     expect(subscribeTerminalExit).not.toHaveBeenCalled();
     expect(closeTab).not.toHaveBeenCalled();
