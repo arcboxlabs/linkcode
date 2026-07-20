@@ -9,7 +9,7 @@ import {
   GrokBuildProbe,
   parseClaudeAuthStatus,
   parseCodexLoginStatus,
-} from '../probe';
+} from '../../src/probe';
 
 function fakeCli(dir: string, name: string, versionLine: string): string {
   const file = join(dir, name);

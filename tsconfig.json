@@ -20,6 +20,7 @@
     { "path": "packages/foundation/transport" },
     { "path": "packages/foundation/transport/tests" },
     { "path": "packages/host/agent-adapter" },
+    { "path": "packages/host/agent-adapter/tests" },
     { "path": "packages/host/assets" },
     { "path": "packages/host/engine" },
     { "path": "packages/integrations/im-render" },
