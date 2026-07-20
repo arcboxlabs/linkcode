@@ -31,7 +31,23 @@ describe('FileTabStrip', () => {
     );
 
     const sourceTab = screen.getByRole('button', { name: 'index.ts' });
+    const rightMouseDown = new MouseEvent('mousedown', {
+      bubbles: true,
+      button: 2,
+      cancelable: true,
+    });
+    fireEvent(sourceTab, rightMouseDown);
+    expect(rightMouseDown.defaultPrevented).toBe(false);
     fireEvent(sourceTab, new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+    expect(onCloseTab).not.toHaveBeenCalled();
+
+    const middleMouseDown = new MouseEvent('mousedown', {
+      bubbles: true,
+      button: 1,
+      cancelable: true,
+    });
+    fireEvent(sourceTab, middleMouseDown);
+    expect(middleMouseDown.defaultPrevented).toBe(true);
     expect(onCloseTab).not.toHaveBeenCalled();
 
     fireEvent(sourceTab, new MouseEvent('auxclick', { bubbles: true, button: 1 }));

@@ -39,6 +39,9 @@ export function SectionTabButton({
         event.preventDefault();
         onMiddleClick();
       }}
+      onMouseDown={(event) => {
+        if (event.button === 1 && onMiddleClick) event.preventDefault();
+      }}
     >
       <button
         type="button"
