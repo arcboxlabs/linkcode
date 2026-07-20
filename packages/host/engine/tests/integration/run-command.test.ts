@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect, Fiber } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { runCommand } from '../process/run-command';
+import { runCommand } from '../../src/process/run-command';
 
 describe('runCommand', () => {
   it('captures output and preserves non-zero exit codes', async () => {

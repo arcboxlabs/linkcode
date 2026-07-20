@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect } from 'effect';
 import { afterAll, describe, expect, it } from 'vitest';
-import { FileSuggestService } from '../workspace/file-suggest-service';
+import { FileSuggestService } from '../../src/workspace/file-suggest-service';
 
 /** Fresh service per call: no TTL-cached file list leaks between tests. */
 function suggest(cwd: string, query: string, limit?: number) {

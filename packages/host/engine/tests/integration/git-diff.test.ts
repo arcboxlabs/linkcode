@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Effect } from 'effect';
 import { createFixedArray } from 'foxts/create-fixed-array';
 import { afterAll, describe, expect, it } from 'vitest';
-import { readGitDiff } from '../git/diff';
+import { readGitDiff } from '../../src/git/diff';
 
 const roots: string[] = [];
 
