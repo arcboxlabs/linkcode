@@ -5,7 +5,7 @@ import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useData, useMutation } from '../../runtime/tayori';
-import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
 import { useProvidersSettingsStore } from './store';
 import {
@@ -37,6 +37,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const selectedId = useProvidersSettingsStore((state) => state.selectedAccountId);
   const view = useProvidersSettingsStore((state) => state.view);
   const select = useProvidersSettingsStore((state) => state.select);
+  const startEdit = useProvidersSettingsStore((state) => state.startEdit);
+  const backToAccount = useProvidersSettingsStore((state) => state.backToAccount);
   const startAdd = useProvidersSettingsStore((state) => state.startAdd);
   const pickService = useProvidersSettingsStore((state) => state.pickService);
   const backToCatalog = useProvidersSettingsStore((state) => state.backToCatalog);
@@ -67,6 +69,14 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const handleAdd = async (account: Account): Promise<void> => {
     await saveAccounts.trigger({ accounts: [...pool, account] });
     void mutateAccounts();
+    select(account.id);
+  };
+
+  const handleUpdate = async (account: Account): Promise<void> => {
+    await saveAccounts.trigger({
+      accounts: pool.map((candidate) => (candidate.id === account.id ? account : candidate)),
+    });
+    await mutateAccounts();
     select(account.id);
   };
 
@@ -124,12 +134,22 @@ export function ProvidersSettingsPanel(): React.ReactNode {
               onPick={pickService}
               onCancel={pool.length > 0 ? closeAdd : undefined}
             />
+          ) : effectiveView.kind === 'edit' && selected ? (
+            <EditAccountForm
+              account={selected}
+              busy={saveAccounts.isMutating}
+              onBack={backToAccount}
+              onSubmit={(account) => {
+                void handleUpdate(account);
+              }}
+            />
           ) : selectedDetail ? (
             <AccountDetail
               account={selectedDetail}
               busy={busy}
               onSetBinding={handleSetBinding}
               onSetModel={handleSetModel}
+              onEdit={startEdit}
               onRemove={() => {
                 void handleRemove();
               }}
