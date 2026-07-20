@@ -13,6 +13,7 @@ import {
   archiveWorkspace,
   cancelTurn,
   hostArtifact,
+  hostWorkspaceFile,
   readWorkspaceFile,
   registerWorkspace,
   respondPermission,
@@ -319,6 +320,11 @@ function WorkbenchSessionSurface({
     return { url: data.url };
   }
 
+  async function handleHostVideoFile(cwd: string, path: string): Promise<{ url: string }> {
+    const { data } = await hostWorkspaceFile({ cwd, path });
+    return { url: data.url };
+  }
+
   /** Reads a natively-picked attachment via the daemon's file-read op (drag-and-drop/paste reads
    * bytes client-side instead). `cwd` only matters for a relative `path`; the picker's is absolute. */
   async function handleReadAttachmentFile(path: string): Promise<ComposerAttachment> {
@@ -586,6 +592,7 @@ function WorkbenchSessionSurface({
       onRespondPermission={handleRespond}
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
+      onHostVideoFile={handleHostVideoFile}
       onReadAttachmentFile={handleReadAttachmentFile}
       onOpenSearch={openCommandPalette}
       searchShortcut={searchShortcut}
