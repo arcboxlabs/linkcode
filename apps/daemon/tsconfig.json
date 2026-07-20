@@ -1,5 +1,4 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "jsx": "react-jsx" },
-  "include": ["src", "scripts", "e2e", "drizzle.config.ts"]
+  "include": ["src", "scripts", "drizzle.config.ts"]
 }
