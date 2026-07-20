@@ -9,7 +9,7 @@ import type {
 } from '@linkcode/schema';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
-import { createDevMockTransport } from '../dev-mock-transport';
+import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
 async function connectedClient(): Promise<LinkCodeClient> {
   const client = new LinkCodeClient(createDevMockTransport());
