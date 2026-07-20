@@ -61,6 +61,20 @@ it('generates scoped anchors for raw HTML headings after parsing them', () => {
   expect(getByRole('link', { name: 'Jump' }).getAttribute('href')).toBe(`#${heading.id}`);
 });
 
+it('scopes explicit heading ids from raw HTML to their Markdown document', () => {
+  const { getAllByRole, getByRole } = render(
+    <>
+      <Markdown headingAnchors>{'<h2 id="custom">Title</h2>\n\n[First](#custom)'}</Markdown>
+      <Markdown headingAnchors>{'<h2 id="custom">Title</h2>\n\n[Second](#custom)'}</Markdown>
+    </>,
+  );
+
+  const headings = getAllByRole('heading', { name: 'Title' });
+  expect(headings[0]?.id).not.toBe(headings[1]?.id);
+  expect(getByRole('link', { name: 'First' }).getAttribute('href')).toBe(`#${headings[0]?.id}`);
+  expect(getByRole('link', { name: 'Second' }).getAttribute('href')).toBe(`#${headings[1]?.id}`);
+});
+
 it('deduplicates repeated headings across one anchored document', () => {
   const { getAllByRole, getByRole } = render(
     <Markdown headingAnchors>{'## Repeat\n\n## Repeat\n\n[Jump](#repeat-1)'}</Markdown>,
