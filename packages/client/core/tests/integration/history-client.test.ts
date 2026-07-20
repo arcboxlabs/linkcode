@@ -1,7 +1,7 @@
 import type { AgentHistoryId, WirePayload } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
-import { createConnectedLocalClient } from './local-client';
+import { createConnectedLocalClient } from '../support/local-client';
 
 const historyId = 'hist-1' as AgentHistoryId;
 

@@ -1,8 +1,8 @@
 import type { AgentEvent, MessageId, SessionId } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
-import { createConversationStore } from '../conversation-store';
-import { createConnectedLocalClient } from './local-client';
+import { createConversationStore } from '../../src/conversation-store';
+import { createConnectedLocalClient } from '../support/local-client';
 
 const sessionId = 'sess-store' as SessionId;
 

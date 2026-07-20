@@ -8,8 +8,8 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LinkCodeClient } from '../client';
-import { createConnectedLocalClient } from './local-client';
+import { LinkCodeClient } from '../../src/client';
+import { createConnectedLocalClient } from '../support/local-client';
 
 /** A transport whose every `send` rejects, so terminal frames always fail to leave. */
 function terminalFrameFailingTransport(err: Error): Transport {

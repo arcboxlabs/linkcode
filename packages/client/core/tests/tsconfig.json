@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.cache/tsconfig.tests.tsbuildinfo",
+    "rootDir": ".."
+  },
+  "include": ["."]
+}
