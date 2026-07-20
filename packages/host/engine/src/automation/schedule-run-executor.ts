@@ -1,6 +1,7 @@
 import type { Schedule, ScheduleRun, SessionId } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { OperationError } from '../failure';
+import { observeOperation } from '../observability';
 import type { AutomationFailure } from './failure';
 import { AutomationBusy, AutomationDispatchFailure, AutomationTargetGone } from './failure';
 import type { ScheduleReporter } from './schedule-reporter';
@@ -31,45 +32,52 @@ export class ScheduleRunExecutor {
   ): Effect.Effect<ScheduleRunOutcome, AutomationFailure | OperationError> {
     const { driver } = this;
     const linkSession = (sessionId: SessionId) => this.linkSession(run, sessionId);
-    return Effect.gen(function* () {
-      const target = schedule.spec.target;
-      if (target.type === 'session') {
-        if (!driver.hasRecord(target.sessionId)) {
-          return yield* Effect.fail(new AutomationTargetGone({}));
+    return observeOperation(
+      Effect.gen(function* () {
+        const target = schedule.spec.target;
+        if (target.type === 'session') {
+          if (!driver.hasRecord(target.sessionId)) {
+            return yield* Effect.fail(new AutomationTargetGone({}));
+          }
+          if (driver.isBusy(target.sessionId)) {
+            return yield* Effect.fail(new AutomationBusy({}));
+          }
+          yield* driverCall((signal) => driver.ensureLive(target.sessionId, signal));
+          yield* linkSession(target.sessionId);
+          const result = yield* driverCall((signal) =>
+            driver.prompt(target.sessionId, schedule.spec.prompt, { signal }),
+          );
+          return { sessionId: target.sessionId, summary: summarize(result.text) };
         }
-        if (driver.isBusy(target.sessionId)) {
-          return yield* Effect.fail(new AutomationBusy({}));
-        }
-        yield* driverCall((signal) => driver.ensureLive(target.sessionId, signal));
-        yield* linkSession(target.sessionId);
-        const result = yield* driverCall((signal) =>
-          driver.prompt(target.sessionId, schedule.spec.prompt, { signal }),
-        );
-        return { sessionId: target.sessionId, summary: summarize(result.text) };
-      }
 
-      const sessionId = yield* driverCall((signal) =>
-        driver.createSession({
-          kind: target.config.kind,
-          cwd: target.config.cwd,
-          model: target.config.model,
-          title: schedule.spec.name ?? 'Scheduled run',
-          automation: { kind: 'schedule', id: schedule.scheduleId },
-          signal,
-        }),
-      );
-      yield* linkSession(sessionId);
-      return yield* Effect.gen(function* () {
-        yield* driverCall((signal) => driver.makeUnattended(sessionId, signal));
-        const result = yield* driverCall((signal) =>
-          driver.prompt(sessionId, schedule.spec.prompt, { signal }),
+        const sessionId = yield* driverCall((signal) =>
+          driver.createSession({
+            kind: target.config.kind,
+            cwd: target.config.cwd,
+            model: target.config.model,
+            title: schedule.spec.name ?? 'Scheduled run',
+            automation: { kind: 'schedule', id: schedule.scheduleId },
+            signal,
+          }),
         );
-        return { sessionId, summary: summarize(result.text) };
-      }).pipe(
-        // The record is kept (hidden from Threads); the run's summary is the durable output.
-        Effect.onExit(() => driverCall(() => driver.stopSession(sessionId))),
-      );
-    });
+        yield* linkSession(sessionId);
+        return yield* Effect.gen(function* () {
+          yield* driverCall((signal) => driver.makeUnattended(sessionId, signal));
+          const result = yield* driverCall((signal) =>
+            driver.prompt(sessionId, schedule.spec.prompt, { signal }),
+          );
+          return { sessionId, summary: summarize(result.text) };
+        }).pipe(
+          // The record is kept (hidden from Threads); the run's summary is the durable output.
+          Effect.onExit(() => driverCall(() => driver.stopSession(sessionId))),
+        );
+      }),
+      {
+        span: 'Schedule.run',
+        subsystem: 'schedule',
+        attributes: { scheduleId: schedule.scheduleId, runId: run.runId },
+      },
+    );
   }
 
   private linkSession(run: ScheduleRun, sessionId: SessionId): Effect.Effect<void, OperationError> {

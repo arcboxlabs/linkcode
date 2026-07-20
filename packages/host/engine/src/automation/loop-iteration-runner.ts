@@ -3,6 +3,7 @@ import { LoopVerdictSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { OperationError } from '../failure';
+import { observeOperation } from '../observability';
 import type { AutomationFailure } from './failure';
 import { AutomationDispatchFailure, automationFailureMessage } from './failure';
 import {
@@ -49,52 +50,60 @@ export class LoopIterationRunner {
     const runChecks = this.runChecks.bind(this);
     const runVerifierTurn = this.runVerifierTurn.bind(this);
     let workerText = '';
-    return Effect.gen(function* () {
-      yield* saveEffect(iteration);
-      reporter.log(loop.loopId, 'info', 'system', `iteration ${index + 1} started`, index);
-      return yield* Effect.gen(function* () {
-        yield* Effect.gen(function* () {
-          workerText = yield* runWorkerTurn(loop, iteration, lastFailure);
-          const checksPassed = yield* runChecks(loop, iteration);
-          let verifierPassed = true;
-          if (checksPassed && loop.spec.verifier) {
-            const verdict = yield* runVerifierTurn(loop, iteration, workerText);
-            iteration.verdict = verdict;
-            verifierPassed = verdict.passed;
-          }
-          iteration.status = checksPassed && verifierPassed ? 'passed' : 'failed';
-        }).pipe(
-          Effect.catch((error: AutomationFailure | OperationError) =>
-            error instanceof OperationError
-              ? Effect.fail(error)
-              : Effect.sync(() => {
-                  iteration.status = 'failed';
-                  iteration.error = automationFailureMessage(error);
-                  reporter.log(loop.loopId, 'error', 'system', iteration.error, index);
-                }).pipe(
-                  Effect.andThen(
-                    Effect.logError(
-                      'Loop iteration failed',
-                      {
-                        loopId: loop.loopId,
-                        iteration: index,
-                        operation: 'automation.loop.iteration',
-                      },
-                      error,
+    return observeOperation(
+      Effect.gen(function* () {
+        yield* saveEffect(iteration);
+        reporter.log(loop.loopId, 'info', 'system', `iteration ${index + 1} started`, index);
+        return yield* Effect.gen(function* () {
+          yield* Effect.gen(function* () {
+            workerText = yield* runWorkerTurn(loop, iteration, lastFailure);
+            const checksPassed = yield* runChecks(loop, iteration);
+            let verifierPassed = true;
+            if (checksPassed && loop.spec.verifier) {
+              const verdict = yield* runVerifierTurn(loop, iteration, workerText);
+              iteration.verdict = verdict;
+              verifierPassed = verdict.passed;
+            }
+            iteration.status = checksPassed && verifierPassed ? 'passed' : 'failed';
+          }).pipe(
+            Effect.catch((error: AutomationFailure | OperationError) =>
+              error instanceof OperationError
+                ? Effect.fail(error)
+                : Effect.sync(() => {
+                    iteration.status = 'failed';
+                    iteration.error = automationFailureMessage(error);
+                    reporter.log(loop.loopId, 'error', 'system', iteration.error, index);
+                  }).pipe(
+                    Effect.andThen(
+                      Effect.logError(
+                        'Loop iteration failed',
+                        {
+                          loopId: loop.loopId,
+                          iteration: index,
+                          operation: 'automation.loop.iteration',
+                        },
+                        error,
+                      ),
                     ),
                   ),
-                ),
+            ),
+          );
+          return { iteration, workerText, failureFeedback: describeLoopFailure(iteration) };
+        }).pipe(
+          Effect.onExit(() =>
+            Effect.sync(() => {
+              iteration.endedAt = now();
+            }).pipe(Effect.andThen(saveEffect(iteration))),
           ),
         );
-        return { iteration, workerText, failureFeedback: describeLoopFailure(iteration) };
-      }).pipe(
-        Effect.onExit(() =>
-          Effect.sync(() => {
-            iteration.endedAt = now();
-          }).pipe(Effect.andThen(saveEffect(iteration))),
-        ),
-      );
-    });
+      }),
+      {
+        span: 'Loop.iteration',
+        subsystem: 'loop',
+        attributes: { loopId: loop.loopId, iteration: index },
+        successOutcome: () => (iteration.status === 'failed' ? 'failed' : 'succeeded'),
+      },
+    );
   }
 
   private runWorkerTurn(
