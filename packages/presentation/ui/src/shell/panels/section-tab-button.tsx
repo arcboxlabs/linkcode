@@ -14,6 +14,7 @@ export function SectionTabButton({
   title,
   onSelect,
   onClose,
+  onMiddleClick,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -23,6 +24,7 @@ export function SectionTabButton({
   title?: string;
   onSelect: () => void;
   onClose: () => void;
+  onMiddleClick?: () => void;
 }): React.ReactNode {
   return (
     <div
@@ -32,6 +34,11 @@ export function SectionTabButton({
           ? 'bg-background font-semibold text-foreground after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-background'
           : 'text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
+      onAuxClick={(event) => {
+        if (event.button !== 1 || !onMiddleClick) return;
+        event.preventDefault();
+        onMiddleClick();
+      }}
     >
       <button
         type="button"
