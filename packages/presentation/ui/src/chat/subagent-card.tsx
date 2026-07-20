@@ -1,5 +1,4 @@
 import type { ToolCall } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
   Collapsible,
@@ -128,7 +127,7 @@ export function SubagentCard(props: SubagentCardProps): React.ReactNode {
 }
 
 /** Inline collapsible card for one subagent run. Auto-open while running, but the user's toggle
- * always wins (unlike ActivityGroup's forced-open) — a subagent can run for minutes. */
+ * always wins — a subagent can run for minutes. */
 function SubagentCardContent({
   toolCall,
   items,
@@ -140,49 +139,38 @@ function SubagentCardContent({
   constrainHeight,
 }: SubagentCardProps & { constrainHeight: boolean }): React.ReactNode {
   const t = useTranslations('workbench.subagent');
-  const tg = useTranslations('workbench.toolGroup');
 
   const isRunning = toolCall.status === 'in_progress' || toolCall.status === 'pending';
+  const hasFailedActivity =
+    toolCall.status === 'failed' ||
+    items.some((item) => item.kind === 'tool' && item.toolCall.status === 'failed');
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
   const open = manualOpen ?? isRunning;
 
-  const toolCount = items.reduce((count, item) => count + (item.kind === 'tool' ? 1 : 0), 0);
-  const failedCount = items.reduce(
-    (count, item) => count + (item.kind === 'tool' && item.toolCall.status === 'failed' ? 1 : 0),
-    0,
-  );
   const input = subagentTaskInput(toolCall.rawInput);
 
   return (
     <Collapsible className="w-full" onOpenChange={setManualOpen} open={open}>
       <div className="flex w-full items-center gap-2">
         <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm">
+          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
           {isRunning ? (
             <Spinner className="size-3.5 shrink-0 text-foreground" />
           ) : (
             <BotIcon
-              className={
-                toolCall.status === 'failed'
-                  ? 'size-3.5 shrink-0 text-destructive-foreground'
-                  : 'size-3.5 shrink-0 text-muted-foreground'
-              }
+              className={cn(
+                'size-3.5 shrink-0',
+                hasFailedActivity ? 'text-destructive-foreground' : 'text-muted-foreground',
+              )}
             />
           )}
           <span className="shrink-0 text-foreground">{input.subagentType ?? t('label')}</span>
-          {toolCount > 0 ? (
-            <Badge size="sm" variant="secondary">
-              {t('steps', { count: toolCount })}
-            </Badge>
-          ) : null}
-          {failedCount > 0 ? (
-            <Badge size="sm" variant="error">
-              {tg('failed', { count: failedCount })}
-            </Badge>
+          {hasFailedActivity ? (
+            <span className="shrink-0 text-destructive-foreground text-xs">{t('failedBadge')}</span>
           ) : null}
           <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
             {input.description ?? toolCall.title}
           </span>
-          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
         </CollapsibleTrigger>
         {onExpand ? (
           <Button

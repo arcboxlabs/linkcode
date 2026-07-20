@@ -5,7 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
-import { SubagentTranscript } from '../subagent-card';
+import { SubagentCard, SubagentTranscript } from '../subagent-card';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 import { hasToolBody } from '../tool-utils';
 
@@ -24,11 +24,13 @@ vi.mock('use-intl', () => ({
 const LiveTerminal = vi.fn(({ terminalId }: { terminalId: string }) => <div>{terminalId}</div>);
 const RE_ANSWER_SOURCE_HEADER = /^answer\.ts/;
 const RE_APPLY_GUARDED_EDIT = /^Apply guarded edit/;
+const RE_BASH = /^Bash/;
 const RE_DELETE_LEGACY = /^Delete legacy/;
 const RE_EDITED_GONE_PREVIEW = /^edited\.ts, gone\.ts$/;
 const RE_FAILED_MOVE_PREVIEW = /^old\.ts → new\.ts$/;
 const RE_FIRST_SECOND_PREVIEW = /^first\.ts, second\.ts$/;
 const RE_LEGACY_PREVIEW = /^legacy\.ts/;
+const RE_SUBAGENT_LABEL = /^label/;
 const RE_MOVE = /^Move file/;
 const RE_MOVE_PREVIEW = /^target\.ts → moved\.ts$/;
 const RE_READ = /^Read/;
@@ -230,6 +232,24 @@ describe('ToolCallBody', () => {
 });
 
 describe('ToolCallItem', () => {
+  it('leads with disclosure and names failure without an action-kind badge', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'bash-failed',
+      title: 'Bash',
+      kind: 'execute',
+      status: 'failed',
+      rawInput: { command: 'false' },
+      content: [],
+    };
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    const header = screen.getByRole('button', { name: RE_BASH });
+    expect(header.querySelector('svg')?.classList.contains('lucide-chevron-right')).toBe(true);
+    expect(header.textContent).toContain('failed');
+    expect(header.textContent).not.toContain('kindExecute');
+  });
+
   it('opens a path-only write from its header-only preview', async () => {
     const user = userEvent.setup();
     const openFile = vi.fn();
@@ -524,6 +544,33 @@ describe('SubagentTranscript', () => {
     declined: new Set<string>(),
     toolCall: taskToolCall,
   };
+
+  it('keeps the subagent top-level summary compact when a child action fails', () => {
+    render(
+      <SubagentCard
+        {...sharedProps}
+        items={[
+          {
+            id: 'child-failed',
+            kind: 'tool',
+            turnId: null,
+            toolCall: {
+              toolCallId: 'child-failed',
+              title: 'Bash',
+              kind: 'execute',
+              status: 'failed',
+              content: [],
+            },
+          },
+        ]}
+      />,
+    );
+
+    const header = screen.getByRole('button', { name: RE_SUBAGENT_LABEL });
+    expect(header.querySelector('svg')?.classList.contains('lucide-chevron-right')).toBe(true);
+    expect(header.textContent).toContain('failed');
+    expect(header.textContent).not.toContain('steps');
+  });
 
   it('uses the task result as the empty-transcript fallback', () => {
     render(<SubagentTranscript {...sharedProps} items={[]} />);

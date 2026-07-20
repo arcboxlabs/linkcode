@@ -81,14 +81,14 @@ export function ReasoningTrigger({
     >
       {children ?? (
         <>
+          <ChevronRightIcon
+            className={cn('size-3.5 shrink-0 transition-transform', isOpen && 'rotate-90')}
+          />
           <BrainIcon className="size-3.5 shrink-0" />
           <span className="font-medium">{isStreaming ? <Shimmer>{label}</Shimmer> : label}</span>
           <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
             {isOpen ? '' : preview}
           </span>
-          <ChevronRightIcon
-            className={cn('size-3.5 shrink-0 transition-transform', isOpen && 'rotate-90')}
-          />
         </>
       )}
     </CollapsibleTrigger>

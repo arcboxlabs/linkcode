@@ -144,6 +144,7 @@ export const en = {
       files: 'Files',
       duration: 'Duration',
       size: 'Size',
+      failed: 'Failed',
       kindRead: 'Read',
       kindEdit: 'Edit',
       kindDelete: 'Delete',

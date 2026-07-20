@@ -81,10 +81,9 @@ export function ToolCallItem({
   /** Disable when a parent transcript owns the capped scroll container. */
   constrainHeight?: boolean;
 }): React.ReactNode {
-  const t = useTranslations('workbench.tool');
   const tp = useTranslations('workbench.permission');
+  const tt = useTranslations('workbench.tool');
 
-  const kindKey = `kind${toolCall.kind[0].toUpperCase()}${toolCall.kind.slice(1)}`;
   const hasBody = hasToolBody(toolCall);
   const summary = toolCallContextSummary(toolCall);
   const diffTotals = toolCallDiffStats(toolCall);
@@ -95,13 +94,21 @@ export function ToolCallItem({
     <Tool>
       <ToolHeader
         awaitingApproval={awaitingApproval}
-        badge={mcp ? 'MCP' : t(kindKey)}
-        declinedBadge={declined ? tp('declined') : undefined}
+        declined={declined}
         diffStats={diffTotals}
         hasBody={hasBody}
         icon={icon}
         kind={toolCall.kind}
         status={toolCall.status}
+        statusLabel={
+          awaitingApproval
+            ? tp('reviewRequired')
+            : declined
+              ? tp('declined')
+              : toolCall.status === 'failed'
+                ? tt('failed')
+                : undefined
+        }
         summary={summary?.label === title ? undefined : summary?.label}
         title={title}
         tooltip={summary?.tooltip}

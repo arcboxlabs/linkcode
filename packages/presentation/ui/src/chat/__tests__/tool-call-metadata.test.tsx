@@ -264,7 +264,7 @@ describe('tool metadata policy', () => {
     expect(mcpToolName('linear_get_issue')).toBeUndefined();
   });
 
-  it('headlines an MCP call with its tool name, server context, and an MCP badge', () => {
+  it('headlines an MCP call with its tool name and server context without a redundant badge', () => {
     const toolCall: ToolCall = {
       toolCallId: 'mcp-1',
       title: 'mcp__linear__get_issue',
@@ -274,8 +274,6 @@ describe('tool metadata policy', () => {
       content: [],
     };
 
-    // The server context sits beside a visible tool name only; a collapsed group join (which
-    // shows summaries INSTEAD of names) must fall through to the tool name itself.
     expect(toolCallHeaderSummary(toolCall)).toBeUndefined();
     expect(toolCallContextSummary(toolCall)).toEqual({
       label: 'linear',
@@ -284,13 +282,13 @@ describe('tool metadata policy', () => {
 
     const { container } = render(<ToolCallItem toolCall={toolCall} />);
     expect(screen.getByText('get_issue')).toBeDefined();
-    expect(screen.getByText('MCP')).toBeDefined();
+    expect(screen.queryByText('MCP')).toBeNull();
     expect(screen.getByText('· linear')).toBeDefined();
     expect(container.textContent).not.toContain('mcp__linear__get_issue');
     expect(container.textContent).not.toContain('kindOther');
   });
 
-  it('provides curated context for singleton headers and activity groups', () => {
+  it('provides curated context for singleton headers', () => {
     const calls: ToolCall[] = [
       {
         toolCallId: 'read-summary',

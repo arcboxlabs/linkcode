@@ -140,6 +140,7 @@ export const zhCN = {
       files: '文件',
       duration: '耗时',
       size: '大小',
+      failed: '失败',
       kindRead: '读取',
       kindEdit: '编辑',
       kindDelete: '删除',

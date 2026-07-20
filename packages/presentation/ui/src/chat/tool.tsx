@@ -1,12 +1,11 @@
 import type { ToolCall } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
-import { ChevronRightIcon, ShieldIcon } from 'lucide-react';
+import { BanIcon, ChevronRightIcon, CircleXIcon, ShieldIcon } from 'lucide-react';
 import { useRef } from 'react';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
@@ -29,13 +28,14 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   /** Unshortened context for a compact summary. */
   tooltip?: string;
   diffStats?: DiffStats;
-  badge?: string;
-  /** Localized marker for a call whose gating permission the user declined. */
-  declinedBadge?: string;
+  /** Short localized state text for approval, failure, or rejection. */
+  statusLabel?: string;
   status: ToolCall['status'];
   kind: ToolCall['kind'];
   /** The call's gating permission is still awaiting an answer (shows the shield glyph). */
   awaitingApproval?: boolean;
+  /** The user declined this call's gating permission. */
+  declined?: boolean;
   /** Custom glyph for plugin / MCP / custom tool calls; replaces the kind icon. */
   icon?: React.ReactNode;
   hasBody?: boolean;
@@ -47,11 +47,11 @@ export function ToolHeader({
   summary,
   tooltip,
   diffStats,
-  badge,
-  declinedBadge,
+  statusLabel,
   status,
   kind,
   awaitingApproval = false,
+  declined = false,
   icon,
   hasBody = false,
   ...props
@@ -60,7 +60,18 @@ export function ToolHeader({
   const titleAnchorRef = tooltip && !summary ? tooltipAnchorRef : undefined;
   const content = (
     <>
-      <ToolIcon awaitingApproval={awaitingApproval} icon={icon} kind={kind} status={status} />
+      {hasBody ? (
+        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />
+      ) : (
+        <span aria-hidden className="size-3.5 shrink-0" />
+      )}
+      <ToolIcon
+        awaitingApproval={awaitingApproval}
+        declined={declined}
+        icon={icon}
+        kind={kind}
+        status={status}
+      />
       <span
         className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}
         ref={titleAnchorRef}
@@ -73,10 +84,15 @@ export function ToolHeader({
           · {summary}
         </span>
       ) : null}
-      {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
-      {badge ? <Badge variant="secondary">{badge}</Badge> : null}
-      {hasBody ? (
-        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />
+      {statusLabel ? (
+        <span
+          className={cn(
+            'shrink-0 text-xs',
+            awaitingApproval ? 'text-warning-foreground' : 'text-destructive-foreground',
+          )}
+        >
+          {statusLabel}
+        </span>
       ) : null}
     </>
   );
@@ -107,31 +123,29 @@ export function ToolHeader({
   );
 }
 
-/** A call's glyph names what it does, not how it went: kind icon (or custom `icon`), spinner
- * while running, shield while its permission ask is open. Failure reads via color, never a cross. */
+/** A call's glyph names important state first, then falls back to its action kind. */
 export function ToolIcon({
   status,
   kind,
   awaitingApproval = false,
+  declined = false,
   icon,
 }: {
   status: ToolCall['status'];
   kind: ToolCall['kind'];
   awaitingApproval?: boolean;
+  declined?: boolean;
   icon?: React.ReactNode;
 }): React.ReactNode {
   if (awaitingApproval) return <ShieldIcon className="size-3.5 text-warning-foreground" />;
-  if (status === 'in_progress') return <Spinner className="size-3.5 text-foreground" />;
+  if (declined) return <BanIcon className="size-3.5 text-destructive-foreground" />;
+  if (status === 'failed') return <CircleXIcon className="size-3.5 text-destructive-foreground" />;
+  if (status === 'pending' || status === 'in_progress') {
+    return <Spinner className="size-3.5 text-foreground" />;
+  }
   if (icon) return icon;
   const KindIcon = TOOL_KIND_ICONS[kind];
-  return (
-    <KindIcon
-      className={cn(
-        'size-3.5',
-        status === 'failed' ? 'text-destructive-foreground' : 'text-muted-foreground',
-      )}
-    />
-  );
+  return <KindIcon className="size-3.5 text-muted-foreground" />;
 }
 
 export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent> & {
