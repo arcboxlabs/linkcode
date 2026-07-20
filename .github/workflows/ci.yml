@@ -109,10 +109,21 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Electron system dependencies
-        run: pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
+        run: |
+          pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
+          sudo apt-get install --no-install-recommends -y openbox
 
       - name: Test unpackaged app entry
         run: xvfb-run -a pnpm -F @linkcode/desktop e2e:unpackaged
+
+      - name: Test window state persistence
+        run: |
+          xvfb-run -a sh -c '
+            openbox >/tmp/linkcode-openbox.log 2>&1 &
+            wm_pid=$!
+            trap "kill $wm_pid 2>/dev/null || true" EXIT
+            pnpm -F @linkcode/desktop e2e:window-bounds
+          '
 
       - name: Test unsigned packaged app entry
         run: xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged

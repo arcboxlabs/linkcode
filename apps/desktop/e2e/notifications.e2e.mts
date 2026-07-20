@@ -109,6 +109,7 @@ async function run(app: ElectronApplication, win: Page): Promise<void> {
   const focused = await win.evaluate(() => document.hasFocus());
   console.log({ draftGone, onSession, focusedAfterClick: focused });
   if (!draftGone || !onSession) fail('click-through did not land on the notifying session');
+  if (!focused) fail('notification click did not focus the app window');
 }
 
 async function main(): Promise<void> {

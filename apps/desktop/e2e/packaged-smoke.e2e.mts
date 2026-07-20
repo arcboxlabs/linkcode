@@ -82,6 +82,10 @@ async function main(): Promise<void> {
     assert.equal(bridge.managed, true);
     assert.equal(typeof bridge.maximized, 'boolean');
 
+    // This surface mounts only below the Workbench connection gate. Bridge and external transport
+    // checks alone would not catch a renderer that failed to discover or dial the packaged daemon.
+    await page.getByRole('heading', { name: 'What should we build?' }).waitFor({ timeout: 30000 });
+
     const runtime = await waitFor(
       () => {
         if (!existsSync(runtimePath)) return false;
@@ -131,7 +135,16 @@ async function main(): Promise<void> {
     transport = new SocketIoTransport({ url: listener.url });
     await verifyTerminal(transport);
 
-    console.log('PASS packaged renderer/preload, bundled daemon, native SQLite, and staged PTY');
+    await Promise.resolve(transport.close());
+    transport = null;
+    await app.close();
+    app = null;
+    await waitFor(() => !existsSync(`/proc/${runtime.pid}`), 100, AbortSignal.timeout(10000));
+    assert.equal(existsSync(runtimePath), false, 'packaged daemon runtime survived app shutdown');
+
+    console.log(
+      'PASS packaged renderer connection, preload, bundled daemon, SQLite, PTY, and shutdown',
+    );
   } finally {
     if (transport) await Promise.resolve(transport.close());
     await app?.close().catch(noop);
