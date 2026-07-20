@@ -79,7 +79,19 @@ function MarkdownLink({
               );
               if (target) {
                 event.preventDefault();
-                target.scrollIntoView({ block: 'start' });
+                const scrollContainer = event.currentTarget.closest<HTMLElement>(
+                  '[data-markdown-scroll-container]',
+                );
+                if (!scrollContainer) {
+                  target.scrollIntoView({ block: 'start' });
+                  return;
+                }
+                scrollContainer.scrollTo({
+                  top:
+                    scrollContainer.scrollTop +
+                    target.getBoundingClientRect().top -
+                    scrollContainer.getBoundingClientRect().top,
+                });
               }
             }
           : undefined
