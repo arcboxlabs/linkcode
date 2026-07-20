@@ -99,7 +99,7 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-        uses: softprops/action-gh-release@v3.0.1
+        uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           draft: false
@@ -130,7 +130,7 @@ jobs:
         # The tap edit itself lives in arcboxlabs/homebrew-tap/.github/actions/bump-cask.
         id: tap-token
         if: ${{ (github.event_name == 'push' || inputs.dry_run == false) && startsWith(steps.meta.outputs.tag, 'v') && !contains(steps.meta.outputs.tag, '-') && env.BOT_APP_ID != '' && env.BOT_APP_PRIVATE_KEY != '' }}
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
