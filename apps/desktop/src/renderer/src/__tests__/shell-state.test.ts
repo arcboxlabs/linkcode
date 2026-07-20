@@ -8,6 +8,7 @@ import {
   createPanelState,
   createRightFileTab,
   DEFAULT_LAYOUT,
+  getTerminalPanelOwner,
   openFileTabState,
   parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
@@ -248,6 +249,20 @@ describe('revealSectionState', () => {
     const revealed = revealSectionState(panel, 'files', true);
 
     expect(revealed.activeSection).toBe('files');
+  });
+});
+
+describe('getTerminalPanelOwner', () => {
+  it('routes interaction to a maximized bottom terminal over an open right terminal', () => {
+    expect(getTerminalPanelOwner('bottom', true, 'terminal', true)).toBe('bottom');
+  });
+
+  it('keeps the right terminal as owner when no panel is maximized', () => {
+    expect(getTerminalPanelOwner(null, true, 'terminal', true)).toBe('right');
+  });
+
+  it('does not give a hidden bottom terminal ownership behind a maximized right panel', () => {
+    expect(getTerminalPanelOwner('right', true, 'diff', true)).toBeNull();
   });
 });
 

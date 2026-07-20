@@ -46,7 +46,7 @@ import type { DesktopShellStyle } from './layout/shell-style';
 import { createDesktopShellStyle, setShellPaneCssSize } from './layout/shell-style';
 import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
-import { getExpandedPanel } from './store/model';
+import { getExpandedPanel, getTerminalPanelOwner } from './store/model';
 import { useDesktopShellStore } from './store/store';
 import { useDesktopPaletteCommands } from './use-desktop-palette-commands';
 import { useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
@@ -195,6 +195,7 @@ export function DesktopShell({
     setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size);
   }, []);
   const { sidebarOpen, layout, expansionStack, rightPanel, bottomPanel } = shellState;
+  const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const rightPanelView = { ...rightPanel, terminal: terminalTabs };
   const bottomPanelView = {
     ...bottomPanel,
@@ -204,8 +205,14 @@ export function DesktopShell({
     ],
     activeTabId: bottomPanel.activeTabId ?? terminalTabs.activeTabId,
   };
-  const rightOwnsTerminal = rightPanel.open && rightPanel.activeSection === 'terminal';
-  const bottomOwnsTerminal = bottomPanel.open && !rightOwnsTerminal;
+  const terminalPanelOwner = getTerminalPanelOwner(
+    expandedPanel,
+    rightPanel.open,
+    rightPanel.activeSection,
+    bottomPanel.open,
+  );
+  const rightOwnsTerminal = terminalPanelOwner === 'right';
+  const bottomOwnsTerminal = terminalPanelOwner === 'bottom';
   const sidebarTransition = usePaneTransition({
     open: sidebarOpen,
     size: layout.sidebarW,
@@ -236,7 +243,6 @@ export function DesktopShell({
   const showWindowControls = desktopPlatform !== 'darwin';
   // The workspace grid cell owns the animated divider, so the aside's own border is off.
   const sidebarClassName = hasNativeBackdrop ? 'border-r-0 bg-sidebar/25' : 'border-r-0 bg-sidebar';
-  const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
 
   useAbortableEffect(

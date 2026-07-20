@@ -237,6 +237,22 @@ export function getExpandedPanel(
   return null;
 }
 
+/** Chooses the only terminal surface allowed to send PTY input/resize. A maximized panel owns
+ * interaction because the other panel is inert behind its overlay. */
+export function getTerminalPanelOwner(
+  expandedPanel: PanelSide | null,
+  rightPanelOpen: boolean,
+  rightPanelSection: PanelSection,
+  bottomPanelOpen: boolean,
+): PanelSide | null {
+  if (expandedPanel === 'bottom') return bottomPanelOpen ? 'bottom' : null;
+  if (expandedPanel === 'right') {
+    return rightPanelOpen && rightPanelSection === 'terminal' ? 'right' : null;
+  }
+  if (rightPanelOpen && rightPanelSection === 'terminal') return 'right';
+  return bottomPanelOpen ? 'bottom' : null;
+}
+
 export function getExpandedPanelForTarget(
   side: PanelSide | null,
   target: PanelExpansionTarget,
