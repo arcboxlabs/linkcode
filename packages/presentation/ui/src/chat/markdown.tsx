@@ -1,7 +1,8 @@
 import { cjk } from '@streamdown/cjk';
 import { createCodePlugin } from '@streamdown/code';
+import rehypeSlug from 'rehype-slug';
 import type { Components, PluginConfig, StreamdownProps } from 'streamdown';
-import { Streamdown } from 'streamdown';
+import { defaultRehypePlugins, Streamdown } from 'streamdown';
 import { cn } from '../lib/cn';
 import { useRenderPrefs } from '../render-prefs';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
@@ -11,6 +12,7 @@ import { artifactFenceLanguages } from './artifacts/registry';
 import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
+const SANITIZED_HEADING_PREFIX = 'user-content-';
 
 /** Inline code, upgraded to a file link when the span is a viewer-openable path and
  * the host wires `openFile` (degrades to plain code everywhere else). */
@@ -46,19 +48,45 @@ function InlineCode({
   );
 }
 
-// Typography overrides keep the chat-tuned look; fenced code blocks stay on
-// Streamdown's defaults for shiki highlighting and copy controls.
-const components: Components = {
-  a: ({ className, children, node: _node, ...rest }) => (
+function MarkdownLink({
+  className,
+  children,
+  node: _node,
+  href,
+  ...rest
+}: React.ComponentProps<'a'> & { node?: unknown }): React.ReactNode {
+  const isFragment = href?.[0] === '#';
+  const fragmentHref = isFragment ? `#${SANITIZED_HEADING_PREFIX}${href.slice(1)}` : undefined;
+  return (
     <a
       {...rest}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
-      target="_blank"
-      rel="noreferrer"
+      href={fragmentHref ?? href}
+      target={isFragment ? undefined : '_blank'}
+      rel={isFragment ? undefined : 'noreferrer'}
+      onClick={
+        fragmentHref
+          ? (event) => {
+              const target = event.currentTarget.ownerDocument.getElementById(
+                fragmentHref.slice(1),
+              );
+              if (target) {
+                event.preventDefault();
+                target.scrollIntoView({ block: 'start' });
+              }
+            }
+          : undefined
+      }
     >
       {children}
     </a>
-  ),
+  );
+}
+
+// Typography overrides keep the chat-tuned look; fenced code blocks stay on
+// Streamdown's defaults for shiki highlighting and copy controls.
+const components: Components = {
+  a: MarkdownLink,
   p: ({ className, children, node: _node, ...rest }) => (
     <p className={cn('my-2 first:mt-0 last:mb-0', className)} {...rest}>
       {children}
@@ -142,6 +170,12 @@ const artifactRenderers = [
   { language: artifactFenceLanguages(), component: ArtifactFenceRenderer },
 ];
 
+// Generate heading IDs before Streamdown's sanitizer so its DOM-clobbering prefix remains intact.
+const markdownRehypePlugins = [
+  rehypeSlug,
+  ...Object.values(defaultRehypePlugins),
+] satisfies NonNullable<StreamdownProps['rehypePlugins']>;
+
 const INSTANT_STREAM_ANIMATION = {
   duration: 0,
   stagger: 0,
@@ -174,6 +208,7 @@ export function Markdown({ children, className, animated }: MarkdownProps): Reac
       components={components}
       animated={animated}
       plugins={plugins}
+      rehypePlugins={markdownRehypePlugins}
     >
       {children}
     </Streamdown>
