@@ -23,6 +23,7 @@
     { "path": "packages/host/agent-adapter/tests" },
     { "path": "packages/host/assets" },
     { "path": "packages/host/engine" },
+    { "path": "packages/host/engine/tests" },
     { "path": "packages/integrations/im-render" },
     { "path": "packages/presentation/i18n" },
     { "path": "packages/presentation/ui" },

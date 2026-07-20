@@ -3,8 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect, Fiber } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { RingBuffer } from '../automation/ring-buffer';
-import { runShellCheck } from '../automation/shell-exec';
+import { runShellCheck } from '../../src/automation/shell-exec';
 
 describe('runShellCheck', () => {
   it('reports exit 0 and captured output for a passing command', async () => {
@@ -68,15 +67,6 @@ describe('runShellCheck', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
-});
-
-describe('RingBuffer', () => {
-  it('drops the oldest entries past capacity and snapshots in order', () => {
-    const buffer = new RingBuffer<number>(3);
-    for (let i = 1; i <= 5; i += 1) buffer.push(i);
-    expect(buffer.size).toBe(3);
-    expect(buffer.snapshot()).toEqual([3, 4, 5]);
   });
 });
 

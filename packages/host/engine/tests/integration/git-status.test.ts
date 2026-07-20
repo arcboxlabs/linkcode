@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { Effect, Logger as EffectLogger } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { GitService } from '../git/git-service';
-import { GitProviderError } from '../git/provider';
-import { readGitStatus } from '../git/status';
+import { GitService } from '../../src/git/git-service';
+import { GitProviderError } from '../../src/git/provider';
+import { readGitStatus } from '../../src/git/status';
 
 const roots: string[] = [];
 const silentLogger = EffectLogger.layer([EffectLogger.make(noop)]);
