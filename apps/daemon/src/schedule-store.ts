@@ -9,6 +9,7 @@ import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { scheduleRuns, schedules } from './db/schema';
+import { logger } from './logger';
 
 type ScheduleRow = typeof schedules.$inferSelect;
 type ScheduleRunRow = typeof scheduleRuns.$inferSelect;
@@ -94,8 +95,8 @@ function parseAll<Row, T>(rows: Row[], parse: (row: Row) => T): T[] {
   for (const row of rows) {
     try {
       parsed.push(parse(row));
-    } catch (err) {
-      console.error('Dropping malformed schedule row:', err);
+    } catch {
+      logger.warn({ operation: 'schedule.load' }, 'Dropping malformed schedule row');
     }
   }
   return parsed;

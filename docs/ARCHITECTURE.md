@@ -122,7 +122,7 @@ move business data — doing so would couple business logic to Electron.
 ## Packages & repo layout
 
 A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable ends;
-`packages/*` are shared libraries. The whole system is glued by one zod contract
+`packages/*/*` are shared libraries grouped by architectural ownership. The whole system is glued by one zod contract
 (`@linkcode/schema`) carried over a `transport`.
 
 ### Apps (`apps/`)
@@ -132,25 +132,43 @@ A pnpm-workspaces + turborepo monorepo, all TypeScript. `apps/*` are runnable en
 | `daemon`  | Local host process — constructs the engine and exposes the data plane over a local Socket.IO/WebSocket server (`127.0.0.1`) that every client connects to. |
 | `desktop` | Electron app: Vite renderer + main/preload. The renderer connects to `daemon` over `transport`; the system plane goes through TypeSafe IPC.    |
 | `webview` | Browser client — Vite + React Router + coss-ui. Connects to `daemon` over `transport`. No system plane.                                        |
-| `mobile`  | Expo / React Native client (HeroUI). Reaches the host through the `server` tunnel.                                                             |
-| `server`  | Tunnel / relay: `token`, `perm`, `store`, `realtime`. Does not run agents. Host ↔ Server is RPC over WebSocket.                                |
+| `mobile`  | Expo / React Native client (HeroUI). Reaches the host through the external LinkCode Cloud tunnel.                                                |
+
+The Server shown in the system diagrams and data-flow sections is the production relay owned by
+the external `linkcodehq` repository; there is no Server app in this repository.
 
 ### Packages (`packages/`)
 
-| Package         | Description                                                                                                                                     |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schema`        | zod schemas — the single data contract. Every cross-process / cross-end / post-abstraction message type derives from here (`z.infer`).         |
-| `transport`     | Communication layer ("how messages travel"): local / ws / Socket.IO implementations, the `Hub` fan-out, and the versioned wire protocol.       |
-| `agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi` / `grok-build`) plus the abstraction layer that normalizes native events into `schema`.    |
-| `engine`        | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`.                                                           |
-| `client-core`   | Shared client data layer: `LinkCodeClient`, the conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`).           |
-| `common`        | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers).       |
-| `sdk`           | Transport-backed SDK (`LinkCodeSdkClient` over a `Transport`): typed operations plus the `Options` / `RequestResult` types `tayori` is parameterized with. Hand-written RPC, not OpenAPI-generated. |
-| `workbench`     | Shared workbench runtime: the connection controller (endpoint resolution, fresh transport/SDK generations, retry/backoff), `WorkbenchProviders`, the `Workbench` surface, and typed `tayori`/SWR data plumbing. SWR caches by endpoint and revalidates after a new generation becomes ready; it does not own sockets. |
-| `ui`            | Shared, business-free presentation: chat and shell view components (`AppShell`). Receives view-models and callbacks; owns no routing, connection, or state. |
-| `coss-ui`       | Vendored COSS UI primitives (base-ui + Tailwind, from cal.com's COSS UI). Synced from upstream, not hand-edited. Formatted by Biome, excluded from ESLint. |
-| `ipc`           | TypeSafe IPC (system plane) for Electron; `tRPC` is the default implementation. Desktop only.                                                  |
-| `i18n`          | Locale messages and locale resolution (`use-intl`).                                                                                            |
+Scopes make ownership and navigation visible; they do not rename package imports and do not by
+themselves enforce dependencies. Package contracts, ESLint, and the root typecheck remain the
+dependency guardrails.
+
+| Scope | Packages | Responsibility |
+| --- | --- | --- |
+| `foundation` | `schema`, `transport`, `common` | Stable contracts, communication primitives, and framework-agnostic utilities. |
+| `host` | `agent-adapter`, `assets`, `engine` | Daemon-side agent integration, managed assets, and orchestration. |
+| `client` | `core`, `sdk`, `workbench` | Client data plane, typed operations, runtime containers, and feature composition. |
+| `presentation` | `i18n`, `ui` | Locale data and business-free presentation driven by view-models and callbacks. |
+| `system-plane` | `ipc` | Desktop-only Electron system-plane communication. |
+| `integrations` | `im-render` | Reusable adapters at external integration boundaries. |
+| `vendor` | `coss-ui` | Upstream code preserved and consumed as-is. |
+
+| Package path | Description |
+| --- | --- |
+| `foundation/schema` | zod schemas — the single data contract. Every cross-process / cross-end / post-abstraction message type derives from here (`z.infer`). |
+| `foundation/transport` | Communication layer ("how messages travel"): local / ws / Socket.IO implementations, the `Hub` fan-out, and the versioned wire protocol. |
+| `foundation/common` | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers). |
+| `host/agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi` / `grok-build`) plus the abstraction layer that normalizes native events into `schema`. |
+| `host/assets` | Managed-asset store for verified agent CLI pairs, in-process package closures, and standalone toolchains. |
+| `host/engine` | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`. |
+| `client/core` | `@linkcode/client-core`: shared client data layer, conversation view-model, and React bindings (`LinkCodeProvider`, `useConversation`). |
+| `client/sdk` | Transport-backed SDK (`LinkCodeSdkClient` over a `Transport`): typed operations plus the `Options` / `RequestResult` types `tayori` is parameterized with. Hand-written RPC, not OpenAPI-generated. |
+| `client/workbench` | Shared workbench runtime: connection control, providers, feature containers, and typed `tayori`/SWR data plumbing. It composes presentation but does not own reusable views. |
+| `presentation/i18n` | Locale messages and locale resolution (`use-intl`). |
+| `presentation/ui` | Shared, business-free presentation: chat and shell view components (`AppShell`). Receives view-models and callbacks; owns no routing, connection, or daemon state. |
+| `system-plane/ipc` | TypeSafe IPC (system plane) for Electron; `tRPC` is the default implementation. Desktop only. |
+| `integrations/im-render` | LinkCode-owned, platform-neutral `AgentEvent` / conversation-to-Markdown renderer. Telegram, Discord, and Slack escaping, splitting, buttons, and delivery remain in the external `linkcodehq` bridges. |
+| `vendor/coss-ui` | Vendored COSS UI primitives (base-ui + Tailwind, from cal.com's COSS UI). Synced from upstream and excluded from formatting and linting. |
 
 ## The host: engine, adapters, abstraction
 
@@ -170,6 +188,74 @@ cold (stopped) sessions, `session.resume` wakes one under the same id, and
 `session.import` registers a provider-local history session as a cold record.
 Transcripts are not copied — they stay in provider-local history and are read back
 through the history contract.
+
+### Engine runtime ownership and composition
+
+The daemon supplies concrete infrastructure through `EngineInfrastructure`: the transport,
+persistent stores, PTY backend, assets, runtime probe, preview routes, and provider configuration.
+`EngineLive` consumes that boundary and assembles the Engine features behind `EngineService`.
+`makeEngineLayer` is only a convenience composition for tests and embedders that already hold
+concrete infrastructure.
+
+```diagram
+┌──────────────────────────────┐
+│ daemon-owned infrastructure  │
+│ transport · stores · PTY     │
+│ assets · probes · routes     │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│ EngineInfrastructure Layer   │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│ EngineLive                   │
+│ feature assembly + lifecycle │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│ EngineService                │
+└──────────────────────────────┘
+```
+
+`createEngineRuntime` is the single ownership point for the Engine's root `Scope` and root
+`FiberSet`. Session, Schedule, Loop, and Script work all run beneath that owner; feature services
+must not create another runtime, root scope, or root fiber registry. Layers model real construction
+and resource boundaries, not every helper class. Schedule and Loop façades own request admission and
+durable state transitions while their run coordinators own individual run execution and settlement.
+`ScriptService` owns registry and terminal orchestration; `ScriptPortPlan` owns stable port/environment
+planning, and the TCP probe owns its interruptible socket resource.
+
+### Effect, failures, and observability
+
+Effect owns the Engine control plane: startup/shutdown, request execution, session lifecycle,
+automation, process execution, interruption, and resource finalization. The high-volume terminal/PTTY
+frame path remains plain TypeScript; wrapping every input or acknowledgement frame in Effect tracing
+would add data-plane overhead without improving lifecycle correctness.
+
+Engine exits have three distinct meanings:
+
+- **Expected failure** — `RequestError`, `OperationError`, or `OperationTimeout` in the typed error
+  channel. The wire boundary maps these to stable public codes and safe messages.
+- **Defect** — an unexpected cause. It is reported diagnostically, while the wire receives only
+  `internal_error` / `Internal engine error`.
+- **Interruption** — cancellation or shutdown. It remains interruption, runs finalizers, and is never
+  converted into a normal business failure or persisted as one.
+
+Private causes may be logged but never enter wire replies or durable user-visible failure strings.
+Wire request outcomes are observed across `WireResponder`, because typed failures become successful
+send effects after a `request.failed` reply. Span attributes may contain correlation identifiers;
+metric attributes are limited to stable low-cardinality values such as subsystem, operation, request
+kind, and outcome. Engine instrumentation covers request latency/outcome, session start/stop and live
+session count, Schedule runs, Loop iterations, and child-process execution including timeout and
+interruption outcomes.
+
+The Engine emits only Effect logs, spans, and metrics. The daemon owns all exporters and sinks:
+Effect logs bridge into Pino; Sentry's Pino integration reports error/fatal records; the daemon's
+recursive sanitizer runs before both log emission and Sentry events. `@effect/opentelemetry` installs
+only the Effect tracer over Sentry's global OpenTelemetry provider — it does not create a second
+provider, exporter, or logging pipeline. Effect metrics are currently runtime-local; adding a metrics
+exporter is a daemon boundary decision.
 
 **Agent adapters.** One adapter per agent — `claude-code`, `codex`, `opencode`, `pi`, `grok-build` —
 each hiding its SDK's differences behind the unified `AgentAdapter` interface. A shared
@@ -234,7 +320,7 @@ keep drafts local, and submit a multi-question request as one ordered response.
 ## Key contracts
 
 All of the types below derive from `@linkcode/schema`; the signatures are the current
-shape in `packages/*`, elided for readability.
+shape in `packages/*/*`, elided for readability.
 
 ```ts
 // @linkcode/agent-adapter — one adapter per agent; native events → normalized AgentEvent
@@ -323,6 +409,8 @@ interface SystemBridge {
 | Mobile                 | Expo / React Native (HeroUI)                                                  |
 | Client data layer      | `sdk` + `tayori` + SWR                                                        |
 | Agents                 | Claude Code · Codex · OpenCode · Pi                                           |
+| Host control plane     | Effect v4 (`Layer`, scoped resources, typed failures, interruption)           |
+| Host observability     | Effect logs/spans/metrics → daemon Pino + Sentry/OpenTelemetry tracing        |
 | Lint / format          | ESLint (`eslint-config-sukka`) / Biome (formatting only)                     |
 
 ## Open questions

@@ -1,12 +1,13 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Engine } from '@linkcode/engine';
+import { makeEngineLayer } from '@linkcode/engine';
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage, SocketIoTransport } from '@linkcode/transport';
 import type { SocketIoServer } from '@linkcode/transport/server';
 import { createSocketIoServer, Hub } from '@linkcode/transport/server';
+import { ManagedRuntime } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { binaryName, SidecarPtyBackend } from '../pty/sidecar';
@@ -114,7 +115,7 @@ describe.skipIf(!BINARY || process.platform === 'win32')(
   () => {
     let server: SocketIoServer;
     let hub: Hub;
-    let engine: Engine;
+    let disposeEngine: () => Promise<void>;
     let backend: SidecarPtyBackend;
     let clientA: RawWireClient;
     let clientB: RawWireClient;
@@ -122,8 +123,9 @@ describe.skipIf(!BINARY || process.platform === 'win32')(
     beforeAll(async () => {
       hub = new Hub();
       backend = new SidecarPtyBackend(BINARY);
-      engine = new Engine(hub, { ptyBackend: backend });
-      await engine.start();
+      const engine = ManagedRuntime.make(makeEngineLayer(hub, { ptyBackend: backend }));
+      await engine.context();
+      disposeEngine = () => engine.dispose();
       server = await createSocketIoServer({ port: 0, host: '127.0.0.1' });
       server.onConnection((conn: Transport) => hub.addConnection(conn));
       clientA = new RawWireClient(`http://127.0.0.1:${server.port}`);
@@ -133,7 +135,7 @@ describe.skipIf(!BINARY || process.platform === 'win32')(
     });
 
     afterAll(async () => {
-      await engine.stop();
+      await disposeEngine();
       clientA.close();
       clientB.close();
       await server.close();

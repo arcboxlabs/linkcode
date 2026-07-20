@@ -6,12 +6,12 @@
 
 Each of these breaks the product, a release, or the build with **no loud error**.
 
-1. **Wire-protocol versions are lockstep.** `WIRE_PROTOCOL_VERSION` (currently 44) is a `z.literal` in `packages/schema/src/wire`; any change to any wire variant must bump it. Mismatched peers still complete the socket ("connected") but every frame fails validation and is **silently discarded** — zero messages, a hang-like failure. Rebuild and restart the daemon and every client together.
+1. **Wire-protocol versions are lockstep.** `WIRE_PROTOCOL_VERSION` (currently 45) is a `z.literal` in `packages/foundation/schema/src/wire`; any change to any wire variant must bump it. Mismatched peers still complete the socket ("connected") but every frame fails validation and is **silently discarded** — zero messages, a hang-like failure. Rebuild and restart the daemon and every client together.
 2. **`foxts/once` prewarms by default.** `once(fn)` runs `fn` immediately at construction and caches the result; call-at-most-once semantics need `once(fn, false)`. The default has already shipped a daemon that ran its shutdown at boot and transports whose close-callback fired at construction. Read any foxts helper's `.d.ts`/source before adopting it — the lodash-alike name lies.
 3. **Native deps must be allow-listed.** pnpm blocks install scripts by default; a native dep (e.g. `better-sqlite3`) missing from `allowBuilds:` in `pnpm-workspace.yaml` installs fine but fails at `require()` time with missing bindings.
 4. **CI does not run `pnpm test`.** The vitest suite (~57 test files, node-env pure logic) is absent from `check:ci` and from every workflow — CI gates only format/lint/typecheck plus the Rust job. A green PR does not mean the tests pass; run `pnpm test` yourself before every commit.
 5. **A release is a version+tag pair.** Bump `apps/desktop/package.json` `version`, then push a `v*.*.*` tag; CI fails unless `v${version}` equals the tag. Never hand-tag or hand-edit workspace versions ([`docs/RELEASE.md`](docs/RELEASE.md)).
-6. **Every daemon-side child process sets `windowsHide: true`.** Node defaults it to `false`, and the daemon runs console-less (Electron `utilityProcess`), so a console-subsystem child spawned without it — agent CLI, git, sidecar, bsdtar — pops a visible console window on packaged Windows only; silent everywhere else, dev included. Applies to every `spawn`/`exec*`/cross-spawn call in `apps/daemon` and `packages/{engine,agent-adapter,assets}` (CODE-236 swept all sites 2026-07 — keep new ones consistent). SDK-internal spawns are out of reach: claude's SDK hides its own; opencode servers are spawned by our own `native/opencode/serve.ts` (CODE-76), not the SDK, so the flag applies there too.
+6. **Every daemon-side child process sets `windowsHide: true`.** Node defaults it to `false`, and the daemon runs console-less (Electron `utilityProcess`), so a console-subsystem child spawned without it — agent CLI, git, sidecar, bsdtar — pops a visible console window on packaged Windows only; silent everywhere else, dev included. Applies to every `spawn`/`exec*`/cross-spawn call in `apps/daemon` and `packages/host/{engine,agent-adapter,assets}` (CODE-236 swept all sites 2026-07 — keep new ones consistent). SDK-internal spawns are out of reach: claude's SDK hides its own; opencode servers are spawned by our own `native/opencode/serve.ts` (CODE-76), not the SDK, so the flag applies there too.
 
 ## Routing — touching X, read Y first
 
@@ -20,13 +20,13 @@ Each of these breaks the product, a release, or the build with **no loud error**
 | Run, test, E2E, or debug the app locally | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
 | Touch the renderer (React, UI, icons, i18n, client state) | [`.claude/rules/frontend.md`](.claude/rules/frontend.md) |
 | Touch Electron main / preload / CSP / cloud-auth wiring | [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md) |
-| Integrate or change an agent (claude-code, codex, opencode, pi), approvals, history | [`packages/agent-adapter/AGENTS.md`](packages/agent-adapter/AGENTS.md) |
+| Integrate or change an agent (claude-code, codex, opencode, pi), approvals, history | [`packages/host/agent-adapter/AGENTS.md`](packages/host/agent-adapter/AGENTS.md) |
 | Work on the daemon: ports, `runtime.json`, spawn, PTY sidecar | [`apps/daemon/AGENTS.md`](apps/daemon/AGENTS.md); triage lives in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
 | Package, sign, notarize, or publish a release | [`docs/RELEASE.md`](docs/RELEASE.md) + [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md) |
-| Change the wire protocol, schema, or transport | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) contracts + `packages/schema` (Invariant 1) |
+| Change the wire protocol, schema, or transport | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) contracts + `packages/foundation/schema` (Invariant 1) |
 | Work on mobile (Expo) | [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md) |
 | Use `tayori` anywhere | fetch <https://tayori.skk.moe/llms-full.txt> first — it is absent from your training data |
-| LinkCode Cloud (production API, auth-provider, IM, connectors) | not this repo — the `linkcodehq` repository (see Ecosystem; in-repo `apps/server` is only a placeholder relay) |
+| LinkCode Cloud (production API, auth-provider, IM, connectors) | not this repo — the `linkcodehq` repository (see Ecosystem) |
 | Anything else in an app or package | that directory's own `AGENTS.md` |
 
 ## Planning
@@ -50,8 +50,8 @@ A change isn't done until you've **observed it running** — preload/IPC/bridge 
 
 - **The toolchain comes from devenv** (`devenv.nix`: Node 26, pnpm, Rust, prek hooks). If your shell isn't already inside the environment (direnv), run repo commands as `devenv shell -- pnpm …`. The devenv scripts `app` / `daemon` / `desktop` / `mobile` (defined in `devenv.nix`) are the convenience runners — plain commands inside the devenv shell, or `devenv shell -- app` from outside (there is no `devenv run` subcommand).
 - **pnpm only**, never `npm` / `npx`. Prefer existing npm scripts (e.g. `pnpm -F @linkcode/webview run lint`) over invoking binaries directly. pnpm 11 reads install settings from `pnpm-workspace.yaml`, **not** `.npmrc` (which is nearly inert here): `nodeLinker: hoisted`, shared versions under `catalog:`, security `overrides`, native builds under `allowBuilds:` (Invariant 3), and a `minimumReleaseAgeExclude` allowlist that exempts just-released pins from the release-age install policy.
-- Turbo wraps only `build`/`dev`/`clean`. Root `pnpm typecheck` is one `tsc --build --noEmit` over the root `tsconfig.json` solution file, which lists every workspace project as a `reference` (package tsconfigs stay `incremental` + `noEmit`, never `composite`, and never reference each other — cross-package imports resolve into dep sources directly). There are no per-package typecheck scripts; check one project with `tsc --build --noEmit packages/<name>`. `pnpm lint` is one whole-repo `eslint --format=sukka .` and `pnpm test` is one root `vitest run` — all three bypass turbo, so editing turbo's `lint` task changes nothing. A new workspace package must be added to the root `tsconfig.json` `references` or it is silently unchecked.
-- **Lint = ESLint (`eslint-config-sukka`); format = Biome (its linter is disabled — Biome only formats and organizes imports).** Don't fix lint by hand first; finish the task, then run `pnpm lint:fix` and re-check — most issues auto-fix. Biome lowercases hex literals while sukka wants uppercase — write shared constants in decimal. `packages/coss-ui` is the one exception: vendored, ignored by ESLint **and** excluded from the root Biome config, so upstream formatting is preserved as-synced — never hand-edit or reformat it.
+- Turbo wraps only `build`/`dev`/`clean`. Root `pnpm typecheck` is one `tsc --build --noEmit` over the root `tsconfig.json` solution file, which lists every workspace project as a `reference` (package tsconfigs stay `incremental` + `noEmit`, never `composite`, and never reference each other — cross-package imports resolve into dep sources directly). There are no per-package typecheck scripts; check one project with `tsc --build --noEmit packages/<scope>/<name>`. `pnpm lint` is one whole-repo `eslint --format=sukka .` and `pnpm test` is one root `vitest run` — all three bypass turbo, so editing turbo's `lint` task changes nothing. A new workspace package must be added to the root `tsconfig.json` `references` or it is silently unchecked.
+- **Lint = ESLint (`eslint-config-sukka`); format = Biome (its linter is disabled — Biome only formats and organizes imports).** Don't fix lint by hand first; finish the task, then run `pnpm lint:fix` and re-check — most issues auto-fix. Biome lowercases hex literals while sukka wants uppercase — write shared constants in decimal. `packages/vendor/coss-ui` is the one exception: vendored, ignored by ESLint **and** excluded from the root Biome config, so upstream formatting is preserved as-synced — never hand-edit or reformat it.
   - A new `*.config.ts` at a package root must be added to that package's tsconfig `include` and kept out of eslint's `allowDefaultProject` globs — typescript-eslint's default project hard-caps at 8 files and rejects files matched by both.
 - **prek pre-commit hooks run format/lint/typecheck over the WHOLE repo** on every commit (plus a 512 KB cap on newly added files; Rust is **not** hooked — run `cargo fmt`/`clippy`/`test` yourself). A parallel session's dirty files can therefore fail *your* commit; verify your own files are clean before blaming your change. Hook config lives in `devenv.nix` (never edit the generated `.pre-commit-config.yaml`); stash-recovery for a failed hook run is in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 - React Compiler is enabled on the Vite renderers — write code that satisfies its rules (no manual `useMemo`/`useCallback` gymnastics that fight it; keep components pure).
@@ -66,12 +66,12 @@ Before hand-writing any small TS utility (delay/retry/debounce/guard/clamp) or R
 
 Use dependency direction to decide where code belongs; do not place a file by the app that first needed it.
 
-- `apps/*` are runnable ends, not shared libraries. One app must not import another app to reuse providers, routing, transports, or UI. Shared app/runtime glue belongs in `packages/workbench`; shared presentation belongs in `packages/ui`.
+- `apps/*` are runnable ends, not shared libraries. One app must not import another app to reuse providers, routing, transports, or UI. Shared app/runtime glue belongs in `packages/client/workbench`; shared presentation belongs in `packages/presentation/ui`.
 - `apps/desktop` owns Electron-only concerns: main/preload, `SystemBridge` calls, native window/chrome behavior, desktop transport construction, and desktop-specific shell layout integration. If a component only needs one desktop value, read that value at the desktop boundary and pass it down as a prop; do not keep the whole component in desktop.
 - `apps/webview` owns the browser entry and browser transport construction. It has no system plane and no Electron fallback path.
-- `packages/workbench` owns the client runtime/data plane: `client-core`, `sdk`, `tayori`, SWR, transport-backed containers, session orchestration, and runtime providers.
-- `packages/ui` owns business-free React presentation. It may consume schema/view-model types and callbacks, but it must not import `client-core`, `sdk`, `transport`, `tayori`, app packages, or Electron IPC.
-- `packages/common` is for framework-agnostic utilities only. Do not move UI, hooks tied to React renderers, or product behavior there.
+- `packages/client/workbench` owns the client runtime/data plane: `client-core`, `sdk`, `tayori`, SWR, transport-backed containers, session orchestration, and runtime providers.
+- `packages/presentation/ui` owns business-free React presentation. It may consume schema/view-model types and callbacks, but it must not import `client-core`, `sdk`, `transport`, `tayori`, app packages, or Electron IPC.
+- `packages/foundation/common` is for framework-agnostic utilities only. Do not move UI, hooks tied to React renderers, or product behavior there.
 
 When moving code across a boundary, move the dependency with the responsibility: keep system-plane reads at desktop edges, data-plane reads in workbench, and pure rendering in UI.
 
@@ -95,7 +95,6 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 
 - **The daemon runs on the user's machine** — `apps/daemon` running `@linkcode/engine`, bound to loopback; desktop/webview/mobile are clients of it. This repo is the clients plus the daemon.
 - **LinkCode Cloud is a separate repository, `linkcodehq`**: the production API at `api.linkcode.ai` (Hono on Cloudflare Workers) plus auth, IM, and connectors. Any cloud/server/tunnel/auth-provider work happens there, not here.
-- **`apps/server` (`@linkcode/server`) is a placeholder** — a bare `ws` relay that room-broadcasts host↔client for the future mobile tunnel; it runs no agent, and its auth/storage are TODO. It is **not** LinkCode Cloud.
 - **Central identity is a separate ArcBox service** (`auth.arcbox.dev`); `linkcodehq`'s better-auth is a *client* of it, not the provider.
 - Desktop auto-updates read the Cloudflare R2 feed at `releases.linkcode.ai/desktop`; agent CLI binaries do **not** ship in the app (CODE-114) — the daemon spawns a detected user install (runtime probe) or a managed download — detail in [`docs/RELEASE.md`](docs/RELEASE.md) and [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md).
 
@@ -109,7 +108,7 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 
 - **`tayori` is custom-made and absent from your training data.** Fetch <https://tayori.skk.moe/llms-full.txt> before touching any code that uses it. Do not guess at its API.
 - **Effect v4 (the daemon's boot orchestration) postdates your training data.** It was released 2026-02; v3 idioms actively mislead (`Context.Tag` → `Context.Service`, `Schedule.intersect` removed, `Effect.retry` takes an options object, …). Before writing Effect code, load the `effect-ts` skill (its `references/` guides are v4-canonical) and read the installed `.d.ts` under `node_modules/effect`; the skill's source-research prerequisite is a gitignored clone at `.repos/effect` (`git clone https://github.com/Effect-TS/effect-smol .repos/effect`). Repo policy overrides the skill's `effect@beta` install rule: the pin is an exact beta — bump it deliberately, as a small migration (CODE-244).
-- **The agent SDKs are fast-moving** (three are 0.x; opencode is 1.x) — read the installed `.d.ts` under `node_modules`, not vendor docs or your training memory, before relying on SDK behavior (`packages/agent-adapter/AGENTS.md`).
+- **The agent SDKs are fast-moving** (three are 0.x; opencode is 1.x) — read the installed `.d.ts` under `node_modules`, not vendor docs or your training memory, before relying on SDK behavior (`packages/host/agent-adapter/AGENTS.md`).
 - **The open questions in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** are genuinely undecided — never invent answers; ask first.
 
 ## Known Traps — symptom → owning doc

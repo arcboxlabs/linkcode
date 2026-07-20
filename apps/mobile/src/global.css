@@ -3,7 +3,7 @@
 @import "heroui-native/styles";
 
 /* Workspace sources are outside Tailwind's automatic content detection root. */
-@source "../../../packages/ui/src/native/**/*.{ts,tsx}";
+@source "../../../packages/presentation/ui/src/native/**/*.{ts,tsx}";
 @source "../../../node_modules/heroui-native/lib";
 
 /* Semantic type scale (Apple HIG-ish); use these instead of raw text-[NNpx]. */

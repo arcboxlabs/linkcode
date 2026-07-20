@@ -1,5 +1,5 @@
 import { PassThrough } from 'node:stream';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT, encodeDataFrame, OPENED, OUTPUT } from '../codec';
 
 const mocks = vi.hoisted(() => ({
@@ -59,6 +59,10 @@ function writtenOpenBody(child: ReturnType<typeof fakeChild>): { cmd: string; ar
 }
 
 describe('SidecarPtyBackend', () => {
+  beforeEach(() => {
+    mocks.spawn.mockReset();
+  });
+
   it('rejects an open with an unconfigured binary path instead of spawning it', async () => {
     const { SidecarPtyBackend } = await import('../sidecar');
     const backend = new SidecarPtyBackend('');
@@ -94,6 +98,17 @@ describe('SidecarPtyBackend', () => {
     backend.shutdown();
 
     await expect(pending).rejects.toThrow('pty backend shutdown');
+  });
+
+  it('rejects opens after shutdown without spawning a new sidecar', async () => {
+    const { SidecarPtyBackend } = await import('../sidecar');
+    const backend = new SidecarPtyBackend('/bin/linkcode-pty');
+    backend.shutdown();
+
+    await expect(backend.open('term-1', { cols: 80, rows: 24 })).rejects.toThrow(
+      'pty backend shutdown',
+    );
+    expect(mocks.spawn).not.toHaveBeenCalled();
   });
 
   it('rejects a pending open the sidecar never answers, after the open timeout', async () => {

@@ -19,7 +19,7 @@ module.exports = require('eslint-config-sukka').sukka(
         '.vscode/**',
         '.zed/**',
         '**/expo-export/**',
-        'packages/coss-ui/**', // sync from upstream
+        'packages/vendor/coss-ui/**', // sync from upstream
         'pnpm-lock.yaml',
       ],
     },
@@ -28,16 +28,15 @@ module.exports = require('eslint-config-sukka').sukka(
         'apps/desktop/**',
         'apps/mobile/src/**',
         'apps/webview/src/**',
-        'packages/ui/src/**',
-        'packages/workbench/src/**',
-        'packages/client-core/src/**',
+        'packages/presentation/ui/src/**',
+        'packages/client/workbench/src/**',
+        'packages/client/core/src/**',
       ],
       additionalHooks: '(useIsomorphicLayoutEffect|useAbortableEffect)',
     },
     stylistic: false,
     ts: {
       allowDefaultProject: [
-        '*.config.ts',
         // apps/daemon/drizzle.config.ts is intentionally absent: it is included by the daemon's
         // tsconfig (project service), and a file must not appear in both.
         'apps/*/vite.config.ts',
@@ -45,8 +44,8 @@ module.exports = require('eslint-config-sukka').sukka(
         // apps/desktop's vite.{shared,main,preload,renderer}.config.ts are intentionally absent
         // (and deliberately named so 'apps/*/vite.config.ts' does not match them): they are
         // included by the desktop tsconfig (project service), and a file must not appear in both.
-        // agent-adapter tests are included by that package's tsconfig like every other package's;
-        // listing them here too would breach typescript-eslint's 8-file default-project cap.
+        // Workspace tests belong to their source tsconfig or a tests/tsconfig.json referenced by
+        // the root solution; listing them here too would breach typescript-eslint's 8-file cap.
         'vitest.config.ts',
       ],
     },
@@ -84,9 +83,8 @@ module.exports = require('eslint-config-sukka').sukka(
     files: [
       'apps/daemon/src/index.ts',
       'apps/desktop/src/main/index.ts',
-      'apps/server/src/index.ts',
-      'packages/client-core/src/react.tsx',
-      'packages/workbench/src/runtime.tsx',
+      'packages/client/core/src/react.tsx',
+      'packages/client/workbench/src/runtime.tsx',
     ],
     rules: {
       'no-console': 'off',
@@ -94,12 +92,22 @@ module.exports = require('eslint-config-sukka').sukka(
   },
   {
     files: [
-      'packages/agent-adapter/src/**/*.{ts,tsx}',
-      'packages/engine/src/**/*.{ts,tsx}',
-      'packages/sdk/src/client.ts',
+      'packages/host/agent-adapter/src/**/*.{ts,tsx}',
+      'packages/host/engine/src/**/*.{ts,tsx}',
+      'packages/client/sdk/src/client.ts',
     ],
     rules: {
       '@typescript-eslint/class-methods-use-this': 'off',
+    },
+  },
+  {
+    // Lexical nodes are class-based by API contract: overrides often take no `this`, and
+    // `decorate()` returning JSX does not make the node class a React component.
+    name: 'linkcode/lexical-node-classes',
+    files: ['packages/presentation/ui/src/shell/composer-editor/nodes.tsx'],
+    rules: {
+      '@typescript-eslint/class-methods-use-this': 'off',
+      'react-prefer-function-component/react-prefer-function-component': 'off',
     },
   },
   {
@@ -107,10 +115,10 @@ module.exports = require('eslint-config-sukka').sukka(
     // so the TypeScript import resolver can't see them.
     name: 'linkcode/unplugin-icons-virtual-modules',
     files: [
-      'packages/ui/src/chat/agent-icon.tsx',
-      'packages/ui/src/lib/__tests__/file-icon.test.ts',
-      'packages/ui/src/lib/material-file-icons.ts',
-      'packages/ui/src/shell/service-icon.tsx',
+      'packages/presentation/ui/src/chat/agent-icon.tsx',
+      'packages/presentation/ui/src/lib/__tests__/file-icon.test.ts',
+      'packages/presentation/ui/src/lib/material-file-icons.ts',
+      'packages/presentation/ui/src/shell/service-icon.tsx',
     ],
     rules: {
       'import-x/no-unresolved': ['error', { ignore: ['^~icons/'] }],

@@ -28,9 +28,11 @@
     "@sentry/node": "10.62.0",
     "@sentry/profiling-node": "10.62.0",
     "better-sqlite3": "^12.11.1",
-    "foxts": "^5.8.0"
+    "foxts": "^5.8.0",
+    "pino": "^10.3.1"
   },
   "devDependencies": {
+    "@effect/opentelemetry": "4.0.0-beta.98",
     "@effect/platform-node": "4.0.0-beta.98",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cross-spawn": "^6.0.6",

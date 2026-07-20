@@ -1,6 +1,6 @@
 packages:
   - "apps/*"
-  - "packages/*"
+  - "packages/*/*"
 
 # pnpm 11 reads these settings from pnpm-workspace.yaml instead of .npmrc.
 # A hoisted layout flattens third-party dependencies so React Native / Expo's Metro

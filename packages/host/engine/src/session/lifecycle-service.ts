@@ -1,0 +1,228 @@
+import type {
+  AgentHistoryId,
+  AgentKind,
+  SessionAutomation,
+  SessionId,
+  SessionRecord,
+  StartOptions,
+} from '@linkcode/schema';
+import { Effect } from 'effect';
+import { nullthrow } from 'foxts/guard';
+import type { SessionDriver } from '../automation';
+import type { EngineFailure } from '../failure';
+import { RequestError, toOperationFailure } from '../failure';
+import type { WorkspaceRegistry } from '../workspace/workspace-registry';
+import type { HistoryService } from './history-service';
+import type { SessionOrchestrator } from './orchestrator';
+import type { SessionRecordRegistry } from './session-record-registry';
+import type { SessionStartOptionsResolver } from './start-options-resolver';
+
+type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions) => Promise<A>;
+
+export class SessionLifecycleService {
+  readonly driver: SessionDriver;
+  private seq = 0;
+  private runEffect: RunEffect | undefined;
+
+  constructor(
+    private readonly sessions: SessionOrchestrator,
+    private readonly records: SessionRecordRegistry,
+    private readonly history: HistoryService,
+    private readonly startOptions: SessionStartOptionsResolver,
+    private readonly workspaces: WorkspaceRegistry,
+  ) {
+    this.driver = {
+      createSession: ({ signal, ...options }) =>
+        this.run(this.createAutomationSession(options), { signal }),
+      hasRecord: (sessionId) => this.records.has(sessionId),
+      isBusy: (sessionId) => this.sessions.isBusy(sessionId),
+      ensureLive: (sessionId, signal) =>
+        this.sessions.has(sessionId)
+          ? Promise.resolve()
+          : this.run(this.resumeSession(undefined, sessionId), { signal }),
+      makeUnattended: (sessionId, signal) =>
+        this.run(this.sessions.makeUnattended(sessionId), { signal }),
+      prompt: (sessionId, text, options) =>
+        this.run(this.sessions.prompt(sessionId, text, options), { signal: options?.signal }),
+      stopSession: (sessionId) => this.run(this.sessions.stopIfLive(sessionId)),
+    };
+  }
+
+  bindRuntime(runEffect: RunEffect): void {
+    this.runEffect = runEffect;
+  }
+
+  start(replyTo: string, options: StartOptions): Effect.Effect<void, EngineFailure> {
+    const { sessions, startOptions, workspaces } = this;
+    const sessionId = this.nextSessionId();
+    return Effect.gen(function* () {
+      const resolved = yield* startOptions.resolve(options);
+      const now = Date.now();
+      const record: SessionRecord = {
+        sessionId,
+        kind: resolved.kind,
+        cwd: resolved.cwd,
+        origin: { type: 'created' },
+        createdVia: resolved.createdVia,
+        createdAt: now,
+        updatedAt: now,
+        runs: [{ startedAt: now }],
+      };
+      if (resolved.cwd) yield* workspaceTouch(workspaces, resolved.cwd);
+      yield* sessions.startLive(replyTo, record, (adapter) =>
+        sessions.startAdapter(adapter, resolved),
+      );
+    });
+  }
+
+  importSession(
+    kind: AgentKind,
+    historyId: AgentHistoryId,
+  ): Effect.Effect<SessionRecord, EngineFailure> {
+    const { history, records, workspaces } = this;
+    const sessionId = this.nextSessionId();
+    return Effect.gen(function* () {
+      // Read one event only: the summary (title/cwd/createdAt) is what the record needs.
+      const { session } = yield* history.read(kind, { historyId, limit: 1 });
+      const now = Date.now();
+      const record: SessionRecord = {
+        sessionId,
+        kind,
+        cwd: session.cwd ?? '',
+        title: session.title,
+        origin: { type: 'imported', historyId, importedAt: now },
+        createdAt: session.createdAt ?? now,
+        updatedAt: now,
+        runs: [],
+      };
+      yield* records.importRecord(record);
+      if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
+      return record;
+    });
+  }
+
+  resumeHistory(
+    replyTo: string,
+    kind: AgentKind,
+    historyId: AgentHistoryId,
+    options: StartOptions,
+  ): Effect.Effect<void, EngineFailure> {
+    const { history, sessions, startOptions: resolver, workspaces } = this;
+    const sessionId = this.nextSessionId();
+    return Effect.gen(function* () {
+      const startOptions = yield* resolver.resolve({ ...options, kind });
+      const now = Date.now();
+      const record: SessionRecord = {
+        sessionId,
+        kind,
+        cwd: startOptions.cwd,
+        origin: { type: 'imported', historyId, importedAt: now },
+        createdAt: now,
+        updatedAt: now,
+        runs: [{ historyId, startedAt: now }],
+      };
+      if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
+      yield* sessions.startLive(replyTo, record, (adapter) =>
+        history.resume(adapter, historyId, startOptions),
+      );
+    });
+  }
+
+  /** Wake a cold session in place under the same LinkCode id. */
+  resumeSession(
+    replyTo: string | undefined,
+    sessionId: SessionId,
+  ): Effect.Effect<void, EngineFailure> {
+    return Effect.suspend(() => {
+      if (this.sessions.has(sessionId)) {
+        return Effect.fail(
+          new RequestError({
+            code: 'conflict',
+            message: `Session is already running: ${sessionId}`,
+          }),
+        );
+      }
+      const record = this.records.get(sessionId);
+      if (!record) {
+        return Effect.fail(
+          new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+        );
+      }
+      // A never-prompted session has no provider transcript to resume from (the adapter only mints one
+      // on the first prompt); waking it is a fresh start under the same LinkCode id.
+      const historyId = this.records.historyId(sessionId);
+      const { history, sessions, startOptions: resolver, workspaces } = this;
+      return Effect.gen(function* () {
+        const startOptions = yield* resolver.resolve({ kind: record.kind, cwd: record.cwd });
+        // Register before starting so a persistence failure cannot follow a successful
+        // `session.started` reply with a contradictory request failure.
+        if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
+        record.runs.push({ historyId, startedAt: Date.now() });
+        yield* sessions.startLive(replyTo, record, (adapter) =>
+          historyId === undefined
+            ? sessions.startAdapter(adapter, startOptions)
+            : history.resume(adapter, historyId, startOptions),
+        );
+      });
+    });
+  }
+
+  private createAutomationSession(options: {
+    kind: AgentKind;
+    cwd: string;
+    model?: string;
+    title?: string;
+    automation: SessionAutomation;
+  }): Effect.Effect<SessionId, EngineFailure> {
+    const { sessions, startOptions: resolver, workspaces } = this;
+    const sessionId = this.nextSessionId();
+    return Effect.gen(function* () {
+      const startOptions = yield* resolver.resolve({
+        kind: options.kind,
+        cwd: options.cwd,
+        model: options.model,
+      });
+      const now = Date.now();
+      const record: SessionRecord = {
+        sessionId,
+        kind: startOptions.kind,
+        cwd: startOptions.cwd,
+        title: options.title,
+        origin: { type: 'created' },
+        automation: options.automation,
+        createdAt: now,
+        updatedAt: now,
+        runs: [{ startedAt: now }],
+      };
+      if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
+      yield* sessions.startLive(undefined, record, (adapter) =>
+        sessions.startAdapter(adapter, startOptions),
+      );
+      return record.sessionId;
+    });
+  }
+
+  private nextSessionId(): SessionId {
+    this.seq += 1;
+    return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
+  }
+
+  private run<A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions): Promise<A> {
+    return nullthrow(this.runEffect, 'Session runtime has not started')(effect, options);
+  }
+}
+
+function workspaceTouch(
+  workspaces: WorkspaceRegistry,
+  cwd: string,
+): Effect.Effect<unknown, EngineFailure> {
+  return Effect.tryPromise({
+    try: () => workspaces.touch(cwd),
+    catch: (cause) =>
+      toOperationFailure(cause, {
+        subsystem: 'store',
+        operation: 'workspace.touch',
+        publicMessage: 'Failed to persist workspace',
+      }),
+  });
+}

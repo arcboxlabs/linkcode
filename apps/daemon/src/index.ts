@@ -1,10 +1,18 @@
+import * as OtelTracer from '@effect/opentelemetry/OtelTracer';
+import * as OtelResource from '@effect/opentelemetry/Resource';
 import { NodeRuntime } from '@effect/platform-node';
 import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { AssetManager } from '@linkcode/assets';
-import { Engine, PreviewRouteRegistry } from '@linkcode/engine';
+import {
+  EngineLive,
+  EngineService,
+  makeEngineInfrastructureLayer,
+  PreviewRouteRegistry,
+} from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import { Hub } from '@linkcode/transport/server';
+import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
 import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -14,6 +22,7 @@ import type { DaemonConfig } from './config';
 import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
+import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
 import { createProviderConfigStore } from './provider-store';
@@ -32,7 +41,7 @@ import { createWorkspaceStore } from './workspace-store';
 // After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
 // die loudly rather than keep serving clients from an unknown state.
 process.on('uncaughtException', (err) => {
-  console.error('[linkcode/daemon] uncaught exception:', err);
+  logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);
 });
 
@@ -40,7 +49,7 @@ process.on('uncaughtException', (err) => {
 // coherent, so log instead of exiting. Reaching here means a fire-and-forget path missed its
 // `.catch`; fix that path.
 process.on('unhandledRejection', (reason) => {
-  console.error('[linkcode/daemon] unhandled rejection:', reason);
+  logger.error({ err: reason }, 'Unhandled rejection');
 });
 
 /** How long a graceful drain may run after the first signal before the process force-exits. */
@@ -57,21 +66,21 @@ class Shared extends Context.Service<
   }
 >()('daemon/Shared') {}
 
-class EngineHandle extends Context.Service<EngineHandle, Engine>()('daemon/Engine') {}
-
 class BoundListeners extends Context.Service<BoundListeners, readonly DaemonListenerInfo[]>()(
   'daemon/BoundListeners',
 ) {}
 
 // A failing finalizer must not change the shutdown outcome; log and move on.
 function finalize(run: () => void | Promise<void>): Effect.Effect<void> {
-  return Effect.promise(async () => {
-    try {
-      await run();
-    } catch (err) {
-      console.error('[linkcode/daemon] error during shutdown:', err);
-    }
-  });
+  return Effect.tryPromise({ try: async () => run(), catch: (cause) => cause }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logError(
+        'Error during shutdown',
+        { operation: 'shutdown.finalize' },
+        Cause.squash(cause),
+      ),
+    ),
+  );
 }
 
 // Explicit exits everywhere, not exitCode+return: under utilityProcess the parent IPC channel
@@ -94,7 +103,7 @@ const teardown: Runtime.Teardown = (exit, onExit) => {
     onExit(DAEMON_EXIT_ALREADY_RUNNING);
     return;
   }
-  console.error('[linkcode/daemon] fatal:', Cause.squash(exit.cause));
+  logger.fatal({ err: Cause.squash(exit.cause) }, 'Daemon failed');
   onExit(1);
 };
 
@@ -131,7 +140,10 @@ async function main(): Promise<void> {
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
-        console.error(`[linkcode/daemon] already running (pid ${running.pid}) at ${urls}`);
+        yield* Effect.logWarning('Daemon already running', {
+          operation: 'daemon.start',
+          pid: running.pid,
+        });
         yield* Effect.fail(new DaemonAlreadyRunningError(running, urls));
       }
       const identity: DaemonIdentity = {
@@ -141,6 +153,9 @@ async function main(): Promise<void> {
         ...(profile !== undefined && { profile }),
       };
       const hub = new Hub();
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => Sentry.close(DRAIN_TIMEOUT_MS)).pipe(Effect.ignore),
+      );
       // Engine.stop() also closes the hub via transport.close(); Hub.close is idempotent, so the
       // late double-close here matches the old stopAll behavior.
       yield* Effect.addFinalizer(() => finalize(() => hub.close()));
@@ -152,8 +167,7 @@ async function main(): Promise<void> {
     }),
   );
 
-  const EngineLive = Layer.effect(
-    EngineHandle,
+  const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
       const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
@@ -165,10 +179,14 @@ async function main(): Promise<void> {
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
       if (gc.removed.length > 0) {
-        console.log(`[linkcode/daemon] assets gc: removed ${gc.removed.join(', ')}`);
+        yield* Effect.logInfo('Removed superseded managed assets', {
+          operation: 'asset.gc',
+        });
       }
       if (gc.skipped.length > 0) {
-        console.warn(`[linkcode/daemon] assets gc: skipped ${gc.skipped.join(', ')}`);
+        yield* Effect.logWarning('Skipped managed asset removal', {
+          operation: 'asset.gc',
+        });
       }
       agentRuntimeProber.setManagedResolver((kind) => {
         const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
@@ -188,7 +206,7 @@ async function main(): Promise<void> {
       // status`) that take seconds on a cold machine — listener bind must not wait on them, or
       // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
       const agentRuntimesReady = agentRuntimeProber.collect();
-      const engine = new Engine(hub, {
+      const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         sessionStore: createSessionStore(databasePath()),
@@ -212,41 +230,42 @@ async function main(): Promise<void> {
           ensureBinary: async () => (await assets.ensure('tool:aigateway'))?.path,
         }),
       });
-      // Refresh consented managed installs in the background — boot never waits on a download. A
-      // never-installed agent waits for the client's explicit `asset.ensure` instead (CODE-221).
-      // Rides the probe promise (CODE-225); the engine exists first so its asset subscription
-      // sees the whole install lifecycle. `agentsToRefresh` also includes installs that spawn but
-      // lack catalog-expected extra members (`needsRepair`) so they heal via backfill (CODE-234).
-      void agentRuntimesReady
-        .then((agentRuntimes) => {
-          for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
-            void assets
-              .ensure(`agent:${kind}`)
-              .catch((err) => {
-                console.warn(
-                  `[linkcode/daemon] managed install failed for ${kind}: ${extractErrorMessage(err)}`,
-                );
-              })
-              .then((installed) => {
-                if (installed) {
-                  console.log(
-                    `[linkcode/daemon] managed runtime ready: ${installed.id}@${installed.version}`,
-                  );
-                }
-              });
-          }
-        })
-        .catch((err) => {
-          console.warn(`[linkcode/daemon] boot agent probe failed: ${extractErrorMessage(err)}`);
-        });
-      yield* Effect.acquireRelease(
-        Effect.promise(() => engine.start()),
-        () => finalize(() => engine.stop()),
+      const EngineReady = Layer.effectDiscard(
+        Effect.gen(function* () {
+          const engine = yield* EngineService;
+          // Refresh consented managed installs in the background — boot never waits on a download.
+          // Rides the probe promise (CODE-225); yielding the service first guarantees the engine's
+          // asset subscription sees the whole install lifecycle.
+          void agentRuntimesReady
+            .then((agentRuntimes) => {
+              for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
+                void assets
+                  .ensure(`agent:${kind}`)
+                  .catch((err) => {
+                    logger.warn(
+                      { err, agentKind: kind, operation: 'asset.ensure' },
+                      'Managed agent install failed',
+                    );
+                  })
+                  .then((installed) => {
+                    if (installed) {
+                      logger.info(
+                        { agentKind: kind, operation: 'asset.ensure' },
+                        'Managed agent runtime ready',
+                      );
+                    }
+                  });
+              }
+            })
+            .catch((err) => {
+              logger.warn({ err, operation: 'agent.probe' }, 'Boot agent probe failed');
+            });
+          // Runs before any listener binds, so `workspace.list` always includes the chat workspace.
+          yield* engine.ensureChatWorkspace(chatWorkspaceRoot());
+        }),
       );
-      // Runs before any listener binds, so `workspace.list` always includes the chat workspace by
-      // the time a client can connect.
-      yield* Effect.promise(() => engine.ensureChatWorkspace(chatWorkspaceRoot()));
-      return engine;
+      const EngineRuntimeLive = EngineLive.pipe(Layer.provide(EngineInfrastructureLive));
+      return EngineReady.pipe(Layer.provideMerge(EngineRuntimeLive));
     }),
   );
 
@@ -256,7 +275,7 @@ async function main(): Promise<void> {
       const { config, identity, hub, previewRoutes } = yield* Shared;
       // Ordering only: listeners must not bind before the engine is started and the chat
       // workspace exists.
-      yield* EngineHandle;
+      yield* EngineService;
       // Listeners hunt concurrently; a transient collision between two of our own hunts resolves
       // itself because listenWithPortHunt treats an occupant with our pid as "keep hunting".
       return yield* Effect.forEach(
@@ -279,7 +298,11 @@ async function main(): Promise<void> {
               hub.addConnection(conn);
               conn.onClose(() => hub.removeConnection(conn));
             });
-            console.log(`[linkcode/daemon] listening on ${url} (${listener.type})`);
+            yield* Effect.logInfo('Daemon listener bound', {
+              operation: 'listener.bind',
+              listenerType: listener.type,
+              url,
+            });
             return { type: listener.type, url } satisfies DaemonListenerInfo;
           }),
         { concurrency: 'unbounded' },
@@ -287,7 +310,10 @@ async function main(): Promise<void> {
         Effect.tapError((err) =>
           Effect.sync(() => {
             if (err instanceof DaemonAlreadyRunningError) {
-              console.error(`[linkcode/daemon] ${extractErrorMessage(err)}`);
+              logger.warn(
+                { operation: 'listener.bind' },
+                extractErrorMessage(err) ?? 'Daemon already running',
+              );
             }
           }),
         ),
@@ -318,8 +344,14 @@ async function main(): Promise<void> {
 
   const MainLive = LifecycleLive.pipe(
     Layer.provideMerge(ListenersLive),
-    Layer.provideMerge(EngineLive),
+    Layer.provideMerge(EngineSubsystemLive),
     Layer.provideMerge(SharedLive),
+    Layer.provide(DaemonLoggerLive),
+    Layer.provide(
+      OtelTracer.layerGlobal.pipe(
+        Layer.provide(OtelResource.layer({ serviceName: 'linkcode-daemon' })),
+      ),
+    ),
   );
 
   // runMain turns SIGINT/SIGTERM into fiber interruption but has no escalation of its own: a
@@ -329,11 +361,11 @@ async function main(): Promise<void> {
   const escalate = (): void => {
     signalCount += 1;
     if (signalCount > 1) {
-      console.error('[linkcode/daemon] second signal during shutdown; forcing exit');
+      logger.fatal({ operation: 'shutdown' }, 'Second signal during shutdown; forcing exit');
       process.exit(1);
     }
     const deadline = setTimeout(() => {
-      console.error('[linkcode/daemon] shutdown drain timed out; forcing exit');
+      logger.fatal({ operation: 'shutdown' }, 'Shutdown drain timed out; forcing exit');
       process.exit(1);
     }, DRAIN_TIMEOUT_MS);
     deadline.unref();
@@ -345,6 +377,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error('[linkcode/daemon] fatal:', err);
+  logger.fatal({ err }, 'Daemon failed before runtime launch');
   process.exit(1);
 });

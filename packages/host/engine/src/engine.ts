@@ -1,0 +1,319 @@
+import { createAdapter } from '@linkcode/agent-adapter';
+import type { WorkspaceRecord } from '@linkcode/schema';
+import type { Transport, Unsubscribe } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import type { Scope } from 'effect';
+import { Cause, Effect, FiberSet } from 'effect';
+import { AgentLoginService } from './agent/login-service';
+import { InMemoryProviderConfigStore } from './agent/provider-config';
+import { AgentRequestHandler } from './agent/request-handler';
+import { AgentRuntimeService } from './agent/runtime-service';
+import { ManagedAssetService } from './asset/service';
+import {
+  InMemoryLoopStore,
+  InMemoryScheduleStore,
+  LoopService,
+  ScheduleService,
+} from './automation';
+import { AutomationRequestHandler } from './automation/request-handler';
+import type { EngineDeps } from './deps';
+import type { EngineFailure, OperationSubsystem } from './failure';
+import { toOperationFailure } from './failure';
+import { GitService } from './git/git-service';
+import { GitRequestHandler } from './git/request-handler';
+import { ArtifactHostService } from './preview/artifact-host-service';
+import { ArtifactRequestHandler } from './preview/request-handler';
+import { PreviewRouteRegistry } from './preview/route-registry';
+import { ScriptRequestHandler } from './scripts/request-handler';
+import { ScriptService } from './scripts/script-service';
+import { HistoryRequestHandler } from './session/history-request-handler';
+import { HistoryService } from './session/history-service';
+import { SessionLifecycleService } from './session/lifecycle-service';
+import { SessionOrchestrator } from './session/orchestrator';
+import { SessionRequestHandler } from './session/request-handler';
+import { SessionRecordRegistry } from './session/session-record-registry';
+import { InMemorySessionStore } from './session/session-store';
+import { SessionStartOptionsResolver } from './session/start-options-resolver';
+import { TerminalRequestHandler } from './terminal/request-handler';
+import { TerminalService } from './terminal/service';
+import { WireRequestRouter } from './wire/request-router';
+import { WireResponder } from './wire/responder';
+import { FileRequestHandler } from './workspace/file-request-handler';
+import { FileSuggestService } from './workspace/file-suggest-service';
+import { WorkspaceRequestHandler } from './workspace/request-handler';
+import { WorkspaceRegistry } from './workspace/workspace-registry';
+import { InMemoryWorkspaceStore } from './workspace/workspace-store';
+
+/**
+ * The local core engine — the "host" that runs the agents, carrier-agnostic
+ * (docs/ARCHITECTURE.md#the-host-engine-adapters-abstraction, #core-principles).
+ * Events broadcast to every attached client, so request/response control messages are correlated
+ * by id: a request's `clientReqId` echoes back as `replyTo` on the matching reply.
+ */
+export interface EngineRuntime {
+  readonly start: Effect.Effect<void, EngineFailure, Scope.Scope>;
+  readonly ensureChatWorkspace: (cwd: string) => Effect.Effect<WorkspaceRecord, EngineFailure>;
+  readonly stop: Effect.Effect<void>;
+}
+
+export const createEngineRuntime = Effect.fn('Engine.create')(function* (
+  transport: Transport,
+  deps: EngineDeps = {},
+) {
+  const responder = new WireResponder(transport);
+  const scope = yield* Effect.scope;
+  const taskSet = yield* FiberSet.make();
+  const runTask = yield* FiberSet.runtime(taskSet)();
+  const runEffect = yield* FiberSet.runtimePromise(taskSet)();
+  const factory = deps.factory ?? createAdapter;
+  const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
+  const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
+  const history = new HistoryService(factory);
+  const runtimes = yield* AgentRuntimeService.make(
+    {
+      initial: deps.agentRuntimes,
+      ready: deps.agentRuntimesReady,
+      collect: deps.collectAgentRuntimes,
+      onChanged(next) {
+        transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes: next }));
+      },
+    },
+    runTask,
+  );
+  let terminals: TerminalService | undefined;
+  const sessions = new SessionOrchestrator(
+    transport,
+    factory,
+    records,
+    runtimes,
+    scope,
+    runTask,
+    (sessionId) => terminals?.killBySession(sessionId),
+  );
+  terminals = deps.ptyBackend
+    ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
+    : undefined;
+  const terminalRequests = new TerminalRequestHandler(terminals, responder);
+  const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
+  const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
+  const git = deps.git ?? (yield* GitService.make());
+  const gitRequests = new GitRequestHandler(transport, git, responder);
+  const fileSuggest = deps.fileSuggest ?? (yield* FileSuggestService.make());
+  const fileRequests = new FileRequestHandler(transport, fileSuggest, workspaces, responder);
+  const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
+  const scripts = terminals
+    ? new ScriptService(transport, terminals, routes, (cwd) => workspaces.findByCwd(cwd)?.name)
+    : undefined;
+  const scriptRequests = new ScriptRequestHandler(transport, scripts, responder);
+  const artifacts = new ArtifactHostService(routes);
+  const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
+  const translator = deps.translator;
+  const startOptions = new SessionStartOptionsResolver(providerStore, translator);
+  const sessionLifecycle = new SessionLifecycleService(
+    sessions,
+    records,
+    history,
+    startOptions,
+    workspaces,
+  );
+  const sessionRequests = new SessionRequestHandler(
+    transport,
+    sessionLifecycle,
+    sessions,
+    responder,
+  );
+  const historyRequests = new HistoryRequestHandler(
+    transport,
+    history,
+    sessionLifecycle,
+    responder,
+  );
+  const scheduler = new ScheduleService(
+    transport,
+    deps.scheduleStore ?? new InMemoryScheduleStore(),
+    sessionLifecycle.driver,
+  );
+  const loops = new LoopService(
+    transport,
+    deps.loopStore ?? new InMemoryLoopStore(),
+    sessionLifecycle.driver,
+  );
+  const automationRequests = new AutomationRequestHandler(transport, scheduler, loops, responder);
+  const assets = new ManagedAssetService(
+    transport,
+    deps.assets,
+    () => {
+      runtimes.refresh();
+    },
+    responder,
+  );
+  const logins = deps.resolveLoginBinary
+    ? new AgentLoginService(transport, deps.resolveLoginBinary, () => {
+        runtimes.refresh();
+      })
+    : undefined;
+  const agentRequests = new AgentRequestHandler(
+    transport,
+    runtimes,
+    providerStore,
+    logins,
+    responder,
+    factory,
+  );
+  const requests = new WireRequestRouter(transport, {
+    session: sessionRequests,
+    history: historyRequests,
+    agent: agentRequests,
+    asset: assets,
+    workspace: workspaceRequests,
+    git: gitRequests,
+    file: fileRequests,
+    script: scriptRequests,
+    artifact: artifactRequests,
+    automation: automationRequests,
+    terminal: terminalRequests,
+  });
+  let acceptingRequests = false;
+  let unsubscribeRequests: Unsubscribe | undefined;
+
+  return {
+    start: Effect.gen(function* () {
+      sessionLifecycle.bindRuntime(runEffect);
+      scheduler.bindRuntime(runTask);
+      loops.bindRuntime(runTask);
+      scripts?.bindRuntime(runTask);
+      yield* records.start((effect) => {
+        runTask(effect);
+      });
+      yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
+        workspaces.start(),
+      );
+      // Reconcile imports created before workspace auto-registration. Known workspaces are skipped so
+      // daemon startup never renames or freshens an existing project merely because it has imports.
+      for (const record of records.values()) {
+        if (record.origin.type === 'imported' && record.cwd && !workspaces.findByCwd(record.cwd)) {
+          yield* tryOperation('store', 'workspace.touch', 'Failed to persist workspace', () =>
+            workspaces.touch(record.cwd),
+          );
+        }
+      }
+      // After the session records are loaded (the schedule orphan-sweep reads them) and before the
+      // transport connects, so the first tick can't race an unconnected transport.
+      yield* scheduler.start();
+      // Loops don't resume across a restart; start() only sweeps interrupted loops to `stopped`.
+      yield* tryOperation('store', 'loops.recover', 'Failed to recover loops', () => loops.start());
+      yield* trySyncOperation(
+        'asset',
+        'assets.subscribe',
+        'Failed to subscribe to asset events',
+        () => assets.start(),
+      );
+      yield* tryOperation('transport', 'transport.connect', 'Failed to connect transport', () =>
+        transport.connect(),
+      );
+      yield* trySyncOperation(
+        'transport',
+        'transport.subscribe',
+        'Failed to subscribe to transport messages',
+        () => {
+          acceptingRequests = true;
+          unsubscribeRequests = transport.onMessage((msg) => {
+            if (!acceptingRequests) return;
+            runTask(
+              requests
+                .handle(msg)
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Cause.hasInterruptsOnly(cause)
+                      ? Effect.void
+                      : Effect.logError(
+                          'Unhandled error while processing engine request',
+                          Cause.squash(cause),
+                        ),
+                  ),
+                ),
+            );
+          });
+        },
+      );
+    }).pipe(Effect.withSpan('Engine.start')),
+    ensureChatWorkspace: Effect.fn('Engine.ensureChatWorkspace')(function* (cwd: string) {
+      return yield* tryOperation(
+        'store',
+        'workspace.ensure-chat',
+        'Failed to ensure the chat workspace',
+        () => workspaces.ensureChatWorkspace(cwd),
+      );
+    }),
+    stop: Effect.gen(function* () {
+      // Close request admission before yielding so a transport callback already in flight cannot
+      // launch work after the teardown sweep starts. Each step logs and continues so one broken
+      // collaborator cannot leak every resource after it.
+      acceptingRequests = false;
+      yield* finalize('transport.unsubscribe', () => {
+        unsubscribeRequests?.();
+        unsubscribeRequests = undefined;
+      });
+      yield* finalizeEffect('schedules.shutdown', scheduler.shutdown());
+      yield* finalizeEffect('loops.shutdown', loops.shutdown());
+      yield* runtimes.close();
+      yield* finalizeEffect('scripts.shutdown', scripts?.shutdown() ?? Effect.void);
+      // Interrupt accepted requests before taking the live-session snapshot. Scope disposal closes
+      // the set as a final backstop; clear gives direct EngineRuntime.stop callers the same drain.
+      yield* FiberSet.clear(taskSet);
+      yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
+      yield* finalize('artifacts.shutdown', () => artifacts.close());
+      yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
+      yield* finalize('agent-login.shutdown', () => logins?.closeAll());
+      yield* finalize('translator.shutdown', () => translator?.closeAll());
+      yield* finalize('assets.shutdown', () => assets.close());
+      // Session teardown can enqueue best-effort record persistence into the root set. All
+      // producers are closed now, so a final clear leaves no Engine-owned fibers behind.
+      yield* FiberSet.clear(taskSet);
+      yield* finalize('transport.close', () => transport.close());
+    }).pipe(Effect.withSpan('Engine.stop')),
+  };
+});
+
+function tryOperation<A>(
+  subsystem: OperationSubsystem,
+  operation: string,
+  publicMessage: string,
+  run: () => PromiseLike<A>,
+): Effect.Effect<A, EngineFailure> {
+  return Effect.tryPromise({
+    try: () => run(),
+    catch: (cause) => toOperationFailure(cause, { subsystem, operation, publicMessage }),
+  });
+}
+
+function trySyncOperation<A>(
+  subsystem: OperationSubsystem,
+  operation: string,
+  publicMessage: string,
+  run: () => A,
+): Effect.Effect<A, EngineFailure> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => toOperationFailure(cause, { subsystem, operation, publicMessage }),
+  });
+}
+
+function finalize(operation: string, run: () => void | PromiseLike<void>): Effect.Effect<void> {
+  return Effect.tryPromise({ try: async () => run(), catch: (cause) => cause }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logError('Engine shutdown step failed', { operation }, Cause.squash(cause)),
+    ),
+  );
+}
+
+function finalizeEffect(
+  operation: string,
+  effect: Effect.Effect<void, unknown>,
+): Effect.Effect<void> {
+  return effect.pipe(
+    Effect.catchCause((cause) =>
+      Effect.logError('Engine shutdown step failed', { operation }, Cause.squash(cause)),
+    ),
+  );
+}
