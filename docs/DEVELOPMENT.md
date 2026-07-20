@@ -110,7 +110,7 @@ pnpm test apps/daemon/src/pty     # just the PTY unit tests
 
 ### CI runs vitest separately
 
-CI (`.github/workflows/ci.yml`) has three jobs: **typescript** (`format:check`, `lint`, `typecheck`, `test`), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over both. `check:ci` still excludes vitest, so run both `pnpm check:ci` and `pnpm test` before every commit rather than treating either command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+CI (`.github/workflows/ci.yml`) has three jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, then `test` with the sidecar required), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over both. `check:ci` still excludes vitest, so run both `pnpm check:ci` and `pnpm test` before every commit rather than treating either command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
 
 Every workspace with a root `tests/` directory must provide `tests/tsconfig.json`, extending its production config with the workspace root as `rootDir`, and the root `tsconfig.json` must reference it. Vitest discovery alone does not type-check every support file.
 
@@ -125,14 +125,14 @@ The PTY subsystem has four layers, and the frame protocol is implemented **twice
 3. `apps/daemon/tests/integration/pty-sidecar.test.ts` — real backend against the real compiled `linkcode-pty` (cross-boundary wire check).
 4. `crates/linkcode-pty/tests/smoke.rs` — Rust, unix-only, self-builds via `CARGO_BIN_EXE_linkcode-pty`.
 
-**Silent-skip trap:** layer 3 is `describe.skipIf(!BINARY)` and **silently skips** when `linkcode-pty` isn't built (it looks for `target/debug` then `target/release`, first existing wins, else skip). Plain `pnpm test` therefore passes green **without ever exercising the real wire protocol**. To actually run it, build the binary first:
+**Local silent-skip trap:** layer 3 is `describe.skipIf(!BINARY)` and skips when `linkcode-pty` isn't built (it looks for `target/debug` then `target/release`, first existing wins, else skip), so plain local `pnpm test` may not exercise the real wire protocol. CI builds the debug binary and sets `LINKCODE_REQUIRE_PTY_SIDECAR=1`, which turns a missing binary into a hard failure before either critical suite can skip. To run the same boundary locally, build the binary first:
 
 ```bash
 pnpm -F @linkcode/daemon run build:rust
-pnpm test
+LINKCODE_REQUIRE_PTY_SIDECAR=1 pnpm test apps/daemon/tests/integration/pty-sidecar.test.ts apps/daemon/tests/integration/terminal-flood.test.ts
 ```
 
-CI does not build the binary inside the TypeScript job, so this cross-language test still no-ops there even though vitest runs — build it before the local suite when validating the TS↔Rust wire. `cargo test --locked` runs `smoke.rs` self-contained in the Rust job.
+`cargo test --locked` also runs `smoke.rs` self-contained in the Rust job; the required TypeScript suites are the separate check that the TS and Rust implementations agree over the real process boundary.
 
 The multi-device terminal contract has a separate in-process integration check. It opens from a
 desktop peer, attaches a late mobile controller through the Hub, verifies replay plus live output,
