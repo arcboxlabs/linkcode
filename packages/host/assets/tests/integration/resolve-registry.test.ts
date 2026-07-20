@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AssetDescriptor } from '../../src/catalog';
 import { resolveArtifact } from '../../src/resolve';
-import { startLocalServer } from './helpers/local-server';
+import { startLocalServer } from '../support/local-server';
 
 describe('resolveArtifact registry integration', () => {
   it('resolves npm sources through the registry, applying the version key', async () => {
