@@ -9,6 +9,7 @@
     { "path": "apps/webview" },
     { "path": "packages/vendor/coss-ui" },
     { "path": "apps/daemon" },
+    { "path": "apps/daemon/tests" },
     { "path": "apps/mobile" },
     { "path": "packages/client/core" },
     { "path": "packages/client/sdk" },

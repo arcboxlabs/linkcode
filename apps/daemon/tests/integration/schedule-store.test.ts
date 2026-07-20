@@ -1,7 +1,7 @@
 import type { Schedule, ScheduleId, ScheduleRun } from '@linkcode/schema';
 import { ScheduleRunSchema, ScheduleSchema } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { createScheduleStore } from '../schedule-store';
+import { createScheduleStore } from '../../src/schedule-store';
 
 const sid = (id: string): ScheduleId => id as ScheduleId;
 

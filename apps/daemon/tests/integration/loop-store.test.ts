@@ -1,7 +1,7 @@
 import type { LoopId, LoopIteration, LoopRecord } from '@linkcode/schema';
 import { LoopIterationSchema, LoopRecordSchema } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { createLoopStore } from '../loop-store';
+import { createLoopStore } from '../../src/loop-store';
 
 const lid = (id: string): LoopId => id as LoopId;
 
