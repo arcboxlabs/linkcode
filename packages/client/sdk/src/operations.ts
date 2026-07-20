@@ -7,6 +7,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -47,6 +48,12 @@ export function listSessions(options?: Options): RequestResult<SessionInfo[]> {
 
 export function startSession(options: Options<{ opts: StartOptions }>): RequestResult<SessionId> {
   return resolveClient(options).startSession(options.opts);
+}
+
+export function getAgentCatalog(
+  options: Options<{ agentKind: AgentKind; cwd?: string }>,
+): RequestResult<AgentStartCatalog> {
+  return resolveClient(options).getAgentCatalog(options.agentKind, options.cwd);
 }
 
 export function stopSession(

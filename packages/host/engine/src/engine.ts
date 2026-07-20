@@ -158,6 +158,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     providerStore,
     logins,
     responder,
+    factory,
   );
   const requests = new WireRequestRouter(transport, {
     session: sessionRequests,

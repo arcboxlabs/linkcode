@@ -1,4 +1,5 @@
 import type { AgentKind, EffortLevel } from '@linkcode/schema';
+import type { ModelOption } from './agent-models';
 
 export interface EffortOption {
   id: EffortLevel;
@@ -42,6 +43,22 @@ export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = 
     EFFORT_OPTIONS_BY_ID.high,
     EFFORT_OPTIONS_BY_ID.xhigh,
   ],
+  pi: [
+    EFFORT_OPTIONS_BY_ID.low,
+    EFFORT_OPTIONS_BY_ID.medium,
+    EFFORT_OPTIONS_BY_ID.high,
+    EFFORT_OPTIONS_BY_ID.xhigh,
+  ],
   // Grok Build headless: `--reasoning-effort` high|medium|low (verified 0.2.102).
   'grok-build': [EFFORT_OPTIONS_BY_ID.low, EFFORT_OPTIONS_BY_ID.medium, EFFORT_OPTIONS_BY_ID.high],
 };
+
+export function effortOptionsForModel(
+  kind: AgentKind | undefined,
+  model: ModelOption | undefined,
+): EffortOption[] | undefined {
+  const options = kind ? AGENT_EFFORT_OPTIONS[kind] : undefined;
+  if (!options || model?.effortLevels === undefined) return options;
+  const supported = new Set<EffortLevel>(model.effortLevels);
+  return options.filter((option) => supported.has(option.id));
+}

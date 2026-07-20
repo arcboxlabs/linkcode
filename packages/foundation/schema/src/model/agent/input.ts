@@ -5,7 +5,11 @@ import { PermissionOutcomeSchema } from '../permission';
 import type { AgentKind } from '../primitives';
 import { AgentKindSchema } from '../primitives';
 import { QuestionOutcomeSchema } from '../question';
-import { ApprovalPolicyIdSchema, SessionModeIdSchema } from '../session/control';
+import {
+  ApprovalPolicyIdSchema,
+  ApprovalPolicySchema,
+  SessionModeIdSchema,
+} from '../session/control';
 
 /**
  * Agent input contract: session start configuration and the normalized actions clients send to a
@@ -41,12 +45,15 @@ export const StartOptionsSchema = z.object({
   kind: AgentKindSchema,
   /** Working directory (the root of the repository the agent operates on). */
   cwd: z.string().min(1),
-  /** Model id override (vendor-specific); defaults to the adapter's configured default. */
-  model: z.string().optional(),
+  /** Model id override (vendor-specific). Undefined applies the LinkCode-configured default;
+   * null explicitly defers to the agent/provider's own default. */
+  model: z.string().nullable().optional(),
   /** Initial session mode (e.g. plan / accept-edits), if the agent advertises modes. */
   modeId: SessionModeIdSchema.optional(),
   /** Initial reasoning effort, if the selected adapter supports effort. */
   effort: EffortLevelSchema.optional(),
+  /** Initial approval-policy tier, if explicitly selected before session start. */
+  approvalPolicyId: ApprovalPolicyIdSchema.optional(),
   /** MCP servers the agent should connect to. */
   mcpServers: z.array(McpServerSchema).optional(),
   /** Extra directories the agent may access beyond `cwd`. */
@@ -83,8 +90,17 @@ export const AgentModelOptionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   description: z.string().optional(),
+  /** Absent means unknown; an empty list means this model has no effort axis. */
+  effortLevels: z.array(EffortLevelSchema).optional(),
 });
 export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
+
+export const AgentStartCatalogSchema = z.object({
+  models: z.array(AgentModelOptionSchema),
+  policies: z.array(ApprovalPolicySchema),
+  defaultPolicyId: ApprovalPolicyIdSchema.optional(),
+});
+export type AgentStartCatalog = z.infer<typeof AgentStartCatalogSchema>;
 
 /** Input features a live adapter session accepts. Kept separate from command catalogs: catalogs
  * change provider-side, while these booleans describe the adapter's stable input surface. */

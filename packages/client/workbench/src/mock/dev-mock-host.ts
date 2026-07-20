@@ -294,7 +294,13 @@ export class DevMockHost {
         break;
       case 'session.start':
         await wait(CONTROL_LATENCY_MS);
-        this.startSession(p.clientReqId, p.opts.kind, p.opts.cwd, p.opts.model, p.opts.effort);
+        this.startSession(
+          p.clientReqId,
+          p.opts.kind,
+          p.opts.cwd,
+          p.opts.model ?? undefined,
+          p.opts.effort,
+        );
         break;
       case 'session.resume':
         await wait(CONTROL_LATENCY_MS);

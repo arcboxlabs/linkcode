@@ -13,6 +13,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -105,6 +106,10 @@ export class LinkCodeSdkClient {
 
   startSession(opts: StartOptions): RequestResult<SessionId> {
     return toResult(this.raw.startSession(opts));
+  }
+
+  getAgentCatalog(agentKind: AgentKind, cwd?: string): RequestResult<AgentStartCatalog> {
+    return toResult(this.raw.getAgentCatalog(agentKind, cwd));
   }
 
   stopSession(sessionId: SessionId): RequestResult<{ ok: true }> {
