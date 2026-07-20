@@ -110,7 +110,7 @@ pnpm test apps/daemon/src/pty     # just the PTY unit tests
 
 ### CI runs Vitest and process acceptance separately
 
-CI (`.github/workflows/ci.yml`) has three jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over both. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+CI (`.github/workflows/ci.yml`) has four jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry plus an unsigned packaged devshell), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all three required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
 
 The daemon acceptance driver is deliberately outside Vitest: it starts `dist/index.js` as an external process with an isolated `HOME`, waits for `runtime.json`, checks the HTTP identity, connects a public `LinkCodeClient` through Socket.IO, reads the migrated native SQLite database, and opens a shell through the real PTY sidecar. Run the same boundary locally with:
 
@@ -158,7 +158,14 @@ intended operation.
 
 ## Desktop E2E procedures
 
-The first committed E2E script is `apps/desktop/e2e/notifications.e2e.mts` (`pnpm -F @linkcode/desktop e2e:notifications`, `playwright-core` devDependency): it self-orchestrates an isolated daemon + built desktop app and asserts the OS-notification chain end to end — use it as the template for new flows (fresh fake `HOME`, `--user-data-dir`, `--use-mock-keychain`, main-process interception via `app.evaluate`). Everything else is still driven ad-hoc the same way. No E2E runs in CI; release only validates packaging (`verify-artifacts`), and the missing CI packaged-boot smoke test is tracked as CODE-89. Hard rule: **packaging verification must actually launch the packaged product** — launch-only bugs (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a dev-shell exit-0 lock theft) never reproduce in dev.
+The CI entry smoke tests are `e2e:unpackaged` and `e2e:packaged`. The first launches the built main/preload/renderer and calls the sandbox preload bridge. The second builds and launches the unsigned devshell directory product, then proves that its preload bridge, supervised bundled daemon, native SQLite migrations, and staged PTY sidecar work together. Run both on Linux with `xvfb-run`; the packaged check is intentionally not evidence for signing or notarization:
+
+```bash
+xvfb-run -a pnpm -F @linkcode/desktop e2e:unpackaged
+xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged
+```
+
+The feature E2E `apps/desktop/e2e/notifications.e2e.mts` (`pnpm -F @linkcode/desktop e2e:notifications`, `playwright-core` devDependency) self-orchestrates an isolated daemon + built desktop app and asserts the OS-notification chain end to end — use it as the template for flows that need a real agent (fresh fake `HOME`, `--user-data-dir`, `--use-mock-keychain`, main-process interception via `app.evaluate`). Those agent-dependent E2Es remain manual. Hard rule: **packaging verification must actually launch the packaged product** — launch-only bugs (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a dev-shell exit-0 lock theft) never reproduce in dev.
 
 > Procedure from prior sessions — re-verify each step as you go. Script names and paths below are repo-verified; the keychain service name is observed behavior of the vendored CLI (re-check with `security find-generic-password -s 'Claude Code-credentials'`); the launch/driving switches are memory-sourced Chromium/Electron flags.
 
