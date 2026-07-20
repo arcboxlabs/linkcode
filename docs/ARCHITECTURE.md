@@ -189,6 +189,74 @@ cold (stopped) sessions, `session.resume` wakes one under the same id, and
 Transcripts are not copied — they stay in provider-local history and are read back
 through the history contract.
 
+### Engine runtime ownership and composition
+
+The daemon supplies concrete infrastructure through `EngineInfrastructure`: the transport,
+persistent stores, PTY backend, assets, runtime probe, preview routes, and provider configuration.
+`EngineLive` consumes that boundary and assembles the Engine features behind `EngineService`.
+`makeEngineLayer` is only a convenience composition for tests and embedders that already hold
+concrete infrastructure.
+
+```diagram
+┌──────────────────────────────┐
+│ daemon-owned infrastructure  │
+│ transport · stores · PTY     │
+│ assets · probes · routes     │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│ EngineInfrastructure Layer   │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│ EngineLive                   │
+│ feature assembly + lifecycle │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│ EngineService                │
+└──────────────────────────────┘
+```
+
+`createEngineRuntime` is the single ownership point for the Engine's root `Scope` and root
+`FiberSet`. Session, Schedule, Loop, and Script work all run beneath that owner; feature services
+must not create another runtime, root scope, or root fiber registry. Layers model real construction
+and resource boundaries, not every helper class. Schedule and Loop façades own request admission and
+durable state transitions while their run coordinators own individual run execution and settlement.
+`ScriptService` owns registry and terminal orchestration; `ScriptPortPlan` owns stable port/environment
+planning, and the TCP probe owns its interruptible socket resource.
+
+### Effect, failures, and observability
+
+Effect owns the Engine control plane: startup/shutdown, request execution, session lifecycle,
+automation, process execution, interruption, and resource finalization. The high-volume terminal/PTTY
+frame path remains plain TypeScript; wrapping every input or acknowledgement frame in Effect tracing
+would add data-plane overhead without improving lifecycle correctness.
+
+Engine exits have three distinct meanings:
+
+- **Expected failure** — `RequestError`, `OperationError`, or `OperationTimeout` in the typed error
+  channel. The wire boundary maps these to stable public codes and safe messages.
+- **Defect** — an unexpected cause. It is reported diagnostically, while the wire receives only
+  `internal_error` / `Internal engine error`.
+- **Interruption** — cancellation or shutdown. It remains interruption, runs finalizers, and is never
+  converted into a normal business failure or persisted as one.
+
+Private causes may be logged but never enter wire replies or durable user-visible failure strings.
+Wire request outcomes are observed across `WireResponder`, because typed failures become successful
+send effects after a `request.failed` reply. Span attributes may contain correlation identifiers;
+metric attributes are limited to stable low-cardinality values such as subsystem, operation, request
+kind, and outcome. Engine instrumentation covers request latency/outcome, session start/stop and live
+session count, Schedule runs, Loop iterations, and child-process execution including timeout and
+interruption outcomes.
+
+The Engine emits only Effect logs, spans, and metrics. The daemon owns all exporters and sinks:
+Effect logs bridge into Pino; Sentry's Pino integration reports error/fatal records; the daemon's
+recursive sanitizer runs before both log emission and Sentry events. `@effect/opentelemetry` installs
+only the Effect tracer over Sentry's global OpenTelemetry provider — it does not create a second
+provider, exporter, or logging pipeline. Effect metrics are currently runtime-local; adding a metrics
+exporter is a daemon boundary decision.
+
 **Agent adapters.** One adapter per agent — `claude-code`, `codex`, `opencode`, `pi`, `grok-build` —
 each hiding its SDK's differences behind the unified `AgentAdapter` interface. A shared
 `BaseAgentAdapter` factors out the common machinery (event fan-out, pending permission
@@ -341,6 +409,8 @@ interface SystemBridge {
 | Mobile                 | Expo / React Native (HeroUI)                                                  |
 | Client data layer      | `sdk` + `tayori` + SWR                                                        |
 | Agents                 | Claude Code · Codex · OpenCode · Pi                                           |
+| Host control plane     | Effect v4 (`Layer`, scoped resources, typed failures, interruption)           |
+| Host observability     | Effect logs/spans/metrics → daemon Pino + Sentry/OpenTelemetry tracing        |
 | Lint / format          | ESLint (`eslint-config-sukka`) / Biome (formatting only)                     |
 
 ## Open questions
