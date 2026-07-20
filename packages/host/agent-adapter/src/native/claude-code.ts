@@ -652,7 +652,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       prompt: queue,
       options: {
         cwd: opts.cwd,
-        model: opts.model,
+        model: opts.model ?? undefined,
         // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
         // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
         pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),

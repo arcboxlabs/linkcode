@@ -90,6 +90,10 @@ export class LiveSession {
       case 'question-request':
         this.interactions.open(event);
         break;
+      case 'permission-resolved':
+      case 'question-resolved':
+        this.interactions.resolveFromAdapter(event);
+        break;
       case 'tool-call':
         if (event.toolCall.status === 'completed' || event.toolCall.status === 'failed') {
           return this.interactions.cancelOpen(event.toolCall.toolCallId);

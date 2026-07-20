@@ -12,6 +12,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentModelOption,
+  AgentStartCatalog,
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
@@ -37,6 +38,10 @@ import { nextMessageId, nextRequestId } from './adapter';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
 type QuestionResolver = (outcome: QuestionOutcome) => void;
+interface PendingQuestion {
+  resolve: QuestionResolver;
+  cleanup: () => void;
+}
 
 /**
  * Adapter base class: event plumbing, lifecycle, tool-call normalization, and the permission
@@ -69,7 +74,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   /** Permission asks awaiting a reply, keyed by requestId. */
   private readonly pending = new Map<string, PermissionResolver>();
   /** Question asks awaiting a reply, keyed by requestId. */
-  private readonly pendingQuestions = new Map<string, QuestionResolver>();
+  private readonly pendingQuestions = new Map<string, PendingQuestion>();
   /** Running tool-call snapshots, keyed by toolCallId — the source for `emitTool`'s full-snapshot emits. */
   private readonly toolCalls = new Map<string, ToolCall>();
   /** Current segment's ids, refreshed via `freshSegment()` at each turn/tool boundary so text /
@@ -89,6 +94,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     if (opts.effort !== undefined) await this.onSetEffort(opts.effort);
     await this.onStart(opts);
     this.emitStatus('idle');
+  }
+
+  startCatalog(_opts?: { cwd?: string }): Promise<AgentStartCatalog> {
+    return Promise.resolve({ models: [], policies: [] });
   }
 
   listHistory(_opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
@@ -347,18 +356,32 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected requestQuestion(
     toolCall: ToolCallUpdate,
     questions: Question[],
+    signal?: AbortSignal,
   ): Promise<QuestionOutcome> {
     const requestId = nextRequestId();
     return new Promise<QuestionOutcome>((resolve) => {
-      this.pendingQuestions.set(requestId, resolve);
+      const onAbort = () => {
+        const pending = this.pendingQuestions.get(requestId);
+        if (!pending) return;
+        this.pendingQuestions.delete(requestId);
+        pending.cleanup();
+        const outcome = { outcome: 'cancelled' } as const;
+        resolve(outcome);
+        this.emit({ type: 'question-resolved', requestId, outcome, source: 'session' });
+      };
+      const cleanup = () => signal?.removeEventListener('abort', onAbort);
+      this.pendingQuestions.set(requestId, { resolve, cleanup });
+      signal?.addEventListener('abort', onAbort, { once: true });
       this.emit({ type: 'question-request', requestId, toolCall, questions });
+      if (signal?.aborted) onAbort();
     });
   }
   private resolvePendingQuestion(requestId: string, outcome: QuestionOutcome): void {
-    const resolve = this.pendingQuestions.get(requestId);
-    if (resolve) {
+    const pending = this.pendingQuestions.get(requestId);
+    if (pending) {
       this.pendingQuestions.delete(requestId);
-      resolve(outcome);
+      pending.cleanup();
+      pending.resolve(outcome);
     }
   }
 
@@ -370,7 +393,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected teardown(): void {
     for (const resolve of this.pending.values()) resolve({ outcome: 'cancelled' });
     this.pending.clear();
-    for (const resolve of this.pendingQuestions.values()) resolve({ outcome: 'cancelled' });
+    for (const pending of this.pendingQuestions.values()) {
+      pending.cleanup();
+      pending.resolve({ outcome: 'cancelled' });
+    }
     this.pendingQuestions.clear();
     for (const toolCall of this.toolCalls.values()) {
       if (toolCall.status === 'completed' || toolCall.status === 'failed') continue;

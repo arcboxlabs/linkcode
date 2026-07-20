@@ -63,6 +63,7 @@ export function DesktopShell({
   draft,
   runtimeCues,
   attachmentSupport,
+  agentCatalogs,
   newSessionDefaultModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
@@ -329,6 +330,7 @@ export function DesktopShell({
           chatWorkspace={chatWorkspace}
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
+          agentCatalogs={agentCatalogs}
           defaultModels={newSessionDefaultModels}
           preferredModels={newSessionPreferredModels}
           preferredEfforts={newSessionPreferredEfforts}

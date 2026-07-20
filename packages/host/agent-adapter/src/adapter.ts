@@ -9,6 +9,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
+  AgentStartCatalog,
   MessageId,
   StartOptions,
 } from '@linkcode/schema';
@@ -26,6 +27,7 @@ export interface AgentAdapter {
   /** History support advertised by this adapter. Unsupported operations must reject clearly. */
   readonly historyCapabilities: AgentHistoryCapabilities;
   start(opts: StartOptions): Promise<void>;
+  startCatalog(opts?: { cwd?: string }): Promise<AgentStartCatalog>;
   /** List provider-local historical sessions, if supported. */
   listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult>;
   /** Read a provider-local historical session as normalized events, if supported. */

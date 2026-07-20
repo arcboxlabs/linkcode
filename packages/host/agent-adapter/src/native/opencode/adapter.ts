@@ -393,7 +393,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         directory: this.directory,
         command: name,
         arguments: args ?? '',
-        model: this.opts?.model,
+        model: this.opts?.model ?? undefined,
         agent: this.currentAgent ?? undefined,
       })
       .then((result) => {
