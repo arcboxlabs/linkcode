@@ -1,5 +1,3 @@
-import { Socket } from 'node:net';
-import { allocatePort } from '@linkcode/common/node';
 import type { ScriptHealth, ScriptLifecycle, WirePayload, WorkspaceScript } from '@linkcode/schema';
 import { normalizeCwdKey } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -13,9 +11,10 @@ import type { TerminalService } from '../terminal/service';
 import type { ScriptDeclaration } from './config';
 import { readWorkspaceScripts } from './config';
 import { scriptHostname } from './hostname';
+import { ScriptPortPlan } from './script-port-plan';
+import { probeTcp } from './tcp-probe';
 
 const HEALTH_PROBE_INTERVAL_MS = 3000;
-const HEALTH_PROBE_TIMEOUT_MS = 500;
 /** A service that just started gets this long before failed probes count. */
 const HEALTH_GRACE_MS = 5000;
 const HEALTH_FAILURES_FOR_UNHEALTHY = 2;
@@ -41,8 +40,7 @@ interface RunningScript {
 
 interface WorkspaceScriptsState {
   /** Planned ports for every declared service, allocated together on first need. */
-  plan: Map<string, number>;
-  planning?: Promise<void>;
+  portPlan: ScriptPortPlan;
   starting: Map<string, StartingHandle>;
   running: Map<string, RunningScript>;
   stopped: Map<string, { terminalId: string; exitCode: number | null }>;
@@ -84,7 +82,7 @@ export class ScriptService {
         this.ensureAccepting();
         const declarations = readWorkspaceScripts(cwd);
         const state = this.stateFor(cwd);
-        await this.ensurePortPlan(declarations, state);
+        await state.portPlan.ensure(declarations);
         this.ensureAccepting();
         return declarations.map((decl) => this.describe(cwd, decl, state));
       },
@@ -180,7 +178,7 @@ export class ScriptService {
     state: WorkspaceScriptsState,
     signal: AbortSignal,
   ): Promise<void> {
-    await this.ensurePortPlan(declarations, state);
+    await state.portPlan.ensure(declarations);
     let running: RunningScript | undefined;
     let pendingExit: { exitCode: number | null } | undefined;
     const terminalId = await this.terminals.openManaged(
@@ -190,7 +188,12 @@ export class ScriptService {
         cwd,
         shell: '/bin/sh',
         args: ['-c', decl.command],
-        env: this.scriptEnv(cwd, decl, declarations, state),
+        env: state.portPlan.envFor(
+          decl,
+          declarations,
+          (scriptName) => this.hostnameFor(cwd, scriptName),
+          (hostname) => this.proxyUrl(hostname),
+        ),
       },
       (exitCode) => {
         if (running) this.onScriptExit(cwd, decl.name, running, exitCode);
@@ -217,7 +220,7 @@ export class ScriptService {
     }
 
     if (decl.type === 'service') {
-      const port = nullthrow(state.plan.get(decl.name));
+      const port = nullthrow(state.portPlan.get(decl.name));
       running.hostname = this.hostnameFor(cwd, decl.name);
       this.routes.register(running.hostname, { port }, ownerKey(cwd, decl.name));
       running.probeFiber = this.startProbe(cwd, decl, running, port);
@@ -318,7 +321,7 @@ export class ScriptService {
   ): WorkspaceScript {
     const run = state.running.get(decl.name);
     const stopped = state.stopped.get(decl.name);
-    const port = decl.type === 'service' ? state.plan.get(decl.name) : undefined;
+    const port = decl.type === 'service' ? state.portPlan.get(decl.name) : undefined;
     const hostname = decl.type === 'service' ? this.hostnameFor(cwd, decl.name) : undefined;
     return {
       scriptName: decl.name,
@@ -332,66 +335,6 @@ export class ScriptService {
       terminalId: run?.terminalId ?? stopped?.terminalId,
       exitCode: stopped?.exitCode,
     };
-  }
-
-  /** LINKCODE_PORT/URL for the script itself plus PORT/URL for every sibling service. */
-  private scriptEnv(
-    cwd: string,
-    decl: ScriptDeclaration,
-    declarations: ScriptDeclaration[],
-    state: WorkspaceScriptsState,
-  ): Record<string, string> {
-    const env: Record<string, string> = {};
-    const selfPort = decl.type === 'service' ? state.plan.get(decl.name) : undefined;
-    if (selfPort !== undefined) {
-      env.LINKCODE_PORT = String(selfPort);
-      const url = this.proxyUrl(this.hostnameFor(cwd, decl.name));
-      if (url) env.LINKCODE_URL = url;
-    }
-    for (const sibling of declarations) {
-      if (sibling.type !== 'service') continue;
-      const port = state.plan.get(sibling.name);
-      if (port === undefined) continue;
-      const key = sibling.name.toUpperCase().replaceAll(/[^A-Z0-9]+/g, '_');
-      env[`LINKCODE_SERVICE_${key}_PORT`] = String(port);
-      const url = this.proxyUrl(this.hostnameFor(cwd, sibling.name));
-      if (url) env[`LINKCODE_SERVICE_${key}_URL`] = url;
-    }
-    return env;
-  }
-
-  private async ensurePortPlan(
-    declarations: ScriptDeclaration[],
-    state: WorkspaceScriptsState,
-  ): Promise<void> {
-    if (state.planning) {
-      await state.planning;
-      return this.ensurePortPlan(declarations, state);
-    }
-    const missing = declarations.filter(
-      (decl) => decl.type === 'service' && !state.plan.has(decl.name),
-    );
-    if (missing.length === 0) return;
-    const planning = this.allocatePorts(missing, state);
-    state.planning = planning;
-    try {
-      await planning;
-    } finally {
-      if (state.planning === planning) state.planning = undefined;
-    }
-    return this.ensurePortPlan(declarations, state);
-  }
-
-  private async allocatePorts(
-    declarations: ScriptDeclaration[],
-    state: WorkspaceScriptsState,
-  ): Promise<void> {
-    for (const decl of declarations) {
-      // eslint-disable-next-line no-await-in-loop -- ports are allocated one at a time on purpose
-      const port = decl.preferredPort ?? (await (this.options.allocatePort ?? allocatePort)());
-      this.ensureAccepting();
-      state.plan.set(decl.name, port);
-    }
   }
 
   private hostnameFor(cwd: string, scriptName: string): string {
@@ -408,7 +351,12 @@ export class ScriptService {
     const key = normalizeCwdKey(cwd);
     let state = this.workspaces.get(key);
     if (!state) {
-      state = { plan: new Map(), starting: new Map(), running: new Map(), stopped: new Map() };
+      state = {
+        portPlan: new ScriptPortPlan(this.options.allocatePort, () => this.ensureAccepting()),
+        starting: new Map(),
+        running: new Map(),
+        stopped: new Map(),
+      };
       this.workspaces.set(key, state);
     }
     return state;
@@ -444,48 +392,6 @@ export class ScriptService {
 
 function ownerKey(cwd: string, scriptName: string): string {
   return `${normalizeCwdKey(cwd)}#${scriptName}`;
-}
-
-function probeTcp(port: number): Effect.Effect<boolean> {
-  return Effect.callback<boolean>((resume) => {
-    const socket = new Socket();
-    socket.setTimeout(HEALTH_PROBE_TIMEOUT_MS);
-    let settled = false;
-    function cleanup(): void {
-      socket.off('connect', onConnect);
-      socket.off('timeout', onTimeout);
-      socket.off('error', onError);
-      socket.destroy();
-    }
-    function done(ok: boolean): void {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resume(Effect.succeed(ok));
-    }
-    function onConnect(): void {
-      done(true);
-    }
-    function onTimeout(): void {
-      done(false);
-    }
-    function onError(): void {
-      done(false);
-    }
-    socket.once('connect', onConnect);
-    socket.once('timeout', onTimeout);
-    socket.once('error', onError);
-    try {
-      socket.connect(port, '127.0.0.1');
-    } catch {
-      done(false);
-    }
-    return Effect.sync(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-    });
-  });
 }
 
 function scriptFailure(cause: unknown, operation: string, publicMessage: string): EngineFailure {
