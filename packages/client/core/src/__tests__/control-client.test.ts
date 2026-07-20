@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  AgentStartCatalog,
   PermissionOutcome,
   SessionId,
   SessionNotification,
@@ -13,6 +14,79 @@ import { createConnectedLocalClient } from './local-client';
 const sessionId = 'sess-control' as SessionId;
 
 describe('LinkCodeClient control API', () => {
+  it('gets the matching pre-session agent catalog with agent kind and cwd', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient({
+      randomUUID: () => 'catalog-request',
+    });
+    const catalog: AgentStartCatalog = {
+      models: [{ id: 'pi/sonnet', label: 'Sonnet', effortLevels: ['low', 'high'] }],
+      policies: [{ policyId: 'default', name: 'Default' }],
+      defaultPolicyId: 'default',
+    };
+
+    serverTransport.onMessage((msg) => {
+      if (msg.payload.kind !== 'agent.catalog') return;
+      expect(msg.payload).toEqual({
+        kind: 'agent.catalog',
+        clientReqId: 'creq-catalog-request',
+        agentKind: 'pi',
+        cwd: '/repo',
+      });
+      serverTransport.send(
+        createWireMessage({
+          kind: 'agent.cataloged',
+          replyTo: 'creq-unrelated',
+          catalog: { models: [], policies: [] },
+        }),
+      );
+      serverTransport.send(
+        createWireMessage({
+          kind: 'agent.cataloged',
+          replyTo: msg.payload.clientReqId,
+          catalog,
+        }),
+      );
+    });
+
+    await expect(client.getAgentCatalog('pi', '/repo')).resolves.toEqual(catalog);
+
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('rejects and removes a pre-session catalog request on request.failed', async () => {
+    let requestNumber = 0;
+    const { client, serverTransport } = await createConnectedLocalClient({
+      randomUUID: () => `catalog-${++requestNumber}`,
+    });
+    serverTransport.onMessage((msg) => {
+      if (msg.payload.kind !== 'agent.catalog') return;
+      if (msg.payload.clientReqId === 'creq-catalog-1') {
+        serverTransport.send(
+          createWireMessage({
+            kind: 'request.failed',
+            replyTo: msg.payload.clientReqId,
+            message: 'catalog unavailable',
+          }),
+        );
+        return;
+      }
+      serverTransport.send(
+        createWireMessage({
+          kind: 'agent.cataloged',
+          replyTo: msg.payload.clientReqId,
+          catalog: { models: [], policies: [] },
+        }),
+      );
+    });
+
+    await expect(client.getAgentCatalog('pi')).rejects.toThrow('catalog unavailable');
+    await expect(client.getAgentCatalog('pi')).resolves.toEqual({ models: [], policies: [] });
+
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('waits for control acknowledgements', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();
 

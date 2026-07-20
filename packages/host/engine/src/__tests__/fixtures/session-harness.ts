@@ -9,6 +9,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentRuntimes,
+  AgentStartCatalog,
   SessionId,
   StartOptions,
   ValidatedWireMessage,
@@ -41,6 +42,10 @@ export class FakeAdapter implements AgentAdapter {
   start(opts: StartOptions): Promise<void> {
     this.startedWith = opts;
     return Promise.resolve();
+  }
+
+  startCatalog(): Promise<AgentStartCatalog> {
+    return Promise.resolve({ models: [], policies: [] });
   }
 
   listHistory(): Promise<AgentHistoryListResult> {

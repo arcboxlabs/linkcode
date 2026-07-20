@@ -27,6 +27,7 @@ function fakeAdapter(): AgentAdapter {
     capabilities: { slashCommands: false, shellCommand: false },
     historyCapabilities: { list: false, read: false, resume: false },
     start: () => Promise.resolve(),
+    startCatalog: () => Promise.resolve({ models: [], policies: [] }),
     listHistory: () => Promise.reject(new Error('unsupported')),
     readHistory: () => Promise.reject(new Error('unsupported')),
     resumeHistory: () => Promise.reject(new Error('unsupported')),
