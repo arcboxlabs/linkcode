@@ -93,6 +93,7 @@ module.exports = require('eslint-config-sukka').sukka(
   {
     files: [
       'packages/host/agent-adapter/src/**/*.{ts,tsx}',
+      'packages/host/agent-adapter/tests/**/*.{ts,tsx}',
       'packages/host/engine/src/**/*.{ts,tsx}',
       'packages/client/sdk/src/client.ts',
     ],
