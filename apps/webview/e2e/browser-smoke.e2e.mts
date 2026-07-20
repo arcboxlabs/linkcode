@@ -15,6 +15,7 @@ import { chromium } from 'playwright-core';
 const webviewDir = fileURLToPath(new URL('..', import.meta.url));
 const daemonDir = fileURLToPath(new URL('../../daemon', import.meta.url));
 const viteCli = fileURLToPath(new URL('../../bin/vite.js', import.meta.resolve('vite')));
+const mockThreadTitle = 'Wire the workbench to the daemon';
 
 interface ViteServer {
   child: ChildProcess;
@@ -119,8 +120,11 @@ async function verifyProductionEntry(browser: Browser): Promise<void> {
 }
 
 async function verifyMockEntry(browser: Browser): Promise<void> {
-  const server = await startVite(['--mode', 'mock']);
+  const mockDist = mkdtempSync(join(tmpdir(), 'linkcode-webview-mock-e2e-'));
+  let server: ViteServer | undefined;
   try {
+    await buildMockArtifact(mockDist);
+    server = await startVite(['preview', '--outDir', mockDist]);
     const appErrors: string[] = [];
     const page = await browser.newPage();
     monitorApplicationErrors(page, server.origin, appErrors);
@@ -132,25 +136,55 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     await page.getByRole('link', { name: 'Back' }).click();
     await page.waitForURL(`${server.origin}/`);
 
-    const threadTitle = 'Wire the workbench to the daemon';
-    await page.getByText(threadTitle, { exact: true }).click();
+    await page.getByText(mockThreadTitle, { exact: true }).click();
     const firstPrompt = `browser-wire-smoke-${Date.now().toString(36)}`;
     await sendPrompt(page, firstPrompt, appErrors);
 
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.getByText(threadTitle, { exact: true }).waitFor();
-    await page.getByText(threadTitle, { exact: true }).click();
+    await page.getByText(mockThreadTitle, { exact: true }).waitFor();
+    await page.getByText(mockThreadTitle, { exact: true }).click();
     const recoveryPrompt = `${firstPrompt}-after-reload`;
     await sendPrompt(page, recoveryPrompt, appErrors);
     assertNoApplicationErrors(appErrors);
     await page.close();
 
     process.stdout.write(
-      'Webview browser smoke passed: router, mock wire prompt, and reload recovery.\n',
+      'Webview bundled mock smoke passed: router, wire prompt, and reload recovery.\n',
     );
+  } catch (error) {
+    throw new Error(`Bundled mock boundary failed:\n${server?.logs.join('') ?? ''}`, {
+      cause: error,
+    });
   } finally {
-    await stop(server.child);
+    if (server) await stop(server.child);
+    rmSync(mockDist, { force: true, recursive: true });
   }
+}
+
+async function buildMockArtifact(outDir: string): Promise<void> {
+  const logs: string[] = [];
+  const child = spawn(
+    process.execPath,
+    [viteCli, 'build', '--mode', 'mock', '--outDir', outDir, '--emptyOutDir'],
+    {
+      cwd: webviewDir,
+      // The mock transport is intentionally guarded by import.meta.env.DEV. A development-mode
+      // bundle preserves that boundary while avoiding Vite's cold dev-server optimizer entirely.
+      env: { ...process.env, NODE_ENV: 'development' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 180000,
+      windowsHide: true,
+    },
+  );
+  child.stdout.on('data', (chunk: Buffer) => logs.push(chunk.toString()));
+  child.stderr.on('data', (chunk: Buffer) => logs.push(chunk.toString()));
+  const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', (code, signal) => resolve({ code, signal }));
+    },
+  );
+  assert.equal(result.code, 0, `Mock bundle failed: ${JSON.stringify(result)}\n${logs.join('')}`);
 }
 
 async function startDaemon(): Promise<DaemonProcess> {
