@@ -12,13 +12,21 @@ export class EngineService extends Context.Service<
   }
 >()('@linkcode/engine/Engine') {}
 
-export function makeEngineLayer(
-  transport: Transport,
-  deps: EngineDeps = {},
-): Layer.Layer<EngineService, EngineFailure> {
-  return Layer.effect(
+/** Daemon-owned infrastructure supplied at the Engine package boundary. */
+export class EngineInfrastructure extends Context.Service<
+  EngineInfrastructure,
+  {
+    readonly transport: Transport;
+    readonly deps: EngineDeps;
+  }
+>()('@linkcode/engine/Infrastructure') {}
+
+/** Engine feature assembly. The runtime, root scope, and root FiberSet are created exactly once. */
+export const EngineLive: Layer.Layer<EngineService, EngineFailure, EngineInfrastructure> =
+  Layer.effect(
     EngineService,
     Effect.gen(function* () {
+      const { transport, deps } = yield* EngineInfrastructure;
       const engine = yield* Effect.acquireRelease(
         createEngineRuntime(transport, deps),
         (runtime) => runtime.stop,
@@ -27,4 +35,18 @@ export function makeEngineLayer(
       return { ensureChatWorkspace: engine.ensureChatWorkspace };
     }),
   );
+
+export function makeEngineInfrastructureLayer(
+  transport: Transport,
+  deps: EngineDeps = {},
+): Layer.Layer<EngineInfrastructure> {
+  return Layer.succeed(EngineInfrastructure, { transport, deps });
+}
+
+/** Convenience composition for tests and embedders that already hold concrete infrastructure. */
+export function makeEngineLayer(
+  transport: Transport,
+  deps: EngineDeps = {},
+): Layer.Layer<EngineService, EngineFailure> {
+  return EngineLive.pipe(Layer.provide(makeEngineInfrastructureLayer(transport, deps)));
 }

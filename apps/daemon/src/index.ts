@@ -3,7 +3,12 @@ import * as OtelResource from '@effect/opentelemetry/Resource';
 import { NodeRuntime } from '@effect/platform-node';
 import { agentRuntimeProber } from '@linkcode/agent-adapter';
 import { AssetManager } from '@linkcode/assets';
-import { EngineService, makeEngineLayer, PreviewRouteRegistry } from '@linkcode/engine';
+import {
+  EngineLive,
+  EngineService,
+  makeEngineInfrastructureLayer,
+  PreviewRouteRegistry,
+} from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import { Hub } from '@linkcode/transport/server';
@@ -162,7 +167,7 @@ async function main(): Promise<void> {
     }),
   );
 
-  const EngineLive = Layer.unwrap(
+  const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
       const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
@@ -201,7 +206,7 @@ async function main(): Promise<void> {
       // status`) that take seconds on a cold machine — listener bind must not wait on them, or
       // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
       const agentRuntimesReady = agentRuntimeProber.collect();
-      const EngineRuntimeLive = makeEngineLayer(hub, {
+      const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         sessionStore: createSessionStore(databasePath()),
@@ -259,6 +264,7 @@ async function main(): Promise<void> {
           yield* engine.ensureChatWorkspace(chatWorkspaceRoot());
         }),
       );
+      const EngineRuntimeLive = EngineLive.pipe(Layer.provide(EngineInfrastructureLive));
       return EngineReady.pipe(Layer.provideMerge(EngineRuntimeLive));
     }),
   );
@@ -338,7 +344,7 @@ async function main(): Promise<void> {
 
   const MainLive = LifecycleLive.pipe(
     Layer.provideMerge(ListenersLive),
-    Layer.provideMerge(EngineLive),
+    Layer.provideMerge(EngineSubsystemLive),
     Layer.provideMerge(SharedLive),
     Layer.provide(DaemonLoggerLive),
     Layer.provide(

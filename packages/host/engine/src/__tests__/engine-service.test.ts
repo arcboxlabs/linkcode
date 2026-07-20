@@ -12,7 +12,12 @@ import type { AssetService } from '../asset/service';
 import { InMemoryLoopStore } from '../automation/loop-store';
 import { InMemoryScheduleStore } from '../automation/schedule-store';
 import { createEngineRuntime } from '../engine';
-import { EngineService, makeEngineLayer } from '../service';
+import {
+  EngineLive,
+  EngineService,
+  makeEngineInfrastructureLayer,
+  makeEngineLayer,
+} from '../service';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import type { PtyBackend } from '../terminal/pty-backend';
@@ -42,7 +47,9 @@ describe('engine service', () => {
         closes += 1;
       },
     };
-    const runtime = ManagedRuntime.make(makeEngineLayer(transport));
+    const runtime = ManagedRuntime.make(
+      EngineLive.pipe(Layer.provide(makeEngineInfrastructureLayer(transport))),
+    );
     const root = await mkdtemp(join(tmpdir(), 'linkcode-engine-service-'));
     const chatRoot = join(root, 'chat');
 
