@@ -12,7 +12,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { ValidatedWireMessage } from '@linkcode/schema';
 import { createWireMessage, SocketIoTransport } from '@linkcode/transport';
-import Sqlite from 'better-sqlite3';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { waitFor } from 'foxts/wait-for';
@@ -72,7 +71,6 @@ async function main(): Promise<void> {
         version: await system.app.version(),
         settings: system.settings.snapshot(),
         managed: await system.daemon.isManaged(),
-        daemonUrl: system.daemon.resolveUrl(),
         maximized: await system.window.isMaximized(),
       };
     });
@@ -100,7 +98,11 @@ async function main(): Promise<void> {
     assert.equal(linuxParentPid(runtime.pid), app.process().pid);
     const listener = runtime.listeners.find(({ type }) => type === 'socket.io');
     assert(listener, 'packaged daemon did not advertise its Socket.IO listener');
-    assert.equal(bridge.daemonUrl, listener.url);
+    await page.waitForFunction(
+      (url) => window.linkcodeSystem.daemon.resolveUrl() === url,
+      listener.url,
+      { timeout: 10000 },
+    );
 
     const identity = (await fetch(`${listener.url}/linkcode`).then((response) => {
       assert(response.ok, `daemon identity returned HTTP ${response.status}`);
@@ -111,24 +113,9 @@ async function main(): Promise<void> {
     assert.equal(identity.profile, profile);
     assert(identity.startedAt && identity.startedAt > 0);
 
-    const databasePath = join(stateDir, 'daemon.db');
-    await waitFor(() => existsSync(databasePath), 100, AbortSignal.timeout(10000));
-    const sqlite = new Sqlite(databasePath, { readonly: true });
-    try {
-      const tables = new Set(
-        sqlite
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-          .all()
-          .map((row) => (row as { name: string }).name),
-      );
-      for (const table of ['__drizzle_migrations', 'sessions', 'workspaces']) {
-        assert(tables.has(table), `native SQLite is missing migrated table ${table}`);
-      }
-    } finally {
-      sqlite.close();
-    }
-
     transport = new SocketIoTransport({ url: listener.url });
+    await transport.connect();
+    await verifyWorkspaceStore(transport);
     await verifyTerminal(transport);
 
     console.log('PASS packaged renderer/preload, bundled daemon, native SQLite, and staged PTY');
@@ -140,8 +127,31 @@ async function main(): Promise<void> {
   }
 }
 
+async function verifyWorkspaceStore(transport: SocketIoTransport): Promise<void> {
+  const clientReqId = randomUUID();
+  const listed = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('packaged workspace list timed out')), 10000);
+    transport.onMessage((message: ValidatedWireMessage) => {
+      const payload = message.payload;
+      if (payload.kind === 'request.failed' && payload.replyTo === clientReqId) {
+        clearTimeout(timeout);
+        reject(new Error(`packaged workspace list failed: ${payload.message}`));
+        return;
+      }
+      if (payload.kind !== 'workspace.listed' || payload.replyTo !== clientReqId) return;
+      clearTimeout(timeout);
+      assert(
+        payload.workspaces.some(({ kind }) => kind === 'chat'),
+        'chat workspace was not migrated',
+      );
+      resolve();
+    });
+  });
+  transport.send(createWireMessage({ kind: 'workspace.list', clientReqId }));
+  await listed;
+}
+
 async function verifyTerminal(transport: SocketIoTransport): Promise<void> {
-  await transport.connect();
   const clientReqId = randomUUID();
   const credentials = { attachmentId: randomUUID(), attachmentSecret: randomUUID() };
   let terminalId = '';
