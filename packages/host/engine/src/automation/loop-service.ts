@@ -1,33 +1,20 @@
-import type {
-  LoopId,
-  LoopIteration,
-  LoopLogEntry,
-  LoopLogLevel,
-  LoopRecord,
-  LoopSpec,
-} from '@linkcode/schema';
+import type { LoopId, LoopIteration, LoopLogEntry, LoopRecord, LoopSpec } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { Cause, Effect, Fiber } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { OperationError, RequestError } from '../failure';
 import { LoopIterationRunner } from './loop-iteration-runner';
 import { LoopReporter } from './loop-reporter';
+import type { LoopRun } from './loop-run-coordinator';
+import { LoopRunCoordinator } from './loop-run-coordinator';
 import type { LoopStore } from './loop-store';
 import type { SessionDriver } from './session-driver';
-
-const SUMMARY_MAX_CHARS = 2000;
 
 type RunTask = (effect: Effect.Effect<void>) => Fiber.Fiber<void>;
 
 interface LoopHandle {
-  readonly control: LoopControl;
+  readonly run: LoopRun;
   readonly fiber: Fiber.Fiber<void>;
-}
-
-interface LoopControl {
-  admitted: boolean;
-  stopError?: string;
-  terminalStarted: boolean;
 }
 export interface LoopServiceOptions {
   /** Injectable clock for deterministic tests. */
@@ -48,7 +35,7 @@ export class LoopService {
   private readonly handles = new Map<LoopId, LoopHandle>();
   private readonly now: () => number;
   private readonly reporter: LoopReporter;
-  private readonly iterationRunner: LoopIterationRunner;
+  private readonly runCoordinator: LoopRunCoordinator;
   private runTask: RunTask | undefined;
   private acceptingLoops = true;
   private seq = 0;
@@ -61,7 +48,8 @@ export class LoopService {
   ) {
     this.now = options.now ?? Date.now;
     this.reporter = new LoopReporter(transport, this.now);
-    this.iterationRunner = new LoopIterationRunner(driver, store, this.reporter, this.now);
+    const iterationRunner = new LoopIterationRunner(driver, store, this.reporter, this.now);
+    this.runCoordinator = new LoopRunCoordinator(iterationRunner, store, this.reporter, this.now);
   }
 
   bindRuntime(runTask: RunTask): void {
@@ -88,8 +76,7 @@ export class LoopService {
     return Effect.sync(() => {
       this.acceptingLoops = false;
       for (const handle of this.handles.values()) {
-        handle.control.stopError ??= 'engine shutting down';
-        if (handle.control.admitted) handle.fiber.interruptUnsafe();
+        if (handle.run.requestStop('engine shutting down')) handle.fiber.interruptUnsafe();
       }
     }).pipe(Effect.andThen(Effect.suspend(() => this.settleAll())));
   }
@@ -133,24 +120,12 @@ export class LoopService {
         startedAt: now,
         updatedAt: now,
       };
-      const control: LoopControl = { admitted: false, terminalStarted: false };
-      const finish = (error: string) => this.finish(loop, control, 'stopped', error);
-      const runLoop = () => this.runLoop(loop, control);
-      const { reporter, store } = this;
-      const effect = Effect.gen(function* () {
-        reporter.start(loop.loopId);
-        control.admitted = true;
-        if (control.stopError !== undefined) {
-          yield* finish(control.stopError);
-          return;
-        }
-        reporter.changed(loop);
-        reporter.log(loop.loopId, 'info', 'system', 'loop started');
-        yield* runLoop();
-      }).pipe(
+      const run = this.runCoordinator.createRun(loop);
+      const { store } = this;
+      const effect = run.execute().pipe(
         Effect.onExit(() =>
           Effect.sync(() => {
-            if (control.admitted) return;
+            if (run.isAdmitted()) return;
             this.loops.delete(loop.loopId);
           }),
         ),
@@ -160,16 +135,10 @@ export class LoopService {
           Effect.suspend(() => {
             this.loops.set(loop.loopId, loop);
             if (this.acceptingLoops) {
-              this.track(loop.loopId, control, effect);
+              this.track(loop.loopId, run, effect);
               return Effect.void;
             }
-            loop.status = 'stopped';
-            loop.error = 'engine shutting down';
-            loop.endedAt = this.now();
-            loop.updatedAt = this.now();
-            return storeEffect('loops.save', 'Failed to stop loop during shutdown', () =>
-              store.save(loop),
-            ).pipe(Effect.tap(() => Effect.sync(() => reporter.changed(loop))));
+            return run.settleWithoutStarting('engine shutting down');
           }),
         ),
         Effect.as(loop),
@@ -185,8 +154,7 @@ export class LoopService {
         Effect.sync(() => {
           const handle = this.handles.get(loopId);
           if (!handle) return;
-          handle.control.stopError ??= 'stopped by user';
-          if (handle.control.admitted) handle.fiber.interruptUnsafe();
+          if (handle.run.requestStop('stopped by user')) handle.fiber.interruptUnsafe();
         }),
       ),
       Effect.asVoid,
@@ -219,107 +187,6 @@ export class LoopService {
     );
   }
 
-  // ── The loop runner ──────────────────────────────────────────────────────
-
-  private runLoop(loop: LoopRecord, control: LoopControl): Effect.Effect<void, unknown> {
-    const spec = loop.spec;
-    const { iterationRunner, now, reporter, store } = this;
-    const finish = this.finish.bind(this, loop, control);
-    const summarize = (text: string) => this.summarize(text);
-    let lastFailure: string | undefined;
-    const budgetRemaining =
-      spec.maxTimeMs === undefined
-        ? undefined
-        : Math.max(0, spec.maxTimeMs - (now() - loop.startedAt));
-    const run = Effect.gen(function* () {
-      for (let index = 0; index < spec.maxIterations; index += 1) {
-        const { iteration, workerText, failureFeedback } = yield* iterationRunner.run(
-          loop,
-          index,
-          lastFailure,
-        );
-        loop.iterationCount = index + 1;
-        loop.updatedAt = now();
-        yield* fromPromise(() => store.save(loop));
-        reporter.changed(loop);
-        if (iteration.status === 'passed') {
-          yield* finish('succeeded', undefined, summarize(workerText));
-          return;
-        }
-        lastFailure = failureFeedback;
-        if (spec.sleepMs > 0) yield* Effect.sleep(spec.sleepMs);
-      }
-      yield* finish('failed', 'max iterations reached without passing verification');
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Cause.hasInterruptsOnly(cause) || control.terminalStarted
-          ? Effect.failCause(cause)
-          : Effect.logError(
-              'Loop run failed',
-              {
-                loopId: loop.loopId,
-                operation: 'automation.loop.run',
-              },
-              Cause.squash(cause),
-            ).pipe(Effect.andThen(finish('failed', 'automation loop failed'))),
-      ),
-      Effect.onInterrupt(() =>
-        control.stopError === undefined ? Effect.void : finish('stopped', control.stopError),
-      ),
-    );
-    return budgetRemaining === undefined
-      ? run
-      : run.pipe(
-          Effect.timeoutOrElse({
-            duration: budgetRemaining,
-            orElse: () => finish('failed', 'time budget exceeded'),
-          }),
-        );
-  }
-
-  private finish(
-    loop: LoopRecord,
-    control: LoopControl,
-    status: LoopRecord['status'],
-    error?: string,
-    summary?: string,
-  ): Effect.Effect<void, unknown> {
-    return Effect.suspend(() => {
-      if (control.terminalStarted) return Effect.void;
-      control.terminalStarted = true;
-      return Effect.sync(() => {
-        loop.status = status;
-        loop.error = error;
-        if (summary !== undefined) loop.summary = summary;
-        loop.endedAt = this.now();
-        loop.updatedAt = this.now();
-      }).pipe(
-        Effect.andThen(fromPromise(() => this.store.save(loop))),
-        Effect.andThen(
-          Effect.sync(() => {
-            this.reporter.changed(loop);
-            const level: LoopLogLevel =
-              status === 'succeeded' ? 'info' : status === 'failed' ? 'error' : 'warn';
-            this.reporter.log(
-              loop.loopId,
-              level,
-              'system',
-              `loop ${status}${error ? `: ${error}` : ''}`,
-            );
-          }),
-        ),
-      );
-    }).pipe(Effect.uninterruptible);
-  }
-
-  // ── Helpers ──────────────────────────────────────────────────────────────
-
-  private summarize(text: string): string | undefined {
-    const trimmed = text.trim();
-    if (!trimmed) return undefined;
-    return trimmed.length > SUMMARY_MAX_CHARS ? trimmed.slice(0, SUMMARY_MAX_CHARS) : trimmed;
-  }
-
   private find(loopId: LoopId): Effect.Effect<LoopRecord, RequestError> {
     const loop = this.loops.get(loopId);
     return loop
@@ -327,7 +194,7 @@ export class LoopService {
       : Effect.fail(new RequestError({ code: 'not_found', message: 'Loop not found' }));
   }
 
-  private track(loopId: LoopId, control: LoopControl, effect: Effect.Effect<void, unknown>): void {
+  private track(loopId: LoopId, loopRun: LoopRun, effect: Effect.Effect<void, unknown>): void {
     const run = nullthrow(this.runTask, 'Loop runtime has not started');
     const fiber = run(
       effect.pipe(
@@ -338,7 +205,7 @@ export class LoopService {
         ),
       ),
     );
-    const handle = { control, fiber };
+    const handle = { run: loopRun, fiber };
     this.handles.set(loopId, handle);
     fiber.addObserver(() => {
       if (this.handles.get(loopId) === handle) this.handles.delete(loopId);
@@ -349,10 +216,6 @@ export class LoopService {
     this.seq += 1;
     return `loop-${this.now().toString(36)}-${this.seq.toString(36)}` as LoopId;
   }
-}
-
-function fromPromise<A>(run: () => PromiseLike<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (cause) => cause });
 }
 
 function storeEffect<A>(
