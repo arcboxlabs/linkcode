@@ -1,8 +1,8 @@
 import type { Schedule, ScheduleId, ScheduleRun, WirePayload } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
-import type { ScheduleEvent } from '../client';
-import { createConnectedLocalClient } from './local-client';
+import type { ScheduleEvent } from '../../src/client';
+import { createConnectedLocalClient } from '../support/local-client';
 
 const schedule: Schedule = {
   scheduleId: 'sch-1' as ScheduleId,

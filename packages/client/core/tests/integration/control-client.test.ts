@@ -8,8 +8,8 @@ import type {
 } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
-import type { SequencedAgentEvent } from '../client';
-import { createConnectedLocalClient } from './local-client';
+import type { SequencedAgentEvent } from '../../src/client';
+import { createConnectedLocalClient } from '../support/local-client';
 
 const sessionId = 'sess-control' as SessionId;
 

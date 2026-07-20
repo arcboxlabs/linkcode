@@ -12,6 +12,7 @@
     { "path": "apps/daemon/tests" },
     { "path": "apps/mobile" },
     { "path": "packages/client/core" },
+    { "path": "packages/client/core/tests" },
     { "path": "packages/client/sdk" },
     { "path": "packages/client/workbench" },
     { "path": "packages/client/workbench/tests" },

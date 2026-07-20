@@ -7,8 +7,8 @@ import type {
 } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
-import type { LoopEvent } from '../client';
-import { createConnectedLocalClient } from './local-client';
+import type { LoopEvent } from '../../src/client';
+import { createConnectedLocalClient } from '../support/local-client';
 
 const loop: LoopRecord = {
   loopId: 'loop-1' as LoopId,

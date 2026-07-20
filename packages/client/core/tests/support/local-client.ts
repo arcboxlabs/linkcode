@@ -1,7 +1,7 @@
 import type { LocalTransport } from '@linkcode/transport';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
-import type { LinkCodeClientOptions } from '../client';
-import { LinkCodeClient } from '../client';
+import type { LinkCodeClientOptions } from '../../src/client';
+import { LinkCodeClient } from '../../src/client';
 
 export async function createConnectedLocalClient(options?: LinkCodeClientOptions): Promise<{
   client: LinkCodeClient;
