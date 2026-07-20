@@ -57,7 +57,11 @@ export function FileViewer({
     );
   }
 
-  const kind = artifactKindForPath(file.path) ?? (file.encoding === 'utf8' ? 'text' : null);
+  const pathKind = artifactKindForPath(file.path);
+  const kind =
+    file.encoding !== 'utf8' && (pathKind === 'markdown' || pathKind === 'text')
+      ? null
+      : (pathKind ?? (file.encoding === 'utf8' ? 'text' : null));
 
   switch (kind) {
     case 'markdown':
